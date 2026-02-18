@@ -1,0 +1,19 @@
+# Secrets - NE PAS COMMIT
+.env
+.streamlit/secrets.toml
+
+# SSL certificates
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
