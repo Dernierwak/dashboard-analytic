@@ -23,22 +23,41 @@ class Dashboard():
         self.client = None
 
     def _create_account(self, email, password):
-        user = self.supabase.auth.sign_up({"email": email, "password": password})
-        if user:
-            st.session_state["session"] = user.session
-            st.query_params["refresh_token"] = user.session.refresh_token
-            st.rerun()
+        try:
+            user = self.supabase.auth.sign_up({"email": email, "password": password})
+            if user.session:
+                st.session_state["session"] = user.session
+                st.query_params["refresh_token"] = user.session.refresh_token
+                st.rerun()
+            else:
+                st.session_state["email_confirmation_pending"] = email
+        except Exception as e:
+            st.error(f"Erreur lors de la création du compte : {e}")
 
     def _login(self, email, password):
-        user = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
-        if user:
-            st.session_state["session"] = user.session
-            st.query_params["refresh_token"] = user.session.refresh_token
-            st.rerun()
+        try:
+            user = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
+            if user.session:
+                st.session_state["session"] = user.session
+                st.query_params["refresh_token"] = user.session.refresh_token
+                st.rerun()
+        except Exception as e:
+            if "email not confirmed" in str(e).lower():
+                st.session_state["email_confirmation_pending"] = email
+            else:
+                st.error("Identifiants incorrects.")
 
     def _auth_page(self):
         _, col, _ = st.columns([1, 2, 1])
         with col:
+            if "email_confirmation_pending" in st.session_state:
+                email = st.session_state["email_confirmation_pending"]
+                st.info(f"Un email de confirmation a été envoyé à **{email}**. Cliquez sur le lien dans votre boîte mail, puis revenez vous connecter.")
+                if st.button("J'ai confirmé mon email", use_container_width=True):
+                    del st.session_state["email_confirmation_pending"]
+                    st.rerun()
+                return
+
             email = st.text_input("Email")
             password = st.text_input("Mot de passe", type="password")
             col_a, col_b = st.columns(2)
