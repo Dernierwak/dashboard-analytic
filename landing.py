@@ -471,7 +471,7 @@ st.markdown("""
 hero_c1, hero_c2, hero_c3 = st.columns([2, 1, 2])
 with hero_c2:
     if st.button("Créer mon compte", type="primary", use_container_width=True):
-        st.switch_page("main.py")
+        st.switch_page("pages/main.py")
 
 # Stats banner
 st.markdown("""
@@ -839,7 +839,7 @@ with col1:
     </div>
     """, unsafe_allow_html=True)
     if st.button("Choisir Starter", key="starter", use_container_width=True):
-        st.switch_page("main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
+        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 with col2:
     st.markdown("""
@@ -858,7 +858,7 @@ with col2:
     </div>
     """, unsafe_allow_html=True)
     if st.button("Choisir Pro", key="pro", use_container_width=True, type="primary"):
-        st.switch_page("main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
+        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 with col3:
     st.markdown("""
@@ -876,7 +876,7 @@ with col3:
     </div>
     """, unsafe_allow_html=True)
     if st.button("Choisir Agency", key="agency", use_container_width=True):
-        st.switch_page("main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
+        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
@@ -891,10 +891,10 @@ st.markdown("""
 cta_c1, cta_c2, cta_c3, cta_c4, cta_c5 = st.columns([2, 1, 0.2, 1, 2])
 with cta_c2:
     if st.button("Créer mon compte", type="primary", use_container_width=True, key="cta_signup"):
-        st.switch_page("main.py")
+        st.switch_page("pages/main.py")
 with cta_c4:
     if st.button("Se connecter", use_container_width=True, key="cta_login"):
-        st.switch_page("main.py")
+        st.switch_page("pages/main.py")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
