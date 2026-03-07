@@ -4,12 +4,6 @@ import plotly.express as px
 import pandas as pd
 from datetime import datetime, timedelta
 import random
-from supabase import create_client
-
-# Supabase client pour le formulaire
-@st.cache_resource
-def get_supabase():
-    return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
 
 st.set_page_config(
     page_title="Dashboard Analytics",
@@ -471,12 +465,13 @@ st.markdown("""
         Le dashboard que les créateurs attendaient. Visualisez vos stats Instagram,
         optimisez vos pubs Meta, et concentrez-vous sur ce qui compte : créer du contenu.
     </p>
-    <div>
-        <a href="#contact" class="btn-primary">Demander un accès</a>
-        <a href="#demo" class="btn-secondary">Voir la démo</a>
-    </div>
 </div>
 """, unsafe_allow_html=True)
+
+hero_c1, hero_c2, hero_c3 = st.columns([2, 1, 2])
+with hero_c2:
+    if st.button("Créer mon compte", type="primary", use_container_width=True):
+        st.switch_page("main.py")
 
 # Stats banner
 st.markdown("""
@@ -885,41 +880,21 @@ with col3:
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-# ============= CONTACT FORM SECTION =============
+# ============= CTA SECTION =============
 st.markdown("""
-<div class="section-title" id="contact">
+<div class="section-title">
     <h2>Prêt à voir vos vraies stats ?</h2>
-    <p>Demandez un accès et on vous contacte sous 24h</p>
+    <p>Créez votre compte gratuitement et connectez Instagram en 2 minutes.</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Form container
-form_col1, form_col2, form_col3 = st.columns([1, 2, 1])
-
-with form_col2:
-    with st.form("contact_form", clear_on_submit=True):
-        name = st.text_input("Votre nom", placeholder="Marie Dupont")
-        email = st.text_input("Email", placeholder="marie@exemple.com")
-        instagram = st.text_input("Compte Instagram", placeholder="@votre_compte")
-        message = st.text_area("Message (optionnel)", placeholder="Dites-nous en plus sur vos besoins...", height=100)
-
-        submitted = st.form_submit_button("Envoyer ma demande", use_container_width=True, type="primary")
-
-        if submitted:
-            if not name or not email:
-                st.error("Merci de remplir votre nom et email")
-            else:
-                try:
-                    supabase = get_supabase()
-                    supabase.table("contact_requests").insert({
-                        "name": name,
-                        "email": email,
-                        "instagram_handle": instagram,
-                        "message": message
-                    }).execute()
-                    st.success("Merci ! On vous recontacte très vite 🎉")
-                except Exception as e:
-                    st.error(f"Erreur lors de l'envoi. Réessayez ou contactez-nous directement.")
+cta_c1, cta_c2, cta_c3, cta_c4, cta_c5 = st.columns([2, 1, 0.2, 1, 2])
+with cta_c2:
+    if st.button("Créer mon compte", type="primary", use_container_width=True, key="cta_signup"):
+        st.switch_page("main.py")
+with cta_c4:
+    if st.button("Se connecter", use_container_width=True, key="cta_login"):
+        st.switch_page("main.py")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
