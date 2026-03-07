@@ -2,6 +2,39 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Notes de session (18 février 2025)
+
+### Approche pédagogique IMPORTANTE
+**L'utilisateur veut apprendre et coder lui-même.** Ne pas écrire le code à sa place.
+- Expliquer les concepts
+- Poser des questions pour vérifier la compréhension
+- Laisser l'utilisateur écrire le code
+- Corriger et guider ensuite
+
+### État actuel du projet
+- ✅ Landing page déployée (funnel optimisé)
+- ✅ GitHub repo: https://github.com/Dernierwak/dashboard-analytic
+- ✅ Prêt pour Streamlit Cloud
+- ❌ API Instagram : données fictives (à connecter)
+- ❌ Stripe : boutons non connectés
+
+### Prochaine étape : API Instagram
+L'utilisateur comprend déjà :
+- OAuth Meta (code existant dans `meta_script/fetch_token.py`)
+- Stockage token dans Supabase (`profiles.meta_token`)
+- Flow access/refresh token
+
+**Exercice en cours :**
+Écrire la fonction `get_long_lived_token(short_token)` dans `meta_script/fetch_token.py`
+- Échanger short-lived token (1h) contre long-lived token (60 jours)
+- URL: `https://graph.facebook.com/v24.0/oauth/access_token?grant_type=fb_exchange_token&...`
+
+### Après le long-lived token
+1. Appeler l'API Instagram avec le token pour récupérer les vraies données
+2. Stocker/afficher dans le dashboard
+
+---
+
 ## Project Overview
 
 This is a Streamlit application integrating **Supabase** (authentication + database), **Stripe** (payments with Twint + card), and **Meta/Facebook OAuth** (for ads_management API access).

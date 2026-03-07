@@ -4,12 +4,11 @@ import streamlit as st
 app_id = st.secrets.meta.app_id
 secret_key = st.secrets.meta.secret_key
 redirect_uri = "https://localhost:8502/"
-
-
+api_version = "v24.0"
 def get_oauth_url():
     """Construit l'URL OAuth Meta"""
     return (
-        f"https://www.facebook.com/v24.0/dialog/oauth"
+        f"https://www.facebook.com/{api_version}/dialog/oauth"
         f"?client_id={app_id}"
         f"&redirect_uri={redirect_uri}"
         f"&scope=ads_management"
@@ -18,7 +17,7 @@ def get_oauth_url():
 
 def exchange_code_for_token(code):
     """Échange le code OAuth contre un access_token"""
-    response = requests.get("https://graph.facebook.com/v24.0/oauth/access_token", params={
+    response = requests.get(f"https://graph.facebook.com/{api_version}/oauth/access_token", params={
         "client_id": app_id,
         "client_secret": secret_key,
         "redirect_uri": redirect_uri,
@@ -27,7 +26,20 @@ def exchange_code_for_token(code):
     return response.json()
 
 
-    
+def get_long_lives_token(short_token):
+    target_url = f"https://graph.facebook.com/{api_version}/oauth/access_token"
+    params = {
+        "grant_type": "fb_exchange_token",
+        "client_id": app_id,
+        "client_secret": secret_key,
+        "fb_exchange_token": short_token
+        
+    }    
+    r = requests.get(url=target_url, params=params)
+    data = r.json()
+    return data["access_token"]
+   
+ 
 
 if __name__ == "__main__":
     st.title("Meta OAuth")
@@ -35,6 +47,7 @@ if __name__ == "__main__":
     # Si on a déjà un token
     if "meta_token" in st.session_state:
         st.success(f"Connecté! Token: `{st.session_state['meta_token'][:30]}...`")
+        get_long_lives_token(st.session_state["meta_token"])
         if st.button("Déconnecter Meta"):
             del st.session_state["meta_token"]
             st.rerun()
