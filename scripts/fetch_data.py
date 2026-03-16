@@ -1,10 +1,9 @@
 from supabase import Client
-import streamlit as st
 
 
-def fetch_free_data(supabase: Client):
-    return supabase.table("free_data").select("insta_likes").execute()
+def fetch_post_metrics(supabase: Client):
+    return supabase.rpc("get_my_posts").execute().data
 
 
-def fetch_post_metrics(supabase: Client, user_id: str):
-    return supabase.table("post_metrics").select("*").eq("user_id", user_id).order("likes", desc=True).execute()
+def fetch_daily_followers(supabase: Client, user_id: str):
+    return supabase.table("followers_history").select("*").eq("user_id", user_id).order("fetched_at").execute().data

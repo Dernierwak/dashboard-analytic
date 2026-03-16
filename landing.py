@@ -230,6 +230,22 @@ st.markdown("""
         font-size: 0.9rem;
     }
 
+    /* ── Streamlit Buttons ── */
+    [data-testid="stButton"] > button {
+        background: #0066ff !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        padding: 8px 20px !important;
+        font-family: 'Inter', sans-serif !important;
+        transition: all 0.2s !important;
+    }
+    [data-testid="stButton"] > button:hover {
+        background: #0052cc !important;
+        box-shadow: 0 2px 8px rgba(0,102,255,0.25) !important;
+    }
+
     /* Accent color (touche de couleur subtile) */
     .accent {
         color: #0066ff;
@@ -470,7 +486,7 @@ st.markdown("""
 
 hero_c1, hero_c2, hero_c3 = st.columns([2, 1, 2])
 with hero_c2:
-    if st.button("Créer mon compte", type="primary", use_container_width=True):
+    if st.button("Créer mon compte", type="primary", width="stretch"):
         st.switch_page("pages/main.py")
 
 # Stats banner
@@ -686,7 +702,7 @@ with chart1:
         yaxis=dict(showgrid=True, gridcolor='#eaeaea', showline=False),
         font=dict(family="Inter, sans-serif", color="#6b6b6b")
     )
-    st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig1, width="stretch", config={'displayModeBar': False})
 
 with chart2:
     st.markdown('<div class="chart-title">💰 Dépenses publicitaires vs Clics</div>', unsafe_allow_html=True)
@@ -717,7 +733,7 @@ with chart2:
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         barmode='group'
     )
-    st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig2, width="stretch", config={'displayModeBar': False})
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -742,7 +758,7 @@ top_posts_data = pd.DataFrame({
 
 st.dataframe(
     top_posts_data,
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "Rang": st.column_config.TextColumn("", width="small"),
@@ -838,7 +854,7 @@ with col1:
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Choisir Starter", key="starter", use_container_width=True):
+    if st.button("Choisir Starter", key="starter", width="stretch"):
         st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 with col2:
@@ -857,7 +873,7 @@ with col2:
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Choisir Pro", key="pro", use_container_width=True, type="primary"):
+    if st.button("Choisir Pro", key="pro", width="stretch", type="primary"):
         st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 with col3:
@@ -875,7 +891,7 @@ with col3:
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Choisir Agency", key="agency", use_container_width=True):
+    if st.button("Choisir Agency", key="agency", width="stretch"):
         st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
@@ -890,10 +906,10 @@ st.markdown("""
 
 cta_c1, cta_c2, cta_c3, cta_c4, cta_c5 = st.columns([2, 1, 0.2, 1, 2])
 with cta_c2:
-    if st.button("Créer mon compte", type="primary", use_container_width=True, key="cta_signup"):
+    if st.button("Créer mon compte", type="primary", width="stretch", key="cta_signup"):
         st.switch_page("pages/main.py")
 with cta_c4:
-    if st.button("Se connecter", use_container_width=True, key="cta_login"):
+    if st.button("Se connecter", width="stretch", key="cta_login"):
         st.switch_page("pages/main.py")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
