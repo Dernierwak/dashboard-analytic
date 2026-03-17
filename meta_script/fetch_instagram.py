@@ -4,6 +4,7 @@ from supabase import Client
 import pandas as pd
 
 from scripts.fetch_data import fetch_post_metrics
+from scripts.insert_data import insert_instagram_total_posts_id
 
 class OrganicInstagramm():
 
@@ -58,10 +59,15 @@ class OrganicInstagramm():
                 paging_data = r.json()
                 list_id.extend(paging_data.get("data", []))
                 next_url = paging_data.get("paging", {}).get("next")
-
+        
+        
         df = pd.DataFrame(list_id).sort_values(by="timestamp", ascending=False)
         self.total_posts = len(df)
-        all_post_ids = df["id"][:50].tolist()
+        insert_instagram_total_posts_id(supabase=self.supabase_client, user_id=self.supabase_user_id, total_posts_id=self.total_posts)
+
+        is_paid = self.supabase_client.table("profiles").select("is_paid").eq("id", self.supabase_user_id).execute().data[0].get("is_paid", False)
+        self.limit = 50 if is_paid else 10
+        all_post_ids = df["id"][:self.limit].tolist()
 
         existing_rows = self.supabase_client.table("instagram_organic_posts").select("post_id").eq("user_id", self.supabase_user_id).execute().data
         existing_ids = {row["post_id"] for row in existing_rows}
@@ -172,7 +178,8 @@ class OrganicInstagramm():
         df = pd.concat([df_new, df_old], ignore_index=True).drop_duplicates(subset="post_id")
 
         st.metric("Followers", self.followers)
-        st.caption(f"50 posts affichés sur {self.total_posts} au total")
+        plan_label = "Pro" if self.limit == 50 else "Gratuit — max 10 posts"
+        st.caption(f"{self.limit} posts affichés sur {self.total_posts} au total · Plan {plan_label}")
         st.session_state["results"] = df.to_dict("records")
         st.dataframe(df)
 

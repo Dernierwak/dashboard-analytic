@@ -7,12 +7,11 @@ import streamlit as st
 from components.auth import Dashboard
 from components.sidebar import show_sidebar
 from components.dashboard import show_dashboard, follower_module
-from scripts.insert_data import insert_instagramm_org
+from scripts.insert_data import insert_instagram_org
 from scripts.stripe import verify_and_get_metadata
 from meta_script.fetch_token import exchange_code_for_token, get_long_lives_token, get_oauth_url
 from meta_script.fetch_instagram import OrganicInstagramm
-
-
+from components.schedule import schedule
 
 
 DASHBOARD_CSS = """
@@ -267,7 +266,10 @@ if __name__ == "__main__":
 
         # ── Contenu principal ────────────────────────────────────────────────
         st.title("Dashboard Analytics")
-
+        schedule(supabase=client, user_id=user_id)  # ── Schedule the fetch data all ──
+       
+        # ── end
+        
         tab_account, tab_insta = st.tabs(["Mon compte", "Instagram Organic"])
 
         # ── Tab Mon compte ───────────────────────────────────────────────────
@@ -276,37 +278,44 @@ if __name__ == "__main__":
             col1, col2, col3 = st.columns(3)
             col1.metric("Email", session.user.email)
             col2.metric("Plan", "Pro" if is_paid else "Gratuit")
-            col3.metric("Posts max", "Illimité" if is_paid else "10")
+            col3.metric("Posts max", "50" if is_paid else "10")
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Sources connectées</div>", unsafe_allow_html=True)
 
-            accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at").eq("user_id", user_id).execute()
+            accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).execute()
             accounts_data = accounts_resp.data or []
 
-            if accounts_data:
-                for acc in accounts_data:
-                    name = acc.get("account_name") or "Compte Instagram"
-                    date = acc.get("created_at", "")[:10]
-                    col_info, col_badge, col_date, col_btn = st.columns([3, 2, 2, 1])
-                    with col_info:
-                        st.markdown(f"<div class='account-name'>{name}</div><div class='account-meta'>{date}</div>", unsafe_allow_html=True)
-                    with col_badge:
-                        st.markdown("<div style='padding-top:8px'><span class='source-badge'>Instagram Organic</span></div>", unsafe_allow_html=True)
-                    with col_date:
-                        pass
-                    with col_btn:
-                        if st.button("Retirer", key=f"disc_{acc['id']}"):
-                            client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
-                            client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
-                            if st.session_state.get("meta_long_token"):
-                                del st.session_state["meta_long_token"]
-                            st.rerun()
-            else:
-                st.markdown("<div style='color:#6b6b6b;padding:20px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
+            pt_insta, pt_meta_ads, pt_google = st.tabs(["Instagram Organic", "Meta Ads", "Google Ads"])
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.link_button("+ Connecter un compte Instagram", get_oauth_url())
+            with pt_insta:
+                insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
+                if insta_accounts:
+                    for acc in insta_accounts:
+                        name = acc.get("account_name") or "Compte Instagram"
+                        date = acc.get("created_at", "")[:10]
+                        col_info, col_btn = st.columns([5, 1])
+                        total_posts = acc.get("total_posts_id_instagram", {})
+                        with col_info:
+                            st.markdown(f"<div class='account-name'>{name}</div><div class='account-meta'>Connecté le {date}</div>", unsafe_allow_html=True)
+                            st.markdown(f"You have: {total_posts} post")
+                        with col_btn:
+                            if st.button("Retirer", key=f"disc_{acc['id']}"):
+                                client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
+                                client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
+                                if st.session_state.get("meta_long_token"):
+                                    del st.session_state["meta_long_token"]
+                                st.rerun()
+                else:
+                    st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.link_button("+ Connecter un compte Instagram", get_oauth_url())
+
+            with pt_meta_ads:
+                st.info("Bientôt disponible")
+
+            with pt_google:
+                st.info("Bientôt disponible")
 
         # ── Tab Instagram Organic ────────────────────────────────────────────
         with tab_insta:
@@ -321,8 +330,9 @@ if __name__ == "__main__":
                             supabase_user_id=user_id,
                         )
                         org.fetch_insta_post_insight()
-                        if "results" in st.session_state:
-                            insert_instagramm_org(supabase=client, results=st.session_state["results"])
+                        if org.new_results:
+                            insert_instagram_org(supabase=client, results=org.new_results)
+                        st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
                         st.rerun()
                     except Exception as e:
                         if "JWT expired" in str(e):
