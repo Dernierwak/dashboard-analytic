@@ -201,9 +201,14 @@ if __name__ == "__main__":
         client.table("profiles").upsert({"id": user_id, "email": session.user.email}).execute()
 
         # Charger le profil
-        profile_resp = client.table("profiles").select("is_paid, active_account_id").eq("id", user_id).execute()
+        profile_resp = client.table("profiles").select("is_paid, active_account_id, fetch_schedule").eq("id", user_id).execute()
         profile = profile_resp.data[0] if profile_resp.data else {}
         is_paid = profile.get("is_paid", False)
+        if "fetch_schedule" not in st.session_state:
+            st.session_state["fetch_schedule"] = profile.get("fetch_schedule")
+        if "has_fetched" not in st.session_state:
+            count = client.table("instagram_organic_posts").select("post_id", count="exact").eq("user_id", user_id).execute()
+            st.session_state["has_fetched"] = (count.count or 0) > 0
 
         # Restaurer token Meta depuis connected_accounts
         active_account_id = profile.get("active_account_id")
@@ -249,6 +254,8 @@ if __name__ == "__main__":
             if meta:
                 client.table("profiles").update({"is_paid": True}).eq("id", user_id).execute()
                 is_paid = True
+                st.session_state["trigger_fetch"] = True
+                st.session_state["has_fetched"] = False
                 if "checkout_url" in st.session_state:
                     del st.session_state["checkout_url"]
                 st.success("Paiement confirmé ! Bienvenue dans le plan Pro.")
@@ -266,7 +273,7 @@ if __name__ == "__main__":
 
         # ── Contenu principal ────────────────────────────────────────────────
         st.title("Dashboard Analytics")
-        schedule(supabase=client, user_id=user_id)  # ── Schedule the fetch data all ──
+        schedule(supabase=client, user_id=user_id, has_fetched=st.session_state.get("has_fetched", False))
        
         # ── end
         
@@ -322,7 +329,7 @@ if __name__ == "__main__":
             if "meta_long_token" in st.session_state:
                 follower_module(client=client, user_id=user_id)
                 st.divider()
-                if st.button("Récupérer mes données Instagram", type="primary"):
+                if st.session_state.pop("trigger_fetch", False):
                     try:
                         org = OrganicInstagramm(
                             meta_long_token=st.session_state["meta_long_token"],
@@ -332,6 +339,7 @@ if __name__ == "__main__":
                         org.fetch_insta_post_insight()
                         if org.new_results:
                             insert_instagram_org(supabase=client, results=org.new_results)
+                        st.session_state["has_fetched"] = True
                         st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
                         st.rerun()
                     except Exception as e:
@@ -345,6 +353,6 @@ if __name__ == "__main__":
                         else:
                             st.error(f"Erreur : {e}")
 
-                show_dashboard(client, user_id)
+                show_dashboard(client, user_id, is_paid=is_paid)
             else:
                 st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")

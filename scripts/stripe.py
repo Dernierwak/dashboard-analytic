@@ -40,6 +40,21 @@ def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: 
     return session.url
 
 
+def cancel_subscription(email: str) -> bool:
+    stripe.api_key = st.secrets.stripe.api_key
+    try:
+        customers = stripe.Customer.list(email=email, limit=1).data
+        if not customers:
+            return False
+        subscriptions = stripe.Subscription.list(customer=customers[0].id, status="active", limit=1).data
+        if not subscriptions:
+            return False
+        stripe.Subscription.cancel(subscriptions[0].id)
+        return True
+    except Exception:
+        return False
+
+
 def verify_and_get_metadata(session_id: str) -> dict | None:
     stripe.api_key = st.secrets.stripe.api_key
     try:

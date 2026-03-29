@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
+from components.ai_reco import show_ai_reco
 
 
 COLOR_MAP = {
@@ -55,7 +56,7 @@ def follower_module(client, user_id):
         time_range = st.select_slider("Comparer sur (jours)", options=range(0, 30), value=0)
 
     current = int(df_follows.iloc[0]["followers"])
-
+    
     with col_kpi:
         if time_range == 0 or time_range >= max_follows:
             _kpi_card("Followers actuels", f"{current:,}")
@@ -84,7 +85,7 @@ def follower_module(client, user_id):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def show_dashboard(client, user_id):
+def show_dashboard(client, user_id, is_paid=False):
     data = fetch_post_metrics(client) or []
 
     if not data:
@@ -92,6 +93,9 @@ def show_dashboard(client, user_id):
         return
 
     df = pd.DataFrame(data)
+
+    # ── Recommandations IA ────────────────────────────────────────────────
+    show_ai_reco(supabase=client, user_id=user_id, is_paid=is_paid, df=df)
 
     st.markdown("<hr style='border:none;border-top:1px solid #eaeaea;margin:24px 0'>", unsafe_allow_html=True)
 
@@ -147,11 +151,51 @@ def show_dashboard(client, user_id):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Tableau ───────────────────────────────────────────────────────────
+    # ── Tableau + Calendrier ──────────────────────────────────────────────
     st.markdown("<div class='section-title'>Tous les posts</div>", unsafe_allow_html=True)
-    cols_order = ["caption", "type", "date", "follows", "likes", "comments", "saved", "views", "reach"]
-    cols_available = [c for c in cols_order if c in df.columns]
-    df_display = df[cols_available].copy()
-    col_labels = {"caption": "Caption", "type": "Type", "date": "Date", "follows": "Follows", "likes": "Likes", "comments": "Commentaires", "saved": "Sauvegardés", "views": "Views", "reach": "Reach"}
-    df_display.columns = [col_labels[c] for c in cols_available]
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    tab_table, tab_calendar = st.tabs(["Tableau", "Calendrier"])
+
+    with tab_table:
+        cols_order = ["caption", "type", "date", "follows", "likes", "comments", "saved", "views", "reach"]
+        cols_available = [c for c in cols_order if c in df.columns]
+        df_display = df[cols_available].copy()
+        col_labels = {"caption": "Caption", "type": "Type", "date": "Date", "follows": "Follows", "likes": "Likes", "comments": "Commentaires", "saved": "Sauvegardés", "views": "Views", "reach": "Reach"}
+        df_display.columns = [col_labels[c] for c in cols_available]
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    with tab_calendar:
+        df_cal = df.copy()
+        df_cal["date"] = pd.to_datetime(df_cal["date"], errors="coerce")
+        df_cal = df_cal.dropna(subset=["date"])
+        df_cal["week"] = df_cal["date"].dt.isocalendar().week.astype(int)
+        df_cal["day_of_week"] = df_cal["date"].dt.dayofweek
+        df_cal["day_name"] = df_cal["date"].dt.day_name()
+        df_cal["date_str"] = df_cal["date"].dt.strftime("%d %b %Y")
+
+        fig_cal = px.scatter(
+            df_cal,
+            x="week",
+            y="day_of_week",
+            color="type",
+            color_discrete_map=COLOR_MAP,
+            hover_data={"date_str": True, "caption": True, "reach": True, "likes": True, "week": False, "day_of_week": False},
+            labels={"week": "Semaine", "day_of_week": "Jour"},
+            size_max=14,
+        )
+        fig_cal.update_traces(marker=dict(size=14, symbol="square"))
+        fig_cal.update_layout(
+            template="plotly_white",
+            height=300,
+            margin=dict(l=0, r=0, t=10, b=0),
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+            font=dict(color="#37352f", family="Inter, sans-serif"),
+            yaxis=dict(
+                tickmode="array",
+                tickvals=[0, 1, 2, 3, 4, 5, 6],
+                ticktext=["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+                showgrid=True, gridcolor="#f0f0f0",
+            ),
+            xaxis=dict(showgrid=False, title="Semaine de l'année"),
+        )
+        st.plotly_chart(fig_cal, use_container_width=True)

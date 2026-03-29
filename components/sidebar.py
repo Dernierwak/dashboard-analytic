@@ -1,6 +1,6 @@
 import streamlit as st
 
-from scripts.stripe import create_checkout_session
+from scripts.stripe import create_checkout_session, cancel_subscription
 
 
 def show_sidebar(client, session, is_paid):
@@ -32,6 +32,16 @@ def show_sidebar(client, session, is_paid):
                 if st.button("Annuler", width="stretch"):
                     del st.session_state["checkout_url"]
                     st.rerun()
+
+        if is_paid:
+            st.divider()
+            if st.button("Se désabonner", type="tertiary"):
+                if cancel_subscription(session.user.email):
+                    client.table("profiles").update({"is_paid": False}).eq("id", session.user.id).execute()
+                    st.success("Abonnement annulé.")
+                    st.rerun()
+                else:
+                    st.error("Aucun abonnement actif trouvé.")
 
         st.divider()
         if st.button("Se déconnecter"):

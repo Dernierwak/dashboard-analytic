@@ -10,5 +10,5 @@ def insert_instagram_total_posts_id(supabase: Client, user_id, total_posts_id):
     
     
 def insert_schedule_data(supabase:Client, user_id, fetch_schedule):
-    supabase.table("profiles").update({"fetch_timer_schedule": fetch_schedule}).eq("id", user_id).execute()
+    supabase.table("profiles").update({"fetch_schedule": fetch_schedule}).eq("id", user_id).execute()
     
