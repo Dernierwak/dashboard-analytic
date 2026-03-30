@@ -230,9 +230,12 @@ if __name__ == "__main__":
                     supabase_user_id=user_id,
                 )
                 org._fetch_id_instagram()
+                st.write("instagram_id:", org.meta_id_instagram)
                 org._fetch_id_business()
+                st.write("business_id:", org.meta_id_business, "name:", org.meta_account_name)
                 # Vérifier si ce compte Instagram existe déjà
                 existing = client.table("connected_accounts").select("id").eq("user_id", user_id).eq("instagram_business_id", org.meta_id_business).execute()
+                st.write("existing:", existing.data)
                 if existing.data:
                     new_account_id = existing.data[0]["id"]
                     client.table("connected_accounts").update({
