@@ -72,17 +72,44 @@ def get_or_generate_reco(supabase: Client, user_id: str, df, followers_delta: in
 
     try:
         prompt = _build_prompt(df, followers_delta)
+
+        # Google Gemini (gratuit — 1500 req/jour)
+        api_key = st.secrets["gemini"]["api_key"]
         response = requests.post(
-            "https://router.huggingface.co/v1/chat/completions",
-            headers={"Authorization": f"Bearer {st.secrets['huggingface']['api_key']}"},
-            json={
-                "model": "swiss-ai/Apertus-8B-Instruct-2509:publicai",
-                "max_tokens": 300,
-                "messages": [{"role": "user", "content": prompt}],
-            },
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
         )
         data = response.json()
-        content = data["choices"][0]["message"]["content"]
+        #st.write(data)  # debug temporaire
+        content = data["candidates"][0]["content"]["parts"][0]["text"]
+
+        # Groq (gratuit — hotmail bloqué à l'inscription)
+        # response = requests.post(
+        #     "https://api.groq.com/openai/v1/chat/completions",
+        #     headers={"Authorization": f"Bearer {st.secrets['groq']['api_key']}"},
+        #     json={"model": "llama-3.1-8b-instant", "max_tokens": 400,
+        #           "messages": [{"role": "user", "content": prompt}]},
+        # )
+        # content = response.json()["choices"][0]["message"]["content"]
+
+        # HuggingFace (Apertus) — crédits épuisés
+        # response = requests.post(
+        #     "https://router.huggingface.co/v1/chat/completions",
+        #     headers={"Authorization": f"Bearer {st.secrets['huggingface']['api_key']}"},
+        #     json={
+        #         "model": "swiss-ai/Apertus-8B-Instruct-2509:publicai",
+        #         "max_tokens": 300,
+        #         "messages": [{"role": "user", "content": prompt}],
+        #     },
+        # )
+        # content = response.json()["choices"][0]["message"]["content"]
+
+        # Claude Haiku (Anthropic) — nécessite crédits
+        # import anthropic
+        # client = anthropic.Anthropic(api_key=st.secrets["anthropic"]["api_key"])
+        # response = client.messages.create(model="claude-haiku-4-5", max_tokens=400,
+        #     messages=[{"role": "user", "content": prompt}])
+        # content = response.content[0].text
         result = supabase.table("ai_recommendations").insert({
             "user_id": user_id,
             "content": content,
