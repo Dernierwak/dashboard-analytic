@@ -170,6 +170,15 @@ if __name__ == "__main__":
     st.set_page_config(page_title="Dashboard Analytics", page_icon="📊", layout="wide")
     st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
 
+    # ── Restaurer session depuis state Meta OAuth ───────────────────────────
+    if "code" in st.query_params and "state" in st.query_params and "refresh_token" not in st.query_params:
+        st.query_params["refresh_token"] = st.query_params["state"]
+
+    # ── Auth + client Supabase ──────────────────────────────────────────────
+    dash = Dashboard()
+    dash.main()
+    client = dash.client
+
     # ── Callback OAuth Meta ─────────────────────────────────────────────────
     if "code" in st.query_params and "session" in st.session_state:
         code = st.query_params["code"]
@@ -186,11 +195,6 @@ if __name__ == "__main__":
         else:
             st.error(f"Erreur Meta : {data}")
             del st.query_params["code"]
-
-    # ── Auth + client Supabase ──────────────────────────────────────────────
-    dash = Dashboard()
-    dash.main()
-    client = dash.client
 
     # ── Contenu authentifié ─────────────────────────────────────────────────
     if client:
@@ -316,7 +320,7 @@ if __name__ == "__main__":
                 else:
                     st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.link_button("+ Connecter un compte Instagram", get_oauth_url())
+                st.link_button("+ Connecter un compte Instagram", get_oauth_url(state=st.session_state["session"].refresh_token))
 
             with pt_meta_ads:
                 st.info("Bientôt disponible")

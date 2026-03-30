@@ -5,14 +5,17 @@ app_id = st.secrets.meta.app_id
 secret_key = st.secrets.meta.secret_key
 redirect_uri = "https://dashboard-analytic-pbkubxa4pkfyh4reribugw.streamlit.app/main"
 api_version = "v24.0"
-def get_oauth_url():
+def get_oauth_url(state: str = ""):
     """Construit l'URL OAuth Meta"""
-    return (
+    url = (
         f"https://www.facebook.com/{api_version}/dialog/oauth"
         f"?client_id={app_id}"
         f"&redirect_uri={redirect_uri}"
         f"&scope=ads_management"
     )
+    if state:
+        url += f"&state={state}"
+    return url
 
 
 def exchange_code_for_token(code):
