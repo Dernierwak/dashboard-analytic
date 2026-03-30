@@ -3,7 +3,7 @@ import streamlit as st
 
 app_id = st.secrets.meta.app_id
 secret_key = st.secrets.meta.secret_key
-redirect_uri = "https://dashboard-analytic-pbkubxa4pkfyh4reribugw.streamlit.app/"
+redirect_uri = "https://dashboard-analytic-pbkubxa4pkfyh4reribugw.streamlit.app/main"
 api_version = "v24.0"
 def get_oauth_url():
     """Construit l'URL OAuth Meta"""
