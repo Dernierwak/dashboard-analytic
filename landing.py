@@ -1,922 +1,592 @@
 import streamlit as st
-import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
-from datetime import datetime, timedelta
-import random
 
 st.set_page_config(
-    page_title="Dashboard Analytics",
+    page_title="Dashboard Analytics Instagram",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# CSS style Notion (noir/blanc + accent)
 st.markdown("""
 <style>
-    /* Reset et base */
-    .stApp {
-        background-color: #ffffff;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Cacher sidebar par défaut */
-    [data-testid="stSidebar"] {
-        display: none;
-    }
+    .stApp { background-color: #ffffff; }
 
-    /* Typographie Notion-like */
-    h1, h2, h3 {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #191919;
-        font-weight: 600;
-    }
+    [data-testid="stSidebar"] { display: none; }
 
-    p, span, div {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #37352f;
-    }
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
 
-    /* Hero section */
-    .hero {
-        text-align: center;
-        padding: 80px 20px;
-        max-width: 800px;
-        margin: 0 auto;
-    }
-
-    .hero h1 {
-        font-size: 3.5rem;
-        font-weight: 700;
-        margin-bottom: 24px;
-        line-height: 1.1;
-        color: #191919;
-    }
-
-    .hero p {
-        font-size: 1.25rem;
-        color: #6b6b6b;
-        margin-bottom: 32px;
-        line-height: 1.6;
-    }
-
-    /* Bouton accent */
-    .btn-primary {
-        background-color: #191919;
-        color: white !important;
-        padding: 14px 32px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 500;
-        font-size: 1rem;
-        display: inline-block;
-        transition: all 0.2s;
-        border: none;
-    }
-
-    .btn-primary:hover {
-        background-color: #333;
-        transform: translateY(-1px);
-    }
-
-    .btn-secondary {
-        background-color: transparent;
-        color: #191919 !important;
-        padding: 14px 32px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 500;
-        font-size: 1rem;
-        display: inline-block;
-        border: 1px solid #e0e0e0;
-        margin-left: 12px;
-        transition: all 0.2s;
-    }
-
-    .btn-secondary:hover {
-        border-color: #191919;
-    }
-
-    /* Section titre */
-    .section-title {
-        text-align: center;
-        margin-bottom: 48px;
-    }
-
-    .section-title h2 {
-        font-size: 2rem;
-        margin-bottom: 12px;
-    }
-
-    .section-title p {
-        color: #6b6b6b;
-        font-size: 1.1rem;
-    }
-
-    /* Feature cards */
-    .feature-card {
-        background: #fafafa;
-        border: 1px solid #eaeaea;
-        border-radius: 12px;
-        padding: 32px;
-        height: 100%;
-        transition: all 0.2s;
-    }
-
-    .feature-card:hover {
-        border-color: #191919;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }
-
-    .feature-icon {
-        font-size: 2rem;
-        margin-bottom: 16px;
-    }
-
-    .feature-card h3 {
-        font-size: 1.25rem;
-        margin-bottom: 12px;
-        color: #191919;
-    }
-
-    .feature-card p {
-        color: #6b6b6b;
-        font-size: 0.95rem;
-        line-height: 1.6;
-    }
-
-    /* Pricing cards */
-    .pricing-card {
+    /* ── KPI Cards (identiques au dashboard) ── */
+    .kpi-card {
         background: #ffffff;
         border: 1px solid #eaeaea;
         border-radius: 12px;
-        padding: 40px 32px;
-        text-align: center;
-        height: 100%;
-        transition: all 0.2s;
+        padding: 20px 24px;
     }
-
-    .pricing-card:hover {
-        border-color: #191919;
-    }
-
-    .pricing-card.featured {
-        border: 2px solid #191919;
-        position: relative;
-    }
-
-    .pricing-badge {
-        background: #191919;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
+    .kpi-label {
+        font-size: 0.8rem;
+        color: #6b6b6b;
+        margin-bottom: 6px;
         font-weight: 500;
-        position: absolute;
-        top: -12px;
-        left: 50%;
-        transform: translateX(-50%);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .kpi-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #191919;
+        line-height: 1.1;
+    }
+    .kpi-delta {
+        font-size: 0.8rem;
+        margin-top: 4px;
+        font-weight: 500;
+    }
+    .kpi-delta.positive { color: #10b981; }
+    .kpi-delta.negative { color: #ef4444; }
+
+    /* ── Section title ── */
+    .section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #191919;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #eaeaea;
     }
 
-    .pricing-card h3 {
-        font-size: 1.5rem;
-        margin-bottom: 8px;
+    /* ── Hero ── */
+    .hero {
+        text-align: center;
+        padding: 72px 20px 48px;
+        max-width: 760px;
+        margin: 0 auto;
     }
-
-    .pricing-price {
+    .hero h1 {
         font-size: 3rem;
         font-weight: 700;
         color: #191919;
-        margin: 20px 0;
+        line-height: 1.15;
+        margin-bottom: 20px;
     }
-
-    .pricing-price span {
-        font-size: 1rem;
-        font-weight: 400;
+    .hero p {
+        font-size: 1.15rem;
         color: #6b6b6b;
+        line-height: 1.65;
+        margin-bottom: 32px;
+    }
+    .hero-badge {
+        display: inline-block;
+        background: #f0f6ff;
+        color: #0066ff;
+        border: 1px solid #cce0ff;
+        border-radius: 20px;
+        padding: 5px 14px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        margin-bottom: 28px;
+    }
+    .accent { color: #0066ff; }
+
+    /* ── Dashboard preview container ── */
+    .preview-wrap {
+        background: #fafafa;
+        border: 1px solid #eaeaea;
+        border-radius: 16px;
+        padding: 28px 28px 20px;
+    }
+    .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .preview-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #191919;
+    }
+    .preview-badge {
+        background: #e8f4fd;
+        color: #0066ff;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 0.75rem;
+        font-weight: 500;
     }
 
+    /* ── USP cards ── */
+    .usp-card {
+        background: #fafafa;
+        border: 1px solid #eaeaea;
+        border-radius: 12px;
+        padding: 28px 24px;
+        height: 100%;
+    }
+    .usp-icon { font-size: 1.8rem; margin-bottom: 14px; }
+    .usp-card h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #191919;
+        margin-bottom: 8px;
+    }
+    .usp-card p {
+        font-size: 0.9rem;
+        color: #6b6b6b;
+        line-height: 1.55;
+        margin: 0;
+    }
+
+    /* ── Steps ── */
+    .step-card {
+        text-align: center;
+        padding: 24px 20px;
+    }
+    .step-num {
+        width: 40px;
+        height: 40px;
+        background: #191919;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1rem;
+        margin: 0 auto 16px;
+    }
+    .step-card h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #191919;
+        margin-bottom: 8px;
+    }
+    .step-card p {
+        font-size: 0.88rem;
+        color: #6b6b6b;
+        line-height: 1.55;
+        margin: 0;
+    }
+
+    /* ── Pricing ── */
+    .pricing-card {
+        background: #ffffff;
+        border: 1px solid #eaeaea;
+        border-radius: 16px;
+        padding: 36px 28px;
+        text-align: center;
+        position: relative;
+    }
+    .pricing-card.featured {
+        border: 2px solid #191919;
+    }
+    .pricing-badge-top {
+        background: #191919;
+        color: white;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        position: absolute;
+        top: -13px;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        letter-spacing: 0.06em;
+    }
+    .pricing-plan { font-size: 1.25rem; font-weight: 600; color: #191919; }
+    .pricing-desc { font-size: 0.85rem; color: #6b6b6b; margin: 4px 0 20px; }
+    .pricing-price {
+        font-size: 2.8rem;
+        font-weight: 700;
+        color: #191919;
+        margin-bottom: 4px;
+    }
+    .pricing-price span { font-size: 1rem; font-weight: 400; color: #6b6b6b; }
     .pricing-features {
         text-align: left;
-        margin: 24px 0;
-    }
-
-    .pricing-features li {
-        padding: 8px 0;
-        color: #37352f;
         list-style: none;
-        font-size: 0.95rem;
+        padding: 0;
+        margin: 24px 0 28px;
     }
-
-    .pricing-features li::before {
-        content: "✓";
-        margin-right: 12px;
-        color: #191919;
-        font-weight: 600;
-    }
-
-    /* Divider */
-    .divider {
-        height: 1px;
-        background: #eaeaea;
-        margin: 80px 0;
-    }
-
-    /* Footer */
-    .footer {
-        text-align: center;
-        padding: 40px 20px;
-        color: #6b6b6b;
+    .pricing-features li {
+        padding: 7px 0;
         font-size: 0.9rem;
+        color: #37352f;
+        border-bottom: 1px solid #f3f3f3;
     }
+    .pricing-features li::before { content: "✓ "; color: #191919; font-weight: 600; }
+    .pricing-features li.locked { color: #b0b0b0; }
+    .pricing-features li.locked::before { content: "— "; color: #d0d0d0; }
 
-    /* ── Streamlit Buttons ── */
+    /* ── Divider ── */
+    .divider { height: 1px; background: #eaeaea; margin: 64px 0; }
+
+    /* ── CTA final ── */
+    .cta-wrap {
+        text-align: center;
+        padding: 48px 20px;
+        background: #191919;
+        border-radius: 16px;
+        margin: 0 auto;
+    }
+    .cta-wrap h2 { font-size: 1.8rem; font-weight: 700; color: #ffffff; margin-bottom: 12px; }
+    .cta-wrap p { font-size: 1rem; color: #9ca3af; margin-bottom: 28px; }
+
+    /* ── Footer ── */
+    .footer { text-align: center; padding: 36px 20px; color: #9ca3af; font-size: 0.85rem; }
+
+    /* ── Streamlit buttons ── */
     [data-testid="stButton"] > button {
         background: #0066ff !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 500 !important;
-        padding: 8px 20px !important;
+        padding: 10px 24px !important;
         font-family: 'Inter', sans-serif !important;
-        transition: all 0.2s !important;
+        font-size: 0.95rem !important;
     }
     [data-testid="stButton"] > button:hover {
         background: #0052cc !important;
-        box-shadow: 0 2px 8px rgba(0,102,255,0.25) !important;
     }
 
-    /* Accent color (touche de couleur subtile) */
-    .accent {
-        color: #0066ff;
-    }
-
-    .accent-bg {
-        background: linear-gradient(135deg, #0066ff 0%, #5c9cff 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    /* Dashboard Preview */
-    .dashboard-preview {
-        background: #fafafa;
-        border: 1px solid #eaeaea;
-        border-radius: 16px;
-        padding: 32px;
-        margin: 0 auto;
-        max-width: 1200px;
-    }
-
-    .dashboard-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid #eaeaea;
-    }
-
-    .dashboard-header h3 {
-        margin: 0;
-        font-size: 1.25rem;
-    }
-
-    .dashboard-tabs {
-        display: flex;
-        gap: 8px;
-    }
-
-    .dashboard-tab {
-        padding: 6px 16px;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        cursor: pointer;
-        border: 1px solid #eaeaea;
-        background: white;
-        color: #6b6b6b;
-    }
-
-    .dashboard-tab.active {
-        background: #191919;
-        color: white;
-        border-color: #191919;
-    }
-
-    /* KPI Cards */
-    .kpi-card {
-        background: white;
-        border: 1px solid #eaeaea;
-        border-radius: 12px;
-        padding: 24px;
-        transition: all 0.2s;
-    }
-
-    .kpi-card:hover {
-        border-color: #191919;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }
-
-    .kpi-label {
-        font-size: 0.85rem;
-        color: #6b6b6b;
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .kpi-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #191919;
-        margin-bottom: 4px;
-    }
-
-    .kpi-change {
-        font-size: 0.85rem;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-    .kpi-change.positive {
-        color: #10b981;
-    }
-
-    .kpi-change.negative {
-        color: #ef4444;
-    }
-
-    /* Chart container */
-    .chart-container {
-        background: white;
-        border: 1px solid #eaeaea;
-        border-radius: 12px;
-        padding: 24px;
-        margin-top: 24px;
-    }
-
-    .chart-title {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #191919;
-        margin-bottom: 16px;
-    }
-
-    /* Live indicator */
-    .live-dot {
-        width: 8px;
-        height: 8px;
-        background: #10b981;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
-        animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-
-    /* Pain points section */
-    .pain-point {
-        display: flex;
-        align-items: flex-start;
-        gap: 16px;
-        padding: 20px;
-        background: #fafafa;
-        border-radius: 12px;
-        margin-bottom: 16px;
-    }
-
-    .pain-icon {
-        font-size: 1.5rem;
-        flex-shrink: 0;
-    }
-
-    .pain-text h4 {
-        font-size: 1rem;
-        margin: 0 0 4px 0;
-        color: #191919;
-    }
-
-    .pain-text p {
+    /* ── AI reco blurred ── */
+    .ai-blur-wrap { position: relative; margin-top: 16px; }
+    .ai-content-blur {
+        filter: blur(4px);
+        pointer-events: none;
+        background: #f8faff;
+        border-left: 3px solid #0066ff;
+        border-radius: 8px;
+        padding: 16px 20px;
         font-size: 0.9rem;
-        color: #6b6b6b;
-        margin: 0;
-    }
-
-    /* Testimonial */
-    .testimonial {
-        background: #fafafa;
-        border: 1px solid #eaeaea;
-        border-radius: 12px;
-        padding: 32px;
-        text-align: center;
-    }
-
-    .testimonial-quote {
-        font-size: 1.1rem;
-        font-style: italic;
         color: #37352f;
-        margin-bottom: 20px;
-        line-height: 1.6;
+        line-height: 1.7;
     }
-
-    .testimonial-author {
-        font-weight: 600;
+    .ai-lock-badge {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 1px solid #eaeaea;
+        border-radius: 8px;
+        padding: 8px 18px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
         color: #191919;
     }
 
-    .testimonial-role {
-        font-size: 0.85rem;
-        color: #6b6b6b;
-    }
-
-    /* Contact form */
-    .contact-form {
-        background: #fafafa;
+    /* ── Top post card mock ── */
+    .post-card-mock {
         border: 1px solid #eaeaea;
-        border-radius: 16px;
-        padding: 40px;
-        max-width: 600px;
-        margin: 0 auto;
+        border-radius: 10px;
+        overflow: hidden;
+        background: white;
     }
-
-    /* Stats banner */
-    .stats-banner {
+    .post-thumb {
+        height: 120px;
         display: flex;
+        align-items: center;
         justify-content: center;
-        gap: 60px;
-        padding: 40px 20px;
-        background: #191919;
-        border-radius: 12px;
-        margin: 40px 0;
+        font-size: 2rem;
+        background: #f0f4ff;
     }
-
-    .stat-item {
-        text-align: center;
+    .post-meta {
+        padding: 10px 12px;
     }
-
-    .stat-value {
-        font-size: 2.5rem;
+    .post-metric {
+        font-size: 1.2rem;
         font-weight: 700;
-        color: white;
+        color: #191919;
     }
-
-    .stat-label {
-        font-size: 0.9rem;
-        color: #9ca3af;
+    .post-type-tag {
+        font-size: 0.75rem;
+        color: #6b6b6b;
+        margin-top: 2px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ============= HERO SECTION =============
+
+# ═══════════════════════════════════════════
+# HERO
+# ═══════════════════════════════════════════
 st.markdown("""
 <div class="hero">
-    <h1>Arrêtez de deviner.<br><span class="accent-bg">Mesurez votre croissance.</span></h1>
-    <p>
-        Le dashboard que les créateurs attendaient. Visualisez vos stats Instagram,
-        optimisez vos pubs Meta, et concentrez-vous sur ce qui compte : créer du contenu.
-    </p>
+    <div class="hero-badge">🇨🇭 IA suisse — Données hébergées en Europe</div>
+    <h1>Comprends ce qui marche<br><span class="accent">vraiment</span> sur ton Instagram</h1>
+    <p>Dashboard analytics automatique + recommandations IA hebdomadaires.<br>Connecte ton compte une fois. On s'occupe du reste.</p>
 </div>
 """, unsafe_allow_html=True)
 
-hero_c1, hero_c2, hero_c3 = st.columns([2, 1, 2])
-with hero_c2:
-    if st.button("Créer mon compte", type="primary", width="stretch"):
+_, hero_col, _ = st.columns([3, 2, 3])
+with hero_col:
+    if st.button("Essayer gratuitement →", key="hero_cta", use_container_width=True):
         st.switch_page("pages/main.py")
 
-# Stats banner
-st.markdown("""
-<div class="stats-banner">
-    <div class="stat-item">
-        <div class="stat-value">2h</div>
-        <div class="stat-label">gagnées par semaine</div>
-    </div>
-    <div class="stat-item">
-        <div class="stat-value">+23%</div>
-        <div class="stat-label">d'engagement moyen</div>
-    </div>
-    <div class="stat-item">
-        <div class="stat-value">1 vue</div>
-        <div class="stat-label">toutes vos données</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
+st.markdown("<br>", unsafe_allow_html=True)
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-# ============= PAIN POINTS SECTION =============
+
+# ═══════════════════════════════════════════
+# MOCK DASHBOARD PREVIEW
+# ═══════════════════════════════════════════
 st.markdown("""
-<div class="section-title">
-    <h2>Vous en avez marre de...</h2>
-    <p>Les problèmes que chaque créateur connaît</p>
+<div style="text-align:center; margin-bottom:32px;">
+    <div style="font-size:1.75rem; font-weight:700; color:#191919; margin-bottom:10px;">Ton dashboard, en un coup d'œil</div>
+    <div style="color:#6b6b6b; font-size:1rem;">Toutes tes métriques Instagram au même endroit, automatiquement mises à jour</div>
 </div>
 """, unsafe_allow_html=True)
 
-pain1, pain2 = st.columns(2, gap="large")
-
-with pain1:
-    st.markdown("""
-    <div class="pain-point">
-        <span class="pain-icon">📱</span>
-        <div class="pain-text">
-            <h4>Jongler entre 10 apps différentes</h4>
-            <p>Instagram Insights ici, Meta Business là, un Excel pour les collabs... Tout est dispersé.</p>
-        </div>
-    </div>
-    <div class="pain-point">
-        <span class="pain-icon">📊</span>
-        <div class="pain-text">
-            <h4>Ne pas savoir ce qui marche vraiment</h4>
-            <p>Quel type de contenu performe ? À quelle heure poster ? Impossible à voir clairement.</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with pain2:
-    st.markdown("""
-    <div class="pain-point">
-        <span class="pain-icon">⏰</span>
-        <div class="pain-text">
-            <h4>Perdre du temps sur les tableaux Excel</h4>
-            <p>Copier-coller les stats chaque semaine pour "tracker" votre croissance. Épuisant.</p>
-        </div>
-    </div>
-    <div class="pain-point">
-        <span class="pain-icon">💸</span>
-        <div class="pain-text">
-            <h4>Payer pour des pubs sans savoir si ça marche</h4>
-            <p>Vous boostez des posts sans comprendre le ROI réel de vos dépenses pub.</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-
-# ============= DASHBOARD PREVIEW SECTION =============
+st.markdown('<div class="preview-wrap">', unsafe_allow_html=True)
 st.markdown("""
-<div class="section-title" id="demo">
-    <h2>Aperçu en temps réel</h2>
-    <p><span class="live-dot"></span>Dashboard interactif avec vos données</p>
+<div class="preview-header">
+    <div class="preview-title">📊 Vue d'ensemble — Instagram</div>
+    <div class="preview-badge">Données de démo</div>
 </div>
 """, unsafe_allow_html=True)
 
-# Generate sample data
-@st.cache_data
-def generate_sample_data():
-    dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
-    return pd.DataFrame({
-        'date': dates,
-        'followers': [12000 + i * 45 + random.randint(-50, 100) for i in range(30)],
-        'likes': [random.randint(800, 1500) for _ in range(30)],
-        'impressions': [random.randint(15000, 35000) for _ in range(30)],
-        'clicks': [random.randint(200, 600) for _ in range(30)],
-        'spend': [random.randint(20, 80) for _ in range(30)],
-    })
-
-data = generate_sample_data()
-
-# Dashboard container
-st.markdown('<div class="dashboard-preview">', unsafe_allow_html=True)
-
-# Dashboard header with tabs
-st.markdown("""
-<div class="dashboard-header">
-    <h3>📊 Vue d'ensemble</h3>
-    <div class="dashboard-tabs">
-        <span class="dashboard-tab active">7 jours</span>
-        <span class="dashboard-tab">30 jours</span>
-        <span class="dashboard-tab">90 jours</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# KPI Cards Row 1 - Social Media
-st.markdown("**Instagram**", unsafe_allow_html=True)
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-with kpi1:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">👥 Followers</div>
-        <div class="kpi-value">13,245</div>
-        <div class="kpi-change positive">↑ 4.2% vs semaine dernière</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi2:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">❤️ Likes (7j)</div>
-        <div class="kpi-value">8,432</div>
-        <div class="kpi-change positive">↑ 12.5%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi3:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">💬 Commentaires</div>
-        <div class="kpi-value">342</div>
-        <div class="kpi-change negative">↓ 2.1%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi4:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">📈 Engagement</div>
-        <div class="kpi-value">6.8%</div>
-        <div class="kpi-change positive">↑ 0.3pts</div>
-    </div>
-    """, unsafe_allow_html=True)
+# KPI row
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.markdown("""<div class="kpi-card">
+        <div class="kpi-label">Followers</div>
+        <div class="kpi-value">12,430</div>
+        <div class="kpi-delta positive">+245 ce mois</div>
+    </div>""", unsafe_allow_html=True)
+with k2:
+    st.markdown("""<div class="kpi-card">
+        <div class="kpi-label">Reach total</div>
+        <div class="kpi-value">48,200</div>
+        <div class="kpi-delta positive">+18% vs mois dernier</div>
+    </div>""", unsafe_allow_html=True)
+with k3:
+    st.markdown("""<div class="kpi-card">
+        <div class="kpi-label">Likes</div>
+        <div class="kpi-value">3,841</div>
+        <div class="kpi-delta positive">+9%</div>
+    </div>""", unsafe_allow_html=True)
+with k4:
+    st.markdown("""<div class="kpi-card">
+        <div class="kpi-label">Sauvegardés</div>
+        <div class="kpi-value">612</div>
+        <div class="kpi-delta positive">+31%</div>
+    </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# KPI Cards Row 2 - Meta Ads
-st.markdown("**Meta Ads**", unsafe_allow_html=True)
-kpi5, kpi6, kpi7, kpi8 = st.columns(4)
+# Bar chart mock
+st.markdown('<div class="section-title">Évolution par post</div>', unsafe_allow_html=True)
 
-with kpi5:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">👁️ Impressions</div>
-        <div class="kpi-value">185K</div>
-        <div class="kpi-change positive">↑ 23.1%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi6:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">🖱️ Clics</div>
-        <div class="kpi-value">3,821</div>
-        <div class="kpi-change positive">↑ 8.7%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi7:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">💰 CPC moyen</div>
-        <div class="kpi-value">0.42 CHF</div>
-        <div class="kpi-change positive">↓ 15.2%</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with kpi8:
-    st.markdown("""
-    <div class="kpi-card">
-        <div class="kpi-label">🎯 ROAS</div>
-        <div class="kpi-value">3.2x</div>
-        <div class="kpi-change positive">↑ 0.4x</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# Charts
-chart1, chart2 = st.columns(2)
-
-with chart1:
-    st.markdown('<div class="chart-title">📈 Évolution des followers</div>', unsafe_allow_html=True)
-    fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(
-        x=data['date'],
-        y=data['followers'],
-        mode='lines',
-        fill='tozeroy',
-        line=dict(color='#191919', width=2),
-        fillcolor='rgba(25, 25, 25, 0.1)'
-    ))
-    fig1.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=250,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=False, showline=False),
-        yaxis=dict(showgrid=True, gridcolor='#eaeaea', showline=False),
-        font=dict(family="Inter, sans-serif", color="#6b6b6b")
-    )
-    st.plotly_chart(fig1, width="stretch", config={'displayModeBar': False})
-
-with chart2:
-    st.markdown('<div class="chart-title">💰 Dépenses publicitaires vs Clics</div>', unsafe_allow_html=True)
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(
-        x=data['date'][-14:],
-        y=data['spend'][-14:],
-        name='Dépenses (CHF)',
-        marker_color='#191919'
-    ))
-    fig2.add_trace(go.Scatter(
-        x=data['date'][-14:],
-        y=data['clicks'][-14:],
-        name='Clics',
-        mode='lines+markers',
-        line=dict(color='#0066ff', width=2),
-        yaxis='y2'
-    ))
-    fig2.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=250,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=False, showline=False),
-        yaxis=dict(showgrid=True, gridcolor='#eaeaea', showline=False, title=''),
-        yaxis2=dict(showgrid=False, showline=False, overlaying='y', side='right', title=''),
-        font=dict(family="Inter, sans-serif", color="#6b6b6b"),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        barmode='group'
-    )
-    st.plotly_chart(fig2, width="stretch", config={'displayModeBar': False})
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# Top Posts Section
-st.markdown('<div class="chart-title">🏆 Vos Top Posts du mois</div>', unsafe_allow_html=True)
-
-top_posts_data = pd.DataFrame({
-    'Rang': ['🥇', '🥈', '🥉', '4', '5'],
-    'Contenu': [
-        '"Mon setup créateur 2025..."',
-        '"3 erreurs qui tuent ton engagement"',
-        '"Behind the scenes de ma dernière collab"',
-        '"Pourquoi j\'ai quitté mon job"',
-        '"Tutorial Reels en 60 secondes"'
-    ],
-    'Type': ['Reel', 'Carrousel', 'Reel', 'Reel', 'Carrousel'],
-    'Likes': ['1,245', '987', '854', '723', '698'],
-    'Commentaires': ['89', '124', '45', '67', '52'],
-    'Engagement': ['8.2%', '7.1%', '6.8%', '5.9%', '5.7%'],
-    'Heure': ['19h', '12h', '20h', '18h', '12h']
+mock_posts = pd.DataFrame({
+    "date": ["Jan 5", "Jan 9", "Jan 12", "Jan 16", "Jan 19", "Jan 23", "Jan 27", "Jan 30"],
+    "reach": [3200, 5800, 2900, 7400, 4100, 9200, 3600, 6800],
+    "type": ["IMAGE", "VIDEO", "CAROUSEL_ALBUM", "VIDEO", "IMAGE", "VIDEO", "CAROUSEL_ALBUM", "VIDEO"],
 })
 
-st.dataframe(
-    top_posts_data,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "Rang": st.column_config.TextColumn("", width="small"),
-        "Contenu": st.column_config.TextColumn("Contenu", width="large"),
-        "Type": st.column_config.TextColumn("Type", width="small"),
-        "Likes": st.column_config.TextColumn("❤️", width="small"),
-        "Commentaires": st.column_config.TextColumn("💬", width="small"),
-        "Engagement": st.column_config.TextColumn("📈", width="small"),
-        "Heure": st.column_config.TextColumn("🕐", width="small"),
-    }
+COLOR_MAP = {"IMAGE": "#191919", "VIDEO": "#0066ff", "CAROUSEL_ALBUM": "#173f91"}
+
+fig = px.bar(
+    mock_posts,
+    x="date", y="reach", color="type",
+    color_discrete_map=COLOR_MAP,
+    labels={"date": "Date", "reach": "Reach", "type": "Type"},
 )
+fig.update_layout(
+    template="plotly_white",
+    height=260, margin=dict(l=0, r=0, t=10, b=0),
+    paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    font=dict(color="#37352f", family="Inter, sans-serif"),
+    legend=dict(orientation="h", y=1.1, font=dict(color="#37352f")),
+    xaxis=dict(showgrid=False, color="#6b6b6b", linecolor="#eaeaea"),
+    yaxis=dict(showgrid=True, gridcolor="#f0f0f0", color="#6b6b6b"),
+)
+st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+# AI reco blurred
+st.markdown('<div class="section-title">Recommandations IA</div>', unsafe_allow_html=True)
 st.markdown("""
-<p style="text-align: center; color: #6b6b6b; font-size: 0.9rem; margin-top: 16px;">
-    💡 <strong>Insight :</strong> Vos Reels postés entre 18h-20h génèrent 40% plus d'engagement
-</p>
-""", unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-
-# ============= METHODOLOGY SECTION =============
-st.markdown("""
-<div class="section-title">
-    <h2>Comment améliorer votre contenu</h2>
-    <p>Une méthode simple en 4 étapes basée sur vos données</p>
+<div class="ai-blur-wrap">
+    <div class="ai-content-blur">
+        • Publie 2 Reels cette semaine — ils génèrent 3x plus de reach que tes images<br>
+        • Tes posts du jeudi performent 40% mieux — teste ce créneau<br>
+        • Ajoute un CTA "Sauvegarde pour plus tard" pour booster tes saves
+    </div>
+    <div class="ai-lock-badge">🔒 Recommandations IA — Plan Pro</div>
 </div>
 """, unsafe_allow_html=True)
 
-# Steps
-step1, step2, step3, step4 = st.columns(4, gap="medium")
+st.markdown("<br>", unsafe_allow_html=True)
 
-with step1:
-    st.markdown("""
-    <div class="feature-card" style="text-align: center;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">1</div>
-        <h3>Analyser</h3>
-        <p>Identifiez vos 10 meilleurs posts du mois. Lesquels ont le plus d'engagement ?</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Top 3 posts mock
+st.markdown('<div class="section-title">Top 3 — Reach</div>', unsafe_allow_html=True)
+p1, p2, p3 = st.columns(3)
+top_posts = [
+    ("🎬", "9,200", "VIDEO · Jan 23", "\"Mon setup créateur 2025...\""),
+    ("📸", "7,400", "VIDEO · Jan 16", "\"3 erreurs qui tuent ton reach\""),
+    ("🖼️", "6,800", "VIDEO · Jan 30", "\"Behind the scenes collab\""),
+]
+for col, (icon, metric, tag, caption) in zip([p1, p2, p3], top_posts):
+    with col:
+        st.markdown(f"""
+        <div class="post-card-mock">
+            <div class="post-thumb">{icon}</div>
+            <div class="post-meta">
+                <div class="post-metric">{metric}</div>
+                <div class="post-type-tag">{tag}</div>
+                <div style="font-size:0.78rem;color:#9ca3af;margin-top:4px">{caption}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-with step2:
-    st.markdown("""
-    <div class="feature-card" style="text-align: center;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">2</div>
-        <h3>Comprendre</h3>
-        <p>Qu'ont-ils en commun ? Format, heure de publication, sujet, style de légende ?</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with step3:
-    st.markdown("""
-    <div class="feature-card" style="text-align: center;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">3</div>
-        <h3>Répliquer</h3>
-        <p>Créez plus de ce qui fonctionne. Arrêtez ce qui ne génère pas d'engagement.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with step4:
-    st.markdown("""
-    <div class="feature-card" style="text-align: center;">
-        <div style="font-size: 2.5rem; margin-bottom: 12px;">4</div>
-        <h3>Mesurer</h3>
-        <p>Suivez l'évolution semaine après semaine. Ajustez votre stratégie.</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)  # close preview-wrap
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-# ============= PRICING SECTION =============
+
+# ═══════════════════════════════════════════
+# USP CARDS
+# ═══════════════════════════════════════════
 st.markdown("""
-<div class="section-title" id="pricing">
-    <h2>Investissez dans votre croissance</h2>
-    <p>Moins cher qu'un café par jour pour des heures gagnées</p>
+<div style="text-align:center; margin-bottom:36px;">
+    <div style="font-size:1.75rem; font-weight:700; color:#191919; margin-bottom:10px;">Pourquoi choisir ce dashboard ?</div>
 </div>
 """, unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3, gap="large")
+u1, u2, u3, u4 = st.columns(4)
+usps = [
+    ("📊", "Métriques claires", "Likes, reach, saves, followers — tout au même endroit. Plus besoin de chercher dans Instagram Insights."),
+    ("🇨🇭", "IA suisse — Apertus", "Recommandations générées par Apertus, le modèle suisse. Tes données restent en Europe, jamais partagées."),
+    ("🔄", "100% automatique", "Choisit ton jour de récupération. Les données arrivent sans rien faire de plus."),
+    ("📅", "Historique complet", "On stocke tes métriques depuis le 1er jour. Même en gratuit. Accès immédiat à l'upgrade."),
+]
+for col, (icon, title, desc) in zip([u1, u2, u3, u4], usps):
+    with col:
+        st.markdown(f"""
+        <div class="usp-card">
+            <div class="usp-icon">{icon}</div>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-with col1:
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════
+# HOW IT WORKS
+# ═══════════════════════════════════════════
+st.markdown("""
+<div style="text-align:center; margin-bottom:36px;">
+    <div style="font-size:1.75rem; font-weight:700; color:#191919; margin-bottom:10px;">Comment ça marche ?</div>
+    <div style="color:#6b6b6b; font-size:1rem;">3 étapes, une seule fois</div>
+</div>
+""", unsafe_allow_html=True)
+
+s1, s2, s3 = st.columns(3)
+steps = [
+    ("1", "Crée ton compte", "Inscription gratuite en 30 secondes. Pas de carte bancaire requise."),
+    ("2", "Connecte Instagram", "Autorise l'accès via Meta en quelques clics. Tes données arrivent automatiquement."),
+    ("3", "Reçois tes insights", "Dashboard mis à jour chaque semaine. Recommandations IA le jour que tu choisis."),
+]
+for col, (num, title, desc) in zip([s1, s2, s3], steps):
+    with col:
+        st.markdown(f"""
+        <div class="step-card">
+            <div class="step-num">{num}</div>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════
+# PRICING
+# ═══════════════════════════════════════════
+st.markdown("""
+<div style="text-align:center; margin-bottom:36px;">
+    <div style="font-size:1.75rem; font-weight:700; color:#191919; margin-bottom:10px;">Tarifs simples</div>
+    <div style="color:#6b6b6b; font-size:1rem;">Commence gratuitement. Upgrade quand tu veux.</div>
+</div>
+""", unsafe_allow_html=True)
+
+_, pr1, gap, pr2, _ = st.columns([1, 3, 0.5, 3, 1])
+
+with pr1:
     st.markdown("""
     <div class="pricing-card">
-        <h3>Starter</h3>
-        <p style="color: #6b6b6b;">Pour tester</p>
-        <div class="pricing-price">15<span> CHF/mois</span></div>
+        <div class="pricing-plan">Gratuit</div>
+        <div class="pricing-desc">Pour commencer</div>
+        <div class="pricing-price">0<span> CHF</span></div>
         <ul class="pricing-features">
-            <li>1 compte Instagram</li>
-            <li>Stats des 30 derniers jours</li>
-            <li>Graphiques de base</li>
-            <li>Support email</li>
+            <li>10 derniers posts Instagram</li>
+            <li>Dashboard métriques de base</li>
+            <li>Historique stocké dès le 1er jour</li>
+            <li class="locked">Recommandations IA hebdo</li>
+            <li class="locked">Rapport automatique</li>
+            <li class="locked">Posts illimités</li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Choisir Starter", key="starter", width="stretch"):
-        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
+    if st.button("Créer mon compte gratuit", key="free_cta", use_container_width=True):
+        st.switch_page("pages/main.py")
 
-with col2:
+with pr2:
     st.markdown("""
     <div class="pricing-card featured">
-        <div class="pricing-badge">POUR CRÉATEURS</div>
-        <h3>Pro</h3>
-        <p style="color: #6b6b6b;">Le plus populaire</p>
+        <div class="pricing-badge-top">RECOMMANDÉ</div>
+        <div class="pricing-plan">Pro</div>
+        <div class="pricing-desc">Pour les créateurs sérieux</div>
         <div class="pricing-price">35<span> CHF/mois</span></div>
         <ul class="pricing-features">
-            <li>1 compte Instagram</li>
-            <li>Historique illimité</li>
-            <li>Connexion Meta Ads</li>
-            <li>Analyse par post</li>
-            <li>Export PDF</li>
+            <li>Posts illimités</li>
+            <li>Dashboard complet</li>
+            <li>Historique depuis le 1er jour</li>
+            <li>Recommandations IA hebdomadaires</li>
+            <li>Rapport automatique — jour au choix</li>
+            <li>IA suisse Apertus 🇨🇭</li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("Choisir Pro", key="pro", width="stretch", type="primary"):
-        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
-
-with col3:
-    st.markdown("""
-    <div class="pricing-card">
-        <h3>Agency</h3>
-        <p style="color: #6b6b6b;">Multi-comptes</p>
-        <div class="pricing-price">150<span> CHF/mois</span></div>
-        <ul class="pricing-features">
-            <li>Jusqu'à 10 comptes</li>
-            <li>Tout le plan Pro</li>
-            <li>Rapports clients</li>
-            <li>API Access</li>
-            <li>Support prioritaire</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Choisir Agency", key="agency", width="stretch"):
-        st.switch_page("pages/main.py") if hasattr(st, 'switch_page') else st.info("Redirection vers l'app...")
+    if st.button("Commencer avec Pro", key="pro_cta", use_container_width=True):
+        st.switch_page("pages/main.py")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-# ============= CTA SECTION =============
+
+# ═══════════════════════════════════════════
+# CTA FINAL
+# ═══════════════════════════════════════════
 st.markdown("""
-<div class="section-title">
-    <h2>Prêt à voir vos vraies stats ?</h2>
-    <p>Créez votre compte gratuitement et connectez Instagram en 2 minutes.</p>
+<div class="cta-wrap">
+    <h2>Prêt à voir ce qui marche vraiment ?</h2>
+    <p>Gratuit. Pas de carte bancaire. Connecté en 2 minutes.</p>
 </div>
 """, unsafe_allow_html=True)
 
-cta_c1, cta_c2, cta_c3, cta_c4, cta_c5 = st.columns([2, 1, 0.2, 1, 2])
-with cta_c2:
-    if st.button("Créer mon compte", type="primary", width="stretch", key="cta_signup"):
-        st.switch_page("pages/main.py")
-with cta_c4:
-    if st.button("Se connecter", width="stretch", key="cta_login"):
+st.markdown("<br>", unsafe_allow_html=True)
+_, cta_col, _ = st.columns([3, 2, 3])
+with cta_col:
+    if st.button("Connecter mon Instagram →", key="final_cta", use_container_width=True):
         st.switch_page("pages/main.py")
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-# ============= FOOTER =============
+
+# ═══════════════════════════════════════════
+# FOOTER
+# ═══════════════════════════════════════════
 st.markdown("""
 <div class="footer">
-    <p>© 2025 Dashboard Analytics • Fait avec ❤️ en Suisse</p>
+    <p>© 2026 Dashboard Analytics · Fait avec ❤️ en Suisse · <a href="#" style="color:#9ca3af">Confidentialité</a></p>
 </div>
 """, unsafe_allow_html=True)
