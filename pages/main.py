@@ -248,8 +248,8 @@ if __name__ == "__main__":
                     }).execute()
                     new_account_id = acc.data[0]["id"]
                 client.table("profiles").update({"active_account_id": new_account_id}).eq("id", user_id).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                st.error(f"Erreur connexion Meta : {e}")
             del st.session_state["_save_meta_token"]
 
         # Vérifier paiement Stripe
