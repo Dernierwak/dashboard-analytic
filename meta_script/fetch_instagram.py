@@ -22,13 +22,14 @@ class OrganicInstagramm():
 
     def _fetch_id_instagram(self):
         target_url = f"https://graph.facebook.com/{self.api_version}/me/accounts"
-        params = {
-            "access_token": self.meta_long_token
-        }
+        params = {"access_token": self.meta_long_token}
         r = requests.get(url=target_url, params=params)
         data = r.json()
-        self.meta_account_name = data.get("data")[0].get("name")
-        self.meta_account_id = data.get("data")[0].get("id")
+        pages = data.get("data", [])
+        if not pages:
+            raise ValueError("Aucune Page Facebook trouvée. Tu dois avoir une Page Facebook liée à ton compte.")
+        self.meta_account_name = pages[0].get("name")
+        self.meta_account_id = pages[0].get("id")
 
     def _fetch_id_business(self):
         target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_account_id}"
@@ -38,7 +39,10 @@ class OrganicInstagramm():
         }
         r = requests.get(url=target_url, params=params)
         data = r.json()
-        self.meta_id_business = data.get("instagram_business_account").get("id")
+        insta = data.get("instagram_business_account")
+        if not insta:
+            raise ValueError(f"La Page Facebook '{self.meta_account_name}' n'a pas de compte Instagram Business lié.")
+        self.meta_id_business = insta.get("id")
 
     def _fetch_insta_post_id(self):
         target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_id_business}/media"
