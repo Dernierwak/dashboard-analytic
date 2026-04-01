@@ -17,6 +17,8 @@ class Dashboard():
                 st.session_state["session"] = user.session
                 st.query_params["refresh_token"] = user.session.refresh_token
                 st.rerun()
+            elif user.user and user.user.identities is not None and len(user.user.identities) == 0:
+                st.error("Un compte existe déjà avec cet email. Connectez-vous.")
             else:
                 st.session_state["email_confirmation_pending"] = email
         except Exception as e:
