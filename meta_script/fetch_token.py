@@ -11,7 +11,7 @@ def get_oauth_url(state: str = ""):
         f"https://www.facebook.com/{api_version}/dialog/oauth"
         f"?client_id={app_id}"
         f"&redirect_uri={redirect_uri}"
-        f"&scope=ads_management"
+        f"&scope=ads_management,pages_show_list,instagram_basic,instagram_manage_insights"
     )
     if state:
         url += f"&state={state}"
