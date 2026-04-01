@@ -86,6 +86,7 @@ def follower_module(client, user_id):
     st.plotly_chart(fig, use_container_width=True)
 
 
+@st.fragment
 def show_dashboard(client, user_id, is_paid=False):
     data = fetch_post_metrics(client) or []
 
