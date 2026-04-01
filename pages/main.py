@@ -179,6 +179,13 @@ def fetch_instagram_fragment(client, user_id, is_paid, dash):
                 insert_instagram_org(supabase=client, results=org.new_results)
             st.session_state["has_fetched"] = True
             st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
+
+            # Afficher delta followers au moment du fetch
+            if org.followers:
+                last = client.table("followers_history").select("followers").eq("user_id", user_id).order("fetched_at", desc=True).limit(1).execute()
+                last_val = last.data[0]["followers"] if last.data else None
+                delta = org.followers - last_val if last_val else None
+                st.metric("Followers au fetch", f"{org.followers:,}", delta=delta)
         except Exception as e:
             if "JWT expired" in str(e):
                 user = dash.supabase.auth.refresh_session(
