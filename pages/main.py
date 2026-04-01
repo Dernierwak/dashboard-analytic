@@ -165,6 +165,32 @@ DASHBOARD_CSS = """
 </style>
 """
 
+@st.fragment
+def fetch_instagram_fragment(client, user_id, is_paid, dash):
+    if st.session_state.pop("trigger_fetch", False):
+        try:
+            org = OrganicInstagramm(
+                meta_long_token=st.session_state["meta_long_token"],
+                supabase_client=client,
+                supabase_user_id=user_id,
+            )
+            org.fetch_insta_post_insight()
+            if org.new_results:
+                insert_instagram_org(supabase=client, results=org.new_results)
+            st.session_state["has_fetched"] = True
+            st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
+        except Exception as e:
+            if "JWT expired" in str(e):
+                user = dash.supabase.auth.refresh_session(
+                    refresh_token=st.session_state["session"].refresh_token
+                )
+                st.session_state["session"] = user.session
+                st.query_params["refresh_token"] = user.session.refresh_token
+                st.rerun()
+            else:
+                st.error(f"Erreur : {e}")
+
+
 if __name__ == "__main__":
 
     st.set_page_config(page_title="Dashboard Analytics", page_icon="📊", layout="wide")
@@ -333,30 +359,7 @@ if __name__ == "__main__":
             if "meta_long_token" in st.session_state:
                 follower_module(client=client, user_id=user_id)
                 st.divider()
-                if st.session_state.pop("trigger_fetch", False):
-                    try:
-                        org = OrganicInstagramm(
-                            meta_long_token=st.session_state["meta_long_token"],
-                            supabase_client=client,
-                            supabase_user_id=user_id,
-                        )
-                        org.fetch_insta_post_insight()
-                        if org.new_results:
-                            insert_instagram_org(supabase=client, results=org.new_results)
-                        st.session_state["has_fetched"] = True
-                        st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
-                        st.rerun()
-                    except Exception as e:
-                        if "JWT expired" in str(e):
-                            user = dash.supabase.auth.refresh_session(
-                                refresh_token=st.session_state["session"].refresh_token
-                            )
-                            st.session_state["session"] = user.session
-                            st.query_params["refresh_token"] = user.session.refresh_token
-                            st.rerun()
-                        else:
-                            st.error(f"Erreur : {e}")
-
+                fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash)
                 show_dashboard(client, user_id, is_paid=is_paid)
             else:
                 st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")
