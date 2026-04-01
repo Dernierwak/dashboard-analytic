@@ -38,6 +38,7 @@ def _kpi_card(label, value, delta=None, delta_label=None):
     """, unsafe_allow_html=True)
 
 
+@st.fragment
 def follower_module(client, user_id):
     follows = fetch_daily_followers(client, user_id)
     df_follows = pd.DataFrame(follows)
