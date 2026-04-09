@@ -13,72 +13,62 @@ st.markdown("""
     .stApp { background-color: #ffffff; }
     [data-testid="stSidebar"] { display: none; }
     * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-    .content { max-width: 720px; margin: 0 auto; padding: 60px 20px; }
-    h1 { font-size: 2rem; font-weight: 700; color: #191919; margin-bottom: 8px; }
-    h2 { font-size: 1.1rem; font-weight: 600; color: #191919; margin-top: 36px; margin-bottom: 10px; }
-    p, li { font-size: 0.95rem; color: #37352f; line-height: 1.7; }
-    .subtitle { color: #6b6b6b; font-size: 0.9rem; margin-bottom: 40px; }
-    a { color: #0066ff; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="content">
-    <h1>Politique de confidentialité</h1>
-    <div class="subtitle">Dernière mise à jour : avril 2026</div>
+_, col, _ = st.columns([1, 3, 1])
+with col:
+    st.markdown("# Politique de confidentialité")
+    st.caption("Dernière mise à jour : avril 2026")
 
-    <h2>1. Qui sommes-nous ?</h2>
-    <p>Dashboard Analytics est une application web permettant aux créateurs de contenu de visualiser et analyser leurs performances Instagram. L'application est hébergée en Europe.</p>
+    st.markdown("## 1. Qui sommes-nous ?")
+    st.markdown("Dashboard Analytics est une application web permettant aux créateurs de contenu de visualiser et analyser leurs performances Instagram. L'application est hébergée en Europe.")
 
-    <h2>2. Données collectées</h2>
-    <p>Nous collectons uniquement les données nécessaires au fonctionnement du service :</p>
-    <ul>
-        <li><strong>Adresse email</strong> — pour la création de compte et l'authentification</li>
-        <li><strong>Token d'accès Meta</strong> — pour récupérer vos données Instagram via l'API officielle Meta Graph API</li>
-        <li><strong>Métriques Instagram</strong> — likes, commentaires, reach, saves, followers, données de posts (via API Meta)</li>
-        <li><strong>Données publicitaires Meta Ads</strong> — campagnes, dépenses, impressions (si vous connectez un compte Ads)</li>
-    </ul>
+    st.markdown("## 2. Données collectées")
+    st.markdown("""
+Nous collectons uniquement les données nécessaires au fonctionnement du service :
 
-    <h2>3. Comment nous utilisons vos données</h2>
-    <ul>
-        <li>Affichage de votre dashboard personnel</li>
-        <li>Génération de recommandations IA hebdomadaires (plan Pro)</li>
-        <li>Analyse agrégée et anonymisée pour produire des insights généraux (jamais partagées individuellement)</li>
-    </ul>
+- **Adresse email** — pour la création de compte et l'authentification
+- **Token d'accès Meta** — pour récupérer vos données Instagram via l'API officielle Meta Graph API
+- **Métriques Instagram** — likes, commentaires, reach, saves, followers, données de posts
+- **Données publicitaires Meta Ads** — campagnes, dépenses, impressions (si vous connectez un compte Ads)
+""")
 
-    <h2>4. Stockage et sécurité</h2>
-    <p>Vos données sont stockées dans Supabase, hébergé en Europe (Frankfurt). L'accès est protégé par authentification et des politiques de sécurité au niveau des lignes (Row Level Security). Seules vos propres données vous sont accessibles.</p>
+    st.markdown("## 3. Comment nous utilisons vos données")
+    st.markdown("""
+- Affichage de votre dashboard personnel
+- Génération de recommandations IA hebdomadaires (plan Pro)
+- Analyse agrégée et anonymisée pour produire des insights généraux (jamais partagées individuellement)
+""")
 
-    <h2>5. Partage des données</h2>
-    <p>Nous ne vendons, ne louons et ne partageons pas vos données personnelles avec des tiers. Les données Meta sont accessibles uniquement via l'API officielle Meta et conformément aux conditions d'utilisation de Meta Platforms.</p>
+    st.markdown("## 4. Stockage et sécurité")
+    st.markdown("Vos données sont stockées dans Supabase, hébergé en Europe (Frankfurt). L'accès est protégé par authentification et des politiques de sécurité au niveau des lignes (Row Level Security). Seules vos propres données vous sont accessibles.")
 
-    <h2>6. API Meta — permissions utilisées</h2>
-    <p>Notre application demande les permissions Meta suivantes :</p>
-    <ul>
-        <li><code>instagram_basic</code> — accès aux informations de base du compte Instagram</li>
-        <li><code>instagram_manage_insights</code> — accès aux métriques de performance des posts</li>
-        <li><code>pages_show_list</code> — liste des Pages Facebook liées</li>
-        <li><code>ads_read</code> — lecture des données publicitaires (si applicable)</li>
-    </ul>
+    st.markdown("## 5. Partage des données")
+    st.markdown("Nous ne vendons, ne louons et ne partageons pas vos données personnelles avec des tiers. Les données Meta sont accessibles uniquement via l'API officielle Meta et conformément aux conditions d'utilisation de Meta Platforms.")
 
-    <h2>7. Conservation des données</h2>
-    <p>Vos données sont conservées tant que votre compte est actif. Vous pouvez demander la suppression de vos données à tout moment en nous contactant.</p>
+    st.markdown("## 6. API Meta — permissions utilisées")
+    st.markdown("""
+- `instagram_basic` — accès aux informations de base du compte Instagram
+- `instagram_manage_insights` — accès aux métriques de performance des posts
+- `pages_show_list` — liste des Pages Facebook liées
+- `ads_read` — lecture des données publicitaires (si applicable)
+""")
 
-    <h2>8. Vos droits</h2>
-    <p>Conformément au RGPD, vous disposez des droits suivants :</p>
-    <ul>
-        <li>Accès à vos données personnelles</li>
-        <li>Rectification de données inexactes</li>
-        <li>Suppression de vos données</li>
-        <li>Portabilité de vos données</li>
-    </ul>
+    st.markdown("## 7. Conservation des données")
+    st.markdown("Vos données sont conservées tant que votre compte est actif. Vous pouvez demander la suppression de vos données à tout moment en nous contactant.")
 
-    <h2>9. Contact</h2>
-    <p>Pour toute question relative à la confidentialité de vos données, contactez-nous à : <a href="mailto:contact@dashboard-analytics.ch">contact@dashboard-analytics.ch</a></p>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown("## 8. Vos droits (RGPD)")
+    st.markdown("""
+- Accès à vos données personnelles
+- Rectification de données inexactes
+- Suppression de vos données
+- Portabilité de vos données
+""")
 
-_, back_col, _ = st.columns([3, 2, 3])
-with back_col:
+    st.markdown("## 9. Contact")
+    st.markdown("Pour toute question : **contact@dashboard-analytics.ch**")
+
+    st.markdown("---")
     if st.button("← Retour à l'accueil", use_container_width=True):
         st.switch_page("landing.py")
