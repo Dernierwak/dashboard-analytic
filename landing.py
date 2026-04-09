@@ -587,6 +587,6 @@ st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 # ═══════════════════════════════════════════
 st.markdown("""
 <div class="footer">
-    <p>© 2026 Dashboard Analytics · Fait avec ❤️ en Suisse · <a href="#" style="color:#9ca3af">Confidentialité</a></p>
+    <p>© 2026 Dashboard Analytics · Fait avec ❤️ en Suisse · <a href="/privacy" style="color:#9ca3af">Confidentialité</a></p>
 </div>
 """, unsafe_allow_html=True)
