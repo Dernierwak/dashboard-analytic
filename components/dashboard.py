@@ -69,19 +69,29 @@ def follower_module(client, user_id):
     if time_range >= max_follows and time_range > 0:
         st.caption(f"Seulement {max_follows} jour(s) de données disponibles.")
 
-    fig = px.line(
-        df_follows.sort_values("fetched_at"),
-        x="fetched_at", y="followers",
-        labels={"fetched_at": "Date", "followers": "Followers"},
-    )
-    fig.update_traces(line_color="#0066ff", line_width=2)
+    df_plot = df_follows.sort_values("fetched_at").copy()
+    df_plot["delta"] = df_plot["followers"].diff()
+    df_plot["gain"] = df_plot["delta"].apply(lambda x: x if x > 0 else 0)
+    df_plot["perte"] = df_plot["delta"].apply(lambda x: x if x < 0 else 0)
+
+    from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.6, 0.4], vertical_spacing=0.05)
+
+    fig.add_trace(go.Scatter(x=df_plot["fetched_at"], y=df_plot["followers"], name="Followers", line=dict(color="#0066ff", width=2)), row=1, col=1)
+    fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["gain"], name="Gain", marker_color="#10b981", opacity=0.7), row=2, col=1)
+    fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["perte"], name="Perte", marker_color="#ef4444", opacity=0.7), row=2, col=1)
     fig.update_layout(
         template="plotly_white",
-        height=220, margin=dict(l=0, r=0, t=10, b=0),
+        height=360, margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
         font=dict(color="#37352f", family="Inter, sans-serif"),
-        xaxis=dict(showgrid=False, color="#6b6b6b", linecolor="#eaeaea"),
+        barmode="relative",
+        showlegend=True,
+        xaxis2=dict(showgrid=False, color="#6b6b6b"),
         yaxis=dict(showgrid=True, gridcolor="#f0f0f0", color="#6b6b6b"),
+        yaxis2=dict(showgrid=True, gridcolor="#f0f0f0", color="#6b6b6b"),
     )
     st.plotly_chart(fig, use_container_width=True)
 

@@ -2,7 +2,6 @@ import streamlit as st
 
 from scripts.stripe import create_checkout_session, cancel_subscription
 
-
 def show_sidebar(client, session, is_paid):
     with st.sidebar:
         st.markdown(f"**{session.user.email}**")

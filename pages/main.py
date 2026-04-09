@@ -4,13 +4,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 
-from components.auth import Dashboard
+from components.auth import AuthDashboard
 from components.sidebar import show_sidebar
 from components.dashboard import show_dashboard, follower_module
 from scripts.insert_data import insert_instagram_org
 from scripts.stripe import verify_and_get_metadata
 from meta_script.fetch_token import exchange_code_for_token, get_long_lives_token, get_oauth_url
 from meta_script.fetch_instagram import OrganicInstagramm
+#from meta_script.fetch_meta_ads import PaidMeta
 from components.schedule import schedule
 
 
@@ -180,12 +181,6 @@ def fetch_instagram_fragment(client, user_id, is_paid, dash):
             st.session_state["has_fetched"] = True
             st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
 
-            # Afficher delta followers au moment du fetch
-            if org.followers:
-                last = client.table("followers_history").select("followers").eq("user_id", user_id).order("fetched_at", desc=True).limit(1).execute()
-                last_val = last.data[0]["followers"] if last.data else None
-                delta = org.followers - last_val if last_val else None
-                st.metric("Followers au fetch", f"{org.followers:,}", delta=delta)
         except Exception as e:
             if "JWT expired" in str(e):
                 user = dash.supabase.auth.refresh_session(
@@ -199,7 +194,7 @@ def fetch_instagram_fragment(client, user_id, is_paid, dash):
 
 
 if __name__ == "__main__":
-
+    
     st.set_page_config(page_title="Dashboard Analytics", page_icon="📊", layout="wide")
     st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
 
@@ -208,7 +203,7 @@ if __name__ == "__main__":
         st.query_params["refresh_token"] = st.query_params["state"]
 
     # ── Auth + client Supabase ──────────────────────────────────────────────
-    dash = Dashboard()
+    dash = AuthDashboard()
     dash.main()
     client = dash.client
 

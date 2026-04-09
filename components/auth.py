@@ -1,8 +1,8 @@
 from supabase import Client, ClientOptions
 import streamlit as st
+from components.reset_pass import _reset_password_email, _update_password_email
 
-
-class Dashboard():
+class AuthDashboard():
 
     def __init__(self):
         self.url = st.secrets.supabase.url
@@ -21,6 +21,7 @@ class Dashboard():
                 st.error("Un compte existe déjà avec cet email. Connectez-vous.")
             else:
                 st.session_state["email_confirmation_pending"] = email
+                st.rerun()
         except Exception as e:
             st.error(f"Erreur lors de la création du compte : {e}")
 
@@ -34,6 +35,7 @@ class Dashboard():
         except Exception as e:
             if "email not confirmed" in str(e).lower():
                 st.session_state["email_confirmation_pending"] = email
+                st.rerun()
             else:
                 st.error("Identifiants incorrects.")
 
@@ -57,7 +59,11 @@ class Dashboard():
             with col_b:
                 if st.button("Se connecter", width="stretch", type="primary"):
                     self._login(email, password)
-
+            
+            with st.popover("reset password"):
+                _reset_password_email(supabase=self.supabase)
+            
+    
     def main(self):
         if "session" not in st.session_state and "refresh_token" in st.query_params:
             try:
@@ -72,5 +78,7 @@ class Dashboard():
                 self.url, self.token,
                 options=ClientOptions(headers={"Authorization": f"Bearer {session.access_token}"})
             )
+        elif st.session_state.get("reset_password"):
+            _update_password_email(supabase=self.supabase)
         else:
             self._auth_page()

@@ -75,9 +75,24 @@ class OrganicInstagramm():
 
         existing_rows = self.supabase_client.table("instagram_organic_posts").select("post_id").eq("user_id", self.supabase_user_id).execute().data
         existing_ids = {row["post_id"] for row in existing_rows}
-        # Toujours re-fetch les 5 derniers posts (métriques qui évoluent)
-        always_refresh = set(all_post_ids[:5])
+        # Toujours re-fetch les 20 derniers posts (métriques + media_url qui expirent)
+        always_refresh = set(all_post_ids[:20])
         self.new_post_ids = [pid for pid in all_post_ids if pid not in existing_ids or pid in always_refresh]
+
+    def _upload_image_to_storage(self, post_id: str, image_url: str) -> str:
+        try:
+            r = requests.get(image_url, timeout=10)
+            if r.status_code != 200:
+                return image_url
+            file_path = f"{self.supabase_user_id}/{post_id}.jpg"
+            self.supabase_client.storage.from_("post-images").upload(
+                path=file_path,
+                file=r.content,
+                file_options={"content-type": "image/jpeg", "upsert": "true"}
+            )
+            return self.supabase_client.storage.from_("post-images").get_public_url(file_path)
+        except Exception:
+            return image_url
 
     def _fetch_post_info(self, post_id: str) -> dict:
         target_url = f"https://graph.facebook.com/{self.api_version}/{post_id}"
@@ -156,7 +171,7 @@ class OrganicInstagramm():
                         "type": info.get("media_type"),
                         "caption": info.get("caption", "")[:80],
                         "date": info.get("timestamp", "")[:10],
-                        "media_url": info.get("thumbnail_url") or info.get("media_url"),
+                        "media_url": self._upload_image_to_storage(post_id, info.get("thumbnail_url") or info.get("media_url", "")),
                         "follows": metrics.get("follows", 0),
                         "likes": metrics.get("likes", 0),
                         "comments": metrics.get("comments", 0),
