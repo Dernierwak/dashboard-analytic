@@ -105,6 +105,7 @@ def _load_posts(_client):
 
 @st.fragment
 def show_dashboard(client, user_id, is_paid=False):
+    st.session_state["_posts_cache_clear"] = _load_posts.clear
     df = _load_posts(client)
 
     if df.empty:

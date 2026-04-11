@@ -81,6 +81,9 @@ class Labelling():
                         for post in posts:
                             updated = [new if l == old else l for l in (post["labels"] or [])]
                             self.supabase.table("instagram_organic_posts").update({"labels": updated}).eq("id", post["id"]).execute()
+                clear_fn = st.session_state.get("_posts_cache_clear")
+                if clear_fn:
+                    clear_fn()
                 st.rerun()
 
     def _edit_labels_column(self):
