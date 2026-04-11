@@ -414,7 +414,29 @@ if __name__ == "__main__":
                         st.rerun()
 
             with pt_meta_ads:
-                st.info("Bientôt disponible")
+                if "meta_long_token" in st.session_state:
+                    token = st.session_state["meta_long_token"]
+                    r = requests.get(
+                        "https://graph.facebook.com/v24.0/me/adaccounts",
+                        params={"fields": "id,name,account_status", "access_token": token}
+                    )
+                    ad_accounts = r.json().get("data", [])
+                    if ad_accounts:
+                        for acc in ad_accounts:
+                            r2 = requests.get(
+                                f"https://graph.facebook.com/v24.0/{acc['id']}/campaigns",
+                                params={"fields": "id", "access_token": token, "limit": 1000}
+                            )
+                            nb_campaigns = len(r2.json().get("data", []))
+                            col_info, _ = st.columns([5, 1])
+                            with col_info:
+                                st.markdown(f"<div class='account-name'>{acc['name']}</div><div class='account-meta'>{nb_campaigns} campagne(s)</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.link_button("+ Connecter Meta Ads", get_oauth_url(state=st.session_state["session"].refresh_token))
 
             with pt_google:
                 st.info("Bientôt disponible")
