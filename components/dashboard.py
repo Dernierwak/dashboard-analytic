@@ -204,8 +204,9 @@ def show_dashboard(client, user_id, is_paid=False):
         if st.button("Sauvegarder les labels", key="btn_save_tableau"):
             with st.spinner("Mise à jour..."):
                 for i, row in edited.iterrows():
-                    post_id = df["id"].iloc[i]
+                    post_id = str(df["id"].iloc[i])
                     label = row["label"]
+                    label = None if (label is None or (isinstance(label, float) and pd.isna(label))) else str(label)
                     new_labels = [label] if label else []
                     labelling.supabase.table("instagram_organic_posts").update({
                         "labels": new_labels
