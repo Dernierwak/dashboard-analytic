@@ -63,6 +63,10 @@ DASHBOARD_CSS = """
         font-family: 'Inter', sans-serif !important;
         transition: all 0.2s !important;
     }
+    [data-testid="stButton"] > button p,
+    [data-testid="stButton"] > button span {
+        color: #ffffff !important;
+    }
     [data-testid="stButton"] > button:hover {
         background: #0052cc !important;
         box-shadow: 0 2px 8px rgba(0,102,255,0.25) !important;
@@ -71,6 +75,10 @@ DASHBOARD_CSS = """
         background: #0066ff !important;
         color: #ffffff !important;
         border: none !important;
+    }
+    [data-testid="stButton"] > button[kind="secondary"] p,
+    [data-testid="stButton"] > button[kind="secondary"] span {
+        color: #ffffff !important;
     }
     [data-testid="stLinkButton"] > a {
         background: #ffffff !important;
@@ -359,7 +367,7 @@ if __name__ == "__main__":
        
         # ── end
         
-        tab_account, tab_insta = st.tabs(["Mon compte", "Instagram Organic"])
+        tab_account, tab_insta, tab_meta_ads = st.tabs(["Mon compte", "Instagram Organic", "Meta Ads"])
 
         # ── Tab Mon compte ───────────────────────────────────────────────────
         with tab_account:
@@ -406,10 +414,7 @@ if __name__ == "__main__":
                         st.rerun()
 
             with pt_meta_ads:
-                if "meta_long_token" in st.session_state:
-                    fetch_meta_ads_fragment(token=st.session_state["meta_long_token"])
-                else:
-                    st.info("Connectez votre compte Meta pour accéder aux données Ads.")
+                st.info("Bientôt disponible")
 
             with pt_google:
                 st.info("Bientôt disponible")
@@ -421,5 +426,12 @@ if __name__ == "__main__":
                 st.divider()
                 fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash)
                 show_dashboard(client, user_id, is_paid=is_paid)
+            else:
+                st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")
+
+        # ── Tab Meta Ads ─────────────────────────────────────────────────────
+        with tab_meta_ads:
+            if "meta_long_token" in st.session_state:
+                fetch_meta_ads_fragment(token=st.session_state["meta_long_token"])
             else:
                 st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")
