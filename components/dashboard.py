@@ -4,6 +4,7 @@ import plotly.express as px
 
 from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
 from components.ai_reco import show_ai_reco
+from components.labelling_module import Labelling
 
 
 COLOR_MAP = {
@@ -96,15 +97,19 @@ def follower_module(client, user_id):
     st.plotly_chart(fig, use_container_width=True)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_posts(_client):
+    data = fetch_post_metrics(_client) or []
+    return pd.DataFrame(data)
+
+
 @st.fragment
 def show_dashboard(client, user_id, is_paid=False):
-    data = fetch_post_metrics(client) or []
+    df = _load_posts(client)
 
-    if not data:
+    if df.empty:
         st.markdown("<div style='color:#6b6b6b;padding:20px 0'>Aucune donnée. Cliquez sur <b>Récupérer mes données Instagram</b> pour commencer.</div>", unsafe_allow_html=True)
         return
-
-    df = pd.DataFrame(data)
 
     # ── Recommandations IA ────────────────────────────────────────────────
     show_ai_reco(supabase=client, user_id=user_id, is_paid=is_paid, df=df)
@@ -163,17 +168,49 @@ def show_dashboard(client, user_id, is_paid=False):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Tableau + Calendrier ──────────────────────────────────────────────
+    # ── Tableau + Calendrier + Labels ─────────────────────────────────────
     st.markdown("<div class='section-title'>Tous les posts</div>", unsafe_allow_html=True)
-    tab_table, tab_calendar = st.tabs(["Tableau", "Calendrier"])
+    tab_table, tab_calendar, tab_labels = st.tabs(["Tableau", "Calendrier", "Labels"])
 
     with tab_table:
+        labelling = Labelling(client=client, user_id=user_id, df=df)
+        labels_options = [l for l in st.session_state.get("labels_list", []) if l]
+
         cols_order = ["caption", "type", "date", "follows", "likes", "comments", "saved", "views", "reach"]
         cols_available = [c for c in cols_order if c in df.columns]
         df_display = df[cols_available].copy()
-        col_labels = {"caption": "Caption", "type": "Type", "date": "Date", "follows": "Follows", "likes": "Likes", "comments": "Commentaires", "saved": "Sauvegardés", "views": "Views", "reach": "Reach"}
-        df_display.columns = [col_labels[c] for c in cols_available]
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        df_display.insert(0, "label", df["labels"].apply(lambda x: x[0] if x and len(x) > 0 else None) if "labels" in df.columns else None)
+
+        col_config = {
+            "label": st.column_config.SelectboxColumn("Label", options=labels_options, required=False),
+            "caption": st.column_config.TextColumn("Caption", disabled=True),
+            "type": st.column_config.TextColumn("Type", disabled=True),
+            "date": st.column_config.TextColumn("Date", disabled=True),
+            "follows": st.column_config.NumberColumn("Follows", disabled=True),
+            "likes": st.column_config.NumberColumn("Likes", disabled=True),
+            "comments": st.column_config.NumberColumn("Commentaires", disabled=True),
+            "saved": st.column_config.NumberColumn("Sauvegardés", disabled=True),
+            "views": st.column_config.NumberColumn("Views", disabled=True),
+            "reach": st.column_config.NumberColumn("Reach", disabled=True),
+        }
+        edited = st.data_editor(
+            df_display,
+            column_config=col_config,
+            hide_index=True,
+            use_container_width=True,
+            key="editor_tableau_labels",
+        )
+        if st.button("Sauvegarder les labels", key="btn_save_tableau"):
+            with st.spinner("Mise à jour..."):
+                for i, row in edited.iterrows():
+                    post_id = df["id"].iloc[i]
+                    label = row["label"]
+                    new_labels = [label] if label else []
+                    labelling.supabase.table("instagram_organic_posts").update({
+                        "labels": new_labels
+                    }).eq("user_id", user_id).eq("id", post_id).execute()
+            _load_posts.clear()
+            st.success("Sauvegardé.")
 
     with tab_calendar:
         df_cal = df.copy()
@@ -211,3 +248,7 @@ def show_dashboard(client, user_id, is_paid=False):
             xaxis=dict(showgrid=False, title="Semaine de l'année"),
         )
         st.plotly_chart(fig_cal, use_container_width=True)
+
+    with tab_labels:
+        labelling_mgr = Labelling(client=client, user_id=user_id, df=df)
+        labelling_mgr._manage_labels()

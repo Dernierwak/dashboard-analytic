@@ -14,7 +14,6 @@ from meta_script.fetch_instagram import OrganicInstagramm
 #from meta_script.fetch_meta_ads import PaidMeta
 from components.schedule import schedule
 
-
 DASHBOARD_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
