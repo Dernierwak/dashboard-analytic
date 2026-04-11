@@ -3,6 +3,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
+import requests
+import json
+import pandas as pd
 
 from components.auth import AuthDashboard
 from components.sidebar import show_sidebar
@@ -11,7 +14,6 @@ from scripts.insert_data import insert_instagram_org
 from scripts.stripe import verify_and_get_metadata
 from meta_script.fetch_token import exchange_code_for_token, get_long_lives_token, get_oauth_url
 from meta_script.fetch_instagram import OrganicInstagramm
-#from meta_script.fetch_meta_ads import PaidMeta
 from components.schedule import schedule
 
 DASHBOARD_CSS = """
@@ -164,6 +166,55 @@ DASHBOARD_CSS = """
     .post-type { font-size: 0.78rem; color: #6b6b6b !important; }
 </style>
 """
+
+@st.fragment
+def fetch_meta_ads_fragment(token):
+    col1, col2 = st.columns(2)
+    with col1:
+        since_raw = st.date_input("Début", value=None, key="meta_ads_since")
+    with col2:
+        end_raw = st.date_input("Fin", value=None, key="meta_ads_end")
+
+    if st.button("Récupérer les données Meta Ads", type="primary", key="btn_fetch_meta_ads"):
+        if not since_raw or not end_raw:
+            st.warning("Sélectionne une période.")
+            return
+        with st.spinner("Chargement..."):
+            r = requests.get(
+                "https://graph.facebook.com/v24.0/me/adaccounts",
+                params={"fields": "id,name", "access_token": token}
+            )
+            accounts = r.json().get("data", [])
+            if not accounts:
+                st.warning("Aucun compte publicitaire trouvé.")
+                return
+            ad_account_id = accounts[0]["id"]
+            since = since_raw.strftime("%Y-%m-%d")
+            end = end_raw.strftime("%Y-%m-%d")
+            url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
+            params = {
+                "access_token": token,
+                "level": "ad",
+                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,spend,date_start",
+                "time_range": json.dumps({"since": since, "until": end}),
+                "time_increment": 1,
+            }
+            result = requests.get(url=url, params=params).json()
+            rows = result.get("data", [])
+            next_url = result.get("paging", {}).get("next")
+            while next_url:
+                page = requests.get(next_url).json()
+                rows += page.get("data", [])
+                next_url = page.get("paging", {}).get("next")
+            if rows:
+                st.session_state["meta_ads_df"] = pd.DataFrame(rows)
+            else:
+                st.info("Aucune donnée sur cette période.")
+                st.session_state.pop("meta_ads_df", None)
+
+    if "meta_ads_df" in st.session_state:
+        st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
+
 
 @st.fragment
 def fetch_instagram_fragment(client, user_id, is_paid, dash):
@@ -348,9 +399,17 @@ if __name__ == "__main__":
                     st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.link_button("+ Connecter un compte Instagram", get_oauth_url(state=st.session_state["session"].refresh_token))
+                if insta_accounts and "meta_long_token" in st.session_state:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("Récupérer mes données Instagram", type="primary", key="btn_fetch_insta_source"):
+                        st.session_state["trigger_fetch"] = True
+                        st.rerun()
 
             with pt_meta_ads:
-                st.info("Bientôt disponible")
+                if "meta_long_token" in st.session_state:
+                    fetch_meta_ads_fragment(token=st.session_state["meta_long_token"])
+                else:
+                    st.info("Connectez votre compte Meta pour accéder aux données Ads.")
 
             with pt_google:
                 st.info("Bientôt disponible")
