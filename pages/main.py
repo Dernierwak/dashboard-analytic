@@ -176,7 +176,25 @@ DASHBOARD_CSS = """
 """
 
 @st.fragment
-def fetch_meta_ads_fragment(token):
+def meta_ads_source_fragment(token):
+    r = requests.get(
+        "https://graph.facebook.com/v24.0/me/adaccounts",
+        params={"fields": "id,name", "access_token": token}
+    )
+    ad_accounts = r.json().get("data", [])
+
+    if ad_accounts:
+        for acc in ad_accounts:
+            r2 = requests.get(
+                f"https://graph.facebook.com/v24.0/{acc['id']}/campaigns",
+                params={"fields": "id", "access_token": token, "limit": 1000}
+            )
+            nb_campaigns = len(r2.json().get("data", []))
+            st.markdown(f"<div class='account-name'>{acc['name']}</div><div class='account-meta'>{nb_campaigns} campagne(s)</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         since_raw = st.date_input("Début", value=None, key="meta_ads_since")
@@ -187,16 +205,11 @@ def fetch_meta_ads_fragment(token):
         if not since_raw or not end_raw:
             st.warning("Sélectionne une période.")
             return
+        if not ad_accounts:
+            st.warning("Aucun compte publicitaire trouvé.")
+            return
         with st.spinner("Chargement..."):
-            r = requests.get(
-                "https://graph.facebook.com/v24.0/me/adaccounts",
-                params={"fields": "id,name", "access_token": token}
-            )
-            accounts = r.json().get("data", [])
-            if not accounts:
-                st.warning("Aucun compte publicitaire trouvé.")
-                return
-            ad_account_id = accounts[0]["id"]
+            ad_account_id = ad_accounts[0]["id"]
             since = since_raw.strftime("%Y-%m-%d")
             end = end_raw.strftime("%Y-%m-%d")
             url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
@@ -216,12 +229,10 @@ def fetch_meta_ads_fragment(token):
                 next_url = page.get("paging", {}).get("next")
             if rows:
                 st.session_state["meta_ads_df"] = pd.DataFrame(rows)
+                st.success("Données chargées.")
             else:
                 st.info("Aucune donnée sur cette période.")
                 st.session_state.pop("meta_ads_df", None)
-
-    if "meta_ads_df" in st.session_state:
-        st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
 
 
 @st.fragment
@@ -415,28 +426,11 @@ if __name__ == "__main__":
 
             with pt_meta_ads:
                 if "meta_long_token" in st.session_state:
-                    token = st.session_state["meta_long_token"]
-                    r = requests.get(
-                        "https://graph.facebook.com/v24.0/me/adaccounts",
-                        params={"fields": "id,name,account_status", "access_token": token}
-                    )
-                    ad_accounts = r.json().get("data", [])
-                    if ad_accounts:
-                        for acc in ad_accounts:
-                            r2 = requests.get(
-                                f"https://graph.facebook.com/v24.0/{acc['id']}/campaigns",
-                                params={"fields": "id", "access_token": token, "limit": 1000}
-                            )
-                            nb_campaigns = len(r2.json().get("data", []))
-                            col_info, _ = st.columns([5, 1])
-                            with col_info:
-                                st.markdown(f"<div class='account-name'>{acc['name']}</div><div class='account-meta'>{nb_campaigns} campagne(s)</div>", unsafe_allow_html=True)
-                    else:
-                        st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>", unsafe_allow_html=True)
+                    meta_ads_source_fragment(token=st.session_state["meta_long_token"])
                 else:
                     st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.link_button("+ Connecter Meta Ads", get_oauth_url(state=st.session_state["session"].refresh_token))
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.link_button("+ Connecter Meta Ads", get_oauth_url(state=st.session_state["session"].refresh_token))
 
             with pt_google:
                 st.info("Bientôt disponible")
@@ -453,7 +447,7 @@ if __name__ == "__main__":
 
         # ── Tab Meta Ads ─────────────────────────────────────────────────────
         with tab_meta_ads:
-            if "meta_long_token" in st.session_state:
-                fetch_meta_ads_fragment(token=st.session_state["meta_long_token"])
+            if "meta_ads_df" in st.session_state:
+                st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
             else:
-                st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")
+                st.info("Aucune donnée. Allez dans Mon compte → Sources → Meta Ads pour lancer un fetch.")
