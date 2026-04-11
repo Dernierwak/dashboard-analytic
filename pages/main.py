@@ -68,9 +68,9 @@ DASHBOARD_CSS = """
         box-shadow: 0 2px 8px rgba(0,102,255,0.25) !important;
     }
     [data-testid="stButton"] > button[kind="secondary"] {
-        background: #ffffff !important;
-        color: #191919 !important;
-        border: 1px solid #eaeaea !important;
+        background: #0066ff !important;
+        color: #ffffff !important;
+        border: none !important;
     }
     [data-testid="stLinkButton"] > a {
         background: #ffffff !important;
