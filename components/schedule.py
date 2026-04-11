@@ -13,9 +13,6 @@ def schedule(supabase: Client, user_id, has_fetched: bool = False):
             st.session_state["fetch_schedule"] = fetch_schedule
             insert_schedule_data(supabase=supabase, user_id=user_id, fetch_schedule=fetch_schedule)
 
-        if st.button("Récupérer mes données", type="primary"):
-            st.session_state["trigger_fetch"] = True
-            st.rerun()
         if has_fetched:
             day = st.session_state.get("fetch_schedule", fetch_schedule)
             st.caption(f"Mise à jour automatique chaque {day} à 07:00 UTC")
