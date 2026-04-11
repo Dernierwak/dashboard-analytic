@@ -62,9 +62,15 @@ class Labelling():
 
             old_labels = st.session_state.labels_list.copy()
             label_df = pd.DataFrame(old_labels, columns=["label"])
-            edited = st.data_editor(label_df, hide_index=True, key="label_editor", use_container_width=True)
+            st.data_editor(label_df, hide_index=True, key="label_editor", use_container_width=True)
             if st.button("Sauvegarder les noms", key="btn_rename"):
-                new_labels = edited["label"].dropna().tolist()
+                editor_state = st.session_state.get("label_editor", {})
+                edited_rows = editor_state.get("edited_rows", {})
+                new_labels = old_labels.copy()
+                for idx_str, changes in edited_rows.items():
+                    if "label" in changes:
+                        new_labels[int(idx_str)] = changes["label"]
+                new_labels = [l for l in new_labels if l]
                 st.session_state.labels_list = new_labels
                 self.supabase.table("profiles").update({
                     "labelling": new_labels
