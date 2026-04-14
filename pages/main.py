@@ -378,7 +378,20 @@ if __name__ == "__main__":
        
         # ── end
         
-        tab_account, tab_insta, tab_meta_ads = st.tabs(["Mon compte", "Instagram Organic", "Meta Ads"])
+        accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).execute()
+        accounts_data = accounts_resp.data or []
+        insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
+        has_meta_ads = "meta_long_token" in st.session_state
+
+        tab_names = ["Mon compte"]
+        if insta_accounts:
+            tab_names.append("Instagram Organic")
+        if has_meta_ads:
+            tab_names.append("Meta Ads")
+        tabs = st.tabs(tab_names)
+        tab_account = tabs[0]
+        tab_insta = tabs[tab_names.index("Instagram Organic")] if "Instagram Organic" in tab_names else None
+        tab_meta_ads = tabs[tab_names.index("Meta Ads")] if "Meta Ads" in tab_names else None
 
         # ── Tab Mon compte ───────────────────────────────────────────────────
         with tab_account:
@@ -391,13 +404,9 @@ if __name__ == "__main__":
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<div class='section-title'>Sources connectées</div>", unsafe_allow_html=True)
 
-            accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).execute()
-            accounts_data = accounts_resp.data or []
-
             pt_insta, pt_meta_ads, pt_google = st.tabs(["Instagram Organic", "Meta Ads", "Google Ads"])
 
             with pt_insta:
-                insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
                 if insta_accounts:
                     for acc in insta_accounts:
                         name = acc.get("account_name") or "Compte Instagram"
@@ -445,18 +454,17 @@ if __name__ == "__main__":
                 st.info("Bientôt disponible")
 
         # ── Tab Instagram Organic ────────────────────────────────────────────
-        with tab_insta:
-            if "meta_long_token" in st.session_state:
+        if tab_insta:
+            with tab_insta:
                 follower_module(client=client, user_id=user_id)
                 st.divider()
                 fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash)
                 show_dashboard(client, user_id, is_paid=is_paid)
-            else:
-                st.info("Connectez votre compte Meta dans la barre latérale pour commencer.")
 
         # ── Tab Meta Ads ─────────────────────────────────────────────────────
-        with tab_meta_ads:
-            if "meta_ads_df" in st.session_state:
-                st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
-            else:
-                st.info("Aucune donnée. Allez dans Mon compte → Sources → Meta Ads pour lancer un fetch.")
+        if tab_meta_ads:
+            with tab_meta_ads:
+                if "meta_ads_df" in st.session_state:
+                    st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Aucune donnée. Allez dans Mon compte → Sources → Meta Ads pour lancer un fetch.")
