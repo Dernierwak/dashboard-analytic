@@ -28,8 +28,10 @@ class OrganicInstagramm():
         pages = data.get("data", [])
         if not pages:
             raise ValueError("Aucune Page Facebook trouvée. Tu dois avoir une Page Facebook liée à ton compte.")
-        self.meta_account_name = pages[0].get("name")
-        self.meta_account_id = pages[0].get("id")
+        selected_id = st.session_state.get("selected_fb_page_id")
+        page = next((p for p in pages if p.get("id") == selected_id), pages[0])
+        self.meta_account_name = page.get("name")
+        self.meta_account_id = page.get("id")
 
     def _fetch_id_business(self):
         target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_account_id}"

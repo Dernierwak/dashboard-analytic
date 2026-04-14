@@ -418,9 +418,18 @@ if __name__ == "__main__":
                     st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.link_button("+ Connecter un compte Instagram", get_oauth_url(state=st.session_state["session"].refresh_token))
-                if insta_accounts and "meta_long_token" in st.session_state:
+                if "meta_long_token" in st.session_state:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("Récupérer mes données Instagram", type="primary", key="btn_fetch_insta_source"):
+                    token = st.session_state["meta_long_token"]
+                    pages_resp = requests.get(
+                        "https://graph.facebook.com/v24.0/me/accounts",
+                        params={"fields": "id,name", "access_token": token}
+                    ).json().get("data", [])
+                    if pages_resp:
+                        page_names = {p["name"]: p["id"] for p in pages_resp}
+                        selected_name = st.selectbox("Page Facebook", options=list(page_names.keys()), key="select_fb_page")
+                        st.session_state["selected_fb_page_id"] = page_names[selected_name]
+                    if insta_accounts and st.button("Récupérer mes données Instagram", type="primary", key="btn_fetch_insta_source"):
                         st.session_state["trigger_fetch"] = True
                         st.rerun()
 
