@@ -175,8 +175,7 @@ DASHBOARD_CSS = """
 </style>
 """
 
-@st.fragment
-def meta_ads_source_fragment(token):  # @st.fragment = isolated rerun, n'affecte pas le reste de la page
+def meta_ads_source_fragment(token):
     r = requests.get(
         "https://graph.facebook.com/v24.0/me/adaccounts",
         params={"fields": "id,name", "access_token": token}
