@@ -175,6 +175,7 @@ DASHBOARD_CSS = """
 </style>
 """
 
+@st.fragment
 def meta_ads_source_fragment(token):
     r = requests.get(
         "https://graph.facebook.com/v24.0/me/adaccounts",
@@ -228,7 +229,7 @@ def meta_ads_source_fragment(token):
                 next_url = page.get("paging", {}).get("next")
             if rows:
                 st.session_state["meta_ads_df"] = pd.DataFrame(rows)
-                st.success("Données chargées.")
+                st.rerun()
             else:
                 st.info("Aucune donnée sur cette période.")
                 st.session_state.pop("meta_ads_df", None)
