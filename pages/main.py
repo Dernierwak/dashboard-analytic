@@ -320,34 +320,60 @@ if __name__ == "__main__":
 
         # Sauvegarder nouveau token dans connected_accounts
         if st.session_state.get("_save_meta_token"):
-            try:
-                org = OrganicInstagramm(
-                    meta_long_token=st.session_state["meta_long_token"],
-                    supabase_client=client,
-                    supabase_user_id=user_id,
-                )
-                org._fetch_id_instagram()
-                org._fetch_id_business()
-                # Vérifier si ce compte Instagram existe déjà
-                existing = client.table("connected_accounts").select("id").eq("user_id", user_id).eq("instagram_business_id", org.meta_id_business).execute()
-                if existing.data:
-                    new_account_id = existing.data[0]["id"]
-                    client.table("connected_accounts").update({
-                        "meta_token": st.session_state["meta_long_token"],
-                        "account_name": org.meta_account_name,
-                    }).eq("id", new_account_id).execute()
-                else:
-                    acc = client.table("connected_accounts").insert({
-                        "user_id": user_id,
-                        "meta_token": st.session_state["meta_long_token"],
-                        "account_name": org.meta_account_name,
-                        "instagram_business_id": org.meta_id_business,
-                    }).execute()
-                    new_account_id = acc.data[0]["id"]
-                client.table("profiles").update({"active_account_id": new_account_id}).eq("id", user_id).execute()
-            except Exception as e:
-                st.error(f"Erreur connexion Meta : {e}")
-            del st.session_state["_save_meta_token"]
+            token = st.session_state["meta_long_token"]
+            # Récupérer toutes les pages Facebook liées au token
+            if "fb_pages_list" not in st.session_state:
+                try:
+                    r = requests.get(
+                        "https://graph.facebook.com/v24.0/me/accounts",
+                        params={"fields": "id,name", "access_token": token}
+                    )
+                    st.session_state["fb_pages_list"] = r.json().get("data", [])
+                except Exception:
+                    st.session_state["fb_pages_list"] = []
+
+            pages = st.session_state.get("fb_pages_list", [])
+
+            if not pages:
+                st.error("Aucune Page Facebook trouvée. Tu dois avoir une Page Facebook liée à ton compte.")
+                del st.session_state["_save_meta_token"]
+            else:
+                st.info("Choisis la Page Facebook liée à ton compte Instagram Business.")
+                page_names = {p["name"]: p["id"] for p in pages}
+                selected_name = st.selectbox("Page Facebook", options=list(page_names.keys()), key="connect_fb_page")
+                if st.button("Confirmer la connexion", type="primary", key="btn_confirm_page"):
+                    st.session_state["selected_fb_page_id"] = page_names[selected_name]
+                    try:
+                        org = OrganicInstagramm(
+                            meta_long_token=token,
+                            supabase_client=client,
+                            supabase_user_id=user_id,
+                        )
+                        org._fetch_id_instagram()
+                        org._fetch_id_business()
+                        existing = client.table("connected_accounts").select("id").eq("user_id", user_id).eq("instagram_business_id", org.meta_id_business).execute()
+                        if existing.data:
+                            new_account_id = existing.data[0]["id"]
+                            client.table("connected_accounts").update({
+                                "meta_token": token,
+                                "account_name": org.meta_account_name,
+                            }).eq("id", new_account_id).execute()
+                        else:
+                            acc = client.table("connected_accounts").insert({
+                                "user_id": user_id,
+                                "meta_token": token,
+                                "account_name": org.meta_account_name,
+                                "instagram_business_id": org.meta_id_business,
+                            }).execute()
+                            new_account_id = acc.data[0]["id"]
+                        client.table("profiles").update({"active_account_id": new_account_id}).eq("id", user_id).execute()
+                        del st.session_state["_save_meta_token"]
+                        st.session_state.pop("fb_pages_list", None)
+                        st.success(f"Compte '{org.meta_account_name}' connecté !")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur connexion Meta : {e}")
+                st.stop()
 
         # Vérifier paiement Stripe
         if st.query_params.get("payment") == "success" and "session_id" in st.query_params:
