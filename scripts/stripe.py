@@ -2,7 +2,7 @@ import stripe
 import streamlit as st
 
 
-def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: str) -> str:
+def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: str, base_url: str) -> str:
     stripe.api_key = st.secrets.stripe.api_key
 
     plans = {
@@ -10,11 +10,6 @@ def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: 
         "pro":     {"amount": 3500, "name": "Dashboard Analytics – Pro"},
         "agency":  {"amount": 15000, "name": "Dashboard Analytics – Agency"},
     }
-
-    try:
-        base_url = st.secrets["app_url"]
-    except Exception:
-        base_url = "https://localhost:8502"
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],

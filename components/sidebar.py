@@ -15,11 +15,16 @@ def show_sidebar(client, session, is_paid):
             if "checkout_url" not in st.session_state:
                 if st.button("Souscrire — 35 CHF/mois", type="primary", width="stretch"):
                     try:
+                        ctx = st.context.headers
+                        host = ctx.get("host", "localhost:8502")
+                        proto = "https" if "streamlit.app" in host else "https"
+                        base_url = f"{proto}://{host}"
                         url = create_checkout_session(
                             user_id=session.user.id,
                             email=session.user.email,
                             plan="pro",
                             refresh_token=session.refresh_token,
+                            base_url=base_url,
                         )
                         st.session_state["checkout_url"] = url
                         st.rerun()
