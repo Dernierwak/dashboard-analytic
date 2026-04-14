@@ -42,8 +42,20 @@ def show_sidebar(client, session, is_paid):
                 else:
                     st.error("Aucun abonnement actif trouvé.")
 
+        st.markdown("""
+        <style>
+        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button,
+        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button p,
+        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button span {
+            background: #dc2626 !important;
+            color: #ffffff !important;
+            border: none !important;
+            margin-top: auto !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         st.divider()
-        if st.button("Se déconnecter"):
+        if st.button("Se déconnecter", key="btn_logout"):
             del st.session_state["session"]
             if "refresh_token" in st.query_params:
                 del st.query_params["refresh_token"]
