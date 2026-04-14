@@ -34,7 +34,7 @@ def show_sidebar(client, session, is_paid):
 
         if is_paid:
             st.divider()
-            if st.button("Se désabonner", type="tertiary"):
+            if st.button("Annuler l'abonnement", type="tertiary"):
                 if cancel_subscription(session.user.email):
                     client.table("profiles").update({"is_paid": False}).eq("id", session.user.id).execute()
                     st.success("Abonnement annulé.")
@@ -44,13 +44,21 @@ def show_sidebar(client, session, is_paid):
 
         st.markdown("""
         <style>
-        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button,
-        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button p,
-        [data-testid="stSidebar"] [data-testid="stButton"]:last-child > button span {
+        [data-testid="stSidebar"] [data-testid="stBaseButton-btn_logout"],
+        [data-testid="stSidebar"] [data-testid="stBaseButton-btn_logout"] p,
+        [data-testid="stSidebar"] [data-testid="stBaseButton-btn_logout"] span {
             background: #dc2626 !important;
             color: #ffffff !important;
             border: none !important;
-            margin-top: auto !important;
+        }
+        [data-testid="stSidebar"] button[kind="tertiary"],
+        [data-testid="stSidebar"] button[kind="tertiary"] p {
+            background: transparent !important;
+            color: #9ca3af !important;
+            border: none !important;
+            font-size: 0.8rem !important;
+            padding: 4px 0 !important;
+            box-shadow: none !important;
         }
         </style>
         """, unsafe_allow_html=True)
