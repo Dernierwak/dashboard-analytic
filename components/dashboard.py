@@ -213,6 +213,7 @@ def show_dashboard(client, user_id, is_paid=False):
                     }).eq("user_id", user_id).eq("id", post_id).execute()
             _load_posts.clear()
             st.success("Sauvegardé.")
+        
 
     with tab_calendar:
         df_cal = df.copy()
@@ -254,3 +255,11 @@ def show_dashboard(client, user_id, is_paid=False):
     with tab_labels:
         labelling_mgr = Labelling(client=client, user_id=user_id, df=df)
         labelling_mgr._manage_labels()
+
+    # ── Chart par label ───────────────────────────────────────────────────
+    if "labels" in df.columns:
+        df_labels = df[df["labels"].apply(lambda x: x is not None and len(x) > 0)].copy()
+        if not df_labels.empty:
+            df_labels["label"] = df_labels["labels"].apply(lambda x: x[0])
+            st.markdown("<div class='section-title'>Performance par label</div>", unsafe_allow_html=True)
+            st.area_chart(data=df_labels, x="date", y="likes", color="label")
