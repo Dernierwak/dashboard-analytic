@@ -24,11 +24,11 @@ def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: 
         }],
         mode="subscription",
         success_url=(
-            f"{base_url}/?payment=success"
+            f"{base_url}/main?payment=success"
             f"&session_id={{CHECKOUT_SESSION_ID}}"
             f"&refresh_token={refresh_token}"
         ),
-        cancel_url=f"{base_url}/?payment=cancelled&refresh_token={refresh_token}",
+        cancel_url=f"{base_url}/main?payment=cancelled&refresh_token={refresh_token}",
         customer_email=email,
         metadata={"user_id": user_id, "plan": plan},
     )
