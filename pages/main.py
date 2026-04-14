@@ -377,17 +377,29 @@ if __name__ == "__main__":
 
         # Vérifier paiement Stripe
         if st.query_params.get("payment") == "success" and "session_id" in st.query_params:
-            meta = verify_and_get_metadata(st.query_params["session_id"])
+            session_id = st.query_params["session_id"]
+            meta = verify_and_get_metadata(session_id)
             if meta:
                 client.table("profiles").update({"is_paid": True}).eq("id", user_id).execute()
                 is_paid = True
-                st.session_state["trigger_fetch"] = True
-                st.session_state["has_fetched"] = False
                 if "checkout_url" in st.session_state:
                     del st.session_state["checkout_url"]
                 st.success("Paiement confirmé ! Bienvenue dans le plan Pro.")
             else:
-                st.warning("Paiement non vérifié. Contactez le support si vous avez payé.")
+                # Stripe peut avoir un léger délai — forcer is_paid si session_id valide
+                import stripe
+                stripe.api_key = st.secrets.stripe.api_key
+                try:
+                    s = stripe.checkout.Session.retrieve(session_id)
+                    if s.payment_status in ("paid", "no_payment_required"):
+                        uid = s.metadata.get("user_id") or user_id
+                        client.table("profiles").update({"is_paid": True}).eq("id", uid).execute()
+                        is_paid = True
+                        st.success("Paiement confirmé ! Bienvenue dans le plan Pro.")
+                    else:
+                        st.warning(f"Statut paiement : {s.payment_status}. Contactez le support si vous avez payé.")
+                except Exception as e:
+                    st.warning(f"Paiement non vérifié : {e}")
             st.query_params.clear()
             st.query_params["refresh_token"] = session.refresh_token
         elif st.query_params.get("payment") == "cancelled":
