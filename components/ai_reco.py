@@ -33,7 +33,10 @@ def show_ai_reco(supabase: Client, user_id: str, is_paid: bool, df=None, followe
         st.caption("Pas encore assez de données pour générer des recommandations.")
         return
 
-    content_html = reco["content"].replace("\n", "<br>")
+    import re
+    content_html = reco["content"]
+    content_html = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', content_html)
+    content_html = content_html.replace("\n", "<br>")
     st.markdown(f"""
     <div style='background:#f8faff;border-left:3px solid #0066ff;border-radius:8px;padding:16px 20px;margin-bottom:12px;'>
         {content_html}
