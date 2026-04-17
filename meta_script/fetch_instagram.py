@@ -8,11 +8,11 @@ from scripts.insert_data import insert_instagram_total_posts_id
 
 class OrganicInstagramm():
 
-    def __init__(self, meta_long_token, supabase_client, supabase_user_id) -> None:
+    def __init__(self, meta_long_token, supabase_client, supabase_user_id, instagram_business_id=None) -> None:
         self.meta_long_token = meta_long_token
         self.meta_account_id = None
         self.api_version = "v24.0"
-        self.meta_id_business = None
+        self.meta_id_business = instagram_business_id
         self.supabase_client: Client = supabase_client
         self.supabase_user_id = supabase_user_id
         self.new_post_ids: list = []
@@ -151,8 +151,9 @@ class OrganicInstagramm():
     def fetch_insta_post_insight(self):
         with st.status("Récupération des données Instagram...", expanded=True) as status:
             st.write("Connexion au compte Facebook...")
-            self._fetch_id_instagram()
-            self._fetch_id_business()
+            if not self.meta_id_business:
+                self._fetch_id_instagram()
+                self._fetch_id_business()
 
             st.write("Récupération des posts...")
             self._fetch_insta_post_id()

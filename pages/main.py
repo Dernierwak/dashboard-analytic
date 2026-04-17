@@ -92,7 +92,8 @@ if __name__ == "__main__":
 
         if tab_insta:
             with tab_insta:
-                show_instagram_tab(client, user_id, is_paid, dash)
+                insta_biz_id = insta_accounts[0].get("instagram_business_id") if insta_accounts else None
+                show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id)
 
         if tab_meta_ads:
             with tab_meta_ads:
