@@ -38,14 +38,42 @@ def handle_meta_page_selection(client, user_id):
                 "https://graph.facebook.com/v24.0/me/accounts",
                 params={"fields": "id,name", "access_token": token}
             )
-            st.session_state["fb_pages_list"] = r.json().get("data", [])
+            pages_found = r.json().get("data", [])
+
+            # Fallback Business Manager si me/accounts retourne vide
+            if not pages_found:
+                biz_r = requests.get(
+                    "https://graph.facebook.com/v24.0/me/businesses",
+                    params={"fields": "id,name", "access_token": token}
+                )
+                businesses = biz_r.json().get("data", [])
+                for biz in businesses:
+                    for endpoint in ["owned_pages", "client_pages"]:
+                        p_r = requests.get(
+                            f"https://graph.facebook.com/v24.0/{biz['id']}/{endpoint}",
+                            params={"fields": "id,name", "access_token": token}
+                        )
+                        pages_found.extend(p_r.json().get("data", []))
+
+            seen = set()
+            unique_pages = []
+            for p in pages_found:
+                if p["id"] not in seen:
+                    seen.add(p["id"])
+                    unique_pages.append(p)
+
+            st.session_state["fb_pages_list"] = unique_pages
         except Exception:
             st.session_state["fb_pages_list"] = []
 
     pages = st.session_state.get("fb_pages_list", [])
 
     if not pages:
-        st.error("Aucune Page Facebook trouvée. Tu dois avoir une Page Facebook liée à ton compte.")
+        st.error(
+            "Aucune Page Facebook trouvée. Vérifie que : "
+            "(1) ton compte Instagram Business est bien lié à une Page Facebook, "
+            "(2) tu es admin direct de cette Page (pas seulement via Business Manager)."
+        )
         del st.session_state["_save_meta_token"]
         return False
 
