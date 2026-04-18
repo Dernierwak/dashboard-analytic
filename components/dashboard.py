@@ -99,14 +99,18 @@ def follower_module(client, user_id):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _load_posts(_client, user_id: str):
-    data = fetch_post_metrics(_client, user_id) or []
-    return pd.DataFrame(data)
+    data = fetch_post_metrics(_client, user_id)
+    return pd.DataFrame(data or [])
 
 
 @st.fragment
 def show_dashboard(client, user_id, is_paid=False):
     st.session_state["_posts_cache_clear"] = _load_posts.clear
-    df = _load_posts(client, user_id)
+    try:
+        df = _load_posts(client, user_id)
+    except Exception as e:
+        st.error(f"Erreur de connexion Supabase : {e}")
+        return
 
     if df.empty:
         st.markdown("<div style='color:#6b6b6b;padding:20px 0'>Aucune donnée. Cliquez sur <b>Récupérer mes données Instagram</b> pour commencer.</div>", unsafe_allow_html=True)
@@ -117,17 +121,39 @@ def show_dashboard(client, user_id, is_paid=False):
 
     st.markdown("<hr style='border:none;border-top:1px solid #eaeaea;margin:24px 0'>", unsafe_allow_html=True)
 
+    # ── Filtre par label ──────────────────────────────────────────────────
+    _labels_in_df = []
+    if "labels" in df.columns:
+        _labels_in_df = sorted(set(
+            x[0] for x in df["labels"] if x and len(x) > 0 and x[0]
+        ))
+    label_filter = []
+    if _labels_in_df:
+        label_filter = st.multiselect(
+            "Filtrer par label",
+            options=_labels_in_df,
+            key="main_label_filter",
+            label_visibility="collapsed",
+            placeholder="Tous les posts — filtrer par label",
+        )
+    if label_filter and "labels" in df.columns:
+        df_view = df[df["labels"].apply(
+            lambda x: bool(x and len(x) > 0 and x[0] in label_filter)
+        )].copy()
+    else:
+        df_view = df
+
     # ── Zone KPI ──────────────────────────────────────────────────────────
     st.markdown("<div class='section-title'>Performance globale</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        _kpi_card("Likes", f"{int(df['likes'].sum()):,}")
+        _kpi_card("Likes", f"{int(df_view['likes'].sum()):,}")
     with c2:
-        _kpi_card("Reach", f"{int(df['reach'].sum()):,}" if "reach" in df.columns else "—")
+        _kpi_card("Reach", f"{int(df_view['reach'].sum()):,}" if "reach" in df_view.columns else "—")
     with c3:
-        _kpi_card("Commentaires", f"{int(df['comments'].sum()):,}")
+        _kpi_card("Commentaires", f"{int(df_view['comments'].sum()):,}")
     with c4:
-        _kpi_card("Sauvegardés", f"{int(df['saved'].sum()):,}")
+        _kpi_card("Sauvegardés", f"{int(df_view['saved'].sum()):,}")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -137,7 +163,7 @@ def show_dashboard(client, user_id, is_paid=False):
     selected_metric = METRIC_OPTIONS[selected_label]
 
     fig = px.bar(
-        df.sort_values("date"),
+        df_view.sort_values("date"),
         x="date", y=selected_metric, color="type",
         color_discrete_map=COLOR_MAP,
         labels={"date": "Date", selected_metric: selected_label, "type": "Type"},
@@ -155,7 +181,7 @@ def show_dashboard(client, user_id, is_paid=False):
 
     # ── Top 3 posts ───────────────────────────────────────────────────────
     st.markdown(f"<div class='section-title'>Top 3 — {selected_label}</div>", unsafe_allow_html=True)
-    top3 = df.nlargest(3, selected_metric)
+    top3 = df_view.nlargest(3, selected_metric)
     cols = st.columns(3)
     for i, (_, row) in enumerate(top3.iterrows()):
         with cols[i]:
@@ -318,6 +344,33 @@ def show_dashboard(client, user_id, is_paid=False):
                     )
                     fig_donut.update_traces(textposition="inside", textinfo="percent+label")
                     st.plotly_chart(fig_donut, use_container_width=True)
+                st.divider()
+
+                # ── Top post par label ────────────────────────────────────
+                st.markdown("<div class='section-title'>Top post par label</div>", unsafe_allow_html=True)
+                _all_labels = sorted(df_lab["label"].unique().tolist())
+                for _i in range(0, len(_all_labels), 3):
+                    _chunk = _all_labels[_i:_i + 3]
+                    _top_cols = st.columns(len(_chunk))
+                    for _j, _lbl in enumerate(_chunk):
+                        _df_lbl = df_lab[df_lab["label"] == _lbl]
+                        if _df_lbl.empty:
+                            continue
+                        _best = _df_lbl.sort_values("likes", ascending=False, na_position="last").iloc[0]
+                        with _top_cols[_j]:
+                            st.markdown(f"**{_lbl}**")
+                            _likes = int(_best["likes"]) if pd.notna(_best.get("likes")) else 0
+                            _reach = int(_best["reach"]) if pd.notna(_best.get("reach")) else 0
+                            _saved = int(_best["saved"]) if pd.notna(_best.get("saved")) else 0
+                            st.markdown(
+                                f"👍 **{_likes:,}** likes &nbsp;·&nbsp; "
+                                f"👁 **{_reach:,}** reach &nbsp;·&nbsp; "
+                                f"🔖 **{_saved:,}** saves",
+                                unsafe_allow_html=True,
+                            )
+                            st.caption(f"{_best.get('date', '')} · {_best.get('type', '')}")
+                            if _best.get("caption"):
+                                st.caption(str(_best["caption"])[:60])
                 st.divider()
             else:
                 st.caption("Assigne des labels à tes posts pour voir les statistiques ici.")
