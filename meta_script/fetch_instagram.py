@@ -193,7 +193,7 @@ class OrganicInstagramm():
     def show_insta_data(self):
         self.fetch_insta_post_insight()
 
-        old_results = fetch_post_metrics(self.supabase_client)
+        old_results = fetch_post_metrics(self.supabase_client, self.supabase_user_id)
         df_old = pd.DataFrame(old_results) if old_results else pd.DataFrame()
         df_new = pd.DataFrame(self.new_results) if self.new_results else pd.DataFrame()
 

@@ -98,15 +98,15 @@ def follower_module(client, user_id):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _load_posts(_client):
-    data = fetch_post_metrics(_client) or []
+def _load_posts(_client, user_id: str):
+    data = fetch_post_metrics(_client, user_id) or []
     return pd.DataFrame(data)
 
 
 @st.fragment
 def show_dashboard(client, user_id, is_paid=False):
     st.session_state["_posts_cache_clear"] = _load_posts.clear
-    df = _load_posts(client)
+    df = _load_posts(client, user_id)
 
     if df.empty:
         st.markdown("<div style='color:#6b6b6b;padding:20px 0'>Aucune donnée. Cliquez sur <b>Récupérer mes données Instagram</b> pour commencer.</div>", unsafe_allow_html=True)
@@ -216,6 +216,11 @@ def show_dashboard(client, user_id, is_paid=False):
         
 
     with tab_calendar:
+        cal_color_by = st.radio(
+            "Colorier par", ["Type de post", "Label"],
+            horizontal=True, key="cal_color_mode",
+        )
+
         df_cal = df.copy()
         df_cal["date"] = pd.to_datetime(df_cal["date"], errors="coerce")
         df_cal = df_cal.dropna(subset=["date"])
@@ -224,16 +229,29 @@ def show_dashboard(client, user_id, is_paid=False):
         df_cal["day_name"] = df_cal["date"].dt.day_name()
         df_cal["date_str"] = df_cal["date"].dt.strftime("%d %b %Y")
 
-        fig_cal = px.scatter(
-            df_cal,
-            x="week",
-            y="day_of_week",
-            color="type",
-            color_discrete_map=COLOR_MAP,
-            hover_data={"date_str": True, "caption": True, "reach": True, "likes": True, "week": False, "day_of_week": False},
-            labels={"week": "Semaine", "day_of_week": "Jour"},
-            size_max=14,
-        )
+        if cal_color_by == "Label" and "labels" in df_cal.columns:
+            df_cal["_cal_label"] = df_cal["labels"].apply(
+                lambda x: x[0] if x and len(x) > 0 else "Sans label"
+            )
+            fig_cal = px.scatter(
+                df_cal,
+                x="week", y="day_of_week",
+                color="_cal_label",
+                color_discrete_sequence=px.colors.qualitative.Set2,
+                hover_data={"date_str": True, "caption": True, "reach": True, "likes": True, "week": False, "day_of_week": False, "_cal_label": False},
+                labels={"week": "Semaine", "day_of_week": "Jour", "_cal_label": "Label"},
+                size_max=14,
+            )
+        else:
+            fig_cal = px.scatter(
+                df_cal,
+                x="week", y="day_of_week",
+                color="type",
+                color_discrete_map=COLOR_MAP,
+                hover_data={"date_str": True, "caption": True, "reach": True, "likes": True, "week": False, "day_of_week": False},
+                labels={"week": "Semaine", "day_of_week": "Jour"},
+                size_max=14,
+            )
         fig_cal.update_traces(marker=dict(size=14, symbol="square"))
         fig_cal.update_layout(
             template="plotly_white",
@@ -254,12 +272,86 @@ def show_dashboard(client, user_id, is_paid=False):
 
     with tab_labels:
         labelling_mgr = Labelling(client=client, user_id=user_id, df=df)
-        labelling_mgr._manage_labels()
 
-    # ── Chart par label ───────────────────────────────────────────────────
+        # ── Analytiques par label ─────────────────────────────────────────
+        if "labels" in df.columns:
+            df_lab = df[df["labels"].apply(lambda x: bool(x and len(x) > 0 and x[0]))].copy()
+            if not df_lab.empty:
+                df_lab["label"] = df_lab["labels"].apply(lambda x: x[0])
+                st.markdown("<div class='section-title'>Performance par label</div>", unsafe_allow_html=True)
+                lab_metric_name = st.selectbox(
+                    "Métrique", list(METRIC_OPTIONS.keys()),
+                    key="lab_metric_sel", label_visibility="collapsed",
+                )
+                lab_metric_col = METRIC_OPTIONS[lab_metric_name]
+                col_bar_l, col_donut_l = st.columns([3, 2])
+                with col_bar_l:
+                    avg_df = df_lab.groupby("label")[lab_metric_col].mean().reset_index()
+                    avg_df.columns = ["label", "moyenne"]
+                    avg_df = avg_df.sort_values("moyenne")
+                    fig_bar_lab = px.bar(
+                        avg_df, x="moyenne", y="label", orientation="h",
+                        labels={"moyenne": f"Moy. {lab_metric_name}", "label": ""},
+                        color="label",
+                        color_discrete_sequence=px.colors.qualitative.Set2,
+                    )
+                    fig_bar_lab.update_layout(
+                        template="plotly_white", height=max(180, len(avg_df) * 50),
+                        margin=dict(l=0, r=0, t=10, b=0),
+                        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+                        font=dict(color="#37352f", family="Inter, sans-serif"),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_bar_lab, use_container_width=True)
+                with col_donut_l:
+                    cnt_df = df_lab.groupby("label").size().reset_index(name="posts")
+                    fig_donut = px.pie(
+                        cnt_df, values="posts", names="label", hole=0.55,
+                        color_discrete_sequence=px.colors.qualitative.Set2,
+                    )
+                    fig_donut.update_layout(
+                        template="plotly_white", height=220,
+                        margin=dict(l=0, r=0, t=10, b=20),
+                        paper_bgcolor="#ffffff",
+                        font=dict(color="#37352f", family="Inter, sans-serif"),
+                        legend=dict(orientation="h", y=-0.2),
+                    )
+                    fig_donut.update_traces(textposition="inside", textinfo="percent+label")
+                    st.plotly_chart(fig_donut, use_container_width=True)
+                st.divider()
+            else:
+                st.caption("Assigne des labels à tes posts pour voir les statistiques ici.")
+                st.divider()
+
+        labelling_mgr._manage_labels()
+        st.divider()
+        labelling_mgr._batch_assign()
+
+    # ── Évolution par label ───────────────────────────────────────────────
     if "labels" in df.columns:
         df_labels = df[df["labels"].apply(lambda x: x is not None and len(x) > 0)].copy()
         if not df_labels.empty:
             df_labels["label"] = df_labels["labels"].apply(lambda x: x[0])
-            st.markdown("<div class='section-title'>Performance par label</div>", unsafe_allow_html=True)
-            st.area_chart(data=df_labels, x="date", y="likes", color="label")
+            st.markdown("<div class='section-title'>Évolution par label</div>", unsafe_allow_html=True)
+            metric_trend_name = st.selectbox(
+                "Métrique", list(METRIC_OPTIONS.keys()),
+                key="label_trend_metric", label_visibility="collapsed",
+            )
+            metric_trend_col = METRIC_OPTIONS[metric_trend_name]
+            fig_trend = px.line(
+                df_labels.sort_values("date"),
+                x="date", y=metric_trend_col, color="label",
+                markers=True,
+                labels={"date": "Date", metric_trend_col: metric_trend_name, "label": "Label"},
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            fig_trend.update_layout(
+                template="plotly_white",
+                height=320, margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+                font=dict(color="#37352f", family="Inter, sans-serif"),
+                legend=dict(orientation="h", y=1.1, font=dict(color="#37352f")),
+                xaxis=dict(showgrid=False, color="#6b6b6b", linecolor="#eaeaea"),
+                yaxis=dict(showgrid=True, gridcolor="#f0f0f0", color="#6b6b6b"),
+            )
+            st.plotly_chart(fig_trend, use_container_width=True)

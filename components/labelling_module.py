@@ -15,6 +15,16 @@ class Labelling():
             st.session_state.labels_list = [l for l in (raw or []) if l]
 
     def _manage_labels(self):
+        # ── Barre de progression ─────────────────────────────────────────
+        if "labels" in self.df.columns and not self.df.empty:
+            total = len(self.df)
+            labeled = int(self.df["labels"].apply(
+                lambda x: bool(x and len(x) > 0 and x[0])
+            ).sum())
+            pct = labeled / total if total > 0 else 0
+            st.progress(pct, text=f"**{labeled} / {total}** posts labelisés ({int(pct * 100)} %)")
+            st.markdown("<br>", unsafe_allow_html=True)
+
         st.markdown("#### Tes labels")
 
         if st.session_state.labels_list:
@@ -124,29 +134,65 @@ class Labelling():
                     }).eq("user_id", self.user_id).eq("id", post_id).execute()
             st.success("Sauvegardé.")
 
-    # def _assign_labels_batch(self, selected):
-    #     """Mode batch — sélectionner plusieurs posts et assigner les mêmes labels."""
-    #     chosen = st.pills(
-    #         "Choisir les labels",
-    #         options=[l for l in st.session_state.labels_list if l] + ["None"],
-    #         selection_mode="multi",
-    #         key="pills_assign",
-    #         label_visibility="collapsed"
-    #     )
-    #     if selected.selection.rows:
-    #         st.session_state["selected_rows"] = selected.selection.rows
-    #     saved_rows = st.session_state.get("selected_rows", [])
-    #     if st.button("Appliquer", key="btn_assign"):
-    #         for row_idx in saved_rows:
-    #             post_id = self.df["id"].iloc[row_idx]
-    #             old_labels = self.df["labels"].iloc[row_idx] or []
-    #             new_labels = [] if "None" in chosen else list(set(old_labels + chosen))
-    #             self.df["labels"].iloc[row_idx] = new_labels
-    #             self.supabase.table("instagram_organic_posts").update({
-    #                 "labels": new_labels
-    #             }).eq("user_id", self.user_id).eq("id", post_id).execute()
-    #         st.session_state["selected_rows"] = []
-    #         st.success("Labels mis à jour.")
+    def _batch_assign(self):
+        """Mode batch : sélectionner des posts dans le tableau et assigner un label d'un coup."""
+        if not st.session_state.labels_list:
+            return
+
+        st.markdown("#### Assignation en lot")
+        st.caption("Clique sur les lignes pour les sélectionner, choisis un label, puis applique.")
+
+        display_df = self.df[["caption", "type", "date", "labels"]].copy()
+        display_df["label_actuel"] = display_df["labels"].apply(
+            lambda x: x[0] if x and len(x) > 0 else "—"
+        )
+        display_df = display_df[["caption", "type", "date", "label_actuel"]]
+
+        selected = st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="multi-row",
+            key="df_batch_select",
+            column_config={
+                "caption": st.column_config.TextColumn("Caption"),
+                "type": st.column_config.TextColumn("Type"),
+                "date": st.column_config.TextColumn("Date"),
+                "label_actuel": st.column_config.TextColumn("Label actuel"),
+            },
+        )
+
+        selected_rows = []
+        if selected and hasattr(selected, "selection"):
+            selected_rows = selected.selection.rows or []
+
+        options = ["— choisir —"] + [l for l in st.session_state.labels_list if l]
+        col_sel, col_btn = st.columns([3, 1])
+        with col_sel:
+            chosen = st.selectbox(
+                "Label", options=options, key="batch_label_sel", label_visibility="collapsed"
+            )
+        with col_btn:
+            label_to_apply = chosen if chosen != "— choisir —" else ""
+            btn_label = f"Appliquer ({len(selected_rows)})" if selected_rows else "Appliquer"
+            if st.button(btn_label, key="btn_batch_apply", use_container_width=True):
+                if not selected_rows:
+                    st.warning("Sélectionne au moins un post.")
+                elif not label_to_apply:
+                    st.warning("Choisis un label.")
+                else:
+                    with st.spinner("Mise à jour..."):
+                        for row_idx in selected_rows:
+                            post_id = str(self.df["id"].iloc[row_idx])
+                            self.supabase.table("instagram_organic_posts").update(
+                                {"labels": [label_to_apply]}
+                            ).eq("user_id", self.user_id).eq("id", post_id).execute()
+                    clear_fn = st.session_state.get("_posts_cache_clear")
+                    if clear_fn:
+                        clear_fn()
+                    st.success(f"✓ {len(selected_rows)} post(s) mis à jour avec « {label_to_apply} ».")
+                    st.rerun()
 
 
 # == DEBUG ==
