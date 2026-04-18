@@ -82,6 +82,32 @@ if __name__ == "__main__":
             tab_names.append("Instagram Organic")
         if has_meta_ads:
             tab_names.append("Meta Ads")
+        # ── Style des tabs ───────────────────────────────────────────────────
+        st.markdown("""
+        <style>
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab"] {
+            font-size: 15px;
+            font-weight: 500;
+            padding: 10px 24px;
+            border-radius: 6px 6px 0 0;
+            color: #6b6b6b;
+            background-color: #f5f5f5;
+            border: 1px solid #eaeaea;
+            border-bottom: none;
+        }
+        .stTabs [data-baseweb="tab"]:hover {
+            color: #0066ff;
+            background-color: #f0f5ff;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #0066ff !important;
+            background-color: #ffffff !important;
+            border-color: #0066ff !important;
+            font-weight: 600 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         tabs = st.tabs(tab_names)
         tab_account = tabs[0]
         tab_insta = tabs[tab_names.index("Instagram Organic")] if "Instagram Organic" in tab_names else None

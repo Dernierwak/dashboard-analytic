@@ -52,7 +52,7 @@ class Labelling():
                     self.supabase.table("profiles").update({
                         "labelling": st.session_state.labels_list
                     }).eq("id", self.user_id).execute()
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
         with st.expander("Supprimer ou renommer"):
             to_delete = st.multiselect(
@@ -66,7 +66,7 @@ class Labelling():
                 self.supabase.table("profiles").update({
                     "labelling": st.session_state.labels_list
                 }).eq("id", self.user_id).execute()
-                st.rerun()
+                st.rerun(scope="fragment")
 
             st.divider()
 
@@ -94,7 +94,7 @@ class Labelling():
                 clear_fn = st.session_state.get("_posts_cache_clear")
                 if clear_fn:
                     clear_fn()
-                st.rerun()
+                st.rerun(scope="fragment")
 
     def _edit_labels_column(self):
         """Édition des labels directement dans le tableau — un label par post via SelectboxColumn."""
@@ -192,7 +192,7 @@ class Labelling():
                     if clear_fn:
                         clear_fn()
                     st.success(f"✓ {len(selected_rows)} post(s) mis à jour avec « {label_to_apply} ».")
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
 
 # == DEBUG ==
