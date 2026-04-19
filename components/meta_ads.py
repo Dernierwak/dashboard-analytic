@@ -29,29 +29,18 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        since_raw = st.date_input("Début", value=None, key="meta_ads_since")
-    with col2:
-        end_raw = st.date_input("Fin", value=None, key="meta_ads_end")
 
     if st.button("Récupérer les données Meta Ads", type="primary", key="btn_fetch_meta_ads"):
-        if not since_raw or not end_raw:
-            st.warning("Sélectionne une période.")
-            return
         if not ad_accounts:
             st.warning("Aucun compte publicitaire trouvé.")
             return
         with st.spinner("Chargement..."):
             ad_account_id = ad_accounts[0]["id"]
-            since = since_raw.strftime("%Y-%m-%d")
-            end = end_raw.strftime("%Y-%m-%d")
             url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
             params = {
                 "access_token": token,
                 "level": "ad",
                 "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,link_clicks,spend,date_start",
-                "time_range": json.dumps({"since": since, "until": end}),
                 "time_increment": 1,
             }
             result = requests.get(url=url, params=params).json()
