@@ -10,6 +10,15 @@ def show_sidebar(client, session, is_paid):
         st.markdown(f"**{session.user.email}**")
         st.caption(f"Plan : {'Pro' if is_paid else 'Gratuit — 10 posts max'}")
 
+        if is_paid:
+            if st.button("Annuler l'abonnement", type="tertiary", key="btn_cancel_sub"):
+                if cancel_subscription(session.user.email):
+                    client.table("profiles").update({"is_paid": False}).eq("id", session.user.id).execute()
+                    st.success("Abonnement annulé.")
+                    st.rerun()
+                else:
+                    st.error("Aucun abonnement actif trouvé.")
+
         if not is_paid:
             st.divider()
             st.markdown("**Passez au Pro**")
@@ -39,16 +48,6 @@ def show_sidebar(client, session, is_paid):
                 if st.button("Annuler", width="stretch"):
                     del st.session_state["checkout_url"]
                     st.rerun()
-
-        if is_paid:
-            st.divider()
-            if st.button("Annuler l'abonnement", type="tertiary"):
-                if cancel_subscription(session.user.email):
-                    client.table("profiles").update({"is_paid": False}).eq("id", session.user.id).execute()
-                    st.success("Abonnement annulé.")
-                    st.rerun()
-                else:
-                    st.error("Aucun abonnement actif trouvé.")
 
         st.markdown("""
         <style>

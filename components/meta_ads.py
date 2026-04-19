@@ -51,26 +51,23 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
 
         # Fetch incrémental : depuis la dernière date en Supabase
+        from datetime import date, timedelta
         latest_date = fetch_meta_ads_latest_date(supabase, user_id) if supabase and user_id else None
         if latest_date:
-            from datetime import date, timedelta
             since = (date.fromisoformat(latest_date) + timedelta(days=1)).isoformat()
-            time_range = {"since": since, "until": date.today().isoformat()}
-            params = {
-                "access_token": token,
-                "level": "ad",
-                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-                "time_increment": 1,
-                "time_range": json.dumps(time_range),
-            }
+            until = date.today().isoformat()
         else:
-            params = {
-                "access_token": token,
-                "level": "ad",
-                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-                "time_increment": 1,
-                "date_preset": "last_30d",
-            }
+            since = (date.today() - timedelta(days=365)).isoformat()
+            until = date.today().isoformat()
+        time_range = {"since": since, "until": until}
+        st.caption(f"🔍 DEBUG — Fetch du {since} au {until}")
+        params = {
+            "access_token": token,
+            "level": "ad",
+            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+            "time_increment": 1,
+            "time_range": json.dumps(time_range),
+        }
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
         if "error" in result:
