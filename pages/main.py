@@ -12,6 +12,7 @@ from components.account_tab import show_account_tab
 from components.instagram_tab import show_instagram_tab
 from components.meta_ads import show_meta_ads_tab
 from components.schedule import schedule
+from scripts.fetch_data import fetch_meta_ads
 
 
 if __name__ == "__main__":
@@ -55,6 +56,16 @@ if __name__ == "__main__":
             acc_resp = client.table("connected_accounts").select("meta_token").eq("id", active_account_id).execute()
             if acc_resp.data:
                 st.session_state["meta_long_token"] = acc_resp.data[0]["meta_token"]
+
+        # Charger Meta Ads depuis Supabase si pas en session
+        if "meta_ads_df" not in st.session_state:
+            try:
+                import pandas as pd
+                ads_data = fetch_meta_ads(client, user_id)
+                if ads_data:
+                    st.session_state["meta_ads_df"] = pd.DataFrame(ads_data)
+            except Exception:
+                pass
 
         # Sélection page Facebook (bloque le render si nécessaire)
         handle_meta_page_selection(client, user_id)

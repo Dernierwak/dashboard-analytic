@@ -280,7 +280,8 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     # ── 5. Tableau détaillé ─────────────────────────────────────────────────
     st.markdown("#### Tableau détaillé")
 
-    df_table = df_view[["campaign_name", "adset_name", "ad_name", "impressions", "clicks", "spend"]].copy()
+    available_cols = [c for c in ["campaign_name", "adset_name", "ad_name", "impressions", "clicks", "reach", "link_clicks", "spend"] if c in df_view.columns]
+    df_table = df_view[available_cols].copy()
     df_table["CTR (%)"] = df_table.apply(
         lambda r: round(r["clicks"] / r["impressions"] * 100, 2) if r["impressions"] > 0 else 0.0, axis=1
     )
@@ -299,6 +300,8 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
         "ad_name": "Publicité",
         "impressions": "Impressions",
         "clicks": "Clics",
+        "reach": "Reach",
+        "link_clicks": "Clics lien",
         "spend": "Dépenses (€)",
     })
 
