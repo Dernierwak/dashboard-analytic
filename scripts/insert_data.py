@@ -21,8 +21,13 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
     if not rows:
         return
 
+    seen = set()
     records = []
     for row in rows:
+        key = (row.get("date_start"), row.get("ad_name", ""))
+        if key in seen:
+            continue
+        seen.add(key)
         records.append({
             "user_id": user_id,
             "date_start": row.get("date_start"),
