@@ -43,7 +43,7 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
 
     with pt_meta_ads:
         if "meta_long_token" in st.session_state:
-            meta_ads_source_fragment(token=st.session_state["meta_long_token"])
+            meta_ads_source_fragment(token=st.session_state["meta_long_token"], supabase=client, user_id=user_id)
         else:
             st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte connecté.</div>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)

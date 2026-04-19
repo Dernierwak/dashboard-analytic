@@ -2,10 +2,15 @@ import streamlit as st
 import requests
 import json
 import pandas as pd
+import plotly.express as px
+from datetime import date, timedelta
+
+from scripts.insert_data import upsert_meta_ads
+from scripts.fetch_data import fetch_meta_ads
 
 
 @st.fragment
-def meta_ads_source_fragment(token):
+def meta_ads_source_fragment(token, supabase=None, user_id=None):
     r = requests.get(
         "https://graph.facebook.com/v24.0/me/adaccounts",
         params={"fields": "id,name", "access_token": token}
@@ -45,7 +50,7 @@ def meta_ads_source_fragment(token):
             params = {
                 "access_token": token,
                 "level": "ad",
-                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,spend,date_start",
+                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,link_clicks,spend,date_start",
                 "time_range": json.dumps({"since": since, "until": end}),
                 "time_increment": 1,
             }
@@ -57,15 +62,234 @@ def meta_ads_source_fragment(token):
                 rows += page.get("data", [])
                 next_url = page.get("paging", {}).get("next")
             if rows:
-                st.session_state["meta_ads_df"] = pd.DataFrame(rows)
+                # 1. Persister dans Supabase
+                if supabase and user_id:
+                    try:
+                        upsert_meta_ads(supabase, user_id, rows)
+                    except Exception as e:
+                        st.warning(f"Sauvegarde Supabase échouée : {e}")
+
+                # 2. Recharger depuis Supabase (historique complet)
+                if supabase and user_id:
+                    try:
+                        persisted = fetch_meta_ads(supabase, user_id)
+                        df_loaded = pd.DataFrame(persisted) if persisted else pd.DataFrame(rows)
+                    except Exception:
+                        df_loaded = pd.DataFrame(rows)
+                else:
+                    df_loaded = pd.DataFrame(rows)
+
+                st.session_state["meta_ads_df"] = df_loaded
                 st.rerun()
             else:
                 st.info("Aucune donnée sur cette période.")
                 st.session_state.pop("meta_ads_df", None)
 
 
+def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
+    """Dashboard complet Meta Ads avec filtres, KPIs, graphiques et tableau."""
+
+    # ── Vérification données ────────────────────────────────────────────────
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        st.info("Connectez votre compte Meta Ads dans 'Mon compte' pour voir les données.")
+        return
+
+    # ── Typage des colonnes numériques ──────────────────────────────────────
+    for col in ["impressions", "clicks", "spend"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
+
+    # ── 1. Filtres ──────────────────────────────────────────────────────────
+    col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
+
+    with col_f1:
+        default_since = date.today() - timedelta(days=30)
+        default_until = date.today()
+        date_range = st.date_input(
+            "Période",
+            value=(default_since, default_until),
+            key="mad_date_range",
+        )
+
+    with col_f2:
+        all_campaigns = sorted(df["campaign_name"].dropna().unique().tolist())
+        selected_campaigns = st.multiselect(
+            "Campagnes",
+            options=all_campaigns,
+            placeholder="Toutes",
+            key="mad_campaigns",
+        )
+
+    # Appliquer le filtre date
+    df_view = df.copy()
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        since_dt = pd.Timestamp(date_range[0])
+        until_dt = pd.Timestamp(date_range[1])
+        df_view = df_view[
+            (df_view["date_start"] >= since_dt) & (df_view["date_start"] <= until_dt)
+        ]
+
+    # Appliquer le filtre campagnes
+    if selected_campaigns:
+        df_view = df_view[df_view["campaign_name"].isin(selected_campaigns)]
+
+    if df_view.empty:
+        st.warning("Aucune donnée sur cette période / ces campagnes.")
+        return
+
+    # ── 2. KPIs ─────────────────────────────────────────────────────────────
+    total_spend = df_view["spend"].sum()
+    total_clicks = df_view["clicks"].sum()
+    total_impressions = df_view["impressions"].sum()
+
+    avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
+    avg_cpc = (total_spend / total_clicks) if total_clicks > 0 else 0.0
+    avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("💸 Dépenses totales", f"{total_spend:,.2f} €")
+    k2.metric("🖱️ CTR moyen", f"{avg_ctr:.2f} %")
+    k3.metric("💰 CPC moyen", f"{avg_cpc:.2f} €")
+    k4.metric("📣 CPM moyen", f"{avg_cpm:.2f} €")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 3. Évolution temporelle ─────────────────────────────────────────────
+    st.markdown("#### Évolution temporelle")
+
+    metric_options = {
+        "Dépenses (€)": "spend",
+        "CTR (%)": "ctr",
+        "CPC (€)": "cpc",
+        "Impressions": "impressions",
+    }
+    selected_metric_label = st.selectbox(
+        "Métrique",
+        options=list(metric_options.keys()),
+        key="mad_trend_metric",
+        label_visibility="collapsed",
+    )
+    selected_metric = metric_options[selected_metric_label]
+
+    df_daily = (
+        df_view.groupby("date_start", as_index=False)
+        .agg(spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
+    )
+    df_daily["ctr"] = df_daily.apply(
+        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1
+    )
+    df_daily["cpc"] = df_daily.apply(
+        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1
+    )
+    df_daily = df_daily.sort_values("date_start")
+
+    fig_trend = px.line(
+        df_daily,
+        x="date_start",
+        y=selected_metric,
+        markers=True,
+        labels={"date_start": "Date", selected_metric: selected_metric_label},
+        color_discrete_sequence=["#0066ff"],
+    )
+    fig_trend.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=280,
+        xaxis_title=None,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    fig_trend.update_xaxes(showgrid=False)
+    fig_trend.update_yaxes(gridcolor="#f0f0f0")
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 4. Performance par campagne ─────────────────────────────────────────
+    st.markdown("#### Performance par campagne")
+
+    df_camp = (
+        df_view.groupby("campaign_name", as_index=False)
+        .agg(spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
+    )
+    df_camp["ctr"] = df_camp.apply(
+        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1
+    )
+    df_camp = df_camp.sort_values("spend", ascending=True)
+
+    col_bar1, col_bar2 = st.columns(2)
+
+    with col_bar1:
+        fig_spend = px.bar(
+            df_camp,
+            x="spend",
+            y="campaign_name",
+            orientation="h",
+            labels={"spend": "Dépenses (€)", "campaign_name": ""},
+            color_discrete_sequence=["#0066ff"],
+            title="Dépenses par campagne",
+        )
+        fig_spend.update_layout(
+            margin=dict(l=0, r=0, t=40, b=0),
+            height=300,
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+        )
+        fig_spend.update_xaxes(gridcolor="#f0f0f0")
+        fig_spend.update_yaxes(showgrid=False)
+        st.plotly_chart(fig_spend, use_container_width=True)
+
+    with col_bar2:
+        fig_ctr = px.bar(
+            df_camp,
+            x="ctr",
+            y="campaign_name",
+            orientation="h",
+            labels={"ctr": "CTR (%)", "campaign_name": ""},
+            color_discrete_sequence=["#00c49f"],
+            title="CTR par campagne",
+        )
+        fig_ctr.update_layout(
+            margin=dict(l=0, r=0, t=40, b=0),
+            height=300,
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+        )
+        fig_ctr.update_xaxes(gridcolor="#f0f0f0")
+        fig_ctr.update_yaxes(showgrid=False)
+        st.plotly_chart(fig_ctr, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 5. Tableau détaillé ─────────────────────────────────────────────────
+    st.markdown("#### Tableau détaillé")
+
+    df_table = df_view[["campaign_name", "adset_name", "ad_name", "impressions", "clicks", "spend"]].copy()
+    df_table["CTR (%)"] = df_table.apply(
+        lambda r: round(r["clicks"] / r["impressions"] * 100, 2) if r["impressions"] > 0 else 0.0, axis=1
+    )
+    df_table["CPC (€)"] = df_table.apply(
+        lambda r: round(r["spend"] / r["clicks"], 2) if r["clicks"] > 0 else 0.0, axis=1
+    )
+    df_table["CPM (€)"] = df_table.apply(
+        lambda r: round(r["spend"] / r["impressions"] * 1000, 2) if r["impressions"] > 0 else 0.0, axis=1
+    )
+    df_table["spend"] = df_table["spend"].round(2)
+    df_table["impressions"] = df_table["impressions"].astype(int)
+    df_table["clicks"] = df_table["clicks"].astype(int)
+    df_table = df_table.rename(columns={
+        "campaign_name": "Campagne",
+        "adset_name": "Ensemble",
+        "ad_name": "Publicité",
+        "impressions": "Impressions",
+        "clicks": "Clics",
+        "spend": "Dépenses (€)",
+    })
+
+    st.dataframe(df_table, use_container_width=True, hide_index=True)
+
+
 def show_meta_ads_tab():
-    if "meta_ads_df" in st.session_state:
-        st.dataframe(st.session_state["meta_ads_df"], use_container_width=True, hide_index=True)
-    else:
-        st.info("Aucune donnée. Allez dans Mon compte → Sources → Meta Ads pour lancer un fetch.")
+    df = st.session_state.get("meta_ads_df")
+    show_meta_ads_dashboard(df)
