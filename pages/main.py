@@ -38,7 +38,13 @@ if __name__ == "__main__":
         user_id = session.user.id
 
         # Upsert profil
-        client.table("profiles").upsert({"id": user_id, "email": session.user.email}).execute()
+        try:
+            client.table("profiles").upsert(
+                {"id": user_id, "email": session.user.email},
+                on_conflict="id"
+            ).execute()
+        except Exception as e:
+            st.warning(f"Profil non mis à jour : {e}")
 
         # Charger le profil
         profile_resp = client.table("profiles").select("is_paid, active_account_id, fetch_schedule").eq("id", user_id).execute()
