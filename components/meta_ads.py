@@ -1,3 +1,5 @@
+import time
+
 import streamlit as st
 import requests
 import json
@@ -33,55 +35,63 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         if not ad_accounts:
             st.warning("Aucun compte publicitaire trouvé.")
             return
-        with st.spinner("Chargement..."):
-            ad_account_id = ad_accounts[0]["id"]
-            url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
-            params = {
-                "access_token": token,
-                "level": "ad",
-                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-                "time_increment": 1,
-                "date_preset": "maximum",
-            }
-            result = requests.get(url=url, params=params).json()
-            if "error" in result:
-                st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')} (code {result['error'].get('code', '?')})")
-                return
-            rows = result.get("data", [])
-            next_url = result.get("paging", {}).get("next")
-            while next_url:
-                page = requests.get(next_url).json()
-                rows += page.get("data", [])
-                next_url = page.get("paging", {}).get("next")
-            for row in rows:
-                link_click_item = next(
-                    (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
-                    None,
-                )
-                row["link_clicks"] = int(link_click_item.get("value", 0)) if link_click_item else 0
-            if rows:
-                # 1. Persister dans Supabase
-                if supabase and user_id:
-                    try:
-                        upsert_meta_ads(supabase, user_id, rows)
-                    except Exception as e:
-                        st.warning(f"Sauvegarde Supabase échouée : {e}")
+        progress_bar = st.progress(0, text="Connexion à Meta Ads...")
+        ad_account_id = ad_accounts[0]["id"]
+        url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
+        params = {
+            "access_token": token,
+            "level": "ad",
+            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+            "time_increment": 1,
+            "date_preset": "last_year",
+        }
+        progress_bar.progress(20, text="Compte trouvé, récupération des données...")
+        result = requests.get(url=url, params=params).json()
+        if "error" in result:
+            st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')} (code {result['error'].get('code', '?')})")
+            progress_bar.empty()
+            return
+        rows = result.get("data", [])
+        progress_bar.progress(50, text=f"Chargement des données... ({len(rows)} lignes)")
+        next_url = result.get("paging", {}).get("next")
+        while next_url:
+            page = requests.get(next_url).json()
+            rows += page.get("data", [])
+            next_url = page.get("paging", {}).get("next")
+            progress_bar.progress(min(80, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
+        for row in rows:
+            link_click_item = next(
+                (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
+                None,
+            )
+            row["link_clicks"] = int(link_click_item.get("value", 0)) if link_click_item else 0
+        if rows:
+            progress_bar.progress(100, text=f"✓ {len(rows)} entrées chargées")
+            time.sleep(0.5)
+            progress_bar.empty()
+            # 1. Persister dans Supabase
+            if supabase and user_id:
+                try:
+                    upsert_meta_ads(supabase, user_id, rows)
+                except Exception as e:
+                    st.warning(f"Sauvegarde Supabase échouée : {e}")
 
-                # 2. Recharger depuis Supabase (historique complet)
-                if supabase and user_id:
-                    try:
-                        persisted = fetch_meta_ads(supabase, user_id)
-                        df_loaded = pd.DataFrame(persisted) if persisted else pd.DataFrame(rows)
-                    except Exception:
-                        df_loaded = pd.DataFrame(rows)
-                else:
+            # 2. Recharger depuis Supabase (historique complet)
+            if supabase and user_id:
+                try:
+                    persisted = fetch_meta_ads(supabase, user_id)
+                    df_loaded = pd.DataFrame(persisted) if persisted else pd.DataFrame(rows)
+                except Exception:
                     df_loaded = pd.DataFrame(rows)
-
-                st.session_state["meta_ads_df"] = df_loaded
-                st.rerun()
             else:
-                st.info("Aucune donnée disponible.")
-                st.session_state.pop("meta_ads_df", None)
+                df_loaded = pd.DataFrame(rows)
+
+            st.session_state["meta_ads_df"] = df_loaded
+            st.rerun()
+        else:
+            progress_bar.empty()
+            st.info("Aucune donnée disponible.")
+            st.session_state.pop("meta_ads_df", None)
 
 
 def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
