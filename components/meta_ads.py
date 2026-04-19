@@ -7,7 +7,8 @@ import pandas as pd
 import plotly.express as px
 
 from scripts.insert_data import upsert_meta_ads
-from scripts.fetch_data import fetch_meta_ads
+from scripts.fetch_data import fetch_meta_ads, fetch_meta_ads_latest_date
+from components.insights_panel import show_insights_panel
 
 
 @st.fragment
@@ -48,13 +49,28 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         progress_bar = st.progress(0, text="Connexion à Meta Ads...")
         ad_account_id = ad_accounts[0]["id"]
         url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
-        params = {
-            "access_token": token,
-            "level": "ad",
-            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-            "time_increment": 1,
-            "date_preset": "last_30d",
-        }
+
+        # Fetch incrémental : depuis la dernière date en Supabase
+        latest_date = fetch_meta_ads_latest_date(supabase, user_id) if supabase and user_id else None
+        if latest_date:
+            from datetime import date, timedelta
+            since = (date.fromisoformat(latest_date) + timedelta(days=1)).isoformat()
+            time_range = {"since": since, "until": date.today().isoformat()}
+            params = {
+                "access_token": token,
+                "level": "ad",
+                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+                "time_increment": 1,
+                "time_range": json.dumps(time_range),
+            }
+        else:
+            params = {
+                "access_token": token,
+                "level": "ad",
+                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+                "time_increment": 1,
+                "date_preset": "last_30d",
+            }
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
         if "error" in result:
@@ -319,6 +335,12 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     st.dataframe(df_table, use_container_width=True, hide_index=True)
 
 
-def show_meta_ads_tab():
+def show_meta_ads_tab(is_paid: bool = False):
     df = st.session_state.get("meta_ads_df")
     show_meta_ads_dashboard(df)
+    show_insights_panel(
+        df_meta=df,
+        is_paid=is_paid,
+        section="meta_ads",
+        use_sidebar=False,
+    )

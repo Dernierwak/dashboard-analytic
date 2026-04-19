@@ -158,4 +158,4 @@ if __name__ == "__main__":
         if tab_meta_ads:
             with tab_meta_ads:
                 st.session_state["active_section"] = "meta_ads"
-                show_meta_ads_tab()
+                show_meta_ads_tab(is_paid=is_paid)

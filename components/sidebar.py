@@ -85,4 +85,5 @@ def show_sidebar(client, session, is_paid):
         df_meta = pd.DataFrame()
 
     section = st.session_state.get("active_section")
-    show_insights_panel(df_instagram=df_instagram, df_meta=df_meta, is_paid=is_paid, section=section)
+    if section != "meta_ads":
+        show_insights_panel(df_instagram=df_instagram, df_meta=df_meta, is_paid=is_paid, section=section, use_sidebar=True)

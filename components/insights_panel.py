@@ -225,14 +225,16 @@ def show_insights_panel(
     is_paid: bool = False,
     section: str | None = None,
     df_filtered=None,
+    use_sidebar: bool = True,
 ):
-    """Panneau 'Insights de la semaine' dans la sidebar.
-    Visible uniquement pour les utilisateurs Pro (is_paid=True).
-    section : 'instagram' | 'meta_ads' | None  — filtre les données analysées.
-    Cache 1h par section dans st.session_state.
+    """Panneau Insights IA.
+    use_sidebar=True  → rendu dans st.sidebar (Instagram tab)
+    use_sidebar=False → rendu dans la page principale (Meta Ads tab)
     """
     if not is_paid:
         return
+
+    ctx = st.sidebar if use_sidebar else st
 
     # ── Titre contextuel ────────────────────────────────────────────────────
     titles = {
@@ -241,8 +243,8 @@ def show_insights_panel(
     }
     title = titles.get(section, "💡 Insights de la semaine")
 
-    st.sidebar.divider()
-    st.sidebar.markdown(f"**{title}**")
+    ctx.divider()
+    ctx.markdown(f"**{title}**")
 
     # ── Normaliser les inputs ───────────────────────────────────────────────
     if isinstance(df_instagram, list):
@@ -257,11 +259,11 @@ def show_insights_panel(
     use_meta = not df_meta.empty and section != "instagram"
 
     if not use_insta and not use_meta:
-        st.sidebar.caption("Connectez vos données pour voir vos insights.")
+        ctx.caption("Connectez vos données pour voir vos insights.")
         return
 
     # ── Bouton Générer les insights ─────────────────────────────────────────
-    generate = st.sidebar.button(
+    generate = ctx.button(
         "✨ Générer les insights",
         key=f"btn_generate_insights_{section}",
         use_container_width=True,
@@ -286,39 +288,36 @@ def show_insights_panel(
             ts = datetime.fromisoformat(cached_at_str).strftime("%H:%M")
         except ValueError:
             ts = "—"
-        st.sidebar.markdown(
+        ctx.markdown(
             _render_insights_html(cached_content, ts),
             unsafe_allow_html=True,
         )
         return
 
     if not generate:
-        st.sidebar.caption("Cliquez sur 'Générer les insights' pour analyser vos données.")
+        ctx.caption("Cliquez sur 'Générer les insights' pour analyser vos données.")
         return
 
     # ── Générer (sur clic uniquement) ────────────────────────────────────────
-    with st.sidebar:
-        with st.spinner("Génération des insights..."):
-            insta_summary = _summarize_instagram(df_instagram) if use_insta else None
-            meta_summary = _summarize_meta(df_meta, df_filtered=df_filtered) if use_meta else None
-            prompt = _build_prompt(insta_summary, meta_summary, section=section)
+    with st.spinner("Génération des insights..."):
+        insta_summary = _summarize_instagram(df_instagram) if use_insta else None
+        meta_summary = _summarize_meta(df_meta, df_filtered=df_filtered) if use_meta else None
+        prompt = _build_prompt(insta_summary, meta_summary, section=section)
 
-            if not prompt:
-                st.caption("Données insuffisantes pour générer des insights.")
-                return
+        if not prompt:
+            ctx.caption("Données insuffisantes pour générer des insights.")
+            return
 
-            content = _call_gemini(prompt)
+        content = _call_gemini(prompt)
 
-            if content:
-                now_iso = datetime.utcnow().isoformat()
-                st.session_state[cache_key] = {
-                    "content": content,
-                    "generated_at": now_iso,
-                }
-                ts = datetime.utcnow().strftime("%H:%M")
-                st.markdown(
-                    _render_insights_html(content, ts),
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.caption("Impossible de générer les insights pour le moment.")
+        if content:
+            now_iso = datetime.utcnow().isoformat()
+            st.session_state[cache_key] = {
+                "content": content,
+                "generated_at": now_iso,
+            }
+            ts = datetime.utcnow().strftime("%H:%M")
+            ctx.markdown(
+                _render_insights_html(content, ts),
+                unsafe_allow_html=True,
+            )
