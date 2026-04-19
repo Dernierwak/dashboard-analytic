@@ -62,12 +62,15 @@ def _summarize_instagram(df: pd.DataFrame) -> dict | None:
     }
 
 
-def _summarize_meta(df: pd.DataFrame) -> dict | None:
-    """Agrège les données Meta Ads en un résumé compact pour le prompt."""
-    if df is None or df.empty:
+def _summarize_meta(df: pd.DataFrame, df_filtered: pd.DataFrame | None = None) -> dict | None:
+    """Agrège les données Meta Ads en un résumé compact pour le prompt.
+    Si df_filtered est fourni (vue filtrée du dashboard), il est utilisé à la place de df.
+    """
+    source = df_filtered if (df_filtered is not None and not df_filtered.empty) else df
+    if source is None or source.empty:
         return None
 
-    df = df.copy()
+    df = source.copy()
     for col in ["impressions", "clicks", "spend", "reach", "link_clicks"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -221,6 +224,7 @@ def show_insights_panel(
     df_meta=None,
     is_paid: bool = False,
     section: str | None = None,
+    df_filtered=None,
 ):
     """Panneau 'Insights de la semaine' dans la sidebar.
     Visible uniquement pour les utilisateurs Pro (is_paid=True).
@@ -256,10 +260,10 @@ def show_insights_panel(
         st.sidebar.caption("Connectez vos données pour voir vos insights.")
         return
 
-    # ── Bouton Actualiser ───────────────────────────────────────────────────
-    force_refresh = st.sidebar.button(
-        "🔄 Actualiser",
-        key=f"btn_refresh_insights_{section}",
+    # ── Bouton Générer les insights ─────────────────────────────────────────
+    generate = st.sidebar.button(
+        "✨ Générer les insights",
+        key=f"btn_generate_insights_{section}",
         use_container_width=True,
     )
 
@@ -277,7 +281,7 @@ def show_insights_panel(
         except ValueError:
             is_fresh = False
 
-    if is_fresh and not force_refresh:
+    if is_fresh and not generate:
         try:
             ts = datetime.fromisoformat(cached_at_str).strftime("%H:%M")
         except ValueError:
@@ -288,11 +292,15 @@ def show_insights_panel(
         )
         return
 
-    # ── Générer ─────────────────────────────────────────────────────────────
+    if not generate:
+        st.sidebar.caption("Cliquez sur 'Générer les insights' pour analyser vos données.")
+        return
+
+    # ── Générer (sur clic uniquement) ────────────────────────────────────────
     with st.sidebar:
         with st.spinner("Génération des insights..."):
             insta_summary = _summarize_instagram(df_instagram) if use_insta else None
-            meta_summary = _summarize_meta(df_meta) if use_meta else None
+            meta_summary = _summarize_meta(df_meta, df_filtered=df_filtered) if use_meta else None
             prompt = _build_prompt(insta_summary, meta_summary, section=section)
 
             if not prompt:

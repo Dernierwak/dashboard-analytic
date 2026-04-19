@@ -107,22 +107,49 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
-    # ── 1. Filtres ──────────────────────────────────────────────────────────
-    all_campaigns = sorted(df["campaign_name"].dropna().unique().tolist())
-    selected_campaigns = st.multiselect(
-        "Campagnes",
-        options=all_campaigns,
-        placeholder="Toutes",
-        key="mad_campaigns",
-    )
-
-    # Appliquer le filtre campagnes
+    # ── 1. Filtres (4 colonnes, cascade) ────────────────────────────────────
+    fc1, fc2, fc3, fc4 = st.columns(4)
     df_view = df.copy()
-    if selected_campaigns:
-        df_view = df_view[df_view["campaign_name"].isin(selected_campaigns)]
+
+    with fc1:
+        if "status" in df.columns:
+            sel_status = st.multiselect("Statut", options=["En ligne", "Pausée", "Archivée"], key="mad_status")
+            if sel_status:
+                df_view = df_view[df_view["status"].isin(sel_status)]
+        else:
+            st.multiselect("Statut", options=[], key="mad_status", disabled=True, placeholder="—")
+
+    with fc2:
+        sel_campaigns = st.multiselect(
+            "Campagne",
+            options=sorted(df["campaign_name"].dropna().unique()),
+            key="mad_campaigns",
+        )
+        if sel_campaigns:
+            df_view = df_view[df_view["campaign_name"].isin(sel_campaigns)]
+
+    with fc3:
+        sel_adsets = st.multiselect(
+            "Ad Set",
+            options=sorted(df_view["adset_name"].dropna().unique()),
+            key="mad_adsets",
+        )
+        if sel_adsets:
+            df_view = df_view[df_view["adset_name"].isin(sel_adsets)]
+
+    with fc4:
+        sel_ads = st.multiselect(
+            "Publicité",
+            options=sorted(df_view["ad_name"].dropna().unique()),
+            key="mad_ads",
+        )
+        if sel_ads:
+            df_view = df_view[df_view["ad_name"].isin(sel_ads)]
+
+    st.session_state["meta_ads_df_view"] = df_view
 
     if df_view.empty:
-        st.warning("Aucune donnée pour ces campagnes.")
+        st.warning("Aucune donnée pour ces filtres.")
         return
 
     # ── 2. KPIs ─────────────────────────────────────────────────────────────
