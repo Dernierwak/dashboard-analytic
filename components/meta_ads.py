@@ -43,7 +43,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             "level": "ad",
             "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
             "time_increment": 1,
-            "date_preset": "last_year",
+            "date_preset": "last_30d",
         }
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
