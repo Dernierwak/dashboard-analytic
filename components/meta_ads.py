@@ -70,6 +70,9 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                     st.success(f"✅ {len(rows)} lignes sauvegardées dans Supabase")
                 except Exception as e:
                     st.error(f"❌ Sauvegarde Supabase échouée : {e}")
+                    st.stop()
+            else:
+                st.warning(f"⚠️ supabase={supabase is not None}, user_id={user_id}")
 
             # 2. Recharger depuis Supabase (historique complet)
             if supabase and user_id:
@@ -82,7 +85,6 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 df_loaded = pd.DataFrame(rows)
 
             st.session_state["meta_ads_df"] = df_loaded
-            st.rerun()
         else:
             progress_bar.empty()
             st.info("Aucune donnée disponible.")
