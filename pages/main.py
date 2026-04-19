@@ -85,26 +85,47 @@ if __name__ == "__main__":
         # ── Style des tabs ───────────────────────────────────────────────────
         st.markdown("""
         <style>
-        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        /* ── Tabs principaux (niveau 1) ─────────────────────────────── */
+        .stTabs [data-baseweb="tab-list"] { gap: 4px; }
         .stTabs [data-baseweb="tab"] {
             font-size: 15px;
             font-weight: 500;
-            padding: 10px 24px;
+            padding: 10px 22px;
             border-radius: 6px 6px 0 0;
-            color: #6b6b6b;
-            background-color: #f5f5f5;
-            border: 1px solid #eaeaea;
-            border-bottom: none;
+            color: #4b5563;
+            background: rgba(0,102,255,0.07);
+            border: none;
+            border-bottom: 2px solid transparent;
         }
         .stTabs [data-baseweb="tab"]:hover {
-            color: #0066ff;
-            background-color: #f0f5ff;
+            color: #0055cc;
+            background: rgba(0,102,255,0.12);
         }
         .stTabs [aria-selected="true"] {
-            color: #0066ff !important;
-            background-color: #ffffff !important;
-            border-color: #0066ff !important;
+            color: #0055cc !important;
+            background: rgba(0,102,255,0.15) !important;
+            border-bottom: 2px solid #0055cc !important;
             font-weight: 600 !important;
+        }
+        /* ── Sous-tabs imbriqués (Mon compte) → style Streamlit défaut ── */
+        .stTabs .stTabs [data-baseweb="tab"] {
+            background: transparent !important;
+            font-weight: 400 !important;
+            padding: 6px 12px !important;
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            color: inherit !important;
+            font-size: 14px !important;
+        }
+        .stTabs .stTabs [aria-selected="true"] {
+            background: transparent !important;
+            font-weight: 600 !important;
+            color: inherit !important;
+            border-bottom: 2px solid #ff4b4b !important;
+        }
+        .stTabs .stTabs [data-baseweb="tab"]:hover {
+            background: transparent !important;
+            color: inherit !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -114,13 +135,16 @@ if __name__ == "__main__":
         tab_meta_ads = tabs[tab_names.index("Meta Ads")] if "Meta Ads" in tab_names else None
 
         with tab_account:
+            st.session_state["active_section"] = "account"
             show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data)
 
         if tab_insta:
             with tab_insta:
+                st.session_state["active_section"] = "instagram"
                 insta_biz_id = insta_accounts[0].get("instagram_business_id") if insta_accounts else None
                 show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id)
 
         if tab_meta_ads:
             with tab_meta_ads:
+                st.session_state["active_section"] = "meta_ads"
                 show_meta_ads_tab()
