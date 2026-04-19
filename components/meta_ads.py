@@ -39,7 +39,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             params = {
                 "access_token": token,
                 "level": "ad",
-                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,link_clicks,spend,date_start",
+                "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
                 "time_increment": 1,
                 "date_preset": "maximum",
             }
@@ -53,6 +53,12 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 page = requests.get(next_url).json()
                 rows += page.get("data", [])
                 next_url = page.get("paging", {}).get("next")
+            for row in rows:
+                link_click_item = next(
+                    (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
+                    None,
+                )
+                row["link_clicks"] = int(link_click_item.get("value", 0)) if link_click_item else 0
             if rows:
                 # 1. Persister dans Supabase
                 if supabase and user_id:
