@@ -51,14 +51,8 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')} (code {result['error'].get('code', '?')})")
             progress_bar.empty()
             return
-        rows = result.get("data", [])
+        rows = result.get("data", [])[:10]  # TEST : limite à 10 lignes
         progress_bar.progress(50, text=f"Chargement des données... ({len(rows)} lignes)")
-        next_url = result.get("paging", {}).get("next")
-        while next_url:
-            page = requests.get(next_url).json()
-            rows += page.get("data", [])
-            next_url = page.get("paging", {}).get("next")
-            progress_bar.progress(min(80, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
         for row in rows:
             link_click_item = next(
                 (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
@@ -73,8 +67,9 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             if supabase and user_id:
                 try:
                     upsert_meta_ads(supabase, user_id, rows)
+                    st.success(f"✅ {len(rows)} lignes sauvegardées dans Supabase")
                 except Exception as e:
-                    st.warning(f"Sauvegarde Supabase échouée : {e}")
+                    st.error(f"❌ Sauvegarde Supabase échouée : {e}")
 
             # 2. Recharger depuis Supabase (historique complet)
             if supabase and user_id:
