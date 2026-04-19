@@ -52,15 +52,20 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
         # Fetch incrémental : depuis la dernière date en Supabase
         from datetime import date, timedelta
+        today = date.today()
         latest_date = fetch_meta_ads_latest_date(supabase, user_id) if supabase and user_id else None
         if latest_date:
-            since = (date.fromisoformat(latest_date) + timedelta(days=1)).isoformat()
-            until = date.today().isoformat()
+            since = date.fromisoformat(latest_date) + timedelta(days=1)
         else:
-            since = (date.today() - timedelta(days=365)).isoformat()
-            until = date.today().isoformat()
-        time_range = {"since": since, "until": until}
-        st.caption(f"🔍 DEBUG — Fetch du {since} au {until}")
+            since = today - timedelta(days=365)
+
+        if since > today:
+            progress_bar.empty()
+            st.info("✅ Données déjà à jour.")
+            return
+
+        time_range = {"since": since.isoformat(), "until": today.isoformat()}
+        st.caption(f"🔍 DEBUG — Fetch du {since} au {today}")
         params = {
             "access_token": token,
             "level": "ad",
