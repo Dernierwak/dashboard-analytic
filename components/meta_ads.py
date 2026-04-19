@@ -41,7 +41,9 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    btn_label = "Rafraîchir les données Meta Ads" if st.session_state.get("meta_ads_df") is not None else "Récupérer les données Meta Ads"
+    has_data = st.session_state.get("meta_ads_df") is not None
+    btn_label = "Rafraîchir les données Meta Ads" if has_data else "Récupérer les données Meta Ads"
+    force_full = has_data and st.checkbox("Récupérer tout l'historique (1 an)", key="chk_force_full")
     if st.button(btn_label, type="primary", key="btn_fetch_meta_ads"):
         if not ad_accounts:
             st.warning("Aucun compte publicitaire trouvé.")
@@ -53,7 +55,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         # Fetch incrémental : depuis la dernière date en Supabase
         from datetime import date, timedelta
         today = date.today()
-        latest_date = fetch_meta_ads_latest_date(supabase, user_id) if supabase and user_id else None
+        latest_date = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
         if latest_date:
             since = date.fromisoformat(latest_date) + timedelta(days=1)
         else:
