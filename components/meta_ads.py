@@ -100,41 +100,21 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
     # ── 1. Filtres ──────────────────────────────────────────────────────────
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
-
-    with col_f1:
-        default_since = date.today() - timedelta(days=30)
-        default_until = date.today()
-        date_range = st.date_input(
-            "Période",
-            value=(default_since, default_until),
-            key="mad_date_range",
-        )
-
-    with col_f2:
-        all_campaigns = sorted(df["campaign_name"].dropna().unique().tolist())
-        selected_campaigns = st.multiselect(
-            "Campagnes",
-            options=all_campaigns,
-            placeholder="Toutes",
-            key="mad_campaigns",
-        )
-
-    # Appliquer le filtre date
-    df_view = df.copy()
-    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-        since_dt = pd.Timestamp(date_range[0])
-        until_dt = pd.Timestamp(date_range[1])
-        df_view = df_view[
-            (df_view["date_start"] >= since_dt) & (df_view["date_start"] <= until_dt)
-        ]
+    all_campaigns = sorted(df["campaign_name"].dropna().unique().tolist())
+    selected_campaigns = st.multiselect(
+        "Campagnes",
+        options=all_campaigns,
+        placeholder="Toutes",
+        key="mad_campaigns",
+    )
 
     # Appliquer le filtre campagnes
+    df_view = df.copy()
     if selected_campaigns:
         df_view = df_view[df_view["campaign_name"].isin(selected_campaigns)]
 
     if df_view.empty:
-        st.warning("Aucune donnée sur cette période / ces campagnes.")
+        st.warning("Aucune donnée pour ces campagnes.")
         return
 
     # ── 2. KPIs ─────────────────────────────────────────────────────────────

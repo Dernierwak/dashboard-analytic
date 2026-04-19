@@ -1,6 +1,9 @@
 import streamlit as st
+import pandas as pd
 
 from scripts.stripe import create_checkout_session, cancel_subscription
+from components.insights_panel import show_insights_panel
+
 
 def show_sidebar(client, session, is_paid):
     with st.sidebar:
@@ -73,3 +76,12 @@ def show_sidebar(client, session, is_paid):
             if "refresh_token" in st.query_params:
                 del st.query_params["refresh_token"]
             st.rerun()
+
+    # ── Insights IA (hors du with st.sidebar pour éviter le double contexte) ──
+    raw_results = st.session_state.get("results", [])
+    df_instagram = pd.DataFrame(raw_results) if raw_results else pd.DataFrame()
+    df_meta = st.session_state.get("meta_ads_df", pd.DataFrame())
+    if not isinstance(df_meta, pd.DataFrame):
+        df_meta = pd.DataFrame()
+
+    show_insights_panel(df_instagram=df_instagram, df_meta=df_meta, is_paid=is_paid)
