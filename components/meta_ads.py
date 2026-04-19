@@ -3,7 +3,6 @@ import requests
 import json
 import pandas as pd
 import plotly.express as px
-from datetime import date, timedelta
 
 from scripts.insert_data import upsert_meta_ads
 from scripts.fetch_data import fetch_meta_ads
@@ -71,7 +70,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 st.session_state["meta_ads_df"] = df_loaded
                 st.rerun()
             else:
-                st.info("Aucune donnée sur cette période.")
+                st.info("Aucune donnée disponible.")
                 st.session_state.pop("meta_ads_df", None)
 
 
