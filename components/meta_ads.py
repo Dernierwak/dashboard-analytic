@@ -43,7 +43,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             "level": "ad",
             "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
             "time_increment": 1,
-            "date_preset": "last_30d",
+            "date_preset": "last_year",
         }
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
@@ -51,8 +51,14 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')} (code {result['error'].get('code', '?')})")
             progress_bar.empty()
             return
-        rows = result.get("data", [])[:10]  # TEST : limite à 10 lignes
+        rows = result.get("data", [])
         progress_bar.progress(50, text=f"Chargement des données... ({len(rows)} lignes)")
+        next_url = result.get("paging", {}).get("next")
+        while next_url:
+            page = requests.get(next_url).json()
+            rows += page.get("data", [])
+            next_url = page.get("paging", {}).get("next")
+            progress_bar.progress(min(80, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
         for row in rows:
             link_click_item = next(
                 (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
