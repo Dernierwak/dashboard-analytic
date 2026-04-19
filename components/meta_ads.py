@@ -12,6 +12,15 @@ from scripts.fetch_data import fetch_meta_ads
 
 @st.fragment
 def meta_ads_source_fragment(token, supabase=None, user_id=None):
+    # Charger depuis Supabase si données déjà présentes
+    if supabase and user_id and "meta_ads_df" not in st.session_state:
+        try:
+            persisted = fetch_meta_ads(supabase, user_id)
+            if persisted:
+                st.session_state["meta_ads_df"] = pd.DataFrame(persisted)
+        except Exception:
+            pass
+
     r = requests.get(
         "https://graph.facebook.com/v24.0/me/adaccounts",
         params={"fields": "id,name", "access_token": token}
@@ -31,7 +40,8 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("Récupérer les données Meta Ads", type="primary", key="btn_fetch_meta_ads"):
+    btn_label = "Rafraîchir les données Meta Ads" if st.session_state.get("meta_ads_df") is not None else "Récupérer les données Meta Ads"
+    if st.button(btn_label, type="primary", key="btn_fetch_meta_ads"):
         if not ad_accounts:
             st.warning("Aucun compte publicitaire trouvé.")
             return
@@ -43,7 +53,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             "level": "ad",
             "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
             "time_increment": 1,
-            "date_preset": "last_year",
+            "date_preset": "last_30d",
         }
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
