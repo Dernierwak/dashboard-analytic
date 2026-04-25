@@ -10,6 +10,8 @@ DASHBOARD_CSS = """
     [data-testid="stHeader"] { background: #ffffff !important; border-bottom: 1px solid #eaeaea; }
     [data-testid="stSidebar"] { background: #fafafa !important; border-right: 1px solid #eaeaea; }
     [data-testid="stSidebar"] * { color: #37352f !important; }
+    /* Masquer la navigation automatique Streamlit */
+    [data-testid="stSidebarNav"] { display: none !important; }
 
     /* ── Typography ── */
     h1, h2, h3, h4 { color: #191919 !important; font-weight: 600 !important; }

@@ -12,6 +12,6 @@ def show_sidebar():
             unsafe_allow_html=True,
         )
 
-        st.page_link("landing.py", label="Accueil", icon="🏠")
-        st.page_link("pages/main.py", label="Dashboard", icon="📊")
-        st.page_link("pages/privacy.py", label="Politique de confidentialité", icon="🔒")
+        st.page_link("landing.py", label="Accueil")
+        st.page_link("pages/main.py", label="Dashboard")
+        st.page_link("pages/privacy.py", label="Politique de confidentialité")
