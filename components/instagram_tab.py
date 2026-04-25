@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.dashboard import show_dashboard, follower_module
+from components.dashboard import show_dashboard
 from scripts.insert_data import insert_instagram_org
 from meta_script.fetch_instagram import OrganicInstagramm
 
@@ -34,7 +34,5 @@ def fetch_instagram_fragment(client, user_id, is_paid, dash, instagram_business_
 
 
 def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=None):
-    follower_module(client=client, user_id=user_id)
-    st.divider()
     fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash, instagram_business_id=instagram_business_id)
     show_dashboard(client, user_id, is_paid=is_paid)

@@ -154,5 +154,42 @@ DASHBOARD_CSS = """
     .account-meta { font-size: 0.82rem; color: #6b6b6b !important; margin-top: 2px; }
     .post-metric { font-size: 1.5rem; font-weight: 700; color: #191919 !important; margin: 8px 0 4px; }
     .post-type { font-size: 0.78rem; color: #6b6b6b !important; }
+
+    /* ── KPI strip ── */
+    .kpi-strip-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .kpi-cell-strip {
+        flex: 1;
+        background: #fafaf9;
+        border: 1px solid rgba(0,0,0,0.07);
+        border-radius: 10px;
+        padding: 14px 16px;
+        min-width: 0;
+    }
+    .kpi-label-strip {
+        font-size: 11px;
+        font-weight: 500;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 6px;
+    }
+    .kpi-value-strip {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0a0a0a;
+        line-height: 1.1;
+        font-family: 'DM Mono', 'Courier New', monospace;
+    }
+    .kpi-delta-strip {
+        font-size: 11px;
+        font-weight: 500;
+        margin-top: 4px;
+    }
+    .kpi-delta-strip.rp-pos { color: #1a7a4a; }
+    .kpi-delta-strip.rp-neg { color: #c0392b; }
 </style>
 """

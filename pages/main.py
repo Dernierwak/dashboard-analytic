@@ -82,7 +82,7 @@ if __name__ == "__main__":
             is_paid = is_paid or stripe_result
 
         # ── Sidebar ─────────────────────────────────────────────────────────
-        show_sidebar(client, session, is_paid)
+        show_sidebar()
 
         # ── Contenu principal ────────────────────────────────────────────────
         st.title("Dashboard Analytics")
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
         tab_names = ["Mon compte"]
         if insta_accounts:
-            tab_names.append("Instagram Organic")
+            tab_names.append("Instagram")
         if has_meta_ads:
             tab_names.append("Meta Ads")
         # ── Style des tabs ───────────────────────────────────────────────────
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         """, unsafe_allow_html=True)
         tabs = st.tabs(tab_names)
         tab_account = tabs[0]
-        tab_insta = tabs[tab_names.index("Instagram Organic")] if "Instagram Organic" in tab_names else None
+        tab_insta = tabs[tab_names.index("Instagram")] if "Instagram" in tab_names else None
         tab_meta_ads = tabs[tab_names.index("Meta Ads")] if "Meta Ads" in tab_names else None
 
         with tab_account:

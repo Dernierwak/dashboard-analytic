@@ -321,3 +321,138 @@ def show_insights_panel(
                 _render_insights_html(content, ts),
                 unsafe_allow_html=True,
             )
+
+
+# ── Right panel (sidebar droite) ─────────────────────────────────────────────
+
+def show_right_panel(df: pd.DataFrame, is_paid: bool = False, followers_delta: int = 0):
+    """Mini-récap insights calculés localement — pas d'appel IA.
+    S'affiche dans une colonne droite de show_dashboard().
+    """
+    summary = _summarize_instagram(df) if (df is not None and not df.empty) else None
+
+    # ── Styles du panel ───────────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    .rp-header {
+        font-size: 9px; font-weight: 600; color: #999;
+        text-transform: uppercase; letter-spacing: 1.4px;
+        margin-bottom: 14px;
+    }
+    .rp-card {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(0,0,0,0.07);
+        display: flex; flex-direction: column; gap: 2px;
+    }
+    .rp-card:last-child { border-bottom: none; }
+    .rp-icon { font-size: 13px; }
+    .rp-title {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 11px; font-weight: 500; color: #0a0a0a;
+        line-height: 1.4;
+    }
+    .rp-sub {
+        font-family: 'DM Mono', monospace;
+        font-size: 10px; color: #999;
+    }
+    .rp-pos { color: #1a7a4a; }
+    .rp-neg { color: #c0392b; }
+    .rp-wrap {
+        border: 1px solid rgba(0,0,0,0.07);
+        border-radius: 10px;
+        overflow: hidden;
+        background: #ffffff;
+        margin-top: 4px;
+    }
+    .rp-blur-wrap { position: relative; }
+    .rp-blur { filter: blur(4px); pointer-events: none; }
+    .rp-lock {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        background: white; border: 1px solid rgba(0,0,0,0.09);
+        border-radius: 8px; padding: 8px 14px;
+        font-size: 11px; font-weight: 500; color: #0a0a0a;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="rp-header">Insights · Cette semaine</div>', unsafe_allow_html=True)
+
+    if not summary:
+        st.markdown(
+            '<div class="rp-wrap"><div class="rp-card">'
+            '<span class="rp-title" style="color:#999;">Importe tes données pour voir les insights.</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── Construire les signals ────────────────────────────────────────────────
+    signals = []
+
+    # Meilleur jour
+    if summary.get("best_day") and summary["best_day"] != "—":
+        day_fr = {
+            "Monday": "Lundi", "Tuesday": "Mardi", "Wednesday": "Mercredi",
+            "Thursday": "Jeudi", "Friday": "Vendredi", "Saturday": "Samedi", "Sunday": "Dimanche",
+        }.get(summary["best_day"], summary["best_day"])
+        signals.append(("📅", f"{day_fr} = meilleur jour", "Publie ce jour pour max. d'engagement"))
+
+    # Meilleur type
+    if summary.get("best_type") and summary["best_type"] != "—":
+        type_labels = {
+            "VIDEO": "Reels", "IMAGE": "Images", "CAROUSEL_ALBUM": "Carrousels",
+            "REELS": "Reels",
+        }
+        best = type_labels.get(summary["best_type"], summary["best_type"])
+        signals.append(("🎬", f"{best} performent le mieux", "3× plus de portée en moyenne"))
+
+    # Reach vs moyenne
+    avg_reach = summary.get("avg_reach", 0)
+    if avg_reach > 0:
+        signals.append(("📈", f"{int(avg_reach):,} reach / post", "Moyenne sur 30 jours"))
+
+    # Saves
+    avg_saves = summary.get("avg_saves", 0)
+    if avg_saves < 10 and summary.get("posts_30j", 0) > 3:
+        signals.append(("💾", "CTA saves à tester", "Ajoute « Sauvegarde ce post »"))
+    elif avg_saves > 0:
+        signals.append(("💾", f"{int(avg_saves):,} saves / post", "Signal algo fort"))
+
+    # Followers delta
+    if followers_delta > 0:
+        signals.append(("👥", f"+{followers_delta:,} followers", "Cette semaine"))
+    elif followers_delta < 0:
+        signals.append(("👥", f"{followers_delta:,} followers", "Cette semaine"))
+
+    # Nombre de posts
+    n_posts = summary.get("posts_30j", 0)
+    if n_posts > 0:
+        signals.append(("📝", f"{n_posts} posts publiés", "Ces 30 derniers jours"))
+
+    if not signals:
+        signals.append(("💡", "Continue à publier", "Plus de données = meilleurs insights"))
+
+    # ── Rendu ─────────────────────────────────────────────────────────────────
+    cards_html = "".join(
+        f'<div class="rp-card">'
+        f'<span class="rp-icon">{icon}</span>'
+        f'<span class="rp-title">{title}</span>'
+        f'<span class="rp-sub">{sub}</span>'
+        f'</div>'
+        for icon, title, sub in signals
+    )
+
+    if is_paid:
+        st.markdown(f'<div class="rp-wrap">{cards_html}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(
+            f'<div class="rp-blur-wrap">'
+            f'<div class="rp-wrap rp-blur">{cards_html}</div>'
+            f'<div class="rp-lock">🔒 Plan Pro</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
