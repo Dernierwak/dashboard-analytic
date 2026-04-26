@@ -38,7 +38,8 @@ Nous collectons uniquement les données nécessaires au fonctionnement du servic
     st.markdown("""
 - Affichage de votre dashboard personnel
 - Génération de recommandations IA hebdomadaires (plan Pro)
-- Analyse agrégée et anonymisée pour produire des insights généraux (jamais partagées individuellement)
+- Analyse agrégée et anonymisée pour produire des tendances et bonnes pratiques générales — **aucune donnée individuelle n'est jamais exposée** ; seuls des pourcentages et indicateurs agrégés sont utilisés
+- Identification des pratiques qui ont le plus amélioré les performances (ex : « les comptes ayant suivi la recommandation de poster le jeudi ont vu +38% d'engagement en moyenne ») — toujours sous forme anonymisée
 """)
 
     st.markdown("## 4. Stockage et sécurité")

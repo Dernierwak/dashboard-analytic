@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>UX Variations — Dashboard Analytics</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f5f4f2; font-family: 'DM Sans', sans-serif; }
+
+.stage {
+  min-height: 100vh;
+  padding: 72px 24px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+}
+
+/* Nav */
+.nav {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 99px; padding: 4px 5px;
+  z-index: 999; backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+}
+.nav-item {
+  padding: 6px 20px; border-radius: 99px;
+  font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.18s;
+  color: #999; letter-spacing: -0.1px; white-space: nowrap;
+}
+.nav-item.on { background: #0a0a0a; color: #fff; }
+.nav-item:not(.on):hover { color: #333; background: rgba(0,0,0,0.04); }
+
+/* Tweaks */
+.tweaks {
+  position: fixed; bottom: 20px; right: 20px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 14px; padding: 16px 18px;
+  z-index: 999; backdrop-filter: blur(20px);
+  min-width: 210px; display: none;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+}
+.tweaks.on { display: block; }
+.tweaks-title { font-size: 10px; font-weight: 600; color: #aaa; margin-bottom: 14px; letter-spacing: 1.5px; text-transform: uppercase; }
+.tw-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.tw-label { font-size: 12px; color: #555; flex: 1; }
+.tw-tog { width: 34px; height: 20px; background: #e8e8e8; border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; }
+.tw-tog.on { background: #0a0a0a; }
+.tw-tog::after { content:''; position:absolute; width:14px; height:14px; background:#fff; border-radius:50%; top:3px; left:3px; transition:transform 0.18s; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+.tw-tog.on::after { transform:translateX(14px); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+/* ── Tokens ── */
+const T = {
+  white:   '#ffffff',
+  ink:     '#0a0a0a',
+  ink2:    '#333333',
+  ink3:    '#666666',
+  ink4:    '#999999',
+  ink5:    '#c8c8c8',
+  bg:      '#fafaf9',
+  bg2:     '#f4f3f1',
+  bg3:     '#eeede9',
+  line:    'rgba(0,0,0,0.07)',
+  lineStr: 'rgba(0,0,0,0.12)',
+  accent:  '#1a56ff',
+  accentL: '#eef2ff',
+  pos:     '#1a7a4a',
+  posL:    '#e8f5ee',
+  neg:     '#c0392b',
+  negL:    '#fdecea',
+};
+
+/* ── Icons (SVG stroke) ── */
+const Ic = ({ n, s=14, c='currentColor', w=1.6 }) => {
+  const p = {
+    grid:    'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z',
+    users:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z',
+    photo:   'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z',
+    tag:     'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01',
+    target:  'M22 12h-4M6 12H2M12 6V2M12 22v-4M12 12m-3 0a3 3 0 106 0 3 3 0 00-6 0M12 12m-7 0a7 7 0 1014 0 7 7 0 00-14 0',
+    star:    'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+    refresh: 'M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15',
+    down:    'M12 5v14M5 12l7 7 7-7',
+    up2:     'M12 19V5M5 12l7-7 7 7',
+    chev:    'M18 15l-6-6-6 6',
+    spark:   'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    logout:  'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+    plus:    'M12 5v14M5 12h14',
+  };
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+      <path d={p[n]||p.grid}/>
+    </svg>
+  );
+};
+
+/* ── Primitives ── */
+const Mono = ({ children, style={} }) => (
+  <span style={{ fontFamily:"'DM Mono', monospace", ...style }}>{children}</span>
+);
+
+const Chip = ({ children, color=T.accentL, text=T.accent }) => (
+  <span style={{ background:color, color:text, fontSize:10, fontWeight:500, padding:'2px 8px', borderRadius:99, display:'inline-block', letterSpacing:0.2 }}>{children}</span>
+);
+
+const Δ = ({ v, size=10 }) => (
+  <span style={{ fontSize:size, fontWeight:500, color:v>=0?T.pos:T.neg, display:'inline-flex', alignItems:'center', gap:3 }}>
+    <Ic n={v>=0?'up2':'down'} s={size} c={v>=0?T.pos:T.neg} w={2}/>
+    <Mono>{Math.abs(v).toLocaleString('fr-FR')}</Mono>
+  </span>
+);
+
+const Ghost = ({ w, h, r=8, style={} }) => (
+  <div style={{ width:w, height:h, flexShrink:0, background:T.bg3, borderRadius:r, ...style }}/>
+);
+
+const Line = ({ data, color=T.accent, h=40 }) => {
+  const pts = data||[38,52,44,68,58,76,70,84];
+  const mx=Math.max(...pts), mn=Math.min(...pts), rng=mx-mn||1;
+  const norm = pts.map(v=>100-((v-mn)/rng)*78-11);
+  const step = 100/(pts.length-1);
+  const d = norm.map((y,i)=>`${i===0?'M':'L'} ${i*step} ${y}`).join(' ');
+  const fill = d+` L 100 100 L 0 100 Z`;
+  const uid = `l${color.replace(/\W/g,'')}${h}`;
+  return (
+    <svg width="100%" height={h} viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.1"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d={fill} fill={`url(#${uid})`}/>
+      <path d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+};
+
+const Bars = ({ h=80, data }) => {
+  const bars = data||[
+    {v:60,c:T.ink},{v:88,c:T.accent},{v:44,c:'#6b7dd6'},
+    {v:100,c:T.accent},{v:72,c:T.ink},{v:54,c:'#6b7dd6'},
+    {v:82,c:T.accent},{v:38,c:T.ink},{v:90,c:'#6b7dd6'},{v:66,c:T.accent},
+  ];
+  return (
+    <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:h }}>
+      {bars.map((b,i)=>(
+        <div key={i} style={{ flex:1, height:`${b.v}%`, background:b.c, borderRadius:'2px 2px 0 0', opacity:0.7 }}/>
+      ))}
+    </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────
+   VARIATION A  ·  Clarity
+   Top bar fine · IA text-only · grande typographie
+──────────────────────────────────────────────────── */
+const VarA = ({ showPanel }) => {
+  const [metric, setMetric] = React.useState('Reach');
+  const kpis = [
+    { l:'Followers',  v:'12 480', d:124,  spark:[58,62,68,65,72,78,80,88], col:T.accent },
+    { l:'Reach',      v:'92 500', d:3200, spark:[50,58,55,78,68,84,76,92], col:'#7c5fe6' },
+    { l:'Likes',      v:'18 204', d:840,  spark:[40,48,44,58,56,64,70,74], col:'#14b87a' },
+    { l:'Saves',      v:'3 100',  d:200,  spark:[28,34,30,40,36,44,48,54], col:'#e07b1a' },
+  ];
+
+  return (
+    <div style={{ width:1020, height:700, background:T.white, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+      {/* Topbar */}
+      <div style={{ height:48, padding:'0 28px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginRight:28 }}>
+          <div style={{ width:22, height:22, background:T.ink, borderRadius:5 }}/>
+          <span style={{ fontSize:13, fontWeight:600, color:T.ink, letterSpacing:-0.3 }}>Analytics</span>
+        </div>
+        {['Mon compte','Instagram','Meta Ads'].map((t,i)=>(
+          <div key={i} style={{
+            padding:'0 16px', height:48, display:'flex', alignItems:'center',
+            fontSize:12, fontWeight: i===1?600:400,
+            color: i===1 ? T.ink : T.ink4,
+            borderBottom: i===1 ? `1.5px solid ${T.ink}` : '1.5px solid transparent',
+            cursor:'pointer',
+          }}>{t}</div>
+        ))}
+        <div style={{ flex:1 }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <Chip color={T.posL} text={T.pos}>Pro</Chip>
+          <Ghost w={28} h={28} r={14}/>
+        </div>
+      </div>
+
+      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+        {/* Scroll area */}
+        <div style={{ flex:1, overflowY:'auto', padding:'28px 32px', display:'flex', flexDirection:'column', gap:24 }}>
+
+          {/* IA Block — texte pur, pas de fond lourd */}
+          <div style={{ borderLeft:`2px solid ${T.ink}`, paddingLeft:20 }}>
+            <div style={{ fontSize:10, fontWeight:500, color:T.ink4, letterSpacing:1.4, textTransform:'uppercase', marginBottom:8 }}>Coach IA · Aujourd'hui</div>
+            <p style={{ fontSize:15, fontWeight:400, color:T.ink2, lineHeight:1.7, maxWidth:560 }}>
+              Publie un <strong style={{ fontWeight:600, color:T.ink }}>Reel cette semaine</strong> — tes vidéos génèrent <strong style={{ fontWeight:600, color:T.ink }}>3× plus de reach</strong> que tes images. Ton meilleur créneau&nbsp;: jeudi (+40% vs ta moyenne).
+            </p>
+            <div style={{ display:'flex', gap:8, marginTop:12 }}>
+              {['Utile','Pas utile','Régénérer'].map((l,i)=>(
+                <div key={l} style={{
+                  display:'flex', alignItems:'center', gap:5,
+                  padding:'5px 12px', border:`1px solid ${T.line}`, borderRadius:6,
+                  fontSize:11, color:T.ink3, cursor:'pointer', background:T.bg,
+                  transition:'all 0.15s',
+                }}>
+                  <Ic n={['up2','down','refresh'][i]} s={11} c={T.ink4}/>
+                  {l}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop:`1px solid ${T.line}`}}/>
+
+          {/* KPI row */}
+          <div style={{ display:'flex', gap:1 }}>
+            {kpis.map((k,i)=>(
+              <div key={i} style={{
+                flex:1, padding:'20px 24px',
+                borderRight: i<3 ? `1px solid ${T.line}` : 'none',
+              }}>
+                <div style={{ fontSize:10, fontWeight:500, color:T.ink4, letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>{k.l}</div>
+                <Mono style={{ fontSize:26, fontWeight:400, color:T.ink, letterSpacing:-1, display:'block', marginBottom:6 }}>{k.v}</Mono>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <Δ v={k.d} size={11}/>
+                  <div style={{ flex:1, height:28 }}><Line data={k.spark} color={k.col} h={28}/></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ borderTop:`1px solid ${T.line}`}}/>
+
+          {/* Charts row */}
+          <div style={{ display:'flex', gap:24 }}>
+            {/* Bar chart */}
+            <div style={{ flex:2 }}>
+              <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:18 }}>
+                <span style={{ fontSize:12, fontWeight:500, color:T.ink }}>Évolution par post</span>
+                <div style={{ display:'flex', gap:2 }}>
+                  {['Likes','Reach','Vues','Saves'].map(m=>(
+                    <div key={m} onClick={()=>setMetric(m)} style={{
+                      padding:'3px 10px', fontSize:10, fontWeight:500, borderRadius:5, cursor:'pointer',
+                      background: metric===m ? T.ink : 'transparent',
+                      color: metric===m ? T.white : T.ink4,
+                      border:`1px solid ${metric===m ? T.ink : T.line}`,
+                    }}>{m}</div>
+                  ))}
+                </div>
+              </div>
+              <Bars h={96}/>
+              <div style={{ display:'flex', gap:16, marginTop:10 }}>
+                {['Image','Video','Carrousel'].map((t,i)=>(
+                  <div key={t} style={{ display:'flex', alignItems:'center', gap:5 }}>
+                    <div style={{ width:8, height:2, background:[T.ink,T.accent,'#6b7dd6'][i], borderRadius:1 }}/>
+                    <span style={{ fontSize:10, color:T.ink4 }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top 3 */}
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:500, color:T.ink, marginBottom:18 }}>Top 3 — {metric}</div>
+              {[28400,22100,17800].map((v,i)=>(
+                <div key={i} style={{ display:'flex', gap:10, alignItems:'center', paddingBottom:14, marginBottom:14, borderBottom:i<2?`1px solid ${T.line}`:'none' }}>
+                  <Ghost w={36} h={36} r={5}/>
+                  <div style={{ flex:1 }}>
+                    <Mono style={{ fontSize:14, fontWeight:500, color:T.ink, letterSpacing:-0.3, display:'block' }}>{v.toLocaleString('fr-FR')}</Mono>
+                    <span style={{ fontSize:10, color:T.ink4 }}>Vidéo · 12 jan</span>
+                  </div>
+                  <span style={{ fontSize:11, color:T.ink5 }}>0{i+1}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div>
+            <div style={{ display:'flex', borderBottom:`1px solid ${T.line}`, marginBottom:0 }}>
+              {['Tous les posts','Calendrier','Labels'].map((t,i)=>(
+                <div key={i} style={{ padding:'10px 16px', fontSize:12, fontWeight:i===0?500:400, color:i===0?T.ink:T.ink4, borderBottom:i===0?`1.5px solid ${T.ink}`:'1.5px solid transparent', cursor:'pointer' }}>{t}</div>
+              ))}
+              <div style={{ flex:1 }}/>
+              <div style={{ padding:'8px 0', display:'flex', alignItems:'center' }}>
+                <div style={{ border:`1px solid ${T.line}`, borderRadius:6, padding:'4px 10px', fontSize:10, color:T.ink4, cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+                  <Ic n="tag" s={10} c={T.ink4}/>
+                  Filtrer
+                </div>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 80px 72px 72px 72px 90px', padding:'7px 0', borderBottom:`1px solid ${T.line}` }}>
+              {['Caption','Type','Likes','Reach','Saves','Label'].map(h=>(
+                <span key={h} style={{ fontSize:9, fontWeight:600, color:T.ink4, letterSpacing:1, textTransform:'uppercase' }}>{h}</span>
+              ))}
+            </div>
+            {[{t:'Vidéo',l:'Reels'},{t:'Image',l:'Produit'},{t:'Carrousel',l:'Tuto'}].map((r,i)=>(
+              <div key={i} style={{ display:'grid', gridTemplateColumns:'2fr 80px 72px 72px 72px 90px', padding:'10px 0', borderBottom:`1px solid ${T.line}`, alignItems:'center' }}>
+                <div style={{ height:6, background:T.bg3, borderRadius:3, width:'65%' }}/>
+                <span style={{ fontSize:10, color:T.ink3 }}>{r.t}</span>
+                {[1,1,1].map((_,j)=><Mono key={j} style={{ fontSize:11, color:T.ink }}>{(Math.floor(Math.random()*4000)+600).toLocaleString('fr-FR')}</Mono>)}
+                <Chip>{r.l}</Chip>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Side panel */}
+        {showPanel && (
+          <div style={{ width:192, borderLeft:`1px solid ${T.line}`, padding:'28px 20px', display:'flex', flexDirection:'column', gap:20, flexShrink:0 }}>
+            <div style={{ fontSize:10, fontWeight:600, color:T.ink4, letterSpacing:1.2, textTransform:'uppercase' }}>Insights</div>
+            {[
+              { icon:'star',   title:'Meilleur créneau',   sub:'Jeudi · +40% reach' },
+              { icon:'photo',  title:'Reels performent',   sub:'3× vs images' },
+              { icon:'tag',    title:'CTA saves',           sub:'Signal algo fort' },
+              { icon:'users',  title:'+124 followers',      sub:'Cette semaine' },
+            ].map((item,i)=>(
+              <div key={i} style={{ borderBottom:`1px solid ${T.line}`, paddingBottom:16 }}>
+                <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+                  <Ic n={item.icon} s={13} c={T.ink3}/>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:500, color:T.ink, lineHeight:1.4 }}>{item.title}</div>
+                    <div style={{ fontSize:10, color:T.ink4, marginTop:2 }}>{item.sub}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────
+   VARIATION B  ·  Spatial
+   Sidebar très légère · gros espace · chiffres immenses
+──────────────────────────────────────────────────── */
+const VarB = () => {
+  const [nav, setNav] = React.useState('followers');
+  const navItems = [
+    { id:'overview',  icon:'grid',    label:'Vue d\'ensemble' },
+    { id:'followers', icon:'users',   label:'Followers' },
+    { id:'posts',     icon:'photo',   label:'Posts' },
+    { id:'labels',    icon:'tag',     label:'Labels' },
+    { id:'meta',      icon:'target',  label:'Meta Ads' },
+    { id:'ia',        icon:'spark',   label:'Coach IA', accent:true },
+  ];
+
+  return (
+    <div style={{ width:1020, height:700, background:T.white, display:'flex', overflow:'hidden' }}>
+
+      {/* Sidebar — très légère */}
+      <div style={{ width:200, background:T.bg, borderRight:`1px solid ${T.line}`, display:'flex', flexDirection:'column', flexShrink:0 }}>
+        <div style={{ padding:'20px 20px 16px', borderBottom:`1px solid ${T.line}` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+            <div style={{ width:22, height:22, background:T.ink, borderRadius:5 }}/>
+            <span style={{ fontSize:13, fontWeight:600, color:T.ink, letterSpacing:-0.3 }}>Analytics</span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <Ghost w={28} h={28} r={14}/>
+            <div>
+              <div style={{ fontSize:11, fontWeight:500, color:T.ink }}>@mon_compte</div>
+              <div style={{ fontSize:9, color:T.ink4 }}>12 480 abonnés</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex:1, padding:'12px 10px', display:'flex', flexDirection:'column', gap:1 }}>
+          {navItems.map(item=>{
+            const on = nav===item.id;
+            return (
+              <div key={item.id} onClick={()=>setNav(item.id)} style={{
+                display:'flex', alignItems:'center', gap:8, padding:'7px 10px', borderRadius:7, cursor:'pointer',
+                background: on ? T.white : 'transparent',
+                boxShadow: on ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                transition:'all 0.12s',
+              }}>
+                <Ic n={item.icon} s={13} c={item.accent ? T.accent : on ? T.ink : T.ink4}/>
+                <span style={{ fontSize:12, fontWeight:on?600:400, color:item.accent?T.accent:on?T.ink:T.ink4, letterSpacing:-0.1 }}>{item.label}</span>
+                {item.accent && <div style={{ marginLeft:'auto', width:5, height:5, background:T.accent, borderRadius:'50%' }}/>}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ padding:'16px 18px', borderTop:`1px solid ${T.line}` }}>
+          <div style={{ fontSize:10, color:T.ink4, marginBottom:6 }}>user@email.com</div>
+          <div style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer' }}>
+            <Ic n="logout" s={11} c={T.ink4}/>
+            <span style={{ fontSize:10, color:T.ink4 }}>Déconnexion</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ height:48, padding:'0 32px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+          <span style={{ fontSize:14, fontWeight:600, color:T.ink, letterSpacing:-0.3, flex:1 }}>Followers</span>
+          <span style={{ fontSize:10, color:T.ink4 }}>Il y a 2h</span>
+          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', border:`1px solid ${T.line}`, borderRadius:7, fontSize:11, color:T.ink, cursor:'pointer', background:T.white }}>
+            <Ic n="down" s={11} c={T.ink}/>
+            Actualiser
+          </div>
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'36px 40px', display:'flex', flexDirection:'column', gap:32 }}>
+          {/* Hero number */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:500, color:T.ink4, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12 }}>Abonnés actuels</div>
+            <div style={{ display:'flex', alignItems:'baseline', gap:16, marginBottom:8 }}>
+              <Mono style={{ fontSize:56, fontWeight:300, color:T.ink, letterSpacing:-3, lineHeight:1 }}>12 480</Mono>
+              <div>
+                <Δ v={124} size={13}/>
+                <div style={{ fontSize:10, color:T.ink4, marginTop:2 }}>vs 7 jours</div>
+              </div>
+            </div>
+            {/* Period selector */}
+            <div style={{ display:'flex', gap:2 }}>
+              {['7j','14j','30j'].map((d,i)=>(
+                <div key={d} style={{ padding:'4px 10px', fontSize:10, fontWeight:500, borderRadius:5, background:i===0?T.ink:T.bg, color:i===0?T.white:T.ink4, border:`1px solid ${i===0?T.ink:T.line}`, cursor:'pointer' }}>{d}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Mini KPIs */}
+          <div style={{ display:'flex', gap:0 }}>
+            {[{l:'Gains / sem.',v:'+310',c:T.pos},{l:'Pertes / sem.',v:'−186',c:T.neg}].map((k,i)=>(
+              <div key={i} style={{ flex:1, padding:'16px 20px', background:T.bg, borderRadius:i===0?'8px 0 0 8px':'0 8px 8px 0', border:`1px solid ${T.line}`, marginLeft:i?-1:0 }}>
+                <div style={{ fontSize:9, fontWeight:500, color:T.ink4, letterSpacing:1, textTransform:'uppercase', marginBottom:6 }}>{k.l}</div>
+                <Mono style={{ fontSize:24, fontWeight:400, color:k.c, letterSpacing:-0.5 }}>{k.v}</Mono>
+              </div>
+            ))}
+          </div>
+
+          {/* Line chart */}
+          <div>
+            <div style={{ fontSize:12, fontWeight:500, color:T.ink, marginBottom:16 }}>Évolution</div>
+            <Line h={110} color={T.accent}/>
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:6 }}>
+              {['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû'].map(m=>(
+                <span key={m} style={{ fontSize:9, color:T.ink4 }}>{m}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Gain/loss waterfall */}
+          <div>
+            <div style={{ fontSize:12, fontWeight:500, color:T.ink, marginBottom:14 }}>Gains & pertes quotidiens</div>
+            <div style={{ display:'flex', alignItems:'center', gap:3, height:60 }}>
+              {[12,-5,8,20,-3,15,6,-8,18,10,-4,14,9,-6,22].map((v,i)=>(
+                <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:v>=0?'flex-end':'flex-start', height:'100%' }}>
+                  <div style={{ width:'60%', height:`${Math.abs(v)*2.2}px`, background:v>=0?T.pos:T.neg, opacity:0.6, borderRadius:v>=0?'2px 2px 0 0':'0 0 2px 2px' }}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────
+   VARIATION C  ·  Minimal Stack
+   Tout sur fond blanc uni · pas de sidebar · tabs horizontaux
+──────────────────────────────────────────────────── */
+const Section = ({ title, open:initOpen=false, children, highlight }) => {
+  const [open, setOpen] = React.useState(initOpen);
+  return (
+    <div style={{ borderTop:`1px solid ${T.line}` }}>
+      <div onClick={()=>setOpen(!open)} style={{ display:'flex', alignItems:'center', padding:'14px 0', cursor:'pointer' }}>
+        <span style={{ fontSize:12, fontWeight:500, color:highlight?T.accent:T.ink, flex:1, letterSpacing:-0.2 }}>
+          {highlight && <span style={{ display:'inline-block', width:6, height:6, background:T.accent, borderRadius:'50%', marginRight:8, verticalAlign:'middle' }}/>}
+          {title}
+        </span>
+        <div style={{ transform:open?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+          <Ic n="chev" s={14} c={T.ink4}/>
+        </div>
+      </div>
+      {open && <div style={{ paddingBottom:20 }}>{children}</div>}
+    </div>
+  );
+};
+
+const VarC = () => (
+  <div style={{ width:1020, height:700, background:T.white, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+    {/* Topbar */}
+    <div style={{ height:48, padding:'0 36px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center', flexShrink:0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginRight:32 }}>
+        <div style={{ width:22, height:22, background:T.ink, borderRadius:5 }}/>
+        <span style={{ fontSize:13, fontWeight:600, color:T.ink, letterSpacing:-0.3 }}>Analytics</span>
+      </div>
+      {['Mon compte','Instagram','Meta Ads'].map((t,i)=>(
+        <div key={i} style={{ padding:'0 14px', height:48, display:'flex', alignItems:'center', fontSize:12, fontWeight:i===1?600:400, color:i===1?T.ink:T.ink4, borderBottom:i===1?`1.5px solid ${T.ink}`:'1.5px solid transparent', cursor:'pointer' }}>{t}</div>
+      ))}
+      <div style={{ flex:1 }}/>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontSize:11, color:T.ink4 }}>@mon_compte</span>
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', border:`1px solid ${T.line}`, borderRadius:7, fontSize:11, color:T.ink, cursor:'pointer' }}>
+          <Ic n="down" s={11} c={T.ink}/>
+          Actualiser
+        </div>
+        <Ghost w={28} h={28} r={14}/>
+      </div>
+    </div>
+
+    <div style={{ flex:1, overflowY:'auto', padding:'32px 36px' }}>
+      {/* IA */}
+      <Section title="Coach IA" open={true} highlight>
+        <div style={{ borderLeft:`2px solid ${T.accent}`, paddingLeft:18, marginBottom:16 }}>
+          <p style={{ fontSize:14, fontWeight:400, color:T.ink2, lineHeight:1.7 }}>
+            Publie un <strong style={{ fontWeight:600, color:T.ink }}>Reel cette semaine</strong> — tes vidéos génèrent <strong style={{ fontWeight:600, color:T.ink }}>3× plus de reach</strong>. Meilleur créneau&nbsp;: jeudi (+40%).
+          </p>
+          <div style={{ display:'flex', gap:8, marginTop:12 }}>
+            {['Utile','Pas utile','Régénérer'].map((l,i)=>(
+              <div key={l} style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px', border:`1px solid ${T.line}`, borderRadius:5, fontSize:10, color:T.ink3, cursor:'pointer' }}>
+                <Ic n={['up2','down','refresh'][i]} s={10} c={T.ink4}/>{l}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* Followers */}
+      <Section title="Followers" open={true}>
+        <div style={{ display:'flex', gap:32, alignItems:'flex-start' }}>
+          <div>
+            <Mono style={{ fontSize:48, fontWeight:300, color:T.ink, letterSpacing:-2, lineHeight:1 }}>12 480</Mono>
+            <div style={{ display:'flex', gap:10, alignItems:'center', marginTop:8 }}>
+              <Δ v={124} size={12}/>
+              <span style={{ fontSize:10, color:T.ink4 }}>vs 7 jours</span>
+            </div>
+          </div>
+          <div style={{ flex:1 }}><Line h={72} color={T.accent}/></div>
+        </div>
+      </Section>
+
+      {/* KPIs */}
+      <Section title="Performance" open={true}>
+        <div style={{ display:'flex', gap:0 }}>
+          {[{l:'Likes',v:'18 204',d:840},{l:'Reach',v:'92 500',d:3200},{l:'Commentaires',v:'1 024',d:-12},{l:'Saves',v:'3 100',d:200}].map((k,i)=>(
+            <div key={i} style={{ flex:1, padding:'0 20px 0 0', borderRight:i<3?`1px solid ${T.line}`:'none', marginRight:i<3?20:0 }}>
+              <div style={{ fontSize:9, fontWeight:500, color:T.ink4, letterSpacing:1, textTransform:'uppercase', marginBottom:8 }}>{k.l}</div>
+              <Mono style={{ fontSize:22, fontWeight:400, color:T.ink, letterSpacing:-0.5, display:'block', marginBottom:4 }}>{k.v}</Mono>
+              <Δ v={k.d}/>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Chart */}
+      <Section title="Évolution par post">
+        <Bars h={80}/>
+        <div style={{ display:'flex', gap:16, marginTop:10 }}>
+          {['Image','Video','Carrousel'].map((t,i)=>(
+            <div key={t} style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <div style={{ width:8, height:2, background:[T.ink,T.accent,'#6b7dd6'][i], borderRadius:1 }}/>
+              <span style={{ fontSize:10, color:T.ink4 }}>{t}</span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Labels */}
+      <Section title="Labels">
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+          {[['Reels',T.posL,T.pos],['Carrousels',T.accentL,T.accent],['Produit','#fef3c7','#b45309'],['BTS','#f5f3ff','#7c3aed']].map(([l,bg,col])=>(
+            <Chip key={l} color={bg} text={col}>{l}</Chip>
+          ))}
+          <div style={{ display:'inline-flex', alignItems:'center', gap:4, border:`1px solid ${T.line}`, borderRadius:99, padding:'2px 8px', fontSize:10, color:T.ink4, cursor:'pointer' }}>
+            <Ic n="plus" s={10} c={T.ink4}/>
+            Ajouter
+          </div>
+        </div>
+        {[{l:'Reels',p:85},{l:'Carrousels',p:60},{l:'Produit',p:45},{l:'BTS',p:30}].map(item=>(
+          <div key={item.l} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
+            <span style={{ width:70, fontSize:11, color:T.ink3 }}>{item.l}</span>
+            <div style={{ flex:1, height:4, background:T.bg3, borderRadius:99 }}>
+              <div style={{ height:'100%', width:`${item.p}%`, background:T.accent, borderRadius:99, opacity:0.8 }}/>
+            </div>
+            <Mono style={{ fontSize:10, color:T.ink4, width:28, textAlign:'right' }}>{item.p}%</Mono>
+          </div>
+        ))}
+      </Section>
+
+      {/* Meta */}
+      <Section title="Meta Ads">
+        <div style={{ display:'flex', gap:32 }}>
+          {[{l:'Dépensé',v:'€ 2 840'},{l:'Clics',v:'3 410'},{l:'CPC moy.',v:'€ 0.83'}].map(k=>(
+            <div key={k.l}>
+              <div style={{ fontSize:9, fontWeight:500, color:T.ink4, letterSpacing:1, textTransform:'uppercase', marginBottom:6 }}>{k.l}</div>
+              <Mono style={{ fontSize:20, fontWeight:400, color:T.ink, letterSpacing:-0.5 }}>{k.v}</Mono>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+    </div>
+  </div>
+);
+
+/* ── ROOT ── */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showInsightsPanel": true,
+  "variant": "A"
+}/*EDITMODE-END*/;
+
+const descs = {
+  A:{ name:'Clarity',       sub:'Topbar fine · IA en bloc texte · KPIs divisés par lignes · tout respire' },
+  B:{ name:'Spatial',       sub:'Sidebar blanche légère · chiffre immense en hero · contenu très aéré' },
+  C:{ name:'Minimal Stack', sub:'Pas de sidebar · sections accordéon · typographie monospace pour les données' },
+};
+
+function App() {
+  const [active, setActive] = React.useState('A');
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [showPanel, setShowPanel] = React.useState(TWEAK_DEFAULTS.showInsightsPanel);
+
+  React.useEffect(()=>{
+    const h = e => {
+      if (e.data?.type==='__activate_edit_mode')   setTweaksOpen(true);
+      if (e.data?.type==='__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', h);
+    window.parent.postMessage({ type:'__edit_mode_available' }, '*');
+    return ()=>window.removeEventListener('message', h);
+  }, []);
+
+  return (
+    <div className="stage">
+      {/* Nav */}
+      <div className="nav">
+        {['A','B','C'].map(v=>(
+          <div key={v} className={`nav-item ${active===v?'on':''}`} onClick={()=>setActive(v)}>
+            {v} — {descs[v].name}
+          </div>
+        ))}
+      </div>
+
+      {/* Header */}
+      <div style={{ textAlign:'center', maxWidth:520 }}>
+        <div style={{ fontSize:10, fontWeight:500, letterSpacing:2, color:'#999', textTransform:'uppercase', marginBottom:10 }}>Variation {active}</div>
+        <div style={{ fontSize:28, fontWeight:600, color:'#111', marginBottom:8, letterSpacing:-0.8, fontFamily:"'DM Sans', sans-serif" }}>{descs[active].name}</div>
+        <div style={{ fontSize:13, color:'#888', lineHeight:1.7 }}>{descs[active].sub}</div>
+      </div>
+
+      {/* Frame */}
+      <div style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 0 0 1px rgba(0,0,0,0.07), 0 20px 60px rgba(0,0,0,0.12)' }}>
+        {active==='A' && <VarA showPanel={showPanel}/>}
+        {active==='B' && <VarB/>}
+        {active==='C' && <VarC/>}
+      </div>
+
+      {/* Compare strip */}
+      <div style={{ width:'100%', maxWidth:1020, display:'flex', gap:12 }}>
+        {['A','B','C'].map(v=>(
+          <div key={v} onClick={()=>setActive(v)} style={{
+            flex:1, border:`1px solid ${active===v?'#1a56ff':'rgba(0,0,0,0.1)'}`,
+            borderRadius:10, padding:'14px 18px', cursor:'pointer', transition:'all 0.15s',
+            background: active===v?'#f0f4ff':'rgba(255,255,255,0.6)',
+          }}>
+            <div style={{ fontSize:9, fontWeight:600, color:active===v?'#1a56ff':'#aaa', letterSpacing:1.5, textTransform:'uppercase', marginBottom:4 }}>Var. {v}</div>
+            <div style={{ fontSize:13, fontWeight:600, color:'#111', marginBottom:5, letterSpacing:-0.3 }}>{descs[v].name}</div>
+            <div style={{ fontSize:11, color:'#888', lineHeight:1.6 }}>{descs[v].sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tweaks */}
+      <div className={`tweaks ${tweaksOpen?'on':''}`}>
+        <div className="tweaks-title">Tweaks</div>
+        <div className="tw-row">
+          <span className="tw-label">Panel insights (A)</span>
+          <div className={`tw-tog ${showPanel?'on':''}`} onClick={()=>{
+            const v=!showPanel; setShowPanel(v);
+            window.parent.postMessage({type:'__edit_mode_set_keys',edits:{showInsightsPanel:v}},'*');
+          }}/>
+        </div>
+        <div className="tw-row">
+          <span className="tw-label">Variation</span>
+          <div style={{ display:'flex', gap:4 }}>
+            {['A','B','C'].map(v=>(
+              <div key={v} onClick={()=>setActive(v)} style={{
+                width:26, height:26, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center',
+                background: active===v?'#0a0a0a':'#f0f0f0', color:active===v?'#fff':'#888',
+                fontSize:10, fontWeight:600, cursor:'pointer',
+              }}>{v}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
