@@ -5,8 +5,6 @@ from scripts.ai_reco import get_or_generate_reco, submit_feedback
 
 @st.fragment
 def show_ai_reco(supabase: Client, user_id: str, is_paid: bool, df=None, followers_delta: int = 0):
-    st.markdown("<div class='section-title'>Recommandations IA</div>", unsafe_allow_html=True)
-
     if not is_paid:
         st.markdown("""
         <div style='position:relative;margin-bottom:16px;'>

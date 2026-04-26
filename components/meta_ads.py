@@ -341,10 +341,15 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
 
 def show_meta_ads_tab(is_paid: bool = False):
     df = st.session_state.get("meta_ads_df")
+
+    _, col_insights_btn = st.columns([5, 1])
+    with col_insights_btn:
+        with st.popover("💡 Insights", use_container_width=True):
+            show_insights_panel(
+                df_meta=df,
+                is_paid=is_paid,
+                section="meta_ads",
+                use_sidebar=False,
+            )
+
     show_meta_ads_dashboard(df)
-    show_insights_panel(
-        df_meta=df,
-        is_paid=is_paid,
-        section="meta_ads",
-        use_sidebar=False,
-    )
