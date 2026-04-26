@@ -6,6 +6,7 @@ from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
 from components.ai_reco import show_ai_reco
 from components.labelling_module import Labelling
 from components.insights_panel import show_right_panel
+from components.export import show_export_button
 
 
 COLOR_MAP = {
@@ -47,7 +48,7 @@ def _load_posts(_client, user_id: str):
 
 
 @st.fragment
-def show_dashboard(client, user_id, is_paid=False):
+def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagram"):
     st.session_state["_posts_cache_clear"] = _load_posts.clear
     try:
         df = _load_posts(client, user_id)
@@ -74,13 +75,22 @@ def show_dashboard(client, user_id, is_paid=False):
         if len(df_follows) >= 7:
             followers_delta = followers_current - int(df_follows.iloc[6]["followers"])
 
-    # ── A. Recommandation IA + bouton Insights ────────────────────────────────
-    col_title, col_insights_btn = st.columns([5, 1])
+    # ── A. Recommandation IA + boutons Insights / Export ──────────────────────
+    col_title, col_insights_btn, col_export_btn = st.columns([4, 1, 1])
     with col_title:
         st.markdown("<div class='section-title'>Recommandation IA</div>", unsafe_allow_html=True)
     with col_insights_btn:
         with st.popover("💡 Insights", use_container_width=True):
             show_right_panel(df=df, is_paid=is_paid, followers_delta=followers_delta)
+    with col_export_btn:
+        show_export_button(
+            df=df,
+            account_name=account_name,
+            followers_current=followers_current,
+            followers_delta=followers_delta,
+            supabase=client,
+            user_id=user_id,
+        )
 
     show_ai_reco(supabase=client, user_id=user_id, is_paid=is_paid, df=df, followers_delta=followers_delta)
 

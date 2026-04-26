@@ -158,8 +158,24 @@ if __name__ == "__main__":
         if tab_insta:
             with tab_insta:
                 st.session_state["active_section"] = "instagram"
-                insta_biz_id = insta_accounts[0].get("instagram_business_id") if insta_accounts else None
-                show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id)
+
+                # Sélecteur multi-compte
+                if len(insta_accounts) > 1:
+                    names = [a.get("account_name") or f"Compte {i+1}" for i, a in enumerate(insta_accounts)]
+                    sel_idx = st.selectbox(
+                        "Compte",
+                        options=range(len(insta_accounts)),
+                        format_func=lambda i: names[i],
+                        key="sel_insta_account",
+                        label_visibility="collapsed",
+                    )
+                    selected_account = insta_accounts[sel_idx]
+                else:
+                    selected_account = insta_accounts[0] if insta_accounts else {}
+
+                insta_biz_id = selected_account.get("instagram_business_id")
+                acc_name = selected_account.get("account_name") or "Instagram"
+                show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id, account_name=acc_name)
 
         if tab_meta_ads:
             with tab_meta_ads:

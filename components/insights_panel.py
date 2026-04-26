@@ -262,13 +262,6 @@ def show_insights_panel(
         ctx.caption("Connectez vos données pour voir vos insights.")
         return
 
-    # ── Bouton Générer les insights ─────────────────────────────────────────
-    generate = ctx.button(
-        "✨ Générer les insights",
-        key=f"btn_generate_insights_{section}",
-        use_container_width=True,
-    )
-
     # ── Cache 1h par section ────────────────────────────────────────────────
     cache_key = f"insights_cache_{section}" if section else "insights_cache"
     cache = st.session_state.get(cache_key, {})
@@ -283,7 +276,10 @@ def show_insights_panel(
         except ValueError:
             is_fresh = False
 
-    if is_fresh and not generate:
+    # Bouton régénérer discret
+    force = ctx.button("↺ Régénérer", key=f"btn_regen_insights_{section}", type="tertiary")
+
+    if is_fresh and not force:
         try:
             ts = datetime.fromisoformat(cached_at_str).strftime("%H:%M")
         except ValueError:
@@ -294,11 +290,7 @@ def show_insights_panel(
         )
         return
 
-    if not generate:
-        ctx.caption("Cliquez sur 'Générer les insights' pour analyser vos données.")
-        return
-
-    # ── Générer (sur clic uniquement) ────────────────────────────────────────
+    # ── Auto-générer (premier chargement ou cache expiré) ────────────────────
     with st.spinner("Génération des insights..."):
         insta_summary = _summarize_instagram(df_instagram) if use_insta else None
         meta_summary = _summarize_meta(df_meta, df_filtered=df_filtered) if use_meta else None

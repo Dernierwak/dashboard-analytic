@@ -33,6 +33,6 @@ def fetch_instagram_fragment(client, user_id, is_paid, dash, instagram_business_
                 st.error(f"Erreur : {e}")
 
 
-def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=None):
+def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=None, account_name: str = "Instagram"):
     fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash, instagram_business_id=instagram_business_id)
-    show_dashboard(client, user_id, is_paid=is_paid)
+    show_dashboard(client, user_id, is_paid=is_paid, account_name=account_name)
