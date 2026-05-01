@@ -126,19 +126,19 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
 
 def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
-    """Dashboard complet Meta Ads avec filtres, KPIs, graphiques et tableau."""
+    """Dashboard complet Meta Ads — 2 tabs : Performance | Coûts."""
 
-    # ── Vérification données ────────────────────────────────────────────────
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         st.info("Connectez votre compte Meta Ads dans 'Mon compte' pour voir les données.")
         return
 
-    # ── Typage des colonnes numériques ──────────────────────────────────────
-    for col in ["impressions", "clicks", "spend"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    # ── Typage ──────────────────────────────────────────────────────────────
+    for col in ["impressions", "clicks", "spend", "reach", "link_clicks"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
-    # ── 1. Filtres (4 colonnes, cascade) ────────────────────────────────────
+    # ── Filtres partagés (cascade) ───────────────────────────────────────────
     fc1, fc2, fc3, fc4 = st.columns(4)
     df_view = df.copy()
 
@@ -149,31 +149,16 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
                 df_view = df_view[df_view["status"].isin(sel_status)]
         else:
             st.multiselect("Statut", options=[], key="mad_status", disabled=True, placeholder="—")
-
     with fc2:
-        sel_campaigns = st.multiselect(
-            "Campagne",
-            options=sorted(df["campaign_name"].dropna().unique()),
-            key="mad_campaigns",
-        )
+        sel_campaigns = st.multiselect("Campagne", options=sorted(df["campaign_name"].dropna().unique()), key="mad_campaigns")
         if sel_campaigns:
             df_view = df_view[df_view["campaign_name"].isin(sel_campaigns)]
-
     with fc3:
-        sel_adsets = st.multiselect(
-            "Ad Set",
-            options=sorted(df_view["adset_name"].dropna().unique()),
-            key="mad_adsets",
-        )
+        sel_adsets = st.multiselect("Ad Set", options=sorted(df_view["adset_name"].dropna().unique()), key="mad_adsets")
         if sel_adsets:
             df_view = df_view[df_view["adset_name"].isin(sel_adsets)]
-
     with fc4:
-        sel_ads = st.multiselect(
-            "Publicité",
-            options=sorted(df_view["ad_name"].dropna().unique()),
-            key="mad_ads",
-        )
+        sel_ads = st.multiselect("Publicité", options=sorted(df_view["ad_name"].dropna().unique()), key="mad_ads")
         if sel_ads:
             df_view = df_view[df_view["ad_name"].isin(sel_ads)]
 
@@ -183,160 +168,124 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
         st.warning("Aucune donnée pour ces filtres.")
         return
 
-    # ── 2. KPIs ─────────────────────────────────────────────────────────────
-    total_spend = df_view["spend"].sum()
-    total_clicks = df_view["clicks"].sum()
+    # ── Métriques agrégées ───────────────────────────────────────────────────
+    total_spend       = df_view["spend"].sum()
+    total_clicks      = df_view["clicks"].sum()
     total_impressions = df_view["impressions"].sum()
+    total_reach       = df_view["reach"].sum() if "reach" in df_view.columns else 0
+    avg_ctr  = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
+    avg_cpc  = (total_spend / total_clicks)              if total_clicks > 0       else 0.0
+    avg_cpm  = (total_spend / total_impressions * 1000)  if total_impressions > 0  else 0.0
 
-    avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
-    avg_cpc = (total_spend / total_clicks) if total_clicks > 0 else 0.0
-    avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("💸 Dépenses totales", f"{total_spend:,.2f} €")
-    k2.metric("🖱️ CTR moyen", f"{avg_ctr:.2f} %")
-    k3.metric("💰 CPC moyen", f"{avg_cpc:.2f} €")
-    k4.metric("📣 CPM moyen", f"{avg_cpm:.2f} €")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── 3. Évolution temporelle ─────────────────────────────────────────────
-    st.markdown("#### Évolution temporelle")
-
-    metric_options = {
-        "Dépenses (€)": "spend",
-        "CTR (%)": "ctr",
-        "CPC (€)": "cpc",
-        "Impressions": "impressions",
-    }
-    selected_metric_label = st.selectbox(
-        "Métrique",
-        options=list(metric_options.keys()),
-        key="mad_trend_metric",
-        label_visibility="collapsed",
-    )
-    selected_metric = metric_options[selected_metric_label]
-
+    # ── Agrégat quotidien (partagé par les 2 tabs) ───────────────────────────
     df_daily = (
         df_view.groupby("date_start", as_index=False)
         .agg(spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
     )
-    df_daily["ctr"] = df_daily.apply(
-        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1
-    )
-    df_daily["cpc"] = df_daily.apply(
-        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1
-    )
+    df_daily["ctr"] = df_daily.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+    df_daily["cpc"] = df_daily.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+    df_daily["cpm"] = df_daily.apply(lambda r: r["spend"] / r["impressions"] * 1000 if r["impressions"] > 0 else 0, axis=1)
     df_daily = df_daily.sort_values("date_start")
 
-    fig_trend = px.line(
-        df_daily,
-        x="date_start",
-        y=selected_metric,
-        markers=True,
-        labels={"date_start": "Date", selected_metric: selected_metric_label},
-        color_discrete_sequence=["#0066ff"],
-    )
-    fig_trend.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=280,
-        xaxis_title=None,
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
-    fig_trend.update_xaxes(showgrid=False)
-    fig_trend.update_yaxes(gridcolor="#f0f0f0")
-    st.plotly_chart(fig_trend, use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── 4. Performance par campagne ─────────────────────────────────────────
-    st.markdown("#### Performance par campagne")
-
+    # ── Agrégat par campagne ─────────────────────────────────────────────────
     df_camp = (
         df_view.groupby("campaign_name", as_index=False)
         .agg(spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
     )
-    df_camp["ctr"] = df_camp.apply(
-        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1
-    )
-    df_camp = df_camp.sort_values("spend", ascending=True)
+    df_camp["ctr"] = df_camp.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+    df_camp["cpc"] = df_camp.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+    df_camp["cpm"] = df_camp.apply(lambda r: r["spend"] / r["impressions"] * 1000 if r["impressions"] > 0 else 0, axis=1)
 
-    col_bar1, col_bar2 = st.columns(2)
+    # ── Tableau par publicité (partagé) ──────────────────────────────────────
+    available_cols = [c for c in ["campaign_name", "adset_name", "ad_name", "impressions", "clicks", "reach", "link_clicks", "spend"] if c in df_view.columns]
+    df_table = df_view[available_cols].copy()
+    df_table = df_table.rename(columns={
+        "campaign_name": "Campagne", "adset_name": "Ensemble", "ad_name": "Publicité",
+        "impressions": "Impressions", "clicks": "Clics", "reach": "Reach",
+        "link_clicks": "Clics lien", "spend": "Dépenses (CHF)",
+    })
+    df_by_ad = df_table.groupby("Publicité", as_index=False).agg({
+        "Campagne": "first", "Ensemble": "first",
+        "Impressions": "sum", "Clics": "sum", "Reach": "sum",
+        "Clics lien": "sum", "Dépenses (CHF)": "sum",
+    })
+    df_by_ad["CTR (%)"] = df_by_ad.apply(lambda r: round(r["Clics"] / r["Impressions"] * 100, 2) if r["Impressions"] > 0 else 0.0, axis=1)
+    df_by_ad["CPC (CHF)"] = df_by_ad.apply(lambda r: round(r["Dépenses (CHF)"] / r["Clics"], 2) if r["Clics"] > 0 else 0.0, axis=1)
+    df_by_ad["CPM (CHF)"] = df_by_ad.apply(lambda r: round(r["Dépenses (CHF)"] / r["Impressions"] * 1000, 2) if r["Impressions"] > 0 else 0.0, axis=1)
 
-    with col_bar1:
-        fig_spend = px.bar(
-            df_camp,
-            x="spend",
-            y="campaign_name",
-            orientation="h",
-            labels={"spend": "Dépenses (€)", "campaign_name": ""},
-            color_discrete_sequence=["#0066ff"],
-            title="Dépenses par campagne",
-        )
-        fig_spend.update_layout(
-            margin=dict(l=0, r=0, t=40, b=0),
-            height=300,
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            showlegend=False,
-        )
-        fig_spend.update_xaxes(gridcolor="#f0f0f0")
-        fig_spend.update_yaxes(showgrid=False)
-        st.plotly_chart(fig_spend, use_container_width=True)
+    # ── Tabs ─────────────────────────────────────────────────────────────────
+    tab_perf, tab_cost = st.tabs(["📊 Performance", "💸 Coûts"])
 
-    with col_bar2:
-        fig_ctr = px.bar(
-            df_camp,
-            x="ctr",
-            y="campaign_name",
-            orientation="h",
-            labels={"ctr": "CTR (%)", "campaign_name": ""},
-            color_discrete_sequence=["#00c49f"],
-            title="CTR par campagne",
-        )
-        fig_ctr.update_layout(
-            margin=dict(l=0, r=0, t=40, b=0),
-            height=300,
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            showlegend=False,
-        )
+    # ════════════════════════════════════════════════════════════════════════
+    with tab_perf:
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Impressions",   f"{int(total_impressions):,}")
+        k2.metric("Reach",         f"{int(total_reach):,}")
+        k3.metric("Clics",         f"{int(total_clicks):,}")
+        k4.metric("CTR moyen",     f"{avg_ctr:.2f} %")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Évolution
+        perf_opts = {"Impressions": "impressions", "Clics": "clicks", "CTR (%)": "ctr"}
+        sel_perf = st.selectbox("Métrique", list(perf_opts.keys()), key="mad_perf_metric", label_visibility="collapsed")
+        fig_perf = px.line(df_daily, x="date_start", y=perf_opts[sel_perf], markers=True,
+                           labels={"date_start": "Date", perf_opts[sel_perf]: sel_perf},
+                           color_discrete_sequence=["#1a56ff"])
+        fig_perf.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=260,
+                               xaxis_title=None, plot_bgcolor="white", paper_bgcolor="white")
+        fig_perf.update_xaxes(showgrid=False)
+        fig_perf.update_yaxes(gridcolor="#f0f0f0")
+        st.plotly_chart(fig_perf, use_container_width=True)
+
+        # CTR par campagne
+        fig_ctr = px.bar(df_camp.sort_values("ctr"), x="ctr", y="campaign_name", orientation="h",
+                         labels={"ctr": "CTR (%)", "campaign_name": ""},
+                         color_discrete_sequence=["#1a56ff"], title="CTR par campagne")
+        fig_ctr.update_layout(margin=dict(l=0, r=0, t=40, b=0), height=max(200, len(df_camp) * 40),
+                               plot_bgcolor="white", paper_bgcolor="white", showlegend=False)
         fig_ctr.update_xaxes(gridcolor="#f0f0f0")
         fig_ctr.update_yaxes(showgrid=False)
         st.plotly_chart(fig_ctr, use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        # Tableau performance
+        cols_perf = [c for c in ["Publicité", "Campagne", "Ensemble", "Impressions", "Clics", "Reach", "Clics lien", "CTR (%)"] if c in df_by_ad.columns]
+        st.dataframe(df_by_ad[cols_perf], use_container_width=True, hide_index=True)
 
-    # ── 5. Tableau détaillé ─────────────────────────────────────────────────
-    st.markdown("#### Tableau détaillé")
+    # ════════════════════════════════════════════════════════════════════════
+    with tab_cost:
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Dépenses totales", f"{total_spend:,.2f} CHF")
+        k2.metric("CPC moyen",        f"{avg_cpc:.2f} CHF")
+        k3.metric("CPM moyen",        f"{avg_cpm:.2f} CHF")
 
-    available_cols = [c for c in ["campaign_name", "adset_name", "ad_name", "impressions", "clicks", "reach", "link_clicks", "spend"] if c in df_view.columns]
-    df_table = df_view[available_cols].copy()
-    df_table["CTR (%)"] = df_table.apply(
-        lambda r: round(r["clicks"] / r["impressions"] * 100, 2) if r["impressions"] > 0 else 0.0, axis=1
-    )
-    df_table["CPC (€)"] = df_table.apply(
-        lambda r: round(r["spend"] / r["clicks"], 2) if r["clicks"] > 0 else 0.0, axis=1
-    )
-    df_table["CPM (€)"] = df_table.apply(
-        lambda r: round(r["spend"] / r["impressions"] * 1000, 2) if r["impressions"] > 0 else 0.0, axis=1
-    )
-    df_table["spend"] = df_table["spend"].round(2)
-    df_table["impressions"] = df_table["impressions"].astype(int)
-    df_table["clicks"] = df_table["clicks"].astype(int)
-    df_table = df_table.rename(columns={
-        "campaign_name": "Campagne",
-        "adset_name": "Ensemble",
-        "ad_name": "Publicité",
-        "impressions": "Impressions",
-        "clicks": "Clics",
-        "reach": "Reach",
-        "link_clicks": "Clics lien",
-        "spend": "Dépenses (€)",
-    })
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    st.dataframe(df_table, use_container_width=True, hide_index=True)
+        # Évolution
+        cost_opts = {"Dépenses (CHF)": "spend", "CPC (CHF)": "cpc", "CPM (CHF)": "cpm"}
+        sel_cost = st.selectbox("Métrique", list(cost_opts.keys()), key="mad_cost_metric", label_visibility="collapsed")
+        fig_cost = px.line(df_daily, x="date_start", y=cost_opts[sel_cost], markers=True,
+                           labels={"date_start": "Date", cost_opts[sel_cost]: sel_cost},
+                           color_discrete_sequence=["#0a0a0a"])
+        fig_cost.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=260,
+                               xaxis_title=None, plot_bgcolor="white", paper_bgcolor="white")
+        fig_cost.update_xaxes(showgrid=False)
+        fig_cost.update_yaxes(gridcolor="#f0f0f0")
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+        # Dépenses par campagne
+        fig_spend = px.bar(df_camp.sort_values("spend"), x="spend", y="campaign_name", orientation="h",
+                           labels={"spend": "Dépenses (CHF)", "campaign_name": ""},
+                           color_discrete_sequence=["#0a0a0a"], title="Dépenses par campagne")
+        fig_spend.update_layout(margin=dict(l=0, r=0, t=40, b=0), height=max(200, len(df_camp) * 40),
+                                plot_bgcolor="white", paper_bgcolor="white", showlegend=False)
+        fig_spend.update_xaxes(gridcolor="#f0f0f0")
+        fig_spend.update_yaxes(showgrid=False)
+        st.plotly_chart(fig_spend, use_container_width=True)
+
+        # Tableau coûts
+        cols_cost = [c for c in ["Publicité", "Campagne", "Ensemble", "Dépenses (CHF)", "CPC (CHF)", "CPM (CHF)", "Clics"] if c in df_by_ad.columns]
+        st.dataframe(df_by_ad[cols_cost], use_container_width=True, hide_index=True)
 
 
 def show_meta_ads_tab(is_paid: bool = False):
