@@ -71,7 +71,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         params = {
             "access_token": token,
             "level": "ad",
-            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start,effective_status",
             "time_increment": 1,
             "time_range": json.dumps(time_range),
         }
@@ -143,10 +143,11 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     df_view = df.copy()
 
     with fc1:
-        if "status" in df.columns:
-            sel_status = st.multiselect("Statut", options=["En ligne", "Pausée", "Archivée"], key="mad_status")
+        if "effective_status" in df.columns and df["effective_status"].notna().any():
+            status_opts = sorted(df["effective_status"].dropna().unique())
+            sel_status = st.multiselect("Statut", options=status_opts, key="mad_status")
             if sel_status:
-                df_view = df_view[df_view["status"].isin(sel_status)]
+                df_view = df_view[df_view["effective_status"].isin(sel_status)]
         else:
             st.multiselect("Statut", options=[], key="mad_status", disabled=True, placeholder="—")
     with fc2:
