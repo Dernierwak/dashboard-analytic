@@ -12,6 +12,10 @@ def show_sidebar():
             unsafe_allow_html=True,
         )
 
-        st.page_link("landing.py", label="Accueil")
-        st.page_link("pages/main.py", label="Dashboard")
-        st.page_link("pages/privacy.py", label="Politique de confidentialité")
+        st.markdown("""
+<nav style="display:flex;flex-direction:column;gap:4px;">
+  <a href="/" target="_self" style="font-size:13px;color:#37352f;text-decoration:none;padding:6px 8px;border-radius:6px;display:block;" onmouseover="this.style.background='#f0f0ef'" onmouseout="this.style.background='transparent'">Accueil</a>
+  <a href="/main" target="_self" style="font-size:13px;color:#37352f;text-decoration:none;padding:6px 8px;border-radius:6px;display:block;" onmouseover="this.style.background='#f0f0ef'" onmouseout="this.style.background='transparent'">Dashboard</a>
+  <a href="/privacy" target="_self" style="font-size:13px;color:#37352f;text-decoration:none;padding:6px 8px;border-radius:6px;display:block;" onmouseover="this.style.background='#f0f0ef'" onmouseout="this.style.background='transparent'">Confidentialité</a>
+</nav>
+""", unsafe_allow_html=True)
