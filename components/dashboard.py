@@ -103,17 +103,144 @@ _INSTA_CSS = """<style>
 .stat-cell { text-align:center; }
 .stat-val { font-family:var(--font-mono);font-size:13px;font-weight:500;color:#0e0f12; }
 .stat-lbl { font-size:9.5px;color:#8b8e98;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px; }
+/* Sparkline */
+.kp-spark { position:absolute;top:14px;right:14px;opacity:0.85; }
+.kpi-cell-strip { position:relative; }
+/* Heatmap */
+.heatmap-wrap { overflow-x:auto;padding-bottom:4px; }
+.heatmap-grid { display:grid;gap:4px;width:max-content; }
+.hm-cell {
+    width:52px;height:36px;border-radius:6px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-size:9px;font-weight:600;
+    color:#0e0f12;gap:2px;cursor:default;transition:opacity 0.15s;
+}
+.hm-cell:hover { opacity:0.8; }
+.hm-best { border:1.5px solid var(--brand,#3b5bff);color:#3b5bff; }
+.hm-day-lbl { font-size:10px;font-weight:600;color:#8b8e98;width:52px;text-align:center;padding-bottom:2px; }
+.hm-slot-lbl { font-size:10px;color:#8b8e98;padding-right:6px;width:46px;text-align:right;line-height:36px; }
 </style>"""
 
 
-def _kpi_cell(label: str, value: str, delta: int | None = None) -> str:
+def _sparkline_svg(data: list[float], color: str = "#3b5bff", w: int = 56, h: int = 22) -> str:
+    if not data or len(data) < 2:
+        return ""
+    mn, mx = min(data), max(data)
+    rng = mx - mn or 1
+    pts = [(i / (len(data) - 1)) * w for i in range(len(data))]
+    ypts = [h - ((v - mn) / rng) * (h - 2) - 1 for v in data]
+    path = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in zip(pts, ypts))
+    fill = path + f" L{w},{h} L0,{h} Z"
+    return (
+        f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" style="display:block">'
+        f'<path d="{fill}" fill="{color}" opacity="0.15"/>'
+        f'<path d="{path}" fill="none" stroke="{color}" stroke-width="1.4" '
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+    )
+
+
+def _heatmap_html(df: pd.DataFrame) -> str:
+    DAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+    SLOT_LABELS = ["6-9h", "9-12h", "12-15h", "15-18h", "18-21h", "21-24h"]
+
+    if "date" not in df.columns:
+        return ""
+
+    df2 = df.copy()
+    try:
+        df2["_dt"] = pd.to_datetime(df2["date"], errors="coerce", utc=True)
+    except Exception:
+        return ""
+
+    df2 = df2.dropna(subset=["_dt"])
+    if df2.empty:
+        return ""
+
+    df2["_dow"] = df2["_dt"].dt.dayofweek  # 0=Mon
+    df2["_eng"] = (
+        df2.get("likes", 0).fillna(0) +
+        df2.get("comments", 0).fillna(0) +
+        df2.get("saved", 0).fillna(0)
+    )
+
+    has_hour = df2["_dt"].dt.hour.nunique() > 1
+
+    if has_hour:
+        df2["_slot"] = pd.cut(
+            df2["_dt"].dt.hour,
+            bins=[-1, 9, 12, 15, 18, 21, 24],
+            labels=[0, 1, 2, 3, 4, 5],
+        ).astype(float).fillna(0).astype(int)
+        pivot = df2.groupby(["_dow", "_slot"])["_eng"].mean().reset_index()
+        rows, cols = 6, 7
+        grid = {(int(r["_dow"]), int(r["_slot"])): r["_eng"] for _, r in pivot.iterrows()}
+        global_max = max(grid.values()) if grid else 1
+        best_key = max(grid, key=grid.get) if grid else None
+
+        # Header row (day labels)
+        html = '<div class="heatmap-wrap"><div style="display:flex;gap:4px;margin-bottom:4px;padding-left:50px;">'
+        for dl in DAY_LABELS:
+            html += f'<div class="hm-day-lbl">{dl}</div>'
+        html += '</div>'
+
+        # Rows per slot
+        for s in range(rows):
+            html += f'<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">'
+            html += f'<div class="hm-slot-lbl">{SLOT_LABELS[s]}</div>'
+            for d in range(cols):
+                val = grid.get((d, s), 0)
+                intensity = val / global_max if global_max > 0 else 0
+                alpha = 0.08 + intensity * 0.65
+                is_best = best_key == (d, s)
+                extra = ' hm-best' if is_best else ''
+                label = "BEST" if is_best else f"{int(val)}" if val > 0 else ""
+                html += (
+                    f'<div class="hm-cell{extra}" '
+                    f'style="background:rgba(59,91,255,{alpha:.2f})">'
+                    f'{label}</div>'
+                )
+            html += '</div>'
+        html += '</div>'
+    else:
+        # Days only (7×1)
+        pivot = df2.groupby("_dow")["_eng"].mean().reset_index()
+        grid = {int(r["_dow"]): r["_eng"] for _, r in pivot.iterrows()}
+        global_max = max(grid.values()) if grid else 1
+        best_day = max(grid, key=grid.get) if grid else None
+
+        html = '<div class="heatmap-wrap"><div style="display:flex;gap:4px;">'
+        for d in range(7):
+            val = grid.get(d, 0)
+            intensity = val / global_max if global_max > 0 else 0
+            alpha = 0.08 + intensity * 0.65
+            is_best = best_day == d
+            extra = ' hm-best' if is_best else ''
+            html += (
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
+                f'<div class="hm-day-lbl">{DAY_LABELS[d]}</div>'
+                f'<div class="hm-cell{extra}" style="background:rgba(59,91,255,{alpha:.2f})">'
+                f'{"BEST" if is_best else ""}</div>'
+                f'</div>'
+            )
+        html += '</div></div>'
+
+    return html
+
+
+def _kpi_cell(label: str, value: str, delta: int | None = None,
+              spark: list[float] | None = None, spark_color: str = "#3b5bff") -> str:
     delta_html = ""
     if delta is not None:
         cls = "rp-pos" if delta >= 0 else "rp-neg"
         sign = "+" if delta >= 0 else ""
         delta_html = f'<div class="kpi-delta-strip {cls}">{sign}{delta:,} abonnés cette semaine</div>'
+    spark_html = ""
+    if spark:
+        svg = _sparkline_svg(spark, color=spark_color)
+        spark_html = f'<div class="kp-spark">{svg}</div>'
     return (
         f'<div class="kpi-cell-strip">'
+        f'{spark_html}'
         f'<div class="kpi-label-strip">{label}</div>'
         f'<div class="kpi-value-strip">{value}</div>'
         f'{delta_html}'
@@ -244,12 +371,31 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
     likes_total = int(df["likes"].sum()) if "likes" in df.columns else 0
     saves_total = int(df["saved"].sum()) if "saved" in df.columns else 0
 
+    # Sparklines: daily aggregates from df sorted by date
+    spark_followers: list[float] = []
+    if not df_follows.empty and "followers" in df_follows.columns:
+        spark_followers = df_follows.sort_values("fetched_at")["followers"].tail(7).tolist()
+
+    spark_reach: list[float] = []
+    spark_likes: list[float] = []
+    spark_saves: list[float] = []
+    if "date" in df.columns:
+        _df_dated = df.copy()
+        _df_dated["_d"] = pd.to_datetime(_df_dated["date"], errors="coerce").dt.date
+        _daily = _df_dated.groupby("_d").agg(
+            reach=("reach", "sum"), likes=("likes", "sum"),
+            saves=("saved", "sum"),
+        ).sort_index()
+        spark_reach = _daily["reach"].tail(7).tolist()
+        spark_likes = _daily["likes"].tail(7).tolist()
+        spark_saves = _daily["saves"].tail(7).tolist()
+
     st.markdown(
         f'<div class="kpi-strip-row">'
-        f'{_kpi_cell("Followers", f"{followers_current:,}", followers_delta if followers_delta else None)}'
-        f'{_kpi_cell("Portée totale", f"{reach_total:,}")}'
-        f'{_kpi_cell("Likes", f"{likes_total:,}")}'
-        f'{_kpi_cell("Sauvegardes", f"{saves_total:,}")}'
+        f'{_kpi_cell("Followers", f"{followers_current:,}", followers_delta if followers_delta else None, spark=spark_followers or None)}'
+        f'{_kpi_cell("Portée totale", f"{reach_total:,}", spark=spark_reach or None, spark_color="#0e0f12")}'
+        f'{_kpi_cell("Likes", f"{likes_total:,}", spark=spark_likes or None, spark_color="#3b5bff")}'
+        f'{_kpi_cell("Sauvegardes", f"{saves_total:,}", spark=spark_saves or None, spark_color="#1a7a4a")}'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -311,6 +457,22 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
 
         cards_html += "</div>"
         st.markdown(cards_html, unsafe_allow_html=True)
+
+    # ── Heatmap "Quand publier ?" ────────────────────────────────────────────
+    heatmap = _heatmap_html(df)
+    if heatmap:
+        st.markdown(
+            '<div class="section-head" style="margin-top:8px;">'
+            '<div class="section-title">Quand publier ?'
+            '<span class="st-count">engagement moyen par créneau</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="card" style="padding:16px 20px;">{heatmap}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
 
     if not df_follows.empty and len(df_follows) > 1:
         with st.expander("Évolution des followers", expanded=False):

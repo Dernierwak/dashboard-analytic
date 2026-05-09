@@ -153,6 +153,26 @@ def _camp_note(row, avg_ctr: float, avg_cpc: float) -> tuple[str, str]:
     return "Performances correctes", "#8b8e98"
 
 
+def _sparkline_svg(data: list[float], color: str = "#3b5bff", w: int = 56, h: int = 22) -> str:
+    """Tiny SVG sparkline (path + fill) matching the Pulse KPI design."""
+    if not data or len(data) < 2:
+        return ""
+    mn, mx = min(data), max(data)
+    rng = mx - mn or 1
+    pts = [(i / (len(data) - 1)) * w for i in range(len(data))]
+    ypts = [h - ((v - mn) / rng) * (h - 2) - 1 for v in data]
+    coords = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(pts, ypts))
+    path = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in zip(pts, ypts))
+    fill = path + f" L{w},{h} L0,{h} Z"
+    return (
+        f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" style="display:block">'
+        f'<path d="{fill}" fill="{color}" opacity="0.15"/>'
+        f'<path d="{path}" fill="none" stroke="{color}" stroke-width="1.4" '
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+    )
+
+
 def _health(row, avg_ctr: float, avg_cpc: float) -> tuple[int | None, str]:
     scores = []
     if row["impressions"] > 0 and avg_ctr > 0:
@@ -167,15 +187,21 @@ def _health(row, avg_ctr: float, avg_cpc: float) -> tuple[int | None, str]:
 
 
 def _kpi(label: str, value: str, unit: str = "", delta: float | None = None,
-         delta_label: str = "", invert: bool = False) -> str:
+         invert: bool = False, spark: list[float] | None = None,
+         spark_color: str = "#3b5bff") -> str:
     delta_html = ""
     if delta is not None and delta != 0:
         good = (delta > 0) if not invert else (delta < 0)
         cls = "kp-good" if good else "kp-bad"
         sign = "+" if delta > 0 else ""
         delta_html = f'<div class="kp-delta {cls}">{sign}{delta:.1f}% vs période préc.</div>'
+    spark_html = ""
+    if spark:
+        svg = _sparkline_svg(spark, color=spark_color)
+        spark_html = f'<div class="kp-spark">{svg}</div>'
     return (
         f'<div class="kpi-p">'
+        f'{spark_html}'
         f'<div class="kp-lbl">{label}</div>'
         f'<div class="kp-val">{value}<span class="kp-unit">{unit}</span></div>'
         f'{delta_html}'
@@ -372,6 +398,21 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
         nb_active = int(df_view[df_view["effective_status"] == "ACTIVE"]["campaign_name"].nunique())
     nb_paused = int(df_view["campaign_name"].nunique()) - nb_active
 
+    # ── Agrégat quotidien (avant KPI grid pour sparklines) ───────────────────
+    df_daily = (
+        df_view.groupby("date_start", as_index=False)
+        .agg(spend=("spend","sum"), clicks=("clicks","sum"), impressions=("impressions","sum"))
+    ).sort_values("date_start")
+    df_daily["ctr"] = df_daily.apply(
+        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+    df_daily["cpc"] = df_daily.apply(
+        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+
+    spark_spend  = df_daily["spend"].tail(7).tolist()
+    spark_clicks = df_daily["clicks"].tail(7).tolist()
+    spark_ctr    = df_daily["ctr"].tail(7).tolist()
+    spark_cpc    = df_daily["cpc"].tail(7).tolist()
+
     # ── Hero ────────────────────────────────────────────────────────────────
     st.markdown(
         f'<div class="page-h">'
@@ -386,26 +427,15 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     )
 
     # ── KPI grid ────────────────────────────────────────────────────────────
-    avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
     st.markdown(
         f'<div class="kpi-grid">'
-        f'{_kpi("Dépensé", f"{total_spend:,.0f}", "CHF")}'
-        f'{_kpi("Clics", f"{total_clicks:,}")}'
-        f'{_kpi("CTR moyen", f"{avg_ctr:.2f}", "%")}'
-        f'{_kpi("CPC moyen", f"{avg_cpc:.2f}", "CHF", invert=True)}'
+        f'{_kpi("Dépensé", f"{total_spend:,.0f}", "CHF", spark=spark_spend)}'
+        f'{_kpi("Clics", f"{total_clicks:,}", spark=spark_clicks, spark_color="#0e0f12")}'
+        f'{_kpi("CTR moyen", f"{avg_ctr:.2f}", "%", spark=spark_ctr, spark_color="#1a7a4a")}'
+        f'{_kpi("CPC moyen", f"{avg_cpc:.2f}", "CHF", invert=True, spark=spark_cpc, spark_color="#c0392b")}'
         f'</div>',
         unsafe_allow_html=True,
     )
-
-    # ── Agrégat quotidien ────────────────────────────────────────────────────
-    df_daily = (
-        df_view.groupby("date_start", as_index=False)
-        .agg(spend=("spend","sum"), clicks=("clicks","sum"), impressions=("impressions","sum"))
-    ).sort_values("date_start")
-    df_daily["ctr"] = df_daily.apply(
-        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
-    df_daily["cpc"] = df_daily.apply(
-        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
     # ── Chart section ────────────────────────────────────────────────────────
     metric_map = {

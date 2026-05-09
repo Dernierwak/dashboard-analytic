@@ -373,6 +373,117 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── Cette semaine vs la précédente ───────────────────────────────────────
+    if has_data:
+        import plotly.graph_objects as go
+
+        DAY_ABBR = ["L", "M", "M", "J", "V", "S", "D"]
+        c1, c2 = st.columns(2)
+
+        # CPC par jour (Meta Ads)
+        with c1:
+            st.markdown(
+                '<div class="p-section-title">Coût par clic (CPC)'
+                '<span class="p-section-muted"> · cette semaine</span></div>',
+                unsafe_allow_html=True,
+            )
+            if df_meta_raw is not None and not df_meta_raw.empty:
+                _df_cpc = (
+                    df_meta_raw[df_meta_raw["date_start"] >= pd.Timestamp(week_ago)]
+                    .groupby(df_meta_raw["date_start"].dt.date, as_index=False)
+                    .agg(spend=("spend", "sum"), clicks=("clicks", "sum"))
+                )
+                _df_cpc["cpc"] = _df_cpc.apply(
+                    lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1
+                )
+                _df_cpc["dow"] = pd.to_datetime(_df_cpc["date_start"]).dt.dayofweek
+                _df_cpc["lbl"] = _df_cpc["dow"].apply(lambda d: DAY_ABBR[d])
+                best_idx = _df_cpc["cpc"].idxmin() if not _df_cpc.empty else None
+                bar_colors = [
+                    "#3b5bff" if i == best_idx else "rgba(14,15,18,0.1)"
+                    for i in _df_cpc.index
+                ]
+                fig_cpc = go.Figure(go.Bar(
+                    x=_df_cpc["lbl"], y=_df_cpc["cpc"],
+                    marker_color=bar_colors,
+                    text=_df_cpc["cpc"].apply(lambda v: f"{v:.2f}"),
+                    textposition="outside", textfont=dict(size=9, color="#0e0f12"),
+                ))
+                fig_cpc.update_layout(
+                    height=160, margin=dict(l=0, r=0, t=24, b=0),
+                    paper_bgcolor="#fff", plot_bgcolor="#fff",
+                    showlegend=False, template="plotly_white",
+                    xaxis=dict(showgrid=False, color="#8b8e98", tickfont=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#8b8e98", tickfont=dict(size=9)),
+                )
+                st.plotly_chart(fig_cpc, use_container_width=True, config={"displayModeBar": False})
+                best_cpc = _df_cpc["cpc"].min() if not _df_cpc.empty else avg_cpc
+                st.markdown(
+                    f'<div style="padding:10px 12px;background:#faf9f6;border-radius:8px;'
+                    f'font-size:12px;color:#5a5d66;line-height:1.5;">'
+                    f'<b style="color:#0e0f12">Ton CPC moyen : {avg_cpc:.2f} CHF</b> · '
+                    f'Meilleur jour : {best_cpc:.2f} CHF. '
+                    f'Combien tu paies en moyenne quand quelqu\'un clique sur ta pub.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div style="color:#8b8e98;font-size:13px;padding:12px 0">Pas de données Meta Ads cette semaine.</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # Engagement Instagram par jour
+        with c2:
+            st.markdown(
+                '<div class="p-section-title">Engagement Instagram'
+                '<span class="p-section-muted"> · cette semaine</span></div>',
+                unsafe_allow_html=True,
+            )
+            if not df_insta.empty and "date" in df_insta.columns and "eng" in df_insta.columns:
+                _df_eng = df_insta.copy()
+                _df_eng["_dt"] = pd.to_datetime(_df_eng["date"], errors="coerce")
+                _df_eng = _df_eng.dropna(subset=["_dt"])
+                _df_eng["_d"] = _df_eng["_dt"].dt.date
+                _df_eng["dow"] = _df_eng["_dt"].dt.dayofweek
+                _daily_eng = _df_eng.groupby("dow")["eng"].mean().reset_index()
+                _daily_eng["lbl"] = _daily_eng["dow"].apply(lambda d: DAY_ABBR[d])
+                best_eng_idx = _daily_eng["eng"].idxmax() if not _daily_eng.empty else None
+                bar_colors_eng = [
+                    "#0e0f12" if i == best_eng_idx else "rgba(14,15,18,0.1)"
+                    for i in _daily_eng.index
+                ]
+                fig_eng = go.Figure(go.Bar(
+                    x=_daily_eng["lbl"], y=_daily_eng["eng"],
+                    marker_color=bar_colors_eng,
+                    text=_daily_eng["eng"].apply(lambda v: f"{v:.1f}%"),
+                    textposition="outside", textfont=dict(size=9, color="#0e0f12"),
+                ))
+                fig_eng.update_layout(
+                    height=160, margin=dict(l=0, r=0, t=24, b=0),
+                    paper_bgcolor="#fff", plot_bgcolor="#fff",
+                    showlegend=False, template="plotly_white",
+                    xaxis=dict(showgrid=False, color="#8b8e98", tickfont=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#8b8e98", tickfont=dict(size=9)),
+                )
+                st.plotly_chart(fig_eng, use_container_width=True, config={"displayModeBar": False})
+                best_eng_day = DAY_ABBR[int(_daily_eng.loc[best_eng_idx, "dow"])] if best_eng_idx is not None else "—"
+                best_eng_val = _daily_eng["eng"].max() if not _daily_eng.empty else avg_engagement
+                st.markdown(
+                    f'<div style="padding:10px 12px;background:#faf9f6;border-radius:8px;'
+                    f'font-size:12px;color:#5a5d66;line-height:1.5;">'
+                    f'<b style="color:#0e0f12">Pic le {best_eng_day} à {best_eng_val:.1f} %.</b> '
+                    f'Likes + commentaires + saves divisés par ta portée. '
+                    f'Plus c\'est élevé, plus l\'algo te pousse.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div style="color:#8b8e98;font-size:13px;padding:12px 0">Pas de données Instagram cette semaine.</div>',
+                    unsafe_allow_html=True,
+                )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     # ── Ce qui a changé ───────────────────────────────────────────────────────
     if events:
         st.markdown('<div class="p-section-title">Ce qui a changé cette semaine</div>', unsafe_allow_html=True)
