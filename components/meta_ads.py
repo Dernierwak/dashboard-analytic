@@ -4,49 +4,195 @@ import streamlit as st
 import requests
 import json
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 
 from scripts.insert_data import upsert_meta_ads
 from scripts.fetch_data import fetch_meta_ads, fetch_meta_ads_latest_date
 from components.insights_panel import show_insights_panel
 
-PULSE_CSS = """
-<style>
-.page-h { padding: 28px 0 24px; }
-.h-eyebrow { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-4, #8b8e98); margin-bottom: 6px; }
-.page-h h1 { font-family: var(--font-display, "Instrument Serif", Georgia, serif); font-size: 2rem; font-weight: 400; color: var(--ink, #0e0f12); margin: 0 0 6px; line-height: 1.2; }
-.h-sub { font-size: 14px; color: var(--ink-3, #5a5d66); margin: 0; }
-.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 20px 0; }
-.kpi { background: #fff; border: 1px solid var(--line, rgba(14,15,18,0.08)); border-radius: var(--r-lg, 14px); padding: 18px 20px; }
-.k-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--ink-4, #8b8e98); margin-bottom: 8px; }
-.k-value { font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 1.75rem; font-weight: 600; color: var(--ink, #0e0f12); line-height: 1.1; margin-bottom: 6px; }
-.k-foot { font-size: 12px; color: var(--ink-4, #8b8e98); }
-.delta { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.delta.up { background: #e7f3ec; color: #1a7a4a; }
-.delta.down { background: #fbe9e6; color: #c0392b; }
-.card { background: #fff; border: 1px solid var(--line, rgba(14,15,18,0.08)); border-radius: var(--r-lg, 14px); padding: 20px; margin-bottom: 12px; }
-.section { margin: 28px 0 16px; }
-.section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
-.section-title { font-size: 15px; font-weight: 600; color: var(--ink, #0e0f12); }
-.st-count { font-size: 12px; color: var(--ink-4, #8b8e98); background: var(--line, rgba(14,15,18,0.06)); border-radius: 20px; padding: 2px 8px; }
-.chip { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.chip.good { background: #e7f3ec; color: #1a7a4a; }
-.chip.bad { background: #fbe9e6; color: #c0392b; }
-.chip.warn { background: #fbf1de; color: #b86b00; }
-.chip.outline { background: transparent; color: var(--ink-3, #5a5d66); border: 1px solid var(--line, rgba(14,15,18,0.12)); }
-.camp-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.camp-name { font-weight: 600; font-size: 14px; color: var(--ink, #0e0f12); }
-.camp-metrics { display: flex; gap: 20px; flex-wrap: wrap; }
-.camp-metric { font-size: 12px; color: var(--ink-3, #5a5d66); }
-.camp-metric span { font-family: var(--font-mono, "JetBrains Mono", monospace); font-weight: 600; color: var(--ink, #0e0f12); }
-.bar { background: var(--line, rgba(14,15,18,0.06)); border-radius: 6px; height: 6px; overflow: hidden; margin-top: 10px; }
-.bar > span { display: block; height: 100%; border-radius: 6px; }
-.hint { background: #f0f4ff; border-radius: 10px; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-start; margin: 16px 0; }
-.hint-ico { font-size: 16px; flex-shrink: 0; }
-.hint p { font-size: 13px; color: #2c3e8c; margin: 0; }
-</style>
-"""
 
+# ── Pulse CSS ──────────────────────────────────────────────────────────────────
+PULSE_CSS = """<style>
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+:root {
+    --brand:#3b5bff;--good:#1a7a4a;--good-soft:#e7f3ec;
+    --bad:#c0392b;--bad-soft:#fbe9e6;--warn:#b86b00;--warn-soft:#fbf1de;
+    --ink:#0e0f12;--ink-3:#5a5d66;--ink-4:#8b8e98;
+    --line:rgba(14,15,18,0.08);
+    --font-mono:"JetBrains Mono",ui-monospace,monospace;
+    --font-display:"Instrument Serif",Georgia,serif;
+}
+.page-h { padding:28px 0 24px; }
+.h-eyebrow {
+    font-size:11.5px;font-weight:600;text-transform:uppercase;
+    letter-spacing:0.08em;color:#8b8e98;margin-bottom:10px;
+    font-family:var(--font-mono);
+}
+.page-h h1 {
+    font-family:var(--font-display) !important;
+    font-size:2rem !important;font-weight:400 !important;
+    color:#0e0f12 !important;line-height:1.2 !important;
+    margin:0 0 10px !important;
+}
+.h-sub { font-size:13.5px;color:#5a5d66;line-height:1.6;margin:0;max-width:560px; }
+
+/* ── Seg: st.radio horizontal → pill buttons ── */
+div[data-testid="stRadio"] > label { display:none; }
+div[data-testid="stRadio"] > div[role="radiogroup"] {
+    background:rgba(14,15,18,0.06);border-radius:8px;
+    padding:3px;gap:2px;display:inline-flex;flex-direction:row;
+    flex-wrap:nowrap;
+}
+div[data-testid="stRadio"] [data-baseweb="radio"] {
+    background:transparent;border-radius:6px;padding:5px 14px;
+    margin:0;
+}
+div[data-testid="stRadio"] [data-baseweb="radio"] > div:first-child { display:none; }
+div[data-testid="stRadio"] [data-baseweb="radio"] label {
+    font-size:12.5px;font-weight:500;color:#5a5d66;
+    cursor:pointer;padding:0;line-height:1;
+}
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] {
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.1);
+}
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label {
+    color:#0e0f12;font-weight:600;
+}
+
+/* ── KPI grid ── */
+.kpi-grid {
+    display:grid;grid-template-columns:repeat(4,1fr);
+    gap:12px;margin-bottom:28px;
+}
+.kpi-p {
+    background:#fff;border:1px solid rgba(14,15,18,0.08);
+    border-radius:14px;padding:16px 20px;
+}
+.kpi-p .kp-lbl {
+    font-size:11px;font-weight:600;text-transform:uppercase;
+    letter-spacing:0.06em;color:#8b8e98;margin-bottom:8px;
+}
+.kpi-p .kp-val {
+    font-family:var(--font-mono);font-size:1.7rem;
+    font-weight:500;color:#0e0f12;line-height:1;letter-spacing:-0.02em;
+}
+.kpi-p .kp-unit { font-size:1rem;color:#8b8e98;margin-left:3px; }
+.kpi-p .kp-delta { margin-top:8px;font-size:11.5px;font-weight:500; }
+.kp-good { color:#1a7a4a; } .kp-bad { color:#c0392b; } .kp-neu { color:#8b8e98; }
+
+/* ── Sections ── */
+.section { margin-bottom:32px; }
+.section-head {
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;
+}
+.section-title {
+    font-size:14px;font-weight:600;color:#0e0f12;
+    display:flex;align-items:center;gap:8px;
+}
+.st-count { font-size:11.5px;color:#8b8e98;font-weight:400; }
+
+/* ── Card ── */
+.card { background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px; }
+
+/* ── Chips ── */
+.chip {
+    display:inline-flex;align-items:center;gap:4px;
+    padding:3px 9px;border-radius:999px;
+    font-size:11.5px;font-weight:500;
+    background:rgba(14,15,18,0.06);color:#0e0f12;white-space:nowrap;
+}
+.chip.good { background:#e7f3ec;color:#1a7a4a; }
+.chip.bad  { background:#fbe9e6;color:#c0392b; }
+.chip.warn { background:#fbf1de;color:#b86b00; }
+.chip.outline { background:transparent;border:1px solid rgba(14,15,18,0.12);color:#5a5d66; }
+.chip.tiny { font-size:10px;padding:2px 7px; }
+
+/* ── Health bar ── */
+.bar { width:100%;height:3px;background:rgba(14,15,18,0.08);border-radius:99px;overflow:hidden; }
+.bar span { display:block;height:100%;border-radius:99px; }
+
+/* ── Campaign rows ── */
+.camp-row {
+    background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;
+    padding:14px 18px;margin-bottom:8px;
+    display:grid;
+    grid-template-columns:minmax(0,2fr) auto repeat(4,88px) 72px;
+    gap:16px;align-items:center;
+}
+.camp-row.paused { opacity:0.62; }
+.cell-lbl {
+    font-size:10px;text-transform:uppercase;letter-spacing:0.06em;
+    color:#8b8e98;font-weight:600;margin-bottom:4px;
+}
+.cell-val { font-family:var(--font-mono);font-size:13px;font-weight:500;color:#0e0f12; }
+.cell-r { text-align:right; }
+</style>"""
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _status_chip(status: str) -> str:
+    s = (status or "").upper()
+    if s == "ACTIVE":
+        return '<span class="chip good">● Active</span>'
+    if "PAUSED" in s:
+        return '<span class="chip outline">⏸ En pause</span>'
+    return '<span class="chip bad">▲ Alerte</span>'
+
+
+def _camp_note(row, avg_ctr: float, avg_cpc: float) -> tuple[str, str]:
+    cpc, ctr = row["cpc"], row["ctr"]
+    if avg_cpc > 0 and cpc > avg_cpc * 3 and cpc > 5:
+        return "À couper — CPC anormalement élevé", "#c0392b"
+    if avg_ctr > 0 and ctr >= avg_ctr * 1.5:
+        return "Augmente le budget — meilleure perf.", "#1a7a4a"
+    if avg_ctr > 0 and ctr < avg_ctr * 0.5 and ctr > 0:
+        return "Revoir le ciblage ou la créa", "#b86b00"
+    if cpc == 0 and ctr == 0:
+        return "En pause — aucune donnée sur la période", "#8b8e98"
+    return "Performances correctes", "#8b8e98"
+
+
+def _health(row, avg_ctr: float, avg_cpc: float) -> tuple[int | None, str]:
+    scores = []
+    if row["impressions"] > 0 and avg_ctr > 0:
+        scores.append(min(100, row["ctr"] / avg_ctr * 60))
+    if row["clicks"] > 0 and avg_cpc > 0:
+        scores.append(max(0, 100 - (row["cpc"] / avg_cpc - 1) * 50))
+    if not scores:
+        return None, "#8b8e98"
+    score = int(sum(scores) / len(scores))
+    color = "#1a7a4a" if score >= 70 else "#b86b00" if score >= 40 else "#c0392b"
+    return score, color
+
+
+def _kpi(label: str, value: str, unit: str = "", delta: float | None = None,
+         delta_label: str = "", invert: bool = False) -> str:
+    delta_html = ""
+    if delta is not None and delta != 0:
+        good = (delta > 0) if not invert else (delta < 0)
+        cls = "kp-good" if good else "kp-bad"
+        sign = "+" if delta > 0 else ""
+        delta_html = f'<div class="kp-delta {cls}">{sign}{delta:.1f}% vs période préc.</div>'
+    return (
+        f'<div class="kpi-p">'
+        f'<div class="kp-lbl">{label}</div>'
+        f'<div class="kp-val">{value}<span class="kp-unit">{unit}</span></div>'
+        f'{delta_html}'
+        f'</div>'
+    )
+
+
+def _cell(label: str, value: str) -> str:
+    return (
+        f'<div class="cell-r">'
+        f'<div class="cell-lbl">{label}</div>'
+        f'<div class="cell-val">{value}</div>'
+        f'</div>'
+    )
+
+
+# ── Data fetch fragment ────────────────────────────────────────────────────────
 
 @st.fragment
 def meta_ads_source_fragment(token, supabase=None, user_id=None):
@@ -71,9 +217,16 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 params={"fields": "id", "access_token": token, "limit": 1000}
             )
             nb_campaigns = len(r2.json().get("data", []))
-            st.markdown(f"<div class='account-name'>{acc['name']}</div><div class='account-meta'>{nb_campaigns} campagne(s)</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='account-name'>{acc['name']}</div>"
+                f"<div class='account-meta'>{nb_campaigns} campagne(s)</div>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.markdown("<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#6b6b6b;padding:12px 0'>Aucun compte publicitaire trouvé.</div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -102,7 +255,6 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             return
 
         time_range = {"since": since.isoformat(), "until": today.isoformat()}
-        st.caption(f"🔍 DEBUG — Fetch du {since} au {today}")
         params = {
             "access_token": token,
             "level": "ad",
@@ -113,7 +265,7 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         progress_bar.progress(20, text="Compte trouvé, récupération des données...")
         result = requests.get(url=url, params=params).json()
         if "error" in result:
-            st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')} (code {result['error'].get('code', '?')})")
+            st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')}")
             progress_bar.empty()
             return
         rows = result.get("data", [])
@@ -140,7 +292,6 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 except Exception as e:
                     st.error(f"❌ Sauvegarde Supabase échouée : {e}")
                     st.stop()
-
             if supabase and user_id:
                 try:
                     persisted = fetch_meta_ads(supabase, user_id)
@@ -149,7 +300,6 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                     df_loaded = pd.DataFrame(rows)
             else:
                 df_loaded = pd.DataFrame(rows)
-
             st.session_state["meta_ads_df"] = df_loaded
             st.rerun()
         else:
@@ -158,210 +308,236 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             st.session_state.pop("meta_ads_df", None)
 
 
-def _health_score(ctr: float, cpc: float) -> int:
-    ctr_score = min(100, ctr / 3 * 100)
-    if cpc > 0:
-        cpc_score = max(0, 100 - cpc * 20)
-    else:
-        cpc_score = 50
-    return int(min(100, max(0, (ctr_score + cpc_score) / 2)))
+# ── Dashboard ─────────────────────────────────────────────────────────────────
 
-
-def _bar_color(score: int) -> str:
-    if score >= 70:
-        return "#1a7a4a"
-    if score >= 40:
-        return "#b86b00"
-    return "#c0392b"
-
-
-def _status_chip(status: str) -> str:
-    s = (status or "").upper()
-    if s == "ACTIVE":
-        return "<span class='chip good'>Actif</span>"
-    if s in ("PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"):
-        return "<span class='chip outline'>En pause</span>"
-    return "<span class='chip warn'>Alerte</span>"
-
-
-def show_meta_ads_tab(is_paid: bool = False):
-    st.markdown(PULSE_CSS, unsafe_allow_html=True)
-
-    df_raw = st.session_state.get("meta_ads_df")
-
-    col_hero, col_period = st.columns([3, 1])
-    with col_period:
-        period_label = st.selectbox(
-            "Période",
-            ["7 derniers jours", "24 dernières heures", "30 derniers jours", "90 derniers jours"],
-            key="meta_period_sel",
-            label_visibility="collapsed",
-        )
-
-    period_days = {"24 dernières heures": 1, "7 derniers jours": 7, "30 derniers jours": 30, "90 derniers jours": 90}
-    days = period_days.get(period_label, 7)
-
-    if df_raw is None or (isinstance(df_raw, pd.DataFrame) and df_raw.empty):
-        with col_hero:
-            st.markdown(f"""
-            <div class='page-h'>
-                <div class='h-eyebrow'>Meta Ads · {period_label}</div>
-                <h1>Connecte ton compte Meta pour voir tes campagnes.</h1>
-            </div>
-            """, unsafe_allow_html=True)
-        st.info("Connecte ton compte Meta Ads dans l'onglet **Connecter Meta** pour voir les données.")
+def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        st.info("Connectez votre compte Meta Ads dans 'Mon compte' pour voir les données.")
         return
 
-    df = df_raw.copy()
+    # ── Typage ──────────────────────────────────────────────────────────────
     for col in ["impressions", "clicks", "spend", "reach", "link_clicks"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
+    # ── Période selector (.seg) ──────────────────────────────────────────────
     from datetime import date, timedelta
+    period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90}
+    col_period, col_status, col_camp = st.columns([2, 2, 3])
+    with col_period:
+        sel_period = st.radio(
+            "Période", list(period_opts.keys()),
+            index=1, horizontal=True, key="mad_period",
+        )
+    days = period_opts[sel_period]
     cutoff = pd.Timestamp(date.today() - timedelta(days=days))
-    df = df[df["date_start"] >= cutoff]
+    df_view = df[df["date_start"] >= cutoff].copy()
 
-    if df.empty:
-        with col_hero:
-            st.markdown(f"""
-            <div class='page-h'>
-                <div class='h-eyebrow'>Meta Ads · {period_label}</div>
-                <h1>Aucune donnée sur cette période.</h1>
-            </div>
-            """, unsafe_allow_html=True)
+    with col_status:
+        if "effective_status" in df.columns and df["effective_status"].notna().any():
+            status_opts = sorted(df["effective_status"].dropna().unique())
+            sel_status = st.multiselect(
+                "Statut", options=status_opts, key="mad_status",
+                placeholder="Tous les statuts",
+            )
+            if sel_status:
+                df_view = df_view[df_view["effective_status"].isin(sel_status)]
+
+    with col_camp:
+        sel_campaigns = st.multiselect(
+            "Campagne", options=sorted(df["campaign_name"].dropna().unique()),
+            key="mad_campaigns", placeholder="Toutes les campagnes",
+        )
+        if sel_campaigns:
+            df_view = df_view[df_view["campaign_name"].isin(sel_campaigns)]
+
+    if df_view.empty:
+        st.warning("Aucune donnée pour ces filtres.")
         return
 
-    total_spend = df["spend"].sum()
-    total_clicks = int(df["clicks"].sum())
-    total_impressions = int(df["impressions"].sum())
-    avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
-    avg_cpc = (total_spend / total_clicks) if total_clicks > 0 else 0.0
-    nb_campaigns = df["campaign_name"].nunique() if "campaign_name" in df.columns else 0
+    # ── Agrégats globaux ─────────────────────────────────────────────────────
+    total_spend       = df_view["spend"].sum()
+    total_clicks      = int(df_view["clicks"].sum())
+    total_impressions = int(df_view["impressions"].sum())
+    avg_ctr  = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
+    avg_cpc  = (total_spend / total_clicks) if total_clicks > 0 else 0.0
 
-    with col_hero:
-        st.markdown(f"""
-        <div class='page-h'>
-            <div class='h-eyebrow'>Meta Ads · {period_label}</div>
-            <h1>{nb_campaigns} campagne{"s" if nb_campaigns > 1 else ""} en cours, {total_spend:,.0f} CHF dépensés.</h1>
-            <p class='h-sub'>{total_clicks:,} clics · CTR {avg_ctr:.2f}% · CPC {avg_cpc:.2f} CHF</p>
-        </div>
-        """, unsafe_allow_html=True)
+    if total_spend == 0:
+        st.info("Aucune dépense sur cette période.")
+        return
 
-    st.markdown(f"""
-    <div class='kpi-grid'>
-        <div class='kpi'>
-            <div class='k-label'>Dépensé</div>
-            <div class='k-value'>{total_spend:,.2f}</div>
-            <div class='k-foot'>CHF</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>Clics</div>
-            <div class='k-value'>{total_clicks:,}</div>
-            <div class='k-foot'>sur {total_impressions:,} imp.</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>CTR moyen</div>
-            <div class='k-value'>{avg_ctr:.2f}</div>
-            <div class='k-foot'>%</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>CPC moyen</div>
-            <div class='k-value'>{avg_cpc:.2f}</div>
-            <div class='k-foot'>CHF / clic</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    nb_active = 0
+    if "effective_status" in df_view.columns:
+        nb_active = int(df_view[df_view["effective_status"] == "ACTIVE"]["campaign_name"].nunique())
+    nb_paused = int(df_view["campaign_name"].nunique()) - nb_active
 
+    # ── Hero ────────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div class="page-h">'
+        f'<div class="h-eyebrow">Meta Ads · {sel_period} derniers jours</div>'
+        f'<h1>{nb_active} campagne{"s" if nb_active != 1 else ""} en cours, {total_spend:,.0f} CHF dépensés.</h1>'
+        f'<p class="h-sub">'
+        f'CTR moyen <b>{avg_ctr:.2f} %</b> · CPC moyen <b>{avg_cpc:.2f} CHF</b>. '
+        f'{nb_paused} campagne{"s" if nb_paused != 1 else ""} en pause sur la période.'
+        f'</p>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── KPI grid ────────────────────────────────────────────────────────────
+    avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
+    st.markdown(
+        f'<div class="kpi-grid">'
+        f'{_kpi("Dépensé", f"{total_spend:,.0f}", "CHF")}'
+        f'{_kpi("Clics", f"{total_clicks:,}")}'
+        f'{_kpi("CTR moyen", f"{avg_ctr:.2f}", "%")}'
+        f'{_kpi("CPC moyen", f"{avg_cpc:.2f}", "CHF", invert=True)}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Agrégat quotidien ────────────────────────────────────────────────────
     df_daily = (
-        df.groupby("date_start", as_index=False)
-        .agg(spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
-    )
-    df_daily["ctr"] = df_daily.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
-    df_daily["cpc"] = df_daily.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
-    df_daily = df_daily.sort_values("date_start")
+        df_view.groupby("date_start", as_index=False)
+        .agg(spend=("spend","sum"), clicks=("clicks","sum"), impressions=("impressions","sum"))
+    ).sort_values("date_start")
+    df_daily["ctr"] = df_daily.apply(
+        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+    df_daily["cpc"] = df_daily.apply(
+        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
-    st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Évolution quotidienne</span></div></div>", unsafe_allow_html=True)
+    # ── Chart section ────────────────────────────────────────────────────────
+    metric_map = {
+        "Dépenses (CHF)": ("spend", "CHF"),
+        "Clics":          ("clicks", ""),
+        "CTR (%)":        ("ctr", "%"),
+        "CPC (CHF)":      ("cpc", "CHF"),
+    }
+    col_title, col_metric = st.columns([3, 2])
+    with col_title:
+        st.markdown('<div class="section-title">Évolution quotidienne</div>', unsafe_allow_html=True)
+    with col_metric:
+        sel_metric_label = st.radio(
+            "Métrique", list(metric_map.keys()),
+            horizontal=True, key="mad_metric",
+        )
 
-    metric_map = {"Dépenses (CHF)": "spend", "Clics": "clicks", "CTR (%)": "ctr", "CPC (CHF)": "cpc"}
-    sel_metric = st.selectbox("Métrique évolution", list(metric_map.keys()), key="meta_daily_metric", label_visibility="collapsed")
-    y_col = metric_map[sel_metric]
-
-    fig = px.area(
-        df_daily, x="date_start", y=y_col,
-        labels={"date_start": "", y_col: sel_metric},
-        color_discrete_sequence=["#3b5bff"],
-    )
-    fig.update_traces(fill="tozeroy", line=dict(width=2), fillcolor="rgba(59,91,255,0.12)")
+    metric_col, metric_unit = metric_map[sel_metric_label]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df_daily["date_start"], y=df_daily[metric_col],
+        mode="lines+markers",
+        line=dict(color="#3b5bff", width=2),
+        marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
+        fill="tozeroy",
+        fillcolor="rgba(59,91,255,0.07)",
+        hovertemplate=f"%{{x|%d %b}}<br>%{{y:.2f}} {metric_unit}<extra></extra>",
+    ))
     fig.update_layout(
+        template="plotly_white", height=240,
+        margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-        margin=dict(l=0, r=0, t=8, b=0), height=220,
-        xaxis=dict(showgrid=False, color="#8b8e98"),
-        yaxis=dict(gridcolor="rgba(14,15,18,0.05)", color="#8b8e98"),
-        font=dict(family="Inter, sans-serif", color="#5a5d66"),
+        font=dict(color="#666", family="Inter, sans-serif"),
+        xaxis=dict(showgrid=False, color="#999", linecolor="rgba(0,0,0,0.07)"),
+        yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#999"),
         showlegend=False,
     )
+    st.markdown('<div class="card" style="padding:16px 20px 8px;">', unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    if "campaign_name" not in df.columns:
-        return
+    st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── Agrégat par campagne ─────────────────────────────────────────────────
     df_camp = (
-        df.groupby("campaign_name", as_index=False)
-        .agg(
-            spend=("spend", "sum"),
-            clicks=("clicks", "sum"),
-            impressions=("impressions", "sum"),
-            effective_status=("effective_status", "last") if "effective_status" in df.columns else ("spend", "count"),
-        )
+        df_view.groupby("campaign_name", as_index=False)
+        .agg(spend=("spend","sum"), clicks=("clicks","sum"), impressions=("impressions","sum"))
     )
-    df_camp["ctr"] = df_camp.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
-    df_camp["cpc"] = df_camp.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
-    df_camp["score"] = df_camp.apply(lambda r: _health_score(r["ctr"], r["cpc"]), axis=1)
+    df_camp["ctr"] = df_camp.apply(
+        lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+    df_camp["cpc"] = df_camp.apply(
+        lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
-    nb_active = int((df_camp.get("effective_status", pd.Series([])) == "ACTIVE").sum()) if "effective_status" in df_camp.columns else nb_campaigns
+    _cpc_pos = df_camp[df_camp["cpc"] > 0]["cpc"]
+    avg_ctr_all = df_camp["ctr"].mean() if not df_camp.empty else 0.0
+    avg_cpc_all = _cpc_pos.mean() if not _cpc_pos.empty else 0.0
 
-    st.markdown(f"""
-    <div class='section'>
-        <div class='section-head'>
-            <span class='section-title'>Campagnes</span>
-            <span class='st-count'>{nb_active} actives</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Récupérer statut le plus fréquent par campagne
+    camp_status = {}
+    if "effective_status" in df_view.columns:
+        for camp, grp in df_view.groupby("campaign_name"):
+            mode = grp["effective_status"].mode()
+            camp_status[camp] = mode.iloc[0] if not mode.empty else ""
 
-    for _, row in df_camp.iterrows():
-        score = int(row["score"])
-        bar_color = _bar_color(score)
-        status_html = _status_chip(row.get("effective_status", ""))
-        ctr_val = row["ctr"]
-        cpc_val = row["cpc"]
-        spend_val = row["spend"]
-        clicks_val = int(row["clicks"])
+    # Trier : actives d'abord, puis par dépenses décroissantes
+    def _sort_key(r):
+        status = camp_status.get(r["campaign_name"], "")
+        return (0 if status == "ACTIVE" else 1, -r["spend"])
+    df_camp_sorted = df_camp.copy()
+    df_camp_sorted["_sort"] = df_camp_sorted.apply(_sort_key, axis=1)
+    df_camp_sorted = df_camp_sorted.sort_values("_sort").drop(columns=["_sort"])
 
-        st.markdown(f"""
-        <div class='card'>
-            <div class='camp-row'>
-                <span class='camp-name'>{row['campaign_name']}</span>
-                <span>{status_html}</span>
-            </div>
-            <div class='camp-metrics'>
-                <div class='camp-metric'>Dépensé&nbsp;<span>{spend_val:,.2f} CHF</span></div>
-                <div class='camp-metric'>Clics&nbsp;<span>{clicks_val:,}</span></div>
-                <div class='camp-metric'>CTR&nbsp;<span>{ctr_val:.2f}%</span></div>
-                <div class='camp-metric'>CPC&nbsp;<span>{cpc_val:.2f} CHF</span></div>
-            </div>
-            <div style='display:flex;align-items:center;gap:10px;margin-top:10px;'>
-                <div class='bar' style='flex:1'><span style='width:{score}%;background:{bar_color}'></span></div>
-                <span style='font-size:11px;font-family:var(--font-mono,"JetBrains Mono",monospace);color:{bar_color};font-weight:600;min-width:30px;text-align:right;'>{score}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    nb_active_camp = sum(1 for c in df_camp_sorted["campaign_name"] if camp_status.get(c, "") == "ACTIVE")
+    nb_paused_camp = len(df_camp_sorted) - nb_active_camp
 
-    with st.expander("💡 Insights IA", expanded=False):
-        show_insights_panel(
-            df_meta=df,
-            is_paid=is_paid,
-            section="meta_ads",
-            use_sidebar=False,
+    st.markdown(
+        f'<div class="section-head">'
+        f'<div class="section-title">Campagnes '
+        f'<span class="st-count">{nb_active_camp} actives · {nb_paused_camp} en pause</span>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    rows_html = ""
+    for _, row in df_camp_sorted.iterrows():
+        status = camp_status.get(row["campaign_name"], "")
+        note_text, note_color = _camp_note(row, avg_ctr_all, avg_cpc_all)
+        score, health_color = _health(row, avg_ctr_all, avg_cpc_all)
+        is_paused = "PAUSED" in status.upper()
+
+        health_html = (
+            f'<div style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:{health_color};">{score}/100</div>'
+            f'<div class="bar" style="margin-top:3px;"><span style="width:{score}%;background:{health_color};"></span></div>'
+            if score is not None else '<div style="font-size:11.5px;color:#8b8e98;">—</div>'
         )
+
+        rows_html += f"""
+        <div class="camp-row{'  paused' if is_paused else ''}">
+          <div>
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:4px;">{row['campaign_name']}</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:11.5px;color:{note_color};">{note_text}</span>
+            </div>
+          </div>
+          <div>{_status_chip(status)}</div>
+          {_cell("Dépensé", f"{row['spend']:,.0f} CHF" if row['spend'] > 0 else "—")}
+          {_cell("Clics", f"{int(row['clicks']):,}" if row['clicks'] > 0 else "—")}
+          {_cell("CTR", f"{row['ctr']:.2f} %" if row['ctr'] > 0 else "—")}
+          {_cell("CPC", f"{row['cpc']:.2f} CHF" if row['cpc'] > 0 else "—")}
+          <div class="cell-r">
+            <div class="cell-lbl">Santé</div>
+            {health_html}
+          </div>
+        </div>"""
+
+    st.markdown(rows_html, unsafe_allow_html=True)
+
+
+# ── Tab entry point ───────────────────────────────────────────────────────────
+
+def show_meta_ads_tab(is_paid: bool = False):
+    st.markdown(PULSE_CSS, unsafe_allow_html=True)
+    df = st.session_state.get("meta_ads_df")
+
+    _, col_insights_btn = st.columns([5, 1])
+    with col_insights_btn:
+        with st.popover("💡 Insights", use_container_width=True):
+            show_insights_panel(
+                df_meta=df,
+                is_paid=is_paid,
+                section="meta_ads",
+                use_sidebar=False,
+            )
+
+    show_meta_ads_dashboard(df)
