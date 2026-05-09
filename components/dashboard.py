@@ -200,54 +200,54 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
     # ── E. Tous les posts ─────────────────────────────────────────────────────
     st.markdown("<div class='section-title'>Tous les posts</div>", unsafe_allow_html=True)
 
-    tab_table, tab_calendar = st.tabs(["Tableau", "Calendrier"])
+    labelling = Labelling(client=client, user_id=user_id, df=df)
+    labels_options = [l for l in st.session_state.get("labels_list", []) if l]
 
-    with tab_table:
-        labelling = Labelling(client=client, user_id=user_id, df=df)
-        labels_options = [l for l in st.session_state.get("labels_list", []) if l]
+    cols_order = ["caption", "type", "date", "follows", "likes", "comments", "saved", "views", "reach"]
+    cols_available = [c for c in cols_order if c in df.columns]
+    df_display = df[cols_available].copy()
+    df_display.insert(
+        0, "label",
+        df["labels"].apply(lambda x: x[0] if x and len(x) > 0 else None)
+        if "labels" in df.columns else None,
+    )
 
-        cols_order = ["caption", "type", "date", "follows", "likes", "comments", "saved", "views", "reach"]
-        cols_available = [c for c in cols_order if c in df.columns]
-        df_display = df[cols_available].copy()
-        df_display.insert(
-            0, "label",
-            df["labels"].apply(lambda x: x[0] if x and len(x) > 0 else None)
-            if "labels" in df.columns else None,
-        )
+    col_config = {
+        "label": st.column_config.SelectboxColumn("Label", options=labels_options, required=False),
+        "caption": st.column_config.TextColumn("Caption", disabled=True),
+        "type": st.column_config.TextColumn("Type", disabled=True),
+        "date": st.column_config.TextColumn("Date", disabled=True),
+        "follows": st.column_config.NumberColumn("Follows", disabled=True),
+        "likes": st.column_config.NumberColumn("Likes", disabled=True),
+        "comments": st.column_config.NumberColumn("Commentaires", disabled=True),
+        "saved": st.column_config.NumberColumn("Sauvegardés", disabled=True),
+        "views": st.column_config.NumberColumn("Views", disabled=True),
+        "reach": st.column_config.NumberColumn("Reach", disabled=True),
+    }
+    edited = st.data_editor(
+        df_display,
+        column_config=col_config,
+        hide_index=True,
+        use_container_width=True,
+        key="editor_tableau_labels",
+    )
+    if st.button("Sauvegarder les labels", key="btn_save_tableau"):
+        with st.spinner("Mise à jour..."):
+            for i, row in edited.iterrows():
+                post_id = str(df["id"].iloc[i])
+                label = row["label"]
+                label = None if (label is None or (isinstance(label, float) and pd.isna(label))) else str(label)
+                new_labels = [label] if label else []
+                labelling.supabase.table("instagram_organic_posts").update({
+                    "labels": new_labels
+                }).eq("user_id", user_id).eq("id", post_id).execute()
+        _load_posts.clear()
+        st.success("Sauvegardé.")
 
-        col_config = {
-            "label": st.column_config.SelectboxColumn("Label", options=labels_options, required=False),
-            "caption": st.column_config.TextColumn("Caption", disabled=True),
-            "type": st.column_config.TextColumn("Type", disabled=True),
-            "date": st.column_config.TextColumn("Date", disabled=True),
-            "follows": st.column_config.NumberColumn("Follows", disabled=True),
-            "likes": st.column_config.NumberColumn("Likes", disabled=True),
-            "comments": st.column_config.NumberColumn("Commentaires", disabled=True),
-            "saved": st.column_config.NumberColumn("Sauvegardés", disabled=True),
-            "views": st.column_config.NumberColumn("Views", disabled=True),
-            "reach": st.column_config.NumberColumn("Reach", disabled=True),
-        }
-        edited = st.data_editor(
-            df_display,
-            column_config=col_config,
-            hide_index=True,
-            use_container_width=True,
-            key="editor_tableau_labels",
-        )
-        if st.button("Sauvegarder les labels", key="btn_save_tableau"):
-            with st.spinner("Mise à jour..."):
-                for i, row in edited.iterrows():
-                    post_id = str(df["id"].iloc[i])
-                    label = row["label"]
-                    label = None if (label is None or (isinstance(label, float) and pd.isna(label))) else str(label)
-                    new_labels = [label] if label else []
-                    labelling.supabase.table("instagram_organic_posts").update({
-                        "labels": new_labels
-                    }).eq("user_id", user_id).eq("id", post_id).execute()
-            _load_posts.clear()
-            st.success("Sauvegardé.")
+    if labels_options:
+        labelling._batch_assign()
 
-    with tab_calendar:
+    with st.expander("🗓️ Vue calendrier", expanded=False):
         cal_color_by = st.radio(
             "Colorier par", ["Type de post", "Label"],
             horizontal=True, key="cal_color_mode",
@@ -297,103 +297,91 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
 
     labelling_mgr = Labelling(client=client, user_id=user_id, df=df)
 
-    tab_lab_analysis, tab_lab_manage = st.tabs(["📊 Analyses", "🏷️ Gérer les labels"])
+    has_labels_data = False
+    if "labels" in df.columns:
+        df_lab = df[df["labels"].apply(lambda x: bool(x and len(x) > 0 and x[0]))].copy()
+        if not df_lab.empty:
+            has_labels_data = True
+            df_lab["label"] = df_lab["labels"].apply(lambda x: x[0])
 
-    with tab_lab_analysis:
-        has_labels_data = False
-        if "labels" in df.columns:
-            df_lab = df[df["labels"].apply(lambda x: bool(x and len(x) > 0 and x[0]))].copy()
-            if not df_lab.empty:
-                has_labels_data = True
-                df_lab["label"] = df_lab["labels"].apply(lambda x: x[0])
-
-                lab_metric_name = st.selectbox(
-                    "Métrique labels", list(METRIC_OPTIONS.keys()),
-                    key="lab_metric_sel", label_visibility="collapsed",
-                )
-                lab_metric_col = METRIC_OPTIONS[lab_metric_name]
-
-                col_bar_l, col_donut_l = st.columns([3, 2])
-                with col_bar_l:
-                    avg_df = df_lab.groupby("label")[lab_metric_col].mean().reset_index()
-                    avg_df.columns = ["label", "moyenne"]
-                    avg_df = avg_df.sort_values("moyenne")
-                    fig_bar_lab = px.bar(
-                        avg_df, x="moyenne", y="label", orientation="h",
-                        labels={"moyenne": f"Moy. {lab_metric_name}", "label": ""},
-                        color="label",
-                        color_discrete_sequence=px.colors.qualitative.Set2,
-                    )
-                    fig_bar_lab.update_layout(
-                        template="plotly_white",
-                        height=max(180, len(avg_df) * 50),
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-                        font=dict(color="#666", family="DM Sans, sans-serif"),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_bar_lab, use_container_width=True, config={"displayModeBar": False})
-
-                with col_donut_l:
-                    cnt_df = df_lab.groupby("label").size().reset_index(name="posts")
-                    fig_donut = px.pie(
-                        cnt_df, values="posts", names="label", hole=0.55,
-                        color_discrete_sequence=px.colors.qualitative.Set2,
-                    )
-                    fig_donut.update_layout(
-                        template="plotly_white", height=220,
-                        margin=dict(l=0, r=0, t=10, b=20),
-                        paper_bgcolor="#ffffff",
-                        font=dict(color="#666", family="DM Sans, sans-serif"),
-                        legend=dict(orientation="h", y=-0.2),
-                    )
-                    fig_donut.update_traces(textposition="inside", textinfo="percent+label")
-                    st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
-
-                st.markdown("<div class='section-title' style='margin-top:8px;'>Top post par label</div>", unsafe_allow_html=True)
-                _all_labels = sorted(df_lab["label"].unique().tolist())
-                for _i in range(0, len(_all_labels), 3):
-                    _chunk = _all_labels[_i:_i + 3]
-                    _top_cols = st.columns(len(_chunk))
-                    for _j, _lbl in enumerate(_chunk):
-                        _df_lbl = df_lab[df_lab["label"] == _lbl]
-                        if _df_lbl.empty:
-                            continue
-                        _best = _df_lbl.sort_values("likes", ascending=False, na_position="last").iloc[0]
-                        with _top_cols[_j]:
-                            st.markdown(f"**{_lbl}**")
-                            _likes = int(_best["likes"]) if pd.notna(_best.get("likes")) else 0
-                            _reach = int(_best["reach"]) if pd.notna(_best.get("reach")) else 0
-                            _saved = int(_best["saved"]) if pd.notna(_best.get("saved")) else 0
-                            st.markdown(
-                                f"👍 **{_likes:,}** &nbsp;·&nbsp; "
-                                f"👁 **{_reach:,}** &nbsp;·&nbsp; "
-                                f"🔖 **{_saved:,}**",
-                                unsafe_allow_html=True,
-                            )
-                            st.caption(f"{_best.get('date', '')} · {_best.get('type', '')}")
-
-        if not has_labels_data:
-            st.markdown(
-                '<div style="background:#fafaf9;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:16px 20px;">'
-                '<div style="font-size:13px;font-weight:500;color:#0a0a0a;margin-bottom:6px;">Aucun label assigné</div>'
-                '<div style="font-size:12px;color:#666;line-height:1.6;">'
-                'Les labels te permettent de mesurer tes types de contenu : '
-                '<em>Reel viral</em>, <em>UGC</em>, <em>Campagne promo</em>… '
-                'Crée tes labels dans l\'onglet <b>Gérer les labels</b> et assigne-les à tes posts '
-                'dans le tableau ci-dessus pour voir les performances.'
-                '</div>'
-                '</div>',
-                unsafe_allow_html=True,
+            lab_metric_name = st.selectbox(
+                "Métrique labels", list(METRIC_OPTIONS.keys()),
+                key="lab_metric_sel", label_visibility="collapsed",
             )
+            lab_metric_col = METRIC_OPTIONS[lab_metric_name]
 
-    with tab_lab_manage:
+            col_bar_l, col_donut_l = st.columns([3, 2])
+            with col_bar_l:
+                avg_df = df_lab.groupby("label")[lab_metric_col].mean().reset_index()
+                avg_df.columns = ["label", "moyenne"]
+                avg_df = avg_df.sort_values("moyenne")
+                fig_bar_lab = px.bar(
+                    avg_df, x="moyenne", y="label", orientation="h",
+                    labels={"moyenne": f"Moy. {lab_metric_name}", "label": ""},
+                    color="label",
+                    color_discrete_sequence=px.colors.qualitative.Set2,
+                )
+                fig_bar_lab.update_layout(
+                    template="plotly_white",
+                    height=max(180, len(avg_df) * 50),
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+                    font=dict(color="#666", family="DM Sans, sans-serif"),
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_bar_lab, use_container_width=True, config={"displayModeBar": False})
+
+            with col_donut_l:
+                cnt_df = df_lab.groupby("label").size().reset_index(name="posts")
+                fig_donut = px.pie(
+                    cnt_df, values="posts", names="label", hole=0.55,
+                    color_discrete_sequence=px.colors.qualitative.Set2,
+                )
+                fig_donut.update_layout(
+                    template="plotly_white", height=220,
+                    margin=dict(l=0, r=0, t=10, b=20),
+                    paper_bgcolor="#ffffff",
+                    font=dict(color="#666", family="DM Sans, sans-serif"),
+                    legend=dict(orientation="h", y=-0.2),
+                )
+                fig_donut.update_traces(textposition="inside", textinfo="percent+label")
+                st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
+
+            st.markdown("<div class='section-title' style='margin-top:8px;'>Top post par label</div>", unsafe_allow_html=True)
+            _all_labels = sorted(df_lab["label"].unique().tolist())
+            for _i in range(0, len(_all_labels), 3):
+                _chunk = _all_labels[_i:_i + 3]
+                _top_cols = st.columns(len(_chunk))
+                for _j, _lbl in enumerate(_chunk):
+                    _df_lbl = df_lab[df_lab["label"] == _lbl]
+                    if _df_lbl.empty:
+                        continue
+                    _best = _df_lbl.sort_values("likes", ascending=False, na_position="last").iloc[0]
+                    with _top_cols[_j]:
+                        st.markdown(f"**{_lbl}**")
+                        _likes = int(_best["likes"]) if pd.notna(_best.get("likes")) else 0
+                        _reach = int(_best["reach"]) if pd.notna(_best.get("reach")) else 0
+                        _saved = int(_best["saved"]) if pd.notna(_best.get("saved")) else 0
+                        st.markdown(
+                            f"👍 **{_likes:,}** &nbsp;·&nbsp; "
+                            f"👁 **{_reach:,}** &nbsp;·&nbsp; "
+                            f"🔖 **{_saved:,}**",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"{_best.get('date', '')} · {_best.get('type', '')}")
+
+    if not has_labels_data:
         st.markdown(
-            '<div style="font-size:12px;color:#666;margin-bottom:16px;line-height:1.6;">'
-            'Les labels classifient tes posts pour analyser ce qui performe. '
-            'Crée tes catégories ici (<em>Reel viral</em>, <em>UGC</em>, <em>Campagne promo</em>…), '
-            'puis assigne-les à tes posts dans le Tableau ci-dessus.'
+            '<div style="background:#fafaf9;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:16px 20px;">'
+            '<div style="font-size:13px;font-weight:500;color:#0a0a0a;margin-bottom:6px;">Aucun label assigné</div>'
+            '<div style="font-size:12px;color:#666;line-height:1.6;">'
+            'Les labels te permettent de mesurer tes types de contenu : '
+            '<em>Reel viral</em>, <em>UGC</em>, <em>Campagne promo</em>… '
+            'Crée tes labels ci-dessous et assigne-les à tes posts dans le tableau ci-dessus.'
+            '</div>'
             '</div>',
             unsafe_allow_html=True,
         )
+
+    with st.expander("🏷️ Gérer les labels", expanded=not has_labels_data):
         labelling_mgr._manage_labels()
