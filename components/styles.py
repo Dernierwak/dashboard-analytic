@@ -1,10 +1,27 @@
 DASHBOARD_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
 
     /* ── Base ── */
+    :root {
+        --brand: #3b5bff;
+        --good: #1a7a4a;
+        --good-soft: #e7f3ec;
+        --bad: #c0392b;
+        --bad-soft: #fbe9e6;
+        --warn: #b86b00;
+        --warn-soft: #fbf1de;
+        --ink: #0e0f12;
+        --ink-3: #5a5d66;
+        --ink-4: #8b8e98;
+        --bg-2: #faf9f6;
+        --line: rgba(14,15,18,0.08);
+        --r-lg: 14px;
+        --font-mono: "JetBrains Mono", ui-monospace, monospace;
+        --font-display: "Instrument Serif", Georgia, serif;
+    }
     .stApp, .stApp > *, [data-testid="stAppViewContainer"] {
-        background-color: #ffffff !important;
+        background-color: #faf9f6 !important;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     [data-testid="stHeader"] { background: #ffffff !important; border-bottom: 1px solid #eaeaea; }
@@ -182,9 +199,9 @@ DASHBOARD_CSS = """
     .kpi-value-strip {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #0a0a0a;
+        color: #0e0f12;
         line-height: 1.1;
-        font-family: 'DM Mono', 'Courier New', monospace;
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
     }
     .kpi-delta-strip {
         font-size: 11px;

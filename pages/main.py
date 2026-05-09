@@ -13,6 +13,7 @@ from components.instagram_tab import show_instagram_tab
 from components.meta_ads import show_meta_ads_tab
 from components.schedule import schedule
 from scripts.fetch_data import fetch_meta_ads
+from pages.rapport import show_rapport
 
 
 if __name__ == "__main__":
@@ -94,11 +95,12 @@ if __name__ == "__main__":
         insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
         has_meta_ads = "meta_long_token" in st.session_state
 
-        tab_names = ["Mon compte"]
+        tab_names = ["📋 Rapport hebdo"]
         if insta_accounts:
-            tab_names.append("Instagram")
+            tab_names.append("📸 Instagram")
         if has_meta_ads:
-            tab_names.append("Meta Ads")
+            tab_names.append("📢 Meta Ads")
+        tab_names.append("👤 Mon compte")
         # ── Style des tabs ───────────────────────────────────────────────────
         st.markdown("""
         <style>
@@ -147,9 +149,14 @@ if __name__ == "__main__":
         </style>
         """, unsafe_allow_html=True)
         tabs = st.tabs(tab_names)
-        tab_account = tabs[0]
-        tab_insta = tabs[tab_names.index("Instagram")] if "Instagram" in tab_names else None
-        tab_meta_ads = tabs[tab_names.index("Meta Ads")] if "Meta Ads" in tab_names else None
+        tab_rapport = tabs[0]
+        tab_insta = tabs[tab_names.index("📸 Instagram")] if "📸 Instagram" in tab_names else None
+        tab_meta_ads = tabs[tab_names.index("📢 Meta Ads")] if "📢 Meta Ads" in tab_names else None
+        tab_account = tabs[tab_names.index("👤 Mon compte")]
+
+        with tab_rapport:
+            st.session_state["active_section"] = "rapport"
+            show_rapport(client, user_id, is_paid)
 
         with tab_account:
             st.session_state["active_section"] = "account"
