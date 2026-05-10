@@ -204,25 +204,28 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
     if show_fmts:
         max_reach = max(format_groups[k]["avg_reach"] for k in show_fmts) or 1
-        cards_html = ""
-        for fmt in show_fmts:
+        fmt_cols = st.columns(max(len(show_fmts), 1))
+        for col_i, fmt in enumerate(show_fmts):
             info = format_groups[fmt]
             is_best = fmt == best_fmt
             chip = _format_chip(fmt, is_best)
             bar_pct = int(info["avg_reach"] / max_reach * 100)
             note = "Top format" if is_best else f"Portée moy. {info['avg_reach']:,.0f}"
-            cards_html += f"""
-            <div class='card'>
-                <div style='margin-bottom:10px;'>{chip}</div>
-                <div style='font-size:24px;font-family:var(--font-mono,"JetBrains Mono",monospace);font-weight:600;color:var(--ink,#0e0f12);'>{info['avg_reach']:,.0f}</div>
-                <div style='font-size:11px;color:var(--ink-4,#8b8e98);margin:2px 0 10px;'>portée moyenne · {info['nb']} posts</div>
-                <div style='background:rgba(14,15,18,0.06);border-radius:4px;height:5px;overflow:hidden;'>
-                    <span style='display:block;height:100%;width:{bar_pct}%;background:#3b5bff;border-radius:4px;'></span>
-                </div>
-                <div style='font-size:11px;color:var(--ink-4,#8b8e98);margin-top:6px;'>{note}</div>
-            </div>
-            """
-        st.markdown(f"<div class='cards-row'>{cards_html}</div>", unsafe_allow_html=True)
+            with fmt_cols[col_i]:
+                st.markdown(
+                    f"<div class='card'>"
+                    f"<div style='margin-bottom:10px;'>{chip}</div>"
+                    f"<div style='font-size:24px;font-family:var(--font-mono,\"JetBrains Mono\",monospace);"
+                    f"font-weight:600;color:var(--ink,#0e0f12);'>{info['avg_reach']:,.0f}</div>"
+                    f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin:2px 0 10px;'>"
+                    f"portée moyenne · {info['nb']} posts</div>"
+                    f"<div style='background:rgba(14,15,18,0.06);border-radius:4px;height:5px;overflow:hidden;'>"
+                    f"<span style='display:block;height:100%;width:{bar_pct}%;background:#3b5bff;border-radius:4px;'></span>"
+                    f"</div>"
+                    f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin-top:6px;'>{note}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
     st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Quand publier ?</span></div></div>", unsafe_allow_html=True)
 
@@ -291,69 +294,79 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         saves = int(row.get("saved", 0))
         comments = int(row.get("comments", 0))
         date_str = str(row.get("date", ""))[:10]
+        media_url = str(row.get("media_url", "")).strip()
 
         with top_cols[i]:
-            st.markdown(f"""
-            <div class='top-post-card' style='background:{gradient};margin-bottom:8px;'>
-                <div style='font-size:11px;font-weight:600;opacity:0.7;text-transform:uppercase;letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>
-                <div class='top-post-caption'>{caption}</div>
-                <div class='top-post-stats'>
-                    <div>👁 <span>{reach:,}</span></div>
-                    <div>❤️ <span>{likes:,}</span></div>
-                    <div>🔖 <span>{saves:,}</span></div>
-                    <div>💬 <span>{comments:,}</span></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Image réelle si disponible, sinon gradient
+            if media_url and media_url.startswith("http"):
+                st.markdown(
+                    f"<div style='border-radius:12px;overflow:hidden;margin-bottom:8px;height:180px;"
+                    f"position:relative;background:{gradient};'>"
+                    f"<img src='{media_url}' style='width:100%;height:100%;object-fit:cover;display:block;' "
+                    f"onerror=\"this.style.display='none'\">"
+                    f"<div style='position:absolute;bottom:0;left:0;right:0;padding:10px 12px;"
+                    f"background:linear-gradient(transparent,rgba(0,0,0,0.7));'>"
+                    f"<div style='font-size:10px;font-weight:600;color:rgba(255,255,255,0.8);"
+                    f"text-transform:uppercase;letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f"<div class='top-post-card' style='background:{gradient};margin-bottom:8px;height:180px;"
+                    f"display:flex;flex-direction:column;justify-content:flex-end;'>"
+                    f"<div style='font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;"
+                    f"letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            st.markdown(
+                f"<div style='font-size:12px;color:#5a5d66;line-height:1.4;margin-bottom:8px;"
+                f"display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;'>"
+                f"{caption}</div>"
+                f"<div style='display:flex;gap:12px;font-size:12px;color:#8b8e98;flex-wrap:wrap;'>"
+                f"<span>👁 {reach:,}</span>"
+                f"<span>❤️ {likes:,}</span>"
+                f"<span>🔖 {saves:,}</span>"
+                f"<span>💬 {comments:,}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
     st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
 
     cols_show = [c for c in ["caption", "type", "date", "reach", "likes", "saved", "comments"] if c in df.columns]
     df_tbl = df[cols_show].copy()
 
-    engagement_col = "Engagement"
     if "reach" in df_tbl.columns and "likes" in df_tbl.columns:
-        df_tbl[engagement_col] = df_tbl.apply(
-            lambda r: f"{(r['likes'] + r.get('saved', 0)) / r['reach'] * 100:.1f}%" if r.get("reach", 0) > 0 else "—",
+        df_tbl["Engagement"] = df_tbl.apply(
+            lambda r: round((r["likes"] + r.get("saved", 0)) / r["reach"] * 100, 1) if r.get("reach", 0) > 0 else 0.0,
             axis=1,
         )
 
-    rename_map = {
+    if "type" in df_tbl.columns:
+        df_tbl["type"] = df_tbl["type"].apply(lambda t: FORMAT_LABELS.get(str(t).upper(), t))
+
+    df_tbl = df_tbl.rename(columns={
         "caption": "Post", "type": "Format", "date": "Date",
-        "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm."
-    }
-    df_tbl = df_tbl.rename(columns=rename_map)
+        "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm.",
+    })
 
-    rows_html = ""
-    for _, row in df_tbl.iterrows():
-        caption_cell = str(row.get("Post", ""))[:60]
-        fmt_raw = str(row.get("Format", "")).upper()
-        fmt_label = FORMAT_LABELS.get(fmt_raw, fmt_raw)
-        date_cell = str(row.get("Date", ""))[:10]
-        reach_cell = f"{int(row['Portée']):,}" if "Portée" in row and pd.notna(row["Portée"]) else "—"
-        likes_cell = f"{int(row['Likes']):,}" if "Likes" in row and pd.notna(row["Likes"]) else "—"
-        saves_cell = f"{int(row['Saves']):,}" if "Saves" in row and pd.notna(row["Saves"]) else "—"
-        eng_cell = row.get(engagement_col, "—")
-        rows_html += f"""
-        <tr>
-            <td>{caption_cell}</td>
-            <td><span class='chip outline'>{fmt_label}</span></td>
-            <td>{date_cell}</td>
-            <td class='mono'>{reach_cell}</td>
-            <td class='mono'>{likes_cell}</td>
-            <td class='mono'>{saves_cell}</td>
-            <td class='mono'>{eng_cell}</td>
-        </tr>
-        """
+    if "Date" in df_tbl.columns:
+        df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
 
-    st.markdown(f"""
-    <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;overflow:hidden;'>
-        <table class='tbl'>
-            <thead><tr>
-                <th>Post</th><th>Format</th><th>Date</th>
-                <th>Portée</th><th>Likes</th><th>Saves</th><th>Engagement</th>
-            </tr></thead>
-            <tbody>{rows_html}</tbody>
-        </table>
-    </div>
-    """, unsafe_allow_html=True)
+    df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
+
+    st.dataframe(
+        df_tbl,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Post": st.column_config.TextColumn("Post", width="large"),
+            "Portée": st.column_config.NumberColumn("Portée", format="%d"),
+            "Likes": st.column_config.NumberColumn("Likes", format="%d"),
+            "Saves": st.column_config.NumberColumn("Saves", format="%d"),
+            "Comm.": st.column_config.NumberColumn("Comm.", format="%d"),
+            "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
+        },
+    )
