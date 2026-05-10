@@ -293,9 +293,20 @@ def _post_card(row: pd.Series, rank: int, metric_label: str) -> str:
         f'background:#fff;color:#0e0f12;font-size:10px;font-weight:600;">{highlight}</span>'
         if highlight else ""
     )
+
+    media_url = str(row.get("media_url", "")).strip()
+    img_tag = ""
+    if media_url and media_url.startswith("http"):
+        img_tag = (
+            f'<img src="{media_url}" alt="" '
+            f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" '
+            f'onerror="this.style.display=\'none\'">'
+        )
+
     return f"""
     <div class="post-card">
-      <div class="post-cover" style="background:{gradient};">
+      <div class="post-cover" style="height:140px;background:{gradient};">
+        {img_tag}
         <span class="chip" style="position:absolute;top:10px;left:10px;
               background:rgba(0,0,0,0.65);color:#fff;font-size:10px;">{type_label}</span>
         {highlight_badge}

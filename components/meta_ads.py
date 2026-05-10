@@ -284,7 +284,8 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
         params = {
             "access_token": token,
             "level": "ad",
-            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start,effective_status",
+            # effective_status n'est pas un champ Insights — on le fetch via /campaigns séparément
+            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
             "time_increment": 1,
             "time_range": json.dumps(time_range),
         }
@@ -301,13 +302,25 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
             page = requests.get(next_url).json()
             rows += page.get("data", [])
             next_url = page.get("paging", {}).get("next")
-            progress_bar.progress(min(80, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
+            progress_bar.progress(min(75, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
+
+        # Fetch statuts depuis /campaigns (effective_status non supporté par /insights)
+        progress_bar.progress(80, text="Récupération des statuts de campagnes...")
+        camp_url = f"https://graph.facebook.com/v24.0/{ad_account_id}/campaigns"
+        camp_resp = requests.get(camp_url, params={
+            "access_token": token,
+            "fields": "name,effective_status",
+            "limit": 200,
+        }).json()
+        status_map = {c["name"]: c.get("effective_status", "UNKNOWN") for c in camp_resp.get("data", [])}
+
         for row in rows:
             link_click_item = next(
                 (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
                 None,
             )
             row["link_clicks"] = int(link_click_item.get("value", 0)) if link_click_item else 0
+            row["effective_status"] = status_map.get(row.get("campaign_name", ""), "UNKNOWN")
         if rows:
             progress_bar.progress(100, text=f"✓ {len(rows)} entrées chargées")
             time.sleep(0.5)

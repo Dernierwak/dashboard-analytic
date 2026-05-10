@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 
 from components.auth import AuthDashboard
-from components.sidebar import show_sidebar
+from components.sidebar import show_sidebar, show_main_nav
 from components.styles import DASHBOARD_CSS
 from components.callbacks import handle_meta_oauth_callback, handle_meta_page_selection, handle_stripe_payment
 from components.account_tab import show_account_tab
@@ -99,79 +99,49 @@ if __name__ == "__main__":
         insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
         has_meta_ads = "meta_long_token" in st.session_state
 
-        tab_names = ["📋 Rapport hebdo"]
-        if insta_accounts:
-            tab_names.append("📸 Instagram")
-        if has_meta_ads:
-            tab_names.append("📢 Meta Ads")
-        tab_names.append("🔌 Connecter Meta")
-        tab_names.append("⚙️ Paramètres")
+        # ── Sidebar navigation (remplace st.tabs) ────────────────────────────
+        if "page" not in st.session_state:
+            st.session_state["page"] = "rapport"
 
-        st.markdown("""
-        <style>
-        .stTabs [data-baseweb="tab-list"] { gap: 4px; }
-        .stTabs [data-baseweb="tab"] {
-            font-size: 15px; font-weight: 500; padding: 10px 22px;
-            border-radius: 6px 6px 0 0; color: #4b5563;
-            background: rgba(0,102,255,0.07); border: none;
-            border-bottom: 2px solid transparent;
-        }
-        .stTabs [data-baseweb="tab"]:hover { color: #0055cc; background: rgba(0,102,255,0.12); }
-        .stTabs [aria-selected="true"] {
-            color: #0055cc !important; background: rgba(0,102,255,0.15) !important;
-            border-bottom: 2px solid #0055cc !important; font-weight: 600 !important;
-        }
-        .stTabs .stTabs [data-baseweb="tab"] {
-            background: transparent !important; font-weight: 400 !important;
-            padding: 6px 12px !important; border: none !important;
-            border-bottom: 2px solid transparent !important; color: inherit !important; font-size: 14px !important;
-        }
-        .stTabs .stTabs [aria-selected="true"] {
-            background: transparent !important; font-weight: 600 !important;
-            color: inherit !important; border-bottom: 2px solid #ff4b4b !important;
-        }
-        .stTabs .stTabs [data-baseweb="tab"]:hover { background: transparent !important; color: inherit !important; }
-        </style>
-        """, unsafe_allow_html=True)
+        show_main_nav(insta_accounts, has_meta_ads)
 
-        tabs = st.tabs(tab_names)
-        tab_rapport = tabs[0]
-        tab_insta = tabs[tab_names.index("📸 Instagram")] if "📸 Instagram" in tab_names else None
-        tab_meta_ads = tabs[tab_names.index("📢 Meta Ads")] if "📢 Meta Ads" in tab_names else None
-        tab_connect = tabs[tab_names.index("🔌 Connecter Meta")]
-        tab_settings = tabs[tab_names.index("⚙️ Paramètres")]
+        page = st.session_state["page"]
 
-        with tab_rapport:
+        # Guard: si la page demandée n'est plus accessible, fallback rapport
+        if page == "instagram" and not insta_accounts:
+            page = "rapport"
+            st.session_state["page"] = "rapport"
+        if page == "meta_ads" and not has_meta_ads:
+            page = "rapport"
+            st.session_state["page"] = "rapport"
+
+        if page == "rapport":
             st.session_state["active_section"] = "rapport"
             show_rapport(client, user_id, is_paid)
 
-        if tab_insta:
-            with tab_insta:
-                st.session_state["active_section"] = "instagram"
+        elif page == "instagram":
+            st.session_state["active_section"] = "instagram"
+            if len(insta_accounts) > 1:
+                names = [a.get("account_name") or f"Compte {i+1}" for i, a in enumerate(insta_accounts)]
+                sel_idx = st.selectbox(
+                    "Compte",
+                    options=range(len(insta_accounts)),
+                    format_func=lambda i: names[i],
+                    key="sel_insta_account",
+                    label_visibility="collapsed",
+                )
+                selected_account = insta_accounts[sel_idx]
+            else:
+                selected_account = insta_accounts[0] if insta_accounts else {}
+            insta_biz_id = selected_account.get("instagram_business_id")
+            acc_name = selected_account.get("account_name") or "Instagram"
+            show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id, account_name=acc_name)
 
-                if len(insta_accounts) > 1:
-                    names = [a.get("account_name") or f"Compte {i+1}" for i, a in enumerate(insta_accounts)]
-                    sel_idx = st.selectbox(
-                        "Compte",
-                        options=range(len(insta_accounts)),
-                        format_func=lambda i: names[i],
-                        key="sel_insta_account",
-                        label_visibility="collapsed",
-                    )
-                    selected_account = insta_accounts[sel_idx]
-                else:
-                    selected_account = insta_accounts[0] if insta_accounts else {}
+        elif page == "meta_ads":
+            st.session_state["active_section"] = "meta_ads"
+            show_meta_ads_tab(is_paid=is_paid)
 
-                insta_biz_id = selected_account.get("instagram_business_id")
-                acc_name = selected_account.get("account_name") or "Instagram"
-                show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=insta_biz_id, account_name=acc_name)
-
-        if tab_meta_ads:
-            with tab_meta_ads:
-                st.session_state["active_section"] = "meta_ads"
-                show_meta_ads_tab(is_paid=is_paid)
-
-        with tab_connect:
+        elif page == "connect":
             st.session_state["active_section"] = "connect_meta"
             st.markdown(CONNECT_META_CSS, unsafe_allow_html=True)
 
@@ -241,7 +211,7 @@ if __name__ == "__main__":
                     st.session_state["trigger_fetch"] = True
                     st.rerun()
 
-        with tab_settings:
+        elif page == "settings":
             st.session_state["active_section"] = "settings"
             st.markdown("""
             <div style='padding:28px 0 20px;'>
