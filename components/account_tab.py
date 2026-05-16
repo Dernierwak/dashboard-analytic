@@ -242,8 +242,70 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
 
         # Fetch inline (s'exécute après le rerun, reste sur Paramètres)
         if st.session_state.pop("_fetch_insta_inline", False) and insta_accounts and dash is not None:
+            # ── 1. Verrouillage de la navigation pendant le fetch ────────────
+            st.markdown(
+                """
+                <style id="fetch-lock">
+                /* Désactive la sidebar (clicks + visuel atténué) */
+                [data-testid="stSidebar"] {
+                    pointer-events: none !important;
+                    opacity: 0.4 !important;
+                    filter: grayscale(0.3);
+                }
+                /* Désactive les onglets de Paramètres */
+                .stTabs [data-baseweb="tab-list"] {
+                    pointer-events: none !important;
+                    opacity: 0.5 !important;
+                }
+                /* Empêche de fermer/refresh sans s'en rendre compte */
+                [data-testid="stHeader"] { opacity: 0.5; }
+                /* Banner de blocage */
+                .fetch-locked-banner {
+                    position: sticky; top: 0; z-index: 100;
+                    background: linear-gradient(90deg,#3b5bff,#7b4fff);
+                    color: #fff; padding: 10px 16px; border-radius: 10px;
+                    font-size: 13px; font-weight: 500;
+                    box-shadow: 0 4px 16px rgba(59,91,255,0.25);
+                    display: flex; align-items: center; gap: 10px;
+                    margin-bottom: 16px;
+                    animation: pulse-glow 2s ease-in-out infinite;
+                }
+                @keyframes pulse-glow {
+                    0%, 100% { box-shadow: 0 4px 16px rgba(59,91,255,0.25); }
+                    50% { box-shadow: 0 4px 24px rgba(59,91,255,0.5); }
+                }
+                .fetch-spinner {
+                    width: 14px; height: 14px; border-radius: 50%;
+                    border: 2px solid rgba(255,255,255,0.3);
+                    border-top-color: #fff;
+                    animation: spin 0.8s linear infinite;
+                    flex-shrink: 0;
+                }
+                @keyframes spin { to { transform: rotate(360deg); } }
+                </style>
+                <div class="fetch-locked-banner">
+                    <div class="fetch-spinner"></div>
+                    <span>Récupération en cours — ne quitte pas cette page, la navigation est temporairement désactivée.</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # ── 2. Lancement du fetch (avec st.status interne qui défile) ────
             insta_biz_id = insta_accounts[0].get("instagram_business_id")
             run_instagram_fetch(client, user_id, dash, instagram_business_id=insta_biz_id, is_paid=is_paid)
+
+            # ── 3. À la fin du fetch, retire le verrouillage proprement ──────
+            st.markdown(
+                "<style>"
+                "[data-testid='stSidebar'] { pointer-events: auto !important; opacity: 1 !important; filter: none !important; }"
+                ".stTabs [data-baseweb='tab-list'] { pointer-events: auto !important; opacity: 1 !important; }"
+                "[data-testid='stHeader'] { opacity: 1; }"
+                ".fetch-locked-banner { display: none; }"
+                "</style>",
+                unsafe_allow_html=True,
+            )
+            st.success("Récupération terminée. Tu peux maintenant naviguer.")
 
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:
