@@ -6,8 +6,21 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 
-from scripts.insert_data import upsert_meta_ads
-from scripts.fetch_data import fetch_meta_ads, fetch_meta_ads_latest_date
+from scripts.insert_data import (
+    upsert_meta_ads,
+    update_campaign_labels,
+    update_meta_budget_global,
+    upsert_campaign_config,
+    rename_campaign_label,
+    clear_campaign_label,
+)
+from scripts.fetch_data import (
+    fetch_meta_ads,
+    fetch_meta_ads_latest_date,
+    fetch_campaign_labels,
+    fetch_meta_budget_global,
+    fetch_campaign_config,
+)
 from components.insights_panel import show_insights_panel
 
 
@@ -582,12 +595,192 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
 
 # ── Coût tab ──────────────────────────────────────────────────────────────────
 
-def _show_cout_tab(df: pd.DataFrame | None) -> None:
+_NO_LABEL = "(sans label)"
+
+
+def _pacing_status(pct: float) -> tuple[str, str, str]:
+    """Retourne (color, css_class, label) selon le ratio dépensé/budget."""
+    if pct > 1.0:
+        return "#c0392b", "cout-over", "⚠ Dépassé"
+    if pct >= 0.7:
+        return "#1a7a4a", "cout-ok", "✓ OK"
+    return "#b86b00", "cout-low", "↓ Sous-dépense"
+
+
+def _pacing_row_html(spend: float, budget: float) -> str:
+    """Bloc HTML : statut + barre de pacing (pour le tableau par label / campagne)."""
+    if budget <= 0:
+        return (
+            '<div style="font-size:11.5px;color:#8b8e98;padding-top:6px;">'
+            '— pas de budget</div>'
+        )
+    pct = spend / budget
+    color, cls, txt = _pacing_status(pct)
+    return (
+        f'<div style="font-size:12px;color:#5a5d66;margin-top:6px;">'
+        f'<span class="{cls}">{txt}</span> — {pct*100:.0f}%</div>'
+        f'<div class="cout-bar-wrap"><span class="cout-bar-fill" '
+        f'style="width:{min(pct,1)*100:.1f}%;background:{color};"></span></div>'
+    )
+
+
+# ── Callbacks de sauvegarde (on_change) ───────────────────────────────────────
+
+def _cb_save_budget_global(client, user_id):
+    if not (client and user_id):
+        return
+    val = st.session_state.get("budget_global", 0)
+    try:
+        update_meta_budget_global(client, user_id, float(val or 0))
+    except Exception as e:
+        st.toast(f"Sauvegarde budget global échouée : {e}", icon="⚠️")
+
+
+def _cb_save_camp_label(client, user_id, camp_name, key):
+    if not (client and user_id):
+        return
+    val = st.session_state.get(key, _NO_LABEL)
+    label = "" if val == _NO_LABEL else val
+    # mettre à jour le cache local
+    cfg = st.session_state.setdefault("campaign_config", {})
+    cfg.setdefault(camp_name, {})["label"] = label or None
+    try:
+        upsert_campaign_config(client, user_id, camp_name, label=label)
+    except Exception as e:
+        st.toast(f"Sauvegarde label échouée : {e}", icon="⚠️")
+
+
+def _cb_save_camp_budget(client, user_id, camp_name, key):
+    if not (client and user_id):
+        return
+    val = st.session_state.get(key, 0)
+    cfg = st.session_state.setdefault("campaign_config", {})
+    cfg.setdefault(camp_name, {})["budget_max"] = float(val or 0)
+    try:
+        upsert_campaign_config(client, user_id, camp_name, budget_max=float(val or 0))
+    except Exception as e:
+        st.toast(f"Sauvegarde budget campagne échouée : {e}", icon="⚠️")
+
+
+# ── Popover : gérer les labels (master list) ───────────────────────────────────
+
+def _manage_labels_popover(client, user_id) -> None:
+    labels: list[str] = st.session_state.get("campaign_labels", [])
+
+    with st.popover("🏷 Gérer les labels", use_container_width=False):
+        st.markdown(
+            '<div style="font-size:12px;color:#5a5d66;margin-bottom:8px;">'
+            'Crée des labels (ex. <i>Prospection</i>, <i>Retargeting</i>) à associer à tes campagnes.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        if labels:
+            st.markdown(
+                "<div style='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;'>"
+                + "".join(f"<span class='chip'>{l}</span>" for l in labels)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                "<div style='font-size:11.5px;color:#8b8e98;margin-bottom:12px;'>Aucun label pour l'instant.</div>",
+                unsafe_allow_html=True,
+            )
+
+        # Ajouter
+        col_in, col_btn = st.columns([3, 1])
+        with col_in:
+            new_lbl = st.text_input("Nouveau label", key="cout_new_label",
+                                     label_visibility="collapsed", placeholder="ex: Prospection")
+        with col_btn:
+            if st.button("Ajouter", key="cout_add_label", use_container_width=True):
+                cleaned = (new_lbl or "").strip()
+                if cleaned and cleaned not in labels:
+                    new_list = labels + [cleaned]
+                    if client and user_id:
+                        try:
+                            update_campaign_labels(client, user_id, new_list)
+                        except Exception as e:
+                            st.toast(f"Ajout label échoué : {e}", icon="⚠️")
+                            return
+                    st.session_state["campaign_labels"] = new_list
+                    st.session_state["cout_new_label"] = ""
+                    st.rerun()
+
+        # Renommer / supprimer (par label existant)
+        if labels:
+            st.markdown("<div style='font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;margin:14px 0 6px;'>Modifier</div>", unsafe_allow_html=True)
+            for i, lbl in enumerate(labels):
+                col_lbl, col_del = st.columns([4, 1])
+                with col_lbl:
+                    edited = st.text_input(
+                        f"Label {i}",
+                        value=lbl,
+                        key=f"cout_lbl_edit_{i}",
+                        label_visibility="collapsed",
+                    )
+                with col_del:
+                    if st.button("🗑", key=f"cout_lbl_del_{i}", use_container_width=True):
+                        new_list = [x for x in labels if x != lbl]
+                        if client and user_id:
+                            try:
+                                update_campaign_labels(client, user_id, new_list)
+                                clear_campaign_label(client, user_id, lbl)
+                            except Exception as e:
+                                st.toast(f"Suppression échouée : {e}", icon="⚠️")
+                                return
+                        st.session_state["campaign_labels"] = new_list
+                        # mettre à jour le cache local de config
+                        cfg = st.session_state.get("campaign_config", {})
+                        for c in cfg.values():
+                            if c.get("label") == lbl:
+                                c["label"] = None
+                        st.rerun()
+                # Rename : si l'utilisateur a modifié et clique ailleurs (auto-save sur diff)
+                if edited and edited.strip() and edited.strip() != lbl:
+                    new_name = edited.strip()
+                    if new_name not in labels:
+                        new_list = [new_name if x == lbl else x for x in labels]
+                        if client and user_id:
+                            try:
+                                update_campaign_labels(client, user_id, new_list)
+                                rename_campaign_label(client, user_id, lbl, new_name)
+                            except Exception as e:
+                                st.toast(f"Renommage échoué : {e}", icon="⚠️")
+                                return
+                        st.session_state["campaign_labels"] = new_list
+                        cfg = st.session_state.get("campaign_config", {})
+                        for c in cfg.values():
+                            if c.get("label") == lbl:
+                                c["label"] = new_name
+                        st.rerun()
+
+
+# ── Tab Coût (refonte) ─────────────────────────────────────────────────────────
+
+def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = None) -> None:
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         st.info("Aucune donnée disponible. Récupère tes données Meta Ads d'abord.")
         return
 
     from datetime import date, timedelta
+
+    # ── Initialisation : charger labels + budget + config depuis Supabase une fois
+    if client and user_id and not st.session_state.get("cout_initialized"):
+        try:
+            st.session_state["campaign_labels"] = fetch_campaign_labels(client, user_id)
+        except Exception:
+            st.session_state["campaign_labels"] = []
+        try:
+            st.session_state["budget_global"] = fetch_meta_budget_global(client, user_id)
+        except Exception:
+            st.session_state["budget_global"] = 0.0
+        try:
+            st.session_state["campaign_config"] = fetch_campaign_config(client, user_id)
+        except Exception:
+            st.session_state["campaign_config"] = {}
+        st.session_state["cout_initialized"] = True
 
     df = df.copy()
     for col in ["impressions", "clicks", "spend", "reach", "link_clicks"]:
@@ -595,37 +788,48 @@ def _show_cout_tab(df: pd.DataFrame | None) -> None:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
+    # ── Bloc 1 : Période + Budget global ─────────────────────────────────────
     period_opts = {"7j": 7, "30j": 30, "90j": 90}
-    sel_period = st.radio("Période", list(period_opts.keys()), index=1, horizontal=True, key="cout_period")
+    col_period, col_lbl_btn, col_budget = st.columns([3, 2, 2])
+    with col_period:
+        sel_period = st.radio(
+            "Période", list(period_opts.keys()), index=1,
+            horizontal=True, key="cout_period",
+        )
+    with col_lbl_btn:
+        _manage_labels_popover(client, user_id)
+    with col_budget:
+        st.number_input(
+            "Budget global (CHF)", min_value=0.0, step=100.0,
+            key="budget_global", format="%.0f",
+            help="Saisi une fois — sauvegardé automatiquement.",
+            on_change=_cb_save_budget_global, args=(client, user_id),
+        )
+
     days = period_opts[sel_period]
     cutoff = pd.Timestamp(date.today() - timedelta(days=days))
     df_v = df[df["date_start"] >= cutoff].copy()
-
     if df_v.empty:
         st.warning("Aucune donnée pour cette période.")
         return
 
+    # ── Agrégats globaux ─────────────────────────────────────────────────────
     total_spend       = df_v["spend"].sum()
     total_impressions = int(df_v["impressions"].sum())
     total_clicks      = int(df_v["clicks"].sum())
     total_link_clicks = int(df_v["link_clicks"].sum()) if "link_clicks" in df_v.columns else 0
-    reach             = int(df_v["reach"].sum()) if "reach" in df_v.columns else 0
 
-    days_elapsed = max(1, (df_v["date_start"].max() - df_v["date_start"].min()).days + 1)
-    proj_30  = (total_spend / days_elapsed) * 30
-    avg_cpm  = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
-    avg_cpc  = (total_spend / total_clicks) if total_clicks > 0 else 0.0
-    freq     = total_impressions / reach if reach > 0 else 0.0
-    cpv      = (total_spend / total_link_clicks) if total_link_clicks > 0 else None
+    avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
+    avg_cpc = (total_spend / total_clicks) if total_clicks > 0 else 0.0
+    cpv     = (total_spend / total_link_clicks) if total_link_clicks > 0 else None
 
-    # ── Bloc 1 : KPI globaux ──────────────────────────────────────────────────
-    st.markdown('<div class="cout-section-title">Vue globale des dépenses</div>', unsafe_allow_html=True)
+    # ── Bloc 2 : KPI cards ────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     kpis = [
-        (c1, "Total dépensé", f"{total_spend:,.0f}", "CHF"),
-        (c2, "Projeté 30j",   f"{proj_30:,.0f}",    "CHF"),
-        (c3, "CPM moyen",     f"{avg_cpm:.2f}",      "CHF"),
-        (c4, "CPC moyen",     f"{avg_cpc:.2f}",      "CHF"),
+        (c1, "Total dépensé", f"{total_spend:,.0f}",        "CHF"),
+        (c2, "CPM moyen",     f"{avg_cpm:.2f}",              "CHF"),
+        (c3, "CPC moyen",     f"{avg_cpc:.2f}",              "CHF"),
+        (c4, "CPV",           f"{cpv:.2f}" if cpv else "—",  "CHF" if cpv else ""),
     ]
     for col, lbl, val, unit in kpis:
         with col:
@@ -635,44 +839,109 @@ def _show_cout_tab(df: pd.DataFrame | None) -> None:
                 unsafe_allow_html=True,
             )
 
-    # ── Bloc 2 : Budget global ────────────────────────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    budget_global = st.number_input(
-        "Budget global (CHF)", min_value=0.0, step=100.0,
-        key="budget_global", format="%.0f",
-        help="Saisis ton budget pour voir le taux de consommation",
-    )
+    # Barre de progression budget global
+    budget_global = float(st.session_state.get("budget_global", 0) or 0)
     if budget_global > 0:
         pct = min(total_spend / budget_global, 1.0)
         bar_color = "#c0392b" if pct >= 1.0 else "#3b5bff"
         st.markdown(
-            f'<div style="font-size:12px;color:#5a5d66;margin-bottom:4px;">'
-            f'{total_spend:,.0f} / {budget_global:,.0f} CHF — <b>{pct*100:.0f}%</b> consommé</div>'
-            f'<div class="cout-bar-wrap"><span class="cout-bar-fill" style="width:{pct*100:.1f}%;background:{bar_color};"></span></div>',
+            f'<div style="font-size:12px;color:#5a5d66;margin:14px 0 4px;">'
+            f'{total_spend:,.0f} / {budget_global:,.0f} CHF — <b>{pct*100:.0f}%</b> du budget global</div>'
+            f'<div class="cout-bar-wrap"><span class="cout-bar-fill" '
+            f'style="width:{pct*100:.1f}%;background:{bar_color};"></span></div>',
             unsafe_allow_html=True,
         )
 
-    # ── Bloc 3 : Pacing par campagne ──────────────────────────────────────────
-    st.markdown('<div class="cout-section-title">Pacing par campagne</div>', unsafe_allow_html=True)
+    # ── Bloc 3 : Dépenses par label (agrégé) ─────────────────────────────────
+    campaign_labels: list[str] = st.session_state.get("campaign_labels", [])
+    campaign_config: dict      = st.session_state.get("campaign_config", {})
+
     df_camp = (
         df_v.groupby("campaign_name", as_index=False)
         .agg(spend=("spend", "sum"))
         .sort_values("spend", ascending=False)
     )
+    # Associer label + budget_max à chaque campagne
+    df_camp["label"]      = df_camp["campaign_name"].map(
+        lambda c: (campaign_config.get(c) or {}).get("label") or None
+    )
+    df_camp["budget_max"] = df_camp["campaign_name"].map(
+        lambda c: float((campaign_config.get(c) or {}).get("budget_max") or 0)
+    )
 
-    hcols = st.columns([3, 2, 2, 3])
-    for col_h, lbl in zip(hcols, ["Campagne", "Dépensé", "Budget max (CHF)", "Pacing"]):
+    st.markdown('<div class="cout-section-title">Dépenses par label</div>', unsafe_allow_html=True)
+
+    # Agrégat par label (None → "(sans label)")
+    df_lbl = df_camp.copy()
+    df_lbl["label_display"] = df_lbl["label"].fillna(_NO_LABEL).replace("", _NO_LABEL)
+    agg_lbl = (
+        df_lbl.groupby("label_display", as_index=False)
+        .agg(spend=("spend", "sum"), budget=("budget_max", "sum"))
+        .sort_values("spend", ascending=False)
+    )
+
+    if agg_lbl.empty:
+        st.info("Aucune dépense.")
+    else:
+        hcols = st.columns([3, 2, 2, 3])
+        for col_h, lbl in zip(hcols, ["Label", "Dépensé", "Budget cumulé", "Pacing"]):
+            col_h.markdown(
+                f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+                unsafe_allow_html=True,
+            )
+        for _, r in agg_lbl.iterrows():
+            cn, cs, cb, cp = st.columns([3, 2, 2, 3])
+            with cn:
+                st.markdown(
+                    f'<div style="font-size:13px;font-weight:500;padding-top:6px;">{r["label_display"]}</div>',
+                    unsafe_allow_html=True,
+                )
+            with cs:
+                st.markdown(
+                    f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{r["spend"]:,.0f} CHF</div>',
+                    unsafe_allow_html=True,
+                )
+            with cb:
+                bud_txt = f"{r['budget']:,.0f} CHF" if r["budget"] > 0 else "—"
+                st.markdown(
+                    f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{bud_txt}</div>',
+                    unsafe_allow_html=True,
+                )
+            with cp:
+                st.markdown(_pacing_row_html(r["spend"], r["budget"]), unsafe_allow_html=True)
+
+    # ── Bloc 4 : Détail par campagne ─────────────────────────────────────────
+    st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
+
+    hcols = st.columns([3, 2, 2, 2, 3])
+    for col_h, lbl in zip(hcols, ["Campagne", "Dépensé", "Label", "Budget max", "Pacing"]):
         col_h.markdown(
             f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
             f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
             unsafe_allow_html=True,
         )
 
+    label_options = [_NO_LABEL] + sorted(campaign_labels)
+
     for _, row in df_camp.iterrows():
         camp_name = row["campaign_name"]
-        safe_key  = camp_name.replace(" ", "_")[:40]
         spend     = row["spend"]
-        c_name, c_spend, c_bud, c_pacing = st.columns([3, 2, 2, 3])
+        safe_key  = camp_name.replace(" ", "_").replace("/", "_")[:50]
+
+        existing_label  = row["label"] or _NO_LABEL
+        existing_budget = float(row["budget_max"] or 0)
+
+        # S'assurer que le label existant est dans la liste (sinon l'ajouter à l'affichage)
+        opts = label_options.copy()
+        if existing_label not in opts:
+            opts.insert(1, existing_label)
+        try:
+            default_idx = opts.index(existing_label)
+        except ValueError:
+            default_idx = 0
+
+        c_name, c_spend, c_lbl, c_bud, c_pacing = st.columns([3, 2, 2, 2, 3])
 
         with c_name:
             st.markdown(
@@ -684,51 +953,35 @@ def _show_cout_tab(df: pd.DataFrame | None) -> None:
                 f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{spend:,.0f} CHF</div>',
                 unsafe_allow_html=True,
             )
-        with c_bud:
-            bud_max = st.number_input(
-                "Budget max", min_value=0.0, step=100.0, format="%.0f",
-                key=f"bud_{safe_key}", label_visibility="collapsed",
-            )
-        with c_pacing:
-            if bud_max > 0:
-                pct_c = spend / bud_max
-                bar_color = "#c0392b" if pct_c > 1 else "#1a7a4a" if pct_c >= 0.7 else "#b86b00"
-                status_cls = "cout-over" if pct_c > 1 else "cout-ok" if pct_c >= 0.7 else "cout-low"
-                status_txt = "⚠ Dépassé" if pct_c > 1 else "✓ OK" if pct_c >= 0.7 else "↓ Sous-dépense"
-                st.markdown(
-                    f'<div style="font-size:12px;color:#5a5d66;margin-top:6px;">'
-                    f'<span class="{status_cls}">{status_txt}</span> — {pct_c*100:.0f}%</div>'
-                    f'<div class="cout-bar-wrap"><span class="cout-bar-fill" '
-                    f'style="width:{min(pct_c,1)*100:.1f}%;background:{bar_color};"></span></div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div style="font-size:11.5px;color:#8b8e98;padding-top:6px;">— saisis un budget max</div>',
-                    unsafe_allow_html=True,
-                )
 
-    # ── Bloc 4 : Métriques de coût ────────────────────────────────────────────
-    st.markdown('<div class="cout-section-title">Métriques de coût</div>', unsafe_allow_html=True)
-    cost_cols = st.columns(4)
-    metrics = [
-        ("CPM",        f"{avg_cpm:.2f}",            "CHF", "Coût pour 1 000 impressions"),
-        ("CPC",        f"{avg_cpc:.2f}",             "CHF", "Coût par clic"),
-        ("Fréquence",  f"{freq:.2f}",                "x",   "Impressions / portée unique"),
-        ("CPV",        f"{cpv:.2f}" if cpv else "—", "CHF" if cpv else "", "Coût par clic sur le lien"),
-    ]
-    for col, (lbl, val, unit, tip) in zip(cost_cols, metrics):
-        with col:
-            st.markdown(
-                f'<div class="kpi-p"><div class="kp-lbl" title="{tip}">{lbl}</div>'
-                f'<div class="kp-val">{val}<span class="kp-unit"> {unit}</span></div></div>',
-                unsafe_allow_html=True,
+        lbl_key = f"camp_lbl_{safe_key}"
+        if lbl_key not in st.session_state:
+            st.session_state[lbl_key] = existing_label
+        with c_lbl:
+            st.selectbox(
+                "Label", options=opts, key=lbl_key,
+                label_visibility="collapsed",
+                on_change=_cb_save_camp_label, args=(client, user_id, camp_name, lbl_key),
             )
+
+        bud_key = f"camp_bud_{safe_key}"
+        if bud_key not in st.session_state:
+            st.session_state[bud_key] = existing_budget
+        with c_bud:
+            st.number_input(
+                "Budget max", min_value=0.0, step=100.0, format="%.0f",
+                key=bud_key, label_visibility="collapsed",
+                on_change=_cb_save_camp_budget, args=(client, user_id, camp_name, bud_key),
+            )
+
+        with c_pacing:
+            current_budget = float(st.session_state.get(bud_key, 0) or 0)
+            st.markdown(_pacing_row_html(spend, current_budget), unsafe_allow_html=True)
 
 
 # ── Tab entry point ───────────────────────────────────────────────────────────
 
-def show_meta_ads_tab(is_paid: bool = False):
+def show_meta_ads_tab(is_paid: bool = False, client=None, user_id: str | None = None):
     st.markdown(PULSE_CSS, unsafe_allow_html=True)
     df = st.session_state.get("meta_ads_df")
 
@@ -746,4 +999,4 @@ def show_meta_ads_tab(is_paid: bool = False):
     with tab_perf:
         show_meta_ads_dashboard(df)
     with tab_cout:
-        _show_cout_tab(df)
+        _show_cout_tab(df, client=client, user_id=user_id)

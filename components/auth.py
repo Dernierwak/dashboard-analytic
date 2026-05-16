@@ -45,7 +45,7 @@ class AuthDashboard():
             if "email_confirmation_pending" in st.session_state:
                 email = st.session_state["email_confirmation_pending"]
                 st.info(f"Un email de confirmation a été envoyé à **{email}**. Cliquez sur le lien dans votre boîte mail, puis revenez vous connecter.")
-                if st.button("J'ai confirmé mon email", width="stretch"):
+                if st.button("J'ai confirmé mon email", use_container_width=True):
                     del st.session_state["email_confirmation_pending"]
                     st.rerun()
                 return
@@ -54,10 +54,10 @@ class AuthDashboard():
             password = st.text_input("Mot de passe", type="password")
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button("Créer un compte", width="stretch"):
+                if st.button("Créer un compte", use_container_width=True):
                     self._create_account(email, password)
             with col_b:
-                if st.button("Se connecter", width="stretch", type="primary"):
+                if st.button("Se connecter", use_container_width=True, type="primary"):
                     self._login(email, password)
             
             with st.popover("reset password"):

@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
         elif page == "meta_ads":
             st.session_state["active_section"] = "meta_ads"
-            show_meta_ads_tab(is_paid=is_paid)
+            show_meta_ads_tab(is_paid=is_paid, client=client, user_id=user_id)
 
         elif page == "connect":
             st.session_state["active_section"] = "connect_meta"

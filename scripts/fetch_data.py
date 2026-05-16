@@ -37,3 +37,47 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int = 6) -> list[dict
         .execute()
         .data
     )
+
+
+# ── Tab Coût — labels & budgets ────────────────────────────────────────────────
+
+def fetch_campaign_labels(supabase: Client, user_id: str) -> list[str]:
+    """Master list des labels de campagne (stockée dans profiles.campaign_labels)."""
+    try:
+        res = supabase.table("profiles").select("campaign_labels").eq("id", user_id).execute()
+        if res.data and res.data[0].get("campaign_labels"):
+            return list(res.data[0]["campaign_labels"])
+    except Exception:
+        pass
+    return []
+
+
+def fetch_meta_budget_global(supabase: Client, user_id: str) -> float:
+    """Budget global Meta Ads (stocké dans profiles.meta_budget_global)."""
+    try:
+        res = supabase.table("profiles").select("meta_budget_global").eq("id", user_id).execute()
+        if res.data:
+            return float(res.data[0].get("meta_budget_global") or 0)
+    except Exception:
+        pass
+    return 0.0
+
+
+def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
+    """Retourne {campaign_name: {"label": str|None, "budget_max": float}} pour cet user."""
+    try:
+        res = (
+            supabase.table("meta_campaign_config")
+            .select("campaign_name, label, budget_max")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return {
+            row["campaign_name"]: {
+                "label": row.get("label"),
+                "budget_max": float(row.get("budget_max") or 0),
+            }
+            for row in (res.data or [])
+        }
+    except Exception:
+        return {}

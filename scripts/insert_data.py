@@ -45,3 +45,45 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
         records,
         on_conflict="user_id,date_start,ad_name"
     ).execute()
+
+
+# ── Tab Coût — labels & budgets ────────────────────────────────────────────────
+
+def update_campaign_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
+    """Master list des labels de campagne → profiles.campaign_labels."""
+    clean = [str(l).strip() for l in labels if str(l).strip()]
+    supabase.table("profiles").update({"campaign_labels": clean}).eq("id", user_id).execute()
+
+
+def update_meta_budget_global(supabase: Client, user_id: str, value: float) -> None:
+    """Budget global → profiles.meta_budget_global."""
+    supabase.table("profiles").update({"meta_budget_global": float(value or 0)}).eq("id", user_id).execute()
+
+
+def upsert_campaign_config(
+    supabase: Client,
+    user_id: str,
+    campaign_name: str,
+    *,
+    label: str | None = None,
+    budget_max: float | None = None,
+) -> None:
+    """Upsert ligne meta_campaign_config. Met à jour seulement les champs fournis."""
+    payload: dict = {"user_id": user_id, "campaign_name": campaign_name}
+    if label is not None:
+        payload["label"] = label if label else None
+    if budget_max is not None:
+        payload["budget_max"] = float(budget_max or 0)
+    supabase.table("meta_campaign_config").upsert(
+        payload, on_conflict="user_id,campaign_name"
+    ).execute()
+
+
+def rename_campaign_label(supabase: Client, user_id: str, old_label: str, new_label: str) -> None:
+    """Renomme un label dans toutes les lignes meta_campaign_config de l'utilisateur."""
+    supabase.table("meta_campaign_config").update({"label": new_label}).eq("user_id", user_id).eq("label", old_label).execute()
+
+
+def clear_campaign_label(supabase: Client, user_id: str, label: str) -> None:
+    """Met à NULL le label dans meta_campaign_config (utilisé quand on supprime un label)."""
+    supabase.table("meta_campaign_config").update({"label": None}).eq("user_id", user_id).eq("label", label).execute()
