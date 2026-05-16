@@ -126,7 +126,9 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 unsafe_allow_html=True,
             )
             if st.button("Annuler l'abonnement", type="secondary", key="btn_cancel_sub_account"):
-                if cancel_subscription(session.user.email):
+                with st.spinner("Annulation en cours…"):
+                    cancelled = cancel_subscription(session.user.email)
+                if cancelled:
                     client.table("profiles").update({"is_paid": False}).eq("id", user_id).execute()
                     st.success("Abonnement annulé.")
                     st.rerun()
@@ -143,22 +145,23 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
             if "checkout_url" not in st.session_state:
                 if st.button("Souscrire", type="primary", key="btn_subscribe_account"):
-                    try:
-                        ctx = st.context.headers
-                        host = ctx.get("host", "localhost:8502")
-                        proto = "https"
-                        base_url = f"{proto}://{host}"
-                        url = create_checkout_session(
-                            user_id=user_id,
-                            email=session.user.email,
-                            plan="pro",
-                            refresh_token=session.refresh_token,
-                            base_url=base_url,
-                        )
-                        st.session_state["checkout_url"] = url
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erreur Stripe : {e}")
+                    with st.spinner("Préparation du paiement…"):
+                        try:
+                            ctx = st.context.headers
+                            host = ctx.get("host", "localhost:8502")
+                            proto = "https"
+                            base_url = f"{proto}://{host}"
+                            url = create_checkout_session(
+                                user_id=user_id,
+                                email=session.user.email,
+                                plan="pro",
+                                refresh_token=session.refresh_token,
+                                base_url=base_url,
+                            )
+                            st.session_state["checkout_url"] = url
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur Stripe : {e}")
             else:
                 st.link_button("Procéder au paiement", url=st.session_state["checkout_url"], type="primary")
                 if st.button("Annuler", key="btn_cancel_checkout"):
@@ -249,11 +252,12 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
 
         if "meta_long_token" in st.session_state:
             st.markdown('<div class="acc-section-title">Synchronisation</div>', unsafe_allow_html=True)
-            meta_ads_source_fragment(
-                token=st.session_state["meta_long_token"],
-                supabase=client,
-                user_id=user_id,
-            )
+            with st.spinner("Chargement des comptes Meta Ads…"):
+                meta_ads_source_fragment(
+                    token=st.session_state["meta_long_token"],
+                    supabase=client,
+                    user_id=user_id,
+                )
         else:
             st.markdown(
                 '<div class="acc-card"><div class="acc-card-meta">Aucun compte Meta Ads connecté.</div></div>',

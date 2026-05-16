@@ -69,29 +69,36 @@ HOURS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"]
 @st.fragment
 def fetch_instagram_fragment(client, user_id, is_paid, dash, instagram_business_id=None):
     if st.session_state.pop("trigger_fetch", False):
-        try:
-            org = OrganicInstagramm(
-                meta_long_token=st.session_state["meta_long_token"],
-                supabase_client=client,
-                supabase_user_id=user_id,
-                instagram_business_id=instagram_business_id,
-            )
-            org.fetch_insta_post_insight()
-            if org.new_results:
-                insert_instagram_org(supabase=client, results=org.new_results)
-            st.session_state["has_fetched"] = True
-            st.caption(f"{org.limit} posts affichés sur {org.total_posts} au total · Plan {'Pro' if is_paid else 'Gratuit — max 10 posts'}")
-
-        except Exception as e:
-            if "JWT expired" in str(e):
-                user = dash.supabase.auth.refresh_session(
-                    refresh_token=st.session_state["session"].refresh_token
+        with st.status("📸 Récupération des posts Instagram…", expanded=True) as status:
+            try:
+                st.write("Connexion à l'API Meta…")
+                org = OrganicInstagramm(
+                    meta_long_token=st.session_state["meta_long_token"],
+                    supabase_client=client,
+                    supabase_user_id=user_id,
+                    instagram_business_id=instagram_business_id,
                 )
-                st.session_state["session"] = user.session
-                st.query_params["refresh_token"] = user.session.refresh_token
-                st.rerun()
-            else:
-                st.error(f"Erreur : {e}")
+                st.write("Chargement des insights post par post…")
+                org.fetch_insta_post_insight()
+                if org.new_results:
+                    st.write(f"Sauvegarde de {len(org.new_results)} post(s) dans la base…")
+                    insert_instagram_org(supabase=client, results=org.new_results)
+                st.session_state["has_fetched"] = True
+                status.update(
+                    label=f"✓ {org.limit} posts affichés sur {org.total_posts} · Plan {'Pro' if is_paid else 'Gratuit'}",
+                    state="complete",
+                    expanded=False,
+                )
+            except Exception as e:
+                if "JWT expired" in str(e):
+                    user = dash.supabase.auth.refresh_session(
+                        refresh_token=st.session_state["session"].refresh_token
+                    )
+                    st.session_state["session"] = user.session
+                    st.query_params["refresh_token"] = user.session.refresh_token
+                    st.rerun()
+                else:
+                    status.update(label=f"⚠ Erreur : {e}", state="error")
 
 
 def _delta_html(val: int, suffix: str = "") -> str:
@@ -114,11 +121,11 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
     fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash, instagram_business_id=instagram_business_id)
 
-    data = fetch_post_metrics(client, user_id)
-    df = pd.DataFrame(data or [])
-
-    follows_raw = fetch_daily_followers(client, user_id)
-    df_follows = pd.DataFrame(follows_raw) if follows_raw else pd.DataFrame()
+    with st.spinner("Chargement des posts Instagram…"):
+        data = fetch_post_metrics(client, user_id)
+        df = pd.DataFrame(data or [])
+        follows_raw = fetch_daily_followers(client, user_id)
+        df_follows = pd.DataFrame(follows_raw) if follows_raw else pd.DataFrame()
 
     followers_current = 0
     followers_delta = 0
