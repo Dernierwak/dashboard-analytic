@@ -5,30 +5,127 @@ from components.meta_ads import meta_ads_source_fragment
 from scripts.stripe import create_checkout_session, cancel_subscription
 
 
+# ── CSS local pour cette page (réutilise les tokens Pulse) ─────────────────────
+_ACCOUNT_CSS = """<style>
+.acc-hero { padding: 8px 0 16px; }
+.acc-eyebrow {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #8b8e98; margin-bottom: 8px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.acc-h1 {
+    font-family: "Instrument Serif", Georgia, serif !important;
+    font-size: 1.6rem !important; font-weight: 400 !important;
+    color: #0e0f12 !important; line-height: 1.2 !important;
+    margin: 0 0 6px !important;
+}
+.acc-sub { font-size: 13px; color: #5a5d66; margin: 0; max-width: 560px; }
+
+.acc-section-title {
+    font-size: 13px; font-weight: 600; color: #0e0f12;
+    margin: 24px 0 12px;
+}
+
+/* Carte simple (info / connexion) */
+.acc-card {
+    background: #fff; border: 1px solid rgba(14,15,18,0.08);
+    border-radius: 14px; padding: 16px 20px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+}
+.acc-card-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.acc-card-name { font-size: 14px; font-weight: 600; color: #0e0f12; }
+.acc-card-meta { font-size: 11.5px; color: #8b8e98; }
+
+/* Mini-KPI (Email / Plan / Posts max) */
+.acc-kpi-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-bottom: 16px;
+}
+.acc-kpi {
+    background: #fff; border: 1px solid rgba(14,15,18,0.08);
+    border-radius: 14px; padding: 16px 20px;
+}
+.acc-kpi-lbl {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #8b8e98; margin-bottom: 6px;
+}
+.acc-kpi-val {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 1.2rem; font-weight: 500; color: #0e0f12;
+    word-break: break-all;
+}
+.acc-badge {
+    display: inline-block; padding: 2px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+}
+.acc-badge.good { background: #e7f3ec; color: #1a7a4a; }
+.acc-badge.neu  { background: rgba(14,15,18,0.06); color: #5a5d66; }
+
+/* Sub-tabs (st.tabs) */
+[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 4px; }
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-size: 13px; font-weight: 500;
+}
+</style>"""
+
+
+def _acc_kpi(label: str, value: str) -> str:
+    return (
+        f'<div class="acc-kpi">'
+        f'<div class="acc-kpi-lbl">{label}</div>'
+        f'<div class="acc-kpi-val">{value}</div>'
+        f'</div>'
+    )
+
+
 def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data):
+    st.markdown(_ACCOUNT_CSS, unsafe_allow_html=True)
 
     sub_infos, sub_insta, sub_meta, sub_google = st.tabs([
         "Infos du compte",
-        "📸 Connecter Instagram",
-        "📘 Connecter Meta Ads",
-        "🔍 Connecter Google Ads",
+        "📸 Instagram",
+        "📘 Meta Ads",
+        "🔍 Google Ads",
     ])
 
     # ── Infos du compte ────────────────────────────────────────────────────────
     with sub_infos:
-        st.markdown("<div class='section-title'>Mon compte</div>", unsafe_allow_html=True)
+        plan_badge = (
+            '<span class="acc-badge good">Pro</span>'
+            if is_paid else '<span class="acc-badge neu">Gratuit</span>'
+        )
+        st.markdown(
+            f'<div class="acc-hero">'
+            f'<div class="acc-eyebrow">Compte</div>'
+            f'<h1 class="acc-h1">Ton profil et ton abonnement.</h1>'
+            f'<p class="acc-sub">Gère ton plan, tes intégrations et la déconnexion.</p>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Email", session.user.email)
-        c2.metric("Plan", "Pro" if is_paid else "Gratuit")
-        c3.metric("Posts max", "Illimité" if is_paid else "10")
-
-        st.markdown("<br>", unsafe_allow_html=True)
+        # KPI rapides
+        st.markdown(
+            '<div class="acc-kpi-grid">'
+            + _acc_kpi("Email", session.user.email)
+            + _acc_kpi("Plan", "Pro" if is_paid else "Gratuit")
+            + _acc_kpi("Posts max", "Illimité" if is_paid else "10")
+            + '</div>',
+            unsafe_allow_html=True,
+        )
 
         # ── Abonnement ─────────────────────────────────────────────────────────
+        st.markdown('<div class="acc-section-title">Abonnement</div>', unsafe_allow_html=True)
         if is_paid:
-            st.markdown("**Abonnement Pro actif**")
-            if st.button("Annuler l'abonnement", type="tertiary", key="btn_cancel_sub_account"):
+            st.markdown(
+                f'<div class="acc-card">'
+                f'<div class="acc-card-left">'
+                f'<div class="acc-card-name">Pro {plan_badge}</div>'
+                f'<div class="acc-card-meta">Tous les posts · historique illimité · insights IA</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Annuler l'abonnement", type="secondary", key="btn_cancel_sub_account"):
                 if cancel_subscription(session.user.email):
                     client.table("profiles").update({"is_paid": False}).eq("id", user_id).execute()
                     st.success("Abonnement annulé.")
@@ -36,10 +133,16 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 else:
                     st.error("Aucun abonnement actif trouvé.")
         else:
-            st.markdown("**Passer au Pro**")
-            st.caption("Tous vos posts, historique illimité, insights IA.")
+            st.markdown(
+                '<div class="acc-card">'
+                '<div class="acc-card-left">'
+                '<div class="acc-card-name">Passer au Pro — 35 CHF/mois</div>'
+                '<div class="acc-card-meta">Tous tes posts · historique illimité · insights IA</div>'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
             if "checkout_url" not in st.session_state:
-                if st.button("Souscrire — 35 CHF/mois", type="primary", key="btn_subscribe_account"):
+                if st.button("Souscrire", type="primary", key="btn_subscribe_account"):
                     try:
                         ctx = st.context.headers
                         host = ctx.get("host", "localhost:8502")
@@ -62,12 +165,16 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                     del st.session_state["checkout_url"]
                     st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.divider()
-
-        # ── Déconnexion ────────────────────────────────────────────────────────
-        st.markdown("**Session**")
-        st.caption(f"Connecté en tant que **{session.user.email}**")
+        # ── Session ────────────────────────────────────────────────────────────
+        st.markdown('<div class="acc-section-title">Session</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="acc-card">'
+            f'<div class="acc-card-left">'
+            f'<div class="acc-card-name">{session.user.email}</div>'
+            f'<div class="acc-card-meta">Connecté</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
         if st.button("Se déconnecter", key="btn_logout_account"):
             del st.session_state["session"]
             if "refresh_token" in st.query_params:
@@ -76,6 +183,16 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
 
     # ── Connecter Instagram ────────────────────────────────────────────────────
     with sub_insta:
+        st.markdown(
+            '<div class="acc-hero">'
+            '<div class="acc-eyebrow">Instagram</div>'
+            '<h1 class="acc-h1">Tes comptes Instagram connectés.</h1>'
+            '<p class="acc-sub">Accède à tes posts organiques et leurs métriques (portée, likes, saves…).</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div class="acc-section-title">Comptes connectés</div>', unsafe_allow_html=True)
         if insta_accounts:
             for acc in insta_accounts:
                 name = acc.get("account_name") or "Compte Instagram"
@@ -84,12 +201,15 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 col_info, col_btn = st.columns([5, 1])
                 with col_info:
                     st.markdown(
-                        f"<div class='account-name'>{name}</div>"
-                        f"<div class='account-meta'>Connecté le {date} · {total_posts} posts</div>",
+                        f'<div class="acc-card" style="margin-bottom:0;">'
+                        f'<div class="acc-card-left">'
+                        f'<div class="acc-card-name">{name}</div>'
+                        f'<div class="acc-card-meta">Connecté le {date} · {total_posts} posts</div>'
+                        f'</div></div>',
                         unsafe_allow_html=True,
                     )
                 with col_btn:
-                    if st.button("Retirer", key=f"disc_{acc['id']}"):
+                    if st.button("Retirer", key=f"disc_{acc['id']}", use_container_width=True):
                         client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
                         client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
                         if st.session_state.get("meta_long_token"):
@@ -97,22 +217,38 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                         st.rerun()
         else:
             st.markdown(
-                "<div style='color:#6b6b6b;padding:12px 0'>Aucun compte Instagram connecté.</div>",
+                '<div class="acc-card"><div class="acc-card-meta">Aucun compte Instagram connecté.</div></div>',
                 unsafe_allow_html=True,
             )
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.link_button(
-            "+ Connecter un compte Instagram",
-            get_oauth_url(state=st.session_state["session"].refresh_token),
-        )
-        if insta_accounts and st.button("Récupérer mes données Instagram", type="primary", key="btn_fetch_insta_source"):
-            st.session_state["trigger_fetch"] = True
-            st.rerun()
+        st.markdown('<div class="acc-section-title">Actions</div>', unsafe_allow_html=True)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.link_button(
+                "+ Connecter un compte",
+                get_oauth_url(state=st.session_state["session"].refresh_token),
+                use_container_width=True,
+            )
+        with col_b:
+            if insta_accounts:
+                if st.button("↻ Récupérer mes données", type="primary",
+                             key="btn_fetch_insta_source", use_container_width=True):
+                    st.session_state["trigger_fetch"] = True
+                    st.rerun()
 
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:
+        st.markdown(
+            '<div class="acc-hero">'
+            '<div class="acc-eyebrow">Meta Ads</div>'
+            '<h1 class="acc-h1">Tes campagnes publicitaires.</h1>'
+            '<p class="acc-sub">Synchronise tes campagnes Facebook / Instagram Ads pour suivre dépenses et performances.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
         if "meta_long_token" in st.session_state:
+            st.markdown('<div class="acc-section-title">Synchronisation</div>', unsafe_allow_html=True)
             meta_ads_source_fragment(
                 token=st.session_state["meta_long_token"],
                 supabase=client,
@@ -120,15 +256,30 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
         else:
             st.markdown(
-                "<div style='color:#6b6b6b;padding:12px 0'>Aucun compte Meta Ads connecté.</div>",
+                '<div class="acc-card"><div class="acc-card-meta">Aucun compte Meta Ads connecté.</div></div>',
                 unsafe_allow_html=True,
             )
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown('<div class="acc-section-title">Actions</div>', unsafe_allow_html=True)
             st.link_button(
                 "+ Connecter Meta Ads",
                 get_oauth_url(state=st.session_state["session"].refresh_token),
+                use_container_width=True,
             )
 
     # ── Connecter Google Ads ───────────────────────────────────────────────────
     with sub_google:
-        st.info("Bientôt disponible")
+        st.markdown(
+            '<div class="acc-hero">'
+            '<div class="acc-eyebrow">Google Ads</div>'
+            '<h1 class="acc-h1">Bientôt disponible.</h1>'
+            '<p class="acc-sub">L\'intégration Google Ads arrive prochainement. Tu pourras analyser tes campagnes Search et Display directement ici.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="acc-card"><div class="acc-card-left">'
+            '<div class="acc-card-name">🚧 En développement</div>'
+            '<div class="acc-card-meta">Reviens bientôt — on bosse dessus.</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
