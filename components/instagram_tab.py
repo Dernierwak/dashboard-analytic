@@ -62,7 +62,8 @@ FORMAT_LABELS = {
 }
 
 DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
-HOURS = ["6h", "9h", "12h", "15h", "18h", "21h"]
+# Créneaux : bins [0,7), [7,10), [10,13), [13,16), [16,19), [19,24)
+HOURS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"]
 
 
 @st.fragment
@@ -238,7 +239,12 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         # Calcul : pour chaque (jour, créneau) → {count, total_reach, avg_reach}
         heat_data = {}
         if "date" in df.columns:
-            df["_dt"] = pd.to_datetime(df["date"], errors="coerce")
+            # Instagram renvoie le timestamp en UTC → on convertit en heure suisse
+            df["_dt"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
+            try:
+                df["_dt"] = df["_dt"].dt.tz_convert("Europe/Zurich")
+            except Exception:
+                pass
             df["_dow"] = df["_dt"].dt.dayofweek
             df["_hour"] = df["_dt"].dt.hour
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
@@ -434,6 +440,10 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
         if "Date" in df_tbl.columns:
             df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
+
+        # Réordonner : Label tout à droite
+        ordered = [c for c in ["id", "Post", "Format", "Date", "Portée", "Likes", "Saves", "Comm.", "Engagement", "Label"] if c in df_tbl.columns]
+        df_tbl = df_tbl[ordered]
 
         df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
 
