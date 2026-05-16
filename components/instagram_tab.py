@@ -323,40 +323,6 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             </div>
             """, unsafe_allow_html=True)
 
-        # Tableau récap : top 5 créneaux par portée moyenne
-        if heat_data:
-            sorted_slots = sorted(heat_data.items(), key=lambda kv: kv[1]["avg"], reverse=True)[:5]
-            recap_rows = ""
-            for (d_idx, s_idx), stats in sorted_slots:
-                day = DAYS[d_idx]
-                hour = HOURS[s_idx]
-                count = stats["count"]
-                avg = int(stats["avg"])
-                total = int(stats["reach"])
-                recap_rows += (
-                    f"<tr>"
-                    f"<td style='padding:6px 10px;font-size:12px;'>{day} · {hour}</td>"
-                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{count}</td>"
-                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{total:,}</td>"
-                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{avg:,}</td>"
-                    f"</tr>"
-                )
-            st.markdown(f"""
-            <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:8px 4px;margin-top:10px;'>
-                <div style='font-size:11px;font-weight:600;color:#5a5d66;padding:8px 14px 4px;'>Top 5 créneaux (par portée moyenne)</div>
-                <table style='width:100%;border-collapse:collapse;'>
-                    <thead>
-                        <tr style='border-bottom:1px solid rgba(14,15,18,0.06);'>
-                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:left;'>Créneau</th>
-                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Posts</th>
-                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Portée totale</th>
-                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Moyenne</th>
-                        </tr>
-                    </thead>
-                    <tbody>{recap_rows}</tbody>
-                </table>
-            </div>
-            """, unsafe_allow_html=True)
     
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Top 3 posts</span></div></div>", unsafe_allow_html=True)
     
@@ -410,6 +376,62 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     unsafe_allow_html=True,
                 )
     
+        # ── Performance par label ─────────────────────────────────────────
+        if "labels" in df.columns and not df.empty:
+            df_l = df.copy()
+            df_l["_lbl"] = df_l["labels"].apply(
+                lambda x: x[0] if isinstance(x, list) and len(x) > 0 and x[0] else "(sans label)"
+            )
+            agg_lbl = df_l.groupby("_lbl").agg(
+                posts=("_lbl", "count"),
+                reach_tot=("reach", "sum"),
+                reach_avg=("reach", "mean"),
+                likes_avg=("likes", "mean"),
+                saves_avg=("saved", "mean"),
+                comm_avg=("comments", "mean"),
+            ).reset_index()
+            agg_lbl["eng_pct"] = agg_lbl.apply(
+                lambda r: ((r["likes_avg"] + r["saves_avg"]) / r["reach_avg"] * 100) if r["reach_avg"] > 0 else 0.0,
+                axis=1,
+            )
+            # tri : sans label en dernier, le reste par portée moyenne
+            agg_lbl["_order"] = agg_lbl["_lbl"].apply(lambda x: (1 if x == "(sans label)" else 0, 0))
+            agg_lbl = agg_lbl.sort_values(["_order", "reach_avg"], ascending=[True, False]).drop(columns=["_order"])
+
+            # Afficher uniquement si au moins un vrai label utilisé
+            real_labels = agg_lbl[agg_lbl["_lbl"] != "(sans label)"]
+            if not real_labels.empty:
+                st.markdown(
+                    "<div class='section'><div class='section-head'>"
+                    "<span class='section-title'>Performance par label</span></div></div>",
+                    unsafe_allow_html=True,
+                )
+                df_show = agg_lbl.rename(columns={
+                    "_lbl": "Label",
+                    "posts": "Posts",
+                    "reach_tot": "Portée totale",
+                    "reach_avg": "Portée moy",
+                    "likes_avg": "Likes moy",
+                    "saves_avg": "Saves moy",
+                    "comm_avg": "Comm. moy",
+                    "eng_pct": "Eng. %",
+                })
+                st.dataframe(
+                    df_show,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Label": st.column_config.TextColumn("Label", width="medium"),
+                        "Posts": st.column_config.NumberColumn("Posts", format="%d"),
+                        "Portée totale": st.column_config.NumberColumn("Portée totale", format="%d"),
+                        "Portée moy": st.column_config.NumberColumn("Portée moy.", format="%d"),
+                        "Likes moy": st.column_config.NumberColumn("Likes moy.", format="%.0f"),
+                        "Saves moy": st.column_config.NumberColumn("Saves moy.", format="%.0f"),
+                        "Comm. moy": st.column_config.NumberColumn("Comm. moy.", format="%.0f"),
+                        "Eng. %": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
+                    },
+                )
+
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
 
         cols_show = [c for c in ["id", "caption", "type", "date", "reach", "likes", "saved", "comments", "labels"] if c in df.columns]

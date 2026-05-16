@@ -945,13 +945,17 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
             unsafe_allow_html=True,
         )
 
-    # ── Bloc 3 : Dépenses par label (agrégé) ─────────────────────────────────
+    # ── Bloc 3 : Performance par label (agrégé) ──────────────────────────────
     campaign_labels: list[str] = st.session_state.get("campaign_labels", [])
     campaign_config: dict      = st.session_state.get("campaign_config", {})
 
     df_camp = (
         df_v.groupby("campaign_name", as_index=False)
-        .agg(spend=("spend", "sum"))
+        .agg(
+            spend=("spend", "sum"),
+            impressions=("impressions", "sum"),
+            clicks=("clicks", "sum"),
+        )
         .sort_values("spend", ascending=False)
     )
     # Associer label + budget_max à chaque campagne
@@ -962,47 +966,74 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
         lambda c: float((campaign_config.get(c) or {}).get("budget_max") or 0)
     )
 
-    st.markdown('<div class="cout-section-title">Dépenses par label</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cout-section-title">Performance par label</div>', unsafe_allow_html=True)
 
     # Agrégat par label (None → "(sans label)")
     df_lbl = df_camp.copy()
     df_lbl["label_display"] = df_lbl["label"].fillna(_NO_LABEL).replace("", _NO_LABEL)
     agg_lbl = (
         df_lbl.groupby("label_display", as_index=False)
-        .agg(spend=("spend", "sum"), budget=("budget_max", "sum"))
-        .sort_values("spend", ascending=False)
+        .agg(
+            spend=("spend", "sum"),
+            budget=("budget_max", "sum"),
+            impressions=("impressions", "sum"),
+            clicks=("clicks", "sum"),
+            campaigns=("campaign_name", "nunique"),
+        )
     )
+    agg_lbl["ctr"]   = agg_lbl.apply(
+        lambda r: (r["clicks"] / r["impressions"] * 100) if r["impressions"] > 0 else 0.0,
+        axis=1,
+    )
+    agg_lbl["cpc"]   = agg_lbl.apply(
+        lambda r: (r["spend"] / r["clicks"]) if r["clicks"] > 0 else 0.0,
+        axis=1,
+    )
+    agg_lbl["cpm"]   = agg_lbl.apply(
+        lambda r: (r["spend"] / r["impressions"] * 1000) if r["impressions"] > 0 else 0.0,
+        axis=1,
+    )
+    agg_lbl["pacing"] = agg_lbl.apply(
+        lambda r: (r["spend"] / r["budget"] * 100) if r["budget"] > 0 else None,
+        axis=1,
+    )
+    # Tri : (sans label) à la fin, le reste par dépensé desc
+    agg_lbl["_ord"] = agg_lbl["label_display"].apply(lambda x: 1 if x == _NO_LABEL else 0)
+    agg_lbl = agg_lbl.sort_values(["_ord", "spend"], ascending=[True, False]).drop(columns=["_ord"])
 
     if agg_lbl.empty:
         st.info("Aucune dépense.")
     else:
-        hcols = st.columns([3, 2, 2, 3])
-        for col_h, lbl in zip(hcols, ["Label", "Dépensé", "Budget cumulé", "Pacing"]):
-            col_h.markdown(
-                f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-                f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
-                unsafe_allow_html=True,
-            )
-        for _, r in agg_lbl.iterrows():
-            cn, cs, cb, cp = st.columns([3, 2, 2, 3])
-            with cn:
-                st.markdown(
-                    f'<div style="font-size:13px;font-weight:500;padding-top:6px;">{r["label_display"]}</div>',
-                    unsafe_allow_html=True,
-                )
-            with cs:
-                st.markdown(
-                    f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{r["spend"]:,.0f} CHF</div>',
-                    unsafe_allow_html=True,
-                )
-            with cb:
-                bud_txt = f"{r['budget']:,.0f} CHF" if r["budget"] > 0 else "—"
-                st.markdown(
-                    f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{bud_txt}</div>',
-                    unsafe_allow_html=True,
-                )
-            with cp:
-                st.markdown(_pacing_row_html(r["spend"], r["budget"]), unsafe_allow_html=True)
+        df_show = agg_lbl.rename(columns={
+            "label_display": "Label",
+            "campaigns":     "Campagnes",
+            "spend":         "Dépensé",
+            "budget":        "Budget",
+            "impressions":   "Impr.",
+            "clicks":        "Clics",
+            "ctr":           "CTR %",
+            "cpc":           "CPC",
+            "cpm":           "CPM",
+            "pacing":        "Pacing %",
+        })[["Label", "Campagnes", "Dépensé", "Budget", "Pacing %", "Impr.", "Clics", "CTR %", "CPC", "CPM"]]
+
+        st.dataframe(
+            df_show,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Label":     st.column_config.TextColumn("Label", width="medium"),
+                "Campagnes": st.column_config.NumberColumn("Camp.", format="%d"),
+                "Dépensé":   st.column_config.NumberColumn("Dépensé", format="%.0f CHF"),
+                "Budget":    st.column_config.NumberColumn("Budget", format="%.0f CHF"),
+                "Pacing %":  st.column_config.ProgressColumn("Pacing", format="%.0f%%", min_value=0, max_value=150),
+                "Impr.":     st.column_config.NumberColumn("Impr.", format="%d"),
+                "Clics":     st.column_config.NumberColumn("Clics", format="%d"),
+                "CTR %":     st.column_config.NumberColumn("CTR %", format="%.2f%%"),
+                "CPC":       st.column_config.NumberColumn("CPC", format="%.2f CHF"),
+                "CPM":       st.column_config.NumberColumn("CPM", format="%.2f CHF"),
+            },
+        )
 
     # ── Bloc 4 : Détail par campagne (label = lecture seule, vient de Performance) ──
     st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
