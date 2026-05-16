@@ -482,10 +482,16 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         })
 
         if "Date" in df_tbl.columns:
-            df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
+            # UTC → Europe/Zurich + formatage date + heure (15 mai 2026 · 14:30)
+            _dt = pd.to_datetime(df_tbl["Date"], errors="coerce", utc=True)
+            try:
+                _dt = _dt.dt.tz_convert("Europe/Zurich")
+            except Exception:
+                pass
+            df_tbl["Date"] = _dt.dt.strftime("%d %b %Y · %H:%M")
 
-        # Réordonner : Label tout à droite
-        ordered = [c for c in ["id", "Post", "Format", "Date", "Portée", "Likes", "Saves", "Comm.", "Engagement", "Label"] if c in df_tbl.columns]
+        # Réordonner : Label en premier (à gauche)
+        ordered = [c for c in ["id", "Label", "Post", "Format", "Date", "Portée", "Likes", "Saves", "Comm.", "Engagement"] if c in df_tbl.columns]
         df_tbl = df_tbl[ordered]
 
         df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
@@ -506,19 +512,20 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             key="insta_posts_editor",
             column_config={
                 "id": None,  # caché mais conservé pour l'index
+                "Label": st.column_config.SelectboxColumn(
+                    "Label",
+                    options=avail_labels if avail_labels else [],
+                    required=False,
+                    width="small",
+                ),
                 "Post": st.column_config.TextColumn("Post", width="large", disabled=True),
                 "Format": st.column_config.TextColumn("Format", disabled=True),
-                "Date": st.column_config.TextColumn("Date", disabled=True),
+                "Date": st.column_config.TextColumn("Date · Heure", disabled=True, width="medium"),
                 "Portée": st.column_config.NumberColumn("Portée", format="%d", disabled=True),
                 "Likes": st.column_config.NumberColumn("Likes", format="%d", disabled=True),
                 "Saves": st.column_config.NumberColumn("Saves", format="%d", disabled=True),
                 "Comm.": st.column_config.NumberColumn("Comm.", format="%d", disabled=True),
                 "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%", disabled=True),
-                "Label": st.column_config.SelectboxColumn(
-                    "Label",
-                    options=avail_labels if avail_labels else [],
-                    required=False,
-                ),
             },
         )
 
