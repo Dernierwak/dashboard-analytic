@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
 from components.dashboard import show_dashboard
 from scripts.insert_data import insert_instagram_org
@@ -199,7 +200,91 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             </div>
         </div>
         """, unsafe_allow_html=True)
-    
+
+        # ── Croissance abonnés ────────────────────────────────────────────
+        if not df_follows.empty and "followers" in df_follows.columns and len(df_follows) >= 2:
+            st.markdown(
+                "<div class='section'><div class='section-head'>"
+                "<span class='section-title'>Croissance abonnés</span></div></div>",
+                unsafe_allow_html=True,
+            )
+
+            df_grow = df_follows.copy().sort_values("fetched_at", ascending=True)
+            df_grow["fetched_at"] = pd.to_datetime(df_grow["fetched_at"], errors="coerce")
+            df_grow["followers"] = pd.to_numeric(df_grow["followers"], errors="coerce")
+            df_grow = df_grow.dropna(subset=["fetched_at", "followers"])
+
+            now = df_grow["fetched_at"].max()
+            first = df_grow["fetched_at"].min()
+            days_tracked = max(1, (now - first).days)
+            current = int(df_grow.iloc[-1]["followers"])
+
+            # gain sur 7 jours
+            df_7d = df_grow[df_grow["fetched_at"] >= (now - pd.Timedelta(days=7))]
+            gain_7d = int(df_7d.iloc[-1]["followers"] - df_7d.iloc[0]["followers"]) if len(df_7d) >= 2 else 0
+
+            # gain sur 30 jours
+            df_30d = df_grow[df_grow["fetched_at"] >= (now - pd.Timedelta(days=30))]
+            gain_30d = int(df_30d.iloc[-1]["followers"] - df_30d.iloc[0]["followers"]) if len(df_30d) >= 2 else 0
+
+            # gain depuis le début du tracking
+            gain_total = int(current - df_grow.iloc[0]["followers"])
+            avg_per_day = gain_total / days_tracked if days_tracked > 0 else 0
+
+            # taux de croissance mensuel
+            base_30d = int(df_30d.iloc[0]["followers"]) if len(df_30d) >= 2 else current
+            growth_rate = (gain_30d / base_30d * 100) if base_30d > 0 else 0.0
+
+            # 4 cartes KPI
+            st.markdown(f"""
+            <div class='kpi-grid'>
+                <div class='kpi'>
+                    <div class='k-label'>Gain 7 jours</div>
+                    <div class='k-value'>{gain_7d:+,}</div>
+                    <div class='k-foot'>cette semaine</div>
+                </div>
+                <div class='kpi'>
+                    <div class='k-label'>Gain 30 jours</div>
+                    <div class='k-value'>{gain_30d:+,}</div>
+                    <div class='k-foot'>ce mois-ci</div>
+                </div>
+                <div class='kpi'>
+                    <div class='k-label'>Moyenne / jour</div>
+                    <div class='k-value'>{avg_per_day:+.1f}</div>
+                    <div class='k-foot'>sur {days_tracked} jours</div>
+                </div>
+                <div class='kpi'>
+                    <div class='k-label'>Croissance 30j</div>
+                    <div class='k-value'>{growth_rate:+.2f}</div>
+                    <div class='k-foot'>%</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Line chart
+            fig_follow = go.Figure()
+            fig_follow.add_trace(go.Scatter(
+                x=df_grow["fetched_at"], y=df_grow["followers"],
+                mode="lines+markers",
+                line=dict(color="#3b5bff", width=2.5),
+                marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
+                fill="tozeroy",
+                fillcolor="rgba(59,91,255,0.07)",
+                hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés</b><extra></extra>",
+            ))
+            fig_follow.update_layout(
+                template="plotly_white", height=240,
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor="#fff", plot_bgcolor="#fff",
+                font=dict(color="#666", family="Inter, sans-serif"),
+                xaxis=dict(showgrid=False, color="#999", linecolor="rgba(0,0,0,0.07)"),
+                yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#999"),
+                showlegend=False,
+            )
+            st.markdown('<div class="card" style="padding:16px 20px 8px;">', unsafe_allow_html=True)
+            st.plotly_chart(fig_follow, use_container_width=True, config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
+
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Ce qui marche pour toi</span></div></div>", unsafe_allow_html=True)
     
         format_groups = {}
@@ -345,9 +430,62 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             """, unsafe_allow_html=True)
 
     
-        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Top 3 posts</span></div></div>", unsafe_allow_html=True)
-    
-        top3 = df.nlargest(3, "reach") if "reach" in df.columns else df.head(3)
+        # ── En-tête Top 3 + filtres ──────────────────────────────────────
+        col_title, col_fmt, col_lbl = st.columns([2, 1.5, 1.5])
+        with col_title:
+            st.markdown(
+                "<div class='section'><div class='section-head'>"
+                "<span class='section-title'>Top 3 posts</span></div></div>",
+                unsafe_allow_html=True,
+            )
+
+        # Options format dispo dans les posts
+        fmt_options = ["Tous"]
+        if "type" in df.columns:
+            for fmt in df["type"].dropna().unique():
+                lbl = FORMAT_LABELS.get(str(fmt).upper(), str(fmt))
+                fmt_options.append(lbl)
+
+        # Options label dispo (master list)
+        lbl_options = ["Tous"]
+        master_labels = st.session_state.get("insta_labels") or []
+        for l in master_labels:
+            lbl_options.append(l)
+        lbl_options.append("(sans label)")
+
+        with col_fmt:
+            sel_fmt = st.selectbox(
+                "Format", options=fmt_options, key="top3_fmt_filter",
+                label_visibility="collapsed",
+            )
+        with col_lbl:
+            sel_lbl = st.selectbox(
+                "Label", options=lbl_options, key="top3_lbl_filter",
+                label_visibility="collapsed",
+            )
+
+        df_filtered = df.copy()
+        if sel_fmt != "Tous" and "type" in df_filtered.columns:
+            # Retrouver le code original (REEL/IMAGE/etc.) à partir du label affiché
+            target_fmts = [k for k, v in FORMAT_LABELS.items() if v == sel_fmt]
+            if not target_fmts:
+                target_fmts = [sel_fmt.upper()]
+            df_filtered = df_filtered[df_filtered["type"].astype(str).str.upper().isin(target_fmts)]
+        if sel_lbl != "Tous" and "labels" in df_filtered.columns:
+            if sel_lbl == "(sans label)":
+                df_filtered = df_filtered[df_filtered["labels"].apply(
+                    lambda x: not (isinstance(x, list) and len(x) > 0 and x[0])
+                )]
+            else:
+                df_filtered = df_filtered[df_filtered["labels"].apply(
+                    lambda x: isinstance(x, list) and sel_lbl in x
+                )]
+
+        if df_filtered.empty:
+            st.info("Aucun post avec ces filtres.")
+            top3 = df_filtered
+        else:
+            top3 = df_filtered.nlargest(3, "reach") if "reach" in df_filtered.columns else df_filtered.head(3)
         top_cols = st.columns(3)
         for i, (_, row) in enumerate(top3.iterrows()):
             fmt = str(row.get("type", "IMAGE")).upper()
