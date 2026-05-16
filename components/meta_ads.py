@@ -588,12 +588,29 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     campaign_config: dict      = st.session_state.get("campaign_config", {})
     label_options = [_NO_LABEL] + sorted(campaign_labels)
 
+    # En-tête des colonnes
+    h_lbl, h_name, h_status, h_spend, h_clicks, h_ctr, h_cpc, h_health = st.columns(
+        [1.6, 2.4, 1.1, 1, 0.9, 0.9, 1, 1.1]
+    )
+    for col_h, lbl in zip(
+        [h_lbl, h_name, h_status, h_spend, h_clicks, h_ctr, h_cpc, h_health],
+        ["Label", "Campagne", "Statut", "Dépensé", "Clics", "CTR", "CPC", "Santé"],
+    ):
+        col_h.markdown(
+            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+            unsafe_allow_html=True,
+        )
+
     for _, row in df_camp_sorted.iterrows():
         camp_name = row["campaign_name"]
         status = camp_status.get(camp_name, "")
         note_text, note_color = _camp_note(row, avg_ctr_all, avg_cpc_all)
         score, health_color = _health(row, avg_ctr_all, avg_cpc_all)
         is_paused = "PAUSED" in status.upper()
+        op = "0.62" if is_paused else "1"
+
+        current_label = (campaign_config.get(camp_name) or {}).get("label") or None
 
         health_html = (
             f'<div style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:{health_color};">{score}/100</div>'
@@ -601,61 +618,72 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
             if score is not None else '<div style="font-size:11.5px;color:#8b8e98;">—</div>'
         )
 
-        current_label = (campaign_config.get(camp_name) or {}).get("label") or None
-        label_chip = (
-            f'<span class="chip">{current_label}</span>'
-            if current_label
-            else '<span class="chip outline">sans label</span>'
-        )
+        with st.container(border=True):
+            c_lbl, c_name, c_status, c_spend, c_clicks, c_ctr, c_cpc, c_health = st.columns(
+                [1.6, 2.4, 1.1, 1, 0.9, 0.9, 1, 1.1]
+            )
 
-        # Carte campagne (visuel)
-        st.markdown(
-            f"""
-            <div class="camp-row{'  paused' if is_paused else ''}">
-              <div>
-                <div style="font-size:13.5px;font-weight:600;margin-bottom:4px;">{camp_name}</div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                  <span style="font-size:11.5px;color:{note_color};">{note_text}</span>
-                  {label_chip}
-                </div>
-              </div>
-              <div>{_status_chip(status)}</div>
-              {_cell("Dépensé", f"{row['spend']:,.0f} CHF" if row['spend'] > 0 else "—")}
-              {_cell("Clics", f"{int(row['clicks']):,}" if row['clicks'] > 0 else "—")}
-              {_cell("CTR", f"{row['ctr']:.2f} %" if row['ctr'] > 0 else "—")}
-              {_cell("CPC", f"{row['cpc']:.2f} CHF" if row['cpc'] > 0 else "—")}
-              <div class="cell-r">
-                <div class="cell-lbl">Santé</div>
-                {health_html}
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            # ── Col 1 : Label (selectbox éditable ou chip si pas de client) ──
+            with c_lbl:
+                if client and user_id:
+                    safe_key = camp_name.replace(" ", "_").replace("/", "_")[:50]
+                    existing = current_label or _NO_LABEL
+                    opts = label_options.copy()
+                    if existing not in opts:
+                        opts.insert(1, existing)
+                    lbl_key = f"perf_lbl_{safe_key}"
+                    if lbl_key not in st.session_state:
+                        st.session_state[lbl_key] = existing
+                    st.selectbox(
+                        "Label", options=opts, key=lbl_key,
+                        label_visibility="collapsed",
+                        on_change=_cb_save_camp_label, args=(client, user_id, camp_name, lbl_key),
+                    )
+                else:
+                    chip = (
+                        f'<span class="chip">{current_label}</span>'
+                        if current_label else '<span class="chip outline">—</span>'
+                    )
+                    st.markdown(f'<div style="padding-top:6px;">{chip}</div>', unsafe_allow_html=True)
 
-        # Sélecteur de label (si client/user_id dispo)
-        if client and user_id:
-            safe_key = camp_name.replace(" ", "_").replace("/", "_")[:50]
-            existing_label = current_label or _NO_LABEL
-            opts = label_options.copy()
-            if existing_label not in opts:
-                opts.insert(1, existing_label)
-
-            lbl_key = f"perf_lbl_{safe_key}"
-            if lbl_key not in st.session_state:
-                st.session_state[lbl_key] = existing_label
-
-            c_pad, c_icon, c_lbl, c_rest = st.columns([0.3, 0.5, 3, 6])
-            with c_icon:
+            # ── Col 2 : Nom + note ──
+            with c_name:
                 st.markdown(
-                    "<div style='padding-top:8px;font-size:13px;color:#8b8e98;'>🏷</div>",
+                    f'<div style="opacity:{op};padding-top:4px;">'
+                    f'<div style="font-size:13.5px;font-weight:600;margin-bottom:2px;line-height:1.2;">{camp_name}</div>'
+                    f'<div style="font-size:11px;color:{note_color};line-height:1.3;">{note_text}</div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
-            with c_lbl:
-                st.selectbox(
-                    "Label", options=opts, key=lbl_key,
-                    label_visibility="collapsed",
-                    on_change=_cb_save_camp_label, args=(client, user_id, camp_name, lbl_key),
+
+            # ── Col 3 : Statut ──
+            with c_status:
+                st.markdown(
+                    f'<div style="padding-top:8px;opacity:{op};">{_status_chip(status)}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Cols 4-7 : Dépensé / Clics / CTR / CPC ──
+            cells = [
+                (c_spend,  f"{row['spend']:,.0f} CHF" if row['spend'] > 0 else "—"),
+                (c_clicks, f"{int(row['clicks']):,}" if row['clicks'] > 0 else "—"),
+                (c_ctr,    f"{row['ctr']:.2f} %"      if row['ctr']    > 0 else "—"),
+                (c_cpc,    f"{row['cpc']:.2f} CHF"    if row['cpc']    > 0 else "—"),
+            ]
+            for col, val in cells:
+                with col:
+                    st.markdown(
+                        f'<div style="font-family:var(--font-mono);font-size:13px;'
+                        f'font-weight:500;color:#0e0f12;text-align:right;padding-top:10px;'
+                        f'opacity:{op};">{val}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # ── Col 8 : Santé ──
+            with c_health:
+                st.markdown(
+                    f'<div style="text-align:right;padding-top:6px;opacity:{op};">{health_html}</div>',
+                    unsafe_allow_html=True,
                 )
 
 
