@@ -760,11 +760,6 @@ def _show_labels_tab(client, user_id) -> None:
         st.warning("Connecte ton compte pour gérer les labels.")
         return
 
-    # Vider le champ "nouveau label" AVANT que le widget soit rendu
-    # (Streamlit interdit de modifier st.session_state[key] après instanciation)
-    if st.session_state.pop("_clear_new_label", False):
-        st.session_state.pop("lbl_tab_new_input", None)
-
     labels: list[str] = st.session_state.get("campaign_labels", [])
 
     st.markdown(
@@ -777,30 +772,37 @@ def _show_labels_tab(client, user_id) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Ajouter ──────────────────────────────────────────────────────────────
+    # ── Ajouter (st.form gère le vidage automatique via clear_on_submit) ──────
     st.markdown('<div class="cout-section-title" style="margin-top:4px;">Ajouter un label</div>', unsafe_allow_html=True)
-    col_in, col_btn = st.columns([4, 1])
-    with col_in:
-        new_lbl = st.text_input(
-            "Nouveau label", key="lbl_tab_new_input",
-            label_visibility="collapsed", placeholder="ex: Prospection Q2",
-        )
-    with col_btn:
-        if st.button("Ajouter", key="lbl_tab_add_btn", type="primary", use_container_width=True):
-            cleaned = (new_lbl or "").strip()
-            if not cleaned:
-                st.toast("Saisis un nom de label.", icon="⚠️")
-            elif cleaned in labels:
-                st.toast(f"« {cleaned} » existe déjà.", icon="⚠️")
+    with st.form("lbl_add_form", clear_on_submit=True):
+        col_in, col_btn = st.columns([4, 1])
+        with col_in:
+            new_lbl = st.text_input(
+                "Nouveau label",
+                label_visibility="collapsed", placeholder="ex: Prospection Q2",
+            )
+        with col_btn:
+            submitted = st.form_submit_button(
+                "Ajouter", type="primary", use_container_width=True,
+            )
+    if submitted:
+        cleaned = (new_lbl or "").strip()
+        if not cleaned:
+            st.toast("Saisis un nom de label.", icon="⚠️")
+        elif cleaned in labels:
+            st.toast(f"« {cleaned} » existe déjà.", icon="⚠️")
+        else:
+            new_list = labels + [cleaned]
+            error = None
+            try:
+                update_campaign_labels(client, user_id, new_list)
+            except Exception as e:
+                error = e
+            if error:
+                st.toast(f"Ajout échoué : {error}", icon="⚠️")
             else:
-                new_list = labels + [cleaned]
-                try:
-                    update_campaign_labels(client, user_id, new_list)
-                    st.session_state["campaign_labels"] = new_list
-                    st.session_state["_clear_new_label"] = True  # ← effacera au prochain run
-                    st.rerun()
-                except Exception as e:
-                    st.toast(f"Ajout échoué : {e}", icon="⚠️")
+                st.session_state["campaign_labels"] = new_list
+                st.rerun()
 
     # ── Liste + renommer / supprimer ─────────────────────────────────────────
     st.markdown('<div class="cout-section-title">Tes labels</div>', unsafe_allow_html=True)
@@ -831,31 +833,39 @@ def _show_labels_tab(client, user_id) -> None:
             if st.button("Enregistrer", key=f"lbl_tab_rn_{i}",
                          use_container_width=True, disabled=disabled):
                 new_list = [new_name if x == lbl else x for x in labels]
+                error = None
                 try:
                     update_campaign_labels(client, user_id, new_list)
                     rename_campaign_label(client, user_id, lbl, new_name)
+                except Exception as e:
+                    error = e
+                if error:
+                    st.toast(f"Renommage échoué : {error}", icon="⚠️")
+                else:
                     st.session_state["campaign_labels"] = new_list
                     cfg = st.session_state.get("campaign_config", {})
                     for c in cfg.values():
                         if c.get("label") == lbl:
                             c["label"] = new_name
                     st.rerun()
-                except Exception as e:
-                    st.toast(f"Renommage échoué : {e}", icon="⚠️")
         with c_del:
             if st.button("🗑 Supprimer", key=f"lbl_tab_del_{i}", use_container_width=True):
                 new_list = [x for x in labels if x != lbl]
+                error = None
                 try:
                     update_campaign_labels(client, user_id, new_list)
                     clear_campaign_label(client, user_id, lbl)
+                except Exception as e:
+                    error = e
+                if error:
+                    st.toast(f"Suppression échouée : {error}", icon="⚠️")
+                else:
                     st.session_state["campaign_labels"] = new_list
                     cfg = st.session_state.get("campaign_config", {})
                     for c in cfg.values():
                         if c.get("label") == lbl:
                             c["label"] = None
                     st.rerun()
-                except Exception as e:
-                    st.toast(f"Suppression échouée : {e}", icon="⚠️")
 
 
 # ── Tab Coût (refonte) ─────────────────────────────────────────────────────────
