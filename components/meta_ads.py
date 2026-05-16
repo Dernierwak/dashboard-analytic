@@ -126,6 +126,19 @@ div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label {
 }
 .cell-val { font-family:var(--font-mono);font-size:13px;font-weight:500;color:#0e0f12; }
 .cell-r { text-align:right; }
+
+/* ── Coût tab ── */
+.cout-section-title {
+    font-size:13px;font-weight:600;color:#0e0f12;margin-bottom:12px;margin-top:24px;
+}
+.cout-bar-wrap {
+    width:100%;height:6px;background:rgba(14,15,18,0.08);
+    border-radius:99px;overflow:hidden;margin-top:6px;
+}
+.cout-bar-fill { display:block;height:100%;border-radius:99px;transition:width 0.3s; }
+.cout-ok   { color:#1a7a4a;font-size:11.5px;font-weight:600; }
+.cout-over { color:#c0392b;font-size:11.5px;font-weight:600; }
+.cout-low  { color:#b86b00;font-size:11.5px;font-weight:600; }
 </style>"""
 
 
@@ -567,6 +580,152 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None):
     st.markdown(rows_html, unsafe_allow_html=True)
 
 
+# ── Coût tab ──────────────────────────────────────────────────────────────────
+
+def _show_cout_tab(df: pd.DataFrame | None) -> None:
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        st.info("Aucune donnée disponible. Récupère tes données Meta Ads d'abord.")
+        return
+
+    from datetime import date, timedelta
+
+    df = df.copy()
+    for col in ["impressions", "clicks", "spend", "reach", "link_clicks"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
+
+    period_opts = {"7j": 7, "30j": 30, "90j": 90}
+    sel_period = st.radio("Période", list(period_opts.keys()), index=1, horizontal=True, key="cout_period")
+    days = period_opts[sel_period]
+    cutoff = pd.Timestamp(date.today() - timedelta(days=days))
+    df_v = df[df["date_start"] >= cutoff].copy()
+
+    if df_v.empty:
+        st.warning("Aucune donnée pour cette période.")
+        return
+
+    total_spend       = df_v["spend"].sum()
+    total_impressions = int(df_v["impressions"].sum())
+    total_clicks      = int(df_v["clicks"].sum())
+    total_link_clicks = int(df_v["link_clicks"].sum()) if "link_clicks" in df_v.columns else 0
+    reach             = int(df_v["reach"].sum()) if "reach" in df_v.columns else 0
+
+    days_elapsed = max(1, (df_v["date_start"].max() - df_v["date_start"].min()).days + 1)
+    proj_30  = (total_spend / days_elapsed) * 30
+    avg_cpm  = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0.0
+    avg_cpc  = (total_spend / total_clicks) if total_clicks > 0 else 0.0
+    freq     = total_impressions / reach if reach > 0 else 0.0
+    cpv      = (total_spend / total_link_clicks) if total_link_clicks > 0 else None
+
+    # ── Bloc 1 : KPI globaux ──────────────────────────────────────────────────
+    st.markdown('<div class="cout-section-title">Vue globale des dépenses</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    kpis = [
+        (c1, "Total dépensé", f"{total_spend:,.0f}", "CHF"),
+        (c2, "Projeté 30j",   f"{proj_30:,.0f}",    "CHF"),
+        (c3, "CPM moyen",     f"{avg_cpm:.2f}",      "CHF"),
+        (c4, "CPC moyen",     f"{avg_cpc:.2f}",      "CHF"),
+    ]
+    for col, lbl, val, unit in kpis:
+        with col:
+            st.markdown(
+                f'<div class="kpi-p"><div class="kp-lbl">{lbl}</div>'
+                f'<div class="kp-val">{val}<span class="kp-unit"> {unit}</span></div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Bloc 2 : Budget global ────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    budget_global = st.number_input(
+        "Budget global (CHF)", min_value=0.0, step=100.0,
+        key="budget_global", format="%.0f",
+        help="Saisis ton budget pour voir le taux de consommation",
+    )
+    if budget_global > 0:
+        pct = min(total_spend / budget_global, 1.0)
+        bar_color = "#c0392b" if pct >= 1.0 else "#3b5bff"
+        st.markdown(
+            f'<div style="font-size:12px;color:#5a5d66;margin-bottom:4px;">'
+            f'{total_spend:,.0f} / {budget_global:,.0f} CHF — <b>{pct*100:.0f}%</b> consommé</div>'
+            f'<div class="cout-bar-wrap"><span class="cout-bar-fill" style="width:{pct*100:.1f}%;background:{bar_color};"></span></div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Bloc 3 : Pacing par campagne ──────────────────────────────────────────
+    st.markdown('<div class="cout-section-title">Pacing par campagne</div>', unsafe_allow_html=True)
+    df_camp = (
+        df_v.groupby("campaign_name", as_index=False)
+        .agg(spend=("spend", "sum"))
+        .sort_values("spend", ascending=False)
+    )
+
+    hcols = st.columns([3, 2, 2, 3])
+    for col_h, lbl in zip(hcols, ["Campagne", "Dépensé", "Budget max (CHF)", "Pacing"]):
+        col_h.markdown(
+            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+            unsafe_allow_html=True,
+        )
+
+    for _, row in df_camp.iterrows():
+        camp_name = row["campaign_name"]
+        safe_key  = camp_name.replace(" ", "_")[:40]
+        spend     = row["spend"]
+        c_name, c_spend, c_bud, c_pacing = st.columns([3, 2, 2, 3])
+
+        with c_name:
+            st.markdown(
+                f'<div style="font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{camp_name}</div>',
+                unsafe_allow_html=True,
+            )
+        with c_spend:
+            st.markdown(
+                f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{spend:,.0f} CHF</div>',
+                unsafe_allow_html=True,
+            )
+        with c_bud:
+            bud_max = st.number_input(
+                "Budget max", min_value=0.0, step=100.0, format="%.0f",
+                key=f"bud_{safe_key}", label_visibility="collapsed",
+            )
+        with c_pacing:
+            if bud_max > 0:
+                pct_c = spend / bud_max
+                bar_color = "#c0392b" if pct_c > 1 else "#1a7a4a" if pct_c >= 0.7 else "#b86b00"
+                status_cls = "cout-over" if pct_c > 1 else "cout-ok" if pct_c >= 0.7 else "cout-low"
+                status_txt = "⚠ Dépassé" if pct_c > 1 else "✓ OK" if pct_c >= 0.7 else "↓ Sous-dépense"
+                st.markdown(
+                    f'<div style="font-size:12px;color:#5a5d66;margin-top:6px;">'
+                    f'<span class="{status_cls}">{status_txt}</span> — {pct_c*100:.0f}%</div>'
+                    f'<div class="cout-bar-wrap"><span class="cout-bar-fill" '
+                    f'style="width:{min(pct_c,1)*100:.1f}%;background:{bar_color};"></span></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div style="font-size:11.5px;color:#8b8e98;padding-top:6px;">— saisis un budget max</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── Bloc 4 : Métriques de coût ────────────────────────────────────────────
+    st.markdown('<div class="cout-section-title">Métriques de coût</div>', unsafe_allow_html=True)
+    cost_cols = st.columns(4)
+    metrics = [
+        ("CPM",        f"{avg_cpm:.2f}",            "CHF", "Coût pour 1 000 impressions"),
+        ("CPC",        f"{avg_cpc:.2f}",             "CHF", "Coût par clic"),
+        ("Fréquence",  f"{freq:.2f}",                "x",   "Impressions / portée unique"),
+        ("CPV",        f"{cpv:.2f}" if cpv else "—", "CHF" if cpv else "", "Coût par clic sur le lien"),
+    ]
+    for col, (lbl, val, unit, tip) in zip(cost_cols, metrics):
+        with col:
+            st.markdown(
+                f'<div class="kpi-p"><div class="kp-lbl" title="{tip}">{lbl}</div>'
+                f'<div class="kp-val">{val}<span class="kp-unit"> {unit}</span></div></div>',
+                unsafe_allow_html=True,
+            )
+
+
 # ── Tab entry point ───────────────────────────────────────────────────────────
 
 def show_meta_ads_tab(is_paid: bool = False):
@@ -583,4 +742,8 @@ def show_meta_ads_tab(is_paid: bool = False):
                 use_sidebar=False,
             )
 
-    show_meta_ads_dashboard(df)
+    tab_perf, tab_cout = st.tabs(["Performance", "Coût"])
+    with tab_perf:
+        show_meta_ads_dashboard(df)
+    with tab_cout:
+        _show_cout_tab(df)
