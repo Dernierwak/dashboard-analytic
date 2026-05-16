@@ -388,15 +388,16 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
                 unsafe_allow_html=True,
             )
             if df_meta_raw is not None and not df_meta_raw.empty:
+                _df_meta_week = df_meta_raw[df_meta_raw["date_start"] >= pd.Timestamp(week_ago)].copy()
+                _df_meta_week["date"] = _df_meta_week["date_start"].dt.date
                 _df_cpc = (
-                    df_meta_raw[df_meta_raw["date_start"] >= pd.Timestamp(week_ago)]
-                    .groupby(df_meta_raw["date_start"].dt.date, as_index=False)
+                    _df_meta_week.groupby("date", as_index=False)
                     .agg(spend=("spend", "sum"), clicks=("clicks", "sum"))
                 )
                 _df_cpc["cpc"] = _df_cpc.apply(
                     lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1
                 )
-                _df_cpc["dow"] = pd.to_datetime(_df_cpc["date_start"]).dt.dayofweek
+                _df_cpc["dow"] = pd.to_datetime(_df_cpc["date"]).dt.dayofweek
                 _df_cpc["lbl"] = _df_cpc["dow"].apply(lambda d: DAY_ABBR[d])
                 best_idx = _df_cpc["cpc"].idxmin() if not _df_cpc.empty else None
                 bar_colors = [
