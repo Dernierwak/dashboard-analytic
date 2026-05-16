@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from components.dashboard import show_dashboard
 from scripts.insert_data import insert_instagram_org
@@ -261,12 +262,11 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             </div>
             """, unsafe_allow_html=True)
 
-            # Calcul des gains/pertes quotidiens (diff jour à jour)
+            # Calcul des gains/pertes quotidiens
             df_diff = df_grow.copy()
             df_diff["delta"] = df_diff["followers"].diff().fillna(0).astype(int)
-            df_diff = df_diff.iloc[1:]  # retire le 1er point (delta = 0 par construction)
+            df_diff = df_diff.iloc[1:]  # retire le 1er point (delta = 0)
 
-            # Couleurs : vert si gain, rouge si perte, gris si neutre
             bar_colors = [
                 "#1a7a4a" if d > 0 else "#c0392b" if d < 0 else "rgba(14,15,18,0.15)"
                 for d in df_diff["delta"]
@@ -276,35 +276,68 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 for d in df_diff["delta"]
             ]
 
-            fig_follow = go.Figure(go.Bar(
-                x=df_diff["fetched_at"],
-                y=df_diff["delta"],
-                marker_color=bar_colors,
-                text=text_labels,
-                textposition="outside",
-                textfont=dict(size=10, color="#0e0f12"),
-                hovertemplate="%{x|%d %b %Y}<br><b>%{y:+,} abonnés</b><extra></extra>",
-            ))
-            # Ligne horizontale à 0 pour bien voir gains vs pertes
-            fig_follow.add_hline(y=0, line_color="rgba(14,15,18,0.2)", line_width=1)
+            # 2 subplots stackés : line plot cumulé en haut + bar plot delta en bas
+            fig_follow = make_subplots(
+                rows=2, cols=1, shared_xaxes=True,
+                row_heights=[0.6, 0.4],
+                vertical_spacing=0.08,
+                subplot_titles=("Total abonnés", "Variation quotidienne"),
+            )
+
+            # ── Row 1 : Line plot ──
+            fig_follow.add_trace(
+                go.Scatter(
+                    x=df_grow["fetched_at"], y=df_grow["followers"],
+                    mode="lines+markers",
+                    line=dict(color="#3b5bff", width=2.5),
+                    marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
+                    fill="tozeroy",
+                    fillcolor="rgba(59,91,255,0.07)",
+                    hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés</b><extra></extra>",
+                ),
+                row=1, col=1,
+            )
+
+            # ── Row 2 : Bar plot ──
+            fig_follow.add_trace(
+                go.Bar(
+                    x=df_diff["fetched_at"], y=df_diff["delta"],
+                    marker_color=bar_colors,
+                    text=text_labels,
+                    textposition="outside",
+                    textfont=dict(size=10, color="#0e0f12"),
+                    hovertemplate="%{x|%d %b %Y}<br><b>%{y:+,} abonnés</b><extra></extra>",
+                ),
+                row=2, col=1,
+            )
+            fig_follow.add_hline(
+                y=0, line_color="rgba(14,15,18,0.2)", line_width=1,
+                row=2, col=1,
+            )
+
+            # Style des subplot_titles (police Pulse, plus discret)
+            for ann in fig_follow.layout.annotations:
+                ann.font = dict(size=11, color="#8b8e98", family="Inter, sans-serif")
+                ann.xanchor = "left"
+                ann.x = 0
 
             fig_follow.update_layout(
-                template="plotly_white", height=240,
-                margin=dict(l=0, r=0, t=20, b=0),
+                template="plotly_white", height=380,
+                margin=dict(l=0, r=0, t=30, b=0),
                 paper_bgcolor="#fff", plot_bgcolor="#fff",
                 font=dict(color="#666", family="Inter, sans-serif"),
-                xaxis=dict(
-                    showgrid=False, color="#999",
-                    linecolor="rgba(0,0,0,0.07)",
-                    fixedrange=True,  # désactive zoom horizontal
-                ),
-                yaxis=dict(
-                    showgrid=True, gridcolor="#f4f3f1", color="#999",
-                    fixedrange=True,  # désactive zoom vertical
-                    zeroline=False,
-                ),
                 showlegend=False,
                 bargap=0.4,
+            )
+            # Axes : zoom désactivé partout
+            fig_follow.update_xaxes(
+                showgrid=False, color="#999",
+                linecolor="rgba(0,0,0,0.07)",
+                fixedrange=True,
+            )
+            fig_follow.update_yaxes(
+                showgrid=True, gridcolor="#f4f3f1", color="#999",
+                fixedrange=True, zeroline=False,
             )
 
             st.markdown('<div class="card" style="padding:16px 20px 8px;">', unsafe_allow_html=True)
@@ -312,9 +345,9 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 fig_follow,
                 use_container_width=True,
                 config={
-                    "displayModeBar": False,    # cache la toolbar (zoom, pan, etc.)
-                    "scrollZoom": False,         # pas de zoom à la molette
-                    "doubleClick": False,        # pas de reset au double-clic
+                    "displayModeBar": False,
+                    "scrollZoom": False,
+                    "doubleClick": False,
                     "showAxisDragHandles": False,
                 },
             )
@@ -689,11 +722,16 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             except Exception:
                 avail_labels = []
 
+        # Signature des labels → bump le key du data_editor quand la liste change
+        # (sinon Streamlit garde l'ancien column_config en cache)
+        labels_signature = "_".join(sorted(avail_labels))[:80] or "empty"
+        editor_key = f"insta_posts_editor_{labels_signature}"
+
         edited = st.data_editor(
             df_tbl,
             use_container_width=True,
             hide_index=True,
-            key="insta_posts_editor",
+            key=editor_key,
             column_config={
                 "id": None,  # caché mais conservé pour l'index
                 "Label": st.column_config.SelectboxColumn(
@@ -713,8 +751,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             },
         )
 
-        # Sauvegarde des modifications de label
-        editor_state = st.session_state.get("insta_posts_editor", {})
+        # Sauvegarde des modifications de label (lecture via la clé dynamique)
+        editor_state = st.session_state.get(editor_key, {})
         edited_rows = editor_state.get("edited_rows", {})
         if edited_rows:
             saved_count = 0
@@ -735,9 +773,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 except Exception as e:
                     st.toast(f"Sauvegarde échouée pour un post : {e}", icon="⚠️")
             if saved_count:
-                st.toast(f"✓ {saved_count} label(s) sauvegardé(s).", icon="✅")
-                # On vide les edited_rows pour ne pas re-sauvegarder en boucle
-                st.session_state["insta_posts_editor"]["edited_rows"] = {}
+                st.toast(f"{saved_count} label(s) sauvegardé(s).", icon="✅")
+                st.session_state[editor_key]["edited_rows"] = {}
 
 
 # ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
