@@ -151,222 +151,229 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
     engagement_pct = ((likes_total + saves_total) / reach_total * 100) if reach_total > 0 else 0.0
     saves_per_post = saves_total / nb_posts if nb_posts > 0 else 0.0
 
-    st.markdown(f"""
-    <div class='page-h'>
-        <div class='h-eyebrow'>Instagram organique · 30 derniers jours · {account_name}</div>
-        <h1>{nb_posts} posts publiés, {nb_flew} ont décollé.</h1>
-        <p class='h-sub'>Portée totale {reach_total:,} · Engagement {engagement_pct:.1f}% · {followers_current:,} abonnés {_delta_html(followers_delta)}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    tab_perf, tab_labels = st.tabs(["Performance", "Labels"])
 
-    st.markdown(f"""
-    <div class='kpi-grid'>
-        <div class='kpi'>
-            <div class='k-label'>Abonnés</div>
-            <div class='k-value'>{followers_current:,}</div>
-            <div class='k-foot'>{_delta_html(followers_delta, " ce mois")} &nbsp;</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>Portée totale</div>
-            <div class='k-value'>{reach_total:,}</div>
-            <div class='k-foot'>sur {nb_posts} posts</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>Engagement moyen</div>
-            <div class='k-value'>{engagement_pct:.1f}</div>
-            <div class='k-foot'>%</div>
-        </div>
-        <div class='kpi'>
-            <div class='k-label'>Saves / post</div>
-            <div class='k-value'>{saves_per_post:.1f}</div>
-            <div class='k-foot'>sauvegardes par post</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    with tab_labels:
+        from components.labelling_module import Labelling
+        Labelling(client, user_id, df)._manage_labels()
 
-    st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Ce qui marche pour toi</span></div></div>", unsafe_allow_html=True)
-
-    format_groups = {}
-    if "type" in df.columns:
-        for fmt, grp in df.groupby("type"):
-            key = fmt.upper()
-            avg_reach = grp["reach"].mean() if "reach" in grp.columns else 0
-            format_groups[key] = {
-                "nb": len(grp),
-                "avg_reach": avg_reach,
-                "grp": grp,
-            }
-
-    best_fmt = max(format_groups, key=lambda k: format_groups[k]["avg_reach"]) if format_groups else None
-    show_fmts = [k for k in ["VIDEO", "REEL", "CAROUSEL_ALBUM", "IMAGE"] if k in format_groups]
-    if not show_fmts:
-        show_fmts = list(format_groups.keys())[:3]
-
-    if show_fmts:
-        max_reach = max(format_groups[k]["avg_reach"] for k in show_fmts) or 1
-        fmt_cols = st.columns(max(len(show_fmts), 1))
-        for col_i, fmt in enumerate(show_fmts):
-            info = format_groups[fmt]
-            is_best = fmt == best_fmt
-            chip = _format_chip(fmt, is_best)
-            bar_pct = int(info["avg_reach"] / max_reach * 100)
-            note = "Top format" if is_best else f"Portée moy. {info['avg_reach']:,.0f}"
-            with fmt_cols[col_i]:
-                st.markdown(
-                    f"<div class='card'>"
-                    f"<div style='margin-bottom:10px;'>{chip}</div>"
-                    f"<div style='font-size:24px;font-family:var(--font-mono,\"JetBrains Mono\",monospace);"
-                    f"font-weight:600;color:var(--ink,#0e0f12);'>{info['avg_reach']:,.0f}</div>"
-                    f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin:2px 0 10px;'>"
-                    f"portée moyenne · {info['nb']} posts</div>"
-                    f"<div style='background:rgba(14,15,18,0.06);border-radius:4px;height:5px;overflow:hidden;'>"
-                    f"<span style='display:block;height:100%;width:{bar_pct}%;background:#3b5bff;border-radius:4px;'></span>"
-                    f"</div>"
-                    f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin-top:6px;'>{note}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-
-    st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Quand publier ?</span></div></div>", unsafe_allow_html=True)
-
-    heat_data = {}
-    if "date" in df.columns:
-        df["_dt"] = pd.to_datetime(df["date"], errors="coerce")
-        df["_dow"] = df["_dt"].dt.dayofweek
-        df["_hour"] = df["_dt"].dt.hour
-        hour_bins = [0, 7, 10, 13, 16, 19, 24]
-        hour_labels = [0, 1, 2, 3, 4, 5]
-        df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
-        for _, row in df.iterrows():
-            if pd.notna(row.get("_dow")) and pd.notna(row.get("_slot")):
-                key = (int(row["_dow"]), int(row["_slot"]))
-                heat_data[key] = heat_data.get(key, 0) + float(row.get("reach", 1))
-
-    max_heat = max(heat_data.values()) if heat_data else 1
-    best_slot = max(heat_data, key=heat_data.get) if heat_data else None
-
-    header_row = "<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
-    header_row += "<div></div>"
-    for d in DAYS:
-        header_row += f"<div style='text-align:center;font-size:10px;font-weight:600;color:#8b8e98;'>{d}</div>"
-    header_row += "</div>"
-
-    grid_html = header_row
-    for s_idx, slot_label in enumerate(HOURS):
-        grid_html += f"<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
-        grid_html += f"<div style='font-size:10px;color:#8b8e98;display:flex;align-items:center;'>{slot_label}</div>"
-        for d_idx in range(7):
-            key = (d_idx, s_idx)
-            val = heat_data.get(key, 0)
-            opacity = val / max_heat if max_heat > 0 else 0
-            is_best_cell = key == best_slot
-            bg = f"rgba(59,91,255,{max(0.06, opacity)})"
-            label = "BEST" if is_best_cell else ""
-            grid_html += f"<div style='background:{bg};border-radius:4px;height:28px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(59,91,255,0.8);'>{label}</div>"
-        grid_html += "</div>"
-
-    st.markdown(f"""
-    <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px;'>
-        {grid_html}
-    </div>
-    """, unsafe_allow_html=True)
-
-    if best_slot:
-        best_day = DAYS[best_slot[0]]
-        best_hour = HOURS[best_slot[1]]
+    with tab_perf:
         st.markdown(f"""
-        <div class='hint' style='margin-top:10px;'>
-            <span class='hint-ico'>💡</span>
-            <p>Tes meilleurs résultats sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong>. Planifie tes posts importants sur ce créneau.</p>
+        <div class='page-h'>
+            <div class='h-eyebrow'>Instagram organique · 30 derniers jours · {account_name}</div>
+            <h1>{nb_posts} posts publiés, {nb_flew} ont décollé.</h1>
+            <p class='h-sub'>Portée totale {reach_total:,} · Engagement {engagement_pct:.1f}% · {followers_current:,} abonnés {_delta_html(followers_delta)}</p>
         </div>
         """, unsafe_allow_html=True)
-
-    st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Top 3 posts</span></div></div>", unsafe_allow_html=True)
-
-    top3 = df.nlargest(3, "reach") if "reach" in df.columns else df.head(3)
-    top_cols = st.columns(3)
-    for i, (_, row) in enumerate(top3.iterrows()):
-        fmt = str(row.get("type", "IMAGE")).upper()
-        gradient = FORMAT_GRADIENTS.get(fmt, "linear-gradient(135deg,#667eea,#764ba2)")
-        caption = str(row.get("caption", ""))[:120] or "—"
-        reach = int(row.get("reach", 0))
-        likes = int(row.get("likes", 0))
-        saves = int(row.get("saved", 0))
-        comments = int(row.get("comments", 0))
-        date_str = str(row.get("date", ""))[:10]
-        media_url = str(row.get("media_url", "")).strip()
-
-        with top_cols[i]:
-            # Image réelle si disponible, sinon gradient
-            if media_url and media_url.startswith("http"):
+    
+        st.markdown(f"""
+        <div class='kpi-grid'>
+            <div class='kpi'>
+                <div class='k-label'>Abonnés</div>
+                <div class='k-value'>{followers_current:,}</div>
+                <div class='k-foot'>{_delta_html(followers_delta, " ce mois")} &nbsp;</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Portée totale</div>
+                <div class='k-value'>{reach_total:,}</div>
+                <div class='k-foot'>sur {nb_posts} posts</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Engagement moyen</div>
+                <div class='k-value'>{engagement_pct:.1f}</div>
+                <div class='k-foot'>%</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Saves / post</div>
+                <div class='k-value'>{saves_per_post:.1f}</div>
+                <div class='k-foot'>sauvegardes par post</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Ce qui marche pour toi</span></div></div>", unsafe_allow_html=True)
+    
+        format_groups = {}
+        if "type" in df.columns:
+            for fmt, grp in df.groupby("type"):
+                key = fmt.upper()
+                avg_reach = grp["reach"].mean() if "reach" in grp.columns else 0
+                format_groups[key] = {
+                    "nb": len(grp),
+                    "avg_reach": avg_reach,
+                    "grp": grp,
+                }
+    
+        best_fmt = max(format_groups, key=lambda k: format_groups[k]["avg_reach"]) if format_groups else None
+        show_fmts = [k for k in ["VIDEO", "REEL", "CAROUSEL_ALBUM", "IMAGE"] if k in format_groups]
+        if not show_fmts:
+            show_fmts = list(format_groups.keys())[:3]
+    
+        if show_fmts:
+            max_reach = max(format_groups[k]["avg_reach"] for k in show_fmts) or 1
+            fmt_cols = st.columns(max(len(show_fmts), 1))
+            for col_i, fmt in enumerate(show_fmts):
+                info = format_groups[fmt]
+                is_best = fmt == best_fmt
+                chip = _format_chip(fmt, is_best)
+                bar_pct = int(info["avg_reach"] / max_reach * 100)
+                note = "Top format" if is_best else f"Portée moy. {info['avg_reach']:,.0f}"
+                with fmt_cols[col_i]:
+                    st.markdown(
+                        f"<div class='card'>"
+                        f"<div style='margin-bottom:10px;'>{chip}</div>"
+                        f"<div style='font-size:24px;font-family:var(--font-mono,\"JetBrains Mono\",monospace);"
+                        f"font-weight:600;color:var(--ink,#0e0f12);'>{info['avg_reach']:,.0f}</div>"
+                        f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin:2px 0 10px;'>"
+                        f"portée moyenne · {info['nb']} posts</div>"
+                        f"<div style='background:rgba(14,15,18,0.06);border-radius:4px;height:5px;overflow:hidden;'>"
+                        f"<span style='display:block;height:100%;width:{bar_pct}%;background:#3b5bff;border-radius:4px;'></span>"
+                        f"</div>"
+                        f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin-top:6px;'>{note}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+    
+        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Quand publier ?</span></div></div>", unsafe_allow_html=True)
+    
+        heat_data = {}
+        if "date" in df.columns:
+            df["_dt"] = pd.to_datetime(df["date"], errors="coerce")
+            df["_dow"] = df["_dt"].dt.dayofweek
+            df["_hour"] = df["_dt"].dt.hour
+            hour_bins = [0, 7, 10, 13, 16, 19, 24]
+            hour_labels = [0, 1, 2, 3, 4, 5]
+            df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
+            for _, row in df.iterrows():
+                if pd.notna(row.get("_dow")) and pd.notna(row.get("_slot")):
+                    key = (int(row["_dow"]), int(row["_slot"]))
+                    heat_data[key] = heat_data.get(key, 0) + float(row.get("reach", 1))
+    
+        max_heat = max(heat_data.values()) if heat_data else 1
+        best_slot = max(heat_data, key=heat_data.get) if heat_data else None
+    
+        header_row = "<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
+        header_row += "<div></div>"
+        for d in DAYS:
+            header_row += f"<div style='text-align:center;font-size:10px;font-weight:600;color:#8b8e98;'>{d}</div>"
+        header_row += "</div>"
+    
+        grid_html = header_row
+        for s_idx, slot_label in enumerate(HOURS):
+            grid_html += f"<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
+            grid_html += f"<div style='font-size:10px;color:#8b8e98;display:flex;align-items:center;'>{slot_label}</div>"
+            for d_idx in range(7):
+                key = (d_idx, s_idx)
+                val = heat_data.get(key, 0)
+                opacity = val / max_heat if max_heat > 0 else 0
+                is_best_cell = key == best_slot
+                bg = f"rgba(59,91,255,{max(0.06, opacity)})"
+                label = "BEST" if is_best_cell else ""
+                grid_html += f"<div style='background:{bg};border-radius:4px;height:28px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(59,91,255,0.8);'>{label}</div>"
+            grid_html += "</div>"
+    
+        st.markdown(f"""
+        <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px;'>
+            {grid_html}
+        </div>
+        """, unsafe_allow_html=True)
+    
+        if best_slot:
+            best_day = DAYS[best_slot[0]]
+            best_hour = HOURS[best_slot[1]]
+            st.markdown(f"""
+            <div class='hint' style='margin-top:10px;'>
+                <span class='hint-ico'>💡</span>
+                <p>Tes meilleurs résultats sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong>. Planifie tes posts importants sur ce créneau.</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Top 3 posts</span></div></div>", unsafe_allow_html=True)
+    
+        top3 = df.nlargest(3, "reach") if "reach" in df.columns else df.head(3)
+        top_cols = st.columns(3)
+        for i, (_, row) in enumerate(top3.iterrows()):
+            fmt = str(row.get("type", "IMAGE")).upper()
+            gradient = FORMAT_GRADIENTS.get(fmt, "linear-gradient(135deg,#667eea,#764ba2)")
+            caption = str(row.get("caption", ""))[:120] or "—"
+            reach = int(row.get("reach", 0))
+            likes = int(row.get("likes", 0))
+            saves = int(row.get("saved", 0))
+            comments = int(row.get("comments", 0))
+            date_str = str(row.get("date", ""))[:10]
+            media_url = str(row.get("media_url", "")).strip()
+    
+            with top_cols[i]:
+                # Image réelle si disponible, sinon gradient
+                if media_url and media_url.startswith("http"):
+                    st.markdown(
+                        f"<div style='border-radius:12px;overflow:hidden;margin-bottom:8px;height:180px;"
+                        f"position:relative;background:{gradient};'>"
+                        f"<img src='{media_url}' style='width:100%;height:100%;object-fit:cover;display:block;' "
+                        f"onerror=\"this.style.display='none'\">"
+                        f"<div style='position:absolute;bottom:0;left:0;right:0;padding:10px 12px;"
+                        f"background:linear-gradient(transparent,rgba(0,0,0,0.7));'>"
+                        f"<div style='font-size:10px;font-weight:600;color:rgba(255,255,255,0.8);"
+                        f"text-transform:uppercase;letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
+                        f"</div></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"<div class='top-post-card' style='background:{gradient};margin-bottom:8px;height:180px;"
+                        f"display:flex;flex-direction:column;justify-content:flex-end;'>"
+                        f"<div style='font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;"
+                        f"letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
                 st.markdown(
-                    f"<div style='border-radius:12px;overflow:hidden;margin-bottom:8px;height:180px;"
-                    f"position:relative;background:{gradient};'>"
-                    f"<img src='{media_url}' style='width:100%;height:100%;object-fit:cover;display:block;' "
-                    f"onerror=\"this.style.display='none'\">"
-                    f"<div style='position:absolute;bottom:0;left:0;right:0;padding:10px 12px;"
-                    f"background:linear-gradient(transparent,rgba(0,0,0,0.7));'>"
-                    f"<div style='font-size:10px;font-weight:600;color:rgba(255,255,255,0.8);"
-                    f"text-transform:uppercase;letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
-                    f"</div></div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"<div class='top-post-card' style='background:{gradient};margin-bottom:8px;height:180px;"
-                    f"display:flex;flex-direction:column;justify-content:flex-end;'>"
-                    f"<div style='font-size:10px;font-weight:600;opacity:0.7;text-transform:uppercase;"
-                    f"letter-spacing:0.8px;'>{FORMAT_LABELS.get(fmt,fmt)} · {date_str}</div>"
+                    f"<div style='font-size:12px;color:#5a5d66;line-height:1.4;margin-bottom:8px;"
+                    f"display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;'>"
+                    f"{caption}</div>"
+                    f"<div style='display:flex;gap:12px;font-size:12px;color:#8b8e98;flex-wrap:wrap;'>"
+                    f"<span>👁 {reach:,}</span>"
+                    f"<span>❤️ {likes:,}</span>"
+                    f"<span>🔖 {saves:,}</span>"
+                    f"<span>💬 {comments:,}</span>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
-            st.markdown(
-                f"<div style='font-size:12px;color:#5a5d66;line-height:1.4;margin-bottom:8px;"
-                f"display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;'>"
-                f"{caption}</div>"
-                f"<div style='display:flex;gap:12px;font-size:12px;color:#8b8e98;flex-wrap:wrap;'>"
-                f"<span>👁 {reach:,}</span>"
-                f"<span>❤️ {likes:,}</span>"
-                f"<span>🔖 {saves:,}</span>"
-                f"<span>💬 {comments:,}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
+    
+        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
+    
+        cols_show = [c for c in ["caption", "type", "date", "reach", "likes", "saved", "comments"] if c in df.columns]
+        df_tbl = df[cols_show].copy()
+    
+        if "reach" in df_tbl.columns and "likes" in df_tbl.columns:
+            df_tbl["Engagement"] = df_tbl.apply(
+                lambda r: round((r["likes"] + r.get("saved", 0)) / r["reach"] * 100, 1) if r.get("reach", 0) > 0 else 0.0,
+                axis=1,
             )
-
-    st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
-
-    cols_show = [c for c in ["caption", "type", "date", "reach", "likes", "saved", "comments"] if c in df.columns]
-    df_tbl = df[cols_show].copy()
-
-    if "reach" in df_tbl.columns and "likes" in df_tbl.columns:
-        df_tbl["Engagement"] = df_tbl.apply(
-            lambda r: round((r["likes"] + r.get("saved", 0)) / r["reach"] * 100, 1) if r.get("reach", 0) > 0 else 0.0,
-            axis=1,
+    
+        if "type" in df_tbl.columns:
+            df_tbl["type"] = df_tbl["type"].apply(lambda t: FORMAT_LABELS.get(str(t).upper(), t))
+    
+        df_tbl = df_tbl.rename(columns={
+            "caption": "Post", "type": "Format", "date": "Date",
+            "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm.",
+        })
+    
+        if "Date" in df_tbl.columns:
+            df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
+    
+        df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
+    
+        st.dataframe(
+            df_tbl,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Post": st.column_config.TextColumn("Post", width="large"),
+                "Portée": st.column_config.NumberColumn("Portée", format="%d"),
+                "Likes": st.column_config.NumberColumn("Likes", format="%d"),
+                "Saves": st.column_config.NumberColumn("Saves", format="%d"),
+                "Comm.": st.column_config.NumberColumn("Comm.", format="%d"),
+                "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
+            },
         )
-
-    if "type" in df_tbl.columns:
-        df_tbl["type"] = df_tbl["type"].apply(lambda t: FORMAT_LABELS.get(str(t).upper(), t))
-
-    df_tbl = df_tbl.rename(columns={
-        "caption": "Post", "type": "Format", "date": "Date",
-        "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm.",
-    })
-
-    if "Date" in df_tbl.columns:
-        df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
-
-    df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
-
-    st.dataframe(
-        df_tbl,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Post": st.column_config.TextColumn("Post", width="large"),
-            "Portée": st.column_config.NumberColumn("Portée", format="%d"),
-            "Likes": st.column_config.NumberColumn("Likes", format="%d"),
-            "Saves": st.column_config.NumberColumn("Saves", format="%d"),
-            "Comm.": st.column_config.NumberColumn("Comm.", format="%d"),
-            "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
-        },
-    )
