@@ -261,28 +261,63 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             </div>
             """, unsafe_allow_html=True)
 
-            # Line chart
-            fig_follow = go.Figure()
-            fig_follow.add_trace(go.Scatter(
-                x=df_grow["fetched_at"], y=df_grow["followers"],
-                mode="lines+markers",
-                line=dict(color="#3b5bff", width=2.5),
-                marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
-                fill="tozeroy",
-                fillcolor="rgba(59,91,255,0.07)",
-                hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés</b><extra></extra>",
+            # Calcul des gains/pertes quotidiens (diff jour à jour)
+            df_diff = df_grow.copy()
+            df_diff["delta"] = df_diff["followers"].diff().fillna(0).astype(int)
+            df_diff = df_diff.iloc[1:]  # retire le 1er point (delta = 0 par construction)
+
+            # Couleurs : vert si gain, rouge si perte, gris si neutre
+            bar_colors = [
+                "#1a7a4a" if d > 0 else "#c0392b" if d < 0 else "rgba(14,15,18,0.15)"
+                for d in df_diff["delta"]
+            ]
+            text_labels = [
+                (f"+{d}" if d > 0 else (f"{d}" if d < 0 else ""))
+                for d in df_diff["delta"]
+            ]
+
+            fig_follow = go.Figure(go.Bar(
+                x=df_diff["fetched_at"],
+                y=df_diff["delta"],
+                marker_color=bar_colors,
+                text=text_labels,
+                textposition="outside",
+                textfont=dict(size=10, color="#0e0f12"),
+                hovertemplate="%{x|%d %b %Y}<br><b>%{y:+,} abonnés</b><extra></extra>",
             ))
+            # Ligne horizontale à 0 pour bien voir gains vs pertes
+            fig_follow.add_hline(y=0, line_color="rgba(14,15,18,0.2)", line_width=1)
+
             fig_follow.update_layout(
                 template="plotly_white", height=240,
-                margin=dict(l=0, r=0, t=10, b=0),
+                margin=dict(l=0, r=0, t=20, b=0),
                 paper_bgcolor="#fff", plot_bgcolor="#fff",
                 font=dict(color="#666", family="Inter, sans-serif"),
-                xaxis=dict(showgrid=False, color="#999", linecolor="rgba(0,0,0,0.07)"),
-                yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#999"),
+                xaxis=dict(
+                    showgrid=False, color="#999",
+                    linecolor="rgba(0,0,0,0.07)",
+                    fixedrange=True,  # désactive zoom horizontal
+                ),
+                yaxis=dict(
+                    showgrid=True, gridcolor="#f4f3f1", color="#999",
+                    fixedrange=True,  # désactive zoom vertical
+                    zeroline=False,
+                ),
                 showlegend=False,
+                bargap=0.4,
             )
+
             st.markdown('<div class="card" style="padding:16px 20px 8px;">', unsafe_allow_html=True)
-            st.plotly_chart(fig_follow, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(
+                fig_follow,
+                use_container_width=True,
+                config={
+                    "displayModeBar": False,    # cache la toolbar (zoom, pan, etc.)
+                    "scrollZoom": False,         # pas de zoom à la molette
+                    "doubleClick": False,        # pas de reset au double-clic
+                    "showAxisDragHandles": False,
+                },
+            )
             st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Ce qui marche pour toi</span></div></div>", unsafe_allow_html=True)
