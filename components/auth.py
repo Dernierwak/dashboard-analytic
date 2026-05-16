@@ -65,15 +65,28 @@ class AuthDashboard():
             
     
     def main(self):
+        import time
+
         if "session" not in st.session_state and "refresh_token" in st.query_params:
             try:
                 user = self.supabase.auth.refresh_session(refresh_token=st.query_params["refresh_token"])
                 st.session_state["session"] = user.session
+                st.query_params["refresh_token"] = user.session.refresh_token
             except Exception:
                 del st.query_params["refresh_token"]
 
         if "session" in st.session_state:
             session = st.session_state["session"]
+            expires_at = getattr(session, "expires_at", 0) or 0
+            if expires_at and time.time() > expires_at - 60:
+                try:
+                    user = self.supabase.auth.refresh_session(refresh_token=session.refresh_token)
+                    st.session_state["session"] = user.session
+                    st.query_params["refresh_token"] = user.session.refresh_token
+                    session = user.session
+                except Exception:
+                    del st.session_state["session"]
+                    st.rerun()
             self.client = Client(
                 self.url, self.token,
                 options=ClientOptions(headers={"Authorization": f"Bearer {session.access_token}"})
