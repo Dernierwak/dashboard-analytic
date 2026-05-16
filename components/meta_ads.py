@@ -760,6 +760,11 @@ def _show_labels_tab(client, user_id) -> None:
         st.warning("Connecte ton compte pour gérer les labels.")
         return
 
+    # Vider le champ "nouveau label" AVANT que le widget soit rendu
+    # (Streamlit interdit de modifier st.session_state[key] après instanciation)
+    if st.session_state.pop("_clear_new_label", False):
+        st.session_state.pop("lbl_tab_new_input", None)
+
     labels: list[str] = st.session_state.get("campaign_labels", [])
 
     st.markdown(
@@ -792,7 +797,7 @@ def _show_labels_tab(client, user_id) -> None:
                 try:
                     update_campaign_labels(client, user_id, new_list)
                     st.session_state["campaign_labels"] = new_list
-                    st.session_state["lbl_tab_new_input"] = ""
+                    st.session_state["_clear_new_label"] = True  # ← effacera au prochain run
                     st.rerun()
                 except Exception as e:
                     st.toast(f"Ajout échoué : {e}", icon="⚠️")
