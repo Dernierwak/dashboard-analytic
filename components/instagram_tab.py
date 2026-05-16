@@ -238,6 +238,7 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
         # Calcul : pour chaque (jour, créneau) → {count, total_reach, avg_reach}
         heat_data = {}
+        has_real_hours = False
         if "date" in df.columns:
             # Instagram renvoie le timestamp en UTC → on convertit en heure suisse
             df["_dt"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
@@ -247,6 +248,10 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 pass
             df["_dow"] = df["_dt"].dt.dayofweek
             df["_hour"] = df["_dt"].dt.hour
+            # Si toutes les heures sont 0 (ou 1/2 après conversion tz),
+            # ça signifie que seule la date a été stockée → données legacy
+            unique_hours = df["_hour"].dropna().unique()
+            has_real_hours = len(unique_hours) > 2  # tolérance pour winter/summer time
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
             hour_labels = [0, 1, 2, 3, 4, 5]
             df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
@@ -264,6 +269,13 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         max_avg = max((v["avg"] for v in heat_data.values()), default=1) or 1
         # "best" = meilleur avg parmi les cellules avec au moins 1 post
         best_slot = max(heat_data, key=lambda k: heat_data[k]["avg"]) if heat_data else None
+
+        if not has_real_hours and heat_data:
+            st.warning(
+                "⚠ Les heures de publication n'ont pas été stockées pour tes posts existants — "
+                "tous apparaissent dans le créneau 0-7h. Rafraîchis tes données Instagram "
+                "(depuis 'Connecter Meta') pour récupérer les vraies heures."
+            )
 
         header_row = "<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
         header_row += "<div></div>"

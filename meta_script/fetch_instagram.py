@@ -173,7 +173,7 @@ class OrganicInstagramm():
                         "post_id": post_id,
                         "type": info.get("media_type"),
                         "caption": info.get("caption", "")[:80],
-                        "date": info.get("timestamp", "")[:10],
+                        "date": info.get("timestamp", ""),  # ISO complet (date + heure + tz)
                         "media_url": self._upload_image_to_storage(post_id, info.get("thumbnail_url") or info.get("media_url", "")),
                         "follows": metrics.get("follows", 0),
                         "likes": metrics.get("likes", 0),
