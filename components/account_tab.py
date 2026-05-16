@@ -84,10 +84,10 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
     st.markdown(_ACCOUNT_CSS, unsafe_allow_html=True)
 
     sub_infos, sub_insta, sub_meta, sub_google = st.tabs([
-        "Infos du compte",
-        "📸 Instagram",
-        "📘 Meta Ads",
-        "🔍 Google Ads",
+        "Compte",
+        "Instagram",
+        "Meta Ads",
+        "Google Ads",
     ])
 
     # ── Infos du compte ────────────────────────────────────────────────────────
