@@ -234,7 +234,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     )
     
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Quand publier ?</span></div></div>", unsafe_allow_html=True)
-    
+
+        # Calcul : pour chaque (jour, créneau) → {count, total_reach, avg_reach}
         heat_data = {}
         if "date" in df.columns:
             df["_dt"] = pd.to_datetime(df["date"], errors="coerce")
@@ -243,47 +244,111 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
             hour_labels = [0, 1, 2, 3, 4, 5]
             df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
-            for _, row in df.iterrows():
-                if pd.notna(row.get("_dow")) and pd.notna(row.get("_slot")):
-                    key = (int(row["_dow"]), int(row["_slot"]))
-                    heat_data[key] = heat_data.get(key, 0) + float(row.get("reach", 1))
-    
-        max_heat = max(heat_data.values()) if heat_data else 1
-        best_slot = max(heat_data, key=heat_data.get) if heat_data else None
-    
+            for _, r in df.iterrows():
+                if pd.notna(r.get("_dow")) and pd.notna(r.get("_slot")):
+                    key = (int(r["_dow"]), int(r["_slot"]))
+                    cur = heat_data.setdefault(key, {"count": 0, "reach": 0.0})
+                    cur["count"] += 1
+                    cur["reach"] += float(r.get("reach", 0) or 0)
+
+        # avg reach par cellule
+        for k, v in heat_data.items():
+            v["avg"] = v["reach"] / v["count"] if v["count"] > 0 else 0
+
+        max_avg = max((v["avg"] for v in heat_data.values()), default=1) or 1
+        # "best" = meilleur avg parmi les cellules avec au moins 1 post
+        best_slot = max(heat_data, key=lambda k: heat_data[k]["avg"]) if heat_data else None
+
         header_row = "<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
         header_row += "<div></div>"
         for d in DAYS:
             header_row += f"<div style='text-align:center;font-size:10px;font-weight:600;color:#8b8e98;'>{d}</div>"
         header_row += "</div>"
-    
+
         grid_html = header_row
         for s_idx, slot_label in enumerate(HOURS):
             grid_html += f"<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
             grid_html += f"<div style='font-size:10px;color:#8b8e98;display:flex;align-items:center;'>{slot_label}</div>"
             for d_idx in range(7):
                 key = (d_idx, s_idx)
-                val = heat_data.get(key, 0)
-                opacity = val / max_heat if max_heat > 0 else 0
-                is_best_cell = key == best_slot
-                bg = f"rgba(59,91,255,{max(0.06, opacity)})"
-                label = "BEST" if is_best_cell else ""
-                grid_html += f"<div style='background:{bg};border-radius:4px;height:28px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(59,91,255,0.8);'>{label}</div>"
+                cell = heat_data.get(key)
+                if cell:
+                    opacity = cell["avg"] / max_avg if max_avg > 0 else 0
+                    bg = f"rgba(59,91,255,{max(0.10, opacity)})"
+                    is_best_cell = key == best_slot
+                    if is_best_cell:
+                        inner = f"<div style='font-size:9px;font-weight:700;line-height:1;color:#1a2c8f;'>BEST</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{cell['count']}p · {int(cell['avg']):,}</div>"
+                    else:
+                        inner = f"<div style='font-size:9px;font-weight:600;line-height:1;color:#0e0f12;'>{cell['count']}p</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{int(cell['avg']):,}</div>"
+                else:
+                    bg = "rgba(14,15,18,0.04)"
+                    inner = ""
+                grid_html += f"<div style='background:{bg};border-radius:4px;height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;'>{inner}</div>"
             grid_html += "</div>"
-    
+
         st.markdown(f"""
         <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px;'>
             {grid_html}
+            <div style='display:flex;gap:14px;margin-top:10px;font-size:10px;color:#8b8e98;'>
+                <span><b>Xp</b> = nombre de posts</span>
+                <span>·</span>
+                <span><b>chiffre du bas</b> = portée moyenne par post</span>
+                <span>·</span>
+                <span><b>intensité</b> = portée moyenne (plus c'est foncé, mieux ça performe)</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
-    
+
         if best_slot:
             best_day = DAYS[best_slot[0]]
             best_hour = HOURS[best_slot[1]]
+            best = heat_data[best_slot]
+            best_total = int(best["reach"])
+            best_avg = int(best["avg"])
             st.markdown(f"""
             <div class='hint' style='margin-top:10px;'>
                 <span class='hint-ico'>💡</span>
-                <p>Tes meilleurs résultats sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong>. Planifie tes posts importants sur ce créneau.</p>
+                <p>
+                    Tes meilleurs résultats sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong> :
+                    <strong>{best['count']}</strong> post(s), portée totale <strong>{best_total:,}</strong>,
+                    moyenne <strong>{best_avg:,}/post</strong>.
+                    {"⚠ Échantillon faible — base-toi sur plusieurs posts avant de conclure." if best['count'] < 3 else "Planifie tes posts importants sur ce créneau."}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Tableau récap : top 5 créneaux par portée moyenne
+        if heat_data:
+            sorted_slots = sorted(heat_data.items(), key=lambda kv: kv[1]["avg"], reverse=True)[:5]
+            recap_rows = ""
+            for (d_idx, s_idx), stats in sorted_slots:
+                day = DAYS[d_idx]
+                hour = HOURS[s_idx]
+                count = stats["count"]
+                avg = int(stats["avg"])
+                total = int(stats["reach"])
+                recap_rows += (
+                    f"<tr>"
+                    f"<td style='padding:6px 10px;font-size:12px;'>{day} · {hour}</td>"
+                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{count}</td>"
+                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{total:,}</td>"
+                    f"<td style='padding:6px 10px;font-size:12px;font-family:var(--font-mono,monospace);text-align:right;'>{avg:,}</td>"
+                    f"</tr>"
+                )
+            st.markdown(f"""
+            <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:8px 4px;margin-top:10px;'>
+                <div style='font-size:11px;font-weight:600;color:#5a5d66;padding:8px 14px 4px;'>Top 5 créneaux (par portée moyenne)</div>
+                <table style='width:100%;border-collapse:collapse;'>
+                    <thead>
+                        <tr style='border-bottom:1px solid rgba(14,15,18,0.06);'>
+                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:left;'>Créneau</th>
+                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Posts</th>
+                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Portée totale</th>
+                            <th style='padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#8b8e98;font-weight:600;text-align:right;'>Moyenne</th>
+                        </tr>
+                    </thead>
+                    <tbody>{recap_rows}</tbody>
+                </table>
             </div>
             """, unsafe_allow_html=True)
     
@@ -340,42 +405,95 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 )
     
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
-    
-        cols_show = [c for c in ["caption", "type", "date", "reach", "likes", "saved", "comments"] if c in df.columns]
+
+        cols_show = [c for c in ["id", "caption", "type", "date", "reach", "likes", "saved", "comments", "labels"] if c in df.columns]
         df_tbl = df[cols_show].copy()
-    
+
         if "reach" in df_tbl.columns and "likes" in df_tbl.columns:
             df_tbl["Engagement"] = df_tbl.apply(
                 lambda r: round((r["likes"] + r.get("saved", 0)) / r["reach"] * 100, 1) if r.get("reach", 0) > 0 else 0.0,
                 axis=1,
             )
-    
+
         if "type" in df_tbl.columns:
             df_tbl["type"] = df_tbl["type"].apply(lambda t: FORMAT_LABELS.get(str(t).upper(), t))
-    
+
+        # Colonne Label (1er label si plusieurs, vide sinon)
+        if "labels" in df_tbl.columns:
+            df_tbl["Label"] = df_tbl["labels"].apply(
+                lambda x: x[0] if isinstance(x, list) and len(x) > 0 and x[0] else None
+            )
+            df_tbl = df_tbl.drop(columns=["labels"])
+        else:
+            df_tbl["Label"] = None
+
         df_tbl = df_tbl.rename(columns={
             "caption": "Post", "type": "Format", "date": "Date",
             "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm.",
         })
-    
+
         if "Date" in df_tbl.columns:
             df_tbl["Date"] = pd.to_datetime(df_tbl["Date"], errors="coerce").dt.date
-    
+
         df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
-    
-        st.dataframe(
+
+        # Labels disponibles (master list)
+        avail_labels = st.session_state.get("insta_labels")
+        if avail_labels is None:
+            try:
+                _r = client.table("profiles").select("labelling").eq("id", user_id).execute()
+                avail_labels = [l for l in (_r.data[0].get("labelling") if _r.data else []) or [] if l]
+            except Exception:
+                avail_labels = []
+
+        edited = st.data_editor(
             df_tbl,
             use_container_width=True,
             hide_index=True,
+            key="insta_posts_editor",
             column_config={
-                "Post": st.column_config.TextColumn("Post", width="large"),
-                "Portée": st.column_config.NumberColumn("Portée", format="%d"),
-                "Likes": st.column_config.NumberColumn("Likes", format="%d"),
-                "Saves": st.column_config.NumberColumn("Saves", format="%d"),
-                "Comm.": st.column_config.NumberColumn("Comm.", format="%d"),
-                "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
+                "id": None,  # caché mais conservé pour l'index
+                "Post": st.column_config.TextColumn("Post", width="large", disabled=True),
+                "Format": st.column_config.TextColumn("Format", disabled=True),
+                "Date": st.column_config.TextColumn("Date", disabled=True),
+                "Portée": st.column_config.NumberColumn("Portée", format="%d", disabled=True),
+                "Likes": st.column_config.NumberColumn("Likes", format="%d", disabled=True),
+                "Saves": st.column_config.NumberColumn("Saves", format="%d", disabled=True),
+                "Comm.": st.column_config.NumberColumn("Comm.", format="%d", disabled=True),
+                "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%", disabled=True),
+                "Label": st.column_config.SelectboxColumn(
+                    "Label",
+                    options=avail_labels if avail_labels else [],
+                    required=False,
+                ),
             },
         )
+
+        # Sauvegarde des modifications de label
+        editor_state = st.session_state.get("insta_posts_editor", {})
+        edited_rows = editor_state.get("edited_rows", {})
+        if edited_rows:
+            saved_count = 0
+            for idx_str, changes in edited_rows.items():
+                if "Label" not in changes:
+                    continue
+                try:
+                    post_id = str(df_tbl.iloc[int(idx_str)]["id"])
+                except Exception:
+                    continue
+                new_label = changes["Label"]
+                new_labels = [new_label] if new_label else []
+                try:
+                    client.table("instagram_organic_posts").update(
+                        {"labels": new_labels}
+                    ).eq("user_id", user_id).eq("id", post_id).execute()
+                    saved_count += 1
+                except Exception as e:
+                    st.toast(f"Sauvegarde échouée pour un post : {e}", icon="⚠️")
+            if saved_count:
+                st.toast(f"✓ {saved_count} label(s) sauvegardé(s).", icon="✅")
+                # On vide les edited_rows pour ne pas re-sauvegarder en boucle
+                st.session_state["insta_posts_editor"]["edited_rows"] = {}
 
 
 # ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
