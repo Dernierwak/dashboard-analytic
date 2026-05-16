@@ -154,8 +154,7 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
     tab_perf, tab_labels = st.tabs(["Performance", "Labels"])
 
     with tab_labels:
-        from components.labelling_module import Labelling
-        Labelling(client, user_id, df)._manage_labels()
+        _show_instagram_labels_tab(client, user_id, df)
 
     with tab_perf:
         st.markdown(f"""
@@ -377,3 +376,173 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
             },
         )
+
+
+# ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
+
+def _fetch_instagram_labels(client, user_id: str) -> list[str]:
+    try:
+        res = client.table("profiles").select("labelling").eq("id", user_id).execute()
+        if res.data:
+            return [l for l in (res.data[0].get("labelling") or []) if l]
+    except Exception:
+        pass
+    return []
+
+
+def _save_instagram_labels(client, user_id: str, labels: list[str]) -> None:
+    client.table("profiles").update({"labelling": labels}).eq("id", user_id).execute()
+
+
+def _rename_label_in_posts(client, user_id: str, old: str, new: str) -> None:
+    """Remplace old → new dans le tableau labels de chaque post."""
+    posts = (
+        client.table("instagram_organic_posts")
+        .select("id,labels").eq("user_id", user_id)
+        .contains("labels", [old]).execute().data
+    )
+    for post in posts or []:
+        updated = [new if l == old else l for l in (post.get("labels") or [])]
+        client.table("instagram_organic_posts").update({"labels": updated}).eq("id", post["id"]).execute()
+
+
+def _delete_label_in_posts(client, user_id: str, label: str) -> None:
+    """Retire label des tableaux labels des posts qui le contiennent."""
+    posts = (
+        client.table("instagram_organic_posts")
+        .select("id,labels").eq("user_id", user_id)
+        .contains("labels", [label]).execute().data
+    )
+    for post in posts or []:
+        updated = [l for l in (post.get("labels") or []) if l != label]
+        client.table("instagram_organic_posts").update({"labels": updated}).eq("id", post["id"]).execute()
+
+
+def _show_instagram_labels_tab(client, user_id, df) -> None:
+    if not (client and user_id):
+        st.warning("Connecte ton compte pour gérer les labels.")
+        return
+
+    # Cache session
+    if "_insta_labels_init" not in st.session_state:
+        st.session_state["insta_labels"] = _fetch_instagram_labels(client, user_id)
+        st.session_state["_insta_labels_init"] = True
+    labels: list[str] = st.session_state.get("insta_labels", [])
+
+    # Compteur posts labelisés
+    nb_total = len(df) if df is not None else 0
+    nb_labeled = 0
+    if df is not None and "labels" in df.columns and not df.empty:
+        nb_labeled = int(df["labels"].apply(
+            lambda x: bool(x and len(x) > 0 and x[0])
+        ).sum())
+
+    st.markdown(
+        '<div class="page-h" style="padding:8px 0 16px;">'
+        '<div class="h-eyebrow">Labels</div>'
+        '<h1>Tes étiquettes de posts.</h1>'
+        '<p class="h-sub">Crée des labels (ex. <i>UGC</i>, <i>Promo</i>, <i>Viral</i>) '
+        'puis assigne-les à tes posts depuis l\'onglet <b>Performance</b>.</p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    if nb_total > 0:
+        pct = nb_labeled / nb_total
+        st.progress(pct, text=f"**{nb_labeled} / {nb_total}** posts labelisés ({int(pct * 100)} %)")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Ajouter (st.form gère le vidage automatique) ─────────────────────────
+    st.markdown(
+        '<div style="font-size:13px;font-weight:600;color:#0e0f12;margin:4px 0 12px;">'
+        'Ajouter un label</div>',
+        unsafe_allow_html=True,
+    )
+    with st.form("insta_lbl_add_form", clear_on_submit=True):
+        col_in, col_btn = st.columns([4, 1])
+        with col_in:
+            new_lbl = st.text_input(
+                "Nouveau label",
+                label_visibility="collapsed", placeholder="ex: UGC, Viral, Promo...",
+            )
+        with col_btn:
+            submitted = st.form_submit_button(
+                "Ajouter", type="primary", use_container_width=True,
+            )
+    if submitted:
+        cleaned = (new_lbl or "").strip()
+        if not cleaned:
+            st.toast("Saisis un nom de label.", icon="⚠️")
+        elif cleaned in labels:
+            st.toast(f"« {cleaned} » existe déjà.", icon="⚠️")
+        else:
+            new_list = labels + [cleaned]
+            error = None
+            try:
+                _save_instagram_labels(client, user_id, new_list)
+            except Exception as e:
+                error = e
+            if error:
+                st.toast(f"Ajout échoué : {error}", icon="⚠️")
+            else:
+                st.session_state["insta_labels"] = new_list
+                st.rerun()
+
+    # ── Liste + renommer / supprimer ─────────────────────────────────────────
+    st.markdown(
+        '<div style="font-size:13px;font-weight:600;color:#0e0f12;margin:24px 0 12px;">'
+        'Tes labels</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not labels:
+        st.info("Aucun label pour l'instant. Crée-en un ci-dessus.")
+        return
+
+    hcols = st.columns([5, 2, 2])
+    for col_h, lbl in zip(hcols, ["Nom", "Renommer", "Supprimer"]):
+        col_h.markdown(
+            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+            unsafe_allow_html=True,
+        )
+
+    for i, lbl in enumerate(labels):
+        c_name, c_save, c_del = st.columns([5, 2, 2])
+        edit_key = f"insta_lbl_edit_{i}"
+        with c_name:
+            st.text_input(
+                "Label", value=lbl, key=edit_key,
+                label_visibility="collapsed",
+            )
+        with c_save:
+            new_name = (st.session_state.get(edit_key) or "").strip()
+            disabled = (new_name == lbl) or (not new_name) or (new_name in labels and new_name != lbl)
+            if st.button("Enregistrer", key=f"insta_lbl_rn_{i}",
+                         use_container_width=True, disabled=disabled):
+                new_list = [new_name if x == lbl else x for x in labels]
+                error = None
+                try:
+                    _save_instagram_labels(client, user_id, new_list)
+                    _rename_label_in_posts(client, user_id, lbl, new_name)
+                except Exception as e:
+                    error = e
+                if error:
+                    st.toast(f"Renommage échoué : {error}", icon="⚠️")
+                else:
+                    st.session_state["insta_labels"] = new_list
+                    st.rerun()
+        with c_del:
+            if st.button("🗑 Supprimer", key=f"insta_lbl_del_{i}", use_container_width=True):
+                new_list = [x for x in labels if x != lbl]
+                error = None
+                try:
+                    _save_instagram_labels(client, user_id, new_list)
+                    _delete_label_in_posts(client, user_id, lbl)
+                except Exception as e:
+                    error = e
+                if error:
+                    st.toast(f"Suppression échouée : {error}", icon="⚠️")
+                else:
+                    st.session_state["insta_labels"] = new_list
+                    st.rerun()
