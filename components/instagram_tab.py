@@ -633,23 +633,16 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     "<span class='section-title'>Performance par label</span></div></div>",
                     unsafe_allow_html=True,
                 )
-                # Index de progression (0-100) sur la portée moyenne, relatif au meilleur label
-                max_reach_avg = agg_lbl["reach_avg"].max() or 1
-                agg_lbl["reach_idx"] = (agg_lbl["reach_avg"] / max_reach_avg * 100).round(0)
-
                 df_show = agg_lbl.rename(columns={
                     "_lbl":      "Label",
                     "posts":     "Posts",
                     "reach_tot": "Portée totale",
                     "reach_avg": "Portée moy",
-                    "reach_idx": "Indice portée",
                     "likes_avg": "Likes moy",
                     "saves_avg": "Saves moy",
                     "comm_avg":  "Comm. moy",
                     "eng_pct":   "Eng. %",
-                })[["Label", "Posts", "Portée totale", "Portée moy", "Indice portée",
-                    "Eng. %", "Likes moy", "Saves moy", "Comm. moy"]]
-
+                })
                 st.dataframe(
                     df_show,
                     use_container_width=True,
@@ -659,14 +652,10 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                         "Posts":          st.column_config.NumberColumn("Posts", format="%d"),
                         "Portée totale":  st.column_config.NumberColumn("Portée totale", format="%d"),
                         "Portée moy":     st.column_config.NumberColumn("Portée moy.", format="%d"),
-                        "Indice portée":  st.column_config.ProgressColumn(
-                            "Indice", format="%d", min_value=0, max_value=100,
-                            help="Portée moyenne relative au meilleur label (100 = meilleur)",
-                        ),
-                        "Eng. %":         st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
                         "Likes moy":      st.column_config.NumberColumn("Likes moy.", format="%.0f"),
                         "Saves moy":      st.column_config.NumberColumn("Saves moy.", format="%.0f"),
                         "Comm. moy":      st.column_config.NumberColumn("Comm. moy.", format="%.0f"),
+                        "Eng. %":         st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
                     },
                 )
 
