@@ -588,103 +588,89 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     campaign_config: dict      = st.session_state.get("campaign_config", {})
     label_options = [_NO_LABEL] + sorted(campaign_labels)
 
-    # En-tête des colonnes
-    h_lbl, h_name, h_status, h_spend, h_clicks, h_ctr, h_cpc, h_health = st.columns(
-        [1.6, 2.4, 1.1, 1, 0.9, 0.9, 1, 1.1]
-    )
-    for col_h, lbl in zip(
-        [h_lbl, h_name, h_status, h_spend, h_clicks, h_ctr, h_cpc, h_health],
-        ["Label", "Campagne", "Statut", "Dépensé", "Clics", "CTR", "CPC", "Santé"],
-    ):
-        col_h.markdown(
-            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
-            unsafe_allow_html=True,
-        )
+    _status_map = {"ACTIVE": "● Active"}
+    def _status_txt(s: str) -> str:
+        s_up = (s or "").upper()
+        if s_up == "ACTIVE":
+            return "● Active"
+        if "PAUSED" in s_up:
+            return "⏸ Pause"
+        return "▲ Alerte"
 
+    # Construction du DataFrame
+    table_rows = []
     for _, row in df_camp_sorted.iterrows():
         camp_name = row["campaign_name"]
         status = camp_status.get(camp_name, "")
-        note_text, note_color = _camp_note(row, avg_ctr_all, avg_cpc_all)
-        score, health_color = _health(row, avg_ctr_all, avg_cpc_all)
-        is_paused = "PAUSED" in status.upper()
-        op = "0.62" if is_paused else "1"
-
+        note_text, _ = _camp_note(row, avg_ctr_all, avg_cpc_all)
+        score, _ = _health(row, avg_ctr_all, avg_cpc_all)
         current_label = (campaign_config.get(camp_name) or {}).get("label") or None
+        table_rows.append({
+            "Campagne":  camp_name,
+            "Label":     current_label or _NO_LABEL,
+            "Statut":    _status_txt(status),
+            "Dépensé":   float(row["spend"]),
+            "Clics":     int(row["clicks"]),
+            "CTR":       float(row["ctr"]),
+            "CPC":       float(row["cpc"]),
+            "Santé":     int(score) if score is not None else 0,
+            "Note":      note_text,
+        })
 
-        health_html = (
-            f'<div style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:{health_color};">{score}/100</div>'
-            f'<div class="bar" style="margin-top:3px;"><span style="width:{score}%;background:{health_color};"></span></div>'
-            if score is not None else '<div style="font-size:11.5px;color:#8b8e98;">—</div>'
-        )
+    df_perf_tbl = pd.DataFrame(table_rows)
+    # S'assurer que les labels existants hors master list restent disponibles
+    extra = [l for l in df_perf_tbl["Label"].unique() if l not in label_options]
+    full_label_opts = label_options + extra
 
-        with st.container(border=True):
-            c_lbl, c_name, c_status, c_spend, c_clicks, c_ctr, c_cpc, c_health = st.columns(
-                [1.6, 2.4, 1.1, 1, 0.9, 0.9, 1, 1.1]
-            )
+    editor_key = "perf_camp_editor"
+    st.data_editor(
+        df_perf_tbl,
+        use_container_width=True,
+        hide_index=True,
+        key=editor_key,
+        column_config={
+            "Campagne": st.column_config.TextColumn("Campagne", width="medium", disabled=True),
+            "Label":    st.column_config.SelectboxColumn(
+                "Label", options=full_label_opts, required=True,
+            ),
+            "Statut":   st.column_config.TextColumn("Statut", disabled=True),
+            "Dépensé":  st.column_config.NumberColumn("Dépensé", format="%.0f CHF", disabled=True),
+            "Clics":    st.column_config.NumberColumn("Clics", format="%d", disabled=True),
+            "CTR":      st.column_config.NumberColumn("CTR %", format="%.2f%%", disabled=True),
+            "CPC":      st.column_config.NumberColumn("CPC", format="%.2f CHF", disabled=True),
+            "Santé":    st.column_config.ProgressColumn(
+                "Santé", min_value=0, max_value=100, format="%d",
+            ),
+            "Note":     st.column_config.TextColumn("Diagnostic", disabled=True, width="medium"),
+        },
+    )
 
-            # ── Col 1 : Label (selectbox éditable ou chip si pas de client) ──
-            with c_lbl:
-                if client and user_id:
-                    safe_key = camp_name.replace(" ", "_").replace("/", "_")[:50]
-                    existing = current_label or _NO_LABEL
-                    opts = label_options.copy()
-                    if existing not in opts:
-                        opts.insert(1, existing)
-                    lbl_key = f"perf_lbl_{safe_key}"
-                    if lbl_key not in st.session_state:
-                        st.session_state[lbl_key] = existing
-                    st.selectbox(
-                        "Label", options=opts, key=lbl_key,
-                        label_visibility="collapsed",
-                        on_change=_cb_save_camp_label, args=(client, user_id, camp_name, lbl_key),
-                    )
-                else:
-                    chip = (
-                        f'<span class="chip">{current_label}</span>'
-                        if current_label else '<span class="chip outline">—</span>'
-                    )
-                    st.markdown(f'<div style="padding-top:6px;">{chip}</div>', unsafe_allow_html=True)
-
-            # ── Col 2 : Nom + note ──
-            with c_name:
-                st.markdown(
-                    f'<div style="opacity:{op};padding-top:4px;">'
-                    f'<div style="font-size:13.5px;font-weight:600;margin-bottom:2px;line-height:1.2;">{camp_name}</div>'
-                    f'<div style="font-size:11px;color:{note_color};line-height:1.3;">{note_text}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-            # ── Col 3 : Statut ──
-            with c_status:
-                st.markdown(
-                    f'<div style="padding-top:8px;opacity:{op};">{_status_chip(status)}</div>',
-                    unsafe_allow_html=True,
-                )
-
-            # ── Cols 4-7 : Dépensé / Clics / CTR / CPC ──
-            cells = [
-                (c_spend,  f"{row['spend']:,.0f} CHF" if row['spend'] > 0 else "—"),
-                (c_clicks, f"{int(row['clicks']):,}" if row['clicks'] > 0 else "—"),
-                (c_ctr,    f"{row['ctr']:.2f} %"      if row['ctr']    > 0 else "—"),
-                (c_cpc,    f"{row['cpc']:.2f} CHF"    if row['cpc']    > 0 else "—"),
-            ]
-            for col, val in cells:
-                with col:
-                    st.markdown(
-                        f'<div style="font-family:var(--font-mono);font-size:13px;'
-                        f'font-weight:500;color:#0e0f12;text-align:right;padding-top:10px;'
-                        f'opacity:{op};">{val}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # ── Col 8 : Santé ──
-            with c_health:
-                st.markdown(
-                    f'<div style="text-align:right;padding-top:6px;opacity:{op};">{health_html}</div>',
-                    unsafe_allow_html=True,
-                )
+    # Sauvegarde des changements de label
+    if client and user_id:
+        editor_state = st.session_state.get(editor_key, {})
+        edited_rows = editor_state.get("edited_rows", {})
+        if edited_rows:
+            saved_count = 0
+            for idx_str, changes in edited_rows.items():
+                if "Label" not in changes:
+                    continue
+                try:
+                    camp_name = str(df_perf_tbl.iloc[int(idx_str)]["Campagne"])
+                except Exception:
+                    continue
+                new_label = changes["Label"]
+                label_to_save = "" if new_label == _NO_LABEL else new_label
+                try:
+                    upsert_campaign_config(client, user_id, camp_name, label=label_to_save)
+                    # mettre à jour le cache local
+                    cfg = st.session_state.setdefault("campaign_config", {})
+                    cfg.setdefault(camp_name, {})["label"] = label_to_save or None
+                    saved_count += 1
+                except Exception as e:
+                    st.toast(f"Sauvegarde label échouée : {e}", icon="⚠️")
+            if saved_count:
+                st.toast(f"✓ {saved_count} label(s) sauvegardé(s).", icon="✅")
+                st.session_state[editor_key]["edited_rows"] = {}
 
 
 # ── Coût tab ──────────────────────────────────────────────────────────────────
@@ -1035,7 +1021,7 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
             },
         )
 
-    # ── Bloc 4 : Détail par campagne (label = lecture seule, vient de Performance) ──
+    # ── Bloc 4 : Détail par campagne (budget max éditable, label lecture seule) ─
     st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
     st.markdown(
         '<div style="font-size:11.5px;color:#8b8e98;margin-bottom:10px;">'
@@ -1045,59 +1031,64 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
         unsafe_allow_html=True,
     )
 
-    hcols = st.columns([3, 2, 2, 2, 3])
-    for col_h, lbl in zip(hcols, ["Campagne", "Label", "Dépensé", "Budget max", "Pacing"]):
-        col_h.markdown(
-            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
-            unsafe_allow_html=True,
-        )
-
+    detail_rows = []
     for _, row in df_camp.iterrows():
         camp_name = row["campaign_name"]
-        spend     = row["spend"]
-        safe_key  = camp_name.replace(" ", "_").replace("/", "_")[:50]
+        spend     = float(row["spend"])
+        bud       = float(row["budget_max"] or 0)
+        pct       = (spend / bud * 100) if bud > 0 else None
+        detail_rows.append({
+            "Campagne":   camp_name,
+            "Label":      row["label"] or _NO_LABEL,
+            "Dépensé":    spend,
+            "Budget max": bud,
+            "Pacing %":   pct if pct is not None else 0.0,
+        })
+    df_detail_tbl = pd.DataFrame(detail_rows)
 
-        existing_label  = row["label"] or None
-        existing_budget = float(row["budget_max"] or 0)
+    detail_key = "cout_detail_editor"
+    st.data_editor(
+        df_detail_tbl,
+        use_container_width=True,
+        hide_index=True,
+        key=detail_key,
+        column_config={
+            "Campagne":   st.column_config.TextColumn("Campagne", width="medium", disabled=True),
+            "Label":      st.column_config.TextColumn("Label", disabled=True),
+            "Dépensé":    st.column_config.NumberColumn("Dépensé", format="%.0f CHF", disabled=True),
+            "Budget max": st.column_config.NumberColumn(
+                "Budget max", format="%.0f CHF", min_value=0.0, step=100.0,
+            ),
+            "Pacing %":   st.column_config.ProgressColumn(
+                "Pacing", format="%.0f%%", min_value=0, max_value=150,
+            ),
+        },
+    )
 
-        c_name, c_lbl, c_spend, c_bud, c_pacing = st.columns([3, 2, 2, 2, 3])
-
-        with c_name:
-            st.markdown(
-                f'<div style="font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{camp_name}</div>',
-                unsafe_allow_html=True,
-            )
-        with c_lbl:
-            if existing_label:
-                st.markdown(
-                    f'<div style="padding-top:5px;"><span class="chip">{existing_label}</span></div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div style="font-size:11.5px;color:#8b8e98;padding-top:6px;">— sans label</div>',
-                    unsafe_allow_html=True,
-                )
-        with c_spend:
-            st.markdown(
-                f'<div style="font-size:13px;font-family:var(--font-mono);padding-top:6px;">{spend:,.0f} CHF</div>',
-                unsafe_allow_html=True,
-            )
-
-        bud_key = f"cout_bud_{safe_key}"
-        if bud_key not in st.session_state:
-            st.session_state[bud_key] = existing_budget
-        with c_bud:
-            st.number_input(
-                "Budget max", min_value=0.0, step=100.0, format="%.0f",
-                key=bud_key, label_visibility="collapsed",
-                on_change=_cb_save_camp_budget, args=(client, user_id, camp_name, bud_key),
-            )
-
-        with c_pacing:
-            current_budget = float(st.session_state.get(bud_key, 0) or 0)
-            st.markdown(_pacing_row_html(spend, current_budget), unsafe_allow_html=True)
+    # Sauvegarde des changements de budget max
+    if client and user_id:
+        det_state = st.session_state.get(detail_key, {})
+        det_edited = det_state.get("edited_rows", {})
+        if det_edited:
+            saved = 0
+            for idx_str, changes in det_edited.items():
+                if "Budget max" not in changes:
+                    continue
+                try:
+                    camp_name = str(df_detail_tbl.iloc[int(idx_str)]["Campagne"])
+                except Exception:
+                    continue
+                new_bud = float(changes["Budget max"] or 0)
+                try:
+                    upsert_campaign_config(client, user_id, camp_name, budget_max=new_bud)
+                    cfg = st.session_state.setdefault("campaign_config", {})
+                    cfg.setdefault(camp_name, {})["budget_max"] = new_bud
+                    saved += 1
+                except Exception as e:
+                    st.toast(f"Sauvegarde budget échouée : {e}", icon="⚠️")
+            if saved:
+                st.toast(f"✓ {saved} budget(s) sauvegardé(s).", icon="✅")
+                st.session_state[detail_key]["edited_rows"] = {}
 
 
 # ── Tab entry point ───────────────────────────────────────────────────────────
