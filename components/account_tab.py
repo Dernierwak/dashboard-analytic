@@ -2,6 +2,7 @@ import streamlit as st
 
 from meta_script.fetch_token import get_oauth_url
 from components.meta_ads import meta_ads_source_fragment
+from components.instagram_tab import run_instagram_fetch
 from scripts.stripe import create_checkout_session, cancel_subscription
 
 
@@ -79,7 +80,7 @@ def _acc_kpi(label: str, value: str) -> str:
     )
 
 
-def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data):
+def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data, dash=None):
     st.markdown(_ACCOUNT_CSS, unsafe_allow_html=True)
 
     sub_infos, sub_insta, sub_meta, sub_google = st.tabs([
@@ -233,11 +234,16 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 use_container_width=True,
             )
         with col_b:
-            if insta_accounts:
+            if insta_accounts and dash is not None:
                 if st.button("↻ Récupérer mes données", type="primary",
                              key="btn_fetch_insta_source", use_container_width=True):
-                    st.session_state["trigger_fetch"] = True
+                    st.session_state["_fetch_insta_inline"] = True
                     st.rerun()
+
+        # Fetch inline (s'exécute après le rerun, reste sur Paramètres)
+        if st.session_state.pop("_fetch_insta_inline", False) and insta_accounts and dash is not None:
+            insta_biz_id = insta_accounts[0].get("instagram_business_id")
+            run_instagram_fetch(client, user_id, dash, instagram_business_id=insta_biz_id, is_paid=is_paid)
 
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:

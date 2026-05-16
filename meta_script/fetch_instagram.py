@@ -149,22 +149,22 @@ class OrganicInstagramm():
         return r.json().get("followers_count", 0)
 
     def fetch_insta_post_insight(self):
-        with st.status("Récupération des données Instagram...", expanded=True) as status:
-            st.write("Connexion au compte Facebook...")
+        with st.status("Récupération des données Instagram", expanded=True) as status:
+            st.write("Connexion à Meta…")
             if not self.meta_id_business:
                 self._fetch_id_instagram()
                 self._fetch_id_business()
 
-            st.write("Récupération des posts...")
+            st.write("Identification des posts…")
             self._fetch_insta_post_id()
 
-            st.write("Récupération des followers...")
+            st.write("Lecture du nombre d'abonnés…")
             self.followers = self._fetch_account_followers()
 
             total = len(self.new_post_ids)
             if total > 0:
                 results = []
-                progress = st.progress(0, text=f"0 / {total} nouveaux posts chargés")
+                progress = st.progress(0, text=f"0 / {total} nouveaux posts")
                 for i, post_id in enumerate(self.new_post_ids):
                     info = self._fetch_post_info(post_id)
                     media_type = info.get("media_type", "IMAGE")
@@ -183,12 +183,16 @@ class OrganicInstagramm():
                         "reach": metrics.get("reach", 0),
                         "user_id": self.supabase_user_id
                     })
-                    progress.progress((i + 1) / total, text=f"{i + 1} / {total} nouveaux posts chargés")
+                    progress.progress((i + 1) / total, text=f"{i + 1} / {total} nouveaux posts")
                 self.new_results = results
             else:
                 st.write("Aucun nouveau post à charger.")
 
-            status.update(label=f"✅ Terminé — {self.total_posts} posts au total", state="complete", expanded=False)
+            status.update(
+                label=f"Terminé — {self.total_posts} posts au total",
+                state="complete",
+                expanded=False,
+            )
 
     def show_insta_data(self):
         self.fetch_insta_post_insight()

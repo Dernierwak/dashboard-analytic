@@ -219,4 +219,4 @@ if __name__ == "__main__":
                 <div style='font-family:"Instrument Serif",Georgia,serif;font-size:2rem;font-weight:400;color:#0e0f12;margin:0 0 6px;line-height:1.2;'>Ton compte et ton abonnement.</div>
             </div>
             """, unsafe_allow_html=True)
-            show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data)
+            show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data, dash=dash)
