@@ -974,22 +974,30 @@ def _show_instagram_labels_tab(client, user_id, df) -> None:
                 label_visibility="collapsed",
             )
         with c_save:
-            new_name = (st.session_state.get(edit_key) or "").strip()
-            disabled = (new_name == lbl) or (not new_name) or (new_name in labels and new_name != lbl)
             if st.button("Enregistrer", key=f"insta_lbl_rn_{i}",
-                         use_container_width=True, disabled=disabled):
-                new_list = [new_name if x == lbl else x for x in labels]
-                error = None
-                try:
-                    _save_instagram_labels(client, user_id, new_list)
-                    _rename_label_in_posts(client, user_id, lbl, new_name)
-                except Exception as e:
-                    error = e
-                if error:
-                    st.toast(f"Renommage échoué : {error}", icon="⚠️")
+                         use_container_width=True):
+                # Validation au moment du click (pas avant)
+                new_name = (st.session_state.get(edit_key) or "").strip()
+                if new_name == lbl:
+                    st.toast("Aucun changement.", icon="ℹ️")
+                elif not new_name:
+                    st.toast("Nom de label vide.", icon="⚠️")
+                elif new_name in labels:
+                    st.toast(f"« {new_name} » existe déjà.", icon="⚠️")
                 else:
-                    st.session_state["insta_labels"] = new_list
-                    st.rerun()
+                    new_list = [new_name if x == lbl else x for x in labels]
+                    error = None
+                    try:
+                        _save_instagram_labels(client, user_id, new_list)
+                        _rename_label_in_posts(client, user_id, lbl, new_name)
+                    except Exception as e:
+                        error = e
+                    if error:
+                        st.toast(f"Renommage échoué : {error}", icon="⚠️")
+                    else:
+                        st.session_state["insta_labels"] = new_list
+                        st.toast(f"Renommé en « {new_name} »", icon="✅")
+                        st.rerun()
         with c_del:
             if st.button("🗑 Supprimer", key=f"insta_lbl_del_{i}", use_container_width=True):
                 new_list = [x for x in labels if x != lbl]
