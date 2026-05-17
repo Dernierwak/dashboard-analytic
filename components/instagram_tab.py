@@ -633,42 +633,125 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     "<span class='section-title'>Performance par label</span></div></div>",
                     unsafe_allow_html=True,
                 )
-                # Indice (0-100) sur la portée moyenne, relatif au meilleur label
+
+                # CSS Pulse pour les cartes label
+                st.markdown("""
+                <style>
+                .lbl-card {
+                    background: #fff;
+                    border: 1px solid rgba(14,15,18,0.08);
+                    border-radius: 14px;
+                    padding: 18px 20px;
+                    margin-bottom: 12px;
+                    transition: transform 0.15s, box-shadow 0.15s;
+                }
+                .lbl-card:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 20px rgba(14,15,18,0.06);
+                }
+                .lbl-card.best {
+                    border: 1px solid #3b5bff;
+                    background: linear-gradient(135deg, #fff 0%, #f5f7ff 100%);
+                }
+                .lbl-card-head {
+                    display: flex; align-items: center; justify-content: space-between;
+                    margin-bottom: 14px;
+                }
+                .lbl-card-name {
+                    font-size: 16px; font-weight: 600; color: #0e0f12;
+                    display: flex; align-items: center; gap: 8px;
+                }
+                .lbl-card-trophy { font-size: 14px; color: #b8860b; }
+                .lbl-card-posts {
+                    font-size: 11px; color: #8b8e98;
+                    background: rgba(14,15,18,0.05);
+                    padding: 3px 10px; border-radius: 999px;
+                    font-weight: 500;
+                }
+                .lbl-card-metrics {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 16px;
+                }
+                .lbl-metric { text-align: left; }
+                .lbl-metric-lbl {
+                    font-size: 10px; font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    color: #8b8e98;
+                    margin-bottom: 4px;
+                }
+                .lbl-metric-val {
+                    font-family: "JetBrains Mono", ui-monospace, monospace;
+                    font-size: 1.05rem; font-weight: 500;
+                    color: #0e0f12; line-height: 1.1;
+                }
+                .lbl-metric-unit {
+                    font-size: 0.75rem; color: #8b8e98; margin-left: 2px;
+                }
+                .lbl-bar-wrap {
+                    height: 4px; background: rgba(14,15,18,0.06);
+                    border-radius: 99px; overflow: hidden;
+                    margin-top: 10px;
+                }
+                .lbl-bar-fill {
+                    height: 100%; background: #3b5bff;
+                    border-radius: 99px; transition: width 0.3s;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                # Best = meilleure portée moyenne parmi les vrais labels
+                best_lbl = real_labels.iloc[real_labels["reach_avg"].argmax()]["_lbl"] \
+                    if not real_labels.empty else None
                 max_reach_avg = agg_lbl["reach_avg"].max() or 1
-                agg_lbl["reach_idx"] = (agg_lbl["reach_avg"] / max_reach_avg * 100).round(0)
 
-                df_show = agg_lbl.rename(columns={
-                    "_lbl":      "Label",
-                    "posts":     "Posts",
-                    "reach_tot": "Portée totale",
-                    "reach_avg": "Portée moy",
-                    "reach_idx": "Indice portée",
-                    "likes_avg": "Likes moy",
-                    "saves_avg": "Saves moy",
-                    "comm_avg":  "Comm. moy",
-                    "eng_pct":   "Eng. %",
-                })[["Label", "Posts", "Portée totale", "Portée moy", "Indice portée",
-                    "Eng. %", "Likes moy", "Saves moy", "Comm. moy"]]
+                # Affichage en grille 2 colonnes
+                rows_list = list(agg_lbl.iterrows())
+                for i in range(0, len(rows_list), 2):
+                    cols = st.columns(2)
+                    for col_idx, j in enumerate([i, i + 1]):
+                        if j >= len(rows_list):
+                            continue
+                        _, r = rows_list[j]
+                        is_best = (r["_lbl"] == best_lbl) and r["_lbl"] != "(sans label)"
+                        is_no_label = r["_lbl"] == "(sans label)"
+                        bar_pct = (r["reach_avg"] / max_reach_avg * 100) if max_reach_avg > 0 else 0
 
-                st.dataframe(
-                    df_show,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Label":          st.column_config.TextColumn("Label", width="medium"),
-                        "Posts":          st.column_config.NumberColumn("Posts", format="%d"),
-                        "Portée totale":  st.column_config.NumberColumn("Portée totale", format="%d"),
-                        "Portée moy":     st.column_config.NumberColumn("Portée moy.", format="%d"),
-                        "Indice portée":  st.column_config.ProgressColumn(
-                            "Indice", format="%d", min_value=0, max_value=100,
-                            help="Portée moyenne relative au meilleur label (100 = meilleur)",
-                        ),
-                        "Eng. %":         st.column_config.NumberColumn("Eng. %", format="%.1f%%"),
-                        "Likes moy":      st.column_config.NumberColumn("Likes moy.", format="%.0f"),
-                        "Saves moy":      st.column_config.NumberColumn("Saves moy.", format="%.0f"),
-                        "Comm. moy":      st.column_config.NumberColumn("Comm. moy.", format="%.0f"),
-                    },
-                )
+                        trophy = "<span class='lbl-card-trophy'>🏆</span>" if is_best else ""
+                        card_cls = "lbl-card best" if is_best else "lbl-card"
+                        label_color_style = "color:#8b8e98;" if is_no_label else ""
+
+                        with cols[col_idx]:
+                            st.markdown(f"""
+                            <div class="{card_cls}">
+                                <div class="lbl-card-head">
+                                    <div class="lbl-card-name" style="{label_color_style}">
+                                        {trophy} {r['_lbl']}
+                                    </div>
+                                    <div class="lbl-card-posts">{int(r['posts'])} post{'s' if r['posts'] > 1 else ''}</div>
+                                </div>
+                                <div class="lbl-card-metrics">
+                                    <div class="lbl-metric">
+                                        <div class="lbl-metric-lbl">Portée moy.</div>
+                                        <div class="lbl-metric-val">{int(r['reach_avg']):,}</div>
+                                    </div>
+                                    <div class="lbl-metric">
+                                        <div class="lbl-metric-lbl">Engagement</div>
+                                        <div class="lbl-metric-val">{r['eng_pct']:.1f}<span class="lbl-metric-unit">%</span></div>
+                                    </div>
+                                    <div class="lbl-metric">
+                                        <div class="lbl-metric-lbl">Likes moy.</div>
+                                        <div class="lbl-metric-val">{int(r['likes_avg']):,}</div>
+                                    </div>
+                                    <div class="lbl-metric">
+                                        <div class="lbl-metric-lbl">Saves moy.</div>
+                                        <div class="lbl-metric-val">{int(r['saves_avg']):,}</div>
+                                    </div>
+                                </div>
+                                <div class="lbl-bar-wrap"><div class="lbl-bar-fill" style="width:{bar_pct:.1f}%;"></div></div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
         st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
 

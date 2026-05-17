@@ -990,36 +990,125 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     if agg_lbl.empty:
         st.info("Aucune dépense.")
     else:
-        df_show = agg_lbl.rename(columns={
-            "label_display": "Label",
-            "campaigns":     "Campagnes",
-            "spend":         "Dépensé",
-            "budget":        "Budget",
-            "impressions":   "Impr.",
-            "clicks":        "Clics",
-            "ctr":           "CTR %",
-            "cpc":           "CPC",
-            "cpm":           "CPM",
-            "pacing":        "Pacing %",
-        })[["Label", "Campagnes", "Dépensé", "Budget", "Pacing %", "Impr.", "Clics", "CTR %", "CPC", "CPM"]]
+        # CSS Pulse pour les cartes label (réutilise les mêmes classes que Instagram)
+        st.markdown("""
+        <style>
+        .lbl-card {
+            background: #fff;
+            border: 1px solid rgba(14,15,18,0.08);
+            border-radius: 14px;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .lbl-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(14,15,18,0.06);
+        }
+        .lbl-card.best {
+            border: 1px solid #3b5bff;
+            background: linear-gradient(135deg, #fff 0%, #f5f7ff 100%);
+        }
+        .lbl-card-head {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .lbl-card-name {
+            font-size: 16px; font-weight: 600; color: #0e0f12;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .lbl-card-trophy { font-size: 14px; color: #b8860b; }
+        .lbl-card-camps {
+            font-size: 11px; color: #8b8e98;
+            background: rgba(14,15,18,0.05);
+            padding: 3px 10px; border-radius: 999px;
+            font-weight: 500;
+        }
+        .lbl-card-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        .lbl-metric-lbl {
+            font-size: 10px; font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #8b8e98;
+            margin-bottom: 4px;
+        }
+        .lbl-metric-val {
+            font-family: "JetBrains Mono", ui-monospace, monospace;
+            font-size: 1.05rem; font-weight: 500;
+            color: #0e0f12; line-height: 1.1;
+        }
+        .lbl-metric-unit {
+            font-size: 0.75rem; color: #8b8e98; margin-left: 2px;
+        }
+        .lbl-bar-wrap {
+            height: 4px; background: rgba(14,15,18,0.06);
+            border-radius: 99px; overflow: hidden;
+            margin-top: 10px;
+        }
+        .lbl-bar-fill {
+            height: 100%; background: #3b5bff;
+            border-radius: 99px; transition: width 0.3s;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        st.dataframe(
-            df_show,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Label":     st.column_config.TextColumn("Label", width="medium"),
-                "Campagnes": st.column_config.NumberColumn("Camp.", format="%d"),
-                "Dépensé":   st.column_config.NumberColumn("Dépensé", format="%.0f CHF"),
-                "Budget":    st.column_config.NumberColumn("Budget", format="%.0f CHF"),
-                "Pacing %":  st.column_config.ProgressColumn("Pacing", format="%.0f%%", min_value=0, max_value=150),
-                "Impr.":     st.column_config.NumberColumn("Impr.", format="%d"),
-                "Clics":     st.column_config.NumberColumn("Clics", format="%d"),
-                "CTR %":     st.column_config.NumberColumn("CTR %", format="%.2f%%"),
-                "CPC":       st.column_config.NumberColumn("CPC", format="%.2f CHF"),
-                "CPM":       st.column_config.NumberColumn("CPM", format="%.2f CHF"),
-            },
-        )
+        # "Best" = meilleur CTR parmi les vrais labels (perf = efficacité)
+        real_lbls = agg_lbl[agg_lbl["label_display"] != _NO_LABEL]
+        best_lbl = real_lbls.iloc[real_lbls["ctr"].argmax()]["label_display"] \
+            if not real_lbls.empty else None
+        max_spend = agg_lbl["spend"].max() or 1
+
+        rows_list = list(agg_lbl.iterrows())
+        for i in range(0, len(rows_list), 2):
+            cols = st.columns(2)
+            for col_idx, j in enumerate([i, i + 1]):
+                if j >= len(rows_list):
+                    continue
+                _, r = rows_list[j]
+                lbl_name = r["label_display"]
+                is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
+                is_no_label = lbl_name == _NO_LABEL
+                bar_pct = (r["spend"] / max_spend * 100) if max_spend > 0 else 0
+                cpv_str = f"{r['cpc']:.2f}" if r["cpc"] > 0 else "—"
+
+                trophy = "<span class='lbl-card-trophy'>🏆</span>" if is_best else ""
+                card_cls = "lbl-card best" if is_best else "lbl-card"
+                label_color_style = "color:#8b8e98;" if is_no_label else ""
+
+                with cols[col_idx]:
+                    st.markdown(f"""
+                    <div class="{card_cls}">
+                        <div class="lbl-card-head">
+                            <div class="lbl-card-name" style="{label_color_style}">
+                                {trophy} {lbl_name}
+                            </div>
+                            <div class="lbl-card-camps">{int(r['campaigns'])} camp.</div>
+                        </div>
+                        <div class="lbl-card-metrics">
+                            <div>
+                                <div class="lbl-metric-lbl">Dépensé</div>
+                                <div class="lbl-metric-val">{r['spend']:,.0f}<span class="lbl-metric-unit">CHF</span></div>
+                            </div>
+                            <div>
+                                <div class="lbl-metric-lbl">Impr.</div>
+                                <div class="lbl-metric-val">{int(r['impressions']):,}</div>
+                            </div>
+                            <div>
+                                <div class="lbl-metric-lbl">CTR</div>
+                                <div class="lbl-metric-val">{r['ctr']:.2f}<span class="lbl-metric-unit">%</span></div>
+                            </div>
+                            <div>
+                                <div class="lbl-metric-lbl">CPC</div>
+                                <div class="lbl-metric-val">{cpv_str}<span class="lbl-metric-unit">CHF</span></div>
+                            </div>
+                        </div>
+                        <div class="lbl-bar-wrap"><div class="lbl-bar-fill" style="width:{bar_pct:.1f}%;"></div></div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     # ── Bloc 4 : Détail par campagne (budget max éditable, label lecture seule) ─
     st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
