@@ -691,10 +691,16 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                                 unsafe_allow_html=True,
                             )
 
+        # Limite affichée (pagination par batches)
+        if "_insta_posts_limit" not in st.session_state:
+            st.session_state["_insta_posts_limit"] = 15
+        total_posts = len(df)
+        limit = min(st.session_state["_insta_posts_limit"], total_posts)
+
         st.markdown(
             "<div class='section'><div class='section-head'>"
             "<span class='section-title'>Tous les posts "
-            f"<span class='st-count'>{len(df)} posts</span></span></div></div>",
+            f"<span class='st-count'>{limit} sur {total_posts}</span></span></div></div>",
             unsafe_allow_html=True,
         )
 
@@ -715,8 +721,10 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         df_posts["_date_str"] = _dt.dt.strftime("%d %b %Y · %H:%M")
         # Tri par portée
         df_posts = df_posts.sort_values("reach", ascending=False)
-
         max_eng = df_posts["_eng"].max() or 1
+
+        # Appliquer la limite
+        df_posts_visible = df_posts.head(limit)
 
         # Labels disponibles
         avail_labels = st.session_state.get("insta_labels")
@@ -740,8 +748,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             except Exception as e:
                 st.toast(f"Sauvegarde échouée : {e}", icon="⚠️")
 
-        # Une carte par post
-        for _, row in df_posts.iterrows():
+        # Une carte par post (limité à la batch courante)
+        for _, row in df_posts_visible.iterrows():
             post_id = str(row.get("id", ""))
             caption_full = str(row.get("caption", ""))
             caption_short = (caption_full[:70] + "…") if len(caption_full) > 70 else (caption_full or "—")
@@ -832,6 +840,34 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                         f'</div>',
                         unsafe_allow_html=True,
                     )
+
+        # ── Pagination (Voir plus / Tout / Réduire) ─────────────────────────
+        remaining = total_posts - limit
+        if total_posts > 15:
+            st.markdown("<br>", unsafe_allow_html=True)
+            cp1, cp2, cp3 = st.columns([1, 1, 4])
+            with cp1:
+                if remaining > 0:
+                    if st.button(
+                        f"+ Voir {min(15, remaining)} de plus",
+                        key="btn_posts_more", use_container_width=True,
+                    ):
+                        st.session_state["_insta_posts_limit"] += 15
+                        st.rerun()
+            with cp2:
+                if remaining > 0:
+                    if st.button(
+                        f"Tout afficher ({total_posts})",
+                        key="btn_posts_all", use_container_width=True,
+                    ):
+                        st.session_state["_insta_posts_limit"] = total_posts
+                        st.rerun()
+                elif limit > 15:
+                    if st.button(
+                        "Réduire à 15", key="btn_posts_reduce", use_container_width=True,
+                    ):
+                        st.session_state["_insta_posts_limit"] = 15
+                        st.rerun()
 
 
 # ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
