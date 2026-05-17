@@ -359,41 +359,100 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             )
             st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Ce qui marche pour toi</span></div></div>", unsafe_allow_html=True)
-    
+        # ── Section "Tes moyennes par post" (référence pour comprendre 'a décollé') ──
+        likes_mean = float(df["likes"].mean()) if "likes" in df.columns else 0.0
+        saves_mean = float(df["saved"].mean()) if "saved" in df.columns else 0.0
+        comm_mean  = float(df["comments"].mean()) if "comments" in df.columns else 0.0
+        _df_eng_avg = df[df.get("reach", 0) > 0] if "reach" in df.columns else df.head(0)
+        eng_mean   = float(((_df_eng_avg["likes"] + _df_eng_avg["saved"]) / _df_eng_avg["reach"] * 100).mean()) \
+            if not _df_eng_avg.empty else 0.0
+
+        st.markdown(
+            f"<div class='card' style='margin-bottom:18px;padding:14px 20px;'>"
+            f"<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>"
+            f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#8b8e98;'>Tes moyennes par post</div>"
+            f"<div style='display:flex;gap:24px;flex-wrap:wrap;'>"
+            f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>PORTÉE</span>"
+            f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{reach_mean:,.0f}</span></div>"
+            f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>LIKES</span>"
+            f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{likes_mean:,.0f}</span></div>"
+            f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>SAVES</span>"
+            f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{saves_mean:,.0f}</span></div>"
+            f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>COMM.</span>"
+            f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{comm_mean:,.0f}</span></div>"
+            f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>ENG. %</span>"
+            f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{eng_mean:.1f}%</span></div>"
+            f"</div></div>"
+            f"<div style='font-size:11px;color:#8b8e98;margin-top:10px;'>"
+            f"Un post 'décolle' quand sa portée dépasse la moyenne ({reach_mean:,.0f}). "
+            f"Tu as <b>{nb_flew} posts</b> au-dessus.</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── Ce qui marche pour toi (filtre métrique) ──────────────────────
+        col_title, col_metric = st.columns([3, 2])
+        with col_title:
+            st.markdown(
+                "<div class='section'><div class='section-head'>"
+                "<span class='section-title'>Ce qui marche pour toi</span></div></div>",
+                unsafe_allow_html=True,
+            )
+        with col_metric:
+            metric_options = {
+                "Portée":         ("reach",    "", "{:,.0f}"),
+                "Likes":          ("likes",    "", "{:,.0f}"),
+                "Saves":          ("saved",    "", "{:,.0f}"),
+                "Commentaires":   ("comments", "", "{:,.0f}"),
+                "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
+            }
+            sel_metric = st.selectbox(
+                "Métrique", options=list(metric_options.keys()),
+                index=0, key="insta_format_metric", label_visibility="collapsed",
+            )
+
+        metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
+
+        # Préparer la colonne dérivée engagement % si nécessaire
+        df_metric = df.copy()
+        if metric_col == "_eng_pct":
+            df_metric["_eng_pct"] = df_metric.apply(
+                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
+                if r.get("reach", 0) > 0 else 0.0,
+                axis=1,
+            )
+
         format_groups = {}
-        if "type" in df.columns:
-            for fmt, grp in df.groupby("type"):
+        if "type" in df_metric.columns and metric_col in df_metric.columns:
+            for fmt, grp in df_metric.groupby("type"):
                 key = fmt.upper()
-                avg_reach = grp["reach"].mean() if "reach" in grp.columns else 0
-                format_groups[key] = {
-                    "nb": len(grp),
-                    "avg_reach": avg_reach,
-                    "grp": grp,
-                }
-    
-        best_fmt = max(format_groups, key=lambda k: format_groups[k]["avg_reach"]) if format_groups else None
+                avg_val = grp[metric_col].mean()
+                format_groups[key] = {"nb": len(grp), "avg": avg_val, "grp": grp}
+
+        best_fmt = max(format_groups, key=lambda k: format_groups[k]["avg"]) if format_groups else None
         show_fmts = [k for k in ["VIDEO", "REEL", "CAROUSEL_ALBUM", "IMAGE"] if k in format_groups]
         if not show_fmts:
             show_fmts = list(format_groups.keys())[:3]
-    
+
         if show_fmts:
-            max_reach = max(format_groups[k]["avg_reach"] for k in show_fmts) or 1
+            max_val = max(format_groups[k]["avg"] for k in show_fmts) or 1
             fmt_cols = st.columns(max(len(show_fmts), 1))
             for col_i, fmt in enumerate(show_fmts):
                 info = format_groups[fmt]
                 is_best = fmt == best_fmt
                 chip = _format_chip(fmt, is_best)
-                bar_pct = int(info["avg_reach"] / max_reach * 100)
-                note = "Top format" if is_best else f"Portée moy. {info['avg_reach']:,.0f}"
+                bar_pct = int(info["avg"] / max_val * 100)
+                value_display = metric_fmt.format(info["avg"]) + metric_suffix
+                note_metric_lbl = f"{sel_metric} moy."
+                note = "Top format" if is_best else f"{note_metric_lbl} {value_display}"
                 with fmt_cols[col_i]:
                     st.markdown(
                         f"<div class='card'>"
                         f"<div style='margin-bottom:10px;'>{chip}</div>"
                         f"<div style='font-size:24px;font-family:var(--font-mono,\"JetBrains Mono\",monospace);"
-                        f"font-weight:600;color:var(--ink,#0e0f12);'>{info['avg_reach']:,.0f}</div>"
+                        f"font-weight:600;color:var(--ink,#0e0f12);'>{value_display}</div>"
                         f"<div style='font-size:11px;color:var(--ink-4,#8b8e98);margin:2px 0 10px;'>"
-                        f"portée moyenne · {info['nb']} posts</div>"
+                        f"{sel_metric.lower()} moyen · {info['nb']} posts</div>"
                         f"<div style='background:rgba(14,15,18,0.06);border-radius:4px;height:5px;overflow:hidden;'>"
                         f"<span style='display:block;height:100%;width:{bar_pct}%;background:#3b5bff;border-radius:4px;'></span>"
                         f"</div>"

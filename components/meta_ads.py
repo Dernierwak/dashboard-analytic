@@ -183,13 +183,27 @@ def _init_cout_state(client, user_id) -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Statuts Meta considérés comme une vraie alerte (rouge)
+_ALERT_STATUSES = {
+    "WITH_ISSUES", "DISAPPROVED", "PENDING_REVIEW", "IN_PROCESS",
+    "CAMPAIGN_PAUSED", "ADSET_PAUSED", "PREAPPROVED",
+}
+# Statuts considérés comme indisponibles (on n'affiche rien)
+_UNKNOWN_STATUSES = {"", "UNKNOWN", "NONE"}
+
+
 def _status_chip(status: str) -> str:
     s = (status or "").upper()
     if s == "ACTIVE":
         return '<span class="chip good">● Active</span>'
     if "PAUSED" in s:
         return '<span class="chip outline">⏸ En pause</span>'
-    return '<span class="chip bad">▲ Alerte</span>'
+    if s in _ALERT_STATUSES:
+        return '<span class="chip bad">▲ Alerte</span>'
+    if s in _UNKNOWN_STATUSES:
+        return ''  # statut indisponible → pas de chip
+    # statut inconnu mais non vide (futurs codes Meta) → chip neutre
+    return f'<span class="chip outline">{s.capitalize()}</span>'
 
 
 def _camp_note(row, avg_ctr: float, avg_cpc: float) -> tuple[str, str]:
@@ -562,7 +576,10 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     camp_status = {}
     if "effective_status" in df_view.columns:
         for camp, grp in df_view.groupby("campaign_name"):
-            mode = grp["effective_status"].mode()
+            # Filtrer NaN/None avant de prendre le mode
+            valid = grp["effective_status"].dropna().astype(str).str.strip()
+            valid = valid[valid != ""]
+            mode = valid.mode() if not valid.empty else pd.Series(dtype=str)
             camp_status[camp] = mode.iloc[0] if not mode.empty else ""
 
     # Trier : actives d'abord, puis par dépenses décroissantes
@@ -573,13 +590,33 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     df_camp_sorted["_sort"] = df_camp_sorted.apply(_sort_key, axis=1)
     df_camp_sorted = df_camp_sorted.sort_values("_sort").drop(columns=["_sort"])
 
-    nb_active_camp = sum(1 for c in df_camp_sorted["campaign_name"] if camp_status.get(c, "") == "ACTIVE")
-    nb_paused_camp = len(df_camp_sorted) - nb_active_camp
+    nb_active_camp = sum(1 for c in df_camp_sorted["campaign_name"]
+                        if camp_status.get(c, "").upper() == "ACTIVE")
+    nb_paused_camp = sum(1 for c in df_camp_sorted["campaign_name"]
+                         if "PAUSED" in camp_status.get(c, "").upper())
+    nb_unknown_camp = sum(1 for c in df_camp_sorted["campaign_name"]
+                          if camp_status.get(c, "").upper() in _UNKNOWN_STATUSES)
+    total_camp = len(df_camp_sorted)
+
+    # Warning si TOUS les statuts sont inconnus (donnée legacy / API pas refetch)
+    if total_camp > 0 and nb_unknown_camp == total_camp:
+        st.warning(
+            "⚠ Statut des campagnes non récupéré. Rafraîchis tes données Meta Ads "
+            "depuis l'onglet **Paramètres → Meta Ads** pour mettre à jour."
+        )
+
+    # Compteur dans le titre
+    if nb_unknown_camp > 0 and nb_unknown_camp < total_camp:
+        count_txt = f"{nb_active_camp} actives · {nb_paused_camp} en pause · {nb_unknown_camp} statut inconnu"
+    elif nb_unknown_camp == total_camp:
+        count_txt = f"{total_camp} campagne{'s' if total_camp != 1 else ''} · statut inconnu"
+    else:
+        count_txt = f"{nb_active_camp} actives · {nb_paused_camp} en pause"
 
     st.markdown(
         f'<div class="section-head">'
         f'<div class="section-title">Campagnes '
-        f'<span class="st-count">{nb_active_camp} actives · {nb_paused_camp} en pause</span>'
+        f'<span class="st-count">{count_txt}</span>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
@@ -680,6 +717,173 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
                     unsafe_allow_html=True,
                 )
 
+    # ── Performance par label (déplacé de Coût, SANS Dépensé) ───────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-head">'
+        '<div class="section-title">Performance par label</div></div>',
+        unsafe_allow_html=True,
+    )
+    _agg_perf = _build_agg_by_label(df_view, campaign_config)
+    _render_perf_by_label(_agg_perf)
+
+
+# ── Helper : agrégat par label (utilisé par Perf et Coût) ─────────────────────
+
+def _build_agg_by_label(df_view: pd.DataFrame, campaign_config: dict) -> pd.DataFrame:
+    """Construit l'aggregat par label depuis df_view (filtré période) + campaign_config."""
+    df_c = (
+        df_view.groupby("campaign_name", as_index=False)
+        .agg(
+            spend=("spend", "sum"),
+            impressions=("impressions", "sum"),
+            clicks=("clicks", "sum"),
+        )
+    )
+    df_c["label"] = df_c["campaign_name"].map(
+        lambda c: (campaign_config.get(c) or {}).get("label") or None
+    )
+    df_c["budget_max"] = df_c["campaign_name"].map(
+        lambda c: float((campaign_config.get(c) or {}).get("budget_max") or 0)
+    )
+    df_c["label_display"] = df_c["label"].fillna(_NO_LABEL).replace("", _NO_LABEL)
+    agg = (
+        df_c.groupby("label_display", as_index=False)
+        .agg(
+            spend=("spend", "sum"),
+            budget=("budget_max", "sum"),
+            impressions=("impressions", "sum"),
+            clicks=("clicks", "sum"),
+            campaigns=("campaign_name", "nunique"),
+        )
+    )
+    agg["ctr"]    = agg.apply(lambda r: (r["clicks"] / r["impressions"] * 100) if r["impressions"] > 0 else 0.0, axis=1)
+    agg["cpc"]    = agg.apply(lambda r: (r["spend"] / r["clicks"]) if r["clicks"] > 0 else 0.0, axis=1)
+    agg["cpm"]    = agg.apply(lambda r: (r["spend"] / r["impressions"] * 1000) if r["impressions"] > 0 else 0.0, axis=1)
+    agg["pacing"] = agg.apply(lambda r: (r["spend"] / r["budget"] * 100) if r["budget"] > 0 else None, axis=1)
+    return agg
+
+
+def _render_perf_by_label(agg: pd.DataFrame) -> None:
+    """Rendu 'Performance par label' pour la tab Performance (SANS Dépensé)."""
+    if agg.empty:
+        st.info("Aucune campagne.")
+        return
+
+    # Best = meilleur CTR parmi les vrais labels
+    real_lbls = agg[agg["label_display"] != _NO_LABEL]
+    best_lbl = real_lbls.iloc[real_lbls["ctr"].argmax()]["label_display"] if not real_lbls.empty else None
+
+    # Tri : (sans label) à la fin, le reste par CTR desc
+    agg = agg.copy()
+    agg["_ord"] = agg["label_display"].apply(lambda x: 1 if x == _NO_LABEL else 0)
+    agg = agg.sort_values(["_ord", "ctr"], ascending=[True, False]).drop(columns=["_ord"])
+    max_ctr = agg["ctr"].max() or 1
+
+    hcols = st.columns([3, 1.2, 1.6, 1.4, 1.4, 1.4])
+    headers = ["Label", "Camp.", "Impr.", "CTR %", "CPC", "CPM"]
+    for col_h, lbl in zip(hcols, headers):
+        col_h.markdown(
+            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+            unsafe_allow_html=True,
+        )
+
+    for _, r in agg.iterrows():
+        lbl_name = r["label_display"]
+        is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
+        is_no_label = lbl_name == _NO_LABEL
+        bar_pct = (r["ctr"] / max_ctr * 100) if max_ctr > 0 else 0
+        trophy = "🏆 " if is_best else ""
+        name_color = "#8b8e98" if is_no_label else "#0e0f12"
+        name_weight = "500" if is_no_label else "600"
+        cpc_str = f"{r['cpc']:.2f} CHF" if r["cpc"] > 0 else "—"
+        cpm_str = f"{r['cpm']:.2f} CHF" if r["cpm"] > 0 else "—"
+
+        c_name, c_camps, c_impr, c_ctr, c_cpc, c_cpm = st.columns([3, 1.2, 1.6, 1.4, 1.4, 1.4])
+        with c_name:
+            st.markdown(
+                f'<div style="font-size:13.5px;font-weight:{name_weight};color:{name_color};padding-top:4px;">'
+                f'{trophy}{lbl_name}</div>'
+                f'<div style="height:3px;background:rgba(14,15,18,0.06);border-radius:99px;margin-top:6px;overflow:hidden;">'
+                f'<div style="height:100%;width:{bar_pct:.1f}%;background:#3b5bff;border-radius:99px;"></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        for col, val in [
+            (c_camps, f"{int(r['campaigns'])}"),
+            (c_impr,  f"{int(r['impressions']):,}"),
+            (c_ctr,   f"{r['ctr']:.2f}%"),
+            (c_cpc,   cpc_str),
+            (c_cpm,   cpm_str),
+        ]:
+            with col:
+                st.markdown(
+                    f'<div style="font-family:var(--font-mono,ui-monospace,monospace);'
+                    f'font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{val}</div>',
+                    unsafe_allow_html=True,
+                )
+
+
+def _render_cout_by_label(agg: pd.DataFrame) -> None:
+    """Rendu 'Performance par label' pour la tab Coût (UNIQUEMENT Dépensé + Budget planifié + Pacing)."""
+    if agg.empty:
+        st.info("Aucune dépense.")
+        return
+
+    # Best = plus grosse dépense (sauf sans label)
+    real_lbls = agg[agg["label_display"] != _NO_LABEL]
+    best_lbl = real_lbls.iloc[real_lbls["spend"].argmax()]["label_display"] if not real_lbls.empty else None
+
+    # Tri : (sans label) à la fin, le reste par dépensé desc
+    agg = agg.copy()
+    agg["_ord"] = agg["label_display"].apply(lambda x: 1 if x == _NO_LABEL else 0)
+    agg = agg.sort_values(["_ord", "spend"], ascending=[True, False]).drop(columns=["_ord"])
+    max_spend = agg["spend"].max() or 1
+
+    hcols = st.columns([3, 1.2, 1.8, 1.8, 2])
+    headers = ["Label", "Camp.", "Dépensé", "Budget planifié", "Pacing"]
+    for col_h, lbl in zip(hcols, headers):
+        col_h.markdown(
+            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+            unsafe_allow_html=True,
+        )
+
+    for _, r in agg.iterrows():
+        lbl_name = r["label_display"]
+        is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
+        is_no_label = lbl_name == _NO_LABEL
+        bar_pct = (r["spend"] / max_spend * 100) if max_spend > 0 else 0
+        trophy = "🏆 " if is_best else ""
+        name_color = "#8b8e98" if is_no_label else "#0e0f12"
+        name_weight = "500" if is_no_label else "600"
+        bud_str = f"{r['budget']:,.0f} CHF" if r["budget"] > 0 else "—"
+
+        c_name, c_camps, c_spend, c_bud, c_pacing = st.columns([3, 1.2, 1.8, 1.8, 2])
+        with c_name:
+            st.markdown(
+                f'<div style="font-size:13.5px;font-weight:{name_weight};color:{name_color};padding-top:4px;">'
+                f'{trophy}{lbl_name}</div>'
+                f'<div style="height:3px;background:rgba(14,15,18,0.06);border-radius:99px;margin-top:6px;overflow:hidden;">'
+                f'<div style="height:100%;width:{bar_pct:.1f}%;background:#3b5bff;border-radius:99px;"></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        for col, val in [
+            (c_camps, f"{int(r['campaigns'])}"),
+            (c_spend, f"{r['spend']:,.0f} CHF"),
+            (c_bud,   bud_str),
+        ]:
+            with col:
+                st.markdown(
+                    f'<div style="font-family:var(--font-mono,ui-monospace,monospace);'
+                    f'font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{val}</div>',
+                    unsafe_allow_html=True,
+                )
+        with c_pacing:
+            st.markdown(_pacing_row_html(r["spend"], r["budget"]), unsafe_allow_html=True)
+
 
 # ── Coût tab ──────────────────────────────────────────────────────────────────
 
@@ -765,6 +969,24 @@ def _show_labels_tab(client, user_id) -> None:
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Compteur campagnes labelisées ──────────────────────────────────────
+    campaign_config = st.session_state.get("campaign_config", {}) or {}
+    df_meta = st.session_state.get("meta_ads_df")
+    if df_meta is not None and not df_meta.empty and "campaign_name" in df_meta.columns:
+        all_camps = df_meta["campaign_name"].dropna().unique().tolist()
+        nb_camps = len(all_camps)
+        nb_labeled = sum(
+            1 for c in all_camps
+            if (campaign_config.get(c) or {}).get("label")
+        )
+        if nb_camps > 0:
+            pct = nb_labeled / nb_camps
+            st.progress(
+                pct,
+                text=f"**{nb_labeled} / {nb_camps}** campagnes labelisées ({int(pct * 100)} %)",
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Ajouter (st.form gère le vidage automatique via clear_on_submit) ──────
     st.markdown('<div class="cout-section-title" style="margin-top:4px;">Ajouter un label</div>', unsafe_allow_html=True)
@@ -947,10 +1169,11 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
             unsafe_allow_html=True,
         )
 
-    # ── Bloc 3 : Performance par label (agrégé) ──────────────────────────────
+    # ── Bloc 3 : Performance par label (dépenses + budget planifié + pacing) ─
     campaign_labels: list[str] = st.session_state.get("campaign_labels", [])
     campaign_config: dict      = st.session_state.get("campaign_config", {})
 
+    # df_camp reste utilisé plus bas par le détail campagne
     df_camp = (
         df_v.groupby("campaign_name", as_index=False)
         .agg(
@@ -960,8 +1183,7 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
         )
         .sort_values("spend", ascending=False)
     )
-    # Associer label + budget_max à chaque campagne
-    df_camp["label"]      = df_camp["campaign_name"].map(
+    df_camp["label"] = df_camp["campaign_name"].map(
         lambda c: (campaign_config.get(c) or {}).get("label") or None
     )
     df_camp["budget_max"] = df_camp["campaign_name"].map(
@@ -969,98 +1191,8 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     )
 
     st.markdown('<div class="cout-section-title">Performance par label</div>', unsafe_allow_html=True)
-
-    # Agrégat par label (None → "(sans label)")
-    df_lbl = df_camp.copy()
-    df_lbl["label_display"] = df_lbl["label"].fillna(_NO_LABEL).replace("", _NO_LABEL)
-    agg_lbl = (
-        df_lbl.groupby("label_display", as_index=False)
-        .agg(
-            spend=("spend", "sum"),
-            budget=("budget_max", "sum"),
-            impressions=("impressions", "sum"),
-            clicks=("clicks", "sum"),
-            campaigns=("campaign_name", "nunique"),
-        )
-    )
-    agg_lbl["ctr"]   = agg_lbl.apply(
-        lambda r: (r["clicks"] / r["impressions"] * 100) if r["impressions"] > 0 else 0.0,
-        axis=1,
-    )
-    agg_lbl["cpc"]   = agg_lbl.apply(
-        lambda r: (r["spend"] / r["clicks"]) if r["clicks"] > 0 else 0.0,
-        axis=1,
-    )
-    agg_lbl["cpm"]   = agg_lbl.apply(
-        lambda r: (r["spend"] / r["impressions"] * 1000) if r["impressions"] > 0 else 0.0,
-        axis=1,
-    )
-    agg_lbl["pacing"] = agg_lbl.apply(
-        lambda r: (r["spend"] / r["budget"] * 100) if r["budget"] > 0 else None,
-        axis=1,
-    )
-    # Tri : (sans label) à la fin, le reste par dépensé desc
-    agg_lbl["_ord"] = agg_lbl["label_display"].apply(lambda x: 1 if x == _NO_LABEL else 0)
-    agg_lbl = agg_lbl.sort_values(["_ord", "spend"], ascending=[True, False]).drop(columns=["_ord"])
-
-    if agg_lbl.empty:
-        st.info("Aucune dépense.")
-    else:
-        # "Best" = meilleur CTR parmi les vrais labels (perf = efficacité)
-        real_lbls = agg_lbl[agg_lbl["label_display"] != _NO_LABEL]
-        best_lbl = real_lbls.iloc[real_lbls["ctr"].argmax()]["label_display"] \
-            if not real_lbls.empty else None
-        max_spend = agg_lbl["spend"].max() or 1
-
-        # Header style "eyebrow" (comme le tab Labels)
-        hcols = st.columns([3, 1.2, 1.6, 1.4, 1.4, 1.4, 1.4])
-        headers = ["Label", "Camp.", "Dépensé", "Impr.", "CTR %", "CPC", "CPM"]
-        for col_h, lbl in zip(hcols, headers):
-            col_h.markdown(
-                f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-                f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # Une ligne par label
-        for _, r in agg_lbl.iterrows():
-            lbl_name = r["label_display"]
-            is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
-            is_no_label = lbl_name == _NO_LABEL
-            bar_pct = (r["spend"] / max_spend * 100) if max_spend > 0 else 0
-            trophy = "🏆 " if is_best else ""
-            name_color = "#8b8e98" if is_no_label else "#0e0f12"
-            name_weight = "500" if is_no_label else "600"
-
-            cpc_str = f"{r['cpc']:.2f} CHF" if r["cpc"] > 0 else "—"
-            cpm_str = f"{r['cpm']:.2f} CHF" if r["cpm"] > 0 else "—"
-
-            c_name, c_camps, c_spend, c_impr, c_ctr, c_cpc, c_cpm = st.columns(
-                [3, 1.2, 1.6, 1.4, 1.4, 1.4, 1.4]
-            )
-            with c_name:
-                st.markdown(
-                    f'<div style="font-size:13.5px;font-weight:{name_weight};color:{name_color};padding-top:4px;">'
-                    f'{trophy}{lbl_name}</div>'
-                    f'<div style="height:3px;background:rgba(14,15,18,0.06);border-radius:99px;margin-top:6px;overflow:hidden;">'
-                    f'<div style="height:100%;width:{bar_pct:.1f}%;background:#3b5bff;border-radius:99px;"></div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            for col, val in [
-                (c_camps, f"{int(r['campaigns'])}"),
-                (c_spend, f"{r['spend']:,.0f} CHF"),
-                (c_impr,  f"{int(r['impressions']):,}"),
-                (c_ctr,   f"{r['ctr']:.2f}%"),
-                (c_cpc,   cpc_str),
-                (c_cpm,   cpm_str),
-            ]:
-                with col:
-                    st.markdown(
-                        f'<div style="font-family:var(--font-mono,ui-monospace,monospace);'
-                        f'font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{val}</div>',
-                        unsafe_allow_html=True,
-                    )
+    _agg_cout = _build_agg_by_label(df_v, campaign_config)
+    _render_cout_by_label(_agg_cout)
 
     # ── Bloc 4 : Détail par campagne (budget max éditable, label lecture seule) ─
     st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
@@ -1122,18 +1254,18 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
                     unsafe_allow_html=True,
                 )
 
-            # ── Col 4 : Budget max (number_input éditable) ──
+            # ── Col 4 : Budget planifié (number_input éditable) ──
             with c_bud:
                 st.markdown(
                     '<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-                    'letter-spacing:0.06em;color:#8b8e98;margin-bottom:2px;padding-top:2px;">BUDGET MAX</div>',
+                    'letter-spacing:0.06em;color:#8b8e98;margin-bottom:2px;padding-top:2px;">BUDGET PLANIFIÉ</div>',
                     unsafe_allow_html=True,
                 )
                 bud_key = f"cout_bud_{safe_key}"
                 if bud_key not in st.session_state:
                     st.session_state[bud_key] = bud_existing
                 st.number_input(
-                    "Budget max", min_value=0.0, step=100.0, format="%.0f",
+                    "Budget planifié", min_value=0.0, step=100.0, format="%.0f",
                     key=bud_key, label_visibility="collapsed",
                     on_change=_cb_save_camp_budget, args=(client, user_id, camp_name, bud_key),
                 )
