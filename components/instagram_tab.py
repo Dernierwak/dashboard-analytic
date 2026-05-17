@@ -691,50 +691,34 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                                 unsafe_allow_html=True,
                             )
 
-        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Tous les posts</span></div></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section'><div class='section-head'>"
+            "<span class='section-title'>Tous les posts "
+            f"<span class='st-count'>{len(df)} posts</span></span></div></div>",
+            unsafe_allow_html=True,
+        )
 
-        cols_show = [c for c in ["id", "caption", "type", "date", "reach", "likes", "saved", "comments", "labels"] if c in df.columns]
-        df_tbl = df[cols_show].copy()
+        # Préparation des données par post
+        df_posts = df.copy()
+        # Engagement %
+        df_posts["_eng"] = df_posts.apply(
+            lambda r: round((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100, 1)
+            if r.get("reach", 0) > 0 else 0.0,
+            axis=1,
+        )
+        # Date formatée
+        _dt = pd.to_datetime(df_posts["date"], errors="coerce", utc=True)
+        try:
+            _dt = _dt.dt.tz_convert("Europe/Zurich")
+        except Exception:
+            pass
+        df_posts["_date_str"] = _dt.dt.strftime("%d %b %Y · %H:%M")
+        # Tri par portée
+        df_posts = df_posts.sort_values("reach", ascending=False)
 
-        if "reach" in df_tbl.columns and "likes" in df_tbl.columns:
-            df_tbl["Engagement"] = df_tbl.apply(
-                lambda r: round((r["likes"] + r.get("saved", 0)) / r["reach"] * 100, 1) if r.get("reach", 0) > 0 else 0.0,
-                axis=1,
-            )
+        max_eng = df_posts["_eng"].max() or 1
 
-        if "type" in df_tbl.columns:
-            df_tbl["type"] = df_tbl["type"].apply(lambda t: FORMAT_LABELS.get(str(t).upper(), t))
-
-        # Colonne Label (1er label si plusieurs, vide sinon)
-        if "labels" in df_tbl.columns:
-            df_tbl["Label"] = df_tbl["labels"].apply(
-                lambda x: x[0] if isinstance(x, list) and len(x) > 0 and x[0] else None
-            )
-            df_tbl = df_tbl.drop(columns=["labels"])
-        else:
-            df_tbl["Label"] = None
-
-        df_tbl = df_tbl.rename(columns={
-            "caption": "Post", "type": "Format", "date": "Date",
-            "reach": "Portée", "likes": "Likes", "saved": "Saves", "comments": "Comm.",
-        })
-
-        if "Date" in df_tbl.columns:
-            # UTC → Europe/Zurich + formatage date + heure (15 mai 2026 · 14:30)
-            _dt = pd.to_datetime(df_tbl["Date"], errors="coerce", utc=True)
-            try:
-                _dt = _dt.dt.tz_convert("Europe/Zurich")
-            except Exception:
-                pass
-            df_tbl["Date"] = _dt.dt.strftime("%d %b %Y · %H:%M")
-
-        # Réordonner : Label en premier (à gauche)
-        ordered = [c for c in ["id", "Label", "Post", "Format", "Date", "Portée", "Likes", "Saves", "Comm.", "Engagement"] if c in df_tbl.columns]
-        df_tbl = df_tbl[ordered]
-
-        df_tbl = df_tbl.sort_values("Portée", ascending=False) if "Portée" in df_tbl.columns else df_tbl
-
-        # Labels disponibles (master list)
+        # Labels disponibles
         avail_labels = st.session_state.get("insta_labels")
         if avail_labels is None:
             try:
@@ -742,60 +726,112 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 avail_labels = [l for l in (_r.data[0].get("labelling") if _r.data else []) or [] if l]
             except Exception:
                 avail_labels = []
+        label_opts = ["—"] + sorted(avail_labels)
 
-        # Signature des labels → bump le key du data_editor quand la liste change
-        # (sinon Streamlit garde l'ancien column_config en cache)
-        labels_signature = "_".join(sorted(avail_labels))[:80] or "empty"
-        editor_key = f"insta_posts_editor_{labels_signature}"
+        # Callback de sauvegarde
+        def _save_post_label(post_id, key):
+            val = st.session_state.get(key, "—")
+            new_labels = [] if val == "—" else [val]
+            try:
+                client.table("instagram_organic_posts").update(
+                    {"labels": new_labels}
+                ).eq("user_id", user_id).eq("id", post_id).execute()
+                st.toast("Label sauvegardé", icon="✅")
+            except Exception as e:
+                st.toast(f"Sauvegarde échouée : {e}", icon="⚠️")
 
-        edited = st.data_editor(
-            df_tbl,
-            use_container_width=True,
-            hide_index=True,
-            key=editor_key,
-            column_config={
-                "id": None,  # caché mais conservé pour l'index
-                "Label": st.column_config.SelectboxColumn(
-                    "Label",
-                    options=avail_labels if avail_labels else [],
-                    required=False,
-                    width="small",
-                ),
-                "Post": st.column_config.TextColumn("Post", width="large", disabled=True),
-                "Format": st.column_config.TextColumn("Format", disabled=True),
-                "Date": st.column_config.TextColumn("Date · Heure", disabled=True, width="medium"),
-                "Portée": st.column_config.NumberColumn("Portée", format="%d", disabled=True),
-                "Likes": st.column_config.NumberColumn("Likes", format="%d", disabled=True),
-                "Saves": st.column_config.NumberColumn("Saves", format="%d", disabled=True),
-                "Comm.": st.column_config.NumberColumn("Comm.", format="%d", disabled=True),
-                "Engagement": st.column_config.NumberColumn("Eng. %", format="%.1f%%", disabled=True),
-            },
-        )
+        # Une carte par post
+        for _, row in df_posts.iterrows():
+            post_id = str(row.get("id", ""))
+            caption_full = str(row.get("caption", ""))
+            caption_short = (caption_full[:70] + "…") if len(caption_full) > 70 else (caption_full or "—")
+            fmt_code = str(row.get("type", "IMAGE")).upper()
+            fmt_label = FORMAT_LABELS.get(fmt_code, fmt_code)
+            date_str = row.get("_date_str", "—")
+            reach = int(row.get("reach", 0))
+            likes = int(row.get("likes", 0))
+            saves = int(row.get("saved", 0))
+            comms = int(row.get("comments", 0))
+            eng = float(row.get("_eng", 0))
 
-        # Sauvegarde des modifications de label (lecture via la clé dynamique)
-        editor_state = st.session_state.get(editor_key, {})
-        edited_rows = editor_state.get("edited_rows", {})
-        if edited_rows:
-            saved_count = 0
-            for idx_str, changes in edited_rows.items():
-                if "Label" not in changes:
-                    continue
-                try:
-                    post_id = str(df_tbl.iloc[int(idx_str)]["id"])
-                except Exception:
-                    continue
-                new_label = changes["Label"]
-                new_labels = [new_label] if new_label else []
-                try:
-                    client.table("instagram_organic_posts").update(
-                        {"labels": new_labels}
-                    ).eq("user_id", user_id).eq("id", post_id).execute()
-                    saved_count += 1
-                except Exception as e:
-                    st.toast(f"Sauvegarde échouée pour un post : {e}", icon="⚠️")
-            if saved_count:
-                st.toast(f"{saved_count} label(s) sauvegardé(s).", icon="✅")
-                st.session_state[editor_key]["edited_rows"] = {}
+            # Label actuel
+            current_label = None
+            labels_list = row.get("labels")
+            if isinstance(labels_list, list) and len(labels_list) > 0 and labels_list[0]:
+                current_label = labels_list[0]
+
+            # Couleur de l'engagement
+            eng_color = "#1a7a4a" if eng >= max_eng * 0.66 else "#b86b00" if eng >= max_eng * 0.33 else "#c0392b"
+            eng_pct = min(100, (eng / max_eng * 100)) if max_eng > 0 else 0
+
+            with st.container(border=True):
+                c_lbl, c_caption, c_fmt, c_reach, c_likes, c_saves, c_comm, c_eng = st.columns(
+                    [1.6, 2.6, 1, 1, 0.9, 0.9, 0.9, 1.1]
+                )
+
+                # ── Col 1 : Label selectbox ──
+                with c_lbl:
+                    safe_key = f"post_lbl_{post_id[:40]}"
+                    existing = current_label if (current_label in label_opts) else "—"
+                    opts = label_opts.copy()
+                    if current_label and current_label not in opts:
+                        opts.insert(1, current_label)
+                        existing = current_label
+                    if safe_key not in st.session_state:
+                        st.session_state[safe_key] = existing
+                    st.selectbox(
+                        "Label", options=opts, key=safe_key,
+                        label_visibility="collapsed",
+                        on_change=_save_post_label, args=(post_id, safe_key),
+                    )
+
+                # ── Col 2 : Caption + date ──
+                with c_caption:
+                    st.markdown(
+                        f'<div style="padding-top:4px;">'
+                        f'<div style="font-size:13.5px;font-weight:600;color:#0e0f12;line-height:1.2;margin-bottom:2px;">{caption_short}</div>'
+                        f'<div style="font-size:11px;color:#8b8e98;">{date_str}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # ── Col 3 : Format chip ──
+                with c_fmt:
+                    st.markdown(
+                        f'<div style="padding-top:8px;"><span class="chip outline">{fmt_label}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # ── Cols 4-7 : Portée / Likes / Saves / Comm ──
+                cells = [
+                    (c_reach, "PORTÉE", f"{reach:,}"),
+                    (c_likes, "LIKES",  f"{likes:,}"),
+                    (c_saves, "SAVES",  f"{saves:,}"),
+                    (c_comm,  "COMM.",  f"{comms:,}"),
+                ]
+                for col, lbl, val in cells:
+                    with col:
+                        st.markdown(
+                            f'<div style="text-align:right;">'
+                            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                            f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">{lbl}</div>'
+                            f'<div style="font-family:var(--font-mono);font-size:13px;'
+                            f'font-weight:500;color:#0e0f12;">{val}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # ── Col 8 : Engagement % + barre ──
+                with c_eng:
+                    st.markdown(
+                        f'<div style="text-align:right;">'
+                        f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                        f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">ENG. %</div>'
+                        f'<div style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:{eng_color};">{eng:.1f}%</div>'
+                        f'<div class="bar" style="margin-top:3px;"><span style="width:{eng_pct}%;background:{eng_color};"></span></div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
 
 # ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
