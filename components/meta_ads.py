@@ -1064,64 +1064,104 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
         unsafe_allow_html=True,
     )
 
-    detail_rows = []
+    # Une carte par campagne (st.container border + st.columns)
     for _, row in df_camp.iterrows():
         camp_name = row["campaign_name"]
         spend     = float(row["spend"])
-        bud       = float(row["budget_max"] or 0)
-        pct       = (spend / bud * 100) if bud > 0 else None
-        detail_rows.append({
-            "Campagne":   camp_name,
-            "Label":      row["label"] or _NO_LABEL,
-            "Dépensé":    spend,
-            "Budget max": bud,
-            "Pacing %":   pct if pct is not None else 0.0,
-        })
-    df_detail_tbl = pd.DataFrame(detail_rows)
+        bud_existing = float(row["budget_max"] or 0)
+        current_label = row["label"] or None
+        safe_key = camp_name.replace(" ", "_").replace("/", "_")[:50]
 
-    detail_key = "cout_detail_editor"
-    st.data_editor(
-        df_detail_tbl,
-        use_container_width=True,
-        hide_index=True,
-        key=detail_key,
-        column_config={
-            "Campagne":   st.column_config.TextColumn("Campagne", width="medium", disabled=True),
-            "Label":      st.column_config.TextColumn("Label", disabled=True),
-            "Dépensé":    st.column_config.NumberColumn("Dépensé", format="%.0f CHF", disabled=True),
-            "Budget max": st.column_config.NumberColumn(
-                "Budget max", format="%.0f CHF", min_value=0.0, step=100.0,
-            ),
-            "Pacing %":   st.column_config.ProgressColumn(
-                "Pacing", format="%.0f%%", min_value=0, max_value=150,
-            ),
-        },
-    )
+        with st.container(border=True):
+            c_name, c_lbl, c_spend, c_bud, c_pacing = st.columns(
+                [2.6, 1.4, 1.4, 1.6, 2.4]
+            )
 
-    # Sauvegarde des changements de budget max
-    if client and user_id:
-        det_state = st.session_state.get(detail_key, {})
-        det_edited = det_state.get("edited_rows", {})
-        if det_edited:
-            saved = 0
-            for idx_str, changes in det_edited.items():
-                if "Budget max" not in changes:
-                    continue
-                try:
-                    camp_name = str(df_detail_tbl.iloc[int(idx_str)]["Campagne"])
-                except Exception:
-                    continue
-                new_bud = float(changes["Budget max"] or 0)
-                try:
-                    upsert_campaign_config(client, user_id, camp_name, budget_max=new_bud)
-                    cfg = st.session_state.setdefault("campaign_config", {})
-                    cfg.setdefault(camp_name, {})["budget_max"] = new_bud
-                    saved += 1
-                except Exception as e:
-                    st.toast(f"Sauvegarde budget échouée : {e}", icon="⚠️")
-            if saved:
-                st.toast(f"✓ {saved} budget(s) sauvegardé(s).", icon="✅")
-                st.session_state[detail_key]["edited_rows"] = {}
+            # ── Col 1 : Nom campagne ──
+            with c_name:
+                st.markdown(
+                    f'<div style="padding-top:8px;">'
+                    f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">CAMPAGNE</div>'
+                    f'<div style="font-size:13.5px;font-weight:600;color:#0e0f12;line-height:1.2;">{camp_name}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Col 2 : Label (lecture seule, chip) ──
+            with c_lbl:
+                if current_label:
+                    chip_html = f'<span class="chip">{current_label}</span>'
+                else:
+                    chip_html = '<span class="chip outline">sans label</span>'
+                st.markdown(
+                    f'<div style="padding-top:8px;text-align:right;">'
+                    f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">LABEL</div>'
+                    f'<div>{chip_html}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Col 3 : Dépensé ──
+            with c_spend:
+                st.markdown(
+                    f'<div style="padding-top:8px;text-align:right;">'
+                    f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">DÉPENSÉ</div>'
+                    f'<div style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:#0e0f12;">{spend:,.0f} CHF</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Col 4 : Budget max (number_input éditable) ──
+            with c_bud:
+                st.markdown(
+                    '<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                    'letter-spacing:0.06em;color:#8b8e98;margin-bottom:2px;padding-top:2px;">BUDGET MAX</div>',
+                    unsafe_allow_html=True,
+                )
+                bud_key = f"cout_bud_{safe_key}"
+                if bud_key not in st.session_state:
+                    st.session_state[bud_key] = bud_existing
+                st.number_input(
+                    "Budget max", min_value=0.0, step=100.0, format="%.0f",
+                    key=bud_key, label_visibility="collapsed",
+                    on_change=_cb_save_camp_budget, args=(client, user_id, camp_name, bud_key),
+                )
+
+            # ── Col 5 : Pacing (status + barre colorée) ──
+            with c_pacing:
+                current_bud = float(st.session_state.get(bud_key, 0) or 0)
+                if current_bud > 0:
+                    pct = spend / current_bud
+                    bar_color = "#c0392b" if pct > 1 else "#1a7a4a" if pct >= 0.7 else "#b86b00"
+                    if pct > 1:
+                        status_cls, status_txt = "cout-over", "⚠ Dépassé"
+                    elif pct >= 0.7:
+                        status_cls, status_txt = "cout-ok", "✓ OK"
+                    else:
+                        status_cls, status_txt = "cout-low", "↓ Sous-dépense"
+                    st.markdown(
+                        f'<div style="padding-top:8px;">'
+                        f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                        f'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">PACING</div>'
+                        f'<div style="font-size:12px;color:#5a5d66;">'
+                        f'<span class="{status_cls}">{status_txt}</span> — {pct*100:.0f}%</div>'
+                        f'<div class="cout-bar-wrap"><span class="cout-bar-fill" '
+                        f'style="width:{min(pct,1)*100:.1f}%;background:{bar_color};"></span></div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div style="padding-top:8px;">'
+                        '<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                        'letter-spacing:0.06em;color:#8b8e98;margin-bottom:4px;">PACING</div>'
+                        '<div style="font-size:11.5px;color:#8b8e98;">— pas de budget</div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
 
 
 # ── Tab entry point ───────────────────────────────────────────────────────────
