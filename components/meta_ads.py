@@ -990,125 +990,61 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     if agg_lbl.empty:
         st.info("Aucune dépense.")
     else:
-        # CSS Pulse pour les cartes label (réutilise les mêmes classes que Instagram)
-        st.markdown("""
-        <style>
-        .lbl-card {
-            background: #fff;
-            border: 1px solid rgba(14,15,18,0.08);
-            border-radius: 14px;
-            padding: 18px 20px;
-            margin-bottom: 12px;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .lbl-card:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(14,15,18,0.06);
-        }
-        .lbl-card.best {
-            border: 1px solid #3b5bff;
-            background: linear-gradient(135deg, #fff 0%, #f5f7ff 100%);
-        }
-        .lbl-card-head {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 14px;
-        }
-        .lbl-card-name {
-            font-size: 16px; font-weight: 600; color: #0e0f12;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .lbl-card-trophy { font-size: 14px; color: #b8860b; }
-        .lbl-card-camps {
-            font-size: 11px; color: #8b8e98;
-            background: rgba(14,15,18,0.05);
-            padding: 3px 10px; border-radius: 999px;
-            font-weight: 500;
-        }
-        .lbl-card-metrics {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-        }
-        .lbl-metric-lbl {
-            font-size: 10px; font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #8b8e98;
-            margin-bottom: 4px;
-        }
-        .lbl-metric-val {
-            font-family: "JetBrains Mono", ui-monospace, monospace;
-            font-size: 1.05rem; font-weight: 500;
-            color: #0e0f12; line-height: 1.1;
-        }
-        .lbl-metric-unit {
-            font-size: 0.75rem; color: #8b8e98; margin-left: 2px;
-        }
-        .lbl-bar-wrap {
-            height: 4px; background: rgba(14,15,18,0.06);
-            border-radius: 99px; overflow: hidden;
-            margin-top: 10px;
-        }
-        .lbl-bar-fill {
-            height: 100%; background: #3b5bff;
-            border-radius: 99px; transition: width 0.3s;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
         # "Best" = meilleur CTR parmi les vrais labels (perf = efficacité)
         real_lbls = agg_lbl[agg_lbl["label_display"] != _NO_LABEL]
         best_lbl = real_lbls.iloc[real_lbls["ctr"].argmax()]["label_display"] \
             if not real_lbls.empty else None
         max_spend = agg_lbl["spend"].max() or 1
 
-        rows_list = list(agg_lbl.iterrows())
-        for i in range(0, len(rows_list), 2):
-            cols = st.columns(2)
-            for col_idx, j in enumerate([i, i + 1]):
-                if j >= len(rows_list):
-                    continue
-                _, r = rows_list[j]
-                lbl_name = r["label_display"]
-                is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
-                is_no_label = lbl_name == _NO_LABEL
-                bar_pct = (r["spend"] / max_spend * 100) if max_spend > 0 else 0
-                cpv_str = f"{r['cpc']:.2f}" if r["cpc"] > 0 else "—"
+        # Header style "eyebrow" (comme le tab Labels)
+        hcols = st.columns([3, 1.2, 1.6, 1.4, 1.4, 1.4, 1.4])
+        headers = ["Label", "Camp.", "Dépensé", "Impr.", "CTR %", "CPC", "CPM"]
+        for col_h, lbl in zip(hcols, headers):
+            col_h.markdown(
+                f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
+                unsafe_allow_html=True,
+            )
 
-                trophy = "<span class='lbl-card-trophy'>🏆</span>" if is_best else ""
-                card_cls = "lbl-card best" if is_best else "lbl-card"
-                label_color_style = "color:#8b8e98;" if is_no_label else ""
+        # Une ligne par label
+        for _, r in agg_lbl.iterrows():
+            lbl_name = r["label_display"]
+            is_best = (lbl_name == best_lbl) and lbl_name != _NO_LABEL
+            is_no_label = lbl_name == _NO_LABEL
+            bar_pct = (r["spend"] / max_spend * 100) if max_spend > 0 else 0
+            trophy = "🏆 " if is_best else ""
+            name_color = "#8b8e98" if is_no_label else "#0e0f12"
+            name_weight = "500" if is_no_label else "600"
 
-                with cols[col_idx]:
-                    st.markdown(f"""
-                    <div class="{card_cls}">
-                        <div class="lbl-card-head">
-                            <div class="lbl-card-name" style="{label_color_style}">
-                                {trophy} {lbl_name}
-                            </div>
-                            <div class="lbl-card-camps">{int(r['campaigns'])} camp.</div>
-                        </div>
-                        <div class="lbl-card-metrics">
-                            <div>
-                                <div class="lbl-metric-lbl">Dépensé</div>
-                                <div class="lbl-metric-val">{r['spend']:,.0f}<span class="lbl-metric-unit">CHF</span></div>
-                            </div>
-                            <div>
-                                <div class="lbl-metric-lbl">Impr.</div>
-                                <div class="lbl-metric-val">{int(r['impressions']):,}</div>
-                            </div>
-                            <div>
-                                <div class="lbl-metric-lbl">CTR</div>
-                                <div class="lbl-metric-val">{r['ctr']:.2f}<span class="lbl-metric-unit">%</span></div>
-                            </div>
-                            <div>
-                                <div class="lbl-metric-lbl">CPC</div>
-                                <div class="lbl-metric-val">{cpv_str}<span class="lbl-metric-unit">CHF</span></div>
-                            </div>
-                        </div>
-                        <div class="lbl-bar-wrap"><div class="lbl-bar-fill" style="width:{bar_pct:.1f}%;"></div></div>
-                    </div>
-                    """, unsafe_allow_html=True)
+            cpc_str = f"{r['cpc']:.2f} CHF" if r["cpc"] > 0 else "—"
+            cpm_str = f"{r['cpm']:.2f} CHF" if r["cpm"] > 0 else "—"
+
+            c_name, c_camps, c_spend, c_impr, c_ctr, c_cpc, c_cpm = st.columns(
+                [3, 1.2, 1.6, 1.4, 1.4, 1.4, 1.4]
+            )
+            with c_name:
+                st.markdown(
+                    f'<div style="font-size:13.5px;font-weight:{name_weight};color:{name_color};padding-top:4px;">'
+                    f'{trophy}{lbl_name}</div>'
+                    f'<div style="height:3px;background:rgba(14,15,18,0.06);border-radius:99px;margin-top:6px;overflow:hidden;">'
+                    f'<div style="height:100%;width:{bar_pct:.1f}%;background:#3b5bff;border-radius:99px;"></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            for col, val in [
+                (c_camps, f"{int(r['campaigns'])}"),
+                (c_spend, f"{r['spend']:,.0f} CHF"),
+                (c_impr,  f"{int(r['impressions']):,}"),
+                (c_ctr,   f"{r['ctr']:.2f}%"),
+                (c_cpc,   cpc_str),
+                (c_cpm,   cpm_str),
+            ]:
+                with col:
+                    st.markdown(
+                        f'<div style="font-family:var(--font-mono,ui-monospace,monospace);'
+                        f'font-size:13px;font-weight:500;color:#0e0f12;padding-top:6px;">{val}</div>',
+                        unsafe_allow_html=True,
+                    )
 
     # ── Bloc 4 : Détail par campagne (budget max éditable, label lecture seule) ─
     st.markdown('<div class="cout-section-title">Détail par campagne</div>', unsafe_allow_html=True)
