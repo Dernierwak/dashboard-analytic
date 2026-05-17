@@ -276,68 +276,74 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 for d in df_diff["delta"]
             ]
 
-            # 2 subplots stackés : line plot cumulé en haut + bar plot delta en bas
-            fig_follow = make_subplots(
-                rows=2, cols=1, shared_xaxes=True,
-                row_heights=[0.6, 0.4],
-                vertical_spacing=0.08,
-                subplot_titles=("Total abonnés", "Variation quotidienne"),
-            )
+            # Un seul graph combiné : bars (delta, axe gauche) + line (total, axe droit)
+            fig_follow = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # ── Row 1 : Line plot ──
-            fig_follow.add_trace(
-                go.Scatter(
-                    x=df_grow["fetched_at"], y=df_grow["followers"],
-                    mode="lines+markers",
-                    line=dict(color="#3b5bff", width=2.5),
-                    marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
-                    fill="tozeroy",
-                    fillcolor="rgba(59,91,255,0.07)",
-                    hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés</b><extra></extra>",
-                ),
-                row=1, col=1,
-            )
-
-            # ── Row 2 : Bar plot ──
+            # ── Bars (delta) sur l'axe Y de gauche ──
             fig_follow.add_trace(
                 go.Bar(
                     x=df_diff["fetched_at"], y=df_diff["delta"],
+                    name="Variation",
                     marker_color=bar_colors,
                     text=text_labels,
                     textposition="outside",
-                    textfont=dict(size=10, color="#0e0f12"),
+                    textfont=dict(size=9, color="#0e0f12"),
                     hovertemplate="%{x|%d %b %Y}<br><b>%{y:+,} abonnés</b><extra></extra>",
                 ),
-                row=2, col=1,
+                secondary_y=False,
             )
+
+            # ── Line (total cumulé) sur l'axe Y de droite ──
+            fig_follow.add_trace(
+                go.Scatter(
+                    x=df_grow["fetched_at"], y=df_grow["followers"],
+                    name="Total",
+                    mode="lines+markers",
+                    line=dict(color="#3b5bff", width=2.5),
+                    marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
+                    hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés au total</b><extra></extra>",
+                ),
+                secondary_y=True,
+            )
+
+            # Ligne 0 sur l'axe de gauche
             fig_follow.add_hline(
                 y=0, line_color="rgba(14,15,18,0.2)", line_width=1,
-                row=2, col=1,
+                secondary_y=False,
             )
-
-            # Style des subplot_titles (police Pulse, plus discret)
-            for ann in fig_follow.layout.annotations:
-                ann.font = dict(size=11, color="#8b8e98", family="Inter, sans-serif")
-                ann.xanchor = "left"
-                ann.x = 0
 
             fig_follow.update_layout(
-                template="plotly_white", height=380,
-                margin=dict(l=0, r=0, t=30, b=0),
+                template="plotly_white", height=300,
+                margin=dict(l=0, r=0, t=10, b=0),
                 paper_bgcolor="#fff", plot_bgcolor="#fff",
                 font=dict(color="#666", family="Inter, sans-serif"),
-                showlegend=False,
                 bargap=0.4,
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1,
+                    font=dict(size=11, color="#5a5d66"),
+                ),
+                hovermode="x unified",
             )
-            # Axes : zoom désactivé partout
+            # Axe X
             fig_follow.update_xaxes(
                 showgrid=False, color="#999",
                 linecolor="rgba(0,0,0,0.07)",
                 fixedrange=True,
             )
+            # Axe Y gauche (delta — barres)
             fig_follow.update_yaxes(
+                title_text="Variation /jour", title_font=dict(size=10, color="#8b8e98"),
                 showgrid=True, gridcolor="#f4f3f1", color="#999",
                 fixedrange=True, zeroline=False,
+                secondary_y=False,
+            )
+            # Axe Y droit (total — ligne)
+            fig_follow.update_yaxes(
+                title_text="Total abonnés", title_font=dict(size=10, color="#3b5bff"),
+                showgrid=False, color="#3b5bff",
+                fixedrange=True, zeroline=False,
+                secondary_y=True,
             )
 
             st.markdown('<div class="card" style="padding:16px 20px 8px;">', unsafe_allow_html=True)
