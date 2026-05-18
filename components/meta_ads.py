@@ -643,6 +643,21 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     else:
         count_txt = f"{nb_active_camp} actives · {nb_paused_camp} en pause"
 
+    campaign_labels: list[str] = st.session_state.get("campaign_labels", [])
+    campaign_config: dict      = st.session_state.get("campaign_config", {})
+    label_options = [_NO_LABEL] + sorted(campaign_labels)
+
+    # ── Performance par label (au-dessus de la liste des campagnes) ─────────
+    st.markdown(
+        '<div class="section-head">'
+        '<div class="section-title">Performance par label</div></div>',
+        unsafe_allow_html=True,
+    )
+    _agg_perf = _build_agg_by_label(df_view, campaign_config)
+    _render_perf_by_label(_agg_perf)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Section Campagnes ───────────────────────────────────────────────────
     st.markdown(
         f'<div class="section-head">'
         f'<div class="section-title">Campagnes '
@@ -650,10 +665,6 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
         f'</div></div>',
         unsafe_allow_html=True,
     )
-
-    campaign_labels: list[str] = st.session_state.get("campaign_labels", [])
-    campaign_config: dict      = st.session_state.get("campaign_config", {})
-    label_options = [_NO_LABEL] + sorted(campaign_labels)
 
     # Une carte par campagne (st.container border + st.columns)
     for _, row in df_camp_sorted.iterrows():
@@ -746,16 +757,6 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-
-    # ── Performance par label (déplacé de Coût, SANS Dépensé) ───────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-head">'
-        '<div class="section-title">Performance par label</div></div>',
-        unsafe_allow_html=True,
-    )
-    _agg_perf = _build_agg_by_label(df_view, campaign_config)
-    _render_perf_by_label(_agg_perf)
 
 
 # ── Helper : agrégat par label (utilisé par Perf et Coût) ─────────────────────
