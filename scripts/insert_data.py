@@ -67,6 +67,7 @@ def upsert_campaign_config(
     *,
     label: str | None = None,
     budget_max: float | None = None,
+    effective_status: str | None = None,
 ) -> None:
     """Upsert ligne meta_campaign_config. Met à jour seulement les champs fournis."""
     payload: dict = {"user_id": user_id, "campaign_name": campaign_name}
@@ -74,9 +75,31 @@ def upsert_campaign_config(
         payload["label"] = label if label else None
     if budget_max is not None:
         payload["budget_max"] = float(budget_max or 0)
+    if effective_status is not None:
+        payload["effective_status"] = effective_status or None
     supabase.table("meta_campaign_config").upsert(
         payload, on_conflict="user_id,campaign_name"
     ).execute()
+
+
+def upsert_campaign_statuses(
+    supabase: Client,
+    user_id: str,
+    status_map: dict[str, str],
+) -> None:
+    """Met à jour effective_status pour toutes les campagnes d'un coup.
+    status_map : {campaign_name: effective_status}
+    """
+    if not status_map:
+        return
+    records = [
+        {"user_id": user_id, "campaign_name": name, "effective_status": status or None}
+        for name, status in status_map.items() if name
+    ]
+    if records:
+        supabase.table("meta_campaign_config").upsert(
+            records, on_conflict="user_id,campaign_name"
+        ).execute()
 
 
 def rename_campaign_label(supabase: Client, user_id: str, old_label: str, new_label: str) -> None:

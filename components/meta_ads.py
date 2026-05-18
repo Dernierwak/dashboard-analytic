@@ -11,6 +11,7 @@ from scripts.insert_data import (
     update_campaign_labels,
     update_meta_budget_global,
     upsert_campaign_config,
+    upsert_campaign_statuses,
     rename_campaign_label,
     clear_campaign_label,
 )
@@ -397,6 +398,15 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                 except Exception as e:
                     st.error(f"❌ Sauvegarde Supabase échouée : {e}")
                     st.stop()
+                # Sauvegarder les statuts des campagnes dans meta_campaign_config
+                try:
+                    upsert_campaign_statuses(supabase, user_id, status_map)
+                    # Mettre à jour le cache local
+                    cfg = st.session_state.setdefault("campaign_config", {})
+                    for cname, cstatus in status_map.items():
+                        cfg.setdefault(cname, {})["effective_status"] = cstatus
+                except Exception as e:
+                    st.warning(f"Sauvegarde statuts campagnes : {e}")
             if supabase and user_id:
                 try:
                     persisted = fetch_meta_ads(supabase, user_id)
@@ -405,6 +415,11 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
                     df_loaded = pd.DataFrame(rows)
             else:
                 df_loaded = pd.DataFrame(rows)
+            # Injecter effective_status depuis status_map (n'est plus dans la DB meta_ads_insights)
+            if not df_loaded.empty and "campaign_name" in df_loaded.columns:
+                df_loaded["effective_status"] = df_loaded["campaign_name"].map(
+                    lambda c: status_map.get(c, "UNKNOWN")
+                )
             st.session_state["meta_ads_df"] = df_loaded
             st.rerun()
         else:
@@ -425,6 +440,18 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
+
+    # ── Injecter effective_status depuis campaign_config (si absent du df) ──
+    # Le df vient de Supabase (meta_ads_insights) qui ne stocke pas effective_status.
+    # Le statut est stocké dans meta_campaign_config (chargé dans campaign_config).
+    cfg_for_status = st.session_state.get("campaign_config", {}) or {}
+    if "campaign_name" in df.columns:
+        # Si la colonne effective_status manque OU est vide partout, on la (re)remplit
+        needs_inject = ("effective_status" not in df.columns) or df["effective_status"].fillna("").eq("").all()
+        if needs_inject:
+            df["effective_status"] = df["campaign_name"].map(
+                lambda c: (cfg_for_status.get(c) or {}).get("effective_status") or ""
+            )
 
     # ── Période selector (.seg) ──────────────────────────────────────────────
     from datetime import date, timedelta
@@ -598,11 +625,14 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
                           if camp_status.get(c, "").upper() in _UNKNOWN_STATUSES)
     total_camp = len(df_camp_sorted)
 
-    # Warning si TOUS les statuts sont inconnus (donnée legacy / API pas refetch)
+    # Warning si TOUS les statuts sont inconnus (donnée legacy / API pas refetch / colonne SQL manquante)
     if total_camp > 0 and nb_unknown_camp == total_camp:
         st.warning(
-            "⚠ Statut des campagnes non récupéré. Rafraîchis tes données Meta Ads "
-            "depuis l'onglet **Paramètres → Meta Ads** pour mettre à jour."
+            "⚠ Statut des campagnes non récupéré. Si tu viens de rafraîchir et "
+            "que tu vois toujours ce message : la colonne `effective_status` "
+            "doit être ajoutée dans Supabase. Exécute le SQL "
+            "`supabase/migrations/meta_campaign_status.sql` dans le SQL Editor, "
+            "puis rafraîchis tes données Meta Ads."
         )
 
     # Compteur dans le titre

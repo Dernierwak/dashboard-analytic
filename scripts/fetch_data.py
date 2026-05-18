@@ -64,11 +64,11 @@ def fetch_meta_budget_global(supabase: Client, user_id: str) -> float:
 
 
 def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
-    """Retourne {campaign_name: {"label": str|None, "budget_max": float}} pour cet user."""
+    """Retourne {campaign_name: {"label": str|None, "budget_max": float, "effective_status": str|None}}."""
     try:
         res = (
             supabase.table("meta_campaign_config")
-            .select("campaign_name, label, budget_max")
+            .select("campaign_name, label, budget_max, effective_status")
             .eq("user_id", user_id)
             .execute()
         )
@@ -76,6 +76,7 @@ def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
             row["campaign_name"]: {
                 "label": row.get("label"),
                 "budget_max": float(row.get("budget_max") or 0),
+                "effective_status": row.get("effective_status"),
             }
             for row in (res.data or [])
         }
