@@ -9,28 +9,12 @@ from components.sidebar import show_sidebar, show_main_nav
 from components.styles import DASHBOARD_CSS
 from components.callbacks import handle_meta_oauth_callback, handle_meta_page_selection, handle_stripe_payment
 from components.account_tab import show_account_tab
-from components.instagram_tab import show_instagram_tab
-from components.meta_ads import show_meta_ads_tab, meta_ads_source_fragment
+from components.instagram_tab import show_instagram_tab, run_instagram_fetch
+from components.meta_ads import show_meta_ads_tab, run_meta_ads_fetch
 from components.schedule import schedule
 from scripts.fetch_data import fetch_meta_ads
-from meta_script.fetch_token import get_oauth_url
 from scripts.stripe import create_checkout_session, cancel_subscription
 from pages.rapport import show_rapport
-
-CONNECT_META_CSS = """
-<style>
-.page-h { padding: 28px 0 24px; }
-.h-eyebrow { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #8b8e98; margin-bottom: 6px; }
-.page-h h1 { font-family: "Instrument Serif", Georgia, serif; font-size: 2rem; font-weight: 400; color: #0e0f12; margin: 0 0 6px; line-height: 1.2; }
-.h-sub { font-size: 14px; color: #5a5d66; margin: 0; }
-.card { background: #fff; border: 1px solid rgba(14,15,18,0.08); border-radius: 14px; padding: 28px; }
-.meta-logo { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg,#0052d4,#7b4fff,#ff6b35); display: inline-block; margin-bottom: 16px; }
-.perm-list { list-style: none; padding: 0; margin: 16px 0 0; }
-.perm-list li { font-size: 13px; color: #5a5d66; padding: 4px 0; display: flex; align-items: center; gap: 8px; }
-.perm-ok { color: #1a7a4a; font-weight: 700; }
-.perm-no { color: #c0392b; font-weight: 700; }
-</style>
-"""
 
 
 if __name__ == "__main__":
@@ -105,6 +89,36 @@ if __name__ == "__main__":
 
         show_main_nav(insta_accounts, has_meta_ads)
 
+        # ── Auto-fetch après OAuth réussi (flag posé par callbacks.py) ──────
+        if st.session_state.pop("_auto_fetch_after_oauth", False) and st.session_state.get("meta_long_token"):
+            with st.status("Configuration de ton compte…", expanded=True) as status:
+                st.write("✓ Connexion Meta établie")
+                # 1. Meta Ads
+                st.write("Récupération de tes campagnes Meta Ads…")
+                try:
+                    result = run_meta_ads_fetch(
+                        token=st.session_state["meta_long_token"],
+                        supabase=client, user_id=user_id,
+                    )
+                    if result.get("success"):
+                        st.write(f"✓ Meta Ads : {result.get('message', '')}")
+                    else:
+                        st.write(f"⚠ Meta Ads : {result.get('message', 'erreur')}")
+                except Exception as e:
+                    st.write(f"⚠ Meta Ads : {e}")
+                # 2. Instagram
+                st.write("Récupération de tes posts Instagram…")
+                try:
+                    biz_id = insta_accounts[0].get("instagram_business_id") if insta_accounts else None
+                    run_instagram_fetch(client, user_id, dash, instagram_business_id=biz_id, is_paid=is_paid)
+                    st.write("✓ Instagram chargé")
+                except Exception as e:
+                    st.write(f"⚠ Instagram : {e}")
+                status.update(label="✓ Tout est prêt", state="complete", expanded=False)
+            # Atterrir sur Meta Ads pour voir les données
+            st.session_state["page"] = "meta_ads"
+            st.rerun()
+
         page = st.session_state["page"]
 
         # Guard: si la page demandée n'est plus accessible, fallback rapport
@@ -114,6 +128,10 @@ if __name__ == "__main__":
         if page == "meta_ads" and not has_meta_ads:
             page = "rapport"
             st.session_state["page"] = "rapport"
+        # Plus de page "connect" : si quelqu'un l'a en session (state legacy), fallback
+        if page == "connect":
+            page = "settings"
+            st.session_state["page"] = "settings"
 
         if page == "rapport":
             st.session_state["active_section"] = "rapport"
@@ -140,76 +158,6 @@ if __name__ == "__main__":
         elif page == "meta_ads":
             st.session_state["active_section"] = "meta_ads"
             show_meta_ads_tab(is_paid=is_paid, client=client, user_id=user_id)
-
-        elif page == "connect":
-            st.session_state["active_section"] = "connect_meta"
-            st.markdown(CONNECT_META_CSS, unsafe_allow_html=True)
-
-            st.markdown("""
-            <div class='page-h'>
-                <div class='h-eyebrow'>Configuration · Étape 1</div>
-                <h1>Connecte ton compte Meta en 30 secondes.</h1>
-                <p class='h-sub'>Autorise l'accès en lecture à tes campagnes publicitaires et à ton compte Instagram.</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            col_card, col_space = st.columns([2, 1])
-            with col_card:
-                st.markdown("""
-                <div class='card'>
-                    <div class='meta-logo'></div>
-                    <div style='font-size:16px;font-weight:600;color:#0e0f12;margin-bottom:6px;'>Meta Business</div>
-                    <div style='font-size:13px;color:#5a5d66;margin-bottom:16px;'>Connecte Facebook / Instagram Ads pour analyser tes campagnes directement dans le dashboard.</div>
-                    <ul class='perm-list'>
-                        <li><span class='perm-ok'>✓</span> Lire tes campagnes publicitaires</li>
-                        <li><span class='perm-ok'>✓</span> Lire ton compte Instagram Business</li>
-                        <li><span class='perm-ok'>✓</span> Accéder aux insights et métriques</li>
-                        <li><span class='perm-no'>✗</span> Publier en ton nom</li>
-                        <li><span class='perm-no'>✗</span> Lire tes messages privés</li>
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.link_button(
-                    "🔗 Connecter avec Meta",
-                    get_oauth_url(state=st.session_state["session"].refresh_token),
-                    type="primary",
-                )
-
-            if "meta_long_token" in st.session_state:
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.success("✅ Compte Meta connecté")
-                meta_ads_source_fragment(
-                    token=st.session_state["meta_long_token"],
-                    supabase=client,
-                    user_id=user_id,
-                )
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                if insta_accounts:
-                    st.markdown("<div class='section-title' style='font-size:14px;font-weight:600;color:#0e0f12;margin-bottom:10px;'>Comptes Instagram connectés</div>", unsafe_allow_html=True)
-                    for acc in insta_accounts:
-                        name = acc.get("account_name") or "Compte Instagram"
-                        date_str = acc.get("created_at", "")[:10]
-                        total_posts = acc.get("total_posts_id_instagram", 0)
-                        col_info, col_btn = st.columns([5, 1])
-                        with col_info:
-                            st.markdown(
-                                f"<div class='account-name'>{name}</div>"
-                                f"<div class='account-meta'>Connecté le {date_str} · {total_posts} posts</div>",
-                                unsafe_allow_html=True,
-                            )
-                        with col_btn:
-                            if st.button("Retirer", key=f"disc_connect_{acc['id']}"):
-                                client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
-                                client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
-                                if st.session_state.get("meta_long_token"):
-                                    del st.session_state["meta_long_token"]
-                                st.rerun()
-
-                if insta_accounts and st.button("Récupérer mes données Instagram", type="primary", key="btn_fetch_insta_connect"):
-                    st.session_state["trigger_fetch"] = True
-                    st.rerun()
 
         elif page == "settings":
             st.session_state["active_section"] = "settings"

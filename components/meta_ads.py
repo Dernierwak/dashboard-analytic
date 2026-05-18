@@ -287,6 +287,103 @@ def _cell(label: str, value: str) -> str:
 
 # ── Data fetch fragment ────────────────────────────────────────────────────────
 
+def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=False):
+    """Fetch Meta Ads sans UI (utilisé par l'auto-fetch post-OAuth).
+    Si ad_account_id n'est pas fourni, prend le premier compte de /me/adaccounts.
+    Returns: dict avec keys 'success' (bool), 'rows' (int), 'message' (str).
+    """
+    from datetime import date, timedelta
+
+    if not ad_account_id:
+        try:
+            r = requests.get(
+                "https://graph.facebook.com/v24.0/me/adaccounts",
+                params={"fields": "id", "access_token": token},
+            )
+            accounts = r.json().get("data", [])
+        except Exception as e:
+            return {"success": False, "rows": 0, "message": f"Connexion impossible: {e}"}
+        if not accounts:
+            return {"success": False, "rows": 0, "message": "Aucun compte publicitaire trouvé"}
+        ad_account_id = accounts[0]["id"]
+
+    today = date.today()
+    latest = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
+    since = (date.fromisoformat(latest) + timedelta(days=1)) if latest else (today - timedelta(days=365))
+    if since > today:
+        return {"success": True, "rows": 0, "message": "Données déjà à jour"}
+
+    time_range = {"since": since.isoformat(), "until": today.isoformat()}
+    params = {
+        "access_token": token,
+        "level": "ad",
+        "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+        "time_increment": 1,
+        "time_range": json.dumps(time_range),
+    }
+    url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
+    try:
+        result = requests.get(url=url, params=params).json()
+    except Exception as e:
+        return {"success": False, "rows": 0, "message": f"Erreur API: {e}"}
+    if "error" in result:
+        return {"success": False, "rows": 0, "message": result["error"].get("message", "inconnue")}
+
+    rows = result.get("data", [])
+    next_url = result.get("paging", {}).get("next")
+    while next_url:
+        try:
+            page = requests.get(next_url).json()
+        except Exception:
+            break
+        rows += page.get("data", [])
+        next_url = page.get("paging", {}).get("next")
+
+    # Statuts depuis /campaigns
+    camp_url = f"https://graph.facebook.com/v24.0/{ad_account_id}/campaigns"
+    try:
+        camp_resp = requests.get(camp_url, params={
+            "access_token": token, "fields": "name,effective_status", "limit": 200,
+        }).json()
+        status_map = {c["name"]: c.get("effective_status", "UNKNOWN") for c in camp_resp.get("data", [])}
+    except Exception:
+        status_map = {}
+
+    for row in rows:
+        link_click = next((it for it in row.get("actions", []) if it.get("action_type") == "link_click"), None)
+        row["link_clicks"] = int(link_click.get("value", 0)) if link_click else 0
+        row["effective_status"] = status_map.get(row.get("campaign_name", ""), "UNKNOWN")
+
+    if not rows:
+        return {"success": True, "rows": 0, "message": "Aucune nouvelle donnée"}
+
+    # Persist
+    try:
+        upsert_meta_ads(supabase, user_id, rows)
+    except Exception as e:
+        return {"success": False, "rows": 0, "message": f"Sauvegarde Supabase échouée: {e}"}
+    try:
+        upsert_campaign_statuses(supabase, user_id, status_map)
+        cfg = st.session_state.setdefault("campaign_config", {})
+        for cname, cstatus in status_map.items():
+            cfg.setdefault(cname, {})["effective_status"] = cstatus
+    except Exception:
+        pass
+
+    # Recharger le df complet en session
+    try:
+        persisted = fetch_meta_ads(supabase, user_id)
+        df_loaded = pd.DataFrame(persisted) if persisted else pd.DataFrame(rows)
+    except Exception:
+        df_loaded = pd.DataFrame(rows)
+    if not df_loaded.empty and "campaign_name" in df_loaded.columns:
+        df_loaded["effective_status"] = df_loaded["campaign_name"].map(
+            lambda c: status_map.get(c, "UNKNOWN")
+        )
+    st.session_state["meta_ads_df"] = df_loaded
+    return {"success": True, "rows": len(rows), "message": f"{len(rows)} entrées chargées"}
+
+
 @st.fragment
 def meta_ads_source_fragment(token, supabase=None, user_id=None):
     if supabase and user_id and "meta_ads_df" not in st.session_state:

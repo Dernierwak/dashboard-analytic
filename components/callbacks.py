@@ -108,6 +108,8 @@ def handle_meta_page_selection(client, user_id):
             client.table("profiles").update({"active_account_id": new_account_id}).eq("id", user_id).execute()
             del st.session_state["_save_meta_token"]
             st.session_state.pop("fb_pages_list", None)
+            # Déclenche l'auto-fetch Meta Ads + Instagram au prochain run (géré dans pages/main.py)
+            st.session_state["_auto_fetch_after_oauth"] = True
             st.success(f"Compte '{org.meta_account_name}' connecté !")
             st.rerun()
         except Exception as e:

@@ -78,5 +78,4 @@ def show_main_nav(insta_accounts: list, has_meta_ads: bool) -> None:
             _nav_btn("Meta Ads", "meta_ads", icon="▣")
 
         st.markdown('<div class="nav-section">Configuration</div>', unsafe_allow_html=True)
-        _nav_btn("Connecter Meta", "connect", icon="⏻")
         _nav_btn("Paramètres", "settings", icon="⚙")

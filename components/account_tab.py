@@ -80,6 +80,57 @@ def _acc_kpi(label: str, value: str) -> str:
     )
 
 
+# ── Card "Connecter Meta" réutilisable (Pulse design) ─────────────────────────
+_META_CONNECT_CSS = """<style>
+.meta-connect-card {
+    background: #fff; border: 1px solid rgba(14,15,18,0.08);
+    border-radius: 14px; padding: 28px; margin-bottom: 12px;
+}
+.meta-logo { width: 48px; height: 48px; border-radius: 12px;
+    background: linear-gradient(135deg,#0052d4,#7b4fff,#ff6b35);
+    display: inline-block; margin-bottom: 16px; }
+.perm-list { list-style: none; padding: 0; margin: 16px 0 0; }
+.perm-list li { font-size: 13px; color: #5a5d66; padding: 4px 0;
+    display: flex; align-items: center; gap: 8px; }
+.perm-ok { color: #1a7a4a; font-weight: 700; }
+.perm-no { color: #c0392b; font-weight: 700; }
+</style>"""
+
+
+def _render_meta_connect_card(session, context: str = "ads") -> None:
+    """Card Meta Business + bouton OAuth.
+    context : 'ads' ou 'instagram' — adapte le sous-titre.
+    """
+    st.markdown(_META_CONNECT_CSS, unsafe_allow_html=True)
+    subtitles = {
+        "ads":       "Connecte Facebook / Instagram Ads pour analyser tes campagnes directement dans le dashboard.",
+        "instagram": "Connecte ton compte Instagram Business pour suivre tes posts organiques et leurs performances.",
+    }
+    st.markdown(
+        f"""
+        <div class='meta-connect-card'>
+            <div class='meta-logo'></div>
+            <div style='font-size:16px;font-weight:600;color:#0e0f12;margin-bottom:6px;'>Meta Business</div>
+            <div style='font-size:13px;color:#5a5d66;margin-bottom:4px;'>{subtitles.get(context, "")}</div>
+            <ul class='perm-list'>
+                <li><span class='perm-ok'>✓</span> Lire tes campagnes publicitaires</li>
+                <li><span class='perm-ok'>✓</span> Lire ton compte Instagram Business</li>
+                <li><span class='perm-ok'>✓</span> Accéder aux insights et métriques</li>
+                <li><span class='perm-no'>✗</span> Publier en ton nom</li>
+                <li><span class='perm-no'>✗</span> Lire tes messages privés</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.link_button(
+        "🔗 Connecter avec Meta",
+        get_oauth_url(state=session.refresh_token),
+        type="primary",
+    )
+
+
 def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data, dash=None):
     st.markdown(_ACCOUNT_CSS, unsafe_allow_html=True)
 
@@ -196,49 +247,56 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="acc-section-title">Comptes connectés</div>', unsafe_allow_html=True)
-        if insta_accounts:
-            for acc in insta_accounts:
-                name = acc.get("account_name") or "Compte Instagram"
-                date = acc.get("created_at", "")[:10]
-                total_posts = acc.get("total_posts_id_instagram", 0)
-                col_info, col_btn = st.columns([5, 1])
-                with col_info:
-                    st.markdown(
-                        f'<div class="acc-card" style="margin-bottom:0;">'
-                        f'<div class="acc-card-left">'
-                        f'<div class="acc-card-name">{name}</div>'
-                        f'<div class="acc-card-meta">Connecté le {date} · {total_posts} posts</div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with col_btn:
-                    if st.button("Retirer", key=f"disc_{acc['id']}", use_container_width=True):
-                        client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
-                        client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
-                        if st.session_state.get("meta_long_token"):
-                            del st.session_state["meta_long_token"]
-                        st.rerun()
-        else:
-            st.markdown(
-                '<div class="acc-card"><div class="acc-card-meta">Aucun compte Instagram connecté.</div></div>',
-                unsafe_allow_html=True,
-            )
+        is_meta_connected = "meta_long_token" in st.session_state
 
-        st.markdown('<div class="acc-section-title">Actions</div>', unsafe_allow_html=True)
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.link_button(
-                "+ Connecter un compte",
-                get_oauth_url(state=st.session_state["session"].refresh_token),
-                use_container_width=True,
-            )
-        with col_b:
-            if insta_accounts and dash is not None:
-                if st.button("↻ Récupérer mes données", type="primary",
-                             key="btn_fetch_insta_source", use_container_width=True):
-                    st.session_state["_fetch_insta_inline"] = True
-                    st.rerun()
+        if not is_meta_connected:
+            # Pas encore connecté → affiche la card Meta Business
+            _render_meta_connect_card(session, context="instagram")
+        else:
+            # Connecté → liste les comptes + actions
+            st.markdown('<div class="acc-section-title">Comptes connectés</div>', unsafe_allow_html=True)
+            if insta_accounts:
+                for acc in insta_accounts:
+                    name = acc.get("account_name") or "Compte Instagram"
+                    date = acc.get("created_at", "")[:10]
+                    total_posts = acc.get("total_posts_id_instagram", 0)
+                    col_info, col_btn = st.columns([5, 1])
+                    with col_info:
+                        st.markdown(
+                            f'<div class="acc-card" style="margin-bottom:0;">'
+                            f'<div class="acc-card-left">'
+                            f'<div class="acc-card-name">{name}</div>'
+                            f'<div class="acc-card-meta">Connecté le {date} · {total_posts} posts</div>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                    with col_btn:
+                        if st.button("Retirer", key=f"disc_{acc['id']}", use_container_width=True):
+                            client.table("profiles").update({"active_account_id": None}).eq("id", user_id).execute()
+                            client.table("connected_accounts").delete().eq("id", acc["id"]).execute()
+                            if st.session_state.get("meta_long_token"):
+                                del st.session_state["meta_long_token"]
+                            st.rerun()
+            else:
+                st.markdown(
+                    '<div class="acc-card"><div class="acc-card-meta">Aucun compte Instagram connecté à ton Meta Business.</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown('<div class="acc-section-title">Actions</div>', unsafe_allow_html=True)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.link_button(
+                    "+ Connecter un autre compte",
+                    get_oauth_url(state=st.session_state["session"].refresh_token),
+                    use_container_width=True,
+                )
+            with col_b:
+                if insta_accounts and dash is not None:
+                    if st.button("↻ Récupérer mes données", type="primary",
+                                 key="btn_fetch_insta_source", use_container_width=True):
+                        st.session_state["_fetch_insta_inline"] = True
+                        st.rerun()
 
         # Fetch inline (s'exécute après le rerun, reste sur Paramètres)
         if st.session_state.pop("_fetch_insta_inline", False) and insta_accounts and dash is not None:
@@ -327,16 +385,8 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                     user_id=user_id,
                 )
         else:
-            st.markdown(
-                '<div class="acc-card"><div class="acc-card-meta">Aucun compte Meta Ads connecté.</div></div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="acc-section-title">Actions</div>', unsafe_allow_html=True)
-            st.link_button(
-                "+ Connecter Meta Ads",
-                get_oauth_url(state=st.session_state["session"].refresh_token),
-                use_container_width=True,
-            )
+            # Pas connecté → affiche la card Meta Business
+            _render_meta_connect_card(session, context="ads")
 
     # ── Connecter Google Ads ───────────────────────────────────────────────────
     with sub_google:
