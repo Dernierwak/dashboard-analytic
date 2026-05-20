@@ -586,7 +586,14 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
                 "Statut", options=status_opts, key="mad_status",
                 placeholder="Tous les statuts",
             )
-            if sel_status:
+            # Toggle rapide "Uniquement actives"
+            only_active = st.checkbox(
+                "Uniquement actives", value=False, key="mad_only_active",
+                help="Filtre rapide pour ne voir que les campagnes ACTIVE",
+            )
+            if only_active:
+                df_view = df_view[df_view["effective_status"].astype(str).str.upper() == "ACTIVE"]
+            elif sel_status:
                 df_view = df_view[df_view["effective_status"].isin(sel_status)]
 
     with col_camp:
@@ -1265,11 +1272,25 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
     # ── Bloc 1 : Période + Budget global ─────────────────────────────────────
-    period_opts = {"7j": 7, "30j": 30, "90j": 90}
+    period_opts = {"7j": 7, "30j": 30, "90j": 90, "Tout": 36500}
+
+    # Smart default : choisit la période la + courte qui contient des données
+    if "cout_period" not in st.session_state:
+        latest_in_df = df["date_start"].max() if not df.empty else None
+        if latest_in_df is not None and pd.notna(latest_in_df):
+            days_since = (pd.Timestamp(date.today()) - latest_in_df).days
+            if days_since <= 7:    default_p = "7j"
+            elif days_since <= 30: default_p = "30j"
+            elif days_since <= 90: default_p = "90j"
+            else:                  default_p = "Tout"
+        else:
+            default_p = "30j"
+        st.session_state["cout_period"] = default_p
+
     col_period, col_budget = st.columns([3, 2])
     with col_period:
         sel_period = st.radio(
-            "Période", list(period_opts.keys()), index=1,
+            "Période", list(period_opts.keys()),
             horizontal=True, key="cout_period",
         )
     with col_budget:
@@ -1284,7 +1305,16 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     cutoff = pd.Timestamp(date.today() - timedelta(days=days))
     df_v = df[df["date_start"] >= cutoff].copy()
     if df_v.empty:
-        st.warning("Aucune donnée pour cette période.")
+        latest_in_df = df["date_start"].max() if not df.empty else None
+        if latest_in_df is not None and pd.notna(latest_in_df):
+            latest_str = latest_in_df.strftime("%d %b %Y")
+            st.info(
+                f"Aucune donnée sur la période **{sel_period}**. "
+                f"Ta dernière donnée date du **{latest_str}** — "
+                "essaie 'Tout' ou rafraîchis tes données."
+            )
+        else:
+            st.info("Aucune donnée Meta Ads disponible.")
         return
 
     # ── Agrégats globaux ─────────────────────────────────────────────────────
