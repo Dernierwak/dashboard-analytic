@@ -348,8 +348,14 @@ def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=
 
     today = date.today()
     latest = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
-    # Force full : 3 ans en arrière (avant la limite Meta de 37 mois)
-    since = (date.fromisoformat(latest) + timedelta(days=1)) if latest else (today - timedelta(days=365 * 3))
+    # Fetch limité à l'année courante (depuis le 1er janvier)
+    if latest:
+        since = date.fromisoformat(latest) + timedelta(days=1)
+    else:
+        since = date(today.year, 1, 1)
+    # En force_full, on reprend depuis le 1er janvier de l'année courante
+    if force_full:
+        since = date(today.year, 1, 1)
     if since > today:
         return {"success": True, "rows": 0, "message": "Données déjà à jour"}
 
@@ -461,10 +467,11 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
     has_data = st.session_state.get("meta_ads_df") is not None
     btn_label = "Rafraîchir les données Meta Ads" if has_data else "Récupérer les données Meta Ads"
+    from datetime import date as _date
     force_full = st.checkbox(
-        "Récupérer tout l'historique (3 ans)",
+        f"Récupérer toute l'année {_date.today().year}",
         key="chk_force_full",
-        help="Refait un fetch complet sur les 3 dernières années (37 mois max Meta).",
+        help=f"Refait un fetch complet depuis le 1er janvier {_date.today().year}.",
     )
     if st.button(btn_label, type="primary", key="btn_fetch_meta_ads"):
         if not ad_accounts:
