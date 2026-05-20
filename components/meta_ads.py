@@ -287,12 +287,51 @@ def _cell(label: str, value: str) -> str:
 
 # ── Data fetch fragment ────────────────────────────────────────────────────────
 
-def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=False):
-    """Fetch Meta Ads sans UI (utilisé par l'auto-fetch post-OAuth).
-    Si ad_account_id n'est pas fourni, prend le premier compte de /me/adaccounts.
+def _fetch_insights_chunk(token: str, ad_account_id: str, since_iso: str, until_iso: str) -> tuple[list, str | None]:
+    """Fetch un chunk d'insights pour une période donnée (max 90 jours).
+    Returns: (rows, error_message_or_None)
+    """
+    params = {
+        "access_token": token,
+        "level": "ad",
+        "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+        "time_increment": 1,
+        "time_range": json.dumps({"since": since_iso, "until": until_iso}),
+        "limit": 500,
+    }
+    url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
+    try:
+        result = requests.get(url=url, params=params).json()
+    except Exception as e:
+        return [], f"Erreur API: {e}"
+    if "error" in result:
+        return [], result["error"].get("message", "inconnue")
+
+    rows = result.get("data", [])
+    next_url = result.get("paging", {}).get("next")
+    while next_url:
+        try:
+            page = requests.get(next_url).json()
+        except Exception:
+            break
+        rows += page.get("data", [])
+        next_url = page.get("paging", {}).get("next")
+    return rows, None
+
+
+def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=False, progress_cb=None):
+    """Fetch Meta Ads avec chunking par fenêtres de 90 jours pour contourner les limites API.
+    progress_cb: fonction(pct: int, text: str) optionnelle pour reporter la progression.
     Returns: dict avec keys 'success' (bool), 'rows' (int), 'message' (str).
     """
     from datetime import date, timedelta
+
+    def _progress(p, t):
+        if progress_cb:
+            try:
+                progress_cb(p, t)
+            except Exception:
+                pass
 
     if not ad_account_id:
         try:
@@ -309,35 +348,34 @@ def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=
 
     today = date.today()
     latest = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
-    since = (date.fromisoformat(latest) + timedelta(days=1)) if latest else (today - timedelta(days=365))
+    # Force full : 3 ans en arrière (avant la limite Meta de 37 mois)
+    since = (date.fromisoformat(latest) + timedelta(days=1)) if latest else (today - timedelta(days=365 * 3))
     if since > today:
         return {"success": True, "rows": 0, "message": "Données déjà à jour"}
 
-    time_range = {"since": since.isoformat(), "until": today.isoformat()}
-    params = {
-        "access_token": token,
-        "level": "ad",
-        "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-        "time_increment": 1,
-        "time_range": json.dumps(time_range),
-    }
-    url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
-    try:
-        result = requests.get(url=url, params=params).json()
-    except Exception as e:
-        return {"success": False, "rows": 0, "message": f"Erreur API: {e}"}
-    if "error" in result:
-        return {"success": False, "rows": 0, "message": result["error"].get("message", "inconnue")}
+    # ── Chunking par fenêtres de 90 jours (Meta limite Insights ad-level à ~90j/requête) ──
+    CHUNK_DAYS = 90
+    chunks = []
+    cur = since
+    while cur <= today:
+        end = min(cur + timedelta(days=CHUNK_DAYS - 1), today)
+        chunks.append((cur, end))
+        cur = end + timedelta(days=1)
 
-    rows = result.get("data", [])
-    next_url = result.get("paging", {}).get("next")
-    while next_url:
-        try:
-            page = requests.get(next_url).json()
-        except Exception:
-            break
-        rows += page.get("data", [])
-        next_url = page.get("paging", {}).get("next")
+    rows = []
+    nb_chunks = len(chunks)
+    last_error = None
+    for i, (c_since, c_until) in enumerate(chunks):
+        _progress(
+            int(10 + (i / max(nb_chunks, 1)) * 70),
+            f"Chargement {c_since:%b %Y} → {c_until:%b %Y}… ({len(rows)} lignes)",
+        )
+        chunk_rows, err = _fetch_insights_chunk(token, ad_account_id, c_since.isoformat(), c_until.isoformat())
+        if err:
+            last_error = err
+            # On continue les autres chunks même si un échoue
+            continue
+        rows += chunk_rows
 
     # Statuts depuis /campaigns
     camp_url = f"https://graph.facebook.com/v24.0/{ad_account_id}/campaigns"
@@ -355,7 +393,8 @@ def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=
         row["effective_status"] = status_map.get(row.get("campaign_name", ""), "UNKNOWN")
 
     if not rows:
-        return {"success": True, "rows": 0, "message": "Aucune nouvelle donnée"}
+        msg = f"Aucune nouvelle donnée. {('Erreur API: ' + last_error) if last_error else ''}".strip()
+        return {"success": last_error is None, "rows": 0, "message": msg}
 
     # Persist
     try:
@@ -422,107 +461,41 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 
     has_data = st.session_state.get("meta_ads_df") is not None
     btn_label = "Rafraîchir les données Meta Ads" if has_data else "Récupérer les données Meta Ads"
-    force_full = has_data and st.checkbox("Récupérer tout l'historique (1 an)", key="chk_force_full")
+    force_full = st.checkbox(
+        "Récupérer tout l'historique (3 ans)",
+        key="chk_force_full",
+        help="Refait un fetch complet sur les 3 dernières années (37 mois max Meta).",
+    )
     if st.button(btn_label, type="primary", key="btn_fetch_meta_ads"):
         if not ad_accounts:
             st.warning("Aucun compte publicitaire trouvé.")
             return
         progress_bar = st.progress(0, text="Connexion à Meta Ads...")
         ad_account_id = ad_accounts[0]["id"]
-        url = f"https://graph.facebook.com/v24.0/{ad_account_id}/insights"
 
-        from datetime import date, timedelta
-        today = date.today()
-        latest_date = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
-        if latest_date:
-            since = date.fromisoformat(latest_date) + timedelta(days=1)
-        else:
-            since = today - timedelta(days=365)
+        def _cb(pct, txt):
+            try:
+                progress_bar.progress(min(100, max(0, pct)), text=txt)
+            except Exception:
+                pass
 
-        if since > today:
-            progress_bar.empty()
-            st.info("✅ Données déjà à jour.")
-            return
+        result = run_meta_ads_fetch(
+            token=token, supabase=supabase, user_id=user_id,
+            ad_account_id=ad_account_id, force_full=force_full,
+            progress_cb=_cb,
+        )
 
-        time_range = {"since": since.isoformat(), "until": today.isoformat()}
-        params = {
-            "access_token": token,
-            "level": "ad",
-            # effective_status n'est pas un champ Insights — on le fetch via /campaigns séparément
-            "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
-            "time_increment": 1,
-            "time_range": json.dumps(time_range),
-        }
-        progress_bar.progress(20, text="Compte trouvé, récupération des données...")
-        result = requests.get(url=url, params=params).json()
-        if "error" in result:
-            st.error(f"Erreur API Meta : {result['error'].get('message', 'inconnue')}")
-            progress_bar.empty()
-            return
-        rows = result.get("data", [])
-        progress_bar.progress(50, text=f"Chargement des données... ({len(rows)} lignes)")
-        next_url = result.get("paging", {}).get("next")
-        while next_url:
-            page = requests.get(next_url).json()
-            rows += page.get("data", [])
-            next_url = page.get("paging", {}).get("next")
-            progress_bar.progress(min(75, 50 + len(rows) // 100), text=f"Chargement... ({len(rows)} lignes)")
-
-        # Fetch statuts depuis /campaigns (effective_status non supporté par /insights)
-        progress_bar.progress(80, text="Récupération des statuts de campagnes...")
-        camp_url = f"https://graph.facebook.com/v24.0/{ad_account_id}/campaigns"
-        camp_resp = requests.get(camp_url, params={
-            "access_token": token,
-            "fields": "name,effective_status",
-            "limit": 200,
-        }).json()
-        status_map = {c["name"]: c.get("effective_status", "UNKNOWN") for c in camp_resp.get("data", [])}
-
-        for row in rows:
-            link_click_item = next(
-                (item for item in row.get("actions", []) if item.get("action_type") == "link_click"),
-                None,
-            )
-            row["link_clicks"] = int(link_click_item.get("value", 0)) if link_click_item else 0
-            row["effective_status"] = status_map.get(row.get("campaign_name", ""), "UNKNOWN")
-        if rows:
-            progress_bar.progress(100, text=f"✓ {len(rows)} entrées chargées")
+        if result.get("success"):
+            progress_bar.progress(100, text=f"✓ {result.get('message', '')}")
             time.sleep(0.5)
             progress_bar.empty()
-            if supabase and user_id:
-                try:
-                    upsert_meta_ads(supabase, user_id, rows)
-                except Exception as e:
-                    st.error(f"❌ Sauvegarde Supabase échouée : {e}")
-                    st.stop()
-                # Sauvegarder les statuts des campagnes dans meta_campaign_config
-                try:
-                    upsert_campaign_statuses(supabase, user_id, status_map)
-                    # Mettre à jour le cache local
-                    cfg = st.session_state.setdefault("campaign_config", {})
-                    for cname, cstatus in status_map.items():
-                        cfg.setdefault(cname, {})["effective_status"] = cstatus
-                except Exception as e:
-                    st.warning(f"Sauvegarde statuts campagnes : {e}")
-            if supabase and user_id:
-                try:
-                    persisted = fetch_meta_ads(supabase, user_id)
-                    df_loaded = pd.DataFrame(persisted) if persisted else pd.DataFrame(rows)
-                except Exception:
-                    df_loaded = pd.DataFrame(rows)
+            if result.get("rows", 0) > 0:
+                st.rerun()
             else:
-                df_loaded = pd.DataFrame(rows)
-            # Injecter effective_status depuis status_map (n'est plus dans la DB meta_ads_insights)
-            if not df_loaded.empty and "campaign_name" in df_loaded.columns:
-                df_loaded["effective_status"] = df_loaded["campaign_name"].map(
-                    lambda c: status_map.get(c, "UNKNOWN")
-                )
-            st.session_state["meta_ads_df"] = df_loaded
-            st.rerun()
+                st.info(result.get("message", "Aucune nouvelle donnée."))
         else:
             progress_bar.empty()
-            st.info("Aucune donnée disponible.")
-            st.session_state.pop("meta_ads_df", None)
+            st.error(f"❌ {result.get('message', 'Erreur inconnue')}")
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
