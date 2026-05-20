@@ -552,12 +552,28 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
 
     # ── Période selector (.seg) ──────────────────────────────────────────────
     from datetime import date, timedelta
-    period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90}
+    period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90, "Tout": 36500}
+
+    # Smart default : choisit la période la + courte qui contient des données
+    # (évite "Aucune donnée pour ces filtres" sur la période par défaut)
+    if "mad_period" not in st.session_state:
+        latest_date_in_df = df["date_start"].max() if not df.empty else None
+        if latest_date_in_df is not None and pd.notna(latest_date_in_df):
+            days_since = (pd.Timestamp(date.today()) - latest_date_in_df).days
+            if days_since <= 1:    default_period = "24h"
+            elif days_since <= 7:  default_period = "7j"
+            elif days_since <= 30: default_period = "30j"
+            elif days_since <= 90: default_period = "90j"
+            else:                  default_period = "Tout"
+        else:
+            default_period = "30j"
+        st.session_state["mad_period"] = default_period
+
     col_period, col_status, col_camp = st.columns([2, 2, 3])
     with col_period:
         sel_period = st.radio(
             "Période", list(period_opts.keys()),
-            index=1, horizontal=True, key="mad_period",
+            horizontal=True, key="mad_period",
         )
     days = period_opts[sel_period]
     cutoff = pd.Timestamp(date.today() - timedelta(days=days))
@@ -565,7 +581,7 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
 
     with col_status:
         if "effective_status" in df.columns and df["effective_status"].notna().any():
-            status_opts = sorted(df["effective_status"].dropna().unique())
+            status_opts = sorted([s for s in df["effective_status"].dropna().unique() if s])
             sel_status = st.multiselect(
                 "Statut", options=status_opts, key="mad_status",
                 placeholder="Tous les statuts",
@@ -582,7 +598,20 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
             df_view = df_view[df_view["campaign_name"].isin(sel_campaigns)]
 
     if df_view.empty:
-        st.warning("Aucune donnée pour ces filtres.")
+        # Message plus utile : distinguer "filtres trop stricts" vs "pas de données du tout"
+        latest_date_in_df = df["date_start"].max() if not df.empty else None
+        if latest_date_in_df is not None and pd.notna(latest_date_in_df):
+            latest_str = latest_date_in_df.strftime("%d %b %Y")
+            st.info(
+                f"Aucune donnée sur la période **{sel_period}**. "
+                f"Ta dernière donnée disponible date du **{latest_str}** — "
+                "essaie une période plus large (30j, 90j ou Tout) ou rafraîchis tes données depuis Paramètres."
+            )
+        else:
+            st.info(
+                "Aucune donnée Meta Ads disponible. Rafraîchis tes données "
+                "depuis **Paramètres → Meta Ads**."
+            )
         return
 
     # ── Agrégats globaux ─────────────────────────────────────────────────────
