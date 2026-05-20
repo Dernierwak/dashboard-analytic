@@ -528,8 +528,22 @@ def meta_ads_source_fragment(token, supabase=None, user_id=None):
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id: str | None = None):
+    # Si df vide/None mais user connecté, tenter de re-fetch depuis Supabase
+    if (df is None or (isinstance(df, pd.DataFrame) and df.empty)) and client and user_id:
+        try:
+            ads_data = fetch_meta_ads(client, user_id)
+            if ads_data:
+                df = pd.DataFrame(ads_data)
+                st.session_state["meta_ads_df"] = df
+        except Exception:
+            pass
+
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        st.info("Connectez votre compte Meta Ads dans 'Mon compte' pour voir les données.")
+        st.info(
+            "Aucune donnée Meta Ads disponible. "
+            "Va sur **Paramètres → Meta Ads** puis clique sur **'Récupérer les données Meta Ads'** "
+            "pour synchroniser tes campagnes."
+        )
         return
 
     # ── Typage ──────────────────────────────────────────────────────────────
@@ -1259,8 +1273,21 @@ def _show_labels_tab(client, user_id) -> None:
 # ── Tab Coût (refonte) ─────────────────────────────────────────────────────────
 
 def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = None) -> None:
+    # Si df vide/None mais user connecté, tenter de re-fetch depuis Supabase
+    if (df is None or (isinstance(df, pd.DataFrame) and df.empty)) and client and user_id:
+        try:
+            ads_data = fetch_meta_ads(client, user_id)
+            if ads_data:
+                df = pd.DataFrame(ads_data)
+                st.session_state["meta_ads_df"] = df
+        except Exception:
+            pass
+
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        st.info("Aucune donnée disponible. Récupère tes données Meta Ads d'abord.")
+        st.info(
+            "Aucune donnée Meta Ads. Va sur **Paramètres → Meta Ads** puis "
+            "**'Récupérer les données Meta Ads'**."
+        )
         return
 
     from datetime import date, timedelta

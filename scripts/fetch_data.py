@@ -25,18 +25,16 @@ def fetch_meta_ads_latest_date(supabase: Client, user_id: str) -> str | None:
     return None
 
 
-def fetch_meta_ads(supabase: Client, user_id: str, months: int = 6) -> list[dict]:
-    """Récupère les données Meta Ads des X derniers mois pour un utilisateur."""
-    since = (date.today() - timedelta(days=30 * months)).isoformat()
-    return (
-        supabase.table("meta_ads_insights")
-        .select("*")
-        .eq("user_id", user_id)
-        .gte("date_start", since)
-        .order("date_start", desc=True)
-        .execute()
-        .data
-    )
+def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) -> list[dict]:
+    """Récupère les données Meta Ads pour un utilisateur.
+    Si months est fourni, filtre depuis les X derniers mois. Sinon, tout l'historique.
+    Le dashboard a son propre filtre période côté UI — donc on récupère tout par défaut.
+    """
+    query = supabase.table("meta_ads_insights").select("*").eq("user_id", user_id)
+    if months is not None:
+        since = (date.today() - timedelta(days=30 * months)).isoformat()
+        query = query.gte("date_start", since)
+    return query.order("date_start", desc=True).execute().data
 
 
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
