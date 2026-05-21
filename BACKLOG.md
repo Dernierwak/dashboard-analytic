@@ -39,6 +39,25 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 - Comme "Ce qui marche pour toi", permettre de choisir la métrique (likes, saves, eng)
 - Cohérence avec le filtre déjà ajouté en Performance
 
+### Auto-labellisation IA des posts
+- L'utilisateur définit ses labels et donne 1-2 exemples + une description courte par label
+  (ex. "Promo : posts qui annoncent une offre commerciale, code promo, soldes…")
+- Un bouton "Labelliser automatiquement" appelle un LLM qui assigne le bon label à chaque post non labellisé
+- Stockage : `instagram_organic_posts.labels` (déjà existant)
+- Coût : limiter par batch / par jour pour éviter dérapage
+- UI : bouton dans le tab Labels, modal pour ajouter examples + description par label, progress bar pendant l'analyse
+
+### Stories Instagram
+- Récupérer les stories via Instagram Graph API (endpoint `/stories`)
+- Stocker dans nouvelle table `instagram_stories` ou dans `instagram_organic_posts` avec `type=STORY`
+- Métriques disponibles : reach, exits, taps_forward, replies
+- À noter dans Paramètres → Instagram (déjà fait : 'bientôt')
+
+### Posts Collab Instagram
+- Posts collab (partagés entre plusieurs comptes) ne sont **pas accessibles** via l'API Instagram Graph en lecture
+- Limitation API Meta — pas réalisable côté technique aujourd'hui
+- Surveiller les évolutions de l'API Meta Graph (potentiellement débloqué dans une future version)
+
 ---
 
 ## Général

@@ -298,6 +298,30 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                         st.session_state["_fetch_insta_inline"] = True
                         st.rerun()
 
+            # ── Sources de données ──────────────────────────────────────────
+            st.markdown('<div class="acc-section-title">Sources de données</div>', unsafe_allow_html=True)
+            st.markdown(
+                """
+                <div class='acc-card' style='display:block;padding:14px 18px;'>
+                    <ul style='margin:0;padding:0;list-style:none;font-size:13px;color:#5a5d66;'>
+                        <li style='padding:4px 0;display:flex;align-items:center;gap:10px;'>
+                            <span style='color:#1a7a4a;font-weight:700;font-size:14px;'>✓</span>
+                            <span><b style='color:#0e0f12;'>Posts organiques</b> — portée, likes, saves, commentaires, format, date</span>
+                        </li>
+                        <li style='padding:4px 0;display:flex;align-items:center;gap:10px;'>
+                            <span style='color:#b86b00;font-weight:700;font-size:14px;'>⏳</span>
+                            <span><b style='color:#0e0f12;'>Stories</b> — bientôt disponible</span>
+                        </li>
+                        <li style='padding:4px 0;display:flex;align-items:center;gap:10px;'>
+                            <span style='color:#c0392b;font-weight:700;font-size:14px;'>✗</span>
+                            <span><b style='color:#0e0f12;'>Posts collab</b> — non disponible (limitation de l'API Meta)</span>
+                        </li>
+                    </ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         # Fetch inline (s'exécute après le rerun, reste sur Paramètres)
         if st.session_state.pop("_fetch_insta_inline", False) and insta_accounts and dash is not None:
             # ── 1. Verrouillage de la navigation pendant le fetch ────────────
