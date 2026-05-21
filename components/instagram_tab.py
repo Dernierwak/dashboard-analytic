@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from components.dashboard import show_dashboard
+from components.meta_ads import render_period_selector
 from scripts.insert_data import insert_instagram_org
 from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
 from meta_script.fetch_instagram import OrganicInstagramm
@@ -154,14 +155,17 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    nb_posts = len(df)
-    reach_mean = df["reach"].mean() if "reach" in df.columns else 0
-    nb_flew = int((df["reach"] > reach_mean).sum()) if "reach" in df.columns else 0
-    reach_total = int(df["reach"].sum()) if "reach" in df.columns else 0
-    likes_total = int(df["likes"].sum()) if "likes" in df.columns else 0
-    saves_total = int(df["saved"].sum()) if "saved" in df.columns else 0
-    engagement_pct = ((likes_total + saves_total) / reach_total * 100) if reach_total > 0 else 0.0
-    saves_per_post = saves_total / nb_posts if nb_posts > 0 else 0.0
+    # Convertir 'date' en datetime tz-naive (Europe/Zurich) — utile pour le filtre période
+    if "date" in df.columns:
+        _dt = pd.to_datetime(df["date"], errors="coerce", utc=True)
+        try:
+            _dt = _dt.dt.tz_convert("Europe/Zurich").dt.tz_localize(None)
+        except Exception:
+            try:
+                _dt = _dt.dt.tz_localize(None)
+            except Exception:
+                pass
+        df["_date_dt"] = _dt
 
     tab_perf, tab_labels = st.tabs(["Performance", "Labels"])
 
@@ -169,9 +173,40 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         _show_instagram_labels_tab(client, user_id, df)
 
     with tab_perf:
+        # ── Sélecteur de période global Instagram ───────────────────────────
+        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
+            since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
+            mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
+            df = df[mask].copy()
+
+        if df.empty:
+            st.info(
+                "Aucun post sur cette période. Élargis la sélection ou choisis 'Tout'."
+            )
+            return
+
+        # ── Recalcul des agrégats sur le df filtré ──────────────────────────
+        nb_posts = len(df)
+        reach_mean = df["reach"].mean() if "reach" in df.columns else 0
+        nb_flew = int((df["reach"] > reach_mean).sum()) if "reach" in df.columns else 0
+        reach_total = int(df["reach"].sum()) if "reach" in df.columns else 0
+        likes_total = int(df["likes"].sum()) if "likes" in df.columns else 0
+        saves_total = int(df["saved"].sum()) if "saved" in df.columns else 0
+        engagement_pct = ((likes_total + saves_total) / reach_total * 100) if reach_total > 0 else 0.0
+        saves_per_post = saves_total / nb_posts if nb_posts > 0 else 0.0
+
+        # Hero : label dynamique selon la sélection
+        _period_label = st.session_state.get("insta_period", "")
+        if _period_label == "Custom":
+            _hero_period = f"du {since_ts.strftime('%d %b')} au {until_ts.strftime('%d %b %Y')}"
+        elif _period_label == "Tout":
+            _hero_period = "tout l'historique"
+        else:
+            _hero_period = f"{_period_label} derniers jours"
+
         st.markdown(f"""
         <div class='page-h'>
-            <div class='h-eyebrow'>Instagram organique · 30 derniers jours · {account_name}</div>
+            <div class='h-eyebrow'>Instagram organique · {_hero_period} · {account_name}</div>
             <h1>{nb_posts} posts publiés, {nb_flew} ont décollé.</h1>
             <p class='h-sub'>Portée totale {reach_total:,} · Engagement {engagement_pct:.1f}% · {followers_current:,} abonnés {_delta_html(followers_delta)}</p>
         </div>

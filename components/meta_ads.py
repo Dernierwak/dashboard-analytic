@@ -67,10 +67,12 @@ div[data-testid="stRadio"] [data-baseweb="radio"] label {
     cursor:pointer;padding:0;line-height:1;
 }
 div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] {
-    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.1);
+    background:#3b5bff !important;
+    box-shadow:0 2px 6px rgba(59,91,255,0.35);
 }
-div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label {
-    color:#0e0f12;font-weight:600;
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label,
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label * {
+    color:#ffffff !important;font-weight:600;
 }
 
 /* ── KPI grid ── */
@@ -283,6 +285,88 @@ def _cell(label: str, value: str) -> str:
         f'<div class="cell-val">{value}</div>'
         f'</div>'
     )
+
+
+# ── Sélecteur de période universel (presets + custom) ─────────────────────────
+
+def render_period_selector(
+    key: str,
+    df_dates: "pd.Series | None" = None,
+) -> "tuple[pd.Timestamp, pd.Timestamp]":
+    """Rend un sélecteur de période avec presets + Custom date range.
+    Returns: (since: Timestamp tz-naive, until: Timestamp tz-naive)
+    - key : préfixe unique pour les widgets (ex. 'mad', 'cout', 'insta')
+    - df_dates : Série de dates pour smart default + bornes du date_input
+    """
+    from datetime import date as _date, timedelta as _td
+
+    period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90, "Tout": 36500, "Custom": None}
+    period_key = f"{key}_period"
+    today = _date.today()
+
+    # Smart default au 1er affichage
+    if period_key not in st.session_state:
+        if df_dates is not None and not df_dates.empty:
+            try:
+                latest = pd.to_datetime(df_dates).max()
+                if pd.notna(latest):
+                    days_since = (pd.Timestamp(today) - pd.Timestamp(latest).tz_localize(None) if latest.tz else pd.Timestamp(today) - latest).days
+                    if days_since <= 1:    default_p = "24h"
+                    elif days_since <= 7:  default_p = "7j"
+                    elif days_since <= 30: default_p = "30j"
+                    elif days_since <= 90: default_p = "90j"
+                    else:                  default_p = "Tout"
+                else:
+                    default_p = "30j"
+            except Exception:
+                default_p = "30j"
+        else:
+            default_p = "30j"
+        st.session_state[period_key] = default_p
+
+    sel_period = st.radio(
+        "Période", list(period_opts.keys()),
+        horizontal=True, key=period_key,
+    )
+
+    if sel_period == "Custom":
+        # 2 date inputs côte à côte (déclenchés uniquement quand Custom)
+        # Bornes : du min(df_dates) à today
+        min_date = today - _td(days=365 * 3)
+        if df_dates is not None and not df_dates.empty:
+            try:
+                _mn = pd.to_datetime(df_dates).min()
+                if pd.notna(_mn):
+                    min_date = (_mn.tz_localize(None) if getattr(_mn, "tz", None) else _mn).date()
+            except Exception:
+                pass
+
+        col_s, col_e = st.columns(2)
+        with col_s:
+            d_start = st.date_input(
+                "Du", value=max(today - _td(days=30), min_date),
+                min_value=min_date, max_value=today,
+                key=f"{key}_custom_start",
+            )
+        with col_e:
+            d_end = st.date_input(
+                "Au", value=today,
+                min_value=min_date, max_value=today,
+                key=f"{key}_custom_end",
+            )
+
+        # Validation
+        if d_start > d_end:
+            st.warning("⚠ La date de début est postérieure à la date de fin. Inversion automatique.")
+            d_start, d_end = d_end, d_start
+
+        return pd.Timestamp(d_start), pd.Timestamp(d_end)
+
+    # Preset classique
+    days = period_opts[sel_period]
+    since = pd.Timestamp(today - _td(days=days))
+    until = pd.Timestamp(today)
+    return since, until
 
 
 # ── Data fetch fragment ────────────────────────────────────────────────────────
@@ -544,34 +628,11 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
                 lambda c: (cfg_for_status.get(c) or {}).get("effective_status") or ""
             )
 
-    # ── Période selector (.seg) ──────────────────────────────────────────────
-    from datetime import date, timedelta
-    period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90, "Tout": 36500}
+    # ── Période selector (presets + Custom) ─────────────────────────────────
+    since_ts, until_ts = render_period_selector(key="mad", df_dates=df["date_start"])
+    df_view = df[(df["date_start"] >= since_ts) & (df["date_start"] <= until_ts)].copy()
 
-    # Smart default : choisit la période la + courte qui contient des données
-    # (évite "Aucune donnée pour ces filtres" sur la période par défaut)
-    if "mad_period" not in st.session_state:
-        latest_date_in_df = df["date_start"].max() if not df.empty else None
-        if latest_date_in_df is not None and pd.notna(latest_date_in_df):
-            days_since = (pd.Timestamp(date.today()) - latest_date_in_df).days
-            if days_since <= 1:    default_period = "24h"
-            elif days_since <= 7:  default_period = "7j"
-            elif days_since <= 30: default_period = "30j"
-            elif days_since <= 90: default_period = "90j"
-            else:                  default_period = "Tout"
-        else:
-            default_period = "30j"
-        st.session_state["mad_period"] = default_period
-
-    col_period, col_status, col_camp = st.columns([2, 2, 3])
-    with col_period:
-        sel_period = st.radio(
-            "Période", list(period_opts.keys()),
-            horizontal=True, key="mad_period",
-        )
-    days = period_opts[sel_period]
-    cutoff = pd.Timestamp(date.today() - timedelta(days=days))
-    df_view = df[df["date_start"] >= cutoff].copy()
+    col_status, col_camp = st.columns([2, 3])
 
     with col_status:
         if "effective_status" in df.columns and df["effective_status"].notna().any():
@@ -599,12 +660,12 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
             df_view = df_view[df_view["campaign_name"].isin(sel_campaigns)]
 
     if df_view.empty:
-        # Message plus utile : distinguer "filtres trop stricts" vs "pas de données du tout"
         latest_date_in_df = df["date_start"].max() if not df.empty else None
+        period_label = st.session_state.get("mad_period", "30j")
         if latest_date_in_df is not None and pd.notna(latest_date_in_df):
             latest_str = latest_date_in_df.strftime("%d %b %Y")
             st.info(
-                f"Aucune donnée sur la période **{sel_period}**. "
+                f"Aucune donnée sur la période **{period_label}**. "
                 f"Ta dernière donnée disponible date du **{latest_str}** — "
                 "essaie une période plus large (30j, 90j ou Tout) ou rafraîchis tes données depuis Paramètres."
             )
@@ -647,9 +708,16 @@ def show_meta_ads_dashboard(df: pd.DataFrame | None = None, client=None, user_id
     spark_cpc    = df_daily["cpc"].tail(7).tolist()
 
     # ── Hero ────────────────────────────────────────────────────────────────
+    _period_label = st.session_state.get("mad_period", "")
+    if _period_label == "Custom":
+        _hero_period = f"du {since_ts.strftime('%d %b')} au {until_ts.strftime('%d %b %Y')}"
+    elif _period_label == "Tout":
+        _hero_period = "tout l'historique"
+    else:
+        _hero_period = f"{_period_label} derniers jours"
     st.markdown(
         f'<div class="page-h">'
-        f'<div class="h-eyebrow">Meta Ads · {sel_period} derniers jours</div>'
+        f'<div class="h-eyebrow">Meta Ads · {_hero_period}</div>'
         f'<h1>{nb_active} campagne{"s" if nb_active != 1 else ""} en cours, {total_spend:,.0f} CHF dépensés.</h1>'
         f'<p class="h-sub">'
         f'CTR moyen <b>{avg_ctr:.2f} %</b> · CPC moyen <b>{avg_cpc:.2f} CHF</b>. '
@@ -1279,27 +1347,9 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
 
     # ── Bloc 1 : Période + Budget global ─────────────────────────────────────
-    period_opts = {"7j": 7, "30j": 30, "90j": 90, "Tout": 36500}
-
-    # Smart default : choisit la période la + courte qui contient des données
-    if "cout_period" not in st.session_state:
-        latest_in_df = df["date_start"].max() if not df.empty else None
-        if latest_in_df is not None and pd.notna(latest_in_df):
-            days_since = (pd.Timestamp(date.today()) - latest_in_df).days
-            if days_since <= 7:    default_p = "7j"
-            elif days_since <= 30: default_p = "30j"
-            elif days_since <= 90: default_p = "90j"
-            else:                  default_p = "Tout"
-        else:
-            default_p = "30j"
-        st.session_state["cout_period"] = default_p
-
     col_period, col_budget = st.columns([3, 2])
     with col_period:
-        sel_period = st.radio(
-            "Période", list(period_opts.keys()),
-            horizontal=True, key="cout_period",
-        )
+        since_ts, until_ts = render_period_selector(key="cout", df_dates=df["date_start"])
     with col_budget:
         st.number_input(
             "Budget global (CHF)", min_value=0.0, step=100.0,
@@ -1308,15 +1358,14 @@ def _show_cout_tab(df: pd.DataFrame | None, client=None, user_id: str | None = N
             on_change=_cb_save_budget_global, args=(client, user_id),
         )
 
-    days = period_opts[sel_period]
-    cutoff = pd.Timestamp(date.today() - timedelta(days=days))
-    df_v = df[df["date_start"] >= cutoff].copy()
+    df_v = df[(df["date_start"] >= since_ts) & (df["date_start"] <= until_ts)].copy()
     if df_v.empty:
         latest_in_df = df["date_start"].max() if not df.empty else None
+        period_label = st.session_state.get("cout_period", "30j")
         if latest_in_df is not None and pd.notna(latest_in_df):
             latest_str = latest_in_df.strftime("%d %b %Y")
             st.info(
-                f"Aucune donnée sur la période **{sel_period}**. "
+                f"Aucune donnée sur la période **{period_label}**. "
                 f"Ta dernière donnée date du **{latest_str}** — "
                 "essaie 'Tout' ou rafraîchis tes données."
             )
