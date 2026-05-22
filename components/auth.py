@@ -64,16 +64,40 @@ class AuthDashboard():
                 _reset_password_email(supabase=self.supabase)
             
     
+    def _refresh_with_token(self, refresh_token: str) -> bool:
+        """Refresh la session via refresh_token. True si succès."""
+        try:
+            user = self.supabase.auth.refresh_session(refresh_token=refresh_token)
+            st.session_state["session"] = user.session
+            st.query_params["refresh_token"] = user.session.refresh_token
+            return True
+        except Exception:
+            return False
+
     def main(self):
+        import time
+
+        # Cas 1 : pas de session en mémoire mais refresh_token en URL → restaure
         if "session" not in st.session_state and "refresh_token" in st.query_params:
-            try:
-                user = self.supabase.auth.refresh_session(refresh_token=st.query_params["refresh_token"])
-                st.session_state["session"] = user.session
-            except Exception:
+            if not self._refresh_with_token(st.query_params["refresh_token"]):
                 del st.query_params["refresh_token"]
 
         if "session" in st.session_state:
             session = st.session_state["session"]
+
+            # Cas 2 : session en mémoire mais JWT expiré ou bientôt → refresh proactif
+            # Marge 5 min : couvre les longs fetchs Meta Ads sans risquer un expire en route
+            expires_at = getattr(session, "expires_at", 0) or 0
+            if expires_at and time.time() > (expires_at - 300):
+                if self._refresh_with_token(session.refresh_token):
+                    session = st.session_state["session"]
+                else:
+                    # Refresh raté : on vide la session et renvoie au login
+                    del st.session_state["session"]
+                    st.warning("Session expirée. Reconnecte-toi.")
+                    st.rerun()
+                    return
+
             self.client = Client(
                 self.url, self.token,
                 options=ClientOptions(headers={"Authorization": f"Bearer {session.access_token}"})
