@@ -174,10 +174,38 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
     with tab_perf:
         # ── Sélecteur de période global Instagram ───────────────────────────
-        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
-            since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
-            mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
-            df = df[mask].copy()
+        col_period, col_metric = st.columns([3, 2])
+        with col_period:
+            if "_date_dt" in df.columns and df["_date_dt"].notna().any():
+                since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
+                mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
+                df = df[mask].copy()
+
+        # ── Sélecteur métrique global (pilote heatmap, top 3, formats) ──────
+        metric_options = {
+            "Portée":         ("reach",    "",  "{:,.0f}"),
+            "Likes":          ("likes",    "",  "{:,.0f}"),
+            "Saves":          ("saved",    "",  "{:,.0f}"),
+            "Commentaires":   ("comments", "",  "{:,.0f}"),
+            "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
+        }
+        with col_metric:
+            sel_metric = st.selectbox(
+                "Métrique",
+                options=list(metric_options.keys()),
+                key="insta_format_metric",
+                help="Cette métrique pilote 'Ce qui marche pour toi', 'Quand publier ?' et 'Top 3 posts'.",
+            )
+        metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
+
+        # Colonne dérivée Engagement % si nécessaire
+        if metric_col == "_eng_pct" and not df.empty:
+            df = df.copy()
+            df["_eng_pct"] = df.apply(
+                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
+                if r.get("reach", 0) > 0 else 0.0,
+                axis=1,
+            )
 
         if df.empty:
             st.info(
@@ -425,41 +453,18 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             unsafe_allow_html=True,
         )
 
-        # ── Ce qui marche pour toi (filtre métrique) ──────────────────────
-        col_title, col_metric = st.columns([3, 2])
-        with col_title:
-            st.markdown(
-                "<div class='section'><div class='section-head'>"
-                "<span class='section-title'>Ce qui marche pour toi</span></div></div>",
-                unsafe_allow_html=True,
-            )
-        with col_metric:
-            metric_options = {
-                "Portée":         ("reach",    "", "{:,.0f}"),
-                "Likes":          ("likes",    "", "{:,.0f}"),
-                "Saves":          ("saved",    "", "{:,.0f}"),
-                "Commentaires":   ("comments", "", "{:,.0f}"),
-                "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
-            }
-            sel_metric = st.selectbox(
-                "Métrique", options=list(metric_options.keys()),
-                index=0, key="insta_format_metric", label_visibility="collapsed",
-            )
+        # ── Ce qui marche pour toi (utilise le selecteur métrique global) ──
+        st.markdown(
+            "<div class='section'><div class='section-head'>"
+            f"<span class='section-title'>Ce qui marche pour toi "
+            f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
+            unsafe_allow_html=True,
+        )
 
-        metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
-
-        # Préparer la colonne dérivée engagement % si nécessaire
-        df_metric = df.copy()
-        if metric_col == "_eng_pct":
-            df_metric["_eng_pct"] = df_metric.apply(
-                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
-                if r.get("reach", 0) > 0 else 0.0,
-                axis=1,
-            )
-
+        # df contient déjà _eng_pct si la métrique = Engagement %
         format_groups = {}
-        if "type" in df_metric.columns and metric_col in df_metric.columns:
-            for fmt, grp in df_metric.groupby("type"):
+        if "type" in df.columns and metric_col in df.columns:
+            for fmt, grp in df.groupby("type"):
                 key = fmt.upper()
                 avg_val = grp[metric_col].mean()
                 format_groups[key] = {"nb": len(grp), "avg": avg_val, "grp": grp}
@@ -496,9 +501,14 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                         unsafe_allow_html=True,
                     )
     
-        st.markdown("<div class='section'><div class='section-head'><span class='section-title'>Quand publier ?</span></div></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section'><div class='section-head'>"
+            f"<span class='section-title'>Quand publier ? "
+            f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
+            unsafe_allow_html=True,
+        )
 
-        # Calcul : pour chaque (jour, créneau) → {count, total_reach, avg_reach}
+        # Calcul : pour chaque (jour, créneau) → {count, total, avg} avec la métrique choisie
         heat_data = {}
         has_real_hours = False
         if "date" in df.columns:
@@ -510,26 +520,23 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 pass
             df["_dow"] = df["_dt"].dt.dayofweek
             df["_hour"] = df["_dt"].dt.hour
-            # Si toutes les heures sont 0 (ou 1/2 après conversion tz),
-            # ça signifie que seule la date a été stockée → données legacy
             unique_hours = df["_hour"].dropna().unique()
-            has_real_hours = len(unique_hours) > 2  # tolérance pour winter/summer time
+            has_real_hours = len(unique_hours) > 2
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
             hour_labels = [0, 1, 2, 3, 4, 5]
             df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
             for _, r in df.iterrows():
                 if pd.notna(r.get("_dow")) and pd.notna(r.get("_slot")):
                     key = (int(r["_dow"]), int(r["_slot"]))
-                    cur = heat_data.setdefault(key, {"count": 0, "reach": 0.0})
+                    cur = heat_data.setdefault(key, {"count": 0, "total": 0.0})
                     cur["count"] += 1
-                    cur["reach"] += float(r.get("reach", 0) or 0)
+                    cur["total"] += float(r.get(metric_col, 0) or 0)
 
-        # avg reach par cellule
+        # avg par cellule (métrique sélectionnée)
         for k, v in heat_data.items():
-            v["avg"] = v["reach"] / v["count"] if v["count"] > 0 else 0
+            v["avg"] = v["total"] / v["count"] if v["count"] > 0 else 0
 
         max_avg = max((v["avg"] for v in heat_data.values()), default=1) or 1
-        # "best" = meilleur avg parmi les cellules avec au moins 1 post
         best_slot = max(heat_data, key=lambda k: heat_data[k]["avg"]) if heat_data else None
 
         if not has_real_hours and heat_data:
@@ -545,6 +552,9 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             header_row += f"<div style='text-align:center;font-size:10px;font-weight:600;color:#8b8e98;'>{d}</div>"
         header_row += "</div>"
 
+        def _fmt_cell_val(v: float) -> str:
+            return metric_fmt.format(v) + metric_suffix
+
         grid_html = header_row
         for s_idx, slot_label in enumerate(HOURS):
             grid_html += f"<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
@@ -556,25 +566,27 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     opacity = cell["avg"] / max_avg if max_avg > 0 else 0
                     bg = f"rgba(59,91,255,{max(0.10, opacity)})"
                     is_best_cell = key == best_slot
+                    val_str = _fmt_cell_val(cell["avg"])
                     if is_best_cell:
-                        inner = f"<div style='font-size:9px;font-weight:700;line-height:1;color:#1a2c8f;'>BEST</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{cell['count']}p · {int(cell['avg']):,}</div>"
+                        inner = f"<div style='font-size:9px;font-weight:700;line-height:1;color:#1a2c8f;'>BEST</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{cell['count']}p · {val_str}</div>"
                     else:
-                        inner = f"<div style='font-size:9px;font-weight:600;line-height:1;color:#0e0f12;'>{cell['count']}p</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{int(cell['avg']):,}</div>"
+                        inner = f"<div style='font-size:9px;font-weight:600;line-height:1;color:#0e0f12;'>{cell['count']}p</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{val_str}</div>"
                 else:
                     bg = "rgba(14,15,18,0.04)"
                     inner = ""
                 grid_html += f"<div style='background:{bg};border-radius:4px;height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;'>{inner}</div>"
             grid_html += "</div>"
 
+        metric_lower = sel_metric.lower()
         st.markdown(f"""
         <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px;'>
             {grid_html}
             <div style='display:flex;gap:14px;margin-top:10px;font-size:10px;color:#8b8e98;'>
                 <span><b>Xp</b> = nombre de posts</span>
                 <span>·</span>
-                <span><b>chiffre du bas</b> = portée moyenne par post</span>
+                <span><b>chiffre du bas</b> = {metric_lower} moyenne par post</span>
                 <span>·</span>
-                <span><b>intensité</b> = portée moyenne (plus c'est foncé, mieux ça performe)</span>
+                <span><b>intensité</b> = {metric_lower} moyenne (plus c'est foncé, mieux ça performe)</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -583,15 +595,15 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             best_day = DAYS[best_slot[0]]
             best_hour = HOURS[best_slot[1]]
             best = heat_data[best_slot]
-            best_total = int(best["reach"])
-            best_avg = int(best["avg"])
+            best_total_str = _fmt_cell_val(best["total"])
+            best_avg_str = _fmt_cell_val(best["avg"])
             st.markdown(f"""
             <div class='hint' style='margin-top:10px;'>
                 <span class='hint-ico'>💡</span>
                 <p>
-                    Tes meilleurs résultats sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong> :
-                    <strong>{best['count']}</strong> post(s), portée totale <strong>{best_total:,}</strong>,
-                    moyenne <strong>{best_avg:,}/post</strong>.
+                    Tes meilleurs résultats par <strong>{sel_metric}</strong> sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong> :
+                    <strong>{best['count']}</strong> post(s), {sel_metric.lower()} totale <strong>{best_total_str}</strong>,
+                    moyenne <strong>{best_avg_str}/post</strong>.
                     {"⚠ Échantillon faible — base-toi sur plusieurs posts avant de conclure." if best['count'] < 3 else "Planifie tes posts importants sur ce créneau."}
                 </p>
             </div>
@@ -603,7 +615,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         with col_title:
             st.markdown(
                 "<div class='section'><div class='section-head'>"
-                "<span class='section-title'>Top 3 posts</span></div></div>",
+                f"<span class='section-title'>Top 3 posts "
+                f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
                 unsafe_allow_html=True,
             )
 
@@ -653,7 +666,9 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             st.info("Aucun post avec ces filtres.")
             top3 = df_filtered
         else:
-            top3 = df_filtered.nlargest(3, "reach") if "reach" in df_filtered.columns else df_filtered.head(3)
+            # Tri par la métrique globale sélectionnée
+            sort_col = metric_col if metric_col in df_filtered.columns else "reach"
+            top3 = df_filtered.nlargest(3, sort_col) if sort_col in df_filtered.columns else df_filtered.head(3)
         top_cols = st.columns(3)
         for i, (_, row) in enumerate(top3.iterrows()):
             fmt = str(row.get("type", "IMAGE")).upper()
