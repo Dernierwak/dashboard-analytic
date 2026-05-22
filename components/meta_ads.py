@@ -66,12 +66,23 @@ div[data-testid="stRadio"] [data-baseweb="radio"] label {
     font-size:12.5px;font-weight:500;color:#5a5d66;
     cursor:pointer;padding:0;line-height:1;
 }
+/* ── Active state — via :has() (Streamlit récent) ── */
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
+    background:#3b5bff !important;
+    box-shadow:0 2px 6px rgba(59,91,255,0.35);
+}
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) *,
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) > div:last-child {
+    color:#ffffff !important;font-weight:600;
+}
+/* ── Fallback (ancienne structure aria-checked) ── */
 div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] {
     background:#3b5bff !important;
     box-shadow:0 2px 6px rgba(59,91,255,0.35);
 }
-div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label,
-div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label * {
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] *,
+div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label {
     color:#ffffff !important;font-weight:600;
 }
 
@@ -300,28 +311,61 @@ def render_period_selector(
     """
     from datetime import date as _date, timedelta as _td
 
-    # CSS du radio actif (au cas où PULSE_CSS n'est pas chargé — ex. tab Instagram)
+    # CSS du radio actif (robuste — utilise :has() pour matcher la pill cochée)
     st.markdown("""
         <style>
+        /* Cache le label du widget */
         div[data-testid="stRadio"] > label { display:none; }
+        /* Container pill-bar */
         div[data-testid="stRadio"] > div[role="radiogroup"] {
-            background:rgba(14,15,18,0.06);border-radius:8px;
-            padding:3px;gap:2px;display:inline-flex;flex-direction:row;flex-wrap:nowrap;
+            background:rgba(14,15,18,0.06);
+            border-radius:8px;
+            padding:3px;
+            gap:2px;
+            display:inline-flex;
+            flex-direction:row;
+            flex-wrap:nowrap;
         }
-        div[data-testid="stRadio"] [data-baseweb="radio"] {
-            background:transparent;border-radius:6px;padding:5px 14px;margin:0;
+        /* Chaque pill (label HTML qui wrap le radio) */
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            background:transparent;
+            border-radius:6px;
+            padding:5px 14px;
+            margin:0;
+            cursor:pointer;
+            transition: background 0.15s, box-shadow 0.15s;
         }
-        div[data-testid="stRadio"] [data-baseweb="radio"] > div:first-child { display:none; }
-        div[data-testid="stRadio"] [data-baseweb="radio"] label {
-            font-size:12.5px;font-weight:500;color:#5a5d66;cursor:pointer;padding:0;line-height:1;
+        /* Cache le cercle du radio */
+        div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child { display:none; }
+        /* Texte par défaut */
+        div[data-testid="stRadio"] label[data-baseweb="radio"] p,
+        div[data-testid="stRadio"] label[data-baseweb="radio"] > div:last-child {
+            font-size:12.5px;
+            font-weight:500;
+            color:#5a5d66;
+            line-height:1;
         }
+        /* ── État actif (input checked) — version :has() ── */
+        div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
+            background:#3b5bff !important;
+            box-shadow:0 2px 6px rgba(59,91,255,0.35);
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,
+        div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) > div:last-child,
+        div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) * {
+            color:#ffffff !important;
+            font-weight:600;
+        }
+        /* ── Fallback ancienne structure (aria-checked sur label/span) ── */
+        div[data-testid="stRadio"] label[aria-checked="true"],
         div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] {
             background:#3b5bff !important;
             box-shadow:0 2px 6px rgba(59,91,255,0.35);
         }
-        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label,
-        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label * {
-            color:#ffffff !important;font-weight:600;
+        div[data-testid="stRadio"] label[aria-checked="true"] *,
+        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] * {
+            color:#ffffff !important;
+            font-weight:600;
         }
         </style>
     """, unsafe_allow_html=True)
