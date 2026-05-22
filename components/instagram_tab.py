@@ -174,38 +174,10 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
     with tab_perf:
         # ── Sélecteur de période global Instagram ───────────────────────────
-        col_period, col_metric = st.columns([3, 2])
-        with col_period:
-            if "_date_dt" in df.columns and df["_date_dt"].notna().any():
-                since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
-                mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
-                df = df[mask].copy()
-
-        # ── Sélecteur métrique global (pilote heatmap, top 3, formats) ──────
-        metric_options = {
-            "Portée":         ("reach",    "",  "{:,.0f}"),
-            "Likes":          ("likes",    "",  "{:,.0f}"),
-            "Saves":          ("saved",    "",  "{:,.0f}"),
-            "Commentaires":   ("comments", "",  "{:,.0f}"),
-            "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
-        }
-        with col_metric:
-            sel_metric = st.selectbox(
-                "Métrique",
-                options=list(metric_options.keys()),
-                key="insta_format_metric",
-                help="Cette métrique pilote 'Ce qui marche pour toi', 'Quand publier ?' et 'Top 3 posts'.",
-            )
-        metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
-
-        # Colonne dérivée Engagement % si nécessaire
-        if metric_col == "_eng_pct" and not df.empty:
-            df = df.copy()
-            df["_eng_pct"] = df.apply(
-                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
-                if r.get("reach", 0) > 0 else 0.0,
-                axis=1,
-            )
+        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
+            since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
+            mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
+            df = df[mask].copy()
 
         if df.empty:
             st.info(
@@ -453,7 +425,86 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             unsafe_allow_html=True,
         )
 
-        # ── Ce qui marche pour toi (utilise le selecteur métrique global) ──
+        # ─────────────────────────────────────────────────────────────────────
+        # ── SECTION FILTRES (Métrique + Format + Label) ────────────────────
+        # Pilote 'Ce qui marche', 'Quand publier ?', 'Top 3 posts'
+        # NE filtre PAS 'Tes moyennes par post' (qui reste globale, au-dessus)
+        # ─────────────────────────────────────────────────────────────────────
+        st.markdown(
+            "<div class='section'><div class='section-head'>"
+            "<span class='section-title'>Filtres "
+            "<span class='st-count'>pilote les sections ci-dessous</span></span></div></div>",
+            unsafe_allow_html=True,
+        )
+
+        metric_options = {
+            "Portée":         ("reach",    "",  "{:,.0f}"),
+            "Likes":          ("likes",    "",  "{:,.0f}"),
+            "Saves":          ("saved",    "",  "{:,.0f}"),
+            "Commentaires":   ("comments", "",  "{:,.0f}"),
+            "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
+        }
+        # Options format
+        fmt_options = ["Tous"]
+        if "type" in df.columns:
+            for _fmt in df["type"].dropna().unique():
+                _l = FORMAT_LABELS.get(str(_fmt).upper(), str(_fmt))
+                if _l not in fmt_options:
+                    fmt_options.append(_l)
+        # Options label (master list)
+        lbl_options = ["Tous"]
+        for _l in (st.session_state.get("insta_labels") or []):
+            lbl_options.append(_l)
+        lbl_options.append("(sans label)")
+
+        col_m, col_f, col_l = st.columns(3)
+        with col_m:
+            sel_metric = st.selectbox(
+                "Métrique", options=list(metric_options.keys()),
+                key="insta_format_metric",
+            )
+        with col_f:
+            sel_fmt = st.selectbox(
+                "Format", options=fmt_options, key="insta_filter_fmt",
+            )
+        with col_l:
+            sel_lbl = st.selectbox(
+                "Label", options=lbl_options, key="insta_filter_lbl",
+            )
+
+        metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
+
+        # Colonne dérivée Engagement % si nécessaire
+        if metric_col == "_eng_pct" and not df.empty:
+            df = df.copy()
+            df["_eng_pct"] = df.apply(
+                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
+                if r.get("reach", 0) > 0 else 0.0,
+                axis=1,
+            )
+
+        # Application des filtres Format + Label sur df → df_f (utilisé par les sections en aval)
+        df_f = df.copy()
+        if sel_fmt != "Tous" and "type" in df_f.columns:
+            target_fmts = [k for k, v in FORMAT_LABELS.items() if v == sel_fmt]
+            if not target_fmts:
+                target_fmts = [sel_fmt.upper()]
+            df_f = df_f[df_f["type"].astype(str).str.upper().isin(target_fmts)]
+        if sel_lbl != "Tous" and "labels" in df_f.columns:
+            if sel_lbl == "(sans label)":
+                df_f = df_f[df_f["labels"].apply(
+                    lambda x: not (isinstance(x, list) and len(x) > 0 and x[0])
+                )]
+            else:
+                df_f = df_f[df_f["labels"].apply(
+                    lambda x: isinstance(x, list) and sel_lbl in x
+                )]
+
+        if df_f.empty:
+            st.info("Aucun post avec ces filtres. Élargis Format ou Label.")
+            return
+
+        # ── Ce qui marche pour toi (utilise df_f filtré) ──
         st.markdown(
             "<div class='section'><div class='section-head'>"
             f"<span class='section-title'>Ce qui marche pour toi "
@@ -461,10 +512,9 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             unsafe_allow_html=True,
         )
 
-        # df contient déjà _eng_pct si la métrique = Engagement %
         format_groups = {}
-        if "type" in df.columns and metric_col in df.columns:
-            for fmt, grp in df.groupby("type"):
+        if "type" in df_f.columns and metric_col in df_f.columns:
+            for fmt, grp in df_f.groupby("type"):
                 key = fmt.upper()
                 avg_val = grp[metric_col].mean()
                 format_groups[key] = {"nb": len(grp), "avg": avg_val, "grp": grp}
@@ -508,24 +558,24 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             unsafe_allow_html=True,
         )
 
-        # Calcul : pour chaque (jour, créneau) → {count, total, avg} avec la métrique choisie
+        # Calcul : pour chaque (jour, créneau) → {count, total, avg} sur df_f filtré
         heat_data = {}
         has_real_hours = False
-        if "date" in df.columns:
-            # Instagram renvoie le timestamp en UTC → on convertit en heure suisse
-            df["_dt"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
+        if "date" in df_f.columns:
+            df_f = df_f.copy()
+            df_f["_dt"] = pd.to_datetime(df_f["date"], errors="coerce", utc=True)
             try:
-                df["_dt"] = df["_dt"].dt.tz_convert("Europe/Zurich")
+                df_f["_dt"] = df_f["_dt"].dt.tz_convert("Europe/Zurich")
             except Exception:
                 pass
-            df["_dow"] = df["_dt"].dt.dayofweek
-            df["_hour"] = df["_dt"].dt.hour
-            unique_hours = df["_hour"].dropna().unique()
+            df_f["_dow"] = df_f["_dt"].dt.dayofweek
+            df_f["_hour"] = df_f["_dt"].dt.hour
+            unique_hours = df_f["_hour"].dropna().unique()
             has_real_hours = len(unique_hours) > 2
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
             hour_labels = [0, 1, 2, 3, 4, 5]
-            df["_slot"] = pd.cut(df["_hour"], bins=hour_bins, labels=hour_labels, right=False)
-            for _, r in df.iterrows():
+            df_f["_slot"] = pd.cut(df_f["_hour"], bins=hour_bins, labels=hour_labels, right=False)
+            for _, r in df_f.iterrows():
                 if pd.notna(r.get("_dow")) and pd.notna(r.get("_slot")):
                     key = (int(r["_dow"]), int(r["_slot"]))
                     cur = heat_data.setdefault(key, {"count": 0, "total": 0.0})
@@ -610,65 +660,17 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             """, unsafe_allow_html=True)
 
     
-        # ── En-tête Top 3 + filtres ──────────────────────────────────────
-        col_title, col_fmt, col_lbl = st.columns([2, 1.5, 1.5])
-        with col_title:
-            st.markdown(
-                "<div class='section'><div class='section-head'>"
-                f"<span class='section-title'>Top 3 posts "
-                f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
-                unsafe_allow_html=True,
-            )
+        # ── En-tête Top 3 (utilise df_f filtré globalement) ─────────────────
+        st.markdown(
+            "<div class='section'><div class='section-head'>"
+            f"<span class='section-title'>Top 3 posts "
+            f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
+            unsafe_allow_html=True,
+        )
 
-        # Options format dispo dans les posts
-        fmt_options = ["Tous"]
-        if "type" in df.columns:
-            for fmt in df["type"].dropna().unique():
-                lbl = FORMAT_LABELS.get(str(fmt).upper(), str(fmt))
-                fmt_options.append(lbl)
-
-        # Options label dispo (master list)
-        lbl_options = ["Tous"]
-        master_labels = st.session_state.get("insta_labels") or []
-        for l in master_labels:
-            lbl_options.append(l)
-        lbl_options.append("(sans label)")
-
-        with col_fmt:
-            sel_fmt = st.selectbox(
-                "Format", options=fmt_options, key="top3_fmt_filter",
-                label_visibility="collapsed",
-            )
-        with col_lbl:
-            sel_lbl = st.selectbox(
-                "Label", options=lbl_options, key="top3_lbl_filter",
-                label_visibility="collapsed",
-            )
-
-        df_filtered = df.copy()
-        if sel_fmt != "Tous" and "type" in df_filtered.columns:
-            # Retrouver le code original (REEL/IMAGE/etc.) à partir du label affiché
-            target_fmts = [k for k, v in FORMAT_LABELS.items() if v == sel_fmt]
-            if not target_fmts:
-                target_fmts = [sel_fmt.upper()]
-            df_filtered = df_filtered[df_filtered["type"].astype(str).str.upper().isin(target_fmts)]
-        if sel_lbl != "Tous" and "labels" in df_filtered.columns:
-            if sel_lbl == "(sans label)":
-                df_filtered = df_filtered[df_filtered["labels"].apply(
-                    lambda x: not (isinstance(x, list) and len(x) > 0 and x[0])
-                )]
-            else:
-                df_filtered = df_filtered[df_filtered["labels"].apply(
-                    lambda x: isinstance(x, list) and sel_lbl in x
-                )]
-
-        if df_filtered.empty:
-            st.info("Aucun post avec ces filtres.")
-            top3 = df_filtered
-        else:
-            # Tri par la métrique globale sélectionnée
-            sort_col = metric_col if metric_col in df_filtered.columns else "reach"
-            top3 = df_filtered.nlargest(3, sort_col) if sort_col in df_filtered.columns else df_filtered.head(3)
+        # Tri par la métrique globale sélectionnée
+        sort_col = metric_col if metric_col in df_f.columns else "reach"
+        top3 = df_f.nlargest(3, sort_col) if sort_col in df_f.columns else df_f.head(3)
         top_cols = st.columns(3)
         for i, (_, row) in enumerate(top3.iterrows()):
             fmt = str(row.get("type", "IMAGE")).upper()

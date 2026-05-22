@@ -300,6 +300,32 @@ def render_period_selector(
     """
     from datetime import date as _date, timedelta as _td
 
+    # CSS du radio actif (au cas où PULSE_CSS n'est pas chargé — ex. tab Instagram)
+    st.markdown("""
+        <style>
+        div[data-testid="stRadio"] > label { display:none; }
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            background:rgba(14,15,18,0.06);border-radius:8px;
+            padding:3px;gap:2px;display:inline-flex;flex-direction:row;flex-wrap:nowrap;
+        }
+        div[data-testid="stRadio"] [data-baseweb="radio"] {
+            background:transparent;border-radius:6px;padding:5px 14px;margin:0;
+        }
+        div[data-testid="stRadio"] [data-baseweb="radio"] > div:first-child { display:none; }
+        div[data-testid="stRadio"] [data-baseweb="radio"] label {
+            font-size:12.5px;font-weight:500;color:#5a5d66;cursor:pointer;padding:0;line-height:1;
+        }
+        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] {
+            background:#3b5bff !important;
+            box-shadow:0 2px 6px rgba(59,91,255,0.35);
+        }
+        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label,
+        div[data-testid="stRadio"] [aria-checked="true"][data-baseweb="radio"] label * {
+            color:#ffffff !important;font-weight:600;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     period_opts = {"24h": 1, "7j": 7, "30j": 30, "90j": 90, "Tout": 36500, "Custom": None}
     period_key = f"{key}_period"
     today = _date.today()
