@@ -417,15 +417,118 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
         st.markdown(
             '<div class="acc-hero">'
             '<div class="acc-eyebrow">Google Ads</div>'
-            '<h1 class="acc-h1">Bientôt disponible.</h1>'
-            '<p class="acc-sub">L\'intégration Google Ads arrive prochainement. Tu pourras analyser tes campagnes Search et Display directement ici.</p>'
+            '<h1 class="acc-h1">Tes campagnes Google Ads.</h1>'
+            '<p class="acc-sub">Connecte ton compte Google Ads pour suivre tes campagnes Search, Display et Performance Max.</p>'
             '</div>',
             unsafe_allow_html=True,
         )
-        st.markdown(
-            '<div class="acc-card"><div class="acc-card-left">'
-            '<div class="acc-card-name">🚧 En développement</div>'
-            '<div class="acc-card-meta">Reviens bientôt — on bosse dessus.</div>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
+
+        # Check si les credentials Google sont configurés
+        gads_configured = False
+        try:
+            _ = st.secrets.google_ads.developer_token
+            _ = st.secrets.google_ads.client_id
+            gads_configured = True
+        except Exception:
+            pass
+
+        if not gads_configured:
+            st.warning(
+                "⚠ Les credentials Google Ads ne sont pas encore configurés dans Streamlit. "
+                "Voir le fichier `GOOGLE_ADS_SETUP.md` à la racine du projet pour les étapes "
+                "d'obtention du developer token et du client OAuth."
+            )
+            return
+
+        # Check si déjà connecté
+        from scripts.fetch_data import fetch_google_refresh_token
+        from google_script.fetch_token import get_oauth_url as gad_oauth_url, get_access_token_from_refresh
+        from google_script.fetch_google_ads import list_accessible_customers
+        from components.google_ads import run_google_ads_fetch
+
+        refresh_tok, customer_id = (None, None)
+        if client and user_id:
+            refresh_tok, customer_id = fetch_google_refresh_token(client, user_id)
+
+        if refresh_tok and customer_id:
+            # Déjà connecté
+            st.markdown('<div class="acc-section-title">Compte connecté</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="acc-card"><div class="acc-card-left">'
+                f'<div class="acc-card-name">Customer ID : {customer_id}</div>'
+                f'<div class="acc-card-meta">Token OAuth Google enregistré ✓</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<div class="acc-section-title">Synchronisation</div>', unsafe_allow_html=True)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                force = st.checkbox(
+                    f"Récupérer toute l'année {__import__('datetime').date.today().year}",
+                    key="chk_gad_force_full",
+                )
+            with col_b:
+                if st.button("↻ Récupérer les données Google Ads", type="primary",
+                             use_container_width=True, key="btn_fetch_gad"):
+                    progress_bar = st.progress(0, text="Connexion à Google Ads…")
+                    def _cb(p, t):
+                        try:
+                            progress_bar.progress(min(100, max(0, p)), text=t)
+                        except Exception:
+                            pass
+                    result = run_google_ads_fetch(
+                        client, user_id,
+                        refresh_token=refresh_tok,
+                        customer_id=customer_id,
+                        force_full=force,
+                        progress_cb=_cb,
+                    )
+                    progress_bar.empty()
+                    if result.get("success"):
+                        st.success(f"✓ {result.get('message', '')}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {result.get('message', 'Erreur inconnue')}")
+
+            if st.button("Déconnecter Google Ads", key="btn_disc_gad", type="secondary"):
+                client.table("profiles").update({
+                    "google_refresh_token": None,
+                    "google_customer_id": None,
+                }).eq("id", user_id).execute()
+                st.rerun()
+
+        else:
+            # Pas connecté → card OAuth (mirror Meta)
+            _render_google_connect_card(session)
+
+
+def _render_google_connect_card(session) -> None:
+    """Card OAuth Google Ads."""
+    from google_script.fetch_token import get_oauth_url as gad_oauth_url
+    st.markdown(_META_CONNECT_CSS, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class='meta-connect-card'>
+            <div class='meta-logo' style='background:linear-gradient(135deg,#4285F4,#34A853,#FBBC04,#EA4335);'></div>
+            <div style='font-size:16px;font-weight:600;color:#0e0f12;margin-bottom:6px;'>Google Ads</div>
+            <div style='font-size:13px;color:#5a5d66;margin-bottom:4px;'>Connecte ton compte Google Ads pour analyser tes campagnes Search, Display, Performance Max.</div>
+            <ul class='perm-list'>
+                <li><span class='perm-ok'>✓</span> Lire tes campagnes (statut, dépenses)</li>
+                <li><span class='perm-ok'>✓</span> Lire les insights (impressions, clics, conversions)</li>
+                <li><span class='perm-ok'>✓</span> Lire les statuts de validation</li>
+                <li><span class='perm-no'>✗</span> Modifier tes campagnes</li>
+                <li><span class='perm-no'>✗</span> Créer/supprimer des annonces</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Set flag avant redirect → callback Google saura traiter le ?code
+    st.session_state["_pending_google_oauth"] = True
+    st.link_button(
+        "🔗 Connecter avec Google",
+        gad_oauth_url(state=session.refresh_token),
+        type="primary",
+    )

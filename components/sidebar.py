@@ -67,7 +67,7 @@ def show_sidebar() -> None:
         )
 
 
-def show_main_nav(insta_accounts: list, has_meta_ads: bool) -> None:
+def show_main_nav(insta_accounts: list, has_meta_ads: bool, has_google_ads: bool = False) -> None:
     """Sidebar navigation for the main dashboard sections."""
     with st.sidebar:
         st.markdown('<div class="nav-section">Cette semaine</div>', unsafe_allow_html=True)
@@ -76,6 +76,8 @@ def show_main_nav(insta_accounts: list, has_meta_ads: bool) -> None:
             _nav_btn("Instagram", "instagram", icon="◎")
         if has_meta_ads:
             _nav_btn("Meta Ads", "meta_ads", icon="▣")
+        if has_google_ads:
+            _nav_btn("Google Ads", "google_ads", icon="◆")
 
         st.markdown('<div class="nav-section">Configuration</div>', unsafe_allow_html=True)
         _nav_btn("Paramètres", "settings", icon="⚙")

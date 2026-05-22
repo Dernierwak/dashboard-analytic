@@ -80,3 +80,82 @@ def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
         }
     except Exception:
         return {}
+
+
+# ── Google Ads ────────────────────────────────────────────────────────────────
+
+def fetch_google_ads(supabase: Client, user_id: str) -> list[dict]:
+    """Récupère tous les insights Google Ads pour un user (sans filtre date — le filtre se fait côté UI)."""
+    return (
+        supabase.table("google_ads_insights")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("date_start", desc=True)
+        .execute()
+        .data
+    )
+
+
+def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
+    res = (
+        supabase.table("google_ads_insights")
+        .select("date_start")
+        .eq("user_id", user_id)
+        .order("date_start", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["date_start"] if res.data else None
+
+
+def fetch_google_campaign_labels(supabase: Client, user_id: str) -> list[str]:
+    try:
+        res = supabase.table("profiles").select("google_campaign_labels").eq("id", user_id).execute()
+        if res.data and res.data[0].get("google_campaign_labels"):
+            return list(res.data[0]["google_campaign_labels"])
+    except Exception:
+        pass
+    return []
+
+
+def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
+    try:
+        res = supabase.table("profiles").select("google_budget_global").eq("id", user_id).execute()
+        if res.data:
+            return float(res.data[0].get("google_budget_global") or 0)
+    except Exception:
+        pass
+    return 0.0
+
+
+def fetch_google_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
+    """Retourne {campaign_id: {"campaign_name": str, "label": str|None, "budget_max": float, "effective_status": str|None}}."""
+    try:
+        res = (
+            supabase.table("google_campaign_config")
+            .select("campaign_id, campaign_name, label, budget_max, effective_status")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return {
+            row["campaign_id"]: {
+                "campaign_name": row.get("campaign_name") or "",
+                "label": row.get("label"),
+                "budget_max": float(row.get("budget_max") or 0),
+                "effective_status": row.get("effective_status"),
+            }
+            for row in (res.data or [])
+        }
+    except Exception:
+        return {}
+
+
+def fetch_google_refresh_token(supabase: Client, user_id: str) -> tuple[str | None, str | None]:
+    """Retourne (refresh_token, customer_id) ou (None, None)."""
+    try:
+        res = supabase.table("profiles").select("google_refresh_token, google_customer_id").eq("id", user_id).execute()
+        if res.data:
+            return res.data[0].get("google_refresh_token"), res.data[0].get("google_customer_id")
+    except Exception:
+        pass
+    return None, None

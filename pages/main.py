@@ -7,12 +7,19 @@ import streamlit as st
 from components.auth import AuthDashboard
 from components.sidebar import show_sidebar, show_main_nav
 from components.styles import DASHBOARD_CSS
-from components.callbacks import handle_meta_oauth_callback, handle_meta_page_selection, handle_stripe_payment
+from components.callbacks import (
+    handle_meta_oauth_callback,
+    handle_meta_page_selection,
+    handle_stripe_payment,
+    handle_google_oauth_callback,
+    handle_google_customer_selection,
+)
 from components.account_tab import show_account_tab
 from components.instagram_tab import show_instagram_tab, run_instagram_fetch
 from components.meta_ads import show_meta_ads_tab, run_meta_ads_fetch
+from components.google_ads import show_google_ads_tab, run_google_ads_fetch
 from components.schedule import schedule
-from scripts.fetch_data import fetch_meta_ads
+from scripts.fetch_data import fetch_meta_ads, fetch_google_refresh_token, fetch_google_ads
 from scripts.stripe import create_checkout_session, cancel_subscription
 from pages.rapport import show_rapport
 
@@ -34,6 +41,10 @@ if __name__ == "__main__":
     if client:
         session = st.session_state["session"]
         user_id = session.user.id
+
+        # Callbacks Google Ads (OAuth + sélection customer)
+        handle_google_oauth_callback(client, user_id)
+        handle_google_customer_selection(client, user_id)
 
         try:
             client.table("profiles").upsert(
@@ -83,11 +94,25 @@ if __name__ == "__main__":
         insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
         has_meta_ads = "meta_long_token" in st.session_state
 
-        # ── Sidebar navigation (remplace st.tabs) ────────────────────────────
+        # Google Ads connecté ?
+        gad_refresh, gad_customer = fetch_google_refresh_token(client, user_id)
+        has_google_ads = bool(gad_refresh and gad_customer)
+
+        # Charger google_ads_df depuis Supabase si pas en session
+        if has_google_ads and "google_ads_df" not in st.session_state:
+            try:
+                import pandas as pd
+                gads_data = fetch_google_ads(client, user_id)
+                if gads_data:
+                    st.session_state["google_ads_df"] = pd.DataFrame(gads_data)
+            except Exception:
+                pass
+
+        # ── Sidebar navigation ────────────────────────────────────────────
         if "page" not in st.session_state:
             st.session_state["page"] = "rapport"
 
-        show_main_nav(insta_accounts, has_meta_ads)
+        show_main_nav(insta_accounts, has_meta_ads, has_google_ads=has_google_ads)
 
         # ── Auto-fetch après OAuth réussi (flag posé par callbacks.py) ──────
         if st.session_state.pop("_auto_fetch_after_oauth", False) and st.session_state.get("meta_long_token"):
@@ -119,6 +144,28 @@ if __name__ == "__main__":
             st.session_state["page"] = "meta_ads"
             st.rerun()
 
+        # ── Auto-fetch Google Ads après OAuth ────────────────────────────────
+        if st.session_state.pop("_auto_fetch_google_after_oauth", False) and has_google_ads:
+            with st.status("Configuration Google Ads…", expanded=True) as status:
+                st.write("✓ Connexion Google établie")
+                st.write("Récupération de tes campagnes Google Ads…")
+                try:
+                    result = run_google_ads_fetch(
+                        client, user_id,
+                        refresh_token=gad_refresh,
+                        customer_id=gad_customer,
+                        force_full=True,
+                    )
+                    if result.get("success"):
+                        st.write(f"✓ Google Ads : {result.get('message', '')}")
+                    else:
+                        st.write(f"⚠ Google Ads : {result.get('message', '')}")
+                except Exception as e:
+                    st.write(f"⚠ Google Ads : {e}")
+                status.update(label="✓ Tout est prêt", state="complete", expanded=False)
+            st.session_state["page"] = "google_ads"
+            st.rerun()
+
         page = st.session_state["page"]
 
         # Guard: si la page demandée n'est plus accessible, fallback rapport
@@ -126,6 +173,9 @@ if __name__ == "__main__":
             page = "rapport"
             st.session_state["page"] = "rapport"
         if page == "meta_ads" and not has_meta_ads:
+            page = "rapport"
+            st.session_state["page"] = "rapport"
+        if page == "google_ads" and not has_google_ads:
             page = "rapport"
             st.session_state["page"] = "rapport"
         # Plus de page "connect" : si quelqu'un l'a en session (state legacy), fallback
@@ -158,6 +208,10 @@ if __name__ == "__main__":
         elif page == "meta_ads":
             st.session_state["active_section"] = "meta_ads"
             show_meta_ads_tab(is_paid=is_paid, client=client, user_id=user_id)
+
+        elif page == "google_ads":
+            st.session_state["active_section"] = "google_ads"
+            show_google_ads_tab(is_paid=is_paid, client=client, user_id=user_id)
 
         elif page == "settings":
             st.session_state["active_section"] = "settings"
