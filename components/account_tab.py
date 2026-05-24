@@ -389,6 +389,25 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
             st.success("Récupération terminée. Tu peux maintenant naviguer.")
 
+        # ── Roadmap Instagram : autres contenus ────────────────────────────
+        st.markdown('<div class="acc-section-title">Autres contenus</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="acc-card">'
+            '<div class="acc-card-left">'
+            '<div class="acc-card-name">Stories <span style="font-size:10px;color:#b86b00;background:#fbf1de;padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:600;">BIENTÔT</span></div>'
+            '<div class="acc-card-meta">Métriques des stories (portée, exits, replies) — en cours de développement.</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="acc-card">'
+            '<div class="acc-card-left">'
+            '<div class="acc-card-name">Posts Collab <span style="font-size:10px;color:#5a5d66;background:rgba(14,15,18,0.06);padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:600;">INDISPONIBLE</span></div>'
+            '<div class="acc-card-meta">Les posts collab ne sont pas accessibles via l\'API Instagram Graph. Limitation Meta — non réalisable côté technique.</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:
         st.markdown(
