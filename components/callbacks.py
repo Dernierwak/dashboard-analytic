@@ -6,15 +6,27 @@ from meta_script.fetch_token import exchange_code_for_token, get_long_lives_toke
 from meta_script.fetch_instagram import OrganicInstagramm
 
 
-def handle_google_oauth_callback(client, user_id):
-    """Récupère le code OAuth Google, échange contre refresh_token, sauvegarde.
-    Détecté quand l'URL contient ?code=... ET state=...&google=1 (paramètre custom)
+def _is_google_callback() -> bool:
+    """Détecte un callback Google via les params qu'IL renvoie (scope adwords ou iss=accounts.google.com).
+    Beaucoup plus robuste qu'un flag session_state qui peut se perdre.
     """
-    # On distingue les callbacks Meta vs Google via le state ou un flag
     if "code" not in st.query_params:
+        return False
+    scope = str(st.query_params.get("scope", ""))
+    iss = str(st.query_params.get("iss", ""))
+    if "adwords" in scope.lower():
+        return True
+    if "accounts.google.com" in iss:
+        return True
+    if st.session_state.get("_pending_google_oauth"):
+        return True
+    return False
+
+
+def handle_google_oauth_callback(client, user_id):
+    """Récupère le code OAuth Google, échange contre refresh_token, sauvegarde."""
+    if not _is_google_callback():
         return
-    if not st.session_state.get("_pending_google_oauth"):
-        return  # Pas un callback Google → laisser passer
 
     code = st.query_params["code"]
     from google_script.fetch_token import exchange_code as gad_exchange
@@ -26,7 +38,11 @@ def handle_google_oauth_callback(client, user_id):
         data = gad_exchange(code)
     if "refresh_token" not in data:
         st.error(f"Erreur Google : {data.get('error_description') or data}")
-        del st.session_state["_pending_google_oauth"]
+        st.session_state.pop("_pending_google_oauth", None)
+        # Nettoie l'URL des params Google
+        st.query_params.clear()
+        if "session" in st.session_state:
+            st.query_params["refresh_token"] = st.session_state["session"].refresh_token
         return
 
     refresh_token = data["refresh_token"]
@@ -38,7 +54,7 @@ def handle_google_oauth_callback(client, user_id):
     if not customer_ids:
         st.warning("Aucun compte Google Ads accessible avec ce login.")
         update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
-        del st.session_state["_pending_google_oauth"]
+        st.session_state.pop("_pending_google_oauth", None)
         st.query_params.clear()
         if "session" in st.session_state:
             st.query_params["refresh_token"] = st.session_state["session"].refresh_token
@@ -48,7 +64,7 @@ def handle_google_oauth_callback(client, user_id):
     # Stocker la liste pour sélection au prochain run
     st.session_state["_google_pending_refresh_token"] = refresh_token
     st.session_state["_google_customer_options"] = customer_ids
-    del st.session_state["_pending_google_oauth"]
+    st.session_state.pop("_pending_google_oauth", None)
     st.query_params.clear()
     if "session" in st.session_state:
         st.query_params["refresh_token"] = st.session_state["session"].refresh_token
@@ -84,8 +100,11 @@ def handle_google_customer_selection(client, user_id):
 
 def handle_meta_oauth_callback():
     """Échange le code OAuth Meta contre un long-lived token."""
-    # Si un callback Google est en cours, laisser passer
-    if st.session_state.get("_pending_google_oauth") or "_google_pending_refresh_token" in st.session_state:
+    # ⚠ Skip si c'est un callback Google (détecté via scope=adwords ou iss=accounts.google.com)
+    if _is_google_callback():
+        return
+    # Skip aussi si une sélection customer Google est en attente
+    if "_google_pending_refresh_token" in st.session_state:
         return
     if "code" in st.query_params and "session" in st.session_state:
         code = st.query_params["code"]

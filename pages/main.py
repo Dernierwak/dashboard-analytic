@@ -29,6 +29,7 @@ if __name__ == "__main__":
     st.set_page_config(page_title="Dashboard Analytics", page_icon="📊", layout="wide")
     st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
 
+    # Restaure session Supabase depuis state OAuth (Meta ET Google passent state=refresh_token)
     if "code" in st.query_params and "state" in st.query_params and "refresh_token" not in st.query_params:
         st.query_params["refresh_token"] = st.query_params["state"]
 
