@@ -19,7 +19,10 @@ import streamlit as st
 from google_script.fetch_token import get_access_token_from_refresh
 
 
-_API_VERSION = "v17"
+# ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.
+# Versions supportées actuellement : v19, v20, v21 (mai 2026)
+# Doc : https://developers.google.com/google-ads/api/docs/release-notes
+_API_VERSION = "v21"
 _BASE = f"https://googleads.googleapis.com/{_API_VERSION}"
 
 
