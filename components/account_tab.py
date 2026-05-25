@@ -80,7 +80,7 @@ def _acc_kpi(label: str, value: str) -> str:
     )
 
 
-# ── Card "Connecter Meta" réutilisable (Pulse design) ─────────────────────────
+# ── Card OAuth réutilisable (Pulse design, même style que Google Ads) ─────────
 _META_CONNECT_CSS = """<style>
 .meta-connect-card {
     background: #fff; border: 1px solid rgba(14,15,18,0.08);
@@ -92,32 +92,56 @@ _META_CONNECT_CSS = """<style>
 .perm-list { list-style: none; padding: 0; margin: 16px 0 0; }
 .perm-list li { font-size: 13px; color: #5a5d66; padding: 4px 0;
     display: flex; align-items: center; gap: 8px; }
-.perm-ok { color: #1a7a4a; font-weight: 700; }
-.perm-no { color: #c0392b; font-weight: 700; }
+.perm-ok { color: #1a7a4a; font-weight: 700; font-size: 16px; }
+.perm-no { color: #c0392b; font-weight: 700; font-size: 16px; }
 </style>"""
 
 
+_META_CARDS_BY_CONTEXT = {
+    "instagram": {
+        "title":    "Meta Business — Instagram",
+        "subtitle": "Connecte ton compte Instagram Business pour suivre tes posts organiques et leurs performances.",
+        "perms": [
+            ("ok", "Lire tes posts organiques (caption, format, date)"),
+            ("ok", "Lire les métriques (portée, likes, saves, commentaires)"),
+            ("ok", "Lire ton nombre d'abonnés"),
+            ("no", "Stories — arrive bientôt"),
+            ("no", "Posts collab — non accessibles via l'API Meta"),
+            ("no", "Publier ou modifier tes posts"),
+            ("no", "Lire tes messages privés"),
+        ],
+    },
+    "ads": {
+        "title":    "Meta Business — Facebook / Instagram Ads",
+        "subtitle": "Connecte tes campagnes Meta Ads pour analyser dépenses, performances et ROI.",
+        "perms": [
+            ("ok", "Lire tes campagnes (statut, dépenses, budget)"),
+            ("ok", "Lire les insights (impressions, clics, CTR, CPC)"),
+            ("ok", "Lire les statuts de validation des annonces"),
+            ("no", "Créer ou modifier des campagnes"),
+            ("no", "Publier des annonces"),
+            ("no", "Lire les messages privés"),
+        ],
+    },
+}
+
+
 def _render_meta_connect_card(session, context: str = "ads") -> None:
-    """Card Meta Business + bouton OAuth.
-    context : 'ads' ou 'instagram' — adapte le sous-titre.
-    """
+    """Card Meta Business + bouton OAuth — design unifié (même que Google Ads)."""
     st.markdown(_META_CONNECT_CSS, unsafe_allow_html=True)
-    subtitles = {
-        "ads":       "Connecte Facebook / Instagram Ads pour analyser tes campagnes directement dans le dashboard.",
-        "instagram": "Connecte ton compte Instagram Business pour suivre tes posts organiques et leurs performances.",
-    }
+    cfg = _META_CARDS_BY_CONTEXT.get(context, _META_CARDS_BY_CONTEXT["ads"])
+    perms_html = "".join(
+        f'<li><span class="perm-{t}">{("✓" if t=="ok" else "✗")}</span> {txt}</li>'
+        for t, txt in cfg["perms"]
+    )
     st.markdown(
         f"""
         <div class='meta-connect-card'>
             <div class='meta-logo'></div>
-            <div style='font-size:16px;font-weight:600;color:#0e0f12;margin-bottom:6px;'>Meta Business</div>
-            <div style='font-size:13px;color:#5a5d66;margin-bottom:4px;'>{subtitles.get(context, "")}</div>
+            <div style='font-size:16px;font-weight:600;color:#0e0f12;margin-bottom:6px;'>{cfg["title"]}</div>
+            <div style='font-size:13px;color:#5a5d66;margin-bottom:4px;'>{cfg["subtitle"]}</div>
             <ul class='perm-list'>
-                <li><span class='perm-ok'>✓</span> Lire tes campagnes publicitaires</li>
-                <li><span class='perm-ok'>✓</span> Lire ton compte Instagram Business</li>
-                <li><span class='perm-ok'>✓</span> Accéder aux insights et métriques</li>
-                <li><span class='perm-no'>✗</span> Publier en ton nom</li>
-                <li><span class='perm-no'>✗</span> Lire tes messages privés</li>
+                {perms_html}
             </ul>
         </div>
         """,
@@ -388,25 +412,6 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 unsafe_allow_html=True,
             )
             st.success("Récupération terminée. Tu peux maintenant naviguer.")
-
-        # ── Roadmap Instagram : autres contenus ────────────────────────────
-        st.markdown('<div class="acc-section-title">Autres contenus</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="acc-card">'
-            '<div class="acc-card-left">'
-            '<div class="acc-card-name">Stories <span style="font-size:10px;color:#b86b00;background:#fbf1de;padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:600;">BIENTÔT</span></div>'
-            '<div class="acc-card-meta">Métriques des stories (portée, exits, replies) — en cours de développement.</div>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="acc-card">'
-            '<div class="acc-card-left">'
-            '<div class="acc-card-name">Posts Collab <span style="font-size:10px;color:#5a5d66;background:rgba(14,15,18,0.06);padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:600;">INDISPONIBLE</span></div>'
-            '<div class="acc-card-meta">Les posts collab ne sont pas accessibles via l\'API Instagram Graph. Limitation Meta — non réalisable côté technique.</div>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
 
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:
