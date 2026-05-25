@@ -39,16 +39,33 @@ def _headers(access_token: str, login_customer_id: str | None = None) -> dict:
     return h
 
 
-def list_accessible_customers(access_token: str) -> list[str]:
-    """Liste les customer_ids accessibles avec ce token. Returns ['1234567890', ...]."""
+def list_accessible_customers(access_token: str) -> tuple[list[str], str | None]:
+    """Liste les customer_ids accessibles avec ce token.
+    Returns: (customer_ids: list[str], error_message: str | None)
+    """
     url = f"{_BASE}/customers:listAccessibleCustomers"
     try:
-        r = requests.get(url, headers=_headers(access_token), timeout=15).json()
-        # Format : {"resourceNames": ["customers/1234567890", ...]}
-        names = r.get("resourceNames", [])
-        return [n.split("/")[-1] for n in names]
-    except Exception:
-        return []
+        resp = requests.get(url, headers=_headers(access_token), timeout=15)
+    except Exception as e:
+        return [], f"Erreur réseau : {e}"
+
+    # Status HTTP non-OK : on log l'erreur
+    if resp.status_code != 200:
+        try:
+            err = resp.json()
+            msg = err.get("error", {}).get("message", str(err))
+        except Exception:
+            msg = resp.text[:500]
+        return [], f"HTTP {resp.status_code} : {msg}"
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        return [], f"Réponse non-JSON : {e}"
+
+    # Format attendu : {"resourceNames": ["customers/1234567890", ...]}
+    names = data.get("resourceNames", [])
+    return [n.split("/")[-1] for n in names], None
 
 
 def list_managed_accounts(access_token: str, manager_customer_id: str) -> list[dict]:

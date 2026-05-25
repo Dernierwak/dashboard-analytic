@@ -49,10 +49,38 @@ def handle_google_oauth_callback(client, user_id):
 
     # Liste les customer_ids accessibles
     access = get_access_token_from_refresh(refresh_token)
-    customer_ids = list_accessible_customers(access) if access else []
+    if not access:
+        st.error("Impossible d'obtenir un access_token depuis le refresh_token.")
+        update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
+        st.session_state.pop("_pending_google_oauth", None)
+        st.query_params.clear()
+        if "session" in st.session_state:
+            st.query_params["refresh_token"] = st.session_state["session"].refresh_token
+        return
+
+    customer_ids, list_err = list_accessible_customers(access)
+
+    if list_err:
+        st.error(f"Google Ads API : {list_err}")
+        st.info(
+            "Causes fréquentes :\n"
+            "- Developer Token absent ou invalide (vérifie `[google_ads].developer_token` dans secrets.toml)\n"
+            "- Developer Token en **Basic Access** (test) → ne peut accéder qu'aux test accounts\n"
+            "- Le compte Google utilisé pour l'OAuth n'a aucun Google Ads associé"
+        )
+        update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
+        st.session_state.pop("_pending_google_oauth", None)
+        # On nettoie l'URL mais SANS rerun (pour que l'erreur reste visible)
+        st.query_params.clear()
+        if "session" in st.session_state:
+            st.query_params["refresh_token"] = st.session_state["session"].refresh_token
+        return
 
     if not customer_ids:
-        st.warning("Aucun compte Google Ads accessible avec ce login.")
+        st.warning(
+            "Aucun compte Google Ads accessible avec ce login. "
+            "Vérifie que le compte Google que tu utilises a bien accès à un compte Google Ads."
+        )
         update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
         st.session_state.pop("_pending_google_oauth", None)
         st.query_params.clear()
