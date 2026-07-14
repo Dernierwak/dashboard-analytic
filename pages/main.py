@@ -18,6 +18,8 @@ from components.account_tab import show_account_tab
 from components.instagram_tab import show_instagram_tab, run_instagram_fetch
 from components.meta_ads import show_meta_ads_tab, run_meta_ads_fetch
 from components.google_ads import show_google_ads_tab, run_google_ads_fetch
+from components.couts import show_couts_tab
+from components.labels_page import show_labels_page
 from components.schedule import schedule
 from scripts.fetch_data import fetch_meta_ads, fetch_google_refresh_token, fetch_google_ads
 from scripts.stripe import create_checkout_session, cancel_subscription
@@ -28,6 +30,15 @@ if __name__ == "__main__":
 
     st.set_page_config(page_title="Dashboard Analytics", page_icon="📊", layout="wide")
     st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
+
+    # Réhydrate les query params OAuth mis à l'abri par landing.py avant son
+    # st.switch_page (qui peut perdre ?code&state&scope). Sans ça : session non
+    # restaurée → re-login → connexion Google jamais sauvegardée.
+    if "_oauth_code" in st.session_state and "code" not in st.query_params:
+        st.query_params["code"] = st.session_state.pop("_oauth_code")
+        for k in ("state", "scope", "authuser"):
+            if f"_oauth_{k}" in st.session_state:
+                st.query_params[k] = st.session_state.pop(f"_oauth_{k}")
 
     # Restaure session Supabase depuis state OAuth (Meta ET Google passent state=refresh_token)
     if "code" in st.query_params and "state" in st.query_params and "refresh_token" not in st.query_params:
@@ -67,7 +78,9 @@ if __name__ == "__main__":
         active_account_id = profile.get("active_account_id")
         if active_account_id and "meta_long_token" not in st.session_state:
             acc_resp = client.table("connected_accounts").select("meta_token").eq("id", active_account_id).execute()
-            if acc_resp.data:
+            # Garde : un meta_token NULL ne doit pas entrer en session, sinon
+            # has_meta_ads devient vrai et les fetchs partent avec token=None.
+            if acc_resp.data and acc_resp.data[0].get("meta_token"):
                 st.session_state["meta_long_token"] = acc_resp.data[0]["meta_token"]
 
         if "meta_ads_df" not in st.session_state:
@@ -90,7 +103,13 @@ if __name__ == "__main__":
         st.title("Dashboard Analytics")
         schedule(supabase=client, user_id=user_id, has_fetched=st.session_state.get("has_fetched", False))
 
-        accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).execute()
+        # Filtre provider='meta' pour exclure la ligne token Google. Fallback sans
+        # filtre si la colonne provider n'existe pas encore (migration non passée)
+        # — sinon toute la page crash pour un simple filtre.
+        try:
+            accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).eq("provider", "meta").execute()
+        except Exception:
+            accounts_resp = client.table("connected_accounts").select("id, account_name, instagram_business_id, created_at, total_posts_id_instagram").eq("user_id", user_id).execute()
         accounts_data = accounts_resp.data or []
         insta_accounts = [a for a in accounts_data if a.get("instagram_business_id")]
         has_meta_ads = "meta_long_token" in st.session_state
@@ -167,6 +186,16 @@ if __name__ == "__main__":
             st.session_state["page"] = "google_ads"
             st.rerun()
 
+        # ── Rafraîchir maintenant (bouton sidebar → flag) ───────────────────
+        # Ouvre le pop-up « Mes données » (point unique de récupération, tous canaux —
+        # choix de la période + statut par canal). Voir components/data_hub.py.
+        if st.session_state.pop("_manual_fetch_request", False):
+            from components.data_hub import data_hub_dialog
+            data_hub_dialog(
+                client, user_id, dash, insta_accounts, has_meta_ads,
+                gad_refresh, gad_customer, is_paid=is_paid,
+            )
+
         page = st.session_state["page"]
 
         # Guard: si la page demandée n'est plus accessible, fallback rapport
@@ -177,6 +206,9 @@ if __name__ == "__main__":
             page = "rapport"
             st.session_state["page"] = "rapport"
         if page == "google_ads" and not has_google_ads:
+            page = "rapport"
+            st.session_state["page"] = "rapport"
+        if page == "couts" and not (has_meta_ads or has_google_ads):
             page = "rapport"
             st.session_state["page"] = "rapport"
         # Plus de page "connect" : si quelqu'un l'a en session (state legacy), fallback
@@ -213,6 +245,14 @@ if __name__ == "__main__":
         elif page == "google_ads":
             st.session_state["active_section"] = "google_ads"
             show_google_ads_tab(is_paid=is_paid, client=client, user_id=user_id)
+
+        elif page == "couts":
+            st.session_state["active_section"] = "couts"
+            show_couts_tab(client, user_id, has_meta_ads=has_meta_ads, has_google_ads=has_google_ads)
+
+        elif page == "labels":
+            st.session_state["active_section"] = "labels"
+            show_labels_page(client, user_id)
 
         elif page == "settings":
             st.session_state["active_section"] = "settings"

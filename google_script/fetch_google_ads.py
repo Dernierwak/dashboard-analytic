@@ -14,9 +14,9 @@ Note : tous les montants sont en MICROS (1 CHF = 1_000_000 micros).
 
 from datetime import date, timedelta
 import requests
-import streamlit as st
 
 from google_script.fetch_token import get_access_token_from_refresh
+from scripts.app_secrets import secret
 
 
 # ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.
@@ -29,12 +29,12 @@ _BASE = f"https://googleads.googleapis.com/{_API_VERSION}"
 def _headers(access_token: str, login_customer_id: str | None = None) -> dict:
     h = {
         "Authorization":   f"Bearer {access_token}",
-        "developer-token": st.secrets.google_ads.developer_token,
+        "developer-token": secret("google_ads.developer_token"),
         "Content-Type":    "application/json",
     }
     # Si on passe par un MCC (manager account), spécifier l'ID parent
     try:
-        mcc = login_customer_id or st.secrets.google_ads.login_customer_id
+        mcc = login_customer_id or secret("google_ads.login_customer_id")
         if mcc:
             h["login-customer-id"] = str(mcc).replace("-", "")
     except Exception:
@@ -46,9 +46,20 @@ def list_accessible_customers(access_token: str) -> tuple[list[str], str | None]
     """Liste les customer_ids accessibles avec ce token.
     Returns: (customer_ids: list[str], error_message: str | None)
     """
+    # Pré-validation
+    if not access_token or not access_token.strip():
+        return [], "access_token vide ou None"
+    headers = _headers(access_token)
+    auth = headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or len(auth) < 20:
+        return [], f"Header Authorization mal formé (longueur={len(auth)})"
+    dev_token = headers.get("developer-token", "")
+    if not dev_token:
+        return [], "developer-token absent — vérifie [google_ads].developer_token dans secrets.toml"
+
     url = f"{_BASE}/customers:listAccessibleCustomers"
     try:
-        resp = requests.get(url, headers=_headers(access_token), timeout=15)
+        resp = requests.get(url, headers=headers, timeout=15)
     except Exception as e:
         return [], f"Erreur réseau : {e}"
 
@@ -59,7 +70,14 @@ def list_accessible_customers(access_token: str) -> tuple[list[str], str | None]
             msg = err.get("error", {}).get("message", str(err))
         except Exception:
             msg = resp.text[:500]
-        return [], f"HTTP {resp.status_code} : {msg}"
+        # Indicateurs visuels pour debug
+        token_preview = f"{access_token[:8]}…{access_token[-4:]}" if len(access_token) > 12 else "(trop court)"
+        dev_preview = f"{dev_token[:6]}…" if len(dev_token) > 6 else dev_token
+        return [], (
+            f"HTTP {resp.status_code} : {msg}\n"
+            f"DEBUG : access_token={token_preview} (len={len(access_token)}), "
+            f"developer-token={dev_preview} (len={len(dev_token)})"
+        )
 
     try:
         data = resp.json()
@@ -166,6 +184,78 @@ def fetch_campaign_insights(
                 "conversions":    float(m.get("conversions", 0) or 0),
                 "ctr":            float(m.get("ctr", 0) or 0),
                 "avg_cpc_micros": int(m.get("averageCpc", 0) or 0),
+            })
+    return rows, None
+
+
+def fetch_ad_insights(
+    access_token: str,
+    customer_id: str,
+    since: "date",
+    until: "date",
+    login_customer_id: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """Fetch les insights par ANNONCE × jour (drill-down Campagne → Groupe → Annonce).
+
+    Mirror du level='ad' de Meta. Ne remplace PAS fetch_campaign_insights :
+    certaines campagnes (Performance Max notamment) n'exposent pas leurs
+    métriques au niveau annonce → les totaux restent portés par le niveau campagne.
+    Returns: (rows, error_message_or_None)
+    """
+    query = f"""
+        SELECT
+          campaign.id,
+          campaign.name,
+          ad_group.id,
+          ad_group.name,
+          ad_group_ad.ad.id,
+          ad_group_ad.ad.name,
+          segments.date,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions
+        FROM ad_group_ad
+        WHERE segments.date BETWEEN '{since.isoformat()}' AND '{until.isoformat()}'
+          AND metrics.impressions > 0
+        ORDER BY segments.date DESC
+    """
+    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
+    try:
+        r = requests.post(url, headers=_headers(access_token, login_customer_id),
+                          json={"query": query}, timeout=60)
+        data = r.json()
+    except Exception as e:
+        return [], f"Erreur API: {e}"
+
+    if isinstance(data, dict) and "error" in data:
+        return [], data["error"].get("message", str(data["error"]))
+
+    rows = []
+    batches = data if isinstance(data, list) else [data]
+    for batch in batches:
+        if isinstance(batch, dict) and "error" in batch:
+            return [], batch["error"].get("message", str(batch["error"]))
+        for row in batch.get("results", []):
+            camp = row.get("campaign", {})
+            ag = row.get("adGroup", {})
+            ad = (row.get("adGroupAd", {}) or {}).get("ad", {})
+            seg = row.get("segments", {})
+            m = row.get("metrics", {})
+            ad_id = str(ad.get("id", ""))
+            rows.append({
+                "campaign_id":   str(camp.get("id", "")),
+                "campaign_name": camp.get("name", ""),
+                "ad_group_id":   str(ag.get("id", "")),
+                "ad_group_name": ag.get("name", ""),
+                "ad_id":         ad_id,
+                # ad.name est souvent vide (selon le type d'annonce) → fallback lisible
+                "ad_name":       ad.get("name") or f"Annonce {ad_id}",
+                "date_start":    seg.get("date", ""),
+                "impressions":   int(m.get("impressions", 0) or 0),
+                "clicks":        int(m.get("clicks", 0) or 0),
+                "cost_micros":   int(m.get("costMicros", 0) or 0),
+                "conversions":   float(m.get("conversions", 0) or 0),
             })
     return rows, None
 

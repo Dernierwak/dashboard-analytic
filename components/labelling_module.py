@@ -10,8 +10,9 @@ class Labelling():
         self.user_id = user_id
         self.df = df
         if "labels_list" not in st.session_state:
-            data = self.supabase.table("profiles").select("labelling").eq("id", self.user_id).execute().data
-            raw = data[0].get("labelling") if data else []
+            # Liste unifiée (profiles.labels) — partagée Meta/Google/Instagram
+            data = self.supabase.table("profiles").select("labels").eq("id", self.user_id).execute().data
+            raw = data[0].get("labels") if data else []
             st.session_state.labels_list = [l for l in (raw or []) if l]
 
     def _manage_labels(self):
@@ -50,7 +51,7 @@ class Labelling():
                 else:
                     st.session_state.labels_list.append(new_label.strip())
                     self.supabase.table("profiles").update({
-                        "labelling": st.session_state.labels_list
+                        "labels": st.session_state.labels_list
                     }).eq("id", self.user_id).execute()
                     st.rerun(scope="fragment")
 
@@ -64,7 +65,7 @@ class Labelling():
                 for label in to_delete:
                     st.session_state.labels_list.remove(label)
                 self.supabase.table("profiles").update({
-                    "labelling": st.session_state.labels_list
+                    "labels": st.session_state.labels_list
                 }).eq("id", self.user_id).execute()
                 st.rerun(scope="fragment")
 
@@ -83,7 +84,7 @@ class Labelling():
                 new_labels = [l for l in new_labels if l]
                 st.session_state.labels_list = new_labels
                 self.supabase.table("profiles").update({
-                    "labelling": new_labels
+                    "labels": new_labels
                 }).eq("id", self.user_id).execute()
                 for old, new in zip(old_labels, new_labels):
                     if old != new:

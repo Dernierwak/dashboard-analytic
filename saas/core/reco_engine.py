@@ -1,0 +1,441 @@
+"""Moteur de recommandations hebdo — couche 1 : FAITS (déterministe, zéro IA).
+
+Philosophie : un GUIDE, pas un ordre. Chaque reco porte 4 choses :
+  • observation  — ce que je vois (le fait + le chiffre)
+  • pourquoi     — pourquoi ça peut arriver (hypothèses, jamais une certitude)
+  • verifier     — comment vérifier AVANT d'agir
+  • angle_mort   — ce que je ne vois PAS (le garde-fou honnête)
+
++ un niveau de confiance (solide / creuser / piste) qui dépend de :
+  - la taille de l'échantillon (assez de données ?)
+  - la complétude de la vue (a-t-on les conversions via GA4, ou juste le coût ?)
+  - la franchise du signal (extrême ou limite ?)
+
+Les recos pub sont PLAFONNÉES à "creuser" tant que GA4 n'est pas connecté :
+on voit le coût, pas le retour → on ne peut pas dire "coupe" avec certitude.
+Quand GA4 est branché (param `ga4`), elles peuvent passer "solide".
+
+Une reco = dict (voir _reco()). build_recos() évalue toutes les règles,
+trie par priorité (1 = plus important) et retourne la liste.
+Si une règle plante, elle est ignorée — le rapport ne casse jamais.
+"""
+
+import pandas as pd
+
+DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+HOURS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"]
+FORMAT_LABELS = {"VIDEO": "Reel", "REEL": "Reel", "CAROUSEL_ALBUM": "Carrousel", "IMAGE": "Image"}
+
+# Icône source — même langage visuel que la sidebar (◎ Instagram, ▣ Meta, ◆ Google)
+PLATFORM_ICON = {"instagram": "◎", "meta": "▣", "google": "◆", "ia": "◇"}
+
+# Jauge de confiance — cercle plein / demi / vide (géométrique, monochrome)
+CONFIDENCE = {
+    "solide":  {"symbol": "●", "label": "Solide"},
+    "creuser": {"symbol": "◐", "label": "À creuser"},
+    "piste":   {"symbol": "○", "label": "Piste"},
+}
+
+# Libellés lisibles par type de conseil (pour résumer le feedback à l'IA / l'UI)
+KEY_LABELS = {
+    "gaspillage": "coût des campagnes",
+    "scaler": "amplifier une campagne qui marche",
+    "connecter_ga4": "connecter Google Analytics",
+    "format_gagnant": "reproduire un format gagnant",
+    "silence": "reprendre la cadence de publication",
+    "page_endormie": "réveiller la portée de la page",
+    "creneau": "publier au bon créneau",
+    "ai": "suggestion IA",
+}
+
+SEUILS = {
+    "cpc_ratio": 2.0,             # CPC > 2× ta médiane = signal de coût
+    "cpc_spend_min": 50.0,        # ...seulement si ≥ 50 CHF dépensés sur la semaine
+    "ctr_ratio": 1.5,             # CTR > 1.5× ta moyenne = candidat à amplifier
+    "ctr_impressions_min": 1000,  # plancher d'impressions (évite le bruit)
+    "format_reach_pct": 15.0,     # posts semaine ≥ +15 % vs ton post moyen
+    "format_sample_solide": 3,    # ≥ 3 posts la semaine = signal moins fragile
+    "reach_rate_min": 10.0,       # portée/abonné < 10 % = page qui s'endort
+    "slot_cell_min": 3,           # ≥ 3 posts dans la case gagnante (cohérent heatmap)
+    "slot_total_min": 20,         # ≥ 20 posts au total (cohérent heatmap)
+}
+
+
+def _reco(key, platform, title, observation, pourquoi, verifier, angle_mort,
+          confidence, priority, repere=""):
+    return {
+        "key": key,            # clé stable du type de conseil (persiste le feedback)
+        "platform": platform,
+        "title": title,
+        "observation": observation,
+        "pourquoi": pourquoi,
+        "verifier": verifier,
+        "repere": repere,      # 💡 cible/seuil concret à viser (rule of thumb)
+        "angle_mort": angle_mort,
+        "confidence": confidence,
+        "source": "rule",
+        "priority": priority,
+    }
+
+
+# ── Objectifs (re-pondèrent les recos) ────────────────────────────────────────
+# Un conseil pertinent pour l'objectif du client remonte (priorité abaissée).
+OBJECTIFS = {
+    "ventes": {
+        "label": "Plus de ventes / contacts",
+        "boost_platforms": {"meta", "google"},
+        "boost_keys": {"gaspillage", "scaler", "connecter_ga4"},
+    },
+    "notoriete": {
+        "label": "Plus de notoriété / portée",
+        "boost_platforms": {"instagram"},
+        "boost_keys": {"silence", "page_endormie", "creneau"},
+    },
+    "engagement": {
+        "label": "Plus d'engagement",
+        "boost_platforms": {"instagram"},
+        "boost_keys": {"format_gagnant", "creneau"},
+    },
+}
+
+
+# ── Règles Meta Ads ──────────────────────────────────────────────────────────
+# Sans GA4, on voit le COÛT mais pas les VENTES → jamais mieux que "creuser".
+
+def _rule_gaspillage(df_camp, ga4):
+    """CPC d'une campagne nettement > médiane ET dépense réelle. Guide, pas ordre."""
+    if df_camp is None or df_camp.empty or "cpc" not in df_camp.columns:
+        return None
+    actives = df_camp[df_camp["cpc"] > 0]
+    if len(actives) < 2:
+        return None  # 1 seule campagne = pas de médiane comparable
+    median_cpc = actives["cpc"].median()
+    if median_cpc <= 0:
+        return None
+    worst = actives.loc[actives["cpc"].idxmax()]
+    if not (worst["cpc"] >= median_cpc * SEUILS["cpc_ratio"] and worst["spend"] >= SEUILS["cpc_spend_min"]):
+        return None
+
+    name = str(worst["campaign_name"])[:40]
+    obs = (
+        f"« {name} » a un coût par clic de {worst['cpc']:.2f} CHF, "
+        f"soit {worst['cpc'] / median_cpc:.1f}× ta médiane ({median_cpc:.2f} CHF), "
+        f"pour {worst['spend']:.0f} CHF dépensés cette semaine."
+    )
+    pourquoi = (
+        "Un clic cher vient souvent d'une audience trop large, d'un visuel qui "
+        "fatigue, ou d'une campagne récente encore en phase d'apprentissage."
+    )
+
+    if ga4 and ga4.get("connected"):
+        conv = ga4.get("paid_conversions")
+        rev = ga4.get("paid_revenue")
+        if conv is not None and conv == 0:
+            # Preuve : coût élevé ET zéro conversion → conseil ferme mais motivé
+            return _reco(
+                "gaspillage", "meta",
+                f"« {name} » coûte cher et ne convertit pas",
+                obs + " GA4 ne lui attribue aucune vente/contact sur la période.",
+                pourquoi,
+                "Mets-la en pause 3-4 jours et compare : si ton chiffre d'affaires "
+                "ne bouge pas, tu peux la couper sereinement. Sinon, c'est qu'elle "
+                "contribuait indirectement — relance-la avec une autre audience.",
+                "GA4 attribue selon le dernier canal : une pub vue puis achetée plus "
+                "tard via Google peut être sous-comptée.",
+                "solide", 1,
+                repere="Un repère simple : une campagne qui dépasse ton budget mensuel "
+                       "moyen sans aucune conversion sur 7 jours mérite d'être arrêtée ou refaite.",
+            )
+        if conv is not None and conv > 0:
+            # Elle convertit malgré un clic cher → on nuance, on ne diabolise pas
+            rev_note = (f" pour {rev:,.0f} CHF de revenu attribué" if rev else "")
+            return _reco(
+                "gaspillage", "meta",
+                f"« {name} » coûte cher mais convertit",
+                obs + f" GA4 lui attribue {conv:.0f} conversion(s){rev_note}.",
+                "Un CPC élevé n'est pas un problème en soi tant que ce que ça rapporte "
+                "dépasse ce que ça coûte.",
+                "Compare son revenu attribué à sa dépense : si le retour est positif, "
+                "garde-la. Sinon, teste une audience plus serrée pour baisser le coût.",
+                "GA4 attribue au dernier canal — le revenu réel de cette campagne peut "
+                "être un peu plus élevé que ce que je vois ici.",
+                "creuser", 2,
+                repere="Le repère clé, c'est le ROAS : vise au moins 2-3 CHF de revenu "
+                       "pour 1 CHF dépensé. En dessous de 1, la campagne te coûte de l'argent.",
+            )
+
+    # Sans preuve de conversion → on guide, on ne tranche pas
+    return _reco(
+        "gaspillage", "meta",
+        f"« {name} » coûte plus que tes autres campagnes",
+        obs,
+        pourquoi,
+        "Avant tout : regarde si elle t'amène des ventes ou des contacts. Un clic "
+        "cher qui convertit reste rentable. Si après 50+ clics tu ne vois rien venir, "
+        "teste une nouvelle audience plutôt que de couper d'un coup.",
+        "Je vois le coût, pas tes ventes. Connecte Google Analytics pour que je juge "
+        "le vrai retour, pas seulement le prix du clic.",
+        "creuser", 1,
+        repere="Le repère : laisse-lui au moins 50 clics avant de juger. En dessous, "
+               "l'écart de CPC est souvent juste du hasard, pas un vrai problème.",
+    )
+
+
+def _rule_scaler(df_camp, avg_ctr, ga4):
+    """CTR nettement > moyenne (avec assez d'impressions) → candidat à amplifier."""
+    if df_camp is None or df_camp.empty or "ctr" not in df_camp.columns or avg_ctr <= 0:
+        return None
+    eligibles = df_camp[df_camp["impressions"] >= SEUILS["ctr_impressions_min"]]
+    if eligibles.empty:
+        return None
+    best = eligibles.loc[eligibles["ctr"].idxmax()]
+    if best["ctr"] < avg_ctr * SEUILS["ctr_ratio"]:
+        return None
+
+    name = str(best["campaign_name"])[:40]
+    obs = (
+        f"« {name} » a un CTR de {best['ctr']:.2f} % contre {avg_ctr:.2f} % de "
+        f"moyenne sur ton compte ({int(best['impressions']):,} impressions)."
+    )
+    conf = "solide" if (ga4 and ga4.get("connected")) else "creuser"
+    return _reco(
+        "scaler", "meta",
+        f"« {name} » accroche mieux que les autres",
+        obs,
+        "Un bon CTR veut dire que le message parle à l'audience. C'est souvent le "
+        "bon moment pour lui donner plus de budget — mais doucement.",
+        "Monte son budget de +20 % maximum, puis attends 3 jours. Si le CTR tient "
+        "et que le coût par clic ne s'envole pas, recommence. Un saut trop brutal "
+        "fait souvent repartir la campagne en apprentissage et casse la perf.",
+        ("" if conf == "solide" else
+         "Je vois l'accroche (le clic), pas ce qui se passe après. GA4 te dirait si "
+         "ces clics se transforment vraiment en clients."),
+        conf, 2,
+        repere="Le repère pour scaler sans casser : +20 % de budget max par palier, "
+               "tous les 3-4 jours. Au-delà, Meta refait son apprentissage et la perf chute.",
+    )
+
+
+def _rule_connecter_ga4(df_camp, ga4):
+    """Nudge : pub connectée mais pas GA4 → on ne voit que la moitié de l'histoire."""
+    if ga4 and ga4.get("connected"):
+        return None
+    if df_camp is None or df_camp.empty:
+        return None
+    if "spend" in df_camp.columns and df_camp["spend"].sum() < SEUILS["cpc_spend_min"]:
+        return None  # pas assez de budget en jeu pour que ça vaille le coup
+    return _reco(
+        "connecter_ga4", "google",
+        "Connecte Google Analytics pour juger le vrai retour",
+        "Aujourd'hui je vois ce que tes pubs coûtent, mais pas ce qu'elles rapportent.",
+        "Avec GA4 branché, je peux relier ta dépense Meta à tes ventes/contacts réels "
+        "et te dire quelles campagnes valent vraiment leur prix — pas juste lesquelles "
+        "sont chères.",
+        "Va dans Paramètres → Connecter Google Analytics (5 min, en lecture seule).",
+        "Sans ça, mes conseils sur les pubs restent prudents : je préfère te guider "
+        "que te faire couper une campagne qui te rapportait peut-être.",
+        "piste", 6,
+    )
+
+
+# ── Règles Instagram organique ───────────────────────────────────────────────
+
+def _rule_format_gagnant(df_week_posts, df_insta):
+    """Posts de la semaine nettement au-dessus de ton post moyen → reproduire."""
+    if df_week_posts is None or len(df_week_posts) == 0:
+        return None
+    if df_insta is None or df_insta.empty or "reach" not in df_insta.columns:
+        return None
+    if "reach" not in df_week_posts.columns:
+        return None
+    hist_reach = float(df_insta["reach"].mean())
+    week_reach = float(df_week_posts["reach"].mean())
+    if hist_reach <= 0:
+        return None
+    diff_pct = (week_reach - hist_reach) / hist_reach * 100
+    if diff_pct < SEUILS["format_reach_pct"]:
+        return None
+
+    n = len(df_week_posts)
+    fmt_note = ""
+    if "type" in df_week_posts.columns:
+        try:
+            top = str(df_week_posts["type"].value_counts().idxmax()).upper()
+            fmt_note = f", surtout en {FORMAT_LABELS.get(top, top)}"
+        except Exception:
+            pass
+    # Confiance selon l'échantillon : 1-2 posts = piste, 3+ = on creuse
+    solide_enough = n >= SEUILS["format_sample_solide"]
+    return _reco(
+        "format_gagnant", "instagram",
+        f"Tes posts de la semaine portent +{diff_pct:.0f} % de plus que d'habitude",
+        f"Tes {n} post{'s' if n > 1 else ''} de la semaine font {week_reach:,.0f} de "
+        f"portée moyenne, contre {hist_reach:,.0f} sur ton historique{fmt_note}.",
+        "Quand un format décolle, c'est que le sujet, le ton ou le moment ont touché "
+        "juste. Ça vaut la peine de comprendre quoi, pour le refaire.",
+        "Reprends ce qui a marché — même format, même angle — sur 1 ou 2 prochains "
+        "posts et regarde si l'effet se confirme.",
+        ("" if solide_enough else
+         f"Sur seulement {n} post{'s' if n > 1 else ''}, ça peut être un coup de "
+         "chance. Attends d'en avoir publié quelques-uns avant d'en faire une règle."),
+        "creuser" if solide_enough else "piste",
+        3,
+        repere="Le repère : un post qui dépasse +20 % de ta portée moyenne vaut d'être "
+               "décliné. À +50 %, c'est un format à industrialiser (série, rubrique récurrente).",
+    )
+
+
+def _rule_silence(df_insta, df_week_posts):
+    """0 post cette semaine alors que le compte a une cadence → relancer (doux)."""
+    if df_insta is None or df_insta.empty or "date" not in df_insta.columns:
+        return None
+    if df_week_posts is not None and len(df_week_posts) > 0:
+        return None
+    _dt = pd.to_datetime(df_insta["date"], errors="coerce", utc=True).dropna()
+    if _dt.empty:
+        return None
+    span_days = (_dt.max() - _dt.min()).days or 1
+    cadence = len(df_insta) / max(1, span_days / 30)
+    if cadence < 1:
+        return None  # compte quasi inactif — pas de leçon à donner
+    return _reco(
+        "silence", "instagram",
+        "Aucun post publié cette semaine",
+        f"Ta cadence habituelle tourne autour de {cadence:.1f} posts par mois, "
+        "et la semaine est restée vide.",
+        "Les comptes qui publient régulièrement gardent une meilleure portée : "
+        "l'algorithme montre surtout ce qui est récent et vivant.",
+        "Pas besoin de viser la perfection : un seul post cette semaine, sur ton "
+        "meilleur créneau, suffit à garder le rythme.",
+        "Une semaine sans poster n'est pas grave en soi — c'est la répétition qui "
+        "endort une page, pas un trou isolé.",
+        "creuser", 2,
+        repere="Le repère pour un petit compte : 3 à 5 posts par semaine entretiennent "
+               "la portée. En dessous de 1, l'algorithme te met progressivement de côté.",
+    )
+
+
+def _rule_page_endormie(df_insta, followers_current):
+    """Portée/abonné < 10 % → la page touche peu son audience."""
+    if df_insta is None or len(df_insta) < 5 or followers_current < 100:
+        return None  # trop peu de signal pour juger honnêtement
+    if "reach" not in df_insta.columns:
+        return None
+    reach_rate = float(df_insta["reach"].mean()) / followers_current * 100
+    if reach_rate >= SEUILS["reach_rate_min"]:
+        return None
+    return _reco(
+        "page_endormie", "instagram",
+        f"Un post typique ne touche que {reach_rate:.0f} % de tes abonnés",
+        f"En moyenne, tes posts atteignent {reach_rate:.0f} % de ton audience. "
+        "La zone normale d'un petit compte se situe entre 10 et 30 %.",
+        "Sous 10 %, c'est souvent que la cadence a baissé, que le format ne crée plus "
+        "de réactions, ou que l'audience s'est élargie sans rester engagée.",
+        "Teste les Reels sur 2 semaines (ils touchent au-delà de tes abonnés) et "
+        "regarde si ce pourcentage remonte.",
+        "Ce ratio bouge naturellement ; juge-le sur la durée, pas sur une seule "
+        "semaine.",
+        "creuser", 3,
+        repere="Le repère de portée sur tes abonnés : 30 %+ = sain, 50 %+ = l'algo te "
+               "pousse fort. Sous 10 %, ta page est en sommeil — c'est là qu'il faut réagir.",
+    )
+
+
+def _rule_creneau(df_insta):
+    """Meilleur créneau fiable (mêmes seuils que la heatmap) → planifier dessus."""
+    if df_insta is None or df_insta.empty:
+        return None
+    if "date" not in df_insta.columns or "reach" not in df_insta.columns:
+        return None
+    d = df_insta.copy()
+    d["_dt"] = pd.to_datetime(d["date"], errors="coerce", utc=True)
+    try:
+        d["_dt"] = d["_dt"].dt.tz_convert("Europe/Zurich")
+    except Exception:
+        pass
+    d = d.dropna(subset=["_dt"])
+    if len(d) < SEUILS["slot_total_min"]:
+        return None
+    d["_dow"] = d["_dt"].dt.dayofweek
+    d["_hour"] = d["_dt"].dt.hour
+    if not any(int(h) > 0 for h in d["_hour"].dropna().unique()):
+        return None  # heures non stockées (backfill) → créneau non fiable
+    bins = [0, 7, 10, 13, 16, 19, 24]
+    d["_slot"] = pd.cut(d["_hour"], bins=bins, labels=range(6), right=False)
+    g = d.groupby(["_dow", "_slot"], observed=True)["reach"].agg(["count", "mean"])
+    g = g[g["count"] >= SEUILS["slot_cell_min"]]
+    if g.empty:
+        return None
+    best_key = g["mean"].idxmax()
+    row = g.loc[best_key]
+    dow, slot = int(best_key[0]), int(best_key[1])
+    return _reco(
+        "creneau", "instagram",
+        f"Ton meilleur créneau : {DAYS[dow]} entre {HOURS[slot]}",
+        f"Sur {int(row['count'])} posts publiés à ce moment, tu fais {row['mean']:,.0f} "
+        "de portée moyenne — ton créneau le plus régulier.",
+        "Publier quand ton audience est active donne un coup de pouce de départ que "
+        "l'algorithme amplifie ensuite.",
+        "Programme ton prochain post important sur ce créneau et compare-le à tes "
+        "publications hors créneau.",
+        "C'est une tendance sur ton historique, pas une garantie : le contenu compte "
+        "toujours plus que l'heure.",
+        "solide", 4,
+        repere="Le repère : publie quand TON audience à toi est active (ce créneau), pas "
+               "selon les « meilleures heures » génériques d'Internet — elles ne valent rien pour ton compte.",
+    )
+
+
+# ── Orchestration ────────────────────────────────────────────────────────────
+
+def build_recos(
+    df_camp=None,
+    avg_ctr: float = 0.0,
+    df_insta=None,
+    df_week_posts=None,
+    followers_current: int = 0,
+    ga4: dict | None = None,
+    objectif: str | None = None,
+    feedback: dict | None = None,
+) -> list[dict]:
+    """Évalue toutes les règles, trie par priorité (1 = plus fort).
+
+    ga4 : dict optionnel — lève le plafond de confiance des recos pub.
+    objectif : 'ventes' | 'notoriete' | 'engagement' — remonte les recos pertinentes.
+    feedback : {reco_key: "useful"|"not_for_me"|"done"} — la dernière réaction connue ;
+               'not_for_me' déprioritise, 'done' déprioritise légèrement (déjà traité).
+    Défensif : une règle qui plante est ignorée — le rapport ne casse jamais.
+    """
+    candidates = [
+        lambda: _rule_gaspillage(df_camp, ga4),
+        lambda: _rule_scaler(df_camp, avg_ctr, ga4),
+        lambda: _rule_silence(df_insta, df_week_posts),
+        lambda: _rule_format_gagnant(df_week_posts, df_insta),
+        lambda: _rule_page_endormie(df_insta, followers_current),
+        lambda: _rule_creneau(df_insta),
+        lambda: _rule_connecter_ga4(df_camp, ga4),
+    ]
+    recos = []
+    for rule in candidates:
+        try:
+            r = rule()
+        except Exception:
+            r = None
+        if r:
+            recos.append(r)
+
+    obj = OBJECTIFS.get(objectif or "")
+    fb = feedback or {}
+    for r in recos:
+        # Objectif : -3 si la reco sert l'objectif (plateforme ou key)
+        if obj and (r["platform"] in obj["boost_platforms"] or r["key"] in obj["boost_keys"]):
+            r["priority"] -= 3
+        # Feedback : respecter ce que l'utilisateur a déjà dit
+        react = fb.get(r["key"])
+        if react == "not_for_me":
+            r["priority"] += 6   # pousse en bas sans masquer (un signal réel reste visible)
+        elif react == "done":
+            r["priority"] += 2   # déjà traité cette semaine → laisse la place au reste
+
+    recos.sort(key=lambda r: r["priority"])
+    return recos

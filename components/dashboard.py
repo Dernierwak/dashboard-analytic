@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+from components.graph_style import apply_pulse_style, PULSE
 from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
 from components.ai_reco import show_ai_reco
 from components.labelling_module import Labelling
@@ -494,18 +495,11 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
             df_plot["gain"] = df_plot["delta"].apply(lambda x: x if x and x > 0 else 0)
             df_plot["perte"] = df_plot["delta"].apply(lambda x: x if x and x < 0 else 0)
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.6, 0.4], vertical_spacing=0.05)
-            fig.add_trace(go.Scatter(x=df_plot["fetched_at"], y=df_plot["followers"], name="Followers", line=dict(color="#1a56ff", width=2)), row=1, col=1)
-            fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["gain"], name="Gain", marker_color="#1a7a4a", opacity=0.7), row=2, col=1)
-            fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["perte"], name="Perte", marker_color="#c0392b", opacity=0.7), row=2, col=1)
-            fig.update_layout(
-                template="plotly_white", height=300,
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-                font=dict(color="#666", family="Inter, sans-serif"),
-                barmode="relative", showlegend=False,
-                xaxis2=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#f4f3f1"),
-                yaxis2=dict(showgrid=True, gridcolor="#f4f3f1"),
-            )
+            fig.add_trace(go.Scatter(x=df_plot["fetched_at"], y=df_plot["followers"], name="Followers", line=dict(color=PULSE["accent"], width=2)), row=1, col=1)
+            fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["gain"], name="Gain", marker_color=PULSE["pos"], opacity=0.75), row=2, col=1)
+            fig.add_trace(go.Bar(x=df_plot["fetched_at"], y=df_plot["perte"], name="Perte", marker_color=PULSE["neg"], opacity=0.75), row=2, col=1)
+            apply_pulse_style(fig, height=300, in_card=True, show_legend=False)
+            fig.update_layout(barmode="relative")
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(0,0,0,0.07);margin:24px 0'>", unsafe_allow_html=True)
@@ -544,15 +538,7 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
         color_discrete_map=COLOR_MAP,
         labels={"date": "Date", selected_metric: selected_label, "type": "Type"},
     )
-    fig.update_layout(
-        template="plotly_white",
-        height=300, margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-        font=dict(color="#666", family="Inter, sans-serif"),
-        legend=dict(orientation="h", y=1.1, font=dict(color="#666")),
-        xaxis=dict(showgrid=False, color="#999", linecolor="rgba(0,0,0,0.07)"),
-        yaxis=dict(showgrid=True, gridcolor="#f4f3f1", color="#999"),
-    )
+    apply_pulse_style(fig, height=300, in_card=True, legend_position="top-right")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # ── Top 3 PostCards ──────────────────────────────────────────────────────
@@ -652,18 +638,12 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
                 labels={"week": "Semaine", "day_of_week": "Jour"},
             )
         fig_cal.update_traces(marker=dict(size=14, symbol="square"))
-        fig_cal.update_layout(
-            template="plotly_white", height=280,
-            margin=dict(l=0, r=0, t=10, b=0),
-            paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-            font=dict(color="#666", family="Inter, sans-serif"),
-            yaxis=dict(
-                tickmode="array", tickvals=[0, 1, 2, 3, 4, 5, 6],
-                ticktext=["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
-                showgrid=True, gridcolor="#f4f3f1",
-            ),
-            xaxis=dict(showgrid=False, title="Semaine de l'année"),
+        apply_pulse_style(fig_cal, height=280, in_card=True, legend_position="top-right")
+        fig_cal.update_yaxes(
+            tickmode="array", tickvals=[0, 1, 2, 3, 4, 5, 6],
+            ticktext=["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
         )
+        fig_cal.update_xaxes(title_text="Semaine de l'année")
         st.plotly_chart(fig_cal, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(0,0,0,0.07);margin:24px 0'>", unsafe_allow_html=True)
@@ -697,13 +677,11 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
                     color="label",
                     color_discrete_sequence=px.colors.qualitative.Set2,
                 )
-                fig_bar_lab.update_layout(
-                    template="plotly_white",
+                apply_pulse_style(
+                    fig_bar_lab,
                     height=max(180, len(avg_df) * 50),
-                    margin=dict(l=0, r=0, t=10, b=0),
-                    paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-                    font=dict(color="#666", family="Inter, sans-serif"),
-                    showlegend=False,
+                    in_card=True,
+                    show_legend=False,
                 )
                 st.plotly_chart(fig_bar_lab, use_container_width=True, config={"displayModeBar": False})
 
@@ -713,12 +691,8 @@ def show_dashboard(client, user_id, is_paid=False, account_name: str = "Instagra
                     cnt_df, values="posts", names="label", hole=0.55,
                     color_discrete_sequence=px.colors.qualitative.Set2,
                 )
-                fig_donut.update_layout(
-                    template="plotly_white", height=220,
-                    margin=dict(l=0, r=0, t=10, b=20),
-                    paper_bgcolor="#ffffff",
-                    font=dict(color="#666", family="Inter, sans-serif"),
-                    legend=dict(orientation="h", y=-0.2),
+                apply_pulse_style(
+                    fig_donut, height=220, in_card=True, legend_position="bottom"
                 )
                 fig_donut.update_traces(textposition="inside", textinfo="percent+label")
                 st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})

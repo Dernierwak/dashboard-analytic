@@ -52,15 +52,17 @@ class AuthDashboard():
 
             email = st.text_input("Email")
             password = st.text_input("Mot de passe", type="password")
+            # Action primaire (Se connecter) en premier : sur mobile les colonnes
+            # s'empilent et c'est elle qu'on doit voir d'abord.
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button("Créer un compte", use_container_width=True):
-                    self._create_account(email, password)
-            with col_b:
                 if st.button("Se connecter", use_container_width=True, type="primary"):
                     self._login(email, password)
-            
-            with st.popover("reset password"):
+            with col_b:
+                if st.button("Créer un compte", use_container_width=True):
+                    self._create_account(email, password)
+
+            with st.popover("Mot de passe oublié ?"):
                 _reset_password_email(supabase=self.supabase)
             
     

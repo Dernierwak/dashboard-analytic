@@ -5,6 +5,8 @@ from plotly.subplots import make_subplots
 
 from components.dashboard import show_dashboard
 from components.meta_ads import render_period_selector
+from components.graph_style import apply_pulse_style, PULSE, delta_color
+from components.layout import inject_hierarchy_css
 from scripts.insert_data import insert_instagram_org
 from scripts.fetch_data import fetch_post_metrics, fetch_daily_followers
 from meta_script.fetch_instagram import OrganicInstagramm
@@ -123,6 +125,7 @@ def _format_chip(fmt: str, best: bool = False) -> str:
 
 def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=None, account_name: str = "Instagram"):
     st.markdown(PULSE_CSS, unsafe_allow_html=True)
+    inject_hierarchy_css()  # classes .h-* + alignement à droite des popovers ⓘ
 
     fetch_instagram_fragment(client=client, user_id=user_id, is_paid=is_paid, dash=dash, instagram_business_id=instagram_business_id)
 
@@ -167,145 +170,138 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                 pass
         df["_date_dt"] = _dt
 
-    tab_perf, tab_labels = st.tabs(["Performance", "Labels"])
-
-    with tab_labels:
-        _show_instagram_labels_tab(client, user_id, df)
+    # Plus d'onglet Labels ici : la gestion des labels a sa page globale dédiée
+    # (components/labels_page.py). Ce canal = Performance seule.
+    tab_perf = st.container()
 
     with tab_perf:
-        # ── Sélecteur de période global Instagram ───────────────────────────
-        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
-            since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
-            mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
-            df = df[mask].copy()
+        # Agrégats sur tout l'historique (df complet, jamais filtré)
+        nb_posts_total = len(df)
+        reach_total_all = int(df["reach"].sum()) if "reach" in df.columns else 0
+        likes_total_all = int(df["likes"].sum()) if "likes" in df.columns else 0
+        saves_total_all = int(df["saved"].sum()) if "saved" in df.columns else 0
+        engagement_pct_all = ((likes_total_all + saves_total_all) / reach_total_all * 100) if reach_total_all > 0 else 0.0
 
-        if df.empty:
-            st.info(
-                "Aucun post sur cette période. Élargis la sélection ou choisis 'Tout'."
+        # ═════════════════════════════════════════════════════════════════════
+        # ── Hero (statique) ─────────────────────────────────────────────────
+        # ═════════════════════════════════════════════════════════════════════
+        st.markdown(
+            '<div class="page-h">'
+            '<h1>Instagram organique</h1>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ═════════════════════════════════════════════════════════════════════
+        # ─── SECTION 1 : PAGE INSTAGRAM (aucun filtre — vue totale) ─────────
+        # ═════════════════════════════════════════════════════════════════════
+        _pg_title, _pg_info = st.columns([6, 1])
+        with _pg_title:
+            st.markdown(
+                '<div class="section-head" style="margin:8px 0 12px;">'
+                '<div class="h-eyebrow">Page Instagram</div>'
+                '<div style="font-size:13px;font-weight:500;color:#5a5d66;margin-top:4px;">'
+                "Aperçu de ton compte — indépendant des filtres</div>"
+                '</div>',
+                unsafe_allow_html=True,
             )
-            return
+        with _pg_info:
+            with st.popover("ⓘ", help="Comment lire ces indicateurs"):
+                st.markdown(
+                    "**Abonnés** — total actuel + gain/perte des 7 derniers jours.  \n\n"
+                    "**Croissance 30j** — abonnés gagnés ou perdus sur 30 jours.  \n\n"
+                    "**Cadence** — posts publiés par mois, en moyenne sur ton historique.  \n\n"
+                    "**Portée / abonné** — % de ton audience touchée par un post typique "
+                    "(portée moyenne ÷ abonnés). C'est le signal de santé de ta page :  \n"
+                    "• **> 30 %** — l'algo te pousse, très bon  \n"
+                    "• **10 – 30 %** — zone normale d'un petit compte  \n"
+                    "• **< 10 %** — ta page s'endort : relance la cadence ou varie les formats"
+                )
 
-        # ── Recalcul des agrégats sur le df filtré ──────────────────────────
-        nb_posts = len(df)
-        reach_mean = df["reach"].mean() if "reach" in df.columns else 0
-        nb_flew = int((df["reach"] > reach_mean).sum()) if "reach" in df.columns else 0
-        reach_total = int(df["reach"].sum()) if "reach" in df.columns else 0
-        likes_total = int(df["likes"].sum()) if "likes" in df.columns else 0
-        saves_total = int(df["saved"].sum()) if "saved" in df.columns else 0
-        engagement_pct = ((likes_total + saves_total) / reach_total * 100) if reach_total > 0 else 0.0
-        saves_per_post = saves_total / nb_posts if nb_posts > 0 else 0.0
+        # KPI grid Page — exclusivement métriques page-level (pas de doublon avec Posts)
+        # Calculs page-level :
+        # - Croissance 30j : delta abonnés sur 30 derniers jours
+        # - Cadence : posts par mois sur l'historique
+        # - Format dominant : format le plus utilisé (par count)
+        growth_30d = 0
+        growth_pct = 0.0
+        if not df_follows.empty and "followers" in df_follows.columns and len(df_follows) >= 2:
+            _df_g = df_follows.copy().sort_values("fetched_at", ascending=False)
+            _df_g["fetched_at"] = pd.to_datetime(_df_g["fetched_at"], errors="coerce")
+            try:
+                _now = _df_g.iloc[0]["fetched_at"]
+                _ref = _df_g[_df_g["fetched_at"] <= _now - pd.Timedelta(days=30)]
+                if not _ref.empty:
+                    ref_val = int(_ref.iloc[0]["followers"])
+                    growth_30d = followers_current - ref_val
+                    growth_pct = (growth_30d / ref_val * 100) if ref_val > 0 else 0.0
+            except Exception:
+                pass
 
-        # Hero : label dynamique selon la sélection
-        _period_label = st.session_state.get("insta_period", "")
-        if _period_label == "Custom":
-            _hero_period = f"du {since_ts.strftime('%d %b')} au {until_ts.strftime('%d %b %Y')}"
-        elif _period_label == "Tout":
-            _hero_period = "tout l'historique"
-        else:
-            _hero_period = f"{_period_label} derniers jours"
+        # Cadence posts / mois
+        cadence_per_month = 0.0
+        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
+            _span_days = (df["_date_dt"].max() - df["_date_dt"].min()).days or 1
+            cadence_per_month = nb_posts_total / max(1, _span_days / 30)
 
-        st.markdown(f"""
-        <div class='page-h'>
-            <div class='h-eyebrow'>Instagram organique · {_hero_period} · {account_name}</div>
-            <h1>{nb_posts} posts publiés, {nb_flew} ont décollé.</h1>
-            <p class='h-sub'>Portée totale {reach_total:,} · Engagement {engagement_pct:.1f}% · {followers_current:,} abonnés {_delta_html(followers_delta)}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
+        # Portée / abonné — % de l'audience touchée par un post moyen (santé de la page)
+        reach_rate = 0.0
+        if followers_current > 0 and "reach" in df.columns and not df.empty:
+            reach_rate = df["reach"].mean() / followers_current * 100
+
         st.markdown(f"""
         <div class='kpi-grid'>
             <div class='kpi'>
                 <div class='k-label'>Abonnés</div>
                 <div class='k-value'>{followers_current:,}</div>
-                <div class='k-foot'>{_delta_html(followers_delta, " ce mois")} &nbsp;</div>
+                <div class='k-foot'>{_delta_html(followers_delta, " ces 7j")} &nbsp;</div>
             </div>
             <div class='kpi'>
-                <div class='k-label'>Portée totale</div>
-                <div class='k-value'>{reach_total:,}</div>
-                <div class='k-foot'>sur {nb_posts} posts</div>
+                <div class='k-label'>Croissance 30j</div>
+                <div class='k-value'>{growth_30d:+,}</div>
+                <div class='k-foot'>{growth_pct:+.1f} % sur 30 jours</div>
             </div>
             <div class='kpi'>
-                <div class='k-label'>Engagement moyen</div>
-                <div class='k-value'>{engagement_pct:.1f}</div>
-                <div class='k-foot'>%</div>
+                <div class='k-label'>Cadence</div>
+                <div class='k-value'>{cadence_per_month:.1f}</div>
+                <div class='k-foot'>posts / mois en moyenne</div>
             </div>
             <div class='kpi'>
-                <div class='k-label'>Saves / post</div>
-                <div class='k-value'>{saves_per_post:.1f}</div>
-                <div class='k-foot'>sauvegardes par post</div>
+                <div class='k-label'>Portée / abonné</div>
+                <div class='k-value'>{reach_rate:.0f}%</div>
+                <div class='k-foot'>de ton audience touchée par post</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
         # ── Croissance abonnés ────────────────────────────────────────────
         if not df_follows.empty and "followers" in df_follows.columns and len(df_follows) >= 2:
-            st.markdown(
-                "<div class='section'><div class='section-head'>"
-                "<span class='section-title'>Croissance abonnés</span></div></div>",
-                unsafe_allow_html=True,
-            )
+            _fg_title, _fg_info = st.columns([6, 1])
+            with _fg_title:
+                st.markdown(
+                    "<div class='section'><div class='section-head'>"
+                    "<span class='section-title'>Croissance des abonnés</span>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+            with _fg_info:
+                with st.popover("ⓘ", help="Comment lire le graphique"):
+                    st.markdown(
+                        "**Barres** = variation quotidienne (vert = gain, rouge = perte)  \n"
+                        "**Ligne bleue** = total cumulé d'abonnés"
+                    )
 
             df_grow = df_follows.copy().sort_values("fetched_at", ascending=True)
             df_grow["fetched_at"] = pd.to_datetime(df_grow["fetched_at"], errors="coerce")
             df_grow["followers"] = pd.to_numeric(df_grow["followers"], errors="coerce")
             df_grow = df_grow.dropna(subset=["fetched_at", "followers"])
 
-            now = df_grow["fetched_at"].max()
-            first = df_grow["fetched_at"].min()
-            days_tracked = max(1, (now - first).days)
-            current = int(df_grow.iloc[-1]["followers"])
-
-            # gain sur 7 jours
-            df_7d = df_grow[df_grow["fetched_at"] >= (now - pd.Timedelta(days=7))]
-            gain_7d = int(df_7d.iloc[-1]["followers"] - df_7d.iloc[0]["followers"]) if len(df_7d) >= 2 else 0
-
-            # gain sur 30 jours
-            df_30d = df_grow[df_grow["fetched_at"] >= (now - pd.Timedelta(days=30))]
-            gain_30d = int(df_30d.iloc[-1]["followers"] - df_30d.iloc[0]["followers"]) if len(df_30d) >= 2 else 0
-
-            # gain depuis le début du tracking
-            gain_total = int(current - df_grow.iloc[0]["followers"])
-            avg_per_day = gain_total / days_tracked if days_tracked > 0 else 0
-
-            # taux de croissance mensuel
-            base_30d = int(df_30d.iloc[0]["followers"]) if len(df_30d) >= 2 else current
-            growth_rate = (gain_30d / base_30d * 100) if base_30d > 0 else 0.0
-
-            # 4 cartes KPI
-            st.markdown(f"""
-            <div class='kpi-grid'>
-                <div class='kpi'>
-                    <div class='k-label'>Gain 7 jours</div>
-                    <div class='k-value'>{gain_7d:+,}</div>
-                    <div class='k-foot'>cette semaine</div>
-                </div>
-                <div class='kpi'>
-                    <div class='k-label'>Gain 30 jours</div>
-                    <div class='k-value'>{gain_30d:+,}</div>
-                    <div class='k-foot'>ce mois-ci</div>
-                </div>
-                <div class='kpi'>
-                    <div class='k-label'>Moyenne / jour</div>
-                    <div class='k-value'>{avg_per_day:+.1f}</div>
-                    <div class='k-foot'>sur {days_tracked} jours</div>
-                </div>
-                <div class='kpi'>
-                    <div class='k-label'>Croissance 30j</div>
-                    <div class='k-value'>{growth_rate:+.2f}</div>
-                    <div class='k-foot'>%</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
             # Calcul des gains/pertes quotidiens
             df_diff = df_grow.copy()
             df_diff["delta"] = df_diff["followers"].diff().fillna(0).astype(int)
             df_diff = df_diff.iloc[1:]  # retire le 1er point (delta = 0)
 
-            bar_colors = [
-                "#1a7a4a" if d > 0 else "#c0392b" if d < 0 else "rgba(14,15,18,0.15)"
-                for d in df_diff["delta"]
-            ]
+            bar_colors = [delta_color(d) for d in df_diff["delta"]]
             text_labels = [
                 (f"+{d}" if d > 0 else (f"{d}" if d < 0 else ""))
                 for d in df_diff["delta"]
@@ -322,7 +318,7 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     marker_color=bar_colors,
                     text=text_labels,
                     textposition="outside",
-                    textfont=dict(size=9, color="#0e0f12"),
+                    textfont=dict(size=9, color=PULSE["ink"], family=PULSE["font_mono"]),
                     hovertemplate="%{x|%d %b %Y}<br><b>%{y:+,} abonnés</b><extra></extra>",
                 ),
                 secondary_y=False,
@@ -334,8 +330,9 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     x=df_grow["fetched_at"], y=df_grow["followers"],
                     name="Total",
                     mode="lines+markers",
-                    line=dict(color="#3b5bff", width=2.5),
-                    marker=dict(size=4, color="#fff", line=dict(color="#3b5bff", width=2)),
+                    line=dict(color=PULSE["accent"], width=2.5),
+                    marker=dict(size=4, color=PULSE["white"],
+                                line=dict(color=PULSE["accent"], width=2)),
                     hovertemplate="%{x|%d %b %Y}<br><b>%{y:,} abonnés au total</b><extra></extra>",
                 ),
                 secondary_y=True,
@@ -343,41 +340,26 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
 
             # Ligne 0 sur l'axe de gauche
             fig_follow.add_hline(
-                y=0, line_color="rgba(14,15,18,0.2)", line_width=1,
+                y=0, line_color=PULSE["line"], line_width=1,
                 secondary_y=False,
             )
 
-            fig_follow.update_layout(
-                template="plotly_white", height=300,
-                margin=dict(l=0, r=0, t=10, b=0),
-                paper_bgcolor="#fff", plot_bgcolor="#fff",
-                font=dict(color="#666", family="Inter, sans-serif"),
-                bargap=0.4,
-                legend=dict(
-                    orientation="h", yanchor="bottom", y=1.02,
-                    xanchor="right", x=1,
-                    font=dict(size=11, color="#5a5d66"),
-                ),
-                hovermode="x unified",
-            )
-            # Axe X
-            fig_follow.update_xaxes(
-                showgrid=False, color="#999",
-                linecolor="rgba(0,0,0,0.07)",
-                fixedrange=True,
-            )
-            # Axe Y gauche (delta — barres)
+            # ── Style Pulse (1 ligne pour tout le layout) ──
+            apply_pulse_style(fig_follow, height=320, in_card=True)
+            fig_follow.update_layout(bargap=0.4, margin=dict(l=8, r=8, t=12, b=40))
+            # Axe X : titre explicite
+            fig_follow.update_xaxes(title_text="Date")
+            # Axe Y gauche (variation /jour)
             fig_follow.update_yaxes(
-                title_text="Variation /jour", title_font=dict(size=10, color="#8b8e98"),
-                showgrid=True, gridcolor="#f4f3f1", color="#999",
-                fixedrange=True, zeroline=False,
+                title_text="Variation quotidienne (abonnés)",
                 secondary_y=False,
             )
-            # Axe Y droit (total — ligne)
+            # Axe Y droit (total cumulé, accent bleu)
             fig_follow.update_yaxes(
-                title_text="Total abonnés", title_font=dict(size=10, color="#3b5bff"),
-                showgrid=False, color="#3b5bff",
-                fixedrange=True, zeroline=False,
+                title_text="Total abonnés (cumulé)",
+                showgrid=False,
+                tickfont=dict(family=PULSE["font_mono"], size=10, color=PULSE["accent"]),
+                title_font=dict(family=PULSE["font_body"], size=11, color=PULSE["accent"]),
                 secondary_y=True,
             )
 
@@ -394,18 +376,166 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             )
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Section "Tes moyennes par post" (référence pour comprendre 'a décollé') ──
-        likes_mean = float(df["likes"].mean()) if "likes" in df.columns else 0.0
-        saves_mean = float(df["saved"].mean()) if "saved" in df.columns else 0.0
-        comm_mean  = float(df["comments"].mean()) if "comments" in df.columns else 0.0
-        _df_eng_avg = df[df.get("reach", 0) > 0] if "reach" in df.columns else df.head(0)
+        # ═════════════════════════════════════════════════════════════════════
+        # ─── SECTION 2 : POSTS (filtres période + format + label appliqués) ─
+        # ═════════════════════════════════════════════════════════════════════
+        st.markdown(
+            '<div class="section-head" style="margin:32px 0 12px;padding-top:20px;'
+            'border-top:1px solid rgba(14,15,18,0.08);">'
+            '<div class="h-eyebrow">Posts · Performance</div>'
+            '<div style="font-size:13px;font-weight:500;color:#5a5d66;margin-top:4px;">'
+            'Suit la période, le format et le label sélectionnés</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # df_all = historique complet (jamais filtré) — sert à la View globale en bas
+        df_all = df.copy()
+
+        # ── Filtres regroupés (Période + Format + Label) ────────────────────
+        # Période = ligne complète (pills Pulse)
+        if "_date_dt" in df.columns and df["_date_dt"].notna().any():
+            since_ts, until_ts = render_period_selector(key="insta", df_dates=df["_date_dt"])
+            mask = (df["_date_dt"] >= since_ts) & (df["_date_dt"] <= until_ts)
+            df = df[mask].copy()
+
+        if df.empty:
+            st.info("Aucun post sur cette période. Élargis la sélection ou choisis 'Tout'.")
+            _render_posts_global(client, user_id, df_all)
+            return
+
+        # Filtres secondaires (2 cols : Format + Label)
+        # ⚠ Le sélecteur Métrique a déménagé : il est désormais DANS la section
+        # "Ce qui marche pour toi" (et pilote aussi heatmap + top 3) — voir plus bas.
+        metric_options = {
+            "Portée":         ("reach",    "",  "{:,.0f}"),
+            "Likes":          ("likes",    "",  "{:,.0f}"),
+            "Saves":          ("saved",    "",  "{:,.0f}"),
+            "Commentaires":   ("comments", "",  "{:,.0f}"),
+            "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
+        }
+        fmt_options = ["Tous"]
+        if "type" in df.columns:
+            for _fmt in df["type"].dropna().unique():
+                _l = FORMAT_LABELS.get(str(_fmt).upper(), str(_fmt))
+                if _l not in fmt_options:
+                    fmt_options.append(_l)
+        lbl_options = ["Tous"]
+        for _l in (st.session_state.get("insta_labels") or []):
+            lbl_options.append(_l)
+        lbl_options.append("(sans label)")
+
+        col_f, col_l = st.columns(2)
+        with col_f:
+            sel_fmt = st.selectbox(
+                "Format", options=fmt_options, key="insta_filter_fmt",
+            )
+        with col_l:
+            sel_lbl = st.selectbox(
+                "Label", options=lbl_options, key="insta_filter_lbl",
+            )
+
+        # Colonne dérivée Engagement % (toujours calculée pour pouvoir trier dessus plus tard)
+        if not df.empty:
+            df = df.copy()
+            df["_eng_pct"] = df.apply(
+                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
+                if r.get("reach", 0) > 0 else 0.0,
+                axis=1,
+            )
+
+        # ── Deux dataframes filtrés selon l'usage analytique : ──
+        #  df_compare = période + label (PAS de Format) → pour les comparaisons de formats
+        #               (Ce qui marche pour toi). Sinon filtrer Format casse la comparaison.
+        #  df_f       = période + label + Format → toutes les autres sections.
+        df_compare = df.copy()
+        if sel_lbl != "Tous" and "labels" in df_compare.columns:
+            if sel_lbl == "(sans label)":
+                df_compare = df_compare[df_compare["labels"].apply(
+                    lambda x: not (isinstance(x, list) and len(x) > 0 and x[0])
+                )]
+            else:
+                df_compare = df_compare[df_compare["labels"].apply(
+                    lambda x: isinstance(x, list) and sel_lbl in x
+                )]
+
+        df_f = df_compare.copy()
+        if sel_fmt != "Tous" and "type" in df_f.columns:
+            target_fmts = [k for k, v in FORMAT_LABELS.items() if v == sel_fmt]
+            if not target_fmts:
+                target_fmts = [sel_fmt.upper()]
+            df_f = df_f[df_f["type"].astype(str).str.upper().isin(target_fmts)]
+
+        if df_f.empty:
+            st.info("Aucun post avec ces filtres. Élargis Format ou Label.")
+            _render_posts_global(client, user_id, df_all)
+            return
+
+        # ── Agrégats sur df_f (tous les filtres appliqués) ─────────────────
+        nb_posts = len(df_f)
+        reach_mean = df_f["reach"].mean() if "reach" in df_f.columns else 0
+        nb_flew = int((df_f["reach"] > reach_mean).sum()) if "reach" in df_f.columns else 0
+        reach_total = int(df_f["reach"].sum()) if "reach" in df_f.columns else 0
+        likes_total = int(df_f["likes"].sum()) if "likes" in df_f.columns else 0
+        saves_total = int(df_f["saved"].sum()) if "saved" in df_f.columns else 0
+        engagement_pct = ((likes_total + saves_total) / reach_total * 100) if reach_total > 0 else 0.0
+        saves_per_post = saves_total / nb_posts if nb_posts > 0 else 0.0
+
+        # KPI grid Posts — totaux purs (les moyennes sont dans "Tes moyennes par post" ci-dessous)
+        comm_total = int(df_f["comments"].sum()) if "comments" in df_f.columns else 0
+        st.markdown(f"""
+        <div class='kpi-grid'>
+            <div class='kpi'>
+                <div class='k-label'>Posts</div>
+                <div class='k-value'>{nb_posts:,}</div>
+                <div class='k-foot'>publiés sur la sélection</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Portée totale</div>
+                <div class='k-value'>{reach_total:,}</div>
+                <div class='k-foot'>sur {nb_posts} posts</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Likes totaux</div>
+                <div class='k-value'>{likes_total:,}</div>
+                <div class='k-foot'>cumul tous posts</div>
+            </div>
+            <div class='kpi'>
+                <div class='k-label'>Commentaires totaux</div>
+                <div class='k-value'>{comm_total:,}</div>
+                <div class='k-foot'>cumul tous posts</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Section "Tes moyennes par post" (référence pour 'a décollé') ───
+        likes_mean = float(df_f["likes"].mean()) if "likes" in df_f.columns else 0.0
+        saves_mean = float(df_f["saved"].mean()) if "saved" in df_f.columns else 0.0
+        comm_mean  = float(df_f["comments"].mean()) if "comments" in df_f.columns else 0.0
+        _df_eng_avg = df_f[df_f.get("reach", 0) > 0] if "reach" in df_f.columns else df_f.head(0)
         eng_mean   = float(((_df_eng_avg["likes"] + _df_eng_avg["saved"]) / _df_eng_avg["reach"] * 100).mean()) \
             if not _df_eng_avg.empty else 0.0
+
+        _avg_title, _avg_info = st.columns([6, 1])
+        with _avg_title:
+            st.markdown(
+                "<div class='section-head' style='padding-top:8px;'>"
+                "<span class='section-title'>Tes moyennes par post</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        with _avg_info:
+            with st.popover("ⓘ", help="À quoi servent ces moyennes"):
+                st.markdown(
+                    "Le profil de ton **post typique** sur la sélection — "
+                    "c'est la référence des comparaisons.  \n\n"
+                    f"Un post **« décolle »** quand sa portée dépasse la moyenne "
+                    f"({reach_mean:,.0f}). Tu as **{nb_flew} post{'s' if nb_flew > 1 else ''}** au-dessus."
+                )
 
         st.markdown(
             f"<div class='card' style='margin-bottom:18px;padding:14px 20px;'>"
             f"<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;'>"
-            f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#8b8e98;'>Tes moyennes par post</div>"
             f"<div style='display:flex;gap:24px;flex-wrap:wrap;'>"
             f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>PORTÉE</span>"
             f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{reach_mean:,.0f}</span></div>"
@@ -418,103 +548,46 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             f"<div><span style='font-size:10px;color:#8b8e98;display:block;margin-bottom:2px;'>ENG. %</span>"
             f"<span style='font-family:var(--font-mono,monospace);font-size:14px;font-weight:600;color:#0e0f12;'>{eng_mean:.1f}%</span></div>"
             f"</div></div>"
-            f"<div style='font-size:11px;color:#8b8e98;margin-top:10px;'>"
-            f"Un post 'décolle' quand sa portée dépasse la moyenne ({reach_mean:,.0f}). "
-            f"Tu as <b>{nb_flew} posts</b> au-dessus.</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
 
-        # ─────────────────────────────────────────────────────────────────────
-        # ── SECTION FILTRES (Métrique + Format + Label) ────────────────────
-        # Pilote 'Ce qui marche', 'Quand publier ?', 'Top 3 posts'
-        # NE filtre PAS 'Tes moyennes par post' (qui reste globale, au-dessus)
-        # ─────────────────────────────────────────────────────────────────────
-        st.markdown(
-            "<div class='section'><div class='section-head'>"
-            "<span class='section-title'>Filtres "
-            "<span class='st-count'>pilote les sections ci-dessous</span></span></div></div>",
-            unsafe_allow_html=True,
-        )
-
-        metric_options = {
-            "Portée":         ("reach",    "",  "{:,.0f}"),
-            "Likes":          ("likes",    "",  "{:,.0f}"),
-            "Saves":          ("saved",    "",  "{:,.0f}"),
-            "Commentaires":   ("comments", "",  "{:,.0f}"),
-            "Engagement %":   ("_eng_pct", "%", "{:.1f}"),
-        }
-        # Options format
-        fmt_options = ["Tous"]
-        if "type" in df.columns:
-            for _fmt in df["type"].dropna().unique():
-                _l = FORMAT_LABELS.get(str(_fmt).upper(), str(_fmt))
-                if _l not in fmt_options:
-                    fmt_options.append(_l)
-        # Options label (master list)
-        lbl_options = ["Tous"]
-        for _l in (st.session_state.get("insta_labels") or []):
-            lbl_options.append(_l)
-        lbl_options.append("(sans label)")
-
-        col_m, col_f, col_l = st.columns(3)
-        with col_m:
+        # ─────────────────────────────────────────────────────────────────
+        # ── Ce qui marche pour toi (sélecteur Métrique à gauche) ─────────
+        # Ce sélecteur pilote aussi 'Quand publier ?' et 'Top 3 posts'
+        # ─────────────────────────────────────────────────────────────────
+        _metric_col, _title_col, _info_col = st.columns([2, 4, 1])
+        with _metric_col:
             sel_metric = st.selectbox(
                 "Métrique", options=list(metric_options.keys()),
                 key="insta_format_metric",
+                label_visibility="collapsed",
             )
-        with col_f:
-            sel_fmt = st.selectbox(
-                "Format", options=fmt_options, key="insta_filter_fmt",
+        with _title_col:
+            st.markdown(
+                "<div class='section-head' style='padding-top:8px;'>"
+                "<span class='section-title'>Ce qui marche pour toi</span>"
+                "</div>",
+                unsafe_allow_html=True,
             )
-        with col_l:
-            sel_lbl = st.selectbox(
-                "Label", options=lbl_options, key="insta_filter_lbl",
-            )
+        with _info_col:
+            with st.popover("ⓘ", help="Comment lire la section"):
+                st.markdown(
+                    f"**Métrique active** : `{sel_metric.lower()}`  \n\n"
+                    "Ce sélecteur pilote **3 sections** :  \n"
+                    "• Ce qui marche pour toi (comparatif formats)  \n"
+                    "• Quand publier ? (heatmap)  \n"
+                    "• Top 3 posts  \n\n"
+                    "Le format avec la **plus haute moyenne** sur la métrique sélectionnée est marqué `Top format`.  \n\n"
+                    "⚠ Cette section **ignore le filtre Format** — sinon il n'y aurait rien à comparer."
+                )
 
         metric_col, metric_suffix, metric_fmt = metric_options[sel_metric]
 
-        # Colonne dérivée Engagement % si nécessaire
-        if metric_col == "_eng_pct" and not df.empty:
-            df = df.copy()
-            df["_eng_pct"] = df.apply(
-                lambda r: ((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100)
-                if r.get("reach", 0) > 0 else 0.0,
-                axis=1,
-            )
-
-        # Application des filtres Format + Label sur df → df_f (utilisé par les sections en aval)
-        df_f = df.copy()
-        if sel_fmt != "Tous" and "type" in df_f.columns:
-            target_fmts = [k for k, v in FORMAT_LABELS.items() if v == sel_fmt]
-            if not target_fmts:
-                target_fmts = [sel_fmt.upper()]
-            df_f = df_f[df_f["type"].astype(str).str.upper().isin(target_fmts)]
-        if sel_lbl != "Tous" and "labels" in df_f.columns:
-            if sel_lbl == "(sans label)":
-                df_f = df_f[df_f["labels"].apply(
-                    lambda x: not (isinstance(x, list) and len(x) > 0 and x[0])
-                )]
-            else:
-                df_f = df_f[df_f["labels"].apply(
-                    lambda x: isinstance(x, list) and sel_lbl in x
-                )]
-
-        if df_f.empty:
-            st.info("Aucun post avec ces filtres. Élargis Format ou Label.")
-            return
-
-        # ── Ce qui marche pour toi (utilise df_f filtré) ──
-        st.markdown(
-            "<div class='section'><div class='section-head'>"
-            f"<span class='section-title'>Ce qui marche pour toi "
-            f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
-            unsafe_allow_html=True,
-        )
-
+        # ⚠ On utilise df_compare (sans filtre Format) — sinon comparer 1 format à lui-même
         format_groups = {}
-        if "type" in df_f.columns and metric_col in df_f.columns:
-            for fmt, grp in df_f.groupby("type"):
+        if "type" in df_compare.columns and metric_col in df_compare.columns:
+            for fmt, grp in df_compare.groupby("type"):
                 key = fmt.upper()
                 avg_val = grp[metric_col].mean()
                 format_groups[key] = {"nb": len(grp), "avg": avg_val, "grp": grp}
@@ -551,31 +624,49 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                         unsafe_allow_html=True,
                     )
     
-        st.markdown(
-            "<div class='section'><div class='section-head'>"
-            f"<span class='section-title'>Quand publier ? "
-            f"<span class='st-count'>par {sel_metric.lower()}</span></span></div></div>",
-            unsafe_allow_html=True,
-        )
+        # ─────────────────────────────────────────────────────────────────
+        # ── Quand publier ? heatmap (suit le filtre Format global) ───────
+        # ─────────────────────────────────────────────────────────────────
+        _hp_title, _hp_info = st.columns([6, 1])
+        with _hp_title:
+            st.markdown(
+                "<div class='section-head' style='padding-top:8px;'>"
+                "<span class='section-title'>Quand publier ?</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        with _hp_info:
+            with st.popover("ⓘ", help="Comment lire la heatmap"):
+                st.markdown(
+                    f"**Métrique** : `{sel_metric.lower()}`  \n"
+                    f"**Filtre actif** : Format = `{sel_fmt}` · Label = `{sel_lbl}`  \n"
+                    f"**Fuseau horaire** : Europe/Zurich  \n\n"
+                    f"Chaque case = (jour, créneau).  \n"
+                    f"• **Xp** = nombre de posts publiés sur ce créneau  \n"
+                    f"• **Valeur** = {sel_metric.lower()} moyenne par post  \n"
+                    f"• **Intensité** = plus c'est foncé, mieux ça performe  \n"
+                    f"• **★ TOP** = créneau qui maximise la métrique (≥3 posts dans la case + ≥20 posts total)"
+                )
 
-        # Calcul : pour chaque (jour, créneau) → {count, total, avg} sur df_f filtré
+        # Calcul : pour chaque (jour, créneau) → {count, total, avg} sur df_f
         heat_data = {}
         has_real_hours = False
-        if "date" in df_f.columns:
-            df_f = df_f.copy()
-            df_f["_dt"] = pd.to_datetime(df_f["date"], errors="coerce", utc=True)
+        df_heat = df_f.copy()
+        if "date" in df_heat.columns and not df_heat.empty:
+            df_heat["_dt"] = pd.to_datetime(df_heat["date"], errors="coerce", utc=True)
             try:
-                df_f["_dt"] = df_f["_dt"].dt.tz_convert("Europe/Zurich")
+                df_heat["_dt"] = df_heat["_dt"].dt.tz_convert("Europe/Zurich")
             except Exception:
                 pass
-            df_f["_dow"] = df_f["_dt"].dt.dayofweek
-            df_f["_hour"] = df_f["_dt"].dt.hour
-            unique_hours = df_f["_hour"].dropna().unique()
-            has_real_hours = len(unique_hours) > 2
+            df_heat["_dow"] = df_heat["_dt"].dt.dayofweek
+            df_heat["_hour"] = df_heat["_dt"].dt.hour
+            unique_hours = df_heat["_hour"].dropna().unique()
+            # Vraies heures = au moins un post publié hors créneau 0h (sinon = backfill sans heures)
+            has_real_hours = any(int(h) > 0 for h in unique_hours)
             hour_bins = [0, 7, 10, 13, 16, 19, 24]
             hour_labels = [0, 1, 2, 3, 4, 5]
-            df_f["_slot"] = pd.cut(df_f["_hour"], bins=hour_bins, labels=hour_labels, right=False)
-            for _, r in df_f.iterrows():
+            df_heat["_slot"] = pd.cut(df_heat["_hour"], bins=hour_bins, labels=hour_labels, right=False)
+            for _, r in df_heat.iterrows():
                 if pd.notna(r.get("_dow")) and pd.notna(r.get("_slot")):
                     key = (int(r["_dow"]), int(r["_slot"]))
                     cur = heat_data.setdefault(key, {"count": 0, "total": 0.0})
@@ -587,77 +678,166 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             v["avg"] = v["total"] / v["count"] if v["count"] > 0 else 0
 
         max_avg = max((v["avg"] for v in heat_data.values()), default=1) or 1
-        best_slot = max(heat_data, key=lambda k: heat_data[k]["avg"]) if heat_data else None
+        # ─── Seuil de signal ────────────────────────────────────────────
+        # On n'élit un "best" QUE si l'échantillon est suffisant :
+        # - >=3 posts dans la case gagnante (sinon c'est du bruit pur)
+        # - >=20 posts au total (sinon la heatmap entière est anecdotique)
+        _total_heat_posts = sum(v["count"] for v in heat_data.values())
+        _candidates = {k: v for k, v in heat_data.items() if v["count"] >= 3}
+        if _candidates and _total_heat_posts >= 20:
+            best_slot = max(_candidates, key=lambda k: _candidates[k]["avg"])
+        else:
+            best_slot = None
 
-        if not has_real_hours and heat_data:
+        if df_heat.empty:
+            st.info("Aucun post sur la sélection — élargis les filtres.")
+        elif not has_real_hours and heat_data:
+            # Heures manquantes → on n'affiche QUE le warning (la heatmap serait biaisée)
+            _fmt_hint = f" pour les posts {sel_fmt}" if sel_fmt != "Tous" else ""
             st.warning(
-                "⚠ Les heures de publication n'ont pas été stockées pour tes posts existants — "
-                "tous apparaissent dans le créneau 0-7h. Rafraîchis tes données Instagram "
-                "(depuis 'Connecter Meta') pour récupérer les vraies heures."
+                f"⚠ Les heures de publication ne sont pas stockées{_fmt_hint} — "
+                "tous les posts apparaissent au créneau 0-7h. "
+                "Rafraîchis tes données Instagram (Paramètres → Meta) pour récupérer les heures réelles."
+            )
+        else:
+            # ── Heatmap améliorée : palette + tooltip + totaux jour/créneau ──
+            def _fmt_cell_val(v: float) -> str:
+                return metric_fmt.format(v) + metric_suffix
+
+            # Totaux par jour (column sum) et par créneau (row sum)
+            day_totals = {d: 0.0 for d in range(7)}
+            slot_totals = {s: 0.0 for s in range(6)}
+            day_counts = {d: 0 for d in range(7)}
+            for (d_idx, s_idx), cell in heat_data.items():
+                day_totals[d_idx] += cell["avg"]
+                slot_totals[s_idx] += cell["avg"]
+                day_counts[d_idx] += cell["count"]
+
+            best_day_idx = max(day_totals, key=lambda k: day_totals[k]) if any(day_totals.values()) else None
+            best_slot_idx_overall = max(slot_totals, key=lambda k: slot_totals[k]) if any(slot_totals.values()) else None
+
+            # Header — jours de la semaine + colonne vide à gauche
+            header_row = "<div style='display:grid;grid-template-columns:56px repeat(7,1fr);gap:5px;margin-bottom:6px;'>"
+            header_row += "<div></div>"
+            for d_i, d in enumerate(DAYS):
+                is_best_day = (d_i == best_day_idx)
+                is_weekend = d_i >= 5
+                color = "#1a56ff" if is_best_day else ("#b86b00" if is_weekend else "#8b8e98")
+                weight = "700" if is_best_day else "600"
+                header_row += (
+                    f"<div style='text-align:center;font-size:11px;font-weight:{weight};"
+                    f"color:{color};letter-spacing:0.04em;'>{d}</div>"
+                )
+            header_row += "</div>"
+
+            grid_html = header_row
+            for s_idx, slot_label in enumerate(HOURS):
+                is_best_slot_row = (s_idx == best_slot_idx_overall)
+                slot_color = "#1a56ff" if is_best_slot_row else "#8b8e98"
+                slot_weight = "700" if is_best_slot_row else "500"
+                grid_html += "<div style='display:grid;grid-template-columns:56px repeat(7,1fr);gap:5px;margin-bottom:5px;'>"
+                grid_html += (
+                    f"<div style='font-size:10px;color:{slot_color};font-weight:{slot_weight};"
+                    f"display:flex;align-items:center;justify-content:flex-end;padding-right:6px;'>{slot_label}</div>"
+                )
+                for d_idx in range(7):
+                    key = (d_idx, s_idx)
+                    cell = heat_data.get(key)
+                    if cell:
+                        ratio = cell["avg"] / max_avg if max_avg > 0 else 0
+                        # Gradient : low = vert pâle, mid = bleu, high = violet profond
+                        if ratio >= 0.66:
+                            bg = f"rgba(91,52,180,{0.30 + ratio * 0.55})"  # violet
+                            txt_color = "#fff"
+                            num_color = "#fff"
+                            sub_color = "rgba(255,255,255,0.85)"
+                        elif ratio >= 0.33:
+                            bg = f"rgba(59,91,255,{0.20 + ratio * 0.55})"  # bleu
+                            txt_color = "#0e0f12" if ratio < 0.5 else "#fff"
+                            num_color = txt_color
+                            sub_color = "rgba(255,255,255,0.85)" if ratio >= 0.5 else "#5a5d66"
+                        else:
+                            bg = f"rgba(26,122,74,{0.12 + ratio * 0.45})"  # vert pâle
+                            txt_color = "#0e0f12"
+                            num_color = "#0e0f12"
+                            sub_color = "#5a5d66"
+
+                        is_best_cell = key == best_slot
+                        val_str = _fmt_cell_val(cell["avg"])
+                        tooltip = (
+                            f"{DAYS[d_idx]} · {HOURS[s_idx]} | "
+                            f"{cell['count']} post(s) | {sel_metric.lower()} moy : {val_str}"
+                        )
+                        border = "2px solid #1a2c8f" if is_best_cell else "1px solid rgba(255,255,255,0.05)"
+                        if is_best_cell:
+                            inner = (
+                                f"<div style='font-size:9px;font-weight:800;line-height:1;letter-spacing:0.06em;color:{num_color};'>★ TOP</div>"
+                                f"<div style='font-size:10px;font-weight:700;line-height:1;color:{num_color};margin-top:2px;'>{val_str}</div>"
+                                f"<div style='font-size:8px;line-height:1;color:{sub_color};margin-top:1px;'>{cell['count']}p</div>"
+                            )
+                        else:
+                            inner = (
+                                f"<div style='font-size:11px;font-weight:600;line-height:1;color:{num_color};'>{val_str}</div>"
+                                f"<div style='font-size:9px;line-height:1;color:{sub_color};margin-top:2px;'>{cell['count']}p</div>"
+                            )
+                        cell_html = (
+                            f"<div title='{tooltip}' style='background:{bg};border:{border};"
+                            f"border-radius:6px;height:44px;display:flex;flex-direction:column;"
+                            f"align-items:center;justify-content:center;gap:0;transition:transform 0.1s;'>{inner}</div>"
+                        )
+                    else:
+                        cell_html = (
+                            "<div style='background:rgba(14,15,18,0.03);border:1px solid rgba(14,15,18,0.05);"
+                            "border-radius:6px;height:44px;'></div>"
+                        )
+                    grid_html += cell_html
+                grid_html += "</div>"
+
+            # Légende de couleur (gradient bar)
+            legend = (
+                "<div style='display:flex;align-items:center;gap:8px;margin-top:14px;font-size:10.5px;color:#8b8e98;'>"
+                "<span>moins performant</span>"
+                "<span style='flex:1;height:6px;border-radius:3px;background:linear-gradient("
+                "to right,rgba(26,122,74,0.25),rgba(59,91,255,0.55),rgba(91,52,180,0.85));'></span>"
+                "<span>plus performant</span>"
+                "</div>"
             )
 
-        header_row = "<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
-        header_row += "<div></div>"
-        for d in DAYS:
-            header_row += f"<div style='text-align:center;font-size:10px;font-weight:600;color:#8b8e98;'>{d}</div>"
-        header_row += "</div>"
+            st.markdown(
+                f"<div style='background:#fff;border:1px solid rgba(14,15,18,0.08);"
+                f"border-radius:14px;padding:22px 24px;box-shadow:0 1px 3px rgba(14,15,18,0.03);'>"
+                f"{grid_html}{legend}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
-        def _fmt_cell_val(v: float) -> str:
-            return metric_fmt.format(v) + metric_suffix
-
-        grid_html = header_row
-        for s_idx, slot_label in enumerate(HOURS):
-            grid_html += f"<div style='display:grid;grid-template-columns:40px repeat(7,1fr);gap:4px;margin-bottom:4px;'>"
-            grid_html += f"<div style='font-size:10px;color:#8b8e98;display:flex;align-items:center;'>{slot_label}</div>"
-            for d_idx in range(7):
-                key = (d_idx, s_idx)
-                cell = heat_data.get(key)
-                if cell:
-                    opacity = cell["avg"] / max_avg if max_avg > 0 else 0
-                    bg = f"rgba(59,91,255,{max(0.10, opacity)})"
-                    is_best_cell = key == best_slot
-                    val_str = _fmt_cell_val(cell["avg"])
-                    if is_best_cell:
-                        inner = f"<div style='font-size:9px;font-weight:700;line-height:1;color:#1a2c8f;'>BEST</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{cell['count']}p · {val_str}</div>"
-                    else:
-                        inner = f"<div style='font-size:9px;font-weight:600;line-height:1;color:#0e0f12;'>{cell['count']}p</div><div style='font-size:8px;color:#5a5d66;line-height:1;'>{val_str}</div>"
-                else:
-                    bg = "rgba(14,15,18,0.04)"
-                    inner = ""
-                grid_html += f"<div style='background:{bg};border-radius:4px;height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;'>{inner}</div>"
-            grid_html += "</div>"
-
-        metric_lower = sel_metric.lower()
-        st.markdown(f"""
-        <div style='background:#fff;border:1px solid rgba(14,15,18,0.08);border-radius:14px;padding:20px;'>
-            {grid_html}
-            <div style='display:flex;gap:14px;margin-top:10px;font-size:10px;color:#8b8e98;'>
-                <span><b>Xp</b> = nombre de posts</span>
-                <span>·</span>
-                <span><b>chiffre du bas</b> = {metric_lower} moyenne par post</span>
-                <span>·</span>
-                <span><b>intensité</b> = {metric_lower} moyenne (plus c'est foncé, mieux ça performe)</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if best_slot:
-            best_day = DAYS[best_slot[0]]
-            best_hour = HOURS[best_slot[1]]
-            best = heat_data[best_slot]
-            best_total_str = _fmt_cell_val(best["total"])
-            best_avg_str = _fmt_cell_val(best["avg"])
-            st.markdown(f"""
-            <div class='hint' style='margin-top:10px;'>
-                <span class='hint-ico'>💡</span>
-                <p>
-                    Tes meilleurs résultats par <strong>{sel_metric}</strong> sont le <strong>{best_day}</strong> vers <strong>{best_hour}</strong> :
-                    <strong>{best['count']}</strong> post(s), {sel_metric.lower()} totale <strong>{best_total_str}</strong>,
-                    moyenne <strong>{best_avg_str}/post</strong>.
-                    {"⚠ Échantillon faible — base-toi sur plusieurs posts avant de conclure." if best['count'] < 3 else "Planifie tes posts importants sur ce créneau."}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+            if best_slot:
+                best_day = DAYS[best_slot[0]]
+                best_hour = HOURS[best_slot[1]]
+                best = heat_data[best_slot]
+                best_avg_str = _fmt_cell_val(best["avg"])
+                st.markdown(f"""
+                <div class='hint' style='margin-top:10px;'>
+                    <span class='hint-ico'>💡</span>
+                    <p>
+                        <strong>{best_day}</strong> vers <strong>{best_hour}</strong> →
+                        <strong>{best['count']}</strong> posts à <strong>{best_avg_str}/post</strong>.
+                        Planifie tes posts importants sur ce créneau.
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            elif _total_heat_posts > 0:
+                # Pas de "best" identifiable — explique pourquoi
+                st.markdown(
+                    f"<div style='margin-top:10px;font-size:12px;color:#8b8e98;"
+                    f"padding:10px 14px;background:rgba(14,15,18,0.03);border-radius:8px;'>"
+                    f"<b>Pas assez de signal</b> pour pointer un créneau gagnant "
+                    f"({_total_heat_posts} posts répartis sur 42 cases). "
+                    f"Reviens quand tu en auras 20+ pour une lecture fiable, "
+                    f"ou élargis la période (Tout)."
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
     
         # ── En-tête Top 3 (utilise df_f filtré globalement) ─────────────────
@@ -720,9 +900,33 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                     unsafe_allow_html=True,
                 )
     
-        # ── Performance par label ─────────────────────────────────────────
-        if "labels" in df.columns and not df.empty:
-            df_l = df.copy()
+        # ═══ SECTION 3 : VIEW GLOBALE — indépendante des filtres ═══════════
+        _render_posts_global(client, user_id, df_all)
+
+
+def _render_posts_global(client, user_id, df_g) -> None:
+    """SECTION 3 : View globale — Performance par label + Tous les posts.
+
+    Opère sur l'historique complet (df_g), indépendant des filtres de la
+    section Performance — même structure que la View globale de Meta Ads.
+    """
+    st.markdown(
+        '<div class="section-head" style="margin:32px 0 12px;padding-top:20px;'
+        'border-top:1px solid rgba(14,15,18,0.08);">'
+        '<div class="h-eyebrow">View globale</div>'
+        '<div style="font-size:13px;font-weight:500;color:#5a5d66;margin-top:4px;">'
+        'Tous tes posts — indépendant des filtres ci-dessus</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if df_g is None or df_g.empty:
+        return
+
+    df_f = df_g  # alias — le bloc ci-dessous conserve son indentation d'origine
+    if True:
+        # ── Performance par label (historique complet) ─────────────────────
+        if "labels" in df_f.columns and not df_f.empty:
+            df_l = df_f.copy()
             df_l["_lbl"] = df_l["labels"].apply(
                 lambda x: x[0] if isinstance(x, list) and len(x) > 0 and x[0] else "(sans label)"
             )
@@ -802,7 +1006,7 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                                 unsafe_allow_html=True,
                             )
 
-        total_posts = len(df)
+        total_posts = len(df_f)
 
         st.markdown(
             "<div class='section'><div class='section-head'>"
@@ -811,8 +1015,8 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
             unsafe_allow_html=True,
         )
 
-        # Préparation des données par post
-        df_posts = df.copy()
+        # Préparation des données par post (utilise df_f filtré)
+        df_posts = df_f.copy()
         # Engagement %
         df_posts["_eng"] = df_posts.apply(
             lambda r: round((r.get("likes", 0) + r.get("saved", 0)) / r["reach"] * 100, 1)
@@ -830,12 +1034,12 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
         df_posts = df_posts.sort_values("reach", ascending=False)
         max_eng = df_posts["_eng"].max() or 1
 
-        # Labels disponibles
+        # Labels disponibles (liste unifiée profiles.labels)
         avail_labels = st.session_state.get("insta_labels")
         if avail_labels is None:
             try:
-                _r = client.table("profiles").select("labelling").eq("id", user_id).execute()
-                avail_labels = [l for l in (_r.data[0].get("labelling") if _r.data else []) or [] if l]
+                _r = client.table("profiles").select("labels").eq("id", user_id).execute()
+                avail_labels = [l for l in (_r.data[0].get("labels") if _r.data else []) or [] if l]
             except Exception:
                 avail_labels = []
         label_opts = ["—"] + sorted(avail_labels)
@@ -946,180 +1150,5 @@ def show_instagram_tab(client, user_id, is_paid, dash, instagram_business_id=Non
                         unsafe_allow_html=True,
                     )
 
-
-# ── Tab Labels Instagram (même design que Meta Ads) ────────────────────────────
-
-def _fetch_instagram_labels(client, user_id: str) -> list[str]:
-    try:
-        res = client.table("profiles").select("labelling").eq("id", user_id).execute()
-        if res.data:
-            return [l for l in (res.data[0].get("labelling") or []) if l]
-    except Exception:
-        pass
-    return []
-
-
-def _save_instagram_labels(client, user_id: str, labels: list[str]) -> None:
-    client.table("profiles").update({"labelling": labels}).eq("id", user_id).execute()
-
-
-def _rename_label_in_posts(client, user_id: str, old: str, new: str) -> None:
-    """Remplace old → new dans le tableau labels de chaque post."""
-    posts = (
-        client.table("instagram_organic_posts")
-        .select("id,labels").eq("user_id", user_id)
-        .contains("labels", [old]).execute().data
-    )
-    for post in posts or []:
-        updated = [new if l == old else l for l in (post.get("labels") or [])]
-        client.table("instagram_organic_posts").update({"labels": updated}).eq("id", post["id"]).execute()
-
-
-def _delete_label_in_posts(client, user_id: str, label: str) -> None:
-    """Retire label des tableaux labels des posts qui le contiennent."""
-    posts = (
-        client.table("instagram_organic_posts")
-        .select("id,labels").eq("user_id", user_id)
-        .contains("labels", [label]).execute().data
-    )
-    for post in posts or []:
-        updated = [l for l in (post.get("labels") or []) if l != label]
-        client.table("instagram_organic_posts").update({"labels": updated}).eq("id", post["id"]).execute()
-
-
-def _show_instagram_labels_tab(client, user_id, df) -> None:
-    if not (client and user_id):
-        st.warning("Connecte ton compte pour gérer les labels.")
-        return
-
-    # Cache session
-    if "_insta_labels_init" not in st.session_state:
-        st.session_state["insta_labels"] = _fetch_instagram_labels(client, user_id)
-        st.session_state["_insta_labels_init"] = True
-    labels: list[str] = st.session_state.get("insta_labels", [])
-
-    # Compteur posts labelisés
-    nb_total = len(df) if df is not None else 0
-    nb_labeled = 0
-    if df is not None and "labels" in df.columns and not df.empty:
-        nb_labeled = int(df["labels"].apply(
-            lambda x: bool(x and len(x) > 0 and x[0])
-        ).sum())
-
-    st.markdown(
-        '<div class="page-h" style="padding:8px 0 16px;">'
-        '<div class="h-eyebrow">Labels</div>'
-        '<h1>Tes étiquettes de posts.</h1>'
-        '<p class="h-sub">Crée des labels (ex. <i>UGC</i>, <i>Promo</i>, <i>Viral</i>) '
-        'puis assigne-les à tes posts depuis l\'onglet <b>Performance</b>.</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    if nb_total > 0:
-        pct = nb_labeled / nb_total
-        st.progress(pct, text=f"**{nb_labeled} / {nb_total}** posts labelisés ({int(pct * 100)} %)")
-        st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Ajouter (st.form gère le vidage automatique) ─────────────────────────
-    st.markdown(
-        '<div style="font-size:13px;font-weight:600;color:#0e0f12;margin:4px 0 12px;">'
-        'Ajouter un label</div>',
-        unsafe_allow_html=True,
-    )
-    with st.form("insta_lbl_add_form", clear_on_submit=True):
-        col_in, col_btn = st.columns([4, 1])
-        with col_in:
-            new_lbl = st.text_input(
-                "Nouveau label",
-                label_visibility="collapsed", placeholder="ex: UGC, Viral, Promo...",
-            )
-        with col_btn:
-            submitted = st.form_submit_button(
-                "Ajouter", type="primary", use_container_width=True,
-            )
-    if submitted:
-        cleaned = (new_lbl or "").strip()
-        if not cleaned:
-            st.toast("Saisis un nom de label.", icon="⚠️")
-        elif cleaned in labels:
-            st.toast(f"« {cleaned} » existe déjà.", icon="⚠️")
-        else:
-            new_list = labels + [cleaned]
-            error = None
-            try:
-                _save_instagram_labels(client, user_id, new_list)
-            except Exception as e:
-                error = e
-            if error:
-                st.toast(f"Ajout échoué : {error}", icon="⚠️")
-            else:
-                st.session_state["insta_labels"] = new_list
-                st.rerun()
-
-    # ── Liste + renommer / supprimer ─────────────────────────────────────────
-    st.markdown(
-        '<div style="font-size:13px;font-weight:600;color:#0e0f12;margin:24px 0 12px;">'
-        'Tes labels</div>',
-        unsafe_allow_html=True,
-    )
-
-    if not labels:
-        st.info("Aucun label pour l'instant. Crée-en un ci-dessus.")
-        return
-
-    hcols = st.columns([5, 2, 2])
-    for col_h, lbl in zip(hcols, ["Nom", "Renommer", "Supprimer"]):
-        col_h.markdown(
-            f'<div style="font-size:10px;font-weight:600;text-transform:uppercase;'
-            f'letter-spacing:0.06em;color:#8b8e98;padding-bottom:6px;">{lbl}</div>',
-            unsafe_allow_html=True,
-        )
-
-    for i, lbl in enumerate(labels):
-        c_name, c_save, c_del = st.columns([5, 2, 2])
-        edit_key = f"insta_lbl_edit_{i}"
-        with c_name:
-            st.text_input(
-                "Label", value=lbl, key=edit_key,
-                label_visibility="collapsed",
-            )
-        with c_save:
-            if st.button("Enregistrer", key=f"insta_lbl_rn_{i}",
-                         use_container_width=True):
-                # Validation au moment du click (pas avant)
-                new_name = (st.session_state.get(edit_key) or "").strip()
-                if new_name == lbl:
-                    st.toast("Aucun changement.", icon="ℹ️")
-                elif not new_name:
-                    st.toast("Nom de label vide.", icon="⚠️")
-                elif new_name in labels:
-                    st.toast(f"« {new_name} » existe déjà.", icon="⚠️")
-                else:
-                    new_list = [new_name if x == lbl else x for x in labels]
-                    error = None
-                    try:
-                        _save_instagram_labels(client, user_id, new_list)
-                        _rename_label_in_posts(client, user_id, lbl, new_name)
-                    except Exception as e:
-                        error = e
-                    if error:
-                        st.toast(f"Renommage échoué : {error}", icon="⚠️")
-                    else:
-                        st.session_state["insta_labels"] = new_list
-                        st.toast(f"Renommé en « {new_name} »", icon="✅")
-                        st.rerun()
-        with c_del:
-            if st.button("🗑 Supprimer", key=f"insta_lbl_del_{i}", use_container_width=True):
-                new_list = [x for x in labels if x != lbl]
-                error = None
-                try:
-                    _save_instagram_labels(client, user_id, new_list)
-                    _delete_label_in_posts(client, user_id, lbl)
-                except Exception as e:
-                    error = e
-                if error:
-                    st.toast(f"Suppression échouée : {error}", icon="⚠️")
-                else:
-                    st.session_state["insta_labels"] = new_list
-                    st.rerun()
+# Labels Instagram : gérés désormais depuis la page globale dédiée
+# (components/labels_page.py). L'assignation par post reste dans Performance.

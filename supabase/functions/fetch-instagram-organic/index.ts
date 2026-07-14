@@ -76,11 +76,16 @@ Deno.serve(async () => {
 
   for (const profile of profiles) {
     try {
-      // Récupérer le token depuis connected_accounts
+      // Récupérer le token Meta depuis connected_accounts.
+      // ⚠ Depuis la consolidation des tokens, il existe une ligne provider='google'
+      // avec meta_token = NULL. Sans le filtre .not("meta_token","is",null), un
+      // .limit(1) sans order pouvait renvoyer cette ligne → token null → user sauté.
       const { data: accounts } = await supabase
         .from("connected_accounts")
         .select("meta_token")
         .eq("user_id", profile.id)
+        .not("meta_token", "is", null)
+        .order("created_at", { ascending: false })
         .limit(1);
 
       const metaToken = accounts?.[0]?.meta_token;

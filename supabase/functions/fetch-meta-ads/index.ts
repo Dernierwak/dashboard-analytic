@@ -56,9 +56,12 @@ Deno.serve(async () => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  // .not(meta_token, null) : ignore la ligne provider='google' (meta_token NULL)
+  // ajoutée par la consolidation des tokens.
   const { data: accounts } = await supabase
     .from("connected_accounts")
-    .select("user_id, meta_token");
+    .select("user_id, meta_token")
+    .not("meta_token", "is", null);
 
   console.log(`Found ${accounts?.length ?? 0} connected accounts`);
   if (!accounts?.length) return new Response("no accounts", { status: 200 });

@@ -9,30 +9,31 @@
 
 from urllib.parse import urlencode
 import requests
-import streamlit as st
+
+from scripts.app_secrets import secret
 
 
-# Scopes requis pour lire les données Google Ads
+# Scopes Google demandés en une seule autorisation :
+#  - adwords            : lire les campagnes Google Ads
+#  - analytics.readonly : lire GA4 (sessions, conversions, revenus) → retour réel des pubs
+# Le même refresh_token sert donc à Google Ads ET à GA4.
 _GOOGLE_ADS_SCOPES = [
     "https://www.googleapis.com/auth/adwords",
+    "https://www.googleapis.com/auth/analytics.readonly",
 ]
 
 
 def _client_id() -> str:
-    return st.secrets.google_ads.client_id
+    return secret("google_ads.client_id")
 
 
 def _client_secret() -> str:
-    return st.secrets.google_ads.client_secret
+    return secret("google_ads.client_secret")
 
 
 def _redirect_uri() -> str:
     """URL de redirect OAuth. Configurée dans Google Cloud Console + secrets.toml."""
-    # Si configuré dans secrets, utiliser cette valeur. Sinon localhost.
-    try:
-        return st.secrets.google_ads.redirect_uri
-    except Exception:
-        return "http://localhost:8501"
+    return secret("google_ads.redirect_uri", "http://localhost:8501")
 
 
 def get_oauth_url(state: str) -> str:

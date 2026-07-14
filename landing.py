@@ -9,6 +9,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ── Retour d'un OAuth (Google Ads / GA4) ──────────────────────────────────────
+# Google redirige vers la racine (cette page d'accueil). Le callback qui traite
+# le ?code se trouve dans pages/main.py → on file vers le dashboard.
+# ⚠ st.switch_page ne garantit PAS de conserver les query params (?code&state&scope).
+# On les met donc à l'abri dans session_state, qui survit au switch_page (même
+# session), et pages/main.py les réhydrate. Sinon : session perdue → re-login →
+# connexion Google jamais sauvegardée.
+if "code" in st.query_params:
+    st.session_state["_oauth_code"] = st.query_params["code"]
+    for k in ("state", "scope", "authuser"):
+        if k in st.query_params:
+            st.session_state[f"_oauth_{k}"] = st.query_params[k]
+    st.switch_page("pages/main.py")
+
+if "_google_pending_refresh_token" in st.session_state:
+    st.switch_page("pages/main.py")
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

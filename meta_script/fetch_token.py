@@ -37,10 +37,15 @@ def get_long_lives_token(short_token):
         "client_id": app_id,
         "client_secret": secret_key,
         "fb_exchange_token": short_token
-        
-    }    
+
+    }
     r = requests.get(url=target_url, params=params)
     data = r.json()
+    # Meta peut renvoyer {"error": {...}} (app en mode dev, testeur non déclaré,
+    # token expiré…) → on remonte un message clair au lieu d'un KeyError brut.
+    if "access_token" not in data:
+        err = data.get("error", {})
+        raise ValueError(err.get("message") or str(data))
     return data["access_token"]
    
  

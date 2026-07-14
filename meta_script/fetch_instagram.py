@@ -59,14 +59,13 @@ class OrganicInstagramm():
 
         list_id.extend(data.get("data", []))
         next_url = data.get("paging", {}).get("next")
-        with st.spinner("Chargement des posts..."):
-            while next_url:
-                r = requests.get(url=next_url)
-                paging_data = r.json()
-                list_id.extend(paging_data.get("data", []))
-                next_url = paging_data.get("paging", {}).get("next")
-        
-        
+        while next_url:
+            r = requests.get(url=next_url)
+            paging_data = r.json()
+            list_id.extend(paging_data.get("data", []))
+            next_url = paging_data.get("paging", {}).get("next")
+
+
         df = pd.DataFrame(list_id).sort_values(by="timestamp", ascending=False)
         self.total_posts = len(df)
         insert_instagram_total_posts_id(supabase=self.supabase_client, user_id=self.supabase_user_id, total_posts_id=self.total_posts)
@@ -193,6 +192,38 @@ class OrganicInstagramm():
                 state="complete",
                 expanded=False,
             )
+
+    def fetch_headless(self) -> list:
+        """Version SANS Streamlit pour le worker cron. instagram_business_id requis
+        (fourni depuis connected_accounts) → on saute la sélection de Page.
+        Remplit self.new_results / self.followers / self.total_posts et les retourne.
+        """
+        if not self.meta_id_business:
+            raise ValueError("instagram_business_id requis en mode headless")
+        self._fetch_insta_post_id()              # plus de st.spinner → safe headless
+        self.followers = self._fetch_account_followers()
+        results = []
+        for post_id in self.new_post_ids:
+            info = self._fetch_post_info(post_id)
+            media_type = info.get("media_type", "IMAGE")
+            metrics = self._fetch_post_metrics(post_id, media_type)
+            results.append({
+                "post_id": post_id,
+                "type": info.get("media_type"),
+                "caption": info.get("caption", "")[:80],
+                "date": info.get("timestamp", ""),
+                "media_url": self._upload_image_to_storage(
+                    post_id, info.get("thumbnail_url") or info.get("media_url", "")),
+                "follows": metrics.get("follows", 0),
+                "likes": metrics.get("likes", 0),
+                "comments": metrics.get("comments", 0),
+                "saved": metrics.get("saved", 0),
+                "views": metrics.get("views", 0),
+                "reach": metrics.get("reach", 0),
+                "user_id": self.supabase_user_id,
+            })
+        self.new_results = results
+        return results
 
     def show_insta_data(self):
         self.fetch_insta_post_insight()

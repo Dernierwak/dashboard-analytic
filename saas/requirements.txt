@@ -1,0 +1,4 @@
+# Dépendances du service SaaS (worker + email). Indépendant du Streamlit.
+pandas>=2.0
+requests>=2.31
+supabase>=2.0        # pour le worker (lecture multi-users) — Phase 1

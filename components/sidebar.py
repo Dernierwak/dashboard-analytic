@@ -72,6 +72,8 @@ def show_main_nav(insta_accounts: list, has_meta_ads: bool, has_google_ads: bool
     with st.sidebar:
         st.markdown('<div class="nav-section">Cette semaine</div>', unsafe_allow_html=True)
         _nav_btn("Rapport hebdo", "rapport", icon="≡")
+        if has_meta_ads or has_google_ads:
+            _nav_btn("Coûts", "couts", icon="▦")
         if insta_accounts:
             _nav_btn("Instagram", "instagram", icon="◎")
         if has_meta_ads:
@@ -80,4 +82,5 @@ def show_main_nav(insta_accounts: list, has_meta_ads: bool, has_google_ads: bool
             _nav_btn("Google Ads", "google_ads", icon="◆")
 
         st.markdown('<div class="nav-section">Configuration</div>', unsafe_allow_html=True)
+        _nav_btn("Labels", "labels", icon="◫")
         _nav_btn("Paramètres", "settings", icon="⚙")

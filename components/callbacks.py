@@ -7,24 +7,53 @@ from meta_script.fetch_instagram import OrganicInstagramm
 
 
 def _is_google_callback() -> bool:
-    """Détecte un callback Google via les params qu'IL renvoie (scope adwords ou iss=accounts.google.com).
-    Beaucoup plus robuste qu'un flag session_state qui peut se perdre.
+    """Détecte un callback Google via les params qu'IL renvoie.
+    Google inclut toujours 'scope' avec 'googleapis.com' et peut inclure 'authuser'.
+    Plus robuste qu'un flag session_state qui se perd quand le WebSocket se ferme.
     """
     if "code" not in st.query_params:
         return False
     scope = str(st.query_params.get("scope", ""))
-    iss = str(st.query_params.get("iss", ""))
-    if "adwords" in scope.lower():
+    if "googleapis.com" in scope or "adwords" in scope.lower():
         return True
-    if "accounts.google.com" in iss:
+    # authuser est un paramètre spécifique à Google OAuth
+    if "authuser" in st.query_params:
         return True
     if st.session_state.get("_pending_google_oauth"):
         return True
     return False
 
 
+def _save_google_token(client, user_id, refresh_token, customer_id=None) -> bool:
+    """Sauvegarde le token Google SANS jamais le perdre en cas d'échec.
+
+    Le code OAuth est à usage unique : si l'écriture Supabase échoue (ex. la
+    migration connected_accounts n'est pas passée), on garde le refresh_token
+    en session pour retenter, et on affiche la cause — sinon l'utilisateur
+    devrait re-consentir sur Google sans comprendre pourquoi.
+    """
+    from scripts.insert_data import update_google_refresh_token
+    try:
+        update_google_refresh_token(client, user_id, refresh_token, customer_id=customer_id)
+        st.session_state.pop("_google_unsaved_refresh_token", None)
+        return True
+    except Exception as e:
+        st.session_state["_google_unsaved_refresh_token"] = refresh_token
+        st.error(
+            f"Connexion Google réussie, mais la sauvegarde a échoué : {e}\n\n"
+            "Cause la plus probable : la migration `supabase/migrations/000_run_me_all.sql` "
+            "n'a pas été exécutée (colonnes Google manquantes dans `connected_accounts`). "
+            "Exécute-la puis reviens sur Paramètres — ta connexion sera retentée sans re-consentir."
+        )
+        return False
+
+
 def handle_google_oauth_callback(client, user_id):
     """Récupère le code OAuth Google, échange contre refresh_token, sauvegarde."""
+    # Retente une sauvegarde échouée (token gardé en session — pas de re-consent)
+    if "_google_unsaved_refresh_token" in st.session_state and client and user_id:
+        _save_google_token(client, user_id, st.session_state["_google_unsaved_refresh_token"])
+
     if not _is_google_callback():
         return
 
@@ -32,7 +61,6 @@ def handle_google_oauth_callback(client, user_id):
     from google_script.fetch_token import exchange_code as gad_exchange
     from google_script.fetch_token import get_access_token_from_refresh
     from google_script.fetch_google_ads import list_accessible_customers
-    from scripts.insert_data import update_google_refresh_token
 
     with st.spinner("Connexion Google Ads…"):
         data = gad_exchange(code)
@@ -51,7 +79,7 @@ def handle_google_oauth_callback(client, user_id):
     access = get_access_token_from_refresh(refresh_token)
     if not access:
         st.error("Impossible d'obtenir un access_token depuis le refresh_token.")
-        update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
+        _save_google_token(client, user_id, refresh_token, customer_id=None)
         st.session_state.pop("_pending_google_oauth", None)
         st.query_params.clear()
         if "session" in st.session_state:
@@ -68,7 +96,7 @@ def handle_google_oauth_callback(client, user_id):
             "- Developer Token en **Basic Access** (test) → ne peut accéder qu'aux test accounts\n"
             "- Le compte Google utilisé pour l'OAuth n'a aucun Google Ads associé"
         )
-        update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
+        _save_google_token(client, user_id, refresh_token, customer_id=None)
         st.session_state.pop("_pending_google_oauth", None)
         # On nettoie l'URL mais SANS rerun (pour que l'erreur reste visible)
         st.query_params.clear()
@@ -81,7 +109,7 @@ def handle_google_oauth_callback(client, user_id):
             "Aucun compte Google Ads accessible avec ce login. "
             "Vérifie que le compte Google que tu utilises a bien accès à un compte Google Ads."
         )
-        update_google_refresh_token(client, user_id, refresh_token, customer_id=None)
+        _save_google_token(client, user_id, refresh_token, customer_id=None)
         st.session_state.pop("_pending_google_oauth", None)
         st.query_params.clear()
         if "session" in st.session_state:
@@ -89,7 +117,18 @@ def handle_google_oauth_callback(client, user_id):
         st.rerun()
         return
 
-    # Stocker la liste pour sélection au prochain run
+    # Si un seul compte accessible → sélection automatique, pas de selectbox
+    if len(customer_ids) == 1:
+        _save_google_token(client, user_id, refresh_token, customer_id=customer_ids[0])
+        st.session_state["_auto_fetch_google_after_oauth"] = True
+        st.session_state.pop("_pending_google_oauth", None)
+        st.query_params.clear()
+        if "session" in st.session_state:
+            st.query_params["refresh_token"] = st.session_state["session"].refresh_token
+        st.rerun()
+        return
+
+    # Plusieurs comptes → laisser l'utilisateur choisir
     st.session_state["_google_pending_refresh_token"] = refresh_token
     st.session_state["_google_customer_options"] = customer_ids
     st.session_state.pop("_pending_google_oauth", None)
@@ -112,16 +151,13 @@ def handle_google_customer_selection(client, user_id):
     st.info("Choisis le compte Google Ads à connecter au dashboard.")
     selected = st.selectbox("Compte Google Ads", options=options, key="gad_select_customer")
     if st.button("Confirmer la connexion", type="primary", key="btn_gad_confirm"):
-        from scripts.insert_data import update_google_refresh_token
-        try:
-            update_google_refresh_token(client, user_id, refresh_token, customer_id=selected)
+        if _save_google_token(client, user_id, refresh_token, customer_id=selected):
             del st.session_state["_google_pending_refresh_token"]
             del st.session_state["_google_customer_options"]
             st.session_state["_auto_fetch_google_after_oauth"] = True
             st.success(f"Compte Google Ads {selected} connecté ✓")
             st.rerun()
-        except Exception as e:
-            st.error(f"Erreur sauvegarde : {e}")
+        # échec : _save_google_token a déjà affiché la cause et gardé le token
     st.stop()
     return True
 
@@ -139,7 +175,16 @@ def handle_meta_oauth_callback():
         with st.spinner("Connexion Meta..."):
             data = exchange_code_for_token(code)
         if "access_token" in data:
-            long_token = get_long_lives_token(data["access_token"])
+            try:
+                long_token = get_long_lives_token(data["access_token"])
+            except Exception as e:
+                st.error(
+                    f"Connexion Meta OK, mais l'échange long-lived token a échoué : {e}\n\n"
+                    "Si tu fais tester par quelqu'un : vérifie qu'il est déclaré comme "
+                    "**testeur** de l'app Meta (App Dashboard → Rôles) tant qu'elle est en mode développement."
+                )
+                del st.query_params["code"]
+                return
             st.session_state["meta_long_token"] = long_token
             st.session_state["_save_meta_token"] = True
             session = st.session_state["session"]

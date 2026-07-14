@@ -1,0 +1,41 @@
+name: Fetch automatique des données
+
+# Tourne chaque jour à 07:00 UTC. Le worker ne traite que les utilisateurs
+# dont c'est le jour de mise à jour (profiles.fetch_schedule) — défaut : lundi.
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:        # permet de lancer à la main depuis l'onglet Actions
+    inputs:
+      force:
+        description: "Ignorer le jour planifié (fetch tous les users)"
+        type: boolean
+        default: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run fetch worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            python saas/worker/fetch_all.py --force
+          else
+            python saas/worker/fetch_all.py
+          fi

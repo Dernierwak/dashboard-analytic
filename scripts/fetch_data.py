@@ -39,15 +39,73 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) ->
 
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
 
-def fetch_campaign_labels(supabase: Client, user_id: str) -> list[str]:
-    """Master list des labels de campagne (stockée dans profiles.campaign_labels)."""
+def fetch_labels(supabase: Client, user_id: str) -> list[str]:
+    """Liste maîtresse UNIQUE des labels (profiles.labels) — partagée Meta/Google/Instagram.
+
+    Fallback : si profiles.labels n'existe pas encore (migration non passée) ou est
+    vide, on reconstruit la liste à partir des anciennes colonnes campaign_labels +
+    google_campaign_labels → la page Labels n'est jamais vide à tort. L'écriture
+    (create/delete) continue d'exiger la colonne labels (donc la migration).
+    """
     try:
-        res = supabase.table("profiles").select("campaign_labels").eq("id", user_id).execute()
-        if res.data and res.data[0].get("campaign_labels"):
-            return list(res.data[0]["campaign_labels"])
+        res = supabase.table("profiles").select("labels").eq("id", user_id).execute()
+        if res.data and res.data[0].get("labels"):
+            return list(res.data[0]["labels"])
+    except Exception:
+        pass
+    # Fallback lecture seule : union des anciennes listes.
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("campaign_labels, google_campaign_labels")
+            .eq("id", user_id)
+            .execute()
+        )
+        if res.data:
+            row = res.data[0]
+            union = (row.get("campaign_labels") or []) + (row.get("google_campaign_labels") or [])
+            return sorted({str(l).strip() for l in union if str(l).strip()})
     except Exception:
         pass
     return []
+
+
+def fetch_campaign_labels(supabase: Client, user_id: str) -> list[str]:
+    """Compat — pointe désormais sur la liste unifiée profiles.labels."""
+    return fetch_labels(supabase, user_id)
+
+
+def fetch_channel_budgets(supabase: Client, user_id: str) -> list[dict]:
+    """Budgets mensuels par canal : [{channel, month: 'YYYY-MM-DD', amount}].
+    [] si la table n'existe pas encore (migration non passée) → l'UI retombe
+    sur les anciens budgets globaux profiles.
+    """
+    try:
+        return (
+            supabase.table("channel_budgets")
+            .select("channel, month, amount")
+            .eq("user_id", user_id)
+            .order("month", desc=False)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        return []
+
+
+def budget_for_month(budgets: list[dict], channel: str, month_iso: str) -> float:
+    """Budget d'un canal pour un mois donné, avec CARRY-FORWARD :
+    si le mois n'a pas de ligne, on reporte le dernier budget connu ≤ ce mois.
+    → on ne ressaisit le budget QUE quand il change.
+    """
+    best = None
+    for b in budgets:
+        if b.get("channel") != channel:
+            continue
+        m = str(b.get("month", ""))[:10]
+        if m <= month_iso and (best is None or m > best[0]):
+            best = (m, float(b.get("amount") or 0))
+    return best[1] if best else 0.0
 
 
 def fetch_meta_budget_global(supabase: Client, user_id: str) -> float:
@@ -96,6 +154,23 @@ def fetch_google_ads(supabase: Client, user_id: str) -> list[dict]:
     )
 
 
+def fetch_google_ads_ad_insights(supabase: Client, user_id: str) -> list[dict]:
+    """Détail annonce × jour (drill-down Campagne → Groupe d'annonces → Annonce).
+    [] si la table n'existe pas encore (migration non passée) → l'UI dégrade proprement.
+    """
+    try:
+        return (
+            supabase.table("google_ads_ad_insights")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("date_start", desc=True)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        return []
+
+
 def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
     res = (
         supabase.table("google_ads_insights")
@@ -109,13 +184,8 @@ def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
 
 
 def fetch_google_campaign_labels(supabase: Client, user_id: str) -> list[str]:
-    try:
-        res = supabase.table("profiles").select("google_campaign_labels").eq("id", user_id).execute()
-        if res.data and res.data[0].get("google_campaign_labels"):
-            return list(res.data[0]["google_campaign_labels"])
-    except Exception:
-        pass
-    return []
+    """Compat — pointe désormais sur la liste unifiée profiles.labels."""
+    return fetch_labels(supabase, user_id)
 
 
 def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
@@ -151,11 +221,234 @@ def fetch_google_campaign_config(supabase: Client, user_id: str) -> dict[str, di
 
 
 def fetch_google_refresh_token(supabase: Client, user_id: str) -> tuple[str | None, str | None]:
-    """Retourne (refresh_token, customer_id) ou (None, None)."""
+    """Retourne (refresh_token, customer_id) ou (None, None).
+
+    Le token Google (Ads + GA4) vit dans connected_accounts (provider='google').
+    Fallback lecture sur les anciennes colonnes profiles si la migration n'est
+    pas encore passée — sinon Google paraît « déconnecté » à tort.
+    """
+    try:
+        res = (
+            supabase.table("connected_accounts")
+            .select("google_refresh_token, google_customer_id")
+            .eq("user_id", user_id)
+            .eq("provider", "google")
+            .limit(1)
+            .execute()
+        )
+        if res.data and res.data[0].get("google_refresh_token"):
+            return res.data[0].get("google_refresh_token"), res.data[0].get("google_customer_id")
+    except Exception:
+        pass
+    # Pré-migration : anciennes colonnes profiles (supprimées par la migration →
+    # cette requête échoue alors silencieusement, c'est voulu).
     try:
         res = supabase.table("profiles").select("google_refresh_token, google_customer_id").eq("id", user_id).execute()
         if res.data:
             return res.data[0].get("google_refresh_token"), res.data[0].get("google_customer_id")
+    except Exception:
+        pass
+    return None, None
+
+
+# ── Google Analytics 4 (GA4) ──────────────────────────────────────────────────
+
+def fetch_ga4_property_id(supabase: Client, user_id: str) -> str | None:
+    """Retourne le GA4 Property ID connecté (ex. 'properties/123456789') ou None.
+
+    Stocké sur la ligne connected_accounts provider='google' (Ads + GA4 = même token).
+    """
+    try:
+        res = (
+            supabase.table("connected_accounts")
+            .select("ga4_property_id")
+            .eq("user_id", user_id)
+            .eq("provider", "google")
+            .limit(1)
+            .execute()
+        )
+        if res.data and res.data[0].get("ga4_property_id"):
+            return res.data[0].get("ga4_property_id")
+    except Exception:
+        pass
+    # Pré-migration : ancienne colonne profiles (supprimée ensuite → silencieux)
+    try:
+        res = supabase.table("profiles").select("ga4_property_id").eq("id", user_id).execute()
+        if res.data:
+            return res.data[0].get("ga4_property_id")
+    except Exception:
+        pass
+    return None
+
+
+def fetch_ga4_events(supabase: Client, user_id: str) -> list[dict]:
+    """Funnel GA4 par événement (view_item → purchase). [] si table absente."""
+    try:
+        return (
+            supabase.table("ga4_events")
+            .select("date, source, medium, campaign, event_name, event_count, event_value")
+            .eq("user_id", user_id)
+            .order("date", desc=True)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        return []
+
+
+def fetch_ga4_insights(supabase: Client, user_id: str) -> list[dict]:
+    """Tous les insights GA4 d'un user (filtre date côté appelant)."""
+    try:
+        return (
+            supabase.table("ga4_insights")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("date", desc=True)
+            .execute()
+            .data
+        )
+    except Exception:
+        return []
+
+
+def fetch_ga4_latest_date(supabase: Client, user_id: str) -> str | None:
+    try:
+        res = (
+            supabase.table("ga4_insights")
+            .select("date")
+            .eq("user_id", user_id)
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0]["date"] if res.data else None
+    except Exception:
+        return None
+
+
+# ── Boucle de feedback (rapport hebdo) ────────────────────────────────────────
+
+def fetch_last_data_date(supabase: Client, user_id: str) -> str | None:
+    """Date des données les plus récentes (toutes sources), format 'YYYY-MM-DD'.
+    Sert à afficher la fraîcheur des données et à caler la fenêtre de comparaison.
+    """
+    dates: list[str] = []
+    for table, col in [
+        ("meta_ads_insights", "date_start"),
+        ("instagram_organic_posts", "date"),
+        ("daily_followers", "fetched_at"),
+        ("google_ads_insights", "date_start"),
+        ("ga4_insights", "date"),
+    ]:
+        try:
+            res = (
+                supabase.table(table).select(col)
+                .eq("user_id", user_id).order(col, desc=True).limit(1).execute()
+            )
+            if res.data and res.data[0].get(col):
+                dates.append(str(res.data[0][col])[:10])
+        except Exception:
+            pass
+    return max(dates) if dates else None
+
+
+def fetch_objectif(supabase: Client, user_id: str) -> str | None:
+    """Objectif principal du compte ('ventes'|'notoriete'|'engagement') ou None."""
+    try:
+        res = supabase.table("profiles").select("objectif").eq("id", user_id).execute()
+        if res.data:
+            return res.data[0].get("objectif")
+    except Exception:
+        pass
+    return None
+
+
+def fetch_reco_feedback(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:
+    """Dernière réaction connue par type de conseil, sur les `recent_weeks` semaines.
+    Returns: {reco_key: "useful"|"not_for_me"|"done"} (la plus récente par key).
+    """
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
+    out: dict[str, str] = {}
+    try:
+        res = (
+            supabase.table("reco_feedback")
+            .select("reco_key, reaction, week_start")
+            .eq("user_id", user_id)
+            .gte("week_start", cutoff)
+            .order("week_start", desc=True)
+            .execute()
+        )
+        for row in (res.data or []):
+            key = row.get("reco_key")
+            if key and key not in out:  # 1re vue = la plus récente (tri desc)
+                out[key] = row.get("reaction")
+    except Exception:
+        pass
+    return out
+
+
+def fetch_reco_decisions(supabase: Client, user_id: str, recent_weeks: int = 5) -> list[dict]:
+    """Décisions « Fait » datées — alimente la boucle de la preuve du rapport
+    (le rapport suivant mesure l'effet de chaque décision sur son KPI).
+    Returns: [{reco_key, week_start}] du plus récent au plus ancien (1 par key).
+    """
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
+    out, seen = [], set()
+    try:
+        res = (
+            supabase.table("reco_feedback")
+            .select("reco_key, reaction, week_start")
+            .eq("user_id", user_id)
+            .eq("reaction", "done")
+            .gte("week_start", cutoff)
+            .order("week_start", desc=True)
+            .execute()
+        )
+        for row in (res.data or []):
+            key = row.get("reco_key")
+            if key and key not in seen:
+                seen.add(key)
+                out.append({"reco_key": key, "week_start": str(row.get("week_start"))[:10]})
+    except Exception:
+        pass
+    return out
+
+
+def fetch_reco_comments(supabase: Client, user_id: str, limit: int = 60) -> list[dict]:
+    """Commentaires libres laissés sur les conseils (les plus récents d'abord).
+
+    Alimente le persona utilisateur ([[comment-profil-user-ia]]) et le pré-remplissage
+    du champ commentaire. Returns: [{reco_key, comment, reaction, week_start, created_at}]
+    """
+    try:
+        res = (
+            supabase.table("reco_feedback")
+            .select("reco_key, comment, reaction, week_start, created_at")
+            .eq("user_id", user_id)
+            .not_.is_("comment", "null")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [r for r in (res.data or []) if (r.get("comment") or "").strip()]
+    except Exception:
+        return []
+
+
+def fetch_user_profile(supabase: Client, user_id: str) -> tuple[str | None, str | None]:
+    """Persona utilisateur dérivé par l'IA. Returns: (user_profile, updated_at_iso)."""
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("user_profile, user_profile_updated_at")
+            .eq("id", user_id)
+            .execute()
+        )
+        if res.data:
+            row = res.data[0]
+            return row.get("user_profile"), row.get("user_profile_updated_at")
     except Exception:
         pass
     return None, None

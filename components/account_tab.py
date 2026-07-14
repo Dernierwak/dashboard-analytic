@@ -1,8 +1,6 @@
 import streamlit as st
 
 from meta_script.fetch_token import get_oauth_url
-from components.meta_ads import meta_ads_source_fragment
-from components.instagram_tab import run_instagram_fetch
 from scripts.stripe import create_checkout_session, cancel_subscription
 
 
@@ -158,11 +156,12 @@ def _render_meta_connect_card(session, context: str = "ads") -> None:
 def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts_data, dash=None):
     st.markdown(_ACCOUNT_CSS, unsafe_allow_html=True)
 
-    sub_infos, sub_insta, sub_meta, sub_google = st.tabs([
+    sub_infos, sub_insta, sub_meta, sub_google, sub_ga4 = st.tabs([
         "Compte",
         "Instagram",
         "Meta Ads",
         "Google Ads",
+        "Analytics",
     ])
 
     # ── Infos du compte ────────────────────────────────────────────────────────
@@ -196,7 +195,7 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             st.markdown(
                 f'<div class="acc-card">'
                 f'<div class="acc-card-left">'
-                f'<div class="acc-card-name">Pro {plan_badge}</div>'
+                f'<div class="acc-card-name">Plan Pro</div>'
                 f'<div class="acc-card-meta">Tous les posts · historique illimité · insights IA</div>'
                 f'</div></div>',
                 unsafe_allow_html=True,
@@ -282,7 +281,15 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             if insta_accounts:
                 for acc in insta_accounts:
                     name = acc.get("account_name") or "Compte Instagram"
-                    date = acc.get("created_at", "")[:10]
+                    # "2026-04-17" → "17 avril 2026" (pas d'ISO dans l'UI)
+                    _iso = acc.get("created_at", "")[:10]
+                    try:
+                        _y, _m, _d = _iso.split("-")
+                        _mois_fr = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+                                    "août", "septembre", "octobre", "novembre", "décembre"]
+                        date = f"{int(_d)} {_mois_fr[int(_m)]} {_y}"
+                    except Exception:
+                        date = _iso
                     total_posts = acc.get("total_posts_id_instagram", 0)
                     col_info, col_btn = st.columns([5, 1])
                     with col_info:
@@ -317,9 +324,11 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 )
             with col_b:
                 if insta_accounts and dash is not None:
+                    # Paramètres = connexions. La récupération passe par le pop-up
+                    # unique « Mes données » (tous canaux + choix de période).
                     if st.button("↻ Récupérer mes données", type="primary",
                                  key="btn_fetch_insta_source", use_container_width=True):
-                        st.session_state["_fetch_insta_inline"] = True
+                        st.session_state["_manual_fetch_request"] = True
                         st.rerun()
 
             # ── Sources de données ──────────────────────────────────────────
@@ -346,72 +355,7 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                 unsafe_allow_html=True,
             )
 
-        # Fetch inline (s'exécute après le rerun, reste sur Paramètres)
-        if st.session_state.pop("_fetch_insta_inline", False) and insta_accounts and dash is not None:
-            # ── 1. Verrouillage de la navigation pendant le fetch ────────────
-            st.markdown(
-                """
-                <style id="fetch-lock">
-                /* Désactive la sidebar (clicks + visuel atténué) */
-                [data-testid="stSidebar"] {
-                    pointer-events: none !important;
-                    opacity: 0.4 !important;
-                    filter: grayscale(0.3);
-                }
-                /* Désactive les onglets de Paramètres */
-                .stTabs [data-baseweb="tab-list"] {
-                    pointer-events: none !important;
-                    opacity: 0.5 !important;
-                }
-                /* Empêche de fermer/refresh sans s'en rendre compte */
-                [data-testid="stHeader"] { opacity: 0.5; }
-                /* Banner de blocage */
-                .fetch-locked-banner {
-                    position: sticky; top: 0; z-index: 100;
-                    background: linear-gradient(90deg,#3b5bff,#7b4fff);
-                    color: #fff; padding: 10px 16px; border-radius: 10px;
-                    font-size: 13px; font-weight: 500;
-                    box-shadow: 0 4px 16px rgba(59,91,255,0.25);
-                    display: flex; align-items: center; gap: 10px;
-                    margin-bottom: 16px;
-                    animation: pulse-glow 2s ease-in-out infinite;
-                }
-                @keyframes pulse-glow {
-                    0%, 100% { box-shadow: 0 4px 16px rgba(59,91,255,0.25); }
-                    50% { box-shadow: 0 4px 24px rgba(59,91,255,0.5); }
-                }
-                .fetch-spinner {
-                    width: 14px; height: 14px; border-radius: 50%;
-                    border: 2px solid rgba(255,255,255,0.3);
-                    border-top-color: #fff;
-                    animation: spin 0.8s linear infinite;
-                    flex-shrink: 0;
-                }
-                @keyframes spin { to { transform: rotate(360deg); } }
-                </style>
-                <div class="fetch-locked-banner">
-                    <div class="fetch-spinner"></div>
-                    <span>Récupération en cours — ne quitte pas cette page, la navigation est temporairement désactivée.</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # ── 2. Lancement du fetch (avec st.status interne qui défile) ────
-            insta_biz_id = insta_accounts[0].get("instagram_business_id")
-            run_instagram_fetch(client, user_id, dash, instagram_business_id=insta_biz_id, is_paid=is_paid)
-
-            # ── 3. À la fin du fetch, retire le verrouillage proprement ──────
-            st.markdown(
-                "<style>"
-                "[data-testid='stSidebar'] { pointer-events: auto !important; opacity: 1 !important; filter: none !important; }"
-                ".stTabs [data-baseweb='tab-list'] { pointer-events: auto !important; opacity: 1 !important; }"
-                "[data-testid='stHeader'] { opacity: 1; }"
-                ".fetch-locked-banner { display: none; }"
-                "</style>",
-                unsafe_allow_html=True,
-            )
-            st.success("Récupération terminée. Tu peux maintenant naviguer.")
+        # (Le fetch inline a été remplacé par le pop-up unique « Mes données ».)
 
     # ── Connecter Meta Ads ─────────────────────────────────────────────────────
     with sub_meta:
@@ -426,12 +370,17 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
 
         if "meta_long_token" in st.session_state:
             st.markdown('<div class="acc-section-title">Synchronisation</div>', unsafe_allow_html=True)
-            with st.spinner("Chargement des comptes Meta Ads…"):
-                meta_ads_source_fragment(
-                    token=st.session_state["meta_long_token"],
-                    supabase=client,
-                    user_id=user_id,
-                )
+            st.markdown(
+                '<div class="acc-card"><div class="acc-card-left">'
+                '<div class="acc-card-name">Meta Ads connecté ✓</div>'
+                '<div class="acc-card-meta">Les données se récupèrent depuis le pop-up « Mes données ».</div>'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
+                         use_container_width=True, key="btn_fetch_meta_ads_hub"):
+                st.session_state["_manual_fetch_request"] = True
+                st.rerun()
         else:
             # Pas connecté → affiche la card Meta Business
             _render_meta_connect_card(session, context="ads")
@@ -468,7 +417,6 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
         from scripts.fetch_data import fetch_google_refresh_token
         from google_script.fetch_token import get_oauth_url as gad_oauth_url, get_access_token_from_refresh
         from google_script.fetch_google_ads import list_accessible_customers
-        from components.google_ads import run_google_ads_fetch
 
         refresh_tok, customer_id = (None, None)
         if client and user_id:
@@ -486,45 +434,225 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
 
             st.markdown('<div class="acc-section-title">Synchronisation</div>', unsafe_allow_html=True)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                force = st.checkbox(
-                    f"Récupérer toute l'année {__import__('datetime').date.today().year}",
-                    key="chk_gad_force_full",
-                )
-            with col_b:
-                if st.button("↻ Récupérer les données Google Ads", type="primary",
-                             use_container_width=True, key="btn_fetch_gad"):
-                    progress_bar = st.progress(0, text="Connexion à Google Ads…")
-                    def _cb(p, t):
-                        try:
-                            progress_bar.progress(min(100, max(0, p)), text=t)
-                        except Exception:
-                            pass
-                    result = run_google_ads_fetch(
-                        client, user_id,
-                        refresh_token=refresh_tok,
-                        customer_id=customer_id,
-                        force_full=force,
-                        progress_cb=_cb,
-                    )
-                    progress_bar.empty()
-                    if result.get("success"):
-                        st.success(f"✓ {result.get('message', '')}")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {result.get('message', 'Erreur inconnue')}")
-
-            if st.button("Déconnecter Google Ads", key="btn_disc_gad", type="secondary"):
-                client.table("profiles").update({
-                    "google_refresh_token": None,
-                    "google_customer_id": None,
-                }).eq("id", user_id).execute()
+            # Paramètres = connexions. La récupération (tous canaux + période) passe
+            # par le pop-up unique « Mes données ».
+            if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
+                         use_container_width=True, key="btn_fetch_gad"):
+                st.session_state["_manual_fetch_request"] = True
                 st.rerun()
 
+            # Déconnecte UNIQUEMENT le compte Ads (garde le token Google → GA4 survit)
+            if st.button("Déconnecter ce compte Google Ads", key="btn_disc_gad", type="secondary"):
+                client.table("connected_accounts").update({
+                    "google_customer_id": None,
+                }).eq("user_id", user_id).eq("provider", "google").execute()
+                st.rerun()
+            st.caption("Garde ta connexion Google Analytics intacte.")
+
+        elif refresh_tok and not customer_id:
+            # Token Google OK mais AUCUN compte Ads associé → on diagnostique en clair
+            # (au lieu de réafficher la carte de connexion comme si rien ne s'était passé).
+            st.markdown('<div class="acc-section-title">Connexion Google OK — compte Ads à finaliser</div>', unsafe_allow_html=True)
+            st.info("Ton accès Google est bien enregistré, mais aucun compte Google Ads n'a encore été associé. Voici pourquoi :")
+
+            from google_script.fetch_token import get_access_token_from_refresh
+            from google_script.fetch_google_ads import list_accessible_customers
+            from scripts.insert_data import update_google_refresh_token
+
+            access = get_access_token_from_refresh(refresh_tok)
+            if not access:
+                st.error("Impossible d'obtenir un access_token depuis le refresh_token. Reconnecte Google ci-dessous.")
+            else:
+                ids, err = list_accessible_customers(access)
+                if err:
+                    st.error(f"Google Ads API : {err}")
+                    st.markdown(
+                        "**Cause la plus fréquente** : ton *developer token* Google Ads est en "
+                        "accès **Test/Basic** → il ne peut pas lister tes vrais comptes. "
+                        "Demande l'accès **Basic** dans Google Ads → outils → API Center. "
+                        "En attendant, tu peux saisir ton Customer ID à la main ci-dessous."
+                    )
+                elif not ids:
+                    st.warning(
+                        "Aucun compte Google Ads accessible avec ce login Google. "
+                        "Vérifie que ce compte Google a bien accès à un compte Google Ads."
+                    )
+                else:
+                    chosen = st.selectbox("Choisis ton compte Google Ads", options=ids, key="gad_pick_customer")
+                    if st.button("Connecter ce compte", type="primary", key="btn_gad_pick"):
+                        update_google_refresh_token(client, user_id, refresh_tok, customer_id=chosen)
+                        st.success(f"Compte {chosen} connecté ✓")
+                        st.rerun()
+
+            with st.expander("Saisir l'ID manuellement ou reconnecter Google"):
+                manual = st.text_input("Customer ID (10 chiffres, sans tirets)", key="gad_manual_id")
+                if st.button("Enregistrer cet ID", key="btn_gad_manual"):
+                    cid = manual.replace("-", "").replace(" ", "").strip()
+                    if cid:
+                        update_google_refresh_token(client, user_id, refresh_tok, customer_id=cid)
+                        st.rerun()
+                    else:
+                        st.warning("Saisis un Customer ID valide.")
+                st.markdown("<br>", unsafe_allow_html=True)
+                _render_google_connect_card(session)
+
         else:
-            # Pas connecté → card OAuth (mirror Meta)
+            # Pas connecté du tout → card OAuth (mirror Meta)
             _render_google_connect_card(session)
+
+    # ── Connecter Google Analytics (GA4) ────────────────────────────────────────
+    with sub_ga4:
+        _render_ga4_section(session, client, user_id)
+
+
+def _render_ga4_section(session, client, user_id) -> None:
+    """Connexion GA4 — réutilise le token Google, puis choix de la propriété.
+
+    GA4 donne le RETOUR réel des pubs (conversions, revenus) → le rapport hebdo
+    passe ses conseils pub de « À creuser » à « Solide ».
+    """
+    st.markdown(
+        '<div class="acc-hero">'
+        '<div class="acc-eyebrow">Google Analytics</div>'
+        '<h1 class="acc-h1">Le vrai retour de tes pubs.</h1>'
+        '<p class="acc-sub">Relie ta dépense publicitaire à tes ventes et contacts réels. '
+        "Sans ça, le rapport ne voit que le coût, jamais le résultat.</p>"
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    gads_configured = False
+    try:
+        _ = st.secrets.google_ads.client_id
+        gads_configured = True
+    except Exception:
+        pass
+    if not gads_configured:
+        st.warning("⚠ Les credentials Google ne sont pas configurés (`[google_ads].client_id`).")
+        return
+
+    from scripts.fetch_data import fetch_google_refresh_token, fetch_ga4_property_id
+    from scripts.insert_data import update_ga4_property_id
+    from google_script.fetch_token import get_access_token_from_refresh
+    from google_script.fetch_ga4 import list_ga4_properties
+
+    refresh_tok, _customer = fetch_google_refresh_token(client, user_id) if (client and user_id) else (None, None)
+
+    # Étape 1 : il faut d'abord le token Google (partagé avec Google Ads)
+    if not refresh_tok:
+        st.info(
+            "Connecte d'abord ton compte Google (onglet **Google Ads**). "
+            "La même autorisation couvre Google Analytics — pas besoin de se reconnecter deux fois."
+        )
+        _render_google_connect_card(session)
+        return
+
+    property_id = fetch_ga4_property_id(client, user_id)
+
+    # Étape 2 : propriété déjà choisie → synchro
+    if property_id:
+        st.markdown('<div class="acc-section-title">Propriété connectée</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="acc-card"><div class="acc-card-left">'
+            f'<div class="acc-card-name">GA4 : {property_id}</div>'
+            f'<div class="acc-card-meta">Token Google partagé ✓</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        # Paramètres = connexions. La récupération (tous canaux + période) passe
+        # par le pop-up unique « Mes données ».
+        if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
+                     use_container_width=True, key="btn_fetch_ga4"):
+            st.session_state["_manual_fetch_request"] = True
+            st.rerun()
+
+        # Déconnecte UNIQUEMENT Analytics (garde le token Google → Google Ads survit)
+        if st.button("Déconnecter Analytics", key="btn_disc_ga4", type="secondary"):
+            try:
+                update_ga4_property_id(client, user_id, None)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Déconnexion échouée : {e}")
+        st.caption("Garde ta connexion Google Ads intacte.")
+        st.divider()
+        _render_google_full_signout(client, user_id, key_suffix="ga4conn")
+        return
+
+    # Étape 3 : token OK mais pas de propriété → la lister et la choisir
+    st.markdown('<div class="acc-section-title">Choisis ta propriété GA4</div>', unsafe_allow_html=True)
+    access = get_access_token_from_refresh(refresh_tok)
+    props, err = list_ga4_properties(access) if access else ([], "access_token indisponible")
+    if err:
+        is_scope_err = "scope" in err.lower() or "403" in err
+        if is_scope_err:
+            st.warning(
+                "🔑 Ton autorisation Google actuelle ne couvre pas encore Analytics "
+                "(elle a été créée pour Google Ads). **Reconnecte ton compte Google ci-dessous** "
+                "pour ajouter l'accès Analytics."
+            )
+        else:
+            st.error(f"Google Analytics : {err}")
+        st.markdown(
+            "<div style='font-size:12.5px;color:#5a5d66;line-height:1.6;margin:8px 0;'>"
+            "Avant de reconnecter, vérifie côté <b>Google Cloud Console</b> :<br>"
+            "• APIs &amp; Services → Library → active <b>Google Analytics Data API</b> + "
+            "<b>Google Analytics Admin API</b><br>"
+            "• OAuth consent screen → Scopes → ajoute <code>analytics.readonly</code><br>"
+            "• si l'app est en mode « Testing » → ton email doit être dans les <b>Test users</b>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        _render_ga4_reconnect_button(session)
+        return
+    if not props:
+        st.warning("Aucune propriété GA4 accessible avec ce compte Google.")
+        _render_ga4_reconnect_button(session)
+        return
+
+    labels = {f"{p['name']} — {p['account']} ({p['id'].split('/')[-1]})": p["id"] for p in props}
+    chosen = st.selectbox("Propriété Google Analytics 4", options=list(labels.keys()), key="ga4_select_prop")
+    if st.button("Connecter cette propriété", type="primary", key="btn_ga4_confirm"):
+        try:
+            update_ga4_property_id(client, user_id, labels[chosen])
+            st.success("Propriété GA4 connectée ✓ — récupère tes données ci-dessus.")
+            st.rerun()
+        except Exception as e:
+            st.error(
+                f"Sauvegarde échouée : {e}\n\n"
+                "Si l'erreur mentionne une colonne manquante, exécute la migration "
+                "`supabase/migrations/000_run_me_all.sql` puis réessaie."
+            )
+
+    st.divider()
+    _render_google_full_signout(client, user_id, key_suffix="ga4pick")
+
+
+def _render_google_full_signout(client, user_id, key_suffix="") -> None:
+    """Déconnexion Google globale (Ads + Analytics) — efface le token partagé.
+    À distinguer des déconnexions par service (qui ne touchent que customer_id / property_id).
+    """
+    if st.button("Se déconnecter de Google (Ads + Analytics)", key=f"btn_g_signout_{key_suffix}", type="secondary"):
+        # Supprime la ligne de connexion Google (token partagé Ads + Analytics).
+        client.table("connected_accounts").delete().eq("user_id", user_id).eq("provider", "google").execute()
+        st.rerun()
+    st.caption("Supprime l'autorisation Google partagée. Tu devras la réautoriser pour Ads comme pour Analytics.")
+
+
+def _render_ga4_reconnect_button(session) -> None:
+    """Bouton pour relancer l'OAuth Google (inclut désormais le scope Analytics).
+    Force re-consent → nouveau refresh_token avec analytics.readonly.
+    """
+    from google_script.fetch_token import get_oauth_url as g_oauth_url
+    st.session_state["_pending_google_oauth"] = True
+    st.link_button(
+        "🔗 Reconnecter Google (autoriser Analytics)",
+        g_oauth_url(state=session.refresh_token),
+        type="primary",
+    )
+    st.caption(
+        "Sur l'écran Google, coche bien l'accès **« Voir tes données Google Analytics »**. "
+        "Si cette case n'apparaît pas, c'est que le scope n'est pas encore ajouté côté Google Cloud (voir ci-dessus)."
+    )
 
 
 def _render_google_connect_card(session) -> None:

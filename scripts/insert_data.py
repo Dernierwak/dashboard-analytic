@@ -50,9 +50,41 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
 
 def update_campaign_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
-    """Master list des labels de campagne → profiles.campaign_labels."""
-    clean = [str(l).strip() for l in labels if str(l).strip()]
-    supabase.table("profiles").update({"campaign_labels": clean}).eq("id", user_id).execute()
+    """Master list UNIFIÉE des labels → profiles.labels (partagée Meta/Google/Instagram)."""
+    update_labels(supabase, user_id, labels)
+
+
+def update_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
+    """Écrit la liste maîtresse unique des labels (profiles.labels)."""
+    clean = sorted({str(l).strip() for l in labels if str(l).strip()})
+    supabase.table("profiles").update({"labels": clean}).eq("id", user_id).execute()
+
+
+def upsert_channel_budget(supabase: Client, user_id: str, channel: str, month_iso: str, amount: float) -> None:
+    """Budget mensuel d'un canal (channel_budgets). month_iso = 'YYYY-MM-01'."""
+    supabase.table("channel_budgets").upsert(
+        {
+            "user_id": user_id,
+            "channel": channel,
+            "month": month_iso,
+            "amount": float(amount or 0),
+        },
+        on_conflict="user_id,channel,month",
+    ).execute()
+
+
+def upsert_weekly_report(supabase: Client, user_id: str, week_start_iso: str, payload: dict) -> None:
+    """Publie le rapport hebdo précalculé (payload JSON) — lu par Pulse + l'email hebdo."""
+    from datetime import datetime, timezone
+    supabase.table("weekly_reports").upsert(
+        {
+            "user_id": user_id,
+            "week_start": week_start_iso,
+            "payload": payload,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+        on_conflict="user_id,week_start",
+    ).execute()
 
 
 def update_meta_budget_global(supabase: Client, user_id: str, value: float) -> None:
@@ -146,9 +178,41 @@ def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
     ).execute()
 
 
+def upsert_google_ads_ad_insights(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_ad_insights (détail annonce × jour, pour le drill-down).
+    Conflict sur (user_id, date_start, ad_id) : 1 ligne par annonce × jour.
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("ad_id", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":       user_id,
+            "date_start":    r.get("date_start"),
+            "campaign_id":   str(r.get("campaign_id", "")),
+            "campaign_name": r.get("campaign_name", ""),
+            "ad_group_id":   str(r.get("ad_group_id", "")),
+            "ad_group_name": r.get("ad_group_name", ""),
+            "ad_id":         str(r.get("ad_id", "")),
+            "ad_name":       r.get("ad_name", ""),
+            "impressions":   int(r.get("impressions") or 0),
+            "clicks":        int(r.get("clicks") or 0),
+            "cost_micros":   int(r.get("cost_micros") or 0),
+            "conversions":   float(r.get("conversions") or 0),
+        })
+    supabase.table("google_ads_ad_insights").upsert(
+        records, on_conflict="user_id,date_start,ad_id"
+    ).execute()
+
+
 def update_google_campaign_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
-    clean = [str(l).strip() for l in labels if str(l).strip()]
-    supabase.table("profiles").update({"google_campaign_labels": clean}).eq("id", user_id).execute()
+    """Master list UNIFIÉE → profiles.labels (partagée Meta/Google/Instagram)."""
+    update_labels(supabase, user_id, labels)
 
 
 def update_google_budget_global(supabase: Client, user_id: str, value: float) -> None:
@@ -206,9 +270,176 @@ def clear_google_campaign_label(supabase: Client, user_id: str, label: str) -> N
     supabase.table("google_campaign_config").update({"label": None}).eq("user_id", user_id).eq("label", label).execute()
 
 
+def _upsert_google_account(supabase: Client, user_id: str, payload: dict) -> None:
+    """Crée ou met à jour la ligne connected_accounts provider='google' (1 par user).
+
+    Tous les tokens Google (Ads + GA4) vivent ici, plus sur profiles.
+    """
+    existing = (
+        supabase.table("connected_accounts")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("provider", "google")
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        supabase.table("connected_accounts").update(payload).eq("id", existing.data[0]["id"]).execute()
+    else:
+        supabase.table("connected_accounts").insert(
+            {"user_id": user_id, "provider": "google", "account_name": "Google", **payload}
+        ).execute()
+
+
 def update_google_refresh_token(supabase: Client, user_id: str, refresh_token: str, customer_id: str | None = None) -> None:
-    """Stocke le refresh_token OAuth Google + le customer_id du compte sélectionné."""
+    """Stocke le refresh_token OAuth Google + le customer_id du compte sélectionné
+    (connected_accounts, provider='google')."""
     payload = {"google_refresh_token": refresh_token}
     if customer_id:
         payload["google_customer_id"] = str(customer_id)
-    supabase.table("profiles").update(payload).eq("id", user_id).execute()
+    _upsert_google_account(supabase, user_id, payload)
+
+
+# ── Google Analytics 4 (GA4) — helpers ────────────────────────────────────────
+
+def update_ga4_property_id(supabase: Client, user_id: str, property_id: str | None) -> None:
+    """Stocke le GA4 Property ID sélectionné (ex. 'properties/123456789')
+    sur la ligne connected_accounts provider='google'."""
+    _upsert_google_account(
+        supabase, user_id,
+        {"ga4_property_id": str(property_id) if property_id else None},
+    )
+
+
+def upsert_ga4_insights(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert ga4_insights.
+    Chaque row : date (YYYY-MM-DD), source, medium, campaign (utm), sessions,
+    conversions, revenue. Conflict (user_id, date, source, medium, campaign).
+    Fallback ancien schéma (sans campaign) si la migration ga4_events.sql
+    n'est pas encore passée.
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date"), r.get("source", ""), r.get("medium", ""), r.get("campaign", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":     user_id,
+            "date":        r.get("date"),
+            "source":      r.get("source", "") or "",
+            "medium":      r.get("medium", "") or "",
+            "campaign":    r.get("campaign", "") or "",
+            "sessions":    int(r.get("sessions") or 0),
+            "conversions": float(r.get("conversions") or 0),
+            "revenue":     float(r.get("revenue") or 0),
+        })
+    try:
+        supabase.table("ga4_insights").upsert(
+            records, on_conflict="user_id,date,source,medium,campaign"
+        ).execute()
+    except Exception:
+        # Ancien schéma : pas de colonne campaign → on agrège par (source, medium)
+        legacy: dict = {}
+        for rec in records:
+            k = (rec["date"], rec["source"], rec["medium"])
+            cur = legacy.setdefault(k, {**rec})
+            if cur is not rec:
+                cur["sessions"] += rec["sessions"]
+                cur["conversions"] += rec["conversions"]
+                cur["revenue"] += rec["revenue"]
+        for rec in legacy.values():
+            rec.pop("campaign", None)
+        supabase.table("ga4_insights").upsert(
+            list(legacy.values()), on_conflict="user_id,date,source,medium"
+        ).execute()
+
+
+def upsert_ga4_events(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert ga4_events (funnel par événement × jour × source/medium/campagne).
+    Conflict (user_id, date, source, medium, campaign, event_name).
+    Silencieux si la table n'existe pas encore (migration non passée).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date"), r.get("source", ""), r.get("medium", ""),
+               r.get("campaign", ""), r.get("event_name", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":     user_id,
+            "date":        r.get("date"),
+            "source":      r.get("source", "") or "",
+            "medium":      r.get("medium", "") or "",
+            "campaign":    r.get("campaign", "") or "",
+            "event_name":  r.get("event_name", "") or "",
+            "event_count": int(r.get("event_count") or 0),
+            "event_value": float(r.get("event_value") or 0),
+        })
+    supabase.table("ga4_events").upsert(
+        records, on_conflict="user_id,date,source,medium,campaign,event_name"
+    ).execute()
+
+
+# ── Boucle de feedback (rapport hebdo) — helpers ──────────────────────────────
+
+def update_objectif(supabase: Client, user_id: str, objectif: str | None) -> None:
+    """Stocke l'objectif principal du compte ('ventes'|'notoriete'|'engagement'|None)."""
+    supabase.table("profiles").update(
+        {"objectif": objectif or None}
+    ).eq("id", user_id).execute()
+
+
+def save_reco_feedback(
+    supabase: Client, user_id: str, reco_key: str, reaction: str, week_start: str
+) -> None:
+    """Enregistre/écrase la réaction d'un conseil pour la semaine donnée.
+    reaction : 'useful' | 'not_for_me' | 'done'. week_start : lundi (YYYY-MM-DD).
+    """
+    supabase.table("reco_feedback").upsert(
+        {
+            "user_id": user_id,
+            "reco_key": str(reco_key),
+            "reaction": str(reaction),
+            "week_start": week_start,
+        },
+        on_conflict="user_id,reco_key,week_start",
+    ).execute()
+
+
+def save_reco_comment(
+    supabase: Client, user_id: str, reco_key: str, week_start: str, comment: str | None
+) -> None:
+    """Enregistre/écrase le commentaire libre d'un conseil pour la semaine donnée.
+
+    L'upsert ne touche QUE la colonne comment → ne pas écraser une réaction déjà
+    posée. Un commentaire peut exister sans réaction (reaction est nullable).
+    Ces commentaires alimentent le persona utilisateur ([[comment-profil-user-ia]]).
+    """
+    supabase.table("reco_feedback").upsert(
+        {
+            "user_id": user_id,
+            "reco_key": str(reco_key),
+            "week_start": week_start,
+            "comment": (comment or "").strip() or None,
+        },
+        on_conflict="user_id,reco_key,week_start",
+    ).execute()
+
+
+def save_user_profile(supabase: Client, user_id: str, profile_text: str | None) -> None:
+    """Stocke le persona utilisateur dérivé par l'IA (profiles.user_profile)."""
+    from datetime import datetime, timezone
+    supabase.table("profiles").update(
+        {
+            "user_profile": (profile_text or "").strip() or None,
+            "user_profile_updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", user_id).execute()
