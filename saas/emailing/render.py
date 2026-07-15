@@ -50,6 +50,48 @@ def _todo_row(n: int, title: str, channel: str) -> str:
     )
 
 
+def _fmt(n: float) -> str:
+    """1234.5 → '1 235' (format suisse, sans décimales)."""
+    return f"{n:,.0f}".replace(",", " ")
+
+
+def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[str, str]:
+    """Adapte le payload weekly_reports (celui que Pulse lit) → (sujet, html email).
+
+    Une seule source de vérité : le rapport publié. L'email en est la version boîte mail.
+    """
+    kpis_raw = payload.get("kpis") or {}
+    spend = kpis_raw.get("spend")
+    clicks = kpis_raw.get("clicks")
+    ctr = kpis_raw.get("ctr")
+    fdelta = kpis_raw.get("followers_delta")
+    kpis = {
+        "spend": f"{_fmt(spend)} CHF" if spend is not None else "—",
+        "clicks": _fmt(clicks) if clicks is not None else "—",
+        "ctr_sub": f"CTR {ctr:.2f} %" if ctr is not None else "",
+        "followers": (f"{fdelta:+d}" if fdelta is not None else "—"),
+    }
+
+    # « Ce qui a marché » = brief (IA ou fallback), précédé du verdict pour le contexte.
+    verdict = payload.get("verdict") or ""
+    brief = payload.get("brief") or ""
+    wins = f"{verdict} {brief}".strip()
+
+    todos = [{"title": t["title"], "channel": t.get("platform", "ia")}
+             for t in (payload.get("todo") or []) if not t.get("done")]
+
+    html = build_email_html(
+        account_name=account_name,
+        week_label=payload.get("week_label", ""),
+        kpis=kpis,
+        wins_text=wins,
+        todos=todos,
+        app_url=app_url,
+    )
+    subject = f"Pulse — {payload.get('week_label', 'ta semaine en bref')}"
+    return subject, html
+
+
 def build_email_html(
     account_name: str,
     week_label: str,
@@ -64,7 +106,7 @@ def build_email_html(
     todos : [{"title": "...", "channel": "meta"|"instagram"|"google"|"ia"}, ...]
     """
     kpi_cells = (
-        _kpi_cell("Dépensé", kpis.get("spend", "—"), "Meta Ads · 7j")
+        _kpi_cell("Dépensé", kpis.get("spend", "—"), "Meta + Google · 7j pleins")
         + '<td style="width:10px;"></td>'
         + _kpi_cell("Clics", kpis.get("clicks", "—"), kpis.get("ctr_sub", ""))
         + '<td style="width:10px;"></td>'

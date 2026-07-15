@@ -24,7 +24,10 @@ def _provider() -> str:
 def send_email(to: str, subject: str, html: str) -> dict:
     """Envoie un email. Retourne {ok: bool, provider: str, detail: str}."""
     provider = _provider()
-    sender = os.getenv("EMAIL_FROM", "rapport@example.com")
+    # Sans domaine vérifié chez Resend, seul onboarding@resend.dev est accepté
+    # (et uniquement vers l'email du compte Resend). Avec un domaine vérifié :
+    # EMAIL_FROM="Pulse <rapport@ton-domaine.ch>".
+    sender = os.getenv("EMAIL_FROM") or "Pulse <onboarding@resend.dev>"
 
     if provider == "dry":
         print(f"[dry-run] → {to} | {subject} | {len(html)} octets HTML (aucun envoi réel)")

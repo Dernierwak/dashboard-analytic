@@ -210,12 +210,19 @@ def run(force: bool = False) -> None:
             except Exception as e:
                 logs.append(f"ga4 KO: {e}")
 
-        # Rapport hebdo précalculé → weekly_reports (lu par Pulse + email hebdo).
+        # Rapport hebdo précalculé → weekly_reports (lu par Pulse) + email hebdo.
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
+        # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
+        # RESEND_API_KEY, send_email passe en dry-run (aucun envoi).
         if logs:
             try:
                 from saas.worker.build_report import publish_weekly_report
-                logs.append(publish_weekly_report(sb, uid))
+                email_to = None
+                try:
+                    email_to = sb.auth.admin.get_user_by_id(uid).user.email
+                except Exception:
+                    pass
+                logs.append(publish_weekly_report(sb, uid, email_to=email_to))
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
 

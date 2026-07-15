@@ -31,7 +31,7 @@ import requests  # noqa: E402
 from scripts.app_secrets import secret  # noqa: E402
 from scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_reco_feedback,
+    fetch_objectif, fetch_reco_feedback, fetch_google_ads,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
 from components.reco_engine import build_recos, KEY_LABELS, OBJECTIFS  # noqa: E402
@@ -77,6 +77,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         df_follows = pd.DataFrame(fetch_daily_followers(sb, user_id) or [])
     except Exception:
         pass
+    df_google = pd.DataFrame()
+    try:
+        df_google = pd.DataFrame(fetch_google_ads(sb, user_id) or [])
+    except Exception:
+        pass
 
     # ── Fenêtre : 7 jours pleins ancrés sur la dernière donnée (jamais aujourd'hui)
     yesterday = today - timedelta(days=1)
@@ -102,6 +107,8 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     # ── Meta Ads : agrégats + par campagne ────────────────────────────────────
     total_spend = 0.0
+    total_clicks = 0
+    total_impr = 0
     avg_ctr = 0.0
     clicks_delta_pct = None
     df_camp = pd.DataFrame()
@@ -135,6 +142,24 @@ def build_payload(sb, user_id: str) -> dict | None:
             df_camp["cpc"] = df_camp.apply(
                 lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
+    # ── Google Ads : mêmes fenêtres (pour les KPIs de l'email) ────────────────
+    g_spend = 0.0
+    g_clicks = 0
+    g_impr = 0
+    if not df_google.empty and "date_start" in df_google.columns:
+        df_google["date_start"] = pd.to_datetime(df_google["date_start"], errors="coerce")
+        for col in ["cost_micros", "clicks", "impressions"]:
+            if col in df_google.columns:
+                df_google[col] = pd.to_numeric(df_google[col], errors="coerce").fillna(0)
+        df_g = df_google[
+            (df_google["date_start"] >= pd.Timestamp(cur_since))
+            & (df_google["date_start"] <= pd.Timestamp(last_full_day))
+        ]
+        if not df_g.empty:
+            g_spend = float(df_g["cost_micros"].sum()) / 1_000_000.0
+            g_clicks = int(df_g["clicks"].sum())
+            g_impr = int(df_g["impressions"].sum())
+
     # ── Instagram ─────────────────────────────────────────────────────────────
     followers_current = 0
     followers_delta = 0
@@ -166,7 +191,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                     week_eng = float(df_week_posts["eng"].mean())
                     week_reach = float(df_week_posts["reach"].mean())
 
-    has_data = total_spend > 0 or followers_current > 0
+    has_data = total_spend > 0 or g_spend > 0 or followers_current > 0
     if not has_data:
         return None
 
@@ -289,8 +314,18 @@ def build_payload(sb, user_id: str) -> dict | None:
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
 
+    _all_clicks = total_clicks + g_clicks
+    _all_impr = total_impr + g_impr
     return {
         "version": 1,
+        "kpis": {
+            # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
+            "spend": round(total_spend + g_spend, 2),
+            "clicks": _all_clicks,
+            "ctr": (_all_clicks / _all_impr * 100) if _all_impr > 0 else 0.0,
+            "followers_delta": followers_delta,
+            "followers_total": followers_current,
+        },
         "week_label": week_label,
         "since": cur_since.isoformat(),
         "until": last_full_day.isoformat(),
@@ -311,14 +346,43 @@ def build_payload(sb, user_id: str) -> dict | None:
     }
 
 
-def publish_weekly_report(sb, user_id: str) -> str:
-    """Construit + publie le rapport d'un utilisateur. Retourne un log court."""
+def _display_name(sb, user_id: str, fallback_email: str | None) -> str:
+    """Nom pour le « Bonjour … » : compte Instagram connecté, sinon début de l'email."""
+    try:
+        rows = (sb.table("connected_accounts")
+                .select("account_name, instagram_business_id")
+                .eq("user_id", user_id).execute().data) or []
+        for r in rows:
+            if r.get("instagram_business_id") and r.get("account_name"):
+                return r["account_name"]
+    except Exception:
+        pass
+    return (fallback_email or "").split("@")[0] or "toi"
+
+
+def publish_weekly_report(sb, user_id: str, email_to: str | None = None) -> str:
+    """Construit + publie le rapport d'un utilisateur ; envoie l'email si email_to.
+
+    L'email lit le MÊME payload que Pulse (une seule source de vérité).
+    Sans RESEND_API_KEY, send_email passe en dry-run → aucun envoi, juste un log.
+    """
     payload = build_payload(sb, user_id)
     if payload is None:
         return "rapport: pas de données"
     week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
     upsert_weekly_report(sb, user_id, week_start, payload)
-    return f"rapport publié ({len(payload['recos'])} conseils)"
+    log = f"rapport publié ({len(payload['recos'])} conseils)"
+
+    if email_to:
+        import os
+        from emailing.render import email_from_payload
+        from emailing.send import send_email
+        app_url = os.getenv("EMAIL_APP_URL", "https://dashboard-analytic-green.vercel.app")
+        subject, html = email_from_payload(_display_name(sb, user_id, email_to), payload, app_url)
+        res = send_email(to=email_to, subject=subject, html=html)
+        log += (f" · email {res['provider']}: "
+                f"{'envoyé' if res['ok'] and res['provider'] != 'dry' else res['detail']}")
+    return log
 
 
 def _service_client():

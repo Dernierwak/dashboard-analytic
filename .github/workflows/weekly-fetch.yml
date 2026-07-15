@@ -35,6 +35,9 @@ jobs:
           GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
           # Optionnel : brief IA du rapport publié (fallback déterministe sinon)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optionnel : email hebdo via Resend (sans clé → dry-run, aucun envoi)
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
           if [ "${{ inputs.force }}" = "true" ]; then
             python saas/worker/fetch_all.py --force
