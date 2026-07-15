@@ -110,6 +110,103 @@ export async function saveBudget(channel: string, amount: number) {
   return { ok: true };
 }
 
+// ── Labels unifiés (liste maîtresse profiles.labels + assignations par canal) ─
+
+async function _labels(supabase: ReturnType<typeof createClient>, uid: string): Promise<string[]> {
+  const r = await supabase.from("profiles").select("labels").eq("id", uid).limit(1);
+  return (r.data?.[0]?.labels as string[] | null) ?? [];
+}
+
+export async function createLabel(name: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+  const clean = name.trim();
+  if (!clean) return { ok: false, message: "Nom vide." };
+  const current = await _labels(supabase, user.id);
+  if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
+  await supabase.from("profiles").update({ labels: [...current, clean].sort() }).eq("id", user.id);
+  revalidatePath("/labels");
+  return { ok: true, message: `« ${clean} » créé.` };
+}
+
+// Renomme partout : liste maîtresse + assignations Meta/Google + posts Instagram.
+export async function renameLabel(oldName: string, newName: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+  const clean = newName.trim();
+  if (!clean) return { ok: false, message: "Nouveau nom vide." };
+  const current = await _labels(supabase, user.id);
+  if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
+  await supabase.from("profiles")
+    .update({ labels: current.map((l) => (l === oldName ? clean : l)).sort() })
+    .eq("id", user.id);
+  await supabase.from("meta_campaign_config").update({ label: clean })
+    .eq("user_id", user.id).eq("label", oldName);
+  await supabase.from("google_campaign_config").update({ label: clean })
+    .eq("user_id", user.id).eq("label", oldName);
+  const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
+    .eq("user_id", user.id).contains("labels", [oldName])).data ?? [];
+  for (const p of posts) {
+    await supabase.from("instagram_organic_posts")
+      .update({ labels: ((p.labels as string[]) ?? []).map((l) => (l === oldName ? clean : l)) })
+      .eq("id", p.id);
+  }
+  revalidatePath("/labels");
+  return { ok: true, message: `Renommé en « ${clean} » partout.` };
+}
+
+// Supprime partout : liste maîtresse + désassigne Meta/Google + retire des posts.
+export async function deleteLabel(name: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+  const current = await _labels(supabase, user.id);
+  await supabase.from("profiles")
+    .update({ labels: current.filter((l) => l !== name) }).eq("id", user.id);
+  await supabase.from("meta_campaign_config").update({ label: null })
+    .eq("user_id", user.id).eq("label", name);
+  await supabase.from("google_campaign_config").update({ label: null })
+    .eq("user_id", user.id).eq("label", name);
+  const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
+    .eq("user_id", user.id).contains("labels", [name])).data ?? [];
+  for (const p of posts) {
+    await supabase.from("instagram_organic_posts")
+      .update({ labels: ((p.labels as string[]) ?? []).filter((l) => l !== name) })
+      .eq("id", p.id);
+  }
+  revalidatePath("/labels");
+  return { ok: true, message: `« ${name} » supprimé partout.` };
+}
+
+// Assigne un label (ou aucun) à une campagne Meta ou Google.
+export async function setCampaignLabel(
+  channel: "meta" | "google",
+  key: string,          // meta : campaign_name · google : campaign_id
+  campaignName: string, // pour créer la ligne google si absente
+  label: string | null
+) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  if (channel === "meta") {
+    await supabase.from("meta_campaign_config").upsert(
+      { user_id: user.id, campaign_name: key, label },
+      { onConflict: "user_id,campaign_name" }
+    );
+    revalidatePath("/meta");
+  } else {
+    await supabase.from("google_campaign_config").upsert(
+      { user_id: user.id, campaign_id: key, campaign_name: campaignName, label },
+      { onConflict: "user_id,campaign_id" }
+    );
+    revalidatePath("/google");
+  }
+  revalidatePath("/labels");
+  return { ok: true };
+}
+
 // « Récupérer mes données » : déclenche le workflow GitHub Actions pour CET
 // utilisateur (fetch + republication du rapport). Fire-and-forget : les
 // données arrivent en base ~2-3 minutes plus tard.
