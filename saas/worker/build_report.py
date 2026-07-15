@@ -1,0 +1,349 @@
+"""Construit et publie le rapport hebdo précalculé (weekly_reports.payload) — headless.
+
+Réplique de la préparation de pages/rapport.py : mêmes fenêtres (7 jours pleins
+ancrés sur la dernière donnée, jamais aujourd'hui), même moteur de recos, même
+structure de payload. Deux producteurs, un consommateur :
+  • le Streamlit publie à l'ouverture du rapport (pont, avec persona IA) ;
+  • ce worker publie après le fetch cron → Pulse est frais le lundi matin
+    sans que personne n'ouvre quoi que ce soit.
+
+Différence assumée : le brief IA du worker n'utilise pas le persona utilisateur
+(il vit dans la session Streamlit) — fallback déterministe si Gemini échoue.
+
+Usage :
+  python saas/worker/build_report.py --user <uuid> [--print]
+  python saas/worker/build_report.py --all
+"""
+
+from __future__ import annotations
+import sys
+import json
+from datetime import date, timedelta
+from pathlib import Path
+
+# Permet d'importer scripts/ et components/ quel que soit le cwd
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+import pandas as pd  # noqa: E402
+import requests  # noqa: E402
+
+from scripts.app_secrets import secret  # noqa: E402
+from scripts.fetch_data import (  # noqa: E402
+    fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
+    fetch_objectif, fetch_reco_feedback,
+)
+from scripts.insert_data import upsert_weekly_report  # noqa: E402
+from components.reco_engine import build_recos, KEY_LABELS, OBJECTIFS  # noqa: E402
+
+MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
+             7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
+
+
+def _call_gemini(prompt: str) -> str | None:
+    api_key = secret("gemini.api_key")
+    if not api_key:
+        return None
+    try:
+        resp = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=20,
+        )
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        return None
+
+
+def build_payload(sb, user_id: str) -> dict | None:
+    """Prépare le payload du rapport hebdo. None si pas assez de données."""
+    today = date.today()
+
+    # ── Chargement (mêmes fetchers que le rapport) ────────────────────────────
+    df_meta_raw = None
+    df_insta = pd.DataFrame()
+    df_follows = pd.DataFrame()
+    try:
+        meta_data = fetch_meta_ads(sb, user_id)
+        if meta_data:
+            df_meta_raw = pd.DataFrame(meta_data)
+    except Exception:
+        pass
+    try:
+        df_insta = pd.DataFrame(fetch_post_metrics(sb, user_id) or [])
+    except Exception:
+        pass
+    try:
+        df_follows = pd.DataFrame(fetch_daily_followers(sb, user_id) or [])
+    except Exception:
+        pass
+
+    # ── Fenêtre : 7 jours pleins ancrés sur la dernière donnée (jamais aujourd'hui)
+    yesterday = today - timedelta(days=1)
+    _data_dates = []
+    if df_meta_raw is not None and "date_start" in df_meta_raw.columns:
+        _d = pd.to_datetime(df_meta_raw["date_start"], errors="coerce").max()
+        if pd.notna(_d):
+            _data_dates.append(_d.date())
+    if not df_insta.empty and "date" in df_insta.columns:
+        _d = pd.to_datetime(df_insta["date"], errors="coerce", utc=True).max()
+        if pd.notna(_d):
+            _data_dates.append(_d.date())
+    if not df_follows.empty and "fetched_at" in df_follows.columns:
+        _d = pd.to_datetime(df_follows["fetched_at"], errors="coerce", utc=True).max()
+        if pd.notna(_d):
+            _data_dates.append(_d.date())
+    last_data_date = max(_data_dates) if _data_dates else yesterday
+
+    last_full_day = min(last_data_date, yesterday)
+    cur_since = last_full_day - timedelta(days=6)
+    prev_until = cur_since - timedelta(days=1)
+    prev_since = prev_until - timedelta(days=6)
+
+    # ── Meta Ads : agrégats + par campagne ────────────────────────────────────
+    total_spend = 0.0
+    avg_ctr = 0.0
+    clicks_delta_pct = None
+    df_camp = pd.DataFrame()
+    if df_meta_raw is not None and not df_meta_raw.empty:
+        for col in ["impressions", "clicks", "spend"]:
+            if col in df_meta_raw.columns:
+                df_meta_raw[col] = pd.to_numeric(df_meta_raw[col], errors="coerce").fillna(0)
+        df_meta_raw["date_start"] = pd.to_datetime(df_meta_raw["date_start"], errors="coerce")
+        df_meta = df_meta_raw[
+            (df_meta_raw["date_start"] >= pd.Timestamp(cur_since))
+            & (df_meta_raw["date_start"] <= pd.Timestamp(last_full_day))
+        ]
+        df_meta_prev = df_meta_raw[
+            (df_meta_raw["date_start"] >= pd.Timestamp(prev_since))
+            & (df_meta_raw["date_start"] <= pd.Timestamp(prev_until))
+        ]
+        if not df_meta.empty:
+            total_spend = float(df_meta["spend"].sum())
+            total_clicks = int(df_meta["clicks"].sum())
+            total_impr = int(df_meta["impressions"].sum())
+            avg_ctr = (total_clicks / total_impr * 100) if total_impr > 0 else 0.0
+            if not df_meta_prev.empty:
+                prev_clicks = int(df_meta_prev["clicks"].sum())
+                if prev_clicks > 0:
+                    clicks_delta_pct = round((total_clicks - prev_clicks) / prev_clicks * 100)
+            df_camp = df_meta.groupby("campaign_name", as_index=False).agg(
+                spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum")
+            )
+            df_camp["ctr"] = df_camp.apply(
+                lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+            df_camp["cpc"] = df_camp.apply(
+                lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+
+    # ── Instagram ─────────────────────────────────────────────────────────────
+    followers_current = 0
+    followers_delta = 0
+    avg_engagement = 0.0
+    week_eng = None
+    week_reach = None
+    hist_reach = None
+    df_week_posts = pd.DataFrame()
+    if not df_follows.empty and "followers" in df_follows.columns:
+        df_follows = df_follows.sort_values("fetched_at", ascending=False)
+        followers_current = int(df_follows.iloc[0]["followers"])
+        if len(df_follows) >= 7:
+            followers_delta = followers_current - int(df_follows.iloc[6]["followers"])
+    if not df_insta.empty:
+        for col in ["likes", "reach", "comments", "saved"]:
+            if col in df_insta.columns:
+                df_insta[col] = pd.to_numeric(df_insta[col], errors="coerce").fillna(0)
+        if "reach" in df_insta.columns:
+            df_insta["eng"] = df_insta.apply(
+                lambda r: (r.get("likes", 0) + r.get("comments", 0) + r.get("saved", 0)) / r["reach"] * 100
+                if r["reach"] > 0 else 0, axis=1)
+            avg_engagement = float(df_insta["eng"].mean())
+            hist_reach = float(df_insta["reach"].mean())
+            if "date" in df_insta.columns:
+                _dt = pd.to_datetime(df_insta["date"], errors="coerce")
+                mask_week = (_dt.dt.date >= cur_since) & (_dt.dt.date <= last_full_day)
+                df_week_posts = df_insta[mask_week]
+                if len(df_week_posts) > 0:
+                    week_eng = float(df_week_posts["eng"].mean())
+                    week_reach = float(df_week_posts["reach"].mean())
+
+    has_data = total_spend > 0 or followers_current > 0
+    if not has_data:
+        return None
+
+    week_num = today.isocalendar()[1]
+    week_label = (
+        f"Semaine {week_num} · {cur_since.day} → {last_full_day.day} "
+        f"{MONTHS_FR[last_full_day.month]} · 7 jours pleins"
+    )
+
+    # ── Profil + GA4 + recos (même moteur que le rapport) ────────────────────
+    objectif = None
+    feedback: dict = {}
+    try:
+        objectif = fetch_objectif(sb, user_id)
+        feedback = fetch_reco_feedback(sb, user_id)
+    except Exception:
+        pass
+    try:
+        from components.ga4 import build_ga4_context
+        ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
+    except Exception:
+        ga4_ctx = None
+
+    rule_recos = build_recos(
+        df_camp=df_camp if not df_camp.empty else None,
+        avg_ctr=avg_ctr,
+        df_insta=df_insta if not df_insta.empty else None,
+        df_week_posts=df_week_posts,
+        followers_current=followers_current,
+        ga4=ga4_ctx,
+        objectif=objectif,
+        feedback=feedback,
+    )
+
+    # ── Verdict déterministe (même logique que le rapport) ───────────────────
+    _signals = []
+    if week_eng is not None and avg_engagement > 0:
+        _signals.append(((week_eng - avg_engagement) / avg_engagement * 100,
+                         "l'engagement Instagram"))
+    if week_reach is not None and hist_reach:
+        _signals.append(((week_reach - hist_reach) / hist_reach * 100,
+                         "la portée de tes posts"))
+    if clicks_delta_pct:
+        _signals.append((clicks_delta_pct, "les clics publicitaires"))
+    if _signals:
+        _val, _name = max(_signals, key=lambda s: abs(s[0]))
+        if _val >= 10:
+            verdict = f"Semaine en progression — portée par {_name} ({_val:+.0f} %)."
+        elif _val <= -10:
+            verdict = f"Semaine en retrait — {_name} ({_val:.0f} %), le reste tient."
+        else:
+            verdict = "Semaine stable — dans tes normes habituelles."
+        if followers_delta and abs(followers_delta) >= 5:
+            verdict += f" {'+' if followers_delta > 0 else ''}{followers_delta} abonnés."
+    elif followers_delta:
+        verdict = f"{'+' if followers_delta > 0 else ''}{followers_delta} abonnés cette semaine."
+    else:
+        verdict = "Première semaine de données — le rapport s'affinera avec l'historique."
+    _alert = next((r for r in rule_recos
+                   if r.get("confidence") == "solide"
+                   and str(r.get("title", "")).startswith("Alerte")), None)
+    if _alert:
+        verdict += (" Un point rouge à traiter : "
+                    f"{KEY_LABELS.get(_alert.get('key'), 'voir le brief ci-dessous')}.")
+
+    # ── Sélection (2 insta + 3 pub, digest 3) — comme le rapport ─────────────
+    by_section = {"instagram": [], "meta": []}
+    for r in rule_recos:
+        p = r.get("platform")
+        if p == "instagram":
+            by_section["instagram"].append(r)
+        elif p in ("meta", "google"):
+            by_section["meta"].append(r)
+    insta_items = sorted(by_section["instagram"], key=lambda r: r["priority"])[:2]
+    meta_items = sorted(by_section["meta"], key=lambda r: r["priority"])[:3]
+    todos = sorted(insta_items + meta_items, key=lambda r: r["priority"])[:3]
+
+    # ── Brief IA (sans persona en headless) + fallback déterministe ──────────
+    _done = [KEY_LABELS.get(k, k) for k, v in feedback.items() if v == "done"]
+    _skip = [KEY_LABELS.get(k, k) for k, v in feedback.items() if v == "not_for_me"]
+    fb_txt = ""
+    if _done:
+        fb_txt += f" Déjà traité récemment : {', '.join(_done)}."
+    if _skip:
+        fb_txt += f" Jugé non pertinent (ne pas réinsister) : {', '.join(_skip)}."
+    obj_txt = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
+    _top_todo = todos[0]["title"] if todos else None
+    _prio_line = (
+        f"La priorité n°1 de la semaine (déjà calculée, ne la change pas) : {_top_todo}. "
+        if _top_todo else ""
+    )
+    brief = _call_gemini(
+        "Tu es un consultant marketing pour une PME. Rédige le brief de la semaine en "
+        "3 phrases maximum (français, ton concret et direct, pas de guillemets) : "
+        "1) ce qui a MARCHÉ cette semaine et vaut d'être reproduit ; "
+        "2) si des actions ont déjà été traitées, reconnais-le en un mot ; "
+        "3) termine par la priorité n°1, formulée simplement. "
+        "Vocabulaire précis exigé : un ROAS sous 1 se dit « inférieur à 1 », "
+        "jamais « négatif » ; ne déforme aucun chiffre fourni. "
+        f"Objectif principal du compte : {obj_txt}.{fb_txt} "
+        f"{_prio_line}"
+        f"Données : abonnés {followers_delta:+d}, engagement {avg_engagement:.1f}%, "
+        f"CTR {avg_ctr:.2f}%, dépense {total_spend:.0f} CHF. "
+        "Si rien n'a vraiment marché, dis-le simplement — pas de flatterie artificielle."
+    )
+    if not brief:
+        bits = []
+        if followers_delta > 0:
+            bits.append(f"+{followers_delta} abonnés cette semaine")
+        if avg_engagement >= 3:
+            bits.append(f"engagement à {avg_engagement:.1f}%")
+        if avg_ctr >= 2:
+            bits.append(f"un CTR pub de {avg_ctr:.1f}%")
+        brief = ("Bonne nouvelle : " + ", ".join(bits) + "." if bits
+                 else "Semaine calme — rien de marquant, mais rien qui dérape non plus.")
+        if _top_todo:
+            brief += f" Priorité n°1 : {_top_todo}."
+
+    _n_done = sum(1 for v in feedback.values() if v == "done")
+    _n_useful = sum(1 for v in feedback.values() if v == "useful")
+    _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
+
+    return {
+        "version": 1,
+        "week_label": week_label,
+        "since": cur_since.isoformat(),
+        "until": last_full_day.isoformat(),
+        "verdict": verdict,
+        "brief": brief,
+        "suivi": {"applique": _n_done, "utile": _n_useful, "ecarte": _n_skip},
+        "todo": [
+            {"key": r["key"], "title": r["title"], "platform": r["platform"],
+             "done": feedback.get(r["key"]) == "done"}
+            for r in todos
+        ],
+        "recos": [
+            {k: r.get(k) for k in (
+                "key", "platform", "title", "observation", "pourquoi",
+                "verifier", "repere", "angle_mort", "confidence", "priority")}
+            for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
+        ],
+    }
+
+
+def publish_weekly_report(sb, user_id: str) -> str:
+    """Construit + publie le rapport d'un utilisateur. Retourne un log court."""
+    payload = build_payload(sb, user_id)
+    if payload is None:
+        return "rapport: pas de données"
+    week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    upsert_weekly_report(sb, user_id, week_start, payload)
+    return f"rapport publié ({len(payload['recos'])} conseils)"
+
+
+def _service_client():
+    import os
+    from supabase import create_client
+    url = os.getenv("SUPABASE_URL") or secret("supabase.url")
+    key = os.getenv("SUPABASE_SERVICE_KEY") or secret("supabase.service_role")
+    if not url or not key:
+        raise SystemExit("SUPABASE_URL / SUPABASE_SERVICE_KEY manquants (env ou secrets.toml)")
+    return create_client(url, key)
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    sb = _service_client()
+    if "--all" in args:
+        profiles = (sb.table("profiles").select("id").execute().data) or []
+        for p in profiles:
+            print(f"{p['id']} → {publish_weekly_report(sb, p['id'])}")
+    elif "--user" in args:
+        uid = args[args.index("--user") + 1]
+        if "--print" in args:
+            payload = build_payload(sb, uid)
+            print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        else:
+            print(publish_weekly_report(sb, uid))
+    else:
+        print(__doc__)

@@ -210,6 +210,15 @@ def run(force: bool = False) -> None:
             except Exception as e:
                 logs.append(f"ga4 KO: {e}")
 
+        # Rapport hebdo précalculé → weekly_reports (lu par Pulse + email hebdo).
+        # Données fraîches du jour → le rapport publié est à jour lui aussi.
+        if logs:
+            try:
+                from saas.worker.build_report import publish_weekly_report
+                logs.append(publish_weekly_report(sb, uid))
+            except Exception as e:
+                logs.append(f"rapport KO: {e}")
+
         if logs:
             print(f"  {uid} → " + " | ".join(logs))
 

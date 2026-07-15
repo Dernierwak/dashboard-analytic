@@ -37,9 +37,9 @@ Meta Ads + Instagram n'ont besoin d'aucun secret app (token utilisateur en base)
 
 | Phase | Quoi | Statut |
 |-------|------|--------|
-| 1 | Worker cron (fetch auto) + **email hebdo** responsive | 🟡 email OK, worker à câbler |
-| 2 | Package `core/` partagé + API **FastAPI** mince | ⬜ |
-| 3 | Portail **Next.js + Tailwind + shadcn/ui** (Vercel), mobile+desktop | ⬜ |
+| 1 | Worker cron : fetch auto + **rapport précalculé** (`worker/build_report.py` → table `weekly_reports`) | ✅ câblé au cron quotidien |
+| 2 | **Email hebdo** responsive — lit le même payload `weekly_reports` | 🟡 rendu OK, envoi à brancher |
+| 3 | Portail **Next.js** (Vercel) : `web/` = **Pulse** | ✅ en prod (auth, KPIs, conseils, réactions) |
 
 But final : retirer Streamlit quand le portail couvre tout.
 
