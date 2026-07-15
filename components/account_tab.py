@@ -2,6 +2,7 @@ import streamlit as st
 
 from meta_script.fetch_token import get_oauth_url
 from scripts.stripe import create_checkout_session, cancel_subscription
+from scripts.posthog_client import posthog_client
 
 
 # ── CSS local pour cette page (réutilise les tokens Pulse) ─────────────────────
@@ -202,7 +203,7 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
             if st.button("Annuler l'abonnement", type="secondary", key="btn_cancel_sub_account"):
                 with st.spinner("Annulation en cours…"):
-                    cancelled = cancel_subscription(session.user.email)
+                    cancelled = cancel_subscription(session.user.email, user_id=user_id)
                 if cancelled:
                     client.table("profiles").update({"is_paid": False}).eq("id", user_id).execute()
                     st.success("Abonnement annulé.")
@@ -328,6 +329,11 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
                     # unique « Mes données » (tous canaux + choix de période).
                     if st.button("↻ Récupérer mes données", type="primary",
                                  key="btn_fetch_insta_source", use_container_width=True):
+                        posthog_client.capture(
+                            distinct_id=user_id,
+                            event="data_fetch_requested",
+                            properties={"source": "instagram"},
+                        )
                         st.session_state["_manual_fetch_request"] = True
                         st.rerun()
 
@@ -379,6 +385,11 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             )
             if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
                          use_container_width=True, key="btn_fetch_meta_ads_hub"):
+                posthog_client.capture(
+                    distinct_id=user_id,
+                    event="data_fetch_requested",
+                    properties={"source": "meta_ads"},
+                )
                 st.session_state["_manual_fetch_request"] = True
                 st.rerun()
         else:
@@ -438,6 +449,11 @@ def show_account_tab(session, client, user_id, is_paid, insta_accounts, accounts
             # par le pop-up unique « Mes données ».
             if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
                          use_container_width=True, key="btn_fetch_gad"):
+                posthog_client.capture(
+                    distinct_id=user_id,
+                    event="data_fetch_requested",
+                    properties={"source": "google_ads"},
+                )
                 st.session_state["_manual_fetch_request"] = True
                 st.rerun()
 
@@ -563,6 +579,11 @@ def _render_ga4_section(session, client, user_id) -> None:
         # par le pop-up unique « Mes données ».
         if st.button("↻ Récupérer mes données (tous canaux)", type="primary",
                      use_container_width=True, key="btn_fetch_ga4"):
+            posthog_client.capture(
+                distinct_id=user_id,
+                event="data_fetch_requested",
+                properties={"source": "ga4"},
+            )
             st.session_state["_manual_fetch_request"] = True
             st.rerun()
 

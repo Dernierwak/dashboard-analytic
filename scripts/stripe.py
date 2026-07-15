@@ -1,5 +1,6 @@
 import stripe
 import streamlit as st
+from scripts.posthog_client import posthog_client
 
 
 def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: str, base_url: str) -> str:
@@ -32,10 +33,15 @@ def create_checkout_session(user_id: str, email: str, plan: str, refresh_token: 
         customer_email=email,
         metadata={"user_id": user_id, "plan": plan},
     )
+    posthog_client.capture(
+        distinct_id=user_id,
+        event="checkout_session_created",
+        properties={"plan": plan, "amount_chf": plans[plan]["amount"] / 100},
+    )
     return session.url
 
 
-def cancel_subscription(email: str) -> bool:
+def cancel_subscription(email: str, user_id: str = "unknown") -> bool:
     stripe.api_key = st.secrets.stripe.api_key
     try:
         customers = stripe.Customer.list(email=email, limit=1).data
@@ -45,6 +51,11 @@ def cancel_subscription(email: str) -> bool:
         if not subscriptions:
             return False
         stripe.Subscription.cancel(subscriptions[0].id)
+        posthog_client.capture(
+            distinct_id=user_id,
+            event="subscription_cancelled",
+            properties={"plan": "pro"},
+        )
         return True
     except Exception:
         return False

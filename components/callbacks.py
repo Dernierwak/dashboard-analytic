@@ -4,6 +4,7 @@ import stripe
 
 from meta_script.fetch_token import exchange_code_for_token, get_long_lives_token
 from meta_script.fetch_instagram import OrganicInstagramm
+from scripts.posthog_client import posthog_client
 
 
 def _is_google_callback() -> bool:
@@ -120,6 +121,11 @@ def handle_google_oauth_callback(client, user_id):
     # Si un seul compte accessible → sélection automatique, pas de selectbox
     if len(customer_ids) == 1:
         _save_google_token(client, user_id, refresh_token, customer_id=customer_ids[0])
+        posthog_client.capture(
+            distinct_id=user_id,
+            event="google_ads_connected",
+            properties={"customer_count": 1, "selection_method": "auto"},
+        )
         st.session_state["_auto_fetch_google_after_oauth"] = True
         st.session_state.pop("_pending_google_oauth", None)
         st.query_params.clear()
@@ -152,6 +158,14 @@ def handle_google_customer_selection(client, user_id):
     selected = st.selectbox("Compte Google Ads", options=options, key="gad_select_customer")
     if st.button("Confirmer la connexion", type="primary", key="btn_gad_confirm"):
         if _save_google_token(client, user_id, refresh_token, customer_id=selected):
+            posthog_client.capture(
+                distinct_id=user_id,
+                event="google_ads_connected",
+                properties={
+                    "customer_count": len(options),
+                    "selection_method": "manual",
+                },
+            )
             del st.session_state["_google_pending_refresh_token"]
             del st.session_state["_google_customer_options"]
             st.session_state["_auto_fetch_google_after_oauth"] = True
@@ -188,6 +202,11 @@ def handle_meta_oauth_callback():
             st.session_state["meta_long_token"] = long_token
             st.session_state["_save_meta_token"] = True
             session = st.session_state["session"]
+            posthog_client.capture(
+                distinct_id=session.user.id,
+                event="meta_connected",
+                properties={"token_type": "long_lived"},
+            )
             st.query_params.clear()
             st.query_params["refresh_token"] = session.refresh_token
             st.rerun()
@@ -279,6 +298,11 @@ def handle_meta_page_selection(client, user_id):
             client.table("profiles").update({"active_account_id": new_account_id}).eq("id", user_id).execute()
             del st.session_state["_save_meta_token"]
             st.session_state.pop("fb_pages_list", None)
+            posthog_client.capture(
+                distinct_id=user_id,
+                event="instagram_account_connected",
+                properties={"account_name": org.meta_account_name},
+            )
             # Déclenche l'auto-fetch Meta Ads + Instagram au prochain run (géré dans pages/main.py)
             st.session_state["_auto_fetch_after_oauth"] = True
             st.success(f"Compte '{org.meta_account_name}' connecté !")
@@ -300,6 +324,11 @@ def handle_stripe_payment(client, user_id, session):
             if s.payment_status == "paid":
                 client.table("profiles").update({"is_paid": True}).eq("id", user_id).execute()
                 is_paid = True
+                posthog_client.capture(
+                    distinct_id=user_id,
+                    event="payment_confirmed",
+                    properties={"plan": "pro", "currency": "chf"},
+                )
                 if "checkout_url" in st.session_state:
                     del st.session_state["checkout_url"]
                 st.success("Paiement confirmé ! Bienvenue dans le plan Pro.")
