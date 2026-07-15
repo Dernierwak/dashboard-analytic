@@ -7,6 +7,7 @@ import {
   fmtCHF,
   type Kpi,
   type PayloadReco,
+  type ReportPayload,
 } from "@/lib/report";
 import { RecoActions } from "@/components/reco-actions";
 import { SiteHeader } from "@/components/site-header";
@@ -60,6 +61,111 @@ function KpiCard({ k }: { k: Kpi }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[14px] font-semibold text-ink mb-3">{children}</h2>;
+}
+
+// « Ce que chaque thème rapporte » — dépense par label × revenu GA4.
+function ThemesCard({ themes }: { themes: NonNullable<ReportPayload["themes"]> }) {
+  return (
+    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+          Ce que chaque thème rapporte · 7 jours pleins
+        </div>
+        <div className="text-[10px] text-faint/70">attribution GA4 · dernier clic</div>
+      </div>
+      <div className="divide-y divide-line">
+        {themes.rows.map((t) => {
+          const roas = t.spend > 0 ? t.rev / t.spend : null;
+          return (
+            <div key={t.label} className="flex items-baseline gap-3 py-2.5">
+              <span className="text-[13px] font-semibold text-ink flex-1">{t.label}</span>
+              <span className="font-mono text-[12.5px] text-muted text-right">
+                {fmtCHF(t.spend)} CHF → {fmtCHF(t.rev)} CHF
+              </span>
+              <span className="w-40 text-right">
+                {t.rev <= 0 || roas === null ? (
+                  <span className="font-mono text-[12px] text-faint/80">
+                    — pas de vente attribuée
+                  </span>
+                ) : (
+                  <span
+                    className="font-mono text-[12px] font-semibold"
+                    style={{
+                      color: roas >= 3 ? "#1a7a4a" : roas >= 1 ? "#0e0f12" : "#c0392b",
+                    }}
+                  >
+                    ● ROAS {roas.toFixed(1)}
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {themes.orphan > 0 && (
+        <p className="text-[11px] text-faint mt-2.5">
+          + {fmtCHF(themes.orphan)} CHF attribués à des campagnes sans thème — ajoute un
+          label à ces campagnes (pages Meta / Google) pour les relier.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// « Tes décisions — ce que ça a donné » — la boucle de la preuve.
+const PROOF_STYLE: Record<string, { icon: string; color: string; verdict: string }> = {
+  better: { icon: "✓", color: "#1a7a4a", verdict: "effet visible" },
+  worse: { icon: "▸", color: "#b86b00", verdict: "pas encore d'effet — à surveiller" },
+  stable: { icon: "≈", color: "#8b8e98", verdict: "stable pour l'instant" },
+};
+
+function PreuveSection({ preuve }: { preuve: NonNullable<ReportPayload["preuve"]> }) {
+  return (
+    <div className="mb-8">
+      <SectionTitle>Tes décisions — ce que ça a donné</SectionTitle>
+      {preuve.outcomes.length > 0 && (
+        <div className="bg-white border border-line rounded-xl shadow-card overflow-hidden divide-y divide-line">
+          {preuve.outcomes.map((o) => {
+            const s = PROOF_STYLE[o.verdict] ?? PROOF_STYLE.stable;
+            const unit = o.unit ? ` ${o.unit}` : "";
+            return (
+              <div
+                key={o.key}
+                className="flex gap-3.5 px-4 py-3.5 items-start"
+                style={{ borderLeft: `3px solid ${s.color}` }}
+              >
+                <div
+                  className="w-7 h-7 rounded-lg grid place-items-center text-[14px] font-bold shrink-0 mt-0.5"
+                  style={{ color: s.color, background: `${s.color}16` }}
+                >
+                  {s.icon}
+                </div>
+                <div>
+                  <div className="text-[13.5px] font-semibold text-ink leading-snug">
+                    {o.title} — {s.verdict}
+                  </div>
+                  <div className="text-[12px] text-muted mt-0.5 leading-relaxed">
+                    Décidé {o.week_label} · {o.kpi} : {o.then}
+                    {unit} → <strong className="text-ink">{o.now}{unit}</strong>
+                    {o.delta !== null && ` (${o.delta > 0 ? "+" : ""}${o.delta.toFixed(0)} %)`}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {preuve.pending.map((p) => (
+        <p key={p.key} className="text-[12px] text-faint mt-2">
+          ◷ « {p.title} » — décidé cette semaine, effet mesuré dès le prochain rapport.
+        </p>
+      ))}
+      <p className="text-[11px] text-faint/80 mt-2.5 leading-relaxed">
+        Avant/après honnête, pas une preuve absolue — la saisonnalité et le contenu jouent
+        aussi. Sur la durée, c&apos;est le meilleur indicateur de ce qui marche chez toi.
+      </p>
+    </div>
+  );
 }
 
 function Suivi({ feedback }: { feedback: Record<string, string> }) {
@@ -265,6 +371,17 @@ export default async function Page() {
               );
             })}
           </div>
+
+          {/* Ce que chaque thème rapporte (labels × ventes GA4) */}
+          {report?.themes && report.themes.rows.length > 0 && (
+            <ThemesCard themes={report.themes} />
+          )}
+
+          {/* Boucle de la preuve : les « Fait » re-mesurés */}
+          {report?.preuve &&
+            (report.preuve.outcomes.length > 0 || report.preuve.pending.length > 0) && (
+              <PreuveSection preuve={report.preuve} />
+            )}
 
           {/* Le détail, canal par canal */}
           {report && report.recos.length > 0 ? (

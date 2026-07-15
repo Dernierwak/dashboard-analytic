@@ -539,39 +539,8 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
     # Digest : 3 actions max (best practice) — tout le reste vit dans le détail
     todos = sorted(insta_items + meta_items, key=lambda r: r["priority"])[:3]
 
-    # ── Publication SaaS : le rapport précalculé (payload JSON) ──────────────
-    # Pont vers Pulse (saas/web) + le futur email hebdo : l'ouverture du rapport
-    # publie EXACTEMENT ce qui est affiché ici dans weekly_reports. Le worker
-    # cron prendra le relais plus tard. Si la table n'existe pas encore
-    # (migration 000_run_me_all.sql pas passée), on ignore sans casser le rapport.
-    if client and user_id and has_data:
-        _pub_sig = f"{_ws_iso}_{_facts_sig}_{_n_done}_{_n_useful}_{_n_skip}_{1 if wins_txt else 0}"
-        if st.session_state.get("weekly_report_pub_sig") != _pub_sig:
-            _payload = {
-                "version": 1,
-                "week_label": week_label,
-                "since": cur_since.isoformat(),
-                "until": last_full_day.isoformat(),
-                "verdict": verdict,
-                "brief": wins_txt,
-                "suivi": {"applique": _n_done, "utile": _n_useful, "ecarte": _n_skip},
-                "todo": [
-                    {"key": r["key"], "title": r["title"], "platform": r["platform"],
-                     "done": feedback.get(r["key"]) == "done"}
-                    for r in todos
-                ],
-                "recos": [
-                    {k: r.get(k) for k in (
-                        "key", "platform", "title", "observation", "pourquoi",
-                        "verifier", "repere", "angle_mort", "confidence", "priority")}
-                    for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
-                ],
-            }
-            try:
-                upsert_weekly_report(client, user_id, _ws_iso, _payload)
-                st.session_state["weekly_report_pub_sig"] = _pub_sig
-            except Exception:
-                pass
+    # (La publication SaaS du payload est faite en FIN de rapport — après le
+    #  calcul des thèmes et de la boucle de la preuve, pour publier le tout.)
 
     # ═══ SECTION 1 — L'ESSENTIEL (verdict → actions, avant les chiffres) ════
     st.markdown(
@@ -1073,3 +1042,60 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
             )
         else:
             st.info("Connecte tes comptes Meta et Instagram dans **Mon compte** pour voir ton rapport hebdo personnalisé.")
+
+    # ── Publication SaaS : le rapport précalculé (payload JSON) ──────────────
+    # Pont vers Pulse (saas/web) : l'ouverture du rapport publie EXACTEMENT ce
+    # qui est affiché ici — y compris les thèmes et la boucle de la preuve.
+    # Le worker cron (saas/worker/build_report.py) publie le même schéma.
+    # Table absente (migration pas passée) → on ignore sans casser le rapport.
+    if client and user_id and has_data:
+        _pub_sig = (f"{_ws_iso}_{_facts_sig}_{_n_done}_{_n_useful}_{_n_skip}_"
+                    f"{1 if wins_txt else 0}_{len(theme_rows)}_{len(outcomes)}_{len(pending)}")
+        if st.session_state.get("weekly_report_pub_sig") != _pub_sig:
+            _payload = {
+                "version": 1,
+                "week_label": week_label,
+                "since": cur_since.isoformat(),
+                "until": last_full_day.isoformat(),
+                "verdict": verdict,
+                "brief": wins_txt,
+                "suivi": {"applique": _n_done, "utile": _n_useful, "ecarte": _n_skip},
+                "todo": [
+                    {"key": r["key"], "title": r["title"], "platform": r["platform"],
+                     "done": feedback.get(r["key"]) == "done"}
+                    for r in todos
+                ],
+                "recos": [
+                    {k: r.get(k) for k in (
+                        "key", "platform", "title", "observation", "pourquoi",
+                        "verifier", "repere", "angle_mort", "confidence", "priority")}
+                    for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
+                ],
+                "themes": (
+                    {"rows": [{"label": t["label"], "spend": round(float(t["spend"]), 2),
+                               "rev": round(float(t["rev"]), 2)} for t in theme_rows],
+                     "orphan": round(float(_rev_orphan), 2)}
+                    if theme_rows else None
+                ),
+                "preuve": (
+                    {"outcomes": [
+                        {"key": o["key"],
+                         "title": KEY_LABELS.get(o["key"], o["key"]).capitalize(),
+                         "week_label": f"sem. du {o['week'].day} {MONTHS_FR[o['week'].month]}",
+                         "kpi": o["label_k"], "unit": o["unit"],
+                         "then": o["then"], "now": o["now"],
+                         "delta": round(o["delta"], 1) if o["delta"] is not None else None,
+                         "verdict": ("better" if o["better"]
+                                     else "worse" if o["worse"] else "stable")}
+                        for o in outcomes[:3]
+                    ],
+                     "pending": [{"key": k, "title": KEY_LABELS.get(k, k)}
+                                 for k in pending[:2]]}
+                    if (outcomes or pending) else None
+                ),
+            }
+            try:
+                upsert_weekly_report(client, user_id, _ws_iso, _payload)
+                st.session_state["weekly_report_pub_sig"] = _pub_sig
+            except Exception:
+                pass

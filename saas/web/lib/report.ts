@@ -32,6 +32,20 @@ export type PayloadReco = {
   priority: number;
 };
 
+export type ThemeRow = { label: string; spend: number; rev: number };
+
+export type ProofOutcome = {
+  key: string;
+  title: string;
+  week_label: string; // « sem. du 8 jul »
+  kpi: string;
+  unit: string;
+  then: string;
+  now: string;
+  delta: number | null;
+  verdict: "better" | "worse" | "stable";
+};
+
 export type ReportPayload = {
   version: number;
   week_label: string;
@@ -42,6 +56,11 @@ export type ReportPayload = {
   suivi: { applique: number; utile: number; ecarte: number };
   todo: { key: string; title: string; platform: string; done: boolean }[];
   recos: PayloadReco[];
+  themes?: { rows: ThemeRow[]; orphan: number } | null;
+  preuve?: {
+    outcomes: ProofOutcome[];
+    pending: { key: string; title: string }[];
+  } | null;
 };
 
 export type WeeklyData = {

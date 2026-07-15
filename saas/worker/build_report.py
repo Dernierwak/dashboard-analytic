@@ -32,6 +32,7 @@ from scripts.app_secrets import secret  # noqa: E402
 from scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_reco_feedback, fetch_google_ads,
+    fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
 from components.reco_engine import build_recos, KEY_LABELS, OBJECTIFS  # noqa: E402
@@ -314,6 +315,135 @@ def build_payload(sb, user_id: str) -> dict | None:
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
 
+    # ── Thèmes : dépense par label × revenu GA4 (même logique que le rapport) ─
+    themes = None
+    try:
+        meta_cfg = fetch_campaign_config(sb, user_id) or {}
+        goog_cfg = {str(k): v for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
+    except Exception:
+        meta_cfg, goog_cfg = {}, {}
+    if ga4_ctx and ga4_ctx.get("by_campaign"):
+        def _norm(s):
+            return str(s or "").strip().lower()
+        sp_lbl: dict = {}
+        if not df_camp.empty:
+            for _, r in df_camp.iterrows():
+                lbl = (meta_cfg.get(r["campaign_name"], {}) or {}).get("label")
+                if lbl:
+                    sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(r["spend"])
+        if not df_google.empty and "campaign_id" in df_google.columns:
+            gw = df_google[
+                (df_google["date_start"] >= pd.Timestamp(cur_since))
+                & (df_google["date_start"] <= pd.Timestamp(last_full_day))
+            ].copy()
+            if not gw.empty:
+                gw["_cid"] = gw["campaign_id"].astype(str)
+                gw["_chf"] = pd.to_numeric(gw["cost_micros"], errors="coerce").fillna(0) / 1_000_000.0
+                for cid, chf in gw.groupby("_cid")["_chf"].sum().items():
+                    lbl = (goog_cfg.get(cid, {}) or {}).get("label")
+                    if lbl and chf > 0:
+                        sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(chf)
+        name_lbl = {_norm(n): (c or {}).get("label")
+                    for n, c in meta_cfg.items() if (c or {}).get("label")}
+        for cid, c in goog_cfg.items():
+            if (c or {}).get("label") and c.get("campaign_name"):
+                name_lbl.setdefault(_norm(c["campaign_name"]), c["label"])
+        rv_lbl, orphan = {}, 0.0
+        for camp, dd in ga4_ctx["by_campaign"].items():
+            rev = float(dd.get("revenue") or 0)
+            lbl = name_lbl.get(_norm(camp))
+            if lbl:
+                rv_lbl[lbl] = rv_lbl.get(lbl, 0.0) + rev
+            else:
+                orphan += rev
+        t_rows = sorted(
+            ({"label": lbl, "spend": round(s, 2), "rev": round(rv_lbl.get(lbl, 0.0), 2)}
+             for lbl, s in sp_lbl.items() if s > 0),
+            key=lambda r: -r["spend"],
+        )[:4]
+        if t_rows:
+            themes = {"rows": t_rows, "orphan": round(orphan, 2)}
+
+    # ── Boucle de la preuve : les « Fait » des semaines passées, re-mesurés ───
+    PROOF_KPI = {
+        "gaspillage":     ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
+        "roas":           ("roas", "ROAS", "", "up", "{:.1f}"),
+        "scaler":         ("roas", "ROAS", "", "up", "{:.1f}"),
+        "funnel":         ("purchases", "achats (GA4)", "", "up", "{:.0f}"),
+        "silence":        ("posts", "posts publiés", "", "up", "{:.0f}"),
+        "creneau":        ("eng", "engagement moyen", "%", "up", "{:.1f}"),
+        "format_gagnant": ("eng", "engagement moyen", "%", "up", "{:.1f}"),
+        "page_endormie":  ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+    }
+
+    def _kpis_window(w_since, w_until):
+        k = {}
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(w_since))
+                            & (df_meta_raw["date_start"] <= pd.Timestamp(w_until))]
+            sp, cl = float(m["spend"].sum()), int(m["clicks"].sum())
+            k["spend"] = sp
+            k["cpc"] = (sp / cl) if cl > 0 else None
+        if not df_insta.empty and "date" in df_insta.columns and "eng" in df_insta.columns:
+            dtp = pd.to_datetime(df_insta["date"], errors="coerce")
+            p = df_insta[(dtp.dt.date >= w_since) & (dtp.dt.date <= w_until)]
+            k["posts"] = float(len(p))
+            k["eng"] = float(p["eng"].mean()) if len(p) else None
+            k["reach"] = float(p["reach"].mean()) if len(p) and "reach" in p.columns else None
+        try:
+            from components.ga4 import build_ga4_context as _bgc
+            g = _bgc(sb, user_id, w_since, w_until)
+        except Exception:
+            g = None
+        if g and g.get("paid_revenue") is not None and k.get("spend", 0) > 0:
+            k["roas"] = float(g["paid_revenue"]) / k["spend"]
+        pu = (g or {}).get("funnel", {}).get("purchase")
+        k["purchases"] = float(pu) if pu is not None else None
+        return k
+
+    week_start_monday = today - timedelta(days=today.weekday())
+    try:
+        decisions = fetch_reco_decisions(sb, user_id)
+    except Exception:
+        decisions = []
+    outcomes, pending = [], []
+    cur_kpis = None
+    for dec in decisions[:4]:
+        spec = PROOF_KPI.get(dec["reco_key"])
+        if not spec:
+            continue
+        try:
+            w0 = date.fromisoformat(dec["week_start"])
+        except Exception:
+            continue
+        if w0 >= week_start_monday:
+            pending.append(dec["reco_key"])
+            continue
+        kpi, lbl_k, unit, direction, fmt = spec
+        if cur_kpis is None:
+            cur_kpis = _kpis_window(cur_since, last_full_day)
+        then = _kpis_window(w0, w0 + timedelta(days=6)).get(kpi)
+        now = cur_kpis.get(kpi)
+        if then is None or now is None:
+            continue
+        delta = ((now - then) / then * 100) if abs(then) > 1e-9 else None
+        better = delta is not None and ((delta <= -5) if direction == "down" else (delta >= 5))
+        worse = delta is not None and ((delta >= 5) if direction == "down" else (delta <= -5))
+        outcomes.append({
+            "key": dec["reco_key"],
+            "title": KEY_LABELS.get(dec["reco_key"], dec["reco_key"]).capitalize(),
+            "week_label": f"sem. du {w0.day} {MONTHS_FR[w0.month]}",
+            "kpi": lbl_k, "unit": unit,
+            "then": fmt.format(then), "now": fmt.format(now),
+            "delta": round(delta, 1) if delta is not None else None,
+            "verdict": "better" if better else ("worse" if worse else "stable"),
+        })
+    preuve = (
+        {"outcomes": outcomes[:3],
+         "pending": [{"key": k, "title": KEY_LABELS.get(k, k)} for k in pending[:2]]}
+        if (outcomes or pending) else None
+    )
+
     _all_clicks = total_clicks + g_clicks
     _all_impr = total_impr + g_impr
     return {
@@ -343,6 +473,8 @@ def build_payload(sb, user_id: str) -> dict | None:
                 "verifier", "repere", "angle_mort", "confidence", "priority")}
             for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
         ],
+        "themes": themes,
+        "preuve": preuve,
     }
 
 
