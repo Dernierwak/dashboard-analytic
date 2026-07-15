@@ -1,7 +1,13 @@
 // Dashboard Google Ads — KPIs période + table campagnes avec thèmes éditables.
 import { getGoogleDash, periodDays } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
-import { PeriodPills, AdsKpis, CampaignTable } from "@/components/channel-dash";
+import {
+  PeriodPills,
+  AdsKpis,
+  CampaignTable,
+  DailyChart,
+  ByLabelTable,
+} from "@/components/channel-dash";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +36,8 @@ export default async function GooglePage({
       </div>
 
       <AdsKpis d={d} />
+      <DailyChart d={d} />
+      <ByLabelTable d={d} />
 
       <h2 className="text-[14px] font-semibold text-ink mb-3">
         Par campagne <span className="text-faint font-normal">· triées par dépense</span>
