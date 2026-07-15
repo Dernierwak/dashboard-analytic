@@ -10,6 +10,7 @@ import {
 } from "@/lib/report";
 import { RecoActions } from "@/components/reco-actions";
 import { SiteHeader } from "@/components/site-header";
+import { ObjectifSelect } from "@/components/objectif-select";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,15 @@ function Suivi({ feedback }: { feedback: Record<string, string> }) {
   );
 }
 
-function RecoCard({ r, current }: { r: PayloadReco; current: string | null }) {
+function RecoCard({
+  r,
+  current,
+  comment,
+}: {
+  r: PayloadReco;
+  current: string | null;
+  comment: string | null;
+}) {
   const cf = CONF[r.confidence] ?? CONF.piste;
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5">
@@ -132,7 +141,7 @@ function RecoCard({ r, current }: { r: PayloadReco; current: string | null }) {
           {r.angle_mort}
         </p>
       )}
-      <RecoActions recoKey={r.key} current={current} />
+      <RecoActions recoKey={r.key} current={current} comment={comment} />
     </div>
   );
 }
@@ -156,7 +165,10 @@ export default async function Page() {
         {report && (
           <p className="text-[14px] text-muted mt-2 leading-relaxed">{report.verdict}</p>
         )}
-        {report && <Suivi feedback={data.feedback} />}
+        <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
+          <ObjectifSelect current={data.objectif} />
+          {report && <Suivi feedback={data.feedback} />}
+        </div>
       </div>
 
       {!data.hasData ? (
@@ -275,7 +287,12 @@ export default async function Page() {
                     </div>
                     <div className="space-y-3">
                       {items.map((r) => (
-                        <RecoCard key={r.key} r={r} current={data.feedback[r.key] ?? null} />
+                        <RecoCard
+                          key={r.key}
+                          r={r}
+                          current={data.feedback[r.key] ?? null}
+                          comment={data.comments[r.key] ?? null}
+                        />
                       ))}
                     </div>
                   </div>

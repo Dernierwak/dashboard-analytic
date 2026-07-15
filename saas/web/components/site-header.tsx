@@ -1,4 +1,6 @@
-// Header commun : logo, navigation, email, déconnexion.
+import { FetchButton } from "@/components/fetch-button";
+
+// Header commun : logo, navigation, mes données, email, déconnexion.
 export function SiteHeader({ email, active }: { email: string; active: "rapport" | "couts" }) {
   const link = (href: string, label: string, isActive: boolean) => (
     <a
@@ -23,6 +25,7 @@ export function SiteHeader({ email, active }: { email: string; active: "rapport"
         </nav>
       </div>
       <div className="flex items-center gap-3">
+        <FetchButton />
         <span className="text-[11px] text-faint hidden sm:inline">{email}</span>
         <form action="/auth/signout" method="post">
           <button

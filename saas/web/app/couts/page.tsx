@@ -5,6 +5,7 @@
 import { getCoutsData, type ChannelCout } from "@/lib/couts";
 import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
+import { BudgetEditor } from "@/components/budget-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ function Pacing({ ch, elapsed }: { ch: ChannelCout; elapsed: number }) {
   if (ch.budget <= 0) {
     return (
       <p className="text-[11.5px] text-faint mt-2">
-        Pas de budget défini — règle-le dans le dashboard actuel (page Coûts).
+        Pas de budget défini — fixe-le ci-dessous pour voir le rythme du mois.
       </p>
     );
   }
@@ -133,6 +134,7 @@ export default async function CoutsPage() {
               </span>
             </div>
             <Pacing ch={ch} elapsed={data.elapsed} />
+            <BudgetEditor channel={ch.key} current={ch.budget} />
           </div>
         ))}
       </div>

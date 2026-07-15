@@ -11,6 +11,10 @@ on:
         description: "Ignorer le jour planifié (fetch tous les users)"
         type: boolean
         default: false
+      user_id:
+        description: "Ne traiter que cet utilisateur (bouton « Mes données » de Pulse)"
+        type: string
+        default: ""
 
 jobs:
   fetch:
@@ -39,7 +43,9 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
-          if [ "${{ inputs.force }}" = "true" ]; then
+          if [ -n "${{ inputs.user_id }}" ]; then
+            python saas/worker/fetch_all.py --user "${{ inputs.user_id }}"
+          elif [ "${{ inputs.force }}" = "true" ]; then
             python saas/worker/fetch_all.py --force
           else
             python saas/worker/fetch_all.py

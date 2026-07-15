@@ -154,11 +154,15 @@ def _fetch_instagram(sb, uid, token, biz_id) -> str:
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
-def run(force: bool = False) -> None:
+def run(force: bool = False, only_user: str | None = None) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
                 .select("id, fetch_schedule")
                 .execute().data) or []
+    if only_user:
+        # Bouton « Mes données » de Pulse : un seul user, sans attendre son jour
+        profiles = [p for p in profiles if p["id"] == only_user]
+        force = True
     print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils")
 
     for p in profiles:
@@ -234,8 +238,11 @@ def run(force: bool = False) -> None:
 
 if __name__ == "__main__":
     force = "--force" in sys.argv  # ignore le jour planifié (utile pour tester)
+    only_user = None
+    if "--user" in sys.argv:       # un seul utilisateur (bouton Pulse), force implicite
+        only_user = sys.argv[sys.argv.index("--user") + 1]
     try:
-        run(force=force)
+        run(force=force, only_user=only_user)
     except Exception:
         traceback.print_exc()
         sys.exit(1)

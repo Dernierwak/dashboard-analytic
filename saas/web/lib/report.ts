@@ -53,6 +53,9 @@ export type WeeklyData = {
   report: ReportPayload | null;
   // Dernière réaction par type de conseil (4 semaines) — live, comme le Streamlit.
   feedback: Record<string, string>;
+  // Commentaires de la semaine courante (pré-remplissage) + objectif du compte.
+  comments: Record<string, string>;
+  objectif: string | null;
 };
 
 function iso(d: Date): string {
@@ -87,7 +90,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes] = await Promise.all([
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes] = await Promise.all([
     supabase
       .from("meta_ads_insights")
       .select("date_start, spend, clicks, impressions")
@@ -114,10 +117,11 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .limit(1),
     supabase
       .from("reco_feedback")
-      .select("reco_key, reaction, week_start")
+      .select("reco_key, reaction, week_start, comment")
       .eq("user_id", uid)
       .gte("week_start", fbCutoff)
       .order("week_start", { ascending: false }),
+    supabase.from("profiles").select("objectif").eq("id", uid).limit(1),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -132,8 +136,23 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // même logique que fetch_reco_feedback côté Python.
   const feedback: Record<string, string> = {};
   for (const row of fbRes.data ?? []) {
-    if (row.reco_key && !(row.reco_key in feedback)) feedback[row.reco_key] = row.reaction;
+    if (row.reco_key && row.reaction && !(row.reco_key in feedback))
+      feedback[row.reco_key] = row.reaction;
   }
+
+  // Commentaires de la semaine courante (lundi) — pré-remplissent les cartes.
+  const nowLocal = new Date();
+  const mondayLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
+  mondayLocal.setDate(mondayLocal.getDate() - ((mondayLocal.getDay() + 6) % 7));
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const mondayIso = `${mondayLocal.getFullYear()}-${p2(mondayLocal.getMonth() + 1)}-${p2(mondayLocal.getDate())}`;
+  const comments: Record<string, string> = {};
+  for (const row of fbRes.data ?? []) {
+    if (row.reco_key && row.comment && String(row.week_start).slice(0, 10) === mondayIso)
+      comments[row.reco_key] = row.comment;
+  }
+
+  const objectif: string | null = profileRes.data?.[0]?.objectif ?? null;
 
   // Ancre = dernière date de données (jour plein), jamais après hier.
   const yesterday = addDays(new Date(), -1);
@@ -239,5 +258,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     channels,
     report,
     feedback,
+    comments,
+    objectif,
   };
 }
