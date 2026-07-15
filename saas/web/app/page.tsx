@@ -9,6 +9,7 @@ import {
   type PayloadReco,
 } from "@/lib/report";
 import { RecoActions } from "@/components/reco-actions";
+import { SiteHeader } from "@/components/site-header";
 
 export const dynamic = "force-dynamic";
 
@@ -142,21 +143,7 @@ export default async function Page() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <span className="text-[13px] font-bold tracking-tight text-ink">Pulse</span>
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] text-faint hidden sm:inline">{data.email}</span>
-          <form action="/auth/signout" method="post">
-            <button
-              type="submit"
-              className="text-[11px] text-muted border border-line rounded-full px-3 py-1 hover:bg-black/[0.03] transition-colors"
-            >
-              Se déconnecter
-            </button>
-          </form>
-        </div>
-      </div>
+      <SiteHeader email={data.email} active="rapport" />
 
       {/* Hero */}
       <div className="mb-7">
