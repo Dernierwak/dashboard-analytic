@@ -1,11 +1,14 @@
-// Dashboard Meta Ads — KPIs période + table campagnes avec thèmes éditables.
-import { getMetaDash, periodDays } from "@/lib/channels";
+// Dashboard Meta Ads — même base que l'onglet Streamlit : périodes 7→Tout,
+// filtres statut/campagne/thème, hero impressions, KPIs perf + coût,
+// évolution quotidienne à métrique au choix, campagnes → adsets → annonces.
+import { getMetaDash, type DashParams } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
+import { FilterBar } from "@/components/filter-bar";
 import {
   PeriodPills,
   AdsKpis,
   CampaignTable,
-  DailyChart,
+  MetricChart,
   ByLabelTable,
 } from "@/components/channel-dash";
 
@@ -14,16 +17,15 @@ export const dynamic = "force-dynamic";
 export default async function MetaPage({
   searchParams,
 }: {
-  searchParams: { d?: string };
+  searchParams: DashParams;
 }) {
-  const days = periodDays(searchParams);
-  const d = await getMetaDash(days);
+  const d = await getMetaDash(searchParams);
 
   return (
-    <main className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
       <SiteHeader email={d.email} active="meta" />
 
-      <div className="mb-7">
+      <div className="mb-5">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           {d.periodLabel}
         </p>
@@ -31,16 +33,26 @@ export default async function MetaPage({
           <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
             <span style={{ color: "#1a56ff" }}>▣</span> Meta Ads.
           </h1>
-          <PeriodPills path="/meta" days={days} />
+          <PeriodPills path="/meta" d={d} />
         </div>
       </div>
 
+      <FilterBar
+        statusOptions={d.statusOptions}
+        campOptions={d.campOptions}
+        labels={d.labels}
+        current={d.filters}
+      />
+
       <AdsKpis d={d} />
-      <DailyChart d={d} />
+      <MetricChart d={d} path="/meta" />
       <ByLabelTable d={d} />
 
       <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Par campagne <span className="text-faint font-normal">· triées par dépense</span>
+        Par campagne{" "}
+        <span className="text-faint font-normal">
+          · triées par dépense · déplie pour voir adsets et annonces
+        </span>
       </h2>
       <CampaignTable d={d} channel="meta" />
       <p className="text-[11.5px] text-faint mt-3 leading-relaxed">

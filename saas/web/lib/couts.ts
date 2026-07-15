@@ -2,12 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 
 // Couche données de la page Coûts : dépense du mois en cours par canal,
 // budget mensuel avec CARRY-FORWARD (même règle que budget_for_month côté
-// Python : si le mois n'a pas de ligne, on reporte le dernier budget ≤ mois).
+// Python), série journalière empilée, table des budgets de l'année,
+// dépense du mois par thème.
 
 const MOIS_FULL = [
   "janvier", "février", "mars", "avril", "mai", "juin",
   "juillet", "août", "septembre", "octobre", "novembre", "décembre",
 ];
+const MOIS_ABR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
 
 export type ChannelCout = {
   key: string;
@@ -18,6 +20,21 @@ export type ChannelCout = {
   budget: number;
 };
 
+export type CoutDay = { date: string; label: string; meta: number; google: number };
+
+export type MonthRow = {
+  monthIso: string;   // YYYY-MM-01
+  name: string;       // « jul 2026 »
+  isCurrent: boolean;
+  isFuture: boolean;
+  metaBudget: number;
+  metaSpent: number;
+  googleBudget: number;
+  googleSpent: number;
+};
+
+export type ThemeSpend = { label: string; spend: number };
+
 export type CoutsData = {
   email: string;
   monthLabel: string;
@@ -25,6 +42,9 @@ export type CoutsData = {
   channels: ChannelCout[];
   totalSpent: number;
   totalBudget: number;
+  daily: CoutDay[];
+  months: MonthRow[];
+  byTheme: ThemeSpend[];
 };
 
 export async function getCoutsData(): Promise<CoutsData> {
@@ -38,41 +58,120 @@ export async function getCoutsData(): Promise<CoutsData> {
   const y = now.getFullYear();
   const m = now.getMonth();
   const monthStart = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const yearStart = `${y}-01-01`;
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const elapsed = Math.min(1, now.getDate() / daysInMonth);
 
-  const [metaRes, googleRes, budgetsRes] = await Promise.all([
+  const [metaRes, googleRes, budgetsRes, metaCfgRes, googCfgRes] = await Promise.all([
     supabase
       .from("meta_ads_insights")
-      .select("spend")
+      .select("date_start, campaign_name, spend")
       .eq("user_id", uid)
-      .gte("date_start", monthStart),
+      .gte("date_start", yearStart),
     supabase
       .from("google_ads_insights")
-      .select("cost_micros")
+      .select("date_start, campaign_id, cost_micros")
       .eq("user_id", uid)
-      .gte("date_start", monthStart),
+      .gte("date_start", yearStart),
     supabase.from("channel_budgets").select("channel, month, amount").eq("user_id", uid),
+    supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
+    supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
   ]);
 
-  const metaSpent = (metaRes.data ?? []).reduce((a, r) => a + (Number(r.spend) || 0), 0);
-  const googleSpent =
-    (googleRes.data ?? []).reduce((a, r) => a + (Number(r.cost_micros) || 0), 0) / 1_000_000;
+  const metaRows = metaRes.data ?? [];
+  const googleRows = (googleRes.data ?? []).map((r) => ({
+    date_start: r.date_start,
+    campaign_id: String(r.campaign_id),
+    chf: (Number(r.cost_micros) || 0) / 1_000_000,
+  }));
 
+  // ── Mois en cours : totaux + série journalière + par thème ────────────────
+  const metaLbl = new Map((metaCfgRes.data ?? []).map((c) => [String(c.campaign_name), c.label as string | null]));
+  const googLbl = new Map((googCfgRes.data ?? []).map((c) => [String(c.campaign_id), c.label as string | null]));
+
+  let metaSpent = 0;
+  let googleSpent = 0;
+  const dayMap = new Map<string, { meta: number; google: number }>();
+  const themeMap = new Map<string, number>();
+
+  for (const r of metaRows) {
+    const dk = String(r.date_start).slice(0, 10);
+    if (dk < monthStart) continue;
+    const s = Number(r.spend) || 0;
+    metaSpent += s;
+    const d = dayMap.get(dk) ?? { meta: 0, google: 0 };
+    d.meta += s;
+    dayMap.set(dk, d);
+    const lbl = metaLbl.get(String(r.campaign_name));
+    if (lbl) themeMap.set(lbl, (themeMap.get(lbl) ?? 0) + s);
+  }
+  for (const r of googleRows) {
+    const dk = String(r.date_start).slice(0, 10);
+    if (dk < monthStart) continue;
+    googleSpent += r.chf;
+    const d = dayMap.get(dk) ?? { meta: 0, google: 0 };
+    d.google += r.chf;
+    dayMap.set(dk, d);
+    const lbl = googLbl.get(r.campaign_id);
+    if (lbl) themeMap.set(lbl, (themeMap.get(lbl) ?? 0) + r.chf);
+  }
+
+  const daily: CoutDay[] = [];
+  for (let day = 1; day <= now.getDate(); day++) {
+    const dk = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const v = dayMap.get(dk) ?? { meta: 0, google: 0 };
+    daily.push({ date: dk, label: `${String(day).padStart(2, "0")} ${MOIS_ABR[m]}`, meta: v.meta, google: v.google });
+  }
+
+  const byTheme: ThemeSpend[] = [...themeMap.entries()]
+    .map(([label, spend]) => ({ label, spend }))
+    .sort((a, b) => b.spend - a.spend);
+
+  // ── Budgets : carry-forward (même règle que budget_for_month) ─────────────
   const budgets = budgetsRes.data ?? [];
-  const budgetFor = (channel: string): number => {
+  const budgetFor = (channel: string, monthIso: string): number => {
     let best: [string, number] | null = null;
     for (const b of budgets) {
       if (b.channel !== channel) continue;
       const mo = String(b.month).slice(0, 10);
-      if (mo <= monthStart && (!best || mo > best[0])) best = [mo, Number(b.amount) || 0];
+      if (mo <= monthIso && (!best || mo > best[0])) best = [mo, Number(b.amount) || 0];
     }
     return best ? best[1] : 0;
   };
 
+  // ── Table des budgets de l'année : dépensé par mois × canal ──────────────
+  const spentByMonth = new Map<string, { meta: number; google: number }>();
+  for (const r of metaRows) {
+    const mo = String(r.date_start).slice(0, 7);
+    const v = spentByMonth.get(mo) ?? { meta: 0, google: 0 };
+    v.meta += Number(r.spend) || 0;
+    spentByMonth.set(mo, v);
+  }
+  for (const r of googleRows) {
+    const mo = String(r.date_start).slice(0, 7);
+    const v = spentByMonth.get(mo) ?? { meta: 0, google: 0 };
+    v.google += r.chf;
+    spentByMonth.set(mo, v);
+  }
+  const months: MonthRow[] = [];
+  for (let i = 0; i < 12; i++) {
+    const iso = `${y}-${String(i + 1).padStart(2, "0")}-01`;
+    const spent = spentByMonth.get(iso.slice(0, 7)) ?? { meta: 0, google: 0 };
+    months.push({
+      monthIso: iso,
+      name: `${MOIS_ABR[i]} ${y}`,
+      isCurrent: i === m,
+      isFuture: i > m,
+      metaBudget: budgetFor("meta", iso),
+      metaSpent: spent.meta,
+      googleBudget: budgetFor("google", iso),
+      googleSpent: spent.google,
+    });
+  }
+
   const channels: ChannelCout[] = [
-    { key: "meta", name: "Meta Ads", icon: "▣", color: "#1a56ff", spent: metaSpent, budget: budgetFor("meta") },
-    { key: "google", name: "Google Ads", icon: "◆", color: "#1a7a4a", spent: googleSpent, budget: budgetFor("google") },
+    { key: "meta", name: "Meta Ads", icon: "▣", color: "#1a56ff", spent: metaSpent, budget: budgetFor("meta", monthStart) },
+    { key: "google", name: "Google Ads", icon: "◆", color: "#1a7a4a", spent: googleSpent, budget: budgetFor("google", monthStart) },
   ];
 
   return {
@@ -82,5 +181,8 @@ export async function getCoutsData(): Promise<CoutsData> {
     channels,
     totalSpent: channels.reduce((a, c) => a + c.spent, 0),
     totalBudget: channels.reduce((a, c) => a + c.budget, 0),
+    daily,
+    months,
+    byTheme,
   };
 }

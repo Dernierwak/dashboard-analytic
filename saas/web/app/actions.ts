@@ -88,20 +88,24 @@ export async function saveComment(recoKey: string, comment: string) {
   return { ok: true };
 }
 
-// Budget mensuel d'un canal — mois en cours (carry-forward pour les suivants).
-export async function saveBudget(channel: string, amount: number) {
+// Budget mensuel d'un canal (carry-forward pour les mois suivants).
+// month omis → mois en cours.
+export async function saveBudget(channel: string, amount: number, monthIso?: string) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false };
   const now = new Date();
-  const monthIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const month =
+    monthIso && /^\d{4}-\d{2}-01$/.test(monthIso)
+      ? monthIso
+      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   await supabase.from("channel_budgets").upsert(
     {
       user_id: user.id,
       channel,
-      month: monthIso,
+      month,
       amount: Number(amount) || 0,
     },
     { onConflict: "user_id,channel,month" }

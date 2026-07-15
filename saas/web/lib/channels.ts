@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 
-// Couche données des dashboards par canal — mêmes règles que partout :
+// Couche données des dashboards par canal — mêmes règles que le Streamlit :
 // fenêtre de N jours PLEINS ancrée sur la dernière date de données (jamais
-// aujourd'hui), delta vs la fenêtre précédente de même durée.
-// Même base que les onglets Streamlit : 7 KPIs, série journalière, campagnes
-// avec drill-down par annonce (Meta), vue Par label, page Instagram complète.
+// aujourd'hui), delta vs la fenêtre précédente ; « Tout » = tout l'historique.
+// Filtres statut / campagne / thème appliqués AVANT les agrégats (KPIs, graphe
+// et tables suivent le filtre, comme dans l'app actuelle).
 
 const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
 
@@ -20,19 +20,45 @@ function fmtDay(d: Date): string {
   return `${String(d.getUTCDate()).padStart(2, "0")} ${MOIS_FR[d.getUTCMonth()]}`;
 }
 
-export function periodDays(sp: { d?: string } | undefined): 7 | 14 | 30 {
+export type Days = 7 | 14 | 30 | 90 | 0; // 0 = tout l'historique
+
+export type DashParams = {
+  d?: string;
+  m?: string;       // métrique du graphe
+  status?: string;  // filtre statut
+  camp?: string;    // filtre campagne (key)
+  label?: string;   // filtre thème
+};
+
+export function periodDays(sp: DashParams | undefined): Days {
+  if (sp?.d === "0") return 0;
   const d = Number(sp?.d);
-  return d === 14 ? 14 : d === 30 ? 30 : 7;
+  return d === 14 ? 14 : d === 30 ? 30 : d === 90 ? 90 : 7;
 }
 
 type Window = { since: Date; until: Date; prevSince: Date; prevUntil: Date; label: string };
 
-function makeWindow(lastDataIso: string | null, days: number): Window {
+function makeWindow(lastDataIso: string | null, firstDataIso: string | null, days: Days): Window {
   const yesterday = addDays(new Date(), -1);
   let anchor = yesterday;
   if (lastDataIso) {
     const d = new Date(lastDataIso.slice(0, 10) + "T00:00:00Z");
     if (!isNaN(d.getTime()) && d < yesterday) anchor = d;
+  }
+  if (days === 0) {
+    let first = addDays(anchor, -365);
+    if (firstDataIso) {
+      const f = new Date(firstDataIso.slice(0, 10) + "T00:00:00Z");
+      if (!isNaN(f.getTime())) first = f;
+    }
+    // pas de période précédente comparable → deltas null
+    return {
+      since: first,
+      until: anchor,
+      prevSince: addDays(first, -1),
+      prevUntil: addDays(first, -2),
+      label: `Tout l'historique · ${fmtDay(first)} ${first.getUTCFullYear()} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()}`,
+    };
   }
   const since = addDays(anchor, -(days - 1));
   const prevUntil = addDays(since, -1);
@@ -59,13 +85,14 @@ export function pct(cur: number, prev: number): number | null {
 
 export type AdRow = {
   name: string;
-  adset: string;
   spend: number;
   clicks: number;
   impressions: number;
   ctr: number;
   cpc: number;
 };
+
+export type AdsetRow = AdRow & { ads: AdRow[] };
 
 export type Campaign = {
   key: string;   // meta : campaign_name · google : campaign_id
@@ -79,10 +106,16 @@ export type Campaign = {
   ctr: number;
   cpc: number;
   cpm: number;
-  ads: AdRow[]; // Meta : drill-down par annonce · Google : vide
+  adsets: AdsetRow[]; // Meta : adsets → ads · Google : groupes d'annonces → annonces
 };
 
-export type DayPoint = { date: string; label: string; spend: number; clicks: number };
+export type DayPoint = {
+  date: string;
+  label: string;
+  spend: number;
+  clicks: number;
+  impressions: number;
+};
 
 export type LabelAgg = {
   label: string;
@@ -96,7 +129,12 @@ export type LabelAgg = {
 export type ChannelDash = {
   email: string;
   periodLabel: string;
-  days: number;
+  days: Days;
+  metric: string;
+  filters: { status: string; camp: string; label: string };
+  statusOptions: string[];
+  campOptions: { key: string; name: string }[];
+  activeCampaigns: number;
   spend: number;
   spendDelta: number | null;
   clicks: number;
@@ -104,10 +142,14 @@ export type ChannelDash = {
   impressions: number;
   imprDelta: number | null;
   reach: number;      // 0 si non suivi (Google)
+  reachDelta: number | null;
   ctr: number;
+  ctrDelta: number | null;
   cpc: number;
+  cpcDelta: number | null;
   cpm: number;
-  daily: DayPoint[];  // série journalière de la fenêtre (asc)
+  cpmDelta: number | null;
+  daily: DayPoint[];
   campaigns: Campaign[];
   byLabel: LabelAgg[];
   labels: string[];
@@ -115,7 +157,7 @@ export type ChannelDash = {
 
 type RawAd = {
   date: string;
-  campaign: string;
+  campaign: string; // clé de campagne
   adset: string;
   ad: string;
   spend: number;
@@ -124,62 +166,107 @@ type RawAd = {
   reach: number;
 };
 
-// Cœur commun Meta/Google : fenêtres, agrégats, série, par-campagne, par-label.
+type Cfg = Map<string, { name: string; label: string | null; status: string | null }>;
+
 function buildDash(
   rows: RawAd[],
-  days: number,
-  cfg: Map<string, { name?: string; label: string | null; status: string | null }>,
-  keyOf: (r: RawAd) => string,
+  drillRows: RawAd[],
+  days: Days,
+  sp: DashParams | undefined,
+  cfg: Cfg,
   labels: string[],
-  email: string,
-  withAds: boolean
-): Omit<ChannelDash, "email" | "labels"> & { email: string; labels: string[] } {
-  const w = makeWindow(rows[0]?.date ?? null, days);
+  email: string
+): ChannelDash {
+  const lastIso = rows[0]?.date ?? null;
+  const firstIso = rows.length ? rows[rows.length - 1].date : null;
+  const w = makeWindow(lastIso, firstIso, days);
+
+  // Options de filtre (avant filtrage — on liste tout ce qui existe)
+  const statusSet = new Set<string>();
+  const campSet = new Map<string, string>();
+  for (const r of rows) {
+    const c = cfg.get(r.campaign);
+    if (c?.status) statusSet.add(c.status);
+    campSet.set(r.campaign, c?.name || r.campaign);
+  }
+
+  const fStatus = sp?.status ?? "";
+  const fCamp = sp?.camp ?? "";
+  const fLabel = sp?.label ?? "";
+  const keep = (campKey: string): boolean => {
+    const c = cfg.get(campKey);
+    if (fStatus && (c?.status ?? "") !== fStatus) return false;
+    if (fCamp && campKey !== fCamp) return false;
+    if (fLabel && (c?.label ?? "") !== fLabel) return false;
+    return true;
+  };
 
   let spend = 0, clicks = 0, impressions = 0, reach = 0;
-  let pSpend = 0, pClicks = 0, pImpr = 0;
-  const byDay = new Map<string, { spend: number; clicks: number }>();
-  const byCamp = new Map<string, { spend: number; clicks: number; impressions: number; reach: number; ads: Map<string, AdRow> }>();
+  let pSpend = 0, pClicks = 0, pImpr = 0, pReach = 0;
+  const byDay = new Map<string, { spend: number; clicks: number; impressions: number }>();
+  const byCamp = new Map<string, { spend: number; clicks: number; impressions: number; reach: number }>();
 
   for (const r of rows) {
+    if (!keep(r.campaign)) continue;
     if (inWin(r.date, w.since, w.until)) {
       spend += r.spend; clicks += r.clicks; impressions += r.impressions; reach += r.reach;
       const dk = r.date.slice(0, 10);
-      const dd = byDay.get(dk) ?? { spend: 0, clicks: 0 };
-      dd.spend += r.spend; dd.clicks += r.clicks;
+      const dd = byDay.get(dk) ?? { spend: 0, clicks: 0, impressions: 0 };
+      dd.spend += r.spend; dd.clicks += r.clicks; dd.impressions += r.impressions;
       byDay.set(dk, dd);
-
-      const ck = keyOf(r);
-      const c = byCamp.get(ck) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0, ads: new Map() };
+      const c = byCamp.get(r.campaign) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0 };
       c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
-      if (withAds && r.ad) {
-        const a = c.ads.get(r.ad) ?? { name: r.ad, adset: r.adset, spend: 0, clicks: 0, impressions: 0, ctr: 0, cpc: 0 };
-        a.spend += r.spend; a.clicks += r.clicks; a.impressions += r.impressions;
-        c.ads.set(r.ad, a);
-      }
-      byCamp.set(ck, c);
+      byCamp.set(r.campaign, c);
     } else if (inWin(r.date, w.prevSince, w.prevUntil)) {
-      pSpend += r.spend; pClicks += r.clicks; pImpr += r.impressions;
+      pSpend += r.spend; pClicks += r.clicks; pImpr += r.impressions; pReach += r.reach;
     }
   }
 
-  // Série journalière complète (jours sans dépense inclus → barres à zéro)
+  // Drill-down : campagne → adset/groupe → annonce (sur la fenêtre, filtré)
+  const drill = new Map<string, Map<string, Map<string, { spend: number; clicks: number; impressions: number }>>>();
+  for (const r of drillRows) {
+    if (!keep(r.campaign) || !inWin(r.date, w.since, w.until)) continue;
+    const setName = r.adset || "—";
+    const adName = r.ad || "—";
+    const sets = drill.get(r.campaign) ?? new Map();
+    const ads = sets.get(setName) ?? new Map();
+    const a = ads.get(adName) ?? { spend: 0, clicks: 0, impressions: 0 };
+    a.spend += r.spend; a.clicks += r.clicks; a.impressions += r.impressions;
+    ads.set(adName, a);
+    sets.set(setName, ads);
+    drill.set(r.campaign, sets);
+  }
+  const finish = (x: { spend: number; clicks: number; impressions: number }) => ({
+    ctr: x.impressions > 0 ? (x.clicks / x.impressions) * 100 : 0,
+    cpc: x.clicks > 0 ? x.spend / x.clicks : 0,
+  });
+
+  // Série journalière complète (jours vides inclus) — bornée à 120 pts pour « Tout »
   const daily: DayPoint[] = [];
-  for (let d = new Date(w.since); d <= w.until; d = addDays(d, 1)) {
+  let dStart = w.since;
+  const maxPts = 120;
+  const span = Math.round((w.until.getTime() - w.since.getTime()) / 86400_000) + 1;
+  if (span > maxPts) dStart = addDays(w.until, -(maxPts - 1));
+  for (let d = new Date(dStart); d <= w.until; d = addDays(d, 1)) {
     const k = iso(d);
-    const v = byDay.get(k) ?? { spend: 0, clicks: 0 };
-    daily.push({ date: k, label: fmtDay(d), spend: v.spend, clicks: v.clicks });
+    const v = byDay.get(k) ?? { spend: 0, clicks: 0, impressions: 0 };
+    daily.push({ date: k, label: fmtDay(d), spend: v.spend, clicks: v.clicks, impressions: v.impressions });
   }
 
   const campaigns: Campaign[] = [...byCamp.entries()]
     .map(([key, c]) => {
       const conf = cfg.get(key);
-      const ads = [...c.ads.values()]
-        .map((a) => ({
-          ...a,
-          ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0,
-          cpc: a.clicks > 0 ? a.spend / a.clicks : 0,
-        }))
+      const adsets: AdsetRow[] = [...(drill.get(key) ?? new Map()).entries()]
+        .map(([setName, adsMap]) => {
+          const ads: AdRow[] = [...(adsMap as Map<string, { spend: number; clicks: number; impressions: number }>).entries()]
+            .map(([adName, a]) => ({ name: adName, ...a, ...finish(a) }))
+            .sort((a, b) => b.spend - a.spend);
+          const tot = ads.reduce(
+            (acc, a) => ({ spend: acc.spend + a.spend, clicks: acc.clicks + a.clicks, impressions: acc.impressions + a.impressions }),
+            { spend: 0, clicks: 0, impressions: 0 }
+          );
+          return { name: setName, ...tot, ...finish(tot), ads };
+        })
         .sort((a, b) => b.spend - a.spend);
       return {
         key,
@@ -193,12 +280,11 @@ function buildDash(
         ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0,
         cpc: c.clicks > 0 ? c.spend / c.clicks : 0,
         cpm: c.impressions > 0 ? (c.spend / c.impressions) * 1000 : 0,
-        ads,
+        adsets,
       };
     })
     .sort((a, b) => b.spend - a.spend);
 
-  // Vue Par label — agrégation des campagnes labellisées
   const lblAgg = new Map<string, { spend: number; clicks: number; impressions: number }>();
   for (const c of campaigns) {
     if (!c.label) continue;
@@ -207,20 +293,29 @@ function buildDash(
     lblAgg.set(c.label, a);
   }
   const byLabel: LabelAgg[] = [...lblAgg.entries()]
-    .map(([label, a]) => ({
-      label,
-      spend: a.spend,
-      clicks: a.clicks,
-      impressions: a.impressions,
-      ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0,
-      cpc: a.clicks > 0 ? a.spend / a.clicks : 0,
-    }))
+    .map(([label, a]) => ({ label, ...a, ...finish(a) }))
     .sort((a, b) => b.spend - a.spend);
+
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+  const pCtr = pImpr > 0 ? (pClicks / pImpr) * 100 : 0;
+  const pCpc = pClicks > 0 ? pSpend / pClicks : 0;
+  const pCpm = pImpr > 0 ? (pSpend / pImpr) * 1000 : 0;
+
+  const METRICS = ["spend", "clicks", "impressions", "ctr", "cpc"];
+  const metric = METRICS.includes(sp?.m ?? "") ? (sp!.m as string) : "spend";
 
   return {
     email,
     periodLabel: w.label,
     days,
+    metric,
+    filters: { status: fStatus, camp: fCamp, label: fLabel },
+    statusOptions: [...statusSet].sort(),
+    campOptions: [...campSet.entries()].map(([key, name]) => ({ key, name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    activeCampaigns: campaigns.length,
     spend,
     spendDelta: pct(spend, pSpend),
     clicks,
@@ -228,9 +323,13 @@ function buildDash(
     impressions,
     imprDelta: pct(impressions, pImpr),
     reach,
-    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-    cpc: clicks > 0 ? spend / clicks : 0,
-    cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+    reachDelta: pct(reach, pReach),
+    ctr,
+    ctrDelta: pct(ctr, pCtr),
+    cpc,
+    cpcDelta: pct(cpc, pCpc),
+    cpm,
+    cpmDelta: pct(cpm, pCpm),
     daily,
     campaigns,
     byLabel,
@@ -238,15 +337,16 @@ function buildDash(
   };
 }
 
-export async function getMetaDash(days: number): Promise<ChannelDash> {
+export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDash> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const uid = user!.id;
+  const days = periodDays(sp);
 
   const [rowsRes, cfgRes, labelsRes] = await Promise.all([
     supabase.from("meta_ads_insights")
       .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(9000),
+      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
     supabase.from("meta_campaign_config")
       .select("campaign_name, label, effective_status").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
@@ -262,7 +362,7 @@ export async function getMetaDash(days: number): Promise<ChannelDash> {
     impressions: Number(r.impressions) || 0,
     reach: Number(r.reach) || 0,
   }));
-  const cfg = new Map(
+  const cfg: Cfg = new Map(
     (cfgRes.data ?? []).map((c) => [
       String(c.campaign_name),
       { name: String(c.campaign_name), label: (c.label as string | null) ?? null, status: (c.effective_status as string | null) ?? null },
@@ -270,18 +370,23 @@ export async function getMetaDash(days: number): Promise<ChannelDash> {
   );
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
-  return buildDash(rows, days, cfg, (r) => r.campaign, labels, user?.email ?? "", true);
+  // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
+  return buildDash(rows, rows, days, sp, cfg, labels, user?.email ?? "");
 }
 
-export async function getGoogleDash(days: number): Promise<ChannelDash> {
+export async function getGoogleDash(sp: DashParams | undefined): Promise<ChannelDash> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const uid = user!.id;
+  const days = periodDays(sp);
 
-  const [rowsRes, cfgRes, labelsRes] = await Promise.all([
+  const [rowsRes, adsRes, cfgRes, labelsRes] = await Promise.all([
     supabase.from("google_ads_insights")
       .select("date_start, campaign_id, cost_micros, clicks, impressions")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(9000),
+      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
+    supabase.from("google_ads_ad_insights")
+      .select("date_start, campaign_id, ad_group_name, ad_name, cost_micros, clicks, impressions")
+      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
     supabase.from("google_campaign_config")
       .select("campaign_id, campaign_name, label, effective_status").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
@@ -297,7 +402,18 @@ export async function getGoogleDash(days: number): Promise<ChannelDash> {
     impressions: Number(r.impressions) || 0,
     reach: 0,
   }));
-  const cfg = new Map(
+  // Drill google : groupes d'annonces → annonces (table dédiée)
+  const drillRows: RawAd[] = (adsRes.data ?? []).map((r) => ({
+    date: String(r.date_start),
+    campaign: String(r.campaign_id),
+    adset: String(r.ad_group_name ?? ""),
+    ad: String(r.ad_name ?? ""),
+    spend: (Number(r.cost_micros) || 0) / 1_000_000,
+    clicks: Number(r.clicks) || 0,
+    impressions: Number(r.impressions) || 0,
+    reach: 0,
+  }));
+  const cfg: Cfg = new Map(
     (cfgRes.data ?? []).map((c) => [
       String(c.campaign_id),
       {
@@ -309,7 +425,7 @@ export async function getGoogleDash(days: number): Promise<ChannelDash> {
   );
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
-  return buildDash(rows, days, cfg, (r) => r.campaign, labels, user?.email ?? "", false);
+  return buildDash(rows, drillRows, days, sp, cfg, labels, user?.email ?? "");
 }
 
 // ── Instagram organique ───────────────────────────────────────────────────────
@@ -325,25 +441,38 @@ export type InstaPost = {
   comments: number;
   saved: number;
   eng: number;       // %
+  labels: string[];
 };
 
 export type FormatStat = { type: string; count: number; avgReach: number; avgEng: number };
-
 export type FollowerPoint = { date: string; followers: number };
+export type SlotCell = { count: number; avgReach: number };
+export type PostLabelAgg = { label: string; count: number; avgReach: number; avgEng: number };
+
+export const INSTA_DAYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
+export const INSTA_SLOTS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"];
 
 export type InstaDash = {
   email: string;
   periodLabel: string;
-  days: number;
+  days: Days;
   followers: number;
-  followersDelta: number | null;  // sur la période
-  growth30: number | null;        // sur ~30 jours
-  avgEng: number;      // engagement moyen historique du compte
-  histReach: number;   // portée moyenne historique
-  followersSeries: FollowerPoint[]; // asc, ~30 derniers relevés
-  formats: FormatStat[];            // stats par format (tout l'historique)
-  posts: InstaPost[];  // posts de la fenêtre, plus récents d'abord
-  allPosts: InstaPost[]; // tout l'historique (vue globale)
+  followersDelta: number | null;
+  growth30: number | null;
+  avgEng: number;
+  histReach: number;
+  avgLikes: number;
+  avgComments: number;
+  avgSaved: number;
+  avgViews: number;
+  followersSeries: FollowerPoint[];
+  formats: FormatStat[];
+  heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — tout l'historique
+  bestSlot: { day: number; slot: number; avgReach: number; count: number } | null;
+  topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
+  byLabel: PostLabelAgg[];
+  posts: InstaPost[];
+  allPosts: InstaPost[];
   postsEng: number | null;
   postsReach: number | null;
 };
@@ -355,18 +484,19 @@ const FORMAT_LABEL: Record<string, string> = {
   IMAGE: "Image",
 };
 
-export async function getInstaDash(days: number): Promise<InstaDash> {
+export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDash> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const uid = user!.id;
+  const days = periodDays(sp);
 
   const [postsRes, followsRes] = await Promise.all([
     supabase.from("instagram_organic_posts")
-      .select("date, type, caption, media_url, reach, views, likes, comments, saved")
-      .eq("user_id", uid).order("date", { ascending: false }).limit(500),
+      .select("date, type, caption, media_url, reach, views, likes, comments, saved, labels")
+      .eq("user_id", uid).order("date", { ascending: false }).limit(600),
     supabase.from("followers_history")
       .select("fetched_at, followers")
-      .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(60),
+      .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(90),
   ]);
   const all: InstaPost[] = (postsRes.data ?? []).map((p) => {
     const reach = Number(p.reach) || 0;
@@ -382,19 +512,20 @@ export async function getInstaDash(days: number): Promise<InstaDash> {
       views: Number(p.views) || 0,
       likes, comments, saved,
       eng: reach > 0 ? ((likes + comments + saved) / reach) * 100 : 0,
+      labels: ((p.labels as string[] | null) ?? []),
     };
   });
   const follows = followsRes.data ?? [];
 
-  const w = makeWindow(all[0]?.date ?? null, days);
+  const w = makeWindow(all[0]?.date ?? null, all.length ? all[all.length - 1].date : null, days);
   const posts = all.filter((p) => inWin(p.date, w.since, w.until));
 
   const followers = follows.length ? Number(follows[0].followers) || 0 : 0;
   let followersDelta: number | null = null;
-  if (follows.length > days) followersDelta = followers - (Number(follows[days].followers) || 0);
+  const dRef = days === 0 ? follows.length - 1 : days;
+  if (follows.length > dRef && dRef > 0) followersDelta = followers - (Number(follows[dRef].followers) || 0);
   else if (follows.length >= 7) followersDelta = followers - (Number(follows[6].followers) || 0);
 
-  // Croissance ~30 jours : relevé le plus proche d'il y a 30 jours
   let growth30: number | null = null;
   if (follows.length >= 2) {
     const target = new Date(String(follows[0].fetched_at)).getTime() - 30 * 86400_000;
@@ -411,7 +542,6 @@ export async function getInstaDash(days: number): Promise<InstaDash> {
     .map((f) => ({ date: String(f.fetched_at).slice(0, 10), followers: Number(f.followers) || 0 }))
     .reverse();
 
-  // Stats par format sur tout l'historique (comme l'onglet Streamlit)
   const fmtMap = new Map<string, { count: number; reach: number; eng: number }>();
   for (const p of all) {
     const f = fmtMap.get(p.type) ?? { count: 0, reach: 0, eng: 0 };
@@ -427,6 +557,51 @@ export async function getInstaDash(days: number): Promise<InstaDash> {
     }))
     .sort((a, b) => b.avgReach - a.avgReach);
 
+  // « Quand publier ? » — grille jour × créneau (portée moyenne, tout l'historique)
+  const slotOf = (h: number) => (h < 7 ? 0 : h < 10 ? 1 : h < 13 ? 2 : h < 16 ? 3 : h < 19 ? 4 : 5);
+  const acc: { count: number; reach: number }[][] = Array.from({ length: 7 }, () =>
+    Array.from({ length: 6 }, () => ({ count: 0, reach: 0 }))
+  );
+  for (const p of all) {
+    const d = new Date(p.date);
+    if (isNaN(d.getTime())) continue;
+    const day = (d.getDay() + 6) % 7; // lundi = 0
+    const slot = slotOf(d.getHours());
+    acc[day][slot].count += 1;
+    acc[day][slot].reach += p.reach;
+  }
+  const heatmap: SlotCell[][] = acc.map((row) =>
+    row.map((c) => ({ count: c.count, avgReach: c.count ? c.reach / c.count : 0 }))
+  );
+  let bestSlot: InstaDash["bestSlot"] = null;
+  for (let day = 0; day < 7; day++)
+    for (let slot = 0; slot < 6; slot++) {
+      const c = heatmap[day][slot];
+      if (c.count >= 2 && (!bestSlot || c.avgReach > bestSlot.avgReach))
+        bestSlot = { day, slot, avgReach: c.avgReach, count: c.count };
+    }
+
+  // Top 3 posts (fenêtre, sinon historique)
+  const topPool = posts.length >= 3 ? posts : all;
+  const topPosts = [...topPool].sort((a, b) => b.reach - a.reach).slice(0, 3);
+
+  // Performance par label (posts labellisés, tout l'historique)
+  const lblMap = new Map<string, { count: number; reach: number; eng: number }>();
+  for (const p of all)
+    for (const l of p.labels) {
+      const x = lblMap.get(l) ?? { count: 0, reach: 0, eng: 0 };
+      x.count += 1; x.reach += p.reach; x.eng += p.eng;
+      lblMap.set(l, x);
+    }
+  const byLabel: PostLabelAgg[] = [...lblMap.entries()]
+    .map(([label, x]) => ({
+      label,
+      count: x.count,
+      avgReach: x.count ? x.reach / x.count : 0,
+      avgEng: x.count ? x.eng / x.count : 0,
+    }))
+    .sort((a, b) => b.avgReach - a.avgReach);
+
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
   return {
@@ -438,8 +613,16 @@ export async function getInstaDash(days: number): Promise<InstaDash> {
     growth30,
     avgEng: mean(all.map((p) => p.eng)),
     histReach: mean(all.map((p) => p.reach)),
+    avgLikes: mean(all.map((p) => p.likes)),
+    avgComments: mean(all.map((p) => p.comments)),
+    avgSaved: mean(all.map((p) => p.saved)),
+    avgViews: mean(all.map((p) => p.views)),
     followersSeries,
     formats,
+    heatmap,
+    bestSlot,
+    topPosts,
+    byLabel,
     posts,
     allPosts: all,
     postsEng: posts.length ? mean(posts.map((p) => p.eng)) : null,
@@ -475,7 +658,6 @@ export async function getLabelsData(): Promise<{ email: string; rows: LabelRowDa
   for (const r of instaRes.data ?? [])
     for (const l of (r.labels as string[] | null) ?? []) bump(l, "instagram");
 
-  // Union : liste maîtresse d'abord, puis les labels assignés hors liste (orphelins).
   const rows: LabelRowData[] = master.map(
     (name) => counts.get(name) ?? { name, meta: 0, google: 0, instagram: 0 }
   );
