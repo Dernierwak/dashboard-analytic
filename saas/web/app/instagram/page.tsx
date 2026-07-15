@@ -83,20 +83,112 @@ function FollowersChart({ series }: { series: { date: string; followers: number 
   );
 }
 
+const INSTA_METRICS: { key: string; label: string; unit: string }[] = [
+  { key: "reach", label: "Portée", unit: "" },
+  { key: "views", label: "Vues", unit: "" },
+  { key: "likes", label: "J'aime", unit: "" },
+  { key: "comments", label: "Comm.", unit: "" },
+  { key: "saved", label: "Enreg.", unit: "" },
+  { key: "eng", label: "Engagement", unit: "%" },
+];
+
+// Évolution de tes posts — un bar par post, métrique au choix (comme Meta/Google).
+function PostsMetricChart({
+  posts,
+  metric,
+  days,
+}: {
+  posts: InstaPost[];
+  metric: string;
+  days: number;
+}) {
+  const pts = [...posts].reverse(); // plus ancien → plus récent
+  if (pts.length < 2) return null;
+  const meta = INSTA_METRICS.find((m) => m.key === metric) ?? INSTA_METRICS[0];
+  const val = (p: InstaPost): number =>
+    metric === "views" ? p.views
+    : metric === "likes" ? p.likes
+    : metric === "comments" ? p.comments
+    : metric === "saved" ? p.saved
+    : metric === "eng" ? p.eng
+    : p.reach;
+  const vals = pts.map(val);
+  const max = Math.max(...vals, 0.001);
+  const W = 640, H = 130, PAD = 4;
+  const bw = (W - PAD * 2) / pts.length;
+  const step = Math.max(1, Math.ceil(pts.length / 8));
+  const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
+  const dq = days === 7 ? "" : `d=${days}&`;
+  return (
+    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+          Tes posts, un par un
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          {INSTA_METRICS.map((m) => (
+            <a
+              key={m.key}
+              href={`/instagram?${dq}${m.key === "reach" ? "" : `m=${m.key}`}`}
+              className={`text-[10.5px] font-semibold rounded-full px-2.5 py-0.5 border ${
+                metric === m.key
+                  ? "bg-ink text-white border-ink"
+                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
+              }`}
+            >
+              {m.label}
+            </a>
+          ))}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${meta.label} par post`}>
+        {pts.map((p, i) => {
+          const v = val(p);
+          const h = Math.max(v > 0 ? 2 : 0, (v / max) * (H - 8));
+          return (
+            <g key={i}>
+              <rect
+                x={PAD + i * bw + bw * 0.15}
+                y={H - h}
+                width={bw * 0.7}
+                height={h}
+                rx={2}
+                fill="#7b4fff"
+                opacity={0.85}
+              >
+                <title>{`${fmtDate(p.date)} · ${p.type} — ${meta.label} ${fmtV(v)}${meta.unit} · « ${(p.caption || "").slice(0, 50)} »`}</title>
+              </rect>
+              {i % step === 0 && (
+                <text x={PAD + i * bw + bw / 2} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
+                  {fmtDate(p.date).slice(0, 6)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="text-[10.5px] text-faint mt-1 text-right">
+        max {fmtV(max)}{meta.unit} · {pts.length} posts
+      </div>
+    </div>
+  );
+}
+
 function PostsTable({ posts, histReach }: { posts: InstaPost[]; histReach: number }) {
   return (
     <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
-      <table className="w-full min-w-[680px] text-[12.5px]">
+      <div className="max-h-[440px] overflow-y-auto min-w-[680px]">
+      <table className="w-full text-[12.5px]">
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-faint">
-            <th className="text-left font-semibold px-5 py-3">Post</th>
-            <th className="text-left font-semibold px-2 py-3">Format</th>
-            <th className="text-right font-semibold px-2 py-3">Portée</th>
-            <th className="text-right font-semibold px-2 py-3">Vues</th>
-            <th className="text-right font-semibold px-2 py-3">J&apos;aime</th>
-            <th className="text-right font-semibold px-2 py-3">Comm.</th>
-            <th className="text-right font-semibold px-2 py-3">Enreg.</th>
-            <th className="text-right font-semibold px-5 py-3">Engagement</th>
+            <th className="text-left font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">Post</th>
+            <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Format</th>
+            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Portée</th>
+            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Vues</th>
+            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">J&apos;aime</th>
+            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Comm.</th>
+            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Enreg.</th>
+            <th className="text-right font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">Engagement</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -147,6 +239,7 @@ function PostsTable({ posts, histReach }: { posts: InstaPost[]; histReach: numbe
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -157,6 +250,13 @@ export default async function InstagramPage({
   searchParams: DashParams;
 }) {
   const d = await getInstaDash(searchParams);
+  const metric = ["reach", "views", "likes", "comments", "saved", "eng"].includes(
+    searchParams?.m ?? ""
+  )
+    ? (searchParams!.m as string)
+    : "reach";
+  // Graphe : posts de la fenêtre, sinon les 20 derniers (pour toujours voir la tendance)
+  const chartPosts = d.posts.length >= 2 ? d.posts : d.allPosts.slice(0, 20);
 
   const engDiff =
     d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
@@ -243,6 +343,9 @@ export default async function InstagramPage({
           ))}
         </div>
       </div>
+
+      {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
+      <PostsMetricChart posts={chartPosts} metric={metric} days={d.days} />
 
       {/* ── FORMATS ── */}
       {d.formats.length > 0 && (

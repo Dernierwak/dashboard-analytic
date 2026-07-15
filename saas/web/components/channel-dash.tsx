@@ -262,6 +262,9 @@ function StatusChip({ status }: { status: string | null }) {
   );
 }
 
+// Table campagnes en accordéon : chaque campagne se DÉROULE en adsets/groupes,
+// puis en annonces — chiffres alignés sur les mêmes colonnes à chaque niveau.
+// Hauteur bornée : la table scrolle à l'intérieur, l'en-tête reste collé.
 export function CampaignTable({
   d,
   channel,
@@ -276,96 +279,154 @@ export function CampaignTable({
       </div>
     );
   }
-  const groupWord = channel === "meta" ? "adset" : "groupe";
+  const isMeta = channel === "meta";
+  const grid = isMeta
+    ? "minmax(220px,2.4fr) 150px 90px 90px 80px 70px 70px 70px 100px"
+    : "minmax(220px,2.4fr) 150px 90px 80px 70px 70px 70px 100px";
+  const groupWord = isMeta ? "adset" : "groupe";
+
+  const Nums = ({
+    impressions, reach, clicks, ctr, cpm, cpc, spend, strong = false,
+  }: {
+    impressions: number; reach?: number; clicks: number; ctr: number;
+    cpm: number | null; cpc: number; spend: number; strong?: boolean;
+  }) => (
+    <>
+      <span className="text-right font-mono text-muted px-2">{fmtCHF(impressions)}</span>
+      {isMeta && (
+        <span className="text-right font-mono text-muted px-2">
+          {reach && reach > 0 ? fmtCHF(reach) : "—"}
+        </span>
+      )}
+      <span className={`text-right font-mono px-2 ${strong ? "text-ink" : "text-muted"}`}>
+        {fmtCHF(clicks)}
+      </span>
+      <span className="text-right font-mono text-muted px-2">{ctr.toFixed(2)} %</span>
+      <span className="text-right font-mono text-muted px-2">
+        {cpm !== null && cpm > 0 ? cpm.toFixed(2) : "—"}
+      </span>
+      <span className="text-right font-mono text-muted px-2">
+        {cpc > 0 ? cpc.toFixed(2) : "—"}
+      </span>
+      <span className={`text-right font-mono px-2 ${strong ? "text-ink font-medium" : "text-muted"}`}>
+        {fmtCHF(spend)} CHF
+      </span>
+    </>
+  );
+
   return (
     <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
-      <table className="w-full min-w-[760px] text-[12.5px]">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-wide text-faint">
-            <th className="text-left font-semibold px-5 py-3">Campagne</th>
-            <th className="text-left font-semibold px-2 py-3">Thème</th>
-            <th className="text-right font-semibold px-2 py-3">Impr.</th>
-            {channel === "meta" && <th className="text-right font-semibold px-2 py-3">Portée</th>}
-            <th className="text-right font-semibold px-2 py-3">Clics</th>
-            <th className="text-right font-semibold px-2 py-3">CTR</th>
-            <th className="text-right font-semibold px-2 py-3">CPM</th>
-            <th className="text-right font-semibold px-2 py-3">CPC</th>
-            <th className="text-right font-semibold px-5 py-3">Dépensé</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
+      <div className="min-w-[820px] max-h-[440px] overflow-y-auto">
+        {/* En-tête collé */}
+        <div
+          className="grid items-center text-[10px] uppercase tracking-wide text-faint font-semibold px-3 py-3 sticky top-0 bg-white border-b border-line z-10"
+          style={{ gridTemplateColumns: grid }}
+        >
+          <span className="px-2">Campagne</span>
+          <span className="px-2">Thème</span>
+          <span className="text-right px-2">Impr.</span>
+          {isMeta && <span className="text-right px-2">Portée</span>}
+          <span className="text-right px-2">Clics</span>
+          <span className="text-right px-2">CTR</span>
+          <span className="text-right px-2">CPM</span>
+          <span className="text-right px-2">CPC</span>
+          <span className="text-right px-2">Dépensé</span>
+        </div>
+
+        <div className="divide-y divide-line">
           {d.campaigns.map((c) => (
-            <tr key={c.key} className="align-top">
-              <td className="px-5 py-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-ink font-medium leading-snug">{c.name}</span>
+            <details key={c.key} className="group">
+              <summary
+                className="grid items-center px-3 py-3 text-[12.5px] cursor-pointer select-none hover:bg-black/[0.015] list-none"
+                style={{ gridTemplateColumns: grid }}
+              >
+                <span className="px-2 flex items-center gap-2 min-w-0">
+                  {c.adsets.length > 0 ? (
+                    <span className="text-faint text-[10px] shrink-0 transition-transform group-open:rotate-90">
+                      ▶
+                    </span>
+                  ) : (
+                    <span className="w-[10px] shrink-0" />
+                  )}
+                  <span className="text-ink font-medium leading-snug truncate" title={c.name}>
+                    {c.name}
+                  </span>
                   <StatusChip status={c.status} />
-                </div>
-                {c.adsets.length > 0 && (
-                  <details className="mt-1.5">
-                    <summary className="text-[10.5px] text-faint cursor-pointer select-none hover:text-muted">
-                      ▸ {c.adsets.length} {groupWord}
-                      {c.adsets.length > 1 ? "s" : ""}
-                    </summary>
-                    <div className="mt-2 space-y-2.5">
-                      {c.adsets.map((s) => (
-                        <div key={s.name} className="pl-2.5 border-l-2 border-line">
-                          <div className="text-[11.5px] font-semibold text-muted leading-snug">
-                            {s.name}
-                            <span className="text-faint font-normal">
-                              {" "}· {fmtCHF(s.spend)} CHF · {fmtCHF(s.clicks)} clics · CTR{" "}
-                              {s.ctr.toFixed(2)} %
-                            </span>
-                          </div>
-                          {s.ads.length > 0 && s.ads[0].name !== "—" && (
-                            <div className="mt-1 space-y-0.5">
-                              {s.ads.map((a) => (
-                                <div key={a.name} className="text-[11px] text-muted leading-snug pl-2.5">
-                                  {a.name}
-                                  <span className="text-faint">
-                                    {" "}· {fmtCHF(a.spend)} CHF · {fmtCHF(a.clicks)} clics · CTR{" "}
-                                    {a.ctr.toFixed(2)} % · CPC {a.cpc > 0 ? a.cpc.toFixed(2) : "—"}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </td>
-              <td className="px-2 py-3">
-                <CampaignLabelSelect
-                  channel={channel}
-                  campaignKey={c.key}
-                  campaignName={c.name}
-                  current={c.label}
-                  labels={d.labels}
+                </span>
+                <span className="px-2" onClick={(e) => e.preventDefault()}>
+                  <CampaignLabelSelect
+                    channel={channel}
+                    campaignKey={c.key}
+                    campaignName={c.name}
+                    current={c.label}
+                    labels={d.labels}
+                  />
+                </span>
+                <Nums
+                  impressions={c.impressions}
+                  reach={c.reach}
+                  clicks={c.clicks}
+                  ctr={c.ctr}
+                  cpm={c.cpm}
+                  cpc={c.cpc}
+                  spend={c.spend}
+                  strong
                 />
-              </td>
-              <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(c.impressions)}</td>
-              {channel === "meta" && (
-                <td className="px-2 py-3 text-right font-mono text-muted">
-                  {c.reach > 0 ? fmtCHF(c.reach) : "—"}
-                </td>
-              )}
-              <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(c.clicks)}</td>
-              <td className="px-2 py-3 text-right font-mono text-muted">{c.ctr.toFixed(2)} %</td>
-              <td className="px-2 py-3 text-right font-mono text-muted">
-                {c.cpm > 0 ? c.cpm.toFixed(2) : "—"}
-              </td>
-              <td className="px-2 py-3 text-right font-mono text-muted">
-                {c.cpc > 0 ? c.cpc.toFixed(2) : "—"}
-              </td>
-              <td className="px-5 py-3 text-right font-mono text-ink font-medium">
-                {fmtCHF(c.spend)} CHF
-              </td>
-            </tr>
+              </summary>
+
+              {/* Déroulé : adsets/groupes → annonces, colonnes alignées */}
+              {c.adsets.map((s) => (
+                <div key={s.name} className="bg-black/[0.015]">
+                  <div
+                    className="grid items-center px-3 py-2 text-[11.5px]"
+                    style={{ gridTemplateColumns: grid }}
+                  >
+                    <span className="px-2 pl-7 font-semibold text-muted truncate" title={s.name}>
+                      ▸ {s.name}
+                      <span className="text-faint font-normal text-[10px]"> · {groupWord}</span>
+                    </span>
+                    <span />
+                    <Nums
+                      impressions={s.impressions}
+                      clicks={s.clicks}
+                      ctr={s.ctr}
+                      cpm={null}
+                      cpc={s.cpc}
+                      spend={s.spend}
+                    />
+                  </div>
+                  {s.ads.length > 0 &&
+                    s.ads[0].name !== "—" &&
+                    s.ads.map((a) => (
+                      <div
+                        key={a.name}
+                        className="grid items-center px-3 py-1.5 text-[11px]"
+                        style={{ gridTemplateColumns: grid }}
+                      >
+                        <span className="px-2 pl-12 text-muted truncate" title={a.name}>
+                          {a.name}
+                        </span>
+                        <span />
+                        <Nums
+                          impressions={a.impressions}
+                          clicks={a.clicks}
+                          ctr={a.ctr}
+                          cpm={null}
+                          cpc={a.cpc}
+                          spend={a.spend}
+                        />
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </details>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      <p className="text-[10.5px] text-faint px-5 py-2.5 border-t border-line">
+        Clique une campagne pour dérouler ses {groupWord}s et annonces — la liste scrolle
+        à l&apos;intérieur du cadre.
+      </p>
     </div>
   );
 }
