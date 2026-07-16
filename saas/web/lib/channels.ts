@@ -28,6 +28,9 @@ export type DashParams = {
   status?: string;  // filtre statut
   camp?: string;    // filtre campagne (key)
   label?: string;   // filtre thème
+  from?: string;    // période custom : YYYY-MM-DD
+  to?: string;
+  s?: string;       // tri des tables (Instagram)
 };
 
 export function periodDays(sp: DashParams | undefined): Days {
@@ -69,6 +72,27 @@ function makeWindow(lastDataIso: string | null, firstDataIso: string | null, day
     prevSince,
     prevUntil,
     label: `${fmtDay(since)} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()} · ${days} jours pleins`,
+  };
+}
+
+// Période custom « du … au … » : fenêtre libre, comparée à la fenêtre de même
+// durée juste avant (même règle de delta que les presets).
+export function customWindow(sp: DashParams | undefined): Window | null {
+  const f = sp?.from ?? "";
+  const t = sp?.to ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const since = new Date(f + "T00:00:00Z");
+  const until = new Date(t + "T00:00:00Z");
+  if (isNaN(since.getTime()) || isNaN(until.getTime()) || since > until) return null;
+  const len = Math.round((until.getTime() - since.getTime()) / 86400_000) + 1;
+  const prevUntil = addDays(since, -1);
+  const prevSince = addDays(prevUntil, -(len - 1));
+  return {
+    since,
+    until,
+    prevSince,
+    prevUntil,
+    label: `du ${fmtDay(since)} ${since.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jours`,
   };
 }
 
@@ -179,7 +203,7 @@ function buildDash(
 ): ChannelDash {
   const lastIso = rows[0]?.date ?? null;
   const firstIso = rows.length ? rows[rows.length - 1].date : null;
-  const w = makeWindow(lastIso, firstIso, days);
+  const w = customWindow(sp) ?? makeWindow(lastIso, firstIso, days);
 
   // Options de filtre (avant filtrage — on liste tout ce qui existe)
   const statusSet = new Set<string>();
@@ -517,7 +541,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   });
   const follows = followsRes.data ?? [];
 
-  const w = makeWindow(all[0]?.date ?? null, all.length ? all[all.length - 1].date : null, days);
+  const w = customWindow(sp) ?? makeWindow(all[0]?.date ?? null, all.length ? all[all.length - 1].date : null, days);
   const posts = all.filter((p) => inWin(p.date, w.since, w.until));
 
   const followers = follows.length ? Number(follows[0].followers) || 0 : 0;

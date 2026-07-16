@@ -4,6 +4,7 @@
 import { getMetaDash, type DashParams } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
 import { FilterBar } from "@/components/filter-bar";
+import { DateRange } from "@/components/date-range";
 import {
   PeriodPills,
   AdsKpis,
@@ -33,7 +34,10 @@ export default async function MetaPage({
           <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
             <span style={{ color: "#1a56ff" }}>▣</span> Meta Ads.
           </h1>
-          <PeriodPills path="/meta" d={d} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <PeriodPills path="/meta" d={d} />
+            <DateRange from={searchParams?.from} to={searchParams?.to} />
+          </div>
         </div>
       </div>
 

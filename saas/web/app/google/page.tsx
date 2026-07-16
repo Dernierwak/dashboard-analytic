@@ -4,6 +4,7 @@
 import { getGoogleDash, type DashParams } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
 import { FilterBar } from "@/components/filter-bar";
+import { DateRange } from "@/components/date-range";
 import {
   PeriodPills,
   AdsKpis,
@@ -33,7 +34,10 @@ export default async function GooglePage({
           <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
             <span style={{ color: "#1a7a4a" }}>◆</span> Google Ads.
           </h1>
-          <PeriodPills path="/google" d={d} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <PeriodPills path="/google" d={d} />
+            <DateRange from={searchParams?.from} to={searchParams?.to} />
+          </div>
         </div>
       </div>
 

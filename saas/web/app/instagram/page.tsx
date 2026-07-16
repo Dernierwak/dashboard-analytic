@@ -11,6 +11,7 @@ import {
 } from "@/lib/channels";
 import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
+import { DateRange } from "@/components/date-range";
 
 export const dynamic = "force-dynamic";
 
@@ -174,21 +175,69 @@ function PostsMetricChart({
   );
 }
 
-function PostsTable({ posts, histReach }: { posts: InstaPost[]; histReach: number }) {
+// Tri des posts par métrique : clique un en-tête de colonne.
+const SORTS: { key: string; label: string }[] = [
+  { key: "date", label: "Post" },
+  { key: "reach", label: "Portée" },
+  { key: "views", label: "Vues" },
+  { key: "likes", label: "J'aime" },
+  { key: "comments", label: "Comm." },
+  { key: "saved", label: "Enreg." },
+  { key: "eng", label: "Engagement" },
+];
+
+function sortPosts(posts: InstaPost[], sort: string): InstaPost[] {
+  if (sort === "date") return posts; // déjà du plus récent au plus ancien
+  const val = (p: InstaPost): number =>
+    sort === "views" ? p.views
+    : sort === "likes" ? p.likes
+    : sort === "comments" ? p.comments
+    : sort === "saved" ? p.saved
+    : sort === "eng" ? p.eng
+    : p.reach;
+  return [...posts].sort((a, b) => val(b) - val(a));
+}
+
+function PostsTable({
+  posts,
+  histReach,
+  sort,
+  baseQs,
+}: {
+  posts: InstaPost[];
+  histReach: number;
+  sort: string;
+  baseQs: string;
+}) {
+  const th = (s: { key: string; label: string }, align: string, px: string) => (
+    <th
+      key={s.key}
+      className={`${align} font-semibold ${px} py-3 sticky top-0 bg-white z-10 border-b border-line`}
+    >
+      <a
+        href={`/instagram?${baseQs}${s.key === "date" ? "" : `&s=${s.key}`}`}
+        className={sort === s.key ? "text-ink" : "hover:text-muted"}
+        title={s.key === "date" ? "Trier par date" : `Trier par ${s.label}`}
+      >
+        {s.label}
+        {sort === s.key && s.key !== "date" && " ↓"}
+      </a>
+    </th>
+  );
   return (
     <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
       <div className="max-h-[440px] overflow-y-auto min-w-[680px]">
       <table className="w-full text-[12.5px]">
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-faint">
-            <th className="text-left font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">Post</th>
+            {th(SORTS[0], "text-left", "px-5")}
             <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Format</th>
-            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Portée</th>
-            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Vues</th>
-            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">J&apos;aime</th>
-            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Comm.</th>
-            <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Enreg.</th>
-            <th className="text-right font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">Engagement</th>
+            {th(SORTS[1], "text-right", "px-2")}
+            {th(SORTS[2], "text-right", "px-2")}
+            {th(SORTS[3], "text-right", "px-2")}
+            {th(SORTS[4], "text-right", "px-2")}
+            {th(SORTS[5], "text-right", "px-2")}
+            {th(SORTS[6], "text-right", "px-5")}
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -258,6 +307,21 @@ export default async function InstagramPage({
   // Graphe : posts de la fenêtre, sinon les 20 derniers (pour toujours voir la tendance)
   const chartPosts = d.posts.length >= 2 ? d.posts : d.allPosts.slice(0, 20);
 
+  // Tri des tables (?s=) + query de base pour les liens d'en-tête
+  const sort = ["date", "reach", "views", "likes", "comments", "saved", "eng"].includes(
+    searchParams?.s ?? ""
+  )
+    ? (searchParams!.s as string)
+    : "date";
+  const qsParts: string[] = [];
+  if (d.days !== 7 && !searchParams?.from) qsParts.push(`d=${d.days}`);
+  if (searchParams?.from && searchParams?.to)
+    qsParts.push(`from=${searchParams.from}`, `to=${searchParams.to}`);
+  if (metric !== "reach") qsParts.push(`m=${metric}`);
+  const baseQs = qsParts.join("&");
+  const sortedPosts = sortPosts(d.posts, sort);
+  const sortedAll = sortPosts(d.allPosts, sort);
+
   const engDiff =
     d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
   const maxCell = Math.max(...d.heatmap.flat().map((c) => c.avgReach), 1);
@@ -274,7 +338,10 @@ export default async function InstagramPage({
           <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
             <span style={{ color: "#7b4fff" }}>◎</span> Instagram.
           </h1>
-          <PeriodPillsInsta days={d.days} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <PeriodPillsInsta days={d.days} />
+            <DateRange from={searchParams?.from} to={searchParams?.to} />
+          </div>
         </div>
       </div>
 
@@ -520,7 +587,7 @@ export default async function InstagramPage({
         </div>
       ) : (
         <div className="mb-4">
-          <PostsTable posts={d.posts} histReach={d.histReach} />
+          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} baseQs={baseQs} />
         </div>
       )}
 
@@ -530,7 +597,7 @@ export default async function InstagramPage({
           ▸ Vue globale — tous tes posts ({d.allPosts.length})
         </summary>
         <div className="mt-3">
-          <PostsTable posts={d.allPosts} histReach={d.histReach} />
+          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} baseQs={baseQs} />
         </div>
       </details>
 

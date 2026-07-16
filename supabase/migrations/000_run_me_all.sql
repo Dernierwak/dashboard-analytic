@@ -363,3 +363,12 @@ CREATE POLICY "weekly_reports_update_own" ON public.weekly_reports
 -- FIN. Vérifier : SELECT provider, google_customer_id, ga4_property_id
 --                 FROM connected_accounts WHERE provider='google';
 -- ============================================================================
+
+-- ============================================================================
+-- 7) Onboarding express Pulse — profil (business, budget, temps dispo)
+-- ============================================================================
+
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS business_type text,
+    ADD COLUMN IF NOT EXISTS budget_range  text,
+    ADD COLUMN IF NOT EXISTS time_budget   text;

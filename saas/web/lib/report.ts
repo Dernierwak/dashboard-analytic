@@ -75,6 +75,7 @@ export type WeeklyData = {
   // Commentaires de la semaine courante (pré-remplissage) + objectif du compte.
   comments: Record<string, string>;
   objectif: string | null;
+  onboarded: boolean;
 };
 
 function iso(d: Date): string {
@@ -140,7 +141,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .gte("week_start", fbCutoff)
       .order("week_start", { ascending: false }),
-    supabase.from("profiles").select("objectif").eq("id", uid).limit(1),
+    supabase.from("profiles").select("objectif, business_type").eq("id", uid).limit(1),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -171,7 +172,19 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       comments[row.reco_key] = row.comment;
   }
 
-  const objectif: string | null = profileRes.data?.[0]?.objectif ?? null;
+  // Si la colonne business_type n'existe pas encore (migration §7 pas passée),
+  // la requête combinée échoue → on retombe sur objectif seul, onboarding masqué.
+  let profRow: { objectif?: string | null; business_type?: string | null } | null =
+    profileRes.data?.[0] ?? null;
+  let migrated = !profileRes.error;
+  if (profileRes.error) {
+    const retry = await supabase.from("profiles").select("objectif").eq("id", uid).limit(1);
+    profRow = retry.data?.[0] ?? null;
+  }
+  const objectif: string | null = profRow?.objectif ?? null;
+  // Onboarded si déjà répondu — ou si la migration n'est pas passée (pas de formulaire cassé)
+  const onboarded: boolean =
+    !migrated || Boolean(objectif) || Boolean(profRow?.business_type);
 
   // Ancre = dernière date de données (jour plein), jamais après hier.
   const yesterday = addDays(new Date(), -1);
@@ -279,5 +292,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     feedback,
     comments,
     objectif,
+    onboarded,
   };
 }

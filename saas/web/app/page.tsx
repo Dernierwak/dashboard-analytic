@@ -12,6 +12,9 @@ import {
 import { RecoActions } from "@/components/reco-actions";
 import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
+import { OnboardingCard } from "@/components/onboarding-card";
+import { Trajectoire } from "@/components/trajectoire";
+import { getMissionData, MISSIONS } from "@/lib/mission";
 
 export const dynamic = "force-dynamic";
 
@@ -255,6 +258,16 @@ function RecoCard({
 export default async function Page() {
   const data = await getWeeklyData();
   const report = data.report;
+  const mission = await getMissionData(data.objectif);
+
+  // Recos triées mission / hors mission (mission active → focus, rien de caché)
+  const missionDef = data.objectif ? MISSIONS[data.objectif] : null;
+  const inMission = (r: PayloadReco) =>
+    !missionDef ||
+    missionDef.keys.includes(r.key) ||
+    missionDef.platforms.includes(r.platform);
+  const recosMission = (report?.recos ?? []).filter(inMission);
+  const recosAutres = (report?.recos ?? []).filter((r) => !inMission(r));
 
   return (
     <main className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
@@ -276,6 +289,12 @@ export default async function Page() {
           {report && <Suivi feedback={data.feedback} />}
         </div>
       </div>
+
+      {/* Onboarding express — première visite (30 s, tout au clic) */}
+      {!data.onboarded && <OnboardingCard />}
+
+      {/* La Trajectoire — le chiffre de ta mission + tes actions sur la courbe */}
+      {data.hasData && <Trajectoire m={mission} />}
 
       {!data.hasData ? (
         <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
@@ -383,12 +402,20 @@ export default async function Page() {
               <PreuveSection preuve={report.preuve} />
             )}
 
-          {/* Le détail, canal par canal */}
+          {/* Le détail, canal par canal — focalisé sur la mission si définie */}
           {report && report.recos.length > 0 ? (
             <>
-              <SectionTitle>Le détail, canal par canal</SectionTitle>
+              <SectionTitle>
+                {missionDef ? (
+                  <>
+                    Tes conseils — mission « {missionDef.label} »
+                  </>
+                ) : (
+                  "Le détail, canal par canal"
+                )}
+              </SectionTitle>
               {(["instagram", "meta", "google", "ia"] as const).map((chKey) => {
-                const items = report.recos.filter((r) => r.platform === chKey);
+                const items = recosMission.filter((r) => r.platform === chKey);
                 if (items.length === 0) return null;
                 const ch = CHANNEL[chKey];
                 return (
@@ -415,6 +442,29 @@ export default async function Page() {
                   </div>
                 );
               })}
+              {recosMission.length === 0 && (
+                <p className="text-[12.5px] text-muted mb-5">
+                  Rien d&apos;urgent pour ta mission cette semaine — tes comptes tournent
+                  dans tes normes sur ce front.
+                </p>
+              )}
+              {recosAutres.length > 0 && (
+                <details className="mb-5">
+                  <summary className="text-[12.5px] font-semibold text-muted cursor-pointer select-none hover:text-ink">
+                    ▸ Hors mission ({recosAutres.length}) — le reste mérite un œil aussi
+                  </summary>
+                  <div className="space-y-3 mt-3">
+                    {recosAutres.map((r) => (
+                      <RecoCard
+                        key={r.key}
+                        r={r}
+                        current={data.feedback[r.key] ?? null}
+                        comment={data.comments[r.key] ?? null}
+                      />
+                    ))}
+                  </div>
+                </details>
+              )}
             </>
           ) : (
             <>

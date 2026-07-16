@@ -114,6 +114,30 @@ export async function saveBudget(channel: string, amount: number, monthIso?: str
   return { ok: true };
 }
 
+// Onboarding express : 4 réponses cliquées → profil stocké dans profiles.
+// Calibre la mission (objectif) et nourrit le persona IA dès le départ.
+export async function saveOnboarding(answers: {
+  objectif: string;
+  business_type: string;
+  budget_range: string;
+  time_budget: string;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  await supabase
+    .from("profiles")
+    .update({
+      objectif: answers.objectif || null,
+      business_type: answers.business_type || null,
+      budget_range: answers.budget_range || null,
+      time_budget: answers.time_budget || null,
+    })
+    .eq("id", user.id);
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // ── Labels unifiés (liste maîtresse profiles.labels + assignations par canal) ─
 
 async function _labels(supabase: ReturnType<typeof createClient>, uid: string): Promise<string[]> {
