@@ -371,4 +371,5 @@ CREATE POLICY "weekly_reports_update_own" ON public.weekly_reports
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS business_type text,
     ADD COLUMN IF NOT EXISTS budget_range  text,
-    ADD COLUMN IF NOT EXISTS time_budget   text;
+    ADD COLUMN IF NOT EXISTS time_budget   text,
+    ADD COLUMN IF NOT EXISTS frustration   text;

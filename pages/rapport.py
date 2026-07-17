@@ -33,7 +33,8 @@ def _call_gemini(prompt: str) -> str | None:
 
 
 # Couleur d'accent par plateforme source (icône ◎ ▣ ◆ ◇)
-_PLATFORM_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a", "ia": "#8b6f00"}
+_PLATFORM_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a",
+                   "pub": "#1a56ff", "ia": "#8b6f00"}
 
 
 def _reco_card(idx, reco):
@@ -234,6 +235,39 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
             )
             df_camp["ctr"] = df_camp.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
             df_camp["cpc"] = df_camp.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+
+    # ── Google Ads : fusionné dans df_camp → le moteur voit TOUTE la pub ─────
+    # (ROAS = revenu payant GA4 / dépense Meta+Google ; règles CPC cross-canal).
+    # df_goog est aussi réutilisé plus bas (module Coûts + module thèmes).
+    df_goog = pd.DataFrame()
+    try:
+        df_goog = pd.DataFrame(fetch_google_ads(client, user_id) or [])
+    except Exception:
+        df_goog = pd.DataFrame()
+    if not df_goog.empty and "cost_micros" in df_goog.columns:
+        df_goog["date_start"] = pd.to_datetime(df_goog["date_start"], errors="coerce")
+        df_goog["_chf"] = pd.to_numeric(df_goog["cost_micros"], errors="coerce").fillna(0) / 1_000_000
+        for _col in ["impressions", "clicks"]:
+            if _col in df_goog.columns:
+                df_goog[_col] = pd.to_numeric(df_goog[_col], errors="coerce").fillna(0)
+        _gwin = df_goog[(df_goog["date_start"] >= pd.Timestamp(cur_since))
+                        & (df_goog["date_start"] <= pd.Timestamp(last_full_day))].copy()
+        if not _gwin.empty and "campaign_id" in _gwin.columns:
+            _gnames = {}
+            try:
+                _gnames = {str(_cid): (_c or {}).get("campaign_name") or f"Campagne {_cid}"
+                           for _cid, _c in (fetch_google_campaign_config(client, user_id) or {}).items()}
+            except Exception:
+                pass
+            _gwin["_cid"] = _gwin["campaign_id"].astype(str)
+            _gagg = _gwin.groupby("_cid", as_index=False).agg(
+                spend=("_chf", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
+            _gagg["campaign_name"] = _gagg["_cid"].map(lambda c: _gnames.get(c, f"Campagne {c}"))
+            _gagg["ctr"] = _gagg.apply(lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+            _gagg["cpc"] = _gagg.apply(lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+            _gcols = ["campaign_name", "spend", "clicks", "impressions", "ctr", "cpc"]
+            df_camp = (pd.concat([df_camp, _gagg[_gcols]], ignore_index=True)
+                       if not df_camp.empty else _gagg[_gcols])
 
     # ── Métriques Instagram ───────────────────────────────────────────────────
     followers_current = 0
@@ -531,7 +565,7 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
         p = r.get("platform")
         if p == "instagram":
             by_section["instagram"].append(r)
-        elif p in ("meta", "google"):
+        elif p in ("meta", "google", "pub"):
             by_section["meta"].append(r)
     insta_items = sorted(by_section["instagram"], key=lambda r: r["priority"])[:2]
     # 3 pour la pub : la reco ROAS (GA4) s'ajoute à gaspillage/scaler sans les masquer
@@ -620,12 +654,9 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
         _v = float(df_meta_raw.loc[_mm, "spend"].sum())
         if _v > 0:
             month_spend["meta"] = _v
-    df_goog = pd.DataFrame()  # réutilisé par le module « thèmes » plus bas
+    # df_goog déjà chargé en amont (fusionné dans df_camp pour le moteur)
     try:
-        df_goog = pd.DataFrame(fetch_google_ads(client, user_id) or [])
-        if not df_goog.empty and "cost_micros" in df_goog.columns:
-            df_goog["date_start"] = pd.to_datetime(df_goog["date_start"], errors="coerce")
-            df_goog["_chf"] = pd.to_numeric(df_goog["cost_micros"], errors="coerce").fillna(0) / 1_000_000
+        if not df_goog.empty and "_chf" in df_goog.columns:
             _dg_m = df_goog[df_goog["date_start"] >= pd.Timestamp(_month_start)]
             _v = float(_dg_m["_chf"].sum())
             if _v > 0:

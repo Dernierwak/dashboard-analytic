@@ -33,7 +33,9 @@ export type MonthRow = {
   googleSpent: number;
 };
 
-export type ThemeSpend = { label: string; spend: number };
+// Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
+// (même carry-forward que les canaux, zéro migration).
+export type ThemeSpend = { label: string; spend: number; budget: number };
 
 export type CoutsData = {
   email: string;
@@ -123,10 +125,6 @@ export async function getCoutsData(): Promise<CoutsData> {
     daily.push({ date: dk, label: `${String(day).padStart(2, "0")} ${MOIS_ABR[m]}`, meta: v.meta, google: v.google });
   }
 
-  const byTheme: ThemeSpend[] = [...themeMap.entries()]
-    .map(([label, spend]) => ({ label, spend }))
-    .sort((a, b) => b.spend - a.spend);
-
   // ── Budgets : carry-forward (même règle que budget_for_month) ─────────────
   const budgets = budgetsRes.data ?? [];
   const budgetFor = (channel: string, monthIso: string): number => {
@@ -138,6 +136,18 @@ export async function getCoutsData(): Promise<CoutsData> {
     }
     return best ? best[1] : 0;
   };
+
+  // Thèmes budgétés sans dépense ce mois : on les montre quand même (suivi)
+  for (const b of budgets) {
+    const ch = String(b.channel ?? "");
+    if (ch.startsWith("label:") && (Number(b.amount) || 0) > 0) {
+      const name = ch.slice(6);
+      if (!themeMap.has(name)) themeMap.set(name, 0);
+    }
+  }
+  const byTheme: ThemeSpend[] = [...themeMap.entries()]
+    .map(([label, spend]) => ({ label, spend, budget: budgetFor(`label:${label}`, monthStart) }))
+    .sort((a, b) => b.spend - a.spend);
 
   // ── Table des budgets de l'année : dépensé par mois × canal ──────────────
   const spentByMonth = new Map<string, { meta: number; google: number }>();

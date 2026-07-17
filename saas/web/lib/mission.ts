@@ -28,7 +28,7 @@ export const MISSIONS: Record<
   ventes: {
     label: "Plus de ventes",
     keys: ["gaspillage", "scaler", "roas", "funnel", "connecter_ga4", "ga4_muet"],
-    platforms: ["meta", "google"],
+    platforms: ["meta", "google", "pub"],
   },
   notoriete: {
     label: "Être plus connu",

@@ -22,6 +22,7 @@ const CHANNEL: Record<string, { icon: string; label: string; color: string }> = 
   instagram: { icon: "◎", label: "Instagram organique", color: "#7b4fff" },
   meta: { icon: "▣", label: "Meta Ads", color: "#1a56ff" },
   google: { icon: "◆", label: "Google", color: "#1a7a4a" },
+  pub: { icon: "▣", label: "Publicité (Meta + Google)", color: "#1a56ff" },
   ia: { icon: "◇", label: "Piste", color: "#8b6f00" },
 };
 
@@ -370,7 +371,12 @@ export default async function Page() {
           </div>
 
           {/* Dépense par canal */}
-          <SectionTitle>Dépense par canal</SectionTitle>
+          <SectionTitle>
+            Dépense par canal{" "}
+            <span className="text-faint font-normal">
+              · {report?.week_label ?? data.weekLabel} — la page Coûts, elle, suit le mois en cours
+            </span>
+          </SectionTitle>
           <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line mb-8">
             {data.channels.map((ch) => {
               const delta = ch.prev > 0 ? ((ch.spend - ch.prev) / ch.prev) * 100 : null;
@@ -414,7 +420,7 @@ export default async function Page() {
                   "Le détail, canal par canal"
                 )}
               </SectionTitle>
-              {(["instagram", "meta", "google", "ia"] as const).map((chKey) => {
+              {(["instagram", "pub", "meta", "google", "ia"] as const).map((chKey) => {
                 const items = recosMission.filter((r) => r.platform === chKey);
                 if (items.length === 0) return null;
                 const ch = CHANNEL[chKey];

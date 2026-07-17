@@ -21,7 +21,7 @@ export type ChannelSpend = { name: string; icon: string; color: string; spend: n
 // Payload publié par le rapport Streamlit (weekly_reports.payload) — même contenu.
 export type PayloadReco = {
   key: string;
-  platform: "instagram" | "meta" | "google" | "ia";
+  platform: "instagram" | "meta" | "google" | "pub" | "ia";
   title: string;
   observation: string;
   pourquoi: string;
@@ -110,7 +110,8 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes] = await Promise.all([
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes] =
+    await Promise.all([
     supabase
       .from("meta_ads_insights")
       .select("date_start, spend, clicks, impressions")
@@ -142,6 +143,19 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .gte("week_start", fbCutoff)
       .order("week_start", { ascending: false }),
     supabase.from("profiles").select("objectif, business_type").eq("id", uid).limit(1),
+    // Pour la Vue d'ensemble selon la mission (ventes → revenu, noto/eng → posts)
+    supabase
+      .from("ga4_insights")
+      .select("date, medium, revenue")
+      .eq("user_id", uid)
+      .gte("date", iso(addDays(new Date(), -35)))
+      .limit(6000),
+    supabase
+      .from("instagram_organic_posts")
+      .select("date, reach, likes, comments, saved")
+      .eq("user_id", uid)
+      .gte("date", iso(addDays(new Date(), -35)))
+      .limit(300),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -250,32 +264,115 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   const hasData = meta.length > 0 || google.length > 0 || followers.length > 0;
 
-  const kpis: Kpi[] = [
-    {
-      label: "Dépensé",
-      value: `${fmtCHF(spend)} CHF`,
-      sub: "Meta + Google · 7j pleins",
-      delta: pctDelta(spend, spendPrev),
-      deltaGoodWhenUp: null,
-    },
-    {
-      label: "Clics",
-      value: fmtCHF(clicks),
-      sub: `CTR ${ctr.toFixed(2)} %`,
-      delta: pctDelta(clicks, clicksPrev),
-      deltaGoodWhenUp: true,
-    },
-    {
-      label: "Abonnés",
-      value:
-        followersDelta === null
-          ? "—"
-          : `${followersDelta >= 0 ? "+" : ""}${fmtCHF(followersDelta)}`,
-      sub: followersNow === null ? "pas de relevé" : `${fmtCHF(followersNow)} au total`,
-      delta: null,
-      deltaGoodWhenUp: true,
-    },
-  ];
+  // ── Vue d'ensemble SELON LA MISSION — les 3 chiffres qui servent l'objectif ─
+  const winDates = `${fmtDay(curSince)} → ${fmtDay(anchor)}`;
+
+  // Revenu payant GA4 (fenêtre courante + précédente)
+  const ga4Rows = ga4Res.data ?? [];
+  const isPaid = (m: unknown) =>
+    ["cpc", "ppc", "paid"].some((k) => String(m ?? "").toLowerCase().includes(k));
+  let rev = 0, revPrev = 0;
+  for (const r of ga4Rows) {
+    if (!isPaid(r.medium)) continue;
+    if (inWin(String(r.date), curSince, anchor)) rev += Number(r.revenue) || 0;
+    else if (inWin(String(r.date), prevSince, prevUntil)) revPrev += Number(r.revenue) || 0;
+  }
+  const hasGa4 = ga4Rows.length > 0;
+
+  // Posts Instagram (fenêtre courante + précédente)
+  const postRows = (postsRes.data ?? []).map((p) => ({
+    date: String(p.date ?? ""),
+    reach: Number(p.reach) || 0,
+    inter: (Number(p.likes) || 0) + (Number(p.comments) || 0) + (Number(p.saved) || 0),
+  }));
+  const pWin = postRows.filter((p) => inWin(p.date, curSince, anchor));
+  const pPrev = postRows.filter((p) => inWin(p.date, prevSince, prevUntil));
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const reachAvg = mean(pWin.map((p) => p.reach));
+  const reachAvgPrev = mean(pPrev.map((p) => p.reach));
+  const engAvg = mean(pWin.map((p) => (p.reach > 0 ? (p.inter / p.reach) * 100 : 0)));
+  const engAvgPrev = mean(pPrev.map((p) => (p.reach > 0 ? (p.inter / p.reach) * 100 : 0)));
+  const interTot = pWin.reduce((a, p) => a + p.inter, 0);
+  const interTotPrev = pPrev.reduce((a, p) => a + p.inter, 0);
+
+  const kpiSpend: Kpi = {
+    label: "Dépensé",
+    value: `${fmtCHF(spend)} CHF`,
+    sub: `Meta + Google · ${winDates}`,
+    delta: pctDelta(spend, spendPrev),
+    deltaGoodWhenUp: null,
+  };
+  const kpiClicks: Kpi = {
+    label: "Clics",
+    value: fmtCHF(clicks),
+    sub: `CTR ${ctr.toFixed(2)} %`,
+    delta: pctDelta(clicks, clicksPrev),
+    deltaGoodWhenUp: true,
+  };
+  const kpiFollowers: Kpi = {
+    label: "Abonnés",
+    value:
+      followersDelta === null
+        ? "—"
+        : `${followersDelta >= 0 ? "+" : ""}${fmtCHF(followersDelta)}`,
+    sub: followersNow === null ? "pas de relevé" : `${fmtCHF(followersNow)} au total`,
+    delta: null,
+    deltaGoodWhenUp: true,
+  };
+
+  let kpis: Kpi[];
+  if (objectif === "ventes" && hasGa4) {
+    const roas = spend > 0 ? rev / spend : 0;
+    kpis = [
+      kpiSpend,
+      {
+        label: "Revenu attribué",
+        value: `${fmtCHF(rev)} CHF`,
+        sub: spend > 0 ? `ROAS ${roas.toFixed(1)} · GA4 payant` : "GA4 · trafic payant",
+        delta: pctDelta(rev, revPrev),
+        deltaGoodWhenUp: true,
+      },
+      kpiClicks,
+    ];
+  } else if (objectif === "notoriete") {
+    kpis = [
+      kpiFollowers,
+      {
+        label: "Portée moyenne / post",
+        value: pWin.length ? fmtCHF(reachAvg) : "—",
+        sub: `${pWin.length} post${pWin.length > 1 ? "s" : ""} · ${winDates}`,
+        delta: pWin.length && pPrev.length ? pctDelta(reachAvg, reachAvgPrev) : null,
+        deltaGoodWhenUp: true,
+      },
+      {
+        label: "Posts publiés",
+        value: String(pWin.length),
+        sub: pPrev.length ? `${pPrev.length} la période précédente` : "sur la période",
+        delta: null,
+        deltaGoodWhenUp: true,
+      },
+    ];
+  } else if (objectif === "engagement") {
+    kpis = [
+      {
+        label: "Engagement moyen",
+        value: pWin.length ? `${engAvg.toFixed(1)} %` : "—",
+        sub: `${pWin.length} post${pWin.length > 1 ? "s" : ""} · ${winDates}`,
+        delta: pWin.length && pPrev.length ? pctDelta(engAvg, engAvgPrev) : null,
+        deltaGoodWhenUp: true,
+      },
+      {
+        label: "Interactions",
+        value: fmtCHF(interTot),
+        sub: "j'aime + comm. + enreg.",
+        delta: pctDelta(interTot, interTotPrev),
+        deltaGoodWhenUp: true,
+      },
+      kpiFollowers,
+    ];
+  } else {
+    kpis = [kpiSpend, kpiClicks, kpiFollowers];
+  }
 
   const channels: ChannelSpend[] = [
     { name: "Meta Ads", icon: "▣", color: "#1a56ff", spend: mSpend, prev: mSpendPrev },

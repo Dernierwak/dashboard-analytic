@@ -455,6 +455,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
 // ── Instagram organique ───────────────────────────────────────────────────────
 
 export type InstaPost = {
+  id: string;        // uuid de la ligne (édition du thème)
   date: string;      // ISO
   type: string;
   caption: string;
@@ -480,6 +481,8 @@ export type InstaDash = {
   email: string;
   periodLabel: string;
   days: Days;
+  labels: string[]; // liste maîtresse (assignation de thème par post)
+  heatmapScope: "periode" | "historique"; // fallback si fenêtre trop vide
   followers: number;
   followersDelta: number | null;
   growth30: number | null;
@@ -514,20 +517,23 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const uid = user!.id;
   const days = periodDays(sp);
 
-  const [postsRes, followsRes] = await Promise.all([
+  const [postsRes, followsRes, labelsRes] = await Promise.all([
     supabase.from("instagram_organic_posts")
-      .select("date, type, caption, media_url, reach, views, likes, comments, saved, labels")
+      .select("id, date, type, caption, media_url, reach, views, likes, comments, saved, labels")
       .eq("user_id", uid).order("date", { ascending: false }).limit(600),
     supabase.from("followers_history")
       .select("fetched_at, followers")
       .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(90),
+    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
   ]);
+  const masterLabels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
   const all: InstaPost[] = (postsRes.data ?? []).map((p) => {
     const reach = Number(p.reach) || 0;
     const likes = Number(p.likes) || 0;
     const comments = Number(p.comments) || 0;
     const saved = Number(p.saved) || 0;
     return {
+      id: String(p.id ?? ""),
       date: String(p.date ?? ""),
       type: FORMAT_LABEL[String(p.type ?? "")] ?? String(p.type ?? ""),
       caption: String(p.caption ?? ""),
@@ -581,12 +587,15 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     }))
     .sort((a, b) => b.avgReach - a.avgReach);
 
-  // « Quand publier ? » — grille jour × créneau (portée moyenne, tout l'historique)
+  // « Quand publier ? » + Top 3 : suivent la PÉRIODE filtrée. Fenêtre trop
+  // vide (< 2 posts) → fallback sur l'historique, signalé au rendu.
+  const heatPool = posts.length >= 2 ? posts : all;
+  const heatmapScope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
   const slotOf = (h: number) => (h < 7 ? 0 : h < 10 ? 1 : h < 13 ? 2 : h < 16 ? 3 : h < 19 ? 4 : 5);
   const acc: { count: number; reach: number }[][] = Array.from({ length: 7 }, () =>
     Array.from({ length: 6 }, () => ({ count: 0, reach: 0 }))
   );
-  for (const p of all) {
+  for (const p of heatPool) {
     const d = new Date(p.date);
     if (isNaN(d.getTime())) continue;
     const day = (d.getDay() + 6) % 7; // lundi = 0
@@ -605,9 +614,8 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
         bestSlot = { day, slot, avgReach: c.avgReach, count: c.count };
     }
 
-  // Top 3 posts (fenêtre, sinon historique)
-  const topPool = posts.length >= 3 ? posts : all;
-  const topPosts = [...topPool].sort((a, b) => b.reach - a.reach).slice(0, 3);
+  // Top 3 posts de la période filtrée (fallback historique, même signal)
+  const topPosts = [...heatPool].sort((a, b) => b.reach - a.reach).slice(0, 3);
 
   // Performance par label (posts labellisés, tout l'historique)
   const lblMap = new Map<string, { count: number; reach: number; eng: number }>();
@@ -632,6 +640,8 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     email: user?.email ?? "",
     periodLabel: w.label,
     days,
+    labels: masterLabels,
+    heatmapScope,
     followers,
     followersDelta,
     growth30,

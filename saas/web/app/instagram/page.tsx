@@ -12,6 +12,7 @@ import {
 import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
 import { DateRange } from "@/components/date-range";
+import { PostLabelSelect } from "@/components/post-label-select";
 
 export const dynamic = "force-dynamic";
 
@@ -203,11 +204,13 @@ function PostsTable({
   histReach,
   sort,
   baseQs,
+  labels,
 }: {
   posts: InstaPost[];
   histReach: number;
   sort: string;
   baseQs: string;
+  labels: string[];
 }) {
   const th = (s: { key: string; label: string }, align: string, px: string) => (
     <th
@@ -231,6 +234,7 @@ function PostsTable({
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-faint">
             {th(SORTS[0], "text-left", "px-5")}
+            <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Thème</th>
             <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Format</th>
             {th(SORTS[1], "text-right", "px-2")}
             {th(SORTS[2], "text-right", "px-2")}
@@ -261,14 +265,16 @@ function PostsTable({
                       <div className="text-ink font-medium leading-snug max-w-[220px] truncate">
                         {p.caption || "(sans légende)"}
                       </div>
-                      <div className="text-[10.5px] text-faint mt-0.5">
-                        {fmtDate(p.date)}
-                        {p.labels.length > 0 && (
-                          <span className="text-brand"> · {p.labels.join(" · ")}</span>
-                        )}
-                      </div>
+                      <div className="text-[10.5px] text-faint mt-0.5">{fmtDate(p.date)}</div>
                     </div>
                   </div>
+                </td>
+                <td className="px-2 py-3">
+                  <PostLabelSelect
+                    postId={p.id}
+                    current={p.labels[0] ?? null}
+                    labels={labels}
+                  />
                 </td>
                 <td className="px-2 py-3 text-muted">{p.type}</td>
                 <td className="px-2 py-3 text-right font-mono">
@@ -450,7 +456,10 @@ export default async function InstagramPage({
         <h2 className="text-[14px] font-semibold text-ink mb-3">
           Quand publier ?{" "}
           <span className="text-faint font-normal">
-            · portée moyenne par jour et créneau (ton historique)
+            · portée moyenne par jour et créneau
+            {d.heatmapScope === "historique"
+              ? " (période trop vide → tout l'historique)"
+              : " (période filtrée)"}
           </span>
         </h2>
         <div className="bg-white border border-line rounded-xl shadow-card p-5 overflow-x-auto">
@@ -505,37 +514,40 @@ export default async function InstagramPage({
         </div>
       </div>
 
-      {/* ── TOP 3 POSTS ── */}
+      {/* ── TOP 3 POSTS — grandes images, scroll horizontal si besoin ── */}
       {d.topPosts.length > 0 && (
         <div className="mb-8">
           <h2 className="text-[14px] font-semibold text-ink mb-3">
-            Top 3 posts <span className="text-faint font-normal">· par portée</span>
+            Top 3 posts{" "}
+            <span className="text-faint font-normal">
+              · par portée{d.heatmapScope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
+            </span>
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex gap-3 overflow-x-auto pb-2">
             {d.topPosts.map((p, i) => (
-              <div key={i} className="bg-white border border-line rounded-xl shadow-card p-4">
-                <div className="flex items-center gap-3 mb-2.5">
-                  {p.mediaUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.mediaUrl}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover border border-line shrink-0"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-black/[0.04] border border-line shrink-0" />
-                  )}
-                  <div>
-                    <div className="font-mono text-[11px] text-faint">n°{i + 1} · {p.type}</div>
-                    <div className="text-[12.5px] font-medium text-ink leading-snug line-clamp-2">
-                      {p.caption || "(sans légende)"}
-                    </div>
+              <div
+                key={i}
+                className="bg-white border border-line rounded-xl shadow-card overflow-hidden shrink-0 w-[260px] sm:w-[300px]"
+              >
+                {p.mediaUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.mediaUrl} alt="" className="w-full h-52 object-cover" />
+                ) : (
+                  <div className="w-full h-52 bg-black/[0.04]" />
+                )}
+                <div className="p-4">
+                  <div className="font-mono text-[11px] text-faint mb-1">
+                    n°{i + 1} · {p.type} · {fmtDate(p.date)}
                   </div>
-                </div>
-                <div className="flex items-baseline justify-between text-[11.5px]">
-                  <span className="font-mono text-ink font-semibold">{fmtCHF(p.reach)} portée</span>
-                  <span className="font-mono text-muted">{p.eng.toFixed(1)} % eng.</span>
-                  <span className="text-faint">{fmtDate(p.date)}</span>
+                  <div className="text-[13px] font-medium text-ink leading-snug line-clamp-2 mb-2.5">
+                    {p.caption || "(sans légende)"}
+                  </div>
+                  <div className="flex items-baseline justify-between text-[12px]">
+                    <span className="font-mono text-ink font-semibold">
+                      {fmtCHF(p.reach)} portée
+                    </span>
+                    <span className="font-mono text-muted">{p.eng.toFixed(1)} % eng.</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -587,7 +599,7 @@ export default async function InstagramPage({
         </div>
       ) : (
         <div className="mb-4">
-          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} baseQs={baseQs} />
+          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} baseQs={baseQs} labels={d.labels} />
         </div>
       )}
 
@@ -597,7 +609,7 @@ export default async function InstagramPage({
           ▸ Vue globale — tous tes posts ({d.allPosts.length})
         </summary>
         <div className="mt-3">
-          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} baseQs={baseQs} />
+          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} baseQs={baseQs} labels={d.labels} />
         </div>
       </details>
 

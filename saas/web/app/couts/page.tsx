@@ -133,7 +133,10 @@ export default async function CoutsPage() {
           <div className="font-mono text-xl font-medium text-ink">
             {fmtCHF(data.totalSpent)} CHF
           </div>
-          <div className="text-[11px] text-faint mt-1">tous canaux</div>
+          <div className="text-[11px] text-faint mt-1">
+            tous canaux · du 01 au {String(new Date().getDate()).padStart(2, "0")}{" "}
+            {data.monthLabel.split(" ")[0]}
+          </div>
         </div>
         <div className="bg-white border border-line rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
@@ -187,33 +190,70 @@ export default async function CoutsPage() {
         ))}
       </div>
 
-      {/* Par thème */}
+      {/* Par thème — où va ton budget, thème par thème */}
       {data.byTheme.length > 0 && (
         <div className="mb-8">
           <h2 className="text-[14px] font-semibold text-ink mb-3">
             Par thème{" "}
-            <span className="text-faint font-normal">· dépense du mois en cours</span>
+            <span className="text-faint font-normal">
+              · dépense du mois · fixe un budget par thème pour suivre
+            </span>
           </h2>
           <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
             {data.byTheme.map((t) => {
               const share = data.totalSpent > 0 ? (t.spend / data.totalSpent) * 100 : 0;
+              const ratio = t.budget > 0 ? t.spend / t.budget : null;
               return (
-                <div key={t.label} className="flex items-center gap-3 px-5 py-3">
-                  <span className="text-[13px] font-semibold text-brand w-40 truncate">
-                    {t.label}
-                  </span>
-                  <div className="flex-1 h-1.5 rounded-full bg-black/[0.05] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-brand/70"
-                      style={{ width: `${Math.min(100, share)}%` }}
-                    />
+                <div key={t.label} className="px-5 py-3.5">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[13px] font-semibold text-brand">{t.label}</span>
+                    <span className="text-[11px] text-faint">
+                      {share.toFixed(0)} % de la dépense du mois
+                    </span>
+                    <span className="ml-auto font-mono text-[13px] text-ink">
+                      {fmtCHF(t.spend)} CHF
+                      {t.budget > 0 && (
+                        <span className="text-faint text-[11.5px]"> / {fmtCHF(t.budget)}</span>
+                      )}
+                    </span>
                   </div>
-                  <span className="font-mono text-[12.5px] text-ink w-28 text-right">
-                    {fmtCHF(t.spend)} CHF
-                  </span>
-                  <span className="font-mono text-[11px] text-faint w-12 text-right">
-                    {share.toFixed(0)} %
-                  </span>
+                  {ratio !== null ? (
+                    <div className="mt-2">
+                      <div className="relative h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{
+                            width: `${Math.min(100, ratio * 100)}%`,
+                            background: ratio > 1 ? "#c0392b" : ratio > data.elapsed + 0.1 ? "#b86b00" : "#1a56ff",
+                          }}
+                        />
+                        <div
+                          className="absolute inset-y-0 w-[2px] bg-ink/50"
+                          style={{ left: `${data.elapsed * 100}%` }}
+                          title="Repère : part du mois écoulée"
+                        />
+                      </div>
+                      <div className="flex items-baseline justify-between mt-1">
+                        <span className="text-[10.5px] text-faint">
+                          {Math.round(ratio * 100)} % du budget thème · repère{" "}
+                          {Math.round(data.elapsed * 100)} %
+                        </span>
+                        {ratio > 1 && (
+                          <span className="text-[11px] font-semibold text-neg">
+                            dépassé de {fmtCHF(t.spend - t.budget)} CHF
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 h-1.5 rounded-full bg-black/[0.05] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-brand/40"
+                        style={{ width: `${Math.min(100, share)}%` }}
+                      />
+                    </div>
+                  )}
+                  <BudgetEditor channel={`label:${t.label}`} current={t.budget} />
                 </div>
               );
             })}

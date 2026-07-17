@@ -5,6 +5,7 @@
 import { fmtCHF } from "@/lib/report";
 import type { ChannelDash } from "@/lib/channels";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
+import { SummaryStop } from "@/components/summary-stop";
 
 function qs(base: Record<string, string | number | undefined>): string {
   const q = new URLSearchParams();
@@ -353,7 +354,7 @@ export function CampaignTable({
                   </span>
                   <StatusChip status={c.status} />
                 </span>
-                <span className="px-2" onClick={(e) => e.preventDefault()}>
+                <SummaryStop className="px-2">
                   <CampaignLabelSelect
                     channel={channel}
                     campaignKey={c.key}
@@ -361,7 +362,7 @@ export function CampaignTable({
                     current={c.label}
                     labels={d.labels}
                   />
-                </span>
+                </SummaryStop>
                 <Nums
                   impressions={c.impressions}
                   reach={c.reach}

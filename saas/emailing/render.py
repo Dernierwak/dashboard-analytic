@@ -16,8 +16,10 @@ LINE = "rgba(14,15,18,0.08)"
 POS = "#1a7a4a"
 BRAND = "#1a56ff"
 
-CHANNEL_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a", "ia": "#8b6f00"}
-CHANNEL_LABEL = {"instagram": "Instagram", "meta": "Meta Ads", "google": "Google", "ia": "Piste"}
+CHANNEL_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a",
+                 "pub": "#1a56ff", "ia": "#8b6f00"}
+CHANNEL_LABEL = {"instagram": "Instagram", "meta": "Meta Ads", "google": "Google",
+                 "pub": "Pub (Meta + Google)", "ia": "Piste"}
 
 
 def _kpi_cell(label: str, value: str, sub: str = "") -> str:

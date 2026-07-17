@@ -44,6 +44,16 @@ const STEPS: { key: string; question: string; options: { value: string; label: s
       { value: "3h+", label: "3 heures ou plus", sub: "je veux creuser" },
     ],
   },
+  {
+    key: "frustration",
+    question: "Et aujourd'hui, qu'est-ce qui te frustre le plus ?",
+    options: [
+      { value: "comprendre", label: "Je ne sais pas quoi faire de mes chiffres", sub: "des données, oui — des décisions, non" },
+      { value: "temps", label: "Pas le temps de m'en occuper", sub: "le marketing passe toujours après" },
+      { value: "rentabilite", label: "Je dépense sans savoir si ça rapporte", sub: "la pub part, le retour est flou" },
+      { value: "stagnation", label: "Je stagne", sub: "je publie, mais rien ne décolle" },
+    ],
+  },
 ];
 
 export function OnboardingCard() {
@@ -64,6 +74,7 @@ export function OnboardingCard() {
           business_type: string;
           budget_range: string;
           time_budget: string;
+          frustration: string;
         });
       });
     }

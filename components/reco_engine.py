@@ -27,7 +27,8 @@ HOURS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"]
 FORMAT_LABELS = {"VIDEO": "Reel", "REEL": "Reel", "CAROUSEL_ALBUM": "Carrousel", "IMAGE": "Image"}
 
 # Icône source — même langage visuel que la sidebar (◎ Instagram, ▣ Meta, ◆ Google)
-PLATFORM_ICON = {"instagram": "◎", "meta": "▣", "google": "◆", "ia": "◇"}
+# "pub" = cross-canal Meta + Google (ex. la reco ROAS, qui somme toute la pub)
+PLATFORM_ICON = {"instagram": "◎", "meta": "▣", "google": "◆", "pub": "▣", "ia": "◇"}
 
 # Jauge de confiance — cercle plein / demi / vide (géométrique, monochrome)
 CONFIDENCE = {
@@ -92,7 +93,7 @@ def _reco(key, platform, title, observation, pourquoi, verifier, angle_mort,
 OBJECTIFS = {
     "ventes": {
         "label": "Plus de ventes / contacts",
-        "boost_platforms": {"meta", "google"},
+        "boost_platforms": {"meta", "google", "pub"},
         "boost_keys": {"gaspillage", "scaler", "roas", "funnel", "connecter_ga4"},
     },
     "notoriete": {
@@ -231,7 +232,8 @@ def _rule_scaler(df_camp, avg_ctr, ga4):
 def _rule_roas(df_camp, ga4):
     """LA reco forte que GA4 débloque : relier la dépense pub au revenu réel.
 
-    ROAS = revenu attribué au trafic payant / dépense pub (Meta, vue du rapport).
+    ROAS = revenu attribué au trafic payant / dépense pub TOTALE (Meta + Google :
+    les producteurs fusionnent les campagnes Google dans df_camp avant l'appel).
     Sans GA4 → None (c'est _rule_connecter_ga4 qui prend le relais).
     """
     if not (ga4 and ga4.get("connected")):
@@ -249,27 +251,43 @@ def _rule_roas(df_camp, ga4):
 
     angle = (
         "GA4 attribue au dernier canal : une vente influencée par ta pub mais "
-        "conclue via Google ou en direct est comptée ailleurs. Le vrai retour "
-        "est donc un peu au-dessus de ce chiffre. Dépense vue : Meta (le rapport "
-        "ne somme pas encore Google Ads ici)."
+        "conclue via un autre chemin (recherche directe, e-mail) est comptée "
+        "ailleurs. Le vrai retour est donc un peu au-dessus de ce chiffre. "
+        "Dépense vue : Meta + Google Ads."
     )
 
     if rev and rev > 0:
         roas = rev / spend
         obs = (
-            f"Cette semaine : {spend:,.0f} CHF de pub → {rev:,.0f} CHF de revenu "
-            f"attribué au trafic payant, soit un ROAS de {roas:.1f}."
+            f"Cette semaine : {spend:,.0f} CHF de pub (Meta + Google) → {rev:,.0f} CHF "
+            f"de revenu attribué au trafic payant, soit un ROAS de {roas:.1f}."
         )
-        # Attribution par campagne (utm_campaign) : on nomme la locomotive
+        # Attribution par campagne (utm_campaign) : on nomme la locomotive…
         by_camp = ga4.get("by_campaign") or {}
         if by_camp:
             top_name, top = max(by_camp.items(), key=lambda kv: kv[1].get("revenue", 0))
             if top.get("revenue", 0) > 0:
                 obs += (f" Meilleure campagne (GA4) : « {top_name[:40]} » — "
                         f"{top['revenue']:,.0f} CHF attribués.")
+        # …ET la pire : le plus gros dépensier sans AUCUNE vente attribuée.
+        try:
+            def _norm(s):
+                return str(s or "").strip().lower()
+            _rev_names = {_norm(n) for n, d in by_camp.items()
+                          if float((d or {}).get("revenue") or 0) > 0}
+            _no_rev = df_camp[~df_camp["campaign_name"].map(lambda n: _norm(n) in _rev_names)]
+            if not _no_rev.empty:
+                _w = _no_rev.loc[_no_rev["spend"].idxmax()]
+                _w_spend = float(_w["spend"])
+                if _w_spend >= max(50.0, 0.1 * spend):
+                    obs += (f" À l'inverse, « {str(_w['campaign_name'])[:40]} » a dépensé "
+                            f"{_w_spend:,.0f} CHF sans aucune vente attribuée — "
+                            f"c'est elle qui plombe le ratio.")
+        except Exception:
+            pass
         if roas >= SEUILS["roas_bon"]:
             return _reco(
-                "roas", "meta",
+                "roas", "pub",
                 f"Tes pubs rapportent {roas:.1f}× leur coût",
                 obs,
                 "Au-dessus de 3, ta machine publicitaire est rentable avec de la marge — "
@@ -282,7 +300,7 @@ def _rule_roas(df_camp, ga4):
             )
         if roas >= SEUILS["roas_fragile"]:
             return _reco(
-                "roas", "meta",
+                "roas", "pub",
                 f"Tes pubs tournent à {roas:.1f}× — rentable mais sans marge",
                 obs,
                 "Entre 1 et 2, la pub s'autofinance à peine : dès que tu retires tes "
@@ -295,7 +313,7 @@ def _rule_roas(df_camp, ga4):
                        "te faut au moins un ROAS de 2.",
             )
         return _reco(
-            "roas", "meta",
+            "roas", "pub",
             f"Alerte : {spend:,.0f} CHF dépensés pour {rev:,.0f} CHF de revenu (ROAS {roas:.1f})",
             obs,
             "Sous 1, chaque franc de pub rapporte moins d'un franc : la dépense ne "
@@ -313,7 +331,7 @@ def _rule_roas(df_camp, ga4):
     if conv and conv > 0:
         cpa = spend / conv
         return _reco(
-            "roas", "meta",
+            "roas", "pub",
             f"Tes conversions te coûtent {cpa:,.0f} CHF pièce",
             f"Cette semaine : {spend:,.0f} CHF de pub → {conv:.0f} conversions "
             f"attribuées au trafic payant, soit {cpa:,.0f} CHF par conversion (CPA).",
@@ -331,7 +349,7 @@ def _rule_roas(df_camp, ga4):
 
     # GA4 OK, dépense réelle, zéro conversion payante → signal fort
     return _reco(
-        "roas", "meta",
+        "roas", "pub",
         f"{spend:,.0f} CHF de pub, zéro conversion attribuée",
         f"Sur la semaine, GA4 n'attribue aucune conversion au trafic payant "
         f"malgré {spend:,.0f} CHF dépensés.",

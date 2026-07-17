@@ -143,7 +143,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             df_camp["cpc"] = df_camp.apply(
                 lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
-    # ── Google Ads : mêmes fenêtres (pour les KPIs de l'email) ────────────────
+    # ── Google Ads : mêmes fenêtres (KPIs email) + FUSION dans df_camp ────────
+    # → le moteur voit toute la pub (ROAS = revenu payant / dépense Meta+Google).
     g_spend = 0.0
     g_clicks = 0
     g_impr = 0
@@ -155,11 +156,30 @@ def build_payload(sb, user_id: str) -> dict | None:
         df_g = df_google[
             (df_google["date_start"] >= pd.Timestamp(cur_since))
             & (df_google["date_start"] <= pd.Timestamp(last_full_day))
-        ]
+        ].copy()
         if not df_g.empty:
             g_spend = float(df_g["cost_micros"].sum()) / 1_000_000.0
             g_clicks = int(df_g["clicks"].sum())
             g_impr = int(df_g["impressions"].sum())
+            if "campaign_id" in df_g.columns:
+                try:
+                    gnames = {str(k): (v or {}).get("campaign_name") or f"Campagne {k}"
+                              for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
+                except Exception:
+                    gnames = {}
+                df_g["_cid"] = df_g["campaign_id"].astype(str)
+                gagg = df_g.groupby("_cid", as_index=False).agg(
+                    spend=("cost_micros", "sum"), clicks=("clicks", "sum"),
+                    impressions=("impressions", "sum"))
+                gagg["spend"] = gagg["spend"] / 1_000_000.0
+                gagg["campaign_name"] = gagg["_cid"].map(lambda c: gnames.get(c, f"Campagne {c}"))
+                gagg["ctr"] = gagg.apply(
+                    lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
+                gagg["cpc"] = gagg.apply(
+                    lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
+                gcols = ["campaign_name", "spend", "clicks", "impressions", "ctr", "cpc"]
+                df_camp = (pd.concat([df_camp, gagg[gcols]], ignore_index=True)
+                           if not df_camp.empty else gagg[gcols])
 
     # ── Instagram ─────────────────────────────────────────────────────────────
     followers_current = 0
@@ -264,7 +284,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         p = r.get("platform")
         if p == "instagram":
             by_section["instagram"].append(r)
-        elif p in ("meta", "google"):
+        elif p in ("meta", "google", "pub"):
             by_section["meta"].append(r)
     insta_items = sorted(by_section["instagram"], key=lambda r: r["priority"])[:2]
     meta_items = sorted(by_section["meta"], key=lambda r: r["priority"])[:3]

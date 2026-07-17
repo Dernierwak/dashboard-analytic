@@ -114,13 +114,39 @@ export async function saveBudget(channel: string, amount: number, monthIso?: str
   return { ok: true };
 }
 
-// Onboarding express : 4 réponses cliquées → profil stocké dans profiles.
-// Calibre la mission (objectif) et nourrit le persona IA dès le départ.
+// Onboarding express : 5 réponses cliquées → profil stocké dans profiles
+// + persona seed pour l'IA (si aucun persona n'existe encore).
+const ONB_FR: Record<string, Record<string, string>> = {
+  business_type: {
+    ecommerce: "e-commerce",
+    local: "commerce local",
+    services: "services / B2B",
+    createur: "créateur / média",
+  },
+  objectif: {
+    ventes: "générer plus de ventes/contacts",
+    notoriete: "gagner en notoriété et en portée",
+    engagement: "construire une communauté qui réagit",
+  },
+  time_budget: {
+    "30min": "30 minutes max par semaine — il veut l'essentiel, pas de détail",
+    "1-2h": "1 à 2 heures par semaine",
+    "3h+": "3 heures ou plus par semaine — il aime creuser",
+  },
+  frustration: {
+    comprendre: "il a des chiffres mais ne sait pas quoi en FAIRE — donne toujours l'action concrète",
+    temps: "le temps lui manque — va droit au but, une priorité à la fois",
+    rentabilite: "il dépense sans savoir si ça rapporte — parle rentabilité, CHF et ROAS avant tout",
+    stagnation: "il publie mais stagne — montre-lui ce qui change vraiment la donne",
+  },
+};
+
 export async function saveOnboarding(answers: {
   objectif: string;
   business_type: string;
   budget_range: string;
   time_budget: string;
+  frustration: string;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -132,8 +158,26 @@ export async function saveOnboarding(answers: {
       business_type: answers.business_type || null,
       budget_range: answers.budget_range || null,
       time_budget: answers.time_budget || null,
+      frustration: answers.frustration || null,
     })
     .eq("id", user.id);
+
+  // Persona seed : l'IA du brief démarre calibrée dès la semaine 1
+  // (écrasé plus tard par le persona appris des commentaires — jamais l'inverse).
+  try {
+    const existing = await supabase
+      .from("profiles").select("user_profile").eq("id", user.id).limit(1);
+    if (!existing.data?.[0]?.user_profile) {
+      const seed =
+        `Profil déclaré à l'inscription : ${ONB_FR.business_type[answers.business_type] ?? answers.business_type}, ` +
+        `budget pub ${answers.budget_range} CHF/mois, ${ONB_FR.time_budget[answers.time_budget] ?? answers.time_budget}. ` +
+        `Objectif : ${ONB_FR.objectif[answers.objectif] ?? answers.objectif}. ` +
+        `Frustration principale : ${ONB_FR.frustration[answers.frustration] ?? answers.frustration}.`;
+      await supabase.from("profiles").update({ user_profile: seed }).eq("id", user.id);
+    }
+  } catch {
+    // colonne user_profile absente → pas grave, le persona viendra des commentaires
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -235,6 +279,21 @@ export async function setCampaignLabel(
   return { ok: true };
 }
 
+// Thème d'un post Instagram — un seul thème par post (labels = [thème] ou []).
+export async function setPostLabel(postId: string, label: string | null) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  await supabase
+    .from("instagram_organic_posts")
+    .update({ labels: label ? [label] : [] })
+    .eq("id", postId)
+    .eq("user_id", user.id);
+  revalidatePath("/instagram");
+  revalidatePath("/labels");
+  return { ok: true };
+}
+
 // « Récupérer mes données » : déclenche le workflow GitHub Actions pour CET
 // utilisateur (fetch + republication du rapport). Fire-and-forget : les
 // données arrivent en base ~2-3 minutes plus tard.
@@ -270,8 +329,33 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
   if (r.status === 204) {
     return {
       ok: true,
-      message: "Mise à jour lancée — tes données arrivent dans 2-3 minutes, recharge ensuite.",
+      message: "Mise à jour lancée — je te préviens ici dès que c'est prêt.",
     };
   }
   return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
+}
+
+// État du dernier run du workflow (pour le suivi du bouton « Mes données »).
+export async function checkFetchStatus(): Promise<{
+  state: "pending" | "success" | "failure" | "unknown";
+}> {
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
+  if (!token) return { state: "unknown" };
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/runs?per_page=1`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        cache: "no-store",
+      }
+    );
+    if (!r.ok) return { state: "unknown" };
+    const run = (await r.json())?.workflow_runs?.[0];
+    if (!run) return { state: "unknown" };
+    if (run.status !== "completed") return { state: "pending" };
+    return { state: run.conclusion === "success" ? "success" : "failure" };
+  } catch {
+    return { state: "unknown" };
+  }
 }
