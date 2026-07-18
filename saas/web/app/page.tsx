@@ -50,7 +50,7 @@ function DeltaBadge({ delta, goodWhenUp }: { delta: number | null; goodWhenUp: b
 
 function KpiCard({ k }: { k: Kpi }) {
   return (
-    <div className="bg-white border border-line rounded-xl p-4">
+    <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
       <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
         {k.label}
       </div>
@@ -221,9 +221,15 @@ function RecoCard({
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5">
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-[10px] font-semibold text-muted bg-black/[0.06] rounded-full px-2 py-0.5">
-          Règle
-        </span>
+        {r.source === "ai" ? (
+          <span className="text-[10px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
+            IA · idée à tester
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-muted bg-black/[0.06] rounded-full px-2 py-0.5">
+            Règle
+          </span>
+        )}
         <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted">
           <span className="text-[13px] text-ink">{cf.symbol}</span>
           {cf.label}
@@ -265,6 +271,7 @@ export default async function Page() {
   const missionDef = data.objectif ? MISSIONS[data.objectif] : null;
   const inMission = (r: PayloadReco) =>
     !missionDef ||
+    r.platform === "ia" || // l'idée IA est personnalisée à la mission → toujours visible
     missionDef.keys.includes(r.key) ||
     missionDef.platforms.includes(r.platform);
   const recosMission = (report?.recos ?? []).filter(inMission);
@@ -362,9 +369,9 @@ export default async function Page() {
             </>
           )}
 
-          {/* Vue d'ensemble */}
+          {/* Vue d'ensemble — carrousel horizontal sur téléphone */}
           <SectionTitle>Vue d&apos;ensemble</SectionTitle>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+          <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-8 pb-1 sm:pb-0">
             {data.kpis.map((k) => (
               <KpiCard key={k.label} k={k} />
             ))}

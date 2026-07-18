@@ -125,8 +125,8 @@ export default async function CoutsPage() {
       </div>
 
       {/* Vue d'ensemble */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
-        <div className="bg-white border border-line rounded-xl p-4">
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-8 pb-1 sm:pb-0">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Dépensé
           </div>
@@ -138,7 +138,7 @@ export default async function CoutsPage() {
             {data.monthLabel.split(" ")[0]}
           </div>
         </div>
-        <div className="bg-white border border-line rounded-xl p-4">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Budget
           </div>
@@ -147,7 +147,7 @@ export default async function CoutsPage() {
           </div>
           <div className="text-[11px] text-faint mt-1">mensuel, tous canaux</div>
         </div>
-        <div className="bg-white border border-line rounded-xl p-4">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Reste
           </div>

@@ -1099,7 +1099,7 @@ def show_rapport(client, user_id: str, is_paid: bool = False):
                 "recos": [
                     {k: r.get(k) for k in (
                         "key", "platform", "title", "observation", "pourquoi",
-                        "verifier", "repere", "angle_mort", "confidence", "priority")}
+                        "verifier", "repere", "angle_mort", "confidence", "priority", "source")}
                     for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
                 ],
                 "themes": (

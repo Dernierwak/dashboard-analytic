@@ -30,6 +30,7 @@ export type PayloadReco = {
   angle_mort?: string;
   confidence: "solide" | "creuser" | "piste";
   priority: number;
+  source?: "rule" | "ai";
 };
 
 export type ThemeRow = { label: string; spend: number; rev: number };

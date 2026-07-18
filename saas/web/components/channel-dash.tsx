@@ -84,14 +84,14 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
           <Delta value={d.imprDelta} />
         </div>
       </div>
-      {/* Perf */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+      {/* Perf — carrousel horizontal sur téléphone */}
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-3 pb-1 sm:pb-0">
         {[
           { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false },
           { label: "Clics", value: fmtCHF(d.clicks), delta: d.clicksDelta, invert: false },
           { label: "CTR moyen", value: `${d.ctr.toFixed(2)} %`, delta: d.ctrDelta, invert: false },
         ].map((k) => (
-          <div key={k.label} className="bg-white border border-line rounded-xl p-4">
+          <div key={k.label} className="bg-white border border-line rounded-xl p-4 min-w-[180px] shrink-0 sm:min-w-0 sm:shrink">
             <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
               {k.label}
             </div>
@@ -100,14 +100,14 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
           </div>
         ))}
       </div>
-      {/* Coût — baisse = bon (vert) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Coût — baisse = bon (vert) · carrousel horizontal sur téléphone */}
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
         {[
           { label: "Dépensé", value: `${fmtCHF(d.spend)} CHF`, delta: d.spendDelta, invert: false },
           { label: "CPM moyen", value: d.cpm > 0 ? `${d.cpm.toFixed(2)} CHF` : "—", delta: d.cpm > 0 ? d.cpmDelta : null, invert: true },
           { label: "CPC moyen", value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—", delta: d.cpc > 0 ? d.cpcDelta : null, invert: true },
         ].map((k) => (
-          <div key={k.label} className="bg-white border border-line rounded-xl p-4">
+          <div key={k.label} className="bg-white border border-line rounded-xl p-4 min-w-[180px] shrink-0 sm:min-w-0 sm:shrink">
             <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
               {k.label}
             </div>

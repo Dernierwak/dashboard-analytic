@@ -331,6 +331,56 @@ def build_payload(sb, user_id: str) -> dict | None:
         if _top_todo:
             brief += f" Priorité n°1 : {_top_todo}."
 
+    # ── Reco IA : UNE suggestion générative en complément des règles ─────────
+    # Badge IA + confiance « piste » (c'est une idée à tester, pas un fait).
+    # Ne répète pas les conseils des règles ; JSON strict, sinon on s'en passe.
+    ai_reco = None
+    try:
+        import json as _json
+        camp_facts = ""
+        if not df_camp.empty:
+            top3 = df_camp.sort_values("spend", ascending=False).head(3)
+            camp_facts = " ; ".join(
+                f"{r['campaign_name']} ({r['spend']:.0f} CHF, CPC {r['cpc']:.2f})"
+                for _, r in top3.iterrows())
+        known = " ; ".join(r["title"] for r in rule_recos)
+        ai_raw = _call_gemini(
+            "Tu es un consultant marketing senior pour une PME suisse. "
+            f"Faits de la semaine : dépense pub {float(df_camp['spend'].sum()) if not df_camp.empty else 0:.0f} CHF, "
+            f"CTR {avg_ctr:.2f} %, abonnés Instagram {followers_delta:+d}, "
+            f"engagement moyen {avg_engagement:.1f} %. "
+            f"Campagnes principales : {camp_facts or 'aucune'}. "
+            f"Objectif du client : {obj_txt}. "
+            f"Conseils DÉJÀ donnés cette semaine (n'en répète aucun) : {known or 'aucun'}. "
+            "Propose UNE seule idée d'action originale, concrète et faisable cette semaine. "
+            "Réponds UNIQUEMENT avec un objet JSON (aucun texte autour) avec exactement ces clés : "
+            '{"title": "titre court", '
+            '"observation": "le fait chiffré qui motive cette idée — uniquement des chiffres fournis ci-dessus", '
+            '"pourquoi": "pourquoi ça peut marcher", '
+            '"verifier": "comment la tester à petite échelle avant de généraliser", '
+            '"angle_mort": "ce que cette idée ignore"}. '
+            "Français, ton direct, ne déforme aucun chiffre."
+        )
+        if ai_raw:
+            txt = ai_raw.strip()
+            if txt.startswith("```"):
+                txt = txt.strip("`")
+                txt = txt[4:] if txt.lower().startswith("json") else txt
+            data = _json.loads(txt.strip())
+            if all(data.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+                ai_reco = {
+                    "key": "ai", "platform": "ia",
+                    "title": str(data["title"])[:90],
+                    "observation": str(data["observation"]),
+                    "pourquoi": str(data["pourquoi"]),
+                    "verifier": str(data["verifier"]),
+                    "repere": "",
+                    "angle_mort": str(data["angle_mort"]),
+                    "confidence": "piste", "priority": 9, "source": "ai",
+                }
+    except Exception:
+        ai_reco = None
+
     _n_done = sum(1 for v in feedback.values() if v == "done")
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
@@ -490,9 +540,9 @@ def build_payload(sb, user_id: str) -> dict | None:
         "recos": [
             {k: r.get(k) for k in (
                 "key", "platform", "title", "observation", "pourquoi",
-                "verifier", "repere", "angle_mort", "confidence", "priority")}
+                "verifier", "repere", "angle_mort", "confidence", "priority", "source")}
             for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
-        ],
+        ] + ([ai_reco] if ai_reco else []),
         "themes": themes,
         "preuve": preuve,
     }

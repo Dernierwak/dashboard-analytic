@@ -353,8 +353,8 @@ export default async function InstagramPage({
 
       {/* ── TA PAGE ── */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">Ta page</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <div className="bg-white border border-line rounded-xl p-4">
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Abonnés
           </div>
@@ -371,7 +371,7 @@ export default async function InstagramPage({
             </div>
           )}
         </div>
-        <div className="bg-white border border-line rounded-xl p-4">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Croissance 30 j
           </div>
@@ -380,7 +380,7 @@ export default async function InstagramPage({
           </div>
           <div className="text-[11px] text-faint mt-1">nouveaux abonnés</div>
         </div>
-        <div className="bg-white border border-line rounded-xl p-4">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Engagement du compte
           </div>
@@ -398,7 +398,7 @@ export default async function InstagramPage({
           Tes moyennes par post{" "}
           <span className="text-faint font-normal">· tout l&apos;historique ({d.allPosts.length} posts)</span>
         </h2>
-        <div className="bg-white border border-line rounded-xl shadow-card px-5 py-4 flex items-center gap-6 flex-wrap">
+        <div className="bg-white border border-line rounded-xl shadow-card px-5 py-4 flex items-center gap-6 overflow-x-auto sm:flex-wrap">
           {[
             { label: "Portée", v: fmtCHF(d.histReach) },
             { label: "Vues", v: d.avgViews > 0 ? fmtCHF(d.avgViews) : "—" },
