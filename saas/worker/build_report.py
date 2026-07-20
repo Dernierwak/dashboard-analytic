@@ -251,6 +251,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # réappliqués à chaque régénération — un constat rejeté reste écarté.
     matrix = None
     constats: list = []
+    priority_labels: list = []
     try:
         hist_since = date(today.year, 1, 1)
         try:
@@ -261,7 +262,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         matrix = build_matrix(df_meta_raw, df_google,
                               df_insta if not df_insta.empty else None,
                               meta_cfg, goog_cfg, ga4_full, last_full_day)
-        constats = build_constats(matrix, fetch_insight_feedback(sb, user_id))
+        ins_fb = fetch_insight_feedback(sb, user_id)
+        # Thèmes prioritaires (max 3, choisis page Thèmes) — stockés dans
+        # insight_feedback sous la clé priority_label:<nom> : le client ne peut
+        # pas tout travailler, l'analyse se concentre sur ses priorités.
+        priority_labels = sorted({
+            k.split(":", 1)[1] for k, v in ins_fb.items()
+            if k.startswith("priority_label:") and v == "agree" and ":" in k
+        })[:3]
+        constats = build_constats(matrix, ins_fb, priority_labels)
     except Exception:
         matrix, constats = None, []
 
@@ -339,6 +348,9 @@ def build_payload(sb, user_id: str) -> dict | None:
     _v_ok = [c for c in constats if c["status"] in ("agree", "new") and c["kind"] != "angle_mort"]
     _v_no = [c for c in constats if c["status"] == "reject"]
     vision_txt = ""
+    if priority_labels:
+        vision_txt += (" Thèmes PRIORITAIRES choisis par le client (concentre tes conseils "
+                       f"dessus, ignore le reste sauf urgence) : {', '.join(priority_labels)}.")
     if _v_ok:
         vision_txt += (" Vision long terme du compte (validée, appuie-toi dessus) : "
                        + " | ".join(f"{c['title']} — {c['detail']}" for c in _v_ok) + ".")
@@ -588,6 +600,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         vision = {
             "generated_at": today.isoformat(),
             "period_label": period_label,
+            "priorities": priority_labels,
             "constats": constats,
         }
     matrice = None

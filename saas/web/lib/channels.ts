@@ -681,17 +681,27 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
 
 export type LabelRowData = { name: string; meta: number; google: number; instagram: number };
 
-export async function getLabelsData(): Promise<{ email: string; rows: LabelRowData[] }> {
+export async function getLabelsData(): Promise<{
+  email: string;
+  rows: LabelRowData[];
+  priorities: string[]; // ≤ 3 thèmes prioritaires (insight_feedback priority_label:*)
+}> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const uid = user!.id;
 
-  const [labelsRes, metaRes, googleRes, instaRes] = await Promise.all([
+  const [labelsRes, metaRes, googleRes, instaRes, prioRes] = await Promise.all([
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
     supabase.from("meta_campaign_config").select("label").eq("user_id", uid),
     supabase.from("google_campaign_config").select("label").eq("user_id", uid),
     supabase.from("instagram_organic_posts").select("labels").eq("user_id", uid),
+    supabase.from("insight_feedback").select("insight_key")
+      .eq("user_id", uid).like("insight_key", "priority_label:%"),
   ]);
+  const priorities = (prioRes.data ?? [])
+    .map((r) => String(r.insight_key).split(":").slice(1).join(":"))
+    .filter(Boolean)
+    .slice(0, 3);
   const master = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
   const counts = new Map<string, LabelRowData>();
   const bump = (name: string | null, ch: "meta" | "google" | "instagram") => {
@@ -710,5 +720,5 @@ export async function getLabelsData(): Promise<{ email: string; rows: LabelRowDa
   );
   for (const [name, row] of counts) if (!master.includes(name)) rows.push(row);
 
-  return { email: user?.email ?? "", rows };
+  return { email: user?.email ?? "", rows, priorities };
 }

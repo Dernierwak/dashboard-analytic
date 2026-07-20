@@ -81,6 +81,47 @@ export async function saveInsightFeedback(
   return { ok: true };
 }
 
+// Thème prioritaire (max 3) — « on ne peut pas travailler sur tout » : le
+// moteur concentre constats et conseils sur ces thèmes, modifiables à tout
+// moment. Stocké dans insight_feedback (clé priority_label:<nom>) : zéro
+// migration, permanent, RLS own-rows.
+export async function togglePriorityLabel(
+  name: string,
+  active: boolean
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+
+  const key = `priority_label:${name}`;
+  if (active) {
+    await supabase
+      .from("insight_feedback")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("insight_key", key);
+  } else {
+    const existing = await supabase
+      .from("insight_feedback")
+      .select("insight_key")
+      .eq("user_id", user.id)
+      .like("insight_key", "priority_label:%");
+    if ((existing.data ?? []).length >= 3) {
+      return { ok: false, message: "3 priorités max — retire d'abord un thème." };
+    }
+    const r = await supabase.from("insight_feedback").upsert(
+      { user_id: user.id, insight_key: key, verdict: "agree" },
+      { onConflict: "user_id,insight_key" }
+    );
+    if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  }
+  revalidatePath("/labels");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // Objectif principal du compte ('ventes' | 'notoriete' | 'engagement' | null).
 // Re-pondère les conseils — pris en compte à la prochaine publication du rapport.
 export async function saveObjectif(objectif: string | null) {

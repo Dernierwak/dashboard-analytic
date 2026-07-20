@@ -34,6 +34,14 @@ export default async function LabelsPage() {
             manuels ne sont jamais réécrits.
           </span>
         </div>
+        <p className="text-[11.5px] text-faint mt-2 leading-relaxed">
+          ★ Marque jusqu&apos;à <span className="font-semibold text-ink">3 thèmes
+          prioritaires</span> — on ne peut pas tout travailler : les constats et les
+          conseils se concentrent dessus. Tu peux en changer quand tu veux.
+          {data.priorities.length > 0 && (
+            <span className="text-warn font-semibold"> Priorités : {data.priorities.join(" · ")}</span>
+          )}
+        </p>
       </div>
 
       <CreateLabel />
@@ -49,7 +57,7 @@ export default async function LabelsPage() {
       ) : (
         <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
           {data.rows.map((row) => (
-            <LabelRow key={row.name} row={row} />
+            <LabelRow key={row.name} row={row} priority={data.priorities.includes(row.name)} />
           ))}
         </div>
       )}

@@ -22,8 +22,10 @@ function ConstatRow({ c, verdict }: { c: VisionConstat; verdict: string | null }
   const [pending, startTransition] = useTransition();
   const isAngleMort = c.kind === "angle_mort";
 
+  // Mobile d'abord : texte pleine largeur, boutons EN DESSOUS (jamais sur le
+  // côté — sur téléphone ils écrasaient le texte).
   return (
-    <div className="px-5 py-3.5">
+    <div className="px-4 sm:px-5 py-3.5">
       <div className="flex items-start gap-3">
         <span
           className={`text-[15px] leading-snug ${c.kind === "theme_worst" ? "text-warn" : isAngleMort ? "text-faint" : "text-brand"}`}
@@ -43,41 +45,41 @@ function ConstatRow({ c, verdict }: { c: VisionConstat; verdict: string | null }
               </>
             )}
           </p>
+          {!isAngleMort && (
+            <div className="flex items-center gap-2 flex-wrap mt-2.5">
+              <button
+                disabled={pending}
+                onClick={() =>
+                  startTransition(async () => {
+                    await saveInsightFeedback(c.key, "agree", verdict === "agree");
+                  })
+                }
+                className={`text-[11.5px] font-semibold rounded-full border px-3 py-1.5 transition-colors disabled:opacity-50 ${
+                  verdict === "agree"
+                    ? "bg-pos text-white border-pos"
+                    : "border-line text-muted hover:bg-black/[0.03] bg-white"
+                }`}
+              >
+                ✓ Ça me parle
+              </button>
+              <button
+                disabled={pending}
+                onClick={() =>
+                  startTransition(async () => {
+                    await saveInsightFeedback(c.key, "reject", verdict === "reject");
+                  })
+                }
+                className={`text-[11.5px] font-semibold rounded-full border px-3 py-1.5 transition-colors disabled:opacity-50 ${
+                  verdict === "reject"
+                    ? "bg-faint text-white border-faint"
+                    : "border-line text-muted hover:bg-black/[0.03] bg-white"
+                }`}
+              >
+                ✗ Pas d&apos;accord
+              </button>
+            </div>
+          )}
         </div>
-        {!isAngleMort && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  await saveInsightFeedback(c.key, "agree", verdict === "agree");
-                })
-              }
-              className={`text-[11px] font-semibold rounded-full border px-2.5 py-1 transition-colors disabled:opacity-50 ${
-                verdict === "agree"
-                  ? "bg-pos text-white border-pos"
-                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
-              }`}
-            >
-              ✓ Ça me parle
-            </button>
-            <button
-              disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  await saveInsightFeedback(c.key, "reject", verdict === "reject");
-                })
-              }
-              className={`text-[11px] font-semibold rounded-full border px-2.5 py-1 transition-colors disabled:opacity-50 ${
-                verdict === "reject"
-                  ? "bg-faint text-white border-faint"
-                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
-              }`}
-            >
-              ✗ Pas d&apos;accord
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -99,15 +101,23 @@ export function VisionCard({
 
   return (
     <section className="mb-8">
-      <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
-        <h2 className="text-[14px] font-semibold text-ink">
-          ◈ Ce qui fonctionne pour toi
-        </h2>
-        <span className="text-[11px] text-faint">
-          calculé sur tout ton historique
-          {vision.period_label ? ` · ${vision.period_label}` : ""} — valide ou écarte
-          chaque constat, les conseils s&apos;appuient dessus
-        </span>
+      <div className="mb-3">
+        <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1">
+          <h2 className="text-[14px] font-semibold text-ink">
+            ◈ Ce qui fonctionne pour toi
+          </h2>
+          <span className="text-[11px] text-faint">
+            tout ton historique{vision.period_label ? ` · ${vision.period_label}` : ""}
+          </span>
+        </div>
+        <p className="text-[11.5px] text-faint mt-0.5">
+          Valide ou écarte chaque constat — les conseils s&apos;appuient dessus.
+          {(vision.priorities?.length ?? 0) > 0 && (
+            <span className="text-warn font-semibold">
+              {" "}★ Priorités : {vision.priorities!.join(" · ")}
+            </span>
+          )}
+        </p>
       </div>
       <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
         {visible.map((c) => (

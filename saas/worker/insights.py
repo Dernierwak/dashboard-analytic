@@ -29,6 +29,7 @@ C_SEUILS = {
     "camp_spend_min": 50.0,     # locomotive : ≥ 50 CHF dépensés
     "camp_roas_min": 1.5,       # ...et ROAS ≥ 1.5 (avec GA4)
     "camp_ctr_boost": 1.5,      # ...ou CTR ≥ 1.5× la moyenne pub (sans GA4)
+    "theme_best_roas_min": 0.5, # un « moteur » exige un ROAS qui veut dire quelque chose
 }
 
 
@@ -233,9 +234,12 @@ def _constat(key, kind, title, detail, feedback) -> dict:
             "status": feedback.get(key, "new")}
 
 
-def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None) -> list[dict]:
+def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
+                   priority_labels: list[str] | None = None) -> list[dict]:
     """3-5 constats déterministes tirés de la matrice, clés stables normalisées.
-    Le verdict du client (agree/reject) est réappliqué à chaque régénération."""
+    Le verdict du client (agree/reject) est réappliqué à chaque régénération.
+    priority_labels : les ≤ 3 thèmes choisis par le client — quand ils existent,
+    les constats thèmes/campagnes se concentrent dessus (on ne travaille pas tout)."""
     if not matrix:
         return []
     fb = insight_feedback or {}
@@ -244,11 +248,27 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None)
     period_txt = f"sur {period_days} jours d'historique"
     has_ga4 = matrix["coverage"]["ga4"]
 
+    # Focus priorités : si le client a choisi ses thèmes, on juge CEUX-LÀ
+    # (repli sur tout si aucun thème prioritaire n'a de données).
+    prios = {_norm(p) for p in (priority_labels or [])}
+
+    def _focus(items, label_of):
+        if not prios:
+            return items
+        hit = [x for x in items if _norm(label_of(x)) in prios]
+        return hit or items
+
     # 1) Meilleur thème — ROAS (GA4) sinon CTR (pub) sinon engagement (organique)
-    themes = matrix["themes"]
+    themes = _focus(matrix["themes"], lambda t: t["label"])
+    # Un thème dont on SAIT qu'il ne rapporte rien ne peut pas être « ton moteur »
+    # (sinon theme_best et theme_worst couronnent le même thème).
+    def _proven_zero(t):
+        return has_ga4 and t["spend"] >= C_SEUILS["theme_spend_min"] and (t.get("revenue") or 0) == 0
     best_t = None
     if has_ga4:
-        cands = [t for t in themes if t.get("roas") is not None]
+        cands = [t for t in themes
+                 if t.get("roas") is not None and (t.get("revenue") or 0) > 0
+                 and t["roas"] >= C_SEUILS["theme_best_roas_min"]]
         if cands:
             best_t = max(cands, key=lambda t: t["roas"])
             out.append(_constat(
@@ -257,17 +277,22 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None)
                 f"{best_t['spend']:.0f} CHF investis → {best_t['revenue']:.0f} CHF attribués "
                 f"(ROAS {best_t['roas']:.1f}) {period_txt}.", fb))
     if best_t is None:
-        cands = [t for t in themes if t["spend"] >= C_SEUILS["theme_spend_min"] and t.get("ctr")]
+        cands = [t for t in themes
+                 if t["spend"] >= C_SEUILS["theme_spend_min"] and t.get("ctr")
+                 and not _proven_zero(t)]
         if cands:
             best_t = max(cands, key=lambda t: t["ctr"])
+            _why = ("(pas assez de revenu attribué pour juger au ROAS)" if has_ga4
+                    else "(revenu inconnu tant que Google Analytics est muet)")
             out.append(_constat(
                 f"theme_best:{_slug(best_t['label'])}", "theme_best",
                 f"Le thème « {best_t['label']} » attire le plus de clics",
                 f"CTR {best_t['ctr']:.1f} % pour {best_t['spend']:.0f} CHF investis {period_txt} "
-                "(revenu inconnu tant que Google Analytics est muet).", fb))
+                f"{_why}.", fb))
     if best_t is None:
         cands = [t for t in themes
-                 if t["posts"] >= C_SEUILS["theme_posts_min"] and t.get("eng_avg")]
+                 if t["posts"] >= C_SEUILS["theme_posts_min"] and t.get("eng_avg")
+                 and not _proven_zero(t)]
         if cands:
             best_t = max(cands, key=lambda t: t["eng_avg"])
             out.append(_constat(
@@ -313,7 +338,8 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None)
             "moment — ton créneau le plus régulier.", fb))
 
     # 5) Campagne locomotive (revenu max avec GA4, sinon CTR nettement au-dessus)
-    camps = matrix["campaigns"]
+    # — dans les thèmes prioritaires si le client en a choisi
+    camps = _focus(matrix["campaigns"], lambda c: c.get("label"))
     loco = None
     if has_ga4:
         cands = [c for c in camps
@@ -324,8 +350,9 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None)
             det = (f"{loco['revenue']:.0f} CHF attribués pour {loco['spend']:.0f} CHF investis "
                    f"(ROAS {loco['revenue'] / loco['spend']:.1f}) {period_txt}.")
     if loco is None:
-        tot_clicks = sum(c["clicks"] for c in camps)
-        tot_impr = sum(c["impressions"] for c in camps)
+        # moyenne pub calculée sur TOUTES les campagnes (pas le sous-ensemble focus)
+        tot_clicks = sum(c["clicks"] for c in matrix["campaigns"])
+        tot_impr = sum(c["impressions"] for c in matrix["campaigns"])
         pub_ctr = tot_clicks / tot_impr * 100 if tot_impr > 0 else 0
         cands = [c for c in camps
                  if c["spend"] >= C_SEUILS["camp_spend_min"] and pub_ctr > 0

@@ -23,20 +23,33 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.app_secrets import secret  # noqa: E402
+from scripts.fetch_data import _all_pages  # noqa: E402
 
 _CHUNK = 80          # items max par appel Gemini
 _MAX_NEW_THEMES = 5  # nouveaux thèmes max par appel (sinon la liste explose)
 
 
-def call_gemini_json(prompt: str, timeout: int = 45) -> dict | None:
-    """Appel Gemini avec réponse JSON attendue. None si pas de clé / échec / JSON invalide."""
+def call_gemini_json(prompt: str, timeout: int = 90) -> dict | None:
+    """Appel Gemini avec réponse JSON attendue. None si pas de clé / échec / JSON invalide.
+
+    thinkingBudget 0 : classer par thème n'a pas besoin de « réflexion » — sans ça,
+    2.5-flash brûle ~8k jetons de thinking par batch (10× le coût, parfois > 45 s).
+    responseMimeType json : sortie JSON native, plus de fences à nettoyer (on garde
+    le nettoyage en repli).
+    """
     api_key = secret("gemini.api_key")
     if not api_key:
         return None
     try:
         resp = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-            json={"contents": [{"parts": [{"text": prompt}]}]},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
+            },
             timeout=timeout,
         )
         txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -81,11 +94,13 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
         except Exception:
             posts = []
 
-    # Campagnes Meta : noms distincts depuis les insights, croisés avec la config
+    # Campagnes Meta : noms distincts depuis les insights (PAGINÉ — Supabase
+    # tronque à 1000 lignes, ce qui faisait rater des campagnes), croisés config
     meta_names: set[str] = set()
     try:
-        rows = (sb.table("meta_ads_insights").select("campaign_name")
-                .eq("user_id", user_id).execute().data) or []
+        rows = _all_pages(lambda: sb.table("meta_ads_insights")
+                          .select("campaign_name").eq("user_id", user_id)
+                          .order("date_start", desc=True))
         meta_names = {r["campaign_name"] for r in rows if r.get("campaign_name")}
     except Exception:
         pass
@@ -98,11 +113,12 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
     except Exception:
         pass
 
-    # Campagnes Google : ids distincts depuis les insights, noms via la config
+    # Campagnes Google : ids distincts depuis les insights (paginé, même raison)
     goog_ids: set[str] = set()
     try:
-        rows = (sb.table("google_ads_insights").select("campaign_id")
-                .eq("user_id", user_id).execute().data) or []
+        rows = _all_pages(lambda: sb.table("google_ads_insights")
+                          .select("campaign_id").eq("user_id", user_id)
+                          .order("date_start", desc=True))
         goog_ids = {str(r["campaign_id"]) for r in rows if r.get("campaign_id")}
     except Exception:
         pass
@@ -120,10 +136,11 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
         if (p.get("labels") or []) or not _is_ai_editable(p.get("label_source")):
             continue
         caption = str(p.get("caption") or "").strip()
-        if not caption:  # rien à classer sans texte
-            continue
+        # Sans légende, l'IA classe au format/contexte (souvent un thème générique) —
+        # mieux qu'un post invisible pour toujours dans l'angle mort de couverture.
+        desc = f"\"{caption[:120]}\"" if caption else "(sans légende)"
         candidates.append({"kind": "post", "id": p["id"],
-                           "desc": f"[{p.get('type') or 'POST'}] \"{caption[:120]}\""})
+                           "desc": f"[{p.get('type') or 'POST'}] {desc}"})
     for name in sorted(meta_names):
         cfg = meta_cfg.get(name, {})
         if cfg.get("label") or not _is_ai_editable(cfg.get("label_source")):
@@ -197,6 +214,17 @@ def auto_label(sb, user_id: str) -> str:
             if t not in known:
                 known.append(t)
                 created.append(t)
+    # Seconde passe : Gemini oublie parfois des numéros dans un gros batch —
+    # on relance UNE fois sur les oubliés (couverture complète demandée).
+    missed = [c for c in candidates if f"{c['kind']}::{c['id']}" not in assignments]
+    if missed and assignments:
+        for i in range(0, len(missed), _CHUNK):
+            assign, new_themes = _classify_chunk(missed[i:i + _CHUNK], known)
+            assignments.update(assign)
+            for t in new_themes:
+                if t not in known:
+                    known.append(t)
+                    created.append(t)
     if not assignments:
         return "labels: Gemini n'a rien renvoyé d'exploitable"
 

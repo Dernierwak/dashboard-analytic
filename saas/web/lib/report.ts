@@ -48,6 +48,7 @@ export type VisionConstat = {
 export type VisionBlock = {
   generated_at: string;
   period_label: string; // « depuis le 1 jan »
+  priorities?: string[]; // ≤ 3 thèmes prioritaires choisis page Thèmes
   constats: VisionConstat[];
 };
 

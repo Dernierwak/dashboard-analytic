@@ -25,16 +25,32 @@ def fetch_meta_ads_latest_date(supabase: Client, user_id: str) -> str | None:
     return None
 
 
+def _all_pages(make_query, page: int = 1000) -> list[dict]:
+    """Contourne le plafond PostgREST (1000 lignes/requête) en paginant.
+    make_query() doit retourner un query builder FRAIS à chaque appel."""
+    rows: list[dict] = []
+    start = 0
+    while True:
+        chunk = make_query().range(start, start + page - 1).execute().data or []
+        rows.extend(chunk)
+        if len(chunk) < page:
+            return rows
+        start += page
+
+
 def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) -> list[dict]:
     """Récupère les données Meta Ads pour un utilisateur.
     Si months est fourni, filtre depuis les X derniers mois. Sinon, tout l'historique.
     Le dashboard a son propre filtre période côté UI — donc on récupère tout par défaut.
+    Paginé : sans ça, Supabase tronque silencieusement à 1000 lignes.
     """
-    query = supabase.table("meta_ads_insights").select("*").eq("user_id", user_id)
-    if months is not None:
-        since = (date.today() - timedelta(days=30 * months)).isoformat()
-        query = query.gte("date_start", since)
-    return query.order("date_start", desc=True).execute().data
+    def q():
+        query = supabase.table("meta_ads_insights").select("*").eq("user_id", user_id)
+        if months is not None:
+            since = (date.today() - timedelta(days=30 * months)).isoformat()
+            query = query.gte("date_start", since)
+        return query.order("date_start", desc=True)
+    return _all_pages(q)
 
 
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
@@ -143,14 +159,13 @@ def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
 # ── Google Ads ────────────────────────────────────────────────────────────────
 
 def fetch_google_ads(supabase: Client, user_id: str) -> list[dict]:
-    """Récupère tous les insights Google Ads pour un user (sans filtre date — le filtre se fait côté UI)."""
-    return (
-        supabase.table("google_ads_insights")
+    """Récupère tous les insights Google Ads pour un user (sans filtre date — le filtre
+    se fait côté UI). Paginé : sans ça, Supabase tronque silencieusement à 1000 lignes."""
+    return _all_pages(
+        lambda: supabase.table("google_ads_insights")
         .select("*")
         .eq("user_id", user_id)
         .order("date_start", desc=True)
-        .execute()
-        .data
     )
 
 

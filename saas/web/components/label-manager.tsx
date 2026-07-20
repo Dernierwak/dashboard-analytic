@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createLabel, renameLabel, deleteLabel } from "@/app/actions";
+import { createLabel, renameLabel, deleteLabel, togglePriorityLabel } from "@/app/actions";
 import type { LabelRowData } from "@/lib/channels";
 
 export function CreateLabel() {
@@ -46,7 +46,7 @@ export function CreateLabel() {
   );
 }
 
-export function LabelRow({ row }: { row: LabelRowData }) {
+export function LabelRow({ row, priority }: { row: LabelRowData; priority: boolean }) {
   const [mode, setMode] = useState<"view" | "rename" | "confirm-delete">("view");
   const [newName, setNewName] = useState(row.name);
   const [message, setMessage] = useState<string | null>(null);
@@ -56,6 +56,22 @@ export function LabelRow({ row }: { row: LabelRowData }) {
 
   return (
     <div className="flex items-center gap-3 px-5 py-3.5 flex-wrap">
+      {/* ★ Prioritaire (max 3) — le moteur concentre ses conseils dessus */}
+      <button
+        disabled={pending}
+        title={priority ? "Retirer des priorités" : "Marquer prioritaire (3 max)"}
+        onClick={() =>
+          startTransition(async () => {
+            const r = await togglePriorityLabel(row.name, priority);
+            setMessage(r.ok ? null : r.message ?? null);
+          })
+        }
+        className={`text-[16px] leading-none transition-colors disabled:opacity-50 ${
+          priority ? "text-warn" : "text-line hover:text-warn/60"
+        }`}
+      >
+        {priority ? "★" : "☆"}
+      </button>
       {mode === "rename" ? (
         <input
           value={newName}
