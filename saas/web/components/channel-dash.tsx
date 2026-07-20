@@ -361,6 +361,7 @@ export function CampaignTable({
                     campaignName={c.name}
                     current={c.label}
                     labels={d.labels}
+                    source={c.labelSource}
                   />
                 </SummaryStop>
                 <Nums

@@ -122,6 +122,7 @@ export type Campaign = {
   key: string;   // meta : campaign_name · google : campaign_id
   name: string;
   label: string | null;
+  labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
   status: string | null;
   spend: number;
   clicks: number;
@@ -190,7 +191,7 @@ type RawAd = {
   reach: number;
 };
 
-type Cfg = Map<string, { name: string; label: string | null; status: string | null }>;
+type Cfg = Map<string, { name: string; label: string | null; labelSource: string | null; status: string | null }>;
 
 function buildDash(
   rows: RawAd[],
@@ -296,6 +297,7 @@ function buildDash(
         key,
         name: conf?.name || key,
         label: conf?.label ?? null,
+        labelSource: conf?.labelSource ?? null,
         status: conf?.status ?? null,
         spend: c.spend,
         clicks: c.clicks,
@@ -371,8 +373,9 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
     supabase.from("meta_ads_insights")
       .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
+    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
     supabase.from("meta_campaign_config")
-      .select("campaign_name, label, effective_status").eq("user_id", uid),
+      .select("*").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
   ]);
 
@@ -389,7 +392,12 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
   const cfg: Cfg = new Map(
     (cfgRes.data ?? []).map((c) => [
       String(c.campaign_name),
-      { name: String(c.campaign_name), label: (c.label as string | null) ?? null, status: (c.effective_status as string | null) ?? null },
+      {
+        name: String(c.campaign_name),
+        label: (c.label as string | null) ?? null,
+        labelSource: (c.label_source as string | null) ?? null,
+        status: (c.effective_status as string | null) ?? null,
+      },
     ])
   );
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
@@ -411,8 +419,9 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     supabase.from("google_ads_ad_insights")
       .select("date_start, campaign_id, ad_group_name, ad_name, cost_micros, clicks, impressions")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
+    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
     supabase.from("google_campaign_config")
-      .select("campaign_id, campaign_name, label, effective_status").eq("user_id", uid),
+      .select("*").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
   ]);
 
@@ -443,6 +452,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
       {
         name: (c.campaign_name as string) || `Campagne ${c.campaign_id}`,
         label: (c.label as string | null) ?? null,
+        labelSource: (c.label_source as string | null) ?? null,
         status: (c.effective_status as string | null) ?? null,
       },
     ])
@@ -467,6 +477,7 @@ export type InstaPost = {
   saved: number;
   eng: number;       // %
   labels: string[];
+  labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
 };
 
 export type FormatStat = { type: string; count: number; avgReach: number; avgEng: number };
@@ -518,8 +529,9 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const days = periodDays(sp);
 
   const [postsRes, followsRes, labelsRes] = await Promise.all([
+    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
     supabase.from("instagram_organic_posts")
-      .select("id, date, type, caption, media_url, reach, views, likes, comments, saved, labels")
+      .select("*")
       .eq("user_id", uid).order("date", { ascending: false }).limit(600),
     supabase.from("followers_history")
       .select("fetched_at, followers")
@@ -543,6 +555,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
       likes, comments, saved,
       eng: reach > 0 ? ((likes + comments + saved) / reach) * 100 : 0,
       labels: ((p.labels as string[] | null) ?? []),
+      labelSource: ((p as Record<string, unknown>).label_source as string | null) ?? null,
     };
   });
   const follows = followsRes.data ?? [];

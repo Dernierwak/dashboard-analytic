@@ -51,6 +51,36 @@ export async function saveRecoFeedback(recoKey: string, reaction: Reaction, acti
   return { ok: true };
 }
 
+// Verdict sur un constat de la vision globale (« ✓ Ça me parle » / « ✗ Pas
+// d'accord »). Permanent (pas de notion de semaine) : un constat rejeté reste
+// écarté même quand le worker le régénère. Re-cliquer le même verdict le retire.
+export async function saveInsightFeedback(
+  insightKey: string,
+  verdict: "agree" | "reject",
+  active: boolean
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+
+  if (active) {
+    await supabase
+      .from("insight_feedback")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("insight_key", insightKey);
+  } else {
+    await supabase.from("insight_feedback").upsert(
+      { user_id: user.id, insight_key: insightKey, verdict },
+      { onConflict: "user_id,insight_key" }
+    );
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // Objectif principal du compte ('ventes' | 'notoriete' | 'engagement' | null).
 // Re-pondère les conseils — pris en compte à la prochaine publication du rapport.
 export async function saveObjectif(objectif: string | null) {
@@ -262,17 +292,31 @@ export async function setCampaignLabel(
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false };
+  // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
+  // (repli sans la colonne si la migration n'est pas encore passée)
   if (channel === "meta") {
-    await supabase.from("meta_campaign_config").upsert(
-      { user_id: user.id, campaign_name: key, label },
+    const r = await supabase.from("meta_campaign_config").upsert(
+      { user_id: user.id, campaign_name: key, label, label_source: "user" },
       { onConflict: "user_id,campaign_name" }
     );
+    if (r.error) {
+      await supabase.from("meta_campaign_config").upsert(
+        { user_id: user.id, campaign_name: key, label },
+        { onConflict: "user_id,campaign_name" }
+      );
+    }
     revalidatePath("/meta");
   } else {
-    await supabase.from("google_campaign_config").upsert(
-      { user_id: user.id, campaign_id: key, campaign_name: campaignName, label },
+    const r = await supabase.from("google_campaign_config").upsert(
+      { user_id: user.id, campaign_id: key, campaign_name: campaignName, label, label_source: "user" },
       { onConflict: "user_id,campaign_id" }
     );
+    if (r.error) {
+      await supabase.from("google_campaign_config").upsert(
+        { user_id: user.id, campaign_id: key, campaign_name: campaignName, label },
+        { onConflict: "user_id,campaign_id" }
+      );
+    }
     revalidatePath("/google");
   }
   revalidatePath("/labels");
@@ -284,11 +328,20 @@ export async function setPostLabel(postId: string, label: string | null) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false };
-  await supabase
+  // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
+  // (repli sans la colonne si la migration n'est pas encore passée)
+  const r = await supabase
     .from("instagram_organic_posts")
-    .update({ labels: label ? [label] : [] })
+    .update({ labels: label ? [label] : [], label_source: "user" })
     .eq("id", postId)
     .eq("user_id", user.id);
+  if (r.error) {
+    await supabase
+      .from("instagram_organic_posts")
+      .update({ labels: label ? [label] : [] })
+      .eq("id", postId)
+      .eq("user_id", user.id);
+  }
   revalidatePath("/instagram");
   revalidatePath("/labels");
   return { ok: true };
@@ -330,6 +383,47 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
     return {
       ok: true,
       message: "Mise à jour lancée — je te préviens ici dès que c'est prêt.",
+    };
+  }
+  return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
+}
+
+// « ✨ Classer mes contenus » : labellisation IA de tous les posts/campagnes
+// sans thème + republication du rapport — via le même workflow GitHub Actions,
+// en mode label_only (pas de re-fetch réseau, ~1 min).
+export async function triggerClassify(): Promise<{ ok: boolean; message: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
+  if (!token) {
+    return {
+      ok: false,
+      message:
+        "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
+    };
+  }
+
+  const r = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: "main", inputs: { user_id: user.id, label_only: true } }),
+    }
+  );
+  if (r.status === 204) {
+    return {
+      ok: true,
+      message: "Classement lancé — l'IA labellise tes contenus, ~1 minute.",
     };
   }
   return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };

@@ -33,9 +33,11 @@ from scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
+    fetch_insight_feedback,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
 from components.reco_engine import build_recos, KEY_LABELS, OBJECTIFS  # noqa: E402
+from saas.worker.insights import build_matrix, build_constats  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -236,6 +238,33 @@ def build_payload(sb, user_id: str) -> dict | None:
     except Exception:
         ga4_ctx = None
 
+    # ── Configs campagnes (labels) — servent la matrice ET le bloc thèmes ─────
+    try:
+        meta_cfg = fetch_campaign_config(sb, user_id) or {}
+        goog_cfg = {str(k): v for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
+    except Exception:
+        meta_cfg, goog_cfg = {}, {}
+
+    # ── Vision globale : matrice full-history + constats validables ──────────
+    # Toute la profondeur disponible (Ads depuis le 1er janvier, posts stockés),
+    # pas la fenêtre 7 jours. Les verdicts du client (insight_feedback) sont
+    # réappliqués à chaque régénération — un constat rejeté reste écarté.
+    matrix = None
+    constats: list = []
+    try:
+        hist_since = date(today.year, 1, 1)
+        try:
+            from components.ga4 import build_ga4_context as _bgc_full
+            ga4_full = _bgc_full(sb, user_id, hist_since, last_full_day)
+        except Exception:
+            ga4_full = None
+        matrix = build_matrix(df_meta_raw, df_google,
+                              df_insta if not df_insta.empty else None,
+                              meta_cfg, goog_cfg, ga4_full, last_full_day)
+        constats = build_constats(matrix, fetch_insight_feedback(sb, user_id))
+    except Exception:
+        matrix, constats = None, []
+
     rule_recos = build_recos(
         df_camp=df_camp if not df_camp.empty else None,
         avg_ctr=avg_ctr,
@@ -245,6 +274,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         ga4=ga4_ctx,
         objectif=objectif,
         feedback=feedback,
+        vision=constats,
     )
 
     # ── Verdict déterministe (même logique que le rapport) ───────────────────
@@ -304,6 +334,17 @@ def build_payload(sb, user_id: str) -> dict | None:
         f"La priorité n°1 de la semaine (déjà calculée, ne la change pas) : {_top_todo}. "
         if _top_todo else ""
     )
+    # La vision globale cadre l'IA : elle s'appuie sur ce que le client a validé,
+    # jamais sur ce qu'il a rejeté.
+    _v_ok = [c for c in constats if c["status"] in ("agree", "new") and c["kind"] != "angle_mort"]
+    _v_no = [c for c in constats if c["status"] == "reject"]
+    vision_txt = ""
+    if _v_ok:
+        vision_txt += (" Vision long terme du compte (validée, appuie-toi dessus) : "
+                       + " | ".join(f"{c['title']} — {c['detail']}" for c in _v_ok) + ".")
+    if _v_no:
+        vision_txt += (" Constats REJETÉS par le client (ne t'appuie JAMAIS dessus) : "
+                       + " | ".join(c["title"] for c in _v_no) + ".")
     brief = _call_gemini(
         "Tu es un consultant marketing pour une PME. Rédige le brief de la semaine en "
         "3 phrases maximum (français, ton concret et direct, pas de guillemets) : "
@@ -312,7 +353,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         "3) termine par la priorité n°1, formulée simplement. "
         "Vocabulaire précis exigé : un ROAS sous 1 se dit « inférieur à 1 », "
         "jamais « négatif » ; ne déforme aucun chiffre fourni. "
-        f"Objectif principal du compte : {obj_txt}.{fb_txt} "
+        f"Objectif principal du compte : {obj_txt}.{fb_txt}{vision_txt} "
         f"{_prio_line}"
         f"Données : abonnés {followers_delta:+d}, engagement {avg_engagement:.1f}%, "
         f"CTR {avg_ctr:.2f}%, dépense {total_spend:.0f} CHF. "
@@ -337,22 +378,47 @@ def build_payload(sb, user_id: str) -> dict | None:
     ai_reco = None
     try:
         import json as _json
-        camp_facts = ""
-        if not df_camp.empty:
-            top3 = df_camp.sort_values("spend", ascending=False).head(3)
-            camp_facts = " ; ".join(
-                f"{r['campaign_name']} ({r['spend']:.0f} CHF, CPC {r['cpc']:.2f})"
-                for _, r in top3.iterrows())
+        # Digest COMPLET de la matrice full-history : l'IA voit la totalité des
+        # campagnes et posts, pas un top 3 — sa suggestion peut porter sur
+        # n'importe lequel (couverture demandée par le client).
+        matrix_facts = ""
+        if matrix:
+            mcamps = matrix["campaigns"]
+            lines = [
+                f"{c['name']} [{c['channel']}] : {c['spend']:.0f} CHF, CPC {c['cpc']:.2f}, "
+                f"CTR {c['ctr']:.1f} %"
+                + (f", revenu {c['revenue']:.0f} CHF" if c.get("revenue") is not None else "")
+                + (f", thème {c['label']}" if c.get("label") else "")
+                for c in mcamps[:25]
+            ]
+            if len(mcamps) > 25:
+                _rest = mcamps[25:]
+                lines.append(f"+ {len(_rest)} autres campagnes ({sum(c['spend'] for c in _rest):.0f} CHF cumulés)")
+            th = " ; ".join(
+                f"{t['label']} ({t['spend']:.0f} CHF"
+                + (f", ROAS {t['roas']:.1f}" if t.get("roas") is not None else "")
+                + (f", {t['posts']} posts" if t.get("posts") else "") + ")"
+                for t in matrix["themes"][:8])
+            fm = " ; ".join(
+                f"{f['format']} ({f['posts']} posts, portée moy {f['reach_avg']:.0f})"
+                for f in matrix["formats"])
+            cov = matrix["coverage"]
+            matrix_facts = (
+                f" Historique complet ({matrix['period']['days']} jours) — tu vois la TOTALITÉ : "
+                f"{cov['campaigns_total']} campagnes et {cov['posts_total']} posts. "
+                f"Campagnes : {' | '.join(lines) or 'aucune'}. "
+                f"Thèmes : {th or 'aucun'}. Formats : {fm or 'aucun'}.")
         known = " ; ".join(r["title"] for r in rule_recos)
         ai_raw = _call_gemini(
             "Tu es un consultant marketing senior pour une PME suisse. "
             f"Faits de la semaine : dépense pub {float(df_camp['spend'].sum()) if not df_camp.empty else 0:.0f} CHF, "
             f"CTR {avg_ctr:.2f} %, abonnés Instagram {followers_delta:+d}, "
-            f"engagement moyen {avg_engagement:.1f} %. "
-            f"Campagnes principales : {camp_facts or 'aucune'}. "
+            f"engagement moyen {avg_engagement:.1f} %."
+            f"{matrix_facts}{vision_txt} "
             f"Objectif du client : {obj_txt}. "
             f"Conseils DÉJÀ donnés cette semaine (n'en répète aucun) : {known or 'aucun'}. "
-            "Propose UNE seule idée d'action originale, concrète et faisable cette semaine. "
+            "Propose UNE seule idée d'action originale, concrète et faisable cette semaine, "
+            "cohérente avec la vision long terme validée. "
             "Réponds UNIQUEMENT avec un objet JSON (aucun texte autour) avec exactement ces clés : "
             '{"title": "titre court", '
             '"observation": "le fait chiffré qui motive cette idée — uniquement des chiffres fournis ci-dessus", '
@@ -386,12 +452,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
 
     # ── Thèmes : dépense par label × revenu GA4 (même logique que le rapport) ─
+    # (meta_cfg / goog_cfg déjà chargés plus haut pour la matrice)
     themes = None
-    try:
-        meta_cfg = fetch_campaign_config(sb, user_id) or {}
-        goog_cfg = {str(k): v for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
-    except Exception:
-        meta_cfg, goog_cfg = {}, {}
     if ga4_ctx and ga4_ctx.get("by_campaign"):
         def _norm(s):
             return str(s or "").strip().lower()
@@ -514,10 +576,37 @@ def build_payload(sb, user_id: str) -> dict | None:
         if (outcomes or pending) else None
     )
 
+    # ── Vision + matrice compacte pour le payload ────────────────────────────
+    vision = None
+    if constats:
+        _p_since = matrix["period"]["since"] if matrix else None
+        try:
+            _d = date.fromisoformat(_p_since) if _p_since else None
+            period_label = (f"depuis le {_d.day} {MONTHS_FR[_d.month]}" if _d else "")
+        except Exception:
+            period_label = ""
+        vision = {
+            "generated_at": today.isoformat(),
+            "period_label": period_label,
+            "constats": constats,
+        }
+    matrice = None
+    if matrix:
+        matrice = {
+            "period": matrix["period"],
+            "themes": matrix["themes"][:6],
+            "formats": matrix["formats"][:6],
+            "campaigns": matrix["campaigns"][:6],
+            "slots": matrix["slots"][:3],
+            "coverage": matrix["coverage"],
+        }
+
     _all_clicks = total_clicks + g_clicks
     _all_impr = total_impr + g_impr
     return {
-        "version": 1,
+        "version": 2,
+        "vision": vision,
+        "matrice": matrice,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
             "spend": round(total_spend + g_spend, 2),

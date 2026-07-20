@@ -71,7 +71,9 @@ class OrganicInstagramm():
         insert_instagram_total_posts_id(supabase=self.supabase_client, user_id=self.supabase_user_id, total_posts_id=self.total_posts)
 
         is_paid = self.supabase_client.table("profiles").select("is_paid").eq("id", self.supabase_user_id).execute().data[0].get("is_paid", False)
-        self.limit = 50 if is_paid else 10
+        # 200 en payant : la matrice « tout l'historique » et la labellisation IA
+        # ont besoin de profondeur (le backfill se fait en plusieurs fetchs).
+        self.limit = 200 if is_paid else 10
         all_post_ids = df["id"][:self.limit].tolist()
 
         existing_rows = self.supabase_client.table("instagram_organic_posts").select("post_id").eq("user_id", self.supabase_user_id).execute().data
@@ -171,7 +173,7 @@ class OrganicInstagramm():
                     results.append({
                         "post_id": post_id,
                         "type": info.get("media_type"),
-                        "caption": info.get("caption", "")[:80],
+                        "caption": info.get("caption", "")[:500],  # assez pour labelliser par thème
                         "date": info.get("timestamp", ""),  # ISO complet (date + heure + tz)
                         "media_url": self._upload_image_to_storage(post_id, info.get("thumbnail_url") or info.get("media_url", "")),
                         "follows": metrics.get("follows", 0),
@@ -210,7 +212,7 @@ class OrganicInstagramm():
             results.append({
                 "post_id": post_id,
                 "type": info.get("media_type"),
-                "caption": info.get("caption", "")[:80],
+                "caption": info.get("caption", "")[:500],  # assez pour labelliser par thème
                 "date": info.get("timestamp", ""),
                 "media_url": self._upload_image_to_storage(
                     post_id, info.get("thumbnail_url") or info.get("media_url", "")),

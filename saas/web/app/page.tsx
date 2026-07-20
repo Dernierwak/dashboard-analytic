@@ -14,6 +14,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { Trajectoire } from "@/components/trajectoire";
+import { VisionCard } from "@/components/vision-card";
 import { getMissionData, MISSIONS } from "@/lib/mission";
 
 export const dynamic = "force-dynamic";
@@ -300,6 +301,12 @@ export default async function Page() {
 
       {/* Onboarding express — première visite (30 s, tout au clic) */}
       {!data.onboarded && <OnboardingCard />}
+
+      {/* Vision globale — ce qui fonctionne sur TOUT l'historique, à valider.
+          Les conseils hebdo (plus bas) s'ancrent sur les constats validés. */}
+      {report?.vision && report.vision.constats.length > 0 && (
+        <VisionCard vision={report.vision} insightFeedback={data.insightFeedback} />
+      )}
 
       {/* La Trajectoire — le chiffre de ta mission + tes actions sur la courbe */}
       {data.hasData && <Trajectoire m={mission} />}

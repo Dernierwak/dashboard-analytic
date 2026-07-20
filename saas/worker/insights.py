@@ -1,0 +1,360 @@
+"""Matrice full-history + constats de la vision globale — déterministe, zéro IA.
+
+La matrice croise TOUT l'historique disponible (Ads depuis le 1er janvier,
+posts Instagram stockés) par thème / format / campagne / créneau, avec le
+revenu GA4 quand il existe. Les constats (« Ce qui fonctionne pour toi »)
+en tirent 3-5 phrases chiffrées à clés STABLES : un constat rejeté par le
+client (insight_feedback) reste écarté quand il se régénère à l'identique.
+
+L'IA ne formule PAS les constats — pas d'hallucination sur des chiffres que
+le client va valider. Elle les reçoit ensuite comme contexte (brief + reco IA).
+"""
+
+from __future__ import annotations
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import pandas as pd  # noqa: E402
+
+from components.reco_engine import DAYS, HOURS, FORMAT_LABELS, SEUILS  # noqa: E402
+
+# Seuils anti-bruit des constats (cohérents avec SEUILS du moteur)
+C_SEUILS = {
+    "theme_spend_min": 100.0,   # un thème jugé sur ≥ 100 CHF dépensés
+    "theme_posts_min": 5,       # ...ou ≥ 5 posts (thème organique)
+    "format_posts_min": 5,      # format jugé sur ≥ 5 posts
+    "format_reach_boost": 1.2,  # ≥ +20 % vs la portée moyenne du compte
+    "camp_spend_min": 50.0,     # locomotive : ≥ 50 CHF dépensés
+    "camp_roas_min": 1.5,       # ...et ROAS ≥ 1.5 (avec GA4)
+    "camp_ctr_boost": 1.5,      # ...ou CTR ≥ 1.5× la moyenne pub (sans GA4)
+}
+
+
+def _norm(s) -> str:
+    return str(s or "").strip().lower()
+
+
+def _slug(s) -> str:
+    return _norm(s).replace(" ", "-")
+
+
+# ── Matrice ──────────────────────────────────────────────────────────────────
+
+def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
+                 ga4_full, last_full_day) -> dict | None:
+    """Vue agrégée de tout l'historique. None si aucune donnée exploitable.
+
+    df_meta_raw : meta_ads_insights complet (date_start, campaign_name, spend, …)
+    df_google   : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
+    df_insta    : instagram_organic_posts complet (date, type, reach, eng, labels, …)
+    meta_cfg    : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
+    ga4_full    : build_ga4_context sur TOUT l'historique (ou None)
+    """
+    campaigns: list[dict] = []
+    dates: list = []
+
+    # Meta : agrégat par campagne sur tout l'historique
+    if df_meta_raw is not None and not df_meta_raw.empty and "campaign_name" in df_meta_raw.columns:
+        m = df_meta_raw.copy()
+        for col in ("spend", "clicks", "impressions"):
+            if col in m.columns:
+                m[col] = pd.to_numeric(m[col], errors="coerce").fillna(0)
+        m["date_start"] = pd.to_datetime(m["date_start"], errors="coerce")
+        dates += [d.date() for d in (m["date_start"].min(), m["date_start"].max()) if pd.notna(d)]
+        agg = m.groupby("campaign_name", as_index=False).agg(
+            spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
+        for _, r in agg.iterrows():
+            campaigns.append({
+                "name": str(r["campaign_name"]), "channel": "meta",
+                "spend": float(r["spend"]), "clicks": int(r["clicks"]),
+                "impressions": int(r["impressions"]),
+                "label": (meta_cfg.get(r["campaign_name"], {}) or {}).get("label"),
+            })
+
+    # Google : agrégat par campagne sur tout l'historique
+    if df_google is not None and not df_google.empty and "campaign_id" in df_google.columns:
+        g = df_google.copy()
+        for col in ("cost_micros", "clicks", "impressions"):
+            if col in g.columns:
+                g[col] = pd.to_numeric(g[col], errors="coerce").fillna(0)
+        g["date_start"] = pd.to_datetime(g["date_start"], errors="coerce")
+        dates += [d.date() for d in (g["date_start"].min(), g["date_start"].max()) if pd.notna(d)]
+        g["_cid"] = g["campaign_id"].astype(str)
+        agg = g.groupby("_cid", as_index=False).agg(
+            spend=("cost_micros", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
+        for _, r in agg.iterrows():
+            cfg = goog_cfg.get(r["_cid"], {}) or {}
+            campaigns.append({
+                "name": cfg.get("campaign_name") or f"Campagne {r['_cid']}", "channel": "google",
+                "spend": float(r["spend"]) / 1_000_000.0, "clicks": int(r["clicks"]),
+                "impressions": int(r["impressions"]),
+                "label": cfg.get("label"),
+            })
+
+    # Revenu GA4 par campagne (matching nom normalisé, comme le bloc thèmes 7 j)
+    has_ga4 = bool(ga4_full and ga4_full.get("by_campaign"))
+    rev_by_name = {}
+    if has_ga4:
+        rev_by_name = {_norm(k): float((v or {}).get("revenue") or 0)
+                       for k, v in ga4_full["by_campaign"].items()}
+    for c in campaigns:
+        c["ctr"] = c["clicks"] / c["impressions"] * 100 if c["impressions"] > 0 else 0.0
+        c["cpc"] = c["spend"] / c["clicks"] if c["clicks"] > 0 else 0.0
+        c["revenue"] = rev_by_name.get(_norm(c["name"])) if has_ga4 else None
+    campaigns.sort(key=lambda c: -c["spend"])
+
+    # Instagram : formats, créneaux, posts par thème
+    formats: list[dict] = []
+    slots: list[dict] = []
+    posts_by_label: dict[str, dict] = {}
+    posts_total = 0
+    posts_labeled = 0
+    account_reach_avg = 0.0
+    if df_insta is not None and not df_insta.empty and "date" in df_insta.columns:
+        p = df_insta.copy()
+        for col in ("reach", "eng"):
+            if col in p.columns:
+                p[col] = pd.to_numeric(p[col], errors="coerce").fillna(0)
+        p["_dt"] = pd.to_datetime(p["date"], errors="coerce", utc=True)
+        dates += [d.date() for d in (p["_dt"].min(), p["_dt"].max()) if pd.notna(d)]
+        posts_total = len(p)
+        if "reach" in p.columns:
+            account_reach_avg = float(p["reach"].mean())
+        if "type" in p.columns and "reach" in p.columns:
+            # VIDEO et REEL se regroupent sous « Reel » AVANT l'agrégat
+            p["_fmt"] = p["type"].map(lambda t: FORMAT_LABELS.get(str(t), str(t)))
+            fa = p.groupby("_fmt").agg(posts=("reach", "count"), reach_avg=("reach", "mean"),
+                                       eng_avg=("eng", "mean") if "eng" in p.columns else ("reach", "mean"))
+            for fmt, r in fa.iterrows():
+                formats.append({
+                    "format": str(fmt),
+                    "posts": int(r["posts"]), "reach_avg": round(float(r["reach_avg"]), 1),
+                    "eng_avg": round(float(r["eng_avg"]), 2) if "eng" in p.columns else None,
+                })
+            formats.sort(key=lambda f: -f["posts"])
+        # Créneaux (même logique que la heatmap / _rule_creneau)
+        try:
+            d = p.dropna(subset=["_dt"]).copy()
+            d["_dt"] = d["_dt"].dt.tz_convert("Europe/Zurich")
+            if len(d) >= SEUILS["slot_total_min"] and any(int(h) > 0 for h in d["_dt"].dt.hour.unique()):
+                d["_dow"] = d["_dt"].dt.dayofweek
+                d["_slot"] = pd.cut(d["_dt"].dt.hour, bins=[0, 7, 10, 13, 16, 19, 24],
+                                    labels=range(6), right=False)
+                gsl = d.groupby(["_dow", "_slot"], observed=True)["reach"].agg(["count", "mean"])
+                gsl = gsl[gsl["count"] >= SEUILS["slot_cell_min"]]
+                for (dow, slot), r in gsl.sort_values("mean", ascending=False).head(5).iterrows():
+                    slots.append({"dow": int(dow), "slot": int(slot),
+                                  "posts": int(r["count"]), "reach_avg": round(float(r["mean"]), 1)})
+        except Exception:
+            pass
+        # Posts par thème
+        if "labels" in p.columns:
+            for _, r in p.iterrows():
+                lbls = r.get("labels") or []
+                if len(lbls) > 0:
+                    posts_labeled += 1
+                for lbl in lbls:
+                    a = posts_by_label.setdefault(lbl, {"posts": 0, "reach": 0.0, "eng": 0.0})
+                    a["posts"] += 1
+                    a["reach"] += float(r.get("reach") or 0)
+                    a["eng"] += float(r.get("eng") or 0)
+
+    if not campaigns and posts_total == 0:
+        return None
+
+    # Thèmes : dépense/clics/revenu (campagnes) + posts/portée/engagement (Instagram)
+    themes_map: dict[str, dict] = {}
+    for c in campaigns:
+        if not c["label"]:
+            continue
+        t = themes_map.setdefault(c["label"], {
+            "label": c["label"], "spend": 0.0, "clicks": 0, "revenue": 0.0 if has_ga4 else None,
+            "posts": 0, "reach_avg": None, "eng_avg": None, "_impr": 0})
+        t["spend"] += c["spend"]
+        t["clicks"] += c["clicks"]
+        t["_impr"] += c["impressions"]
+        if has_ga4 and c["revenue"] is not None:
+            t["revenue"] = (t["revenue"] or 0.0) + c["revenue"]
+    for lbl, a in posts_by_label.items():
+        t = themes_map.setdefault(lbl, {
+            "label": lbl, "spend": 0.0, "clicks": 0, "revenue": 0.0 if has_ga4 else None,
+            "posts": 0, "reach_avg": None, "eng_avg": None, "_impr": 0})
+        t["posts"] = a["posts"]
+        t["reach_avg"] = round(a["reach"] / a["posts"], 1) if a["posts"] else None
+        t["eng_avg"] = round(a["eng"] / a["posts"], 2) if a["posts"] else None
+    themes = []
+    for t in themes_map.values():
+        impr = t.pop("_impr")
+        t["ctr"] = round(t["clicks"] / impr * 100, 2) if impr > 0 else None
+        t["spend"] = round(t["spend"], 2)
+        t["roas"] = (round(t["revenue"] / t["spend"], 2)
+                     if has_ga4 and t["revenue"] is not None and t["spend"] >= C_SEUILS["theme_spend_min"]
+                     else None)
+        if t["revenue"] is not None:
+            t["revenue"] = round(t["revenue"], 2)
+        themes.append(t)
+    themes.sort(key=lambda t: -(t["spend"] or 0))
+
+    for c in campaigns:
+        c["spend"] = round(c["spend"], 2)
+        c["ctr"] = round(c["ctr"], 2)
+        c["cpc"] = round(c["cpc"], 2)
+        if c["revenue"] is not None:
+            c["revenue"] = round(c["revenue"], 2)
+
+    since = min(dates) if dates else last_full_day
+    return {
+        "period": {
+            "since": since.isoformat(),
+            "until": last_full_day.isoformat(),
+            "days": max(1, (last_full_day - since).days + 1),
+        },
+        "themes": themes,
+        "formats": formats,
+        "campaigns": campaigns,
+        "slots": slots,
+        "coverage": {
+            "posts_labeled": posts_labeled,
+            "posts_total": posts_total,
+            "campaigns_labeled": sum(1 for c in campaigns if c["label"]),
+            "campaigns_total": len(campaigns),
+            "ga4": has_ga4,
+        },
+        "account_reach_avg": round(account_reach_avg, 1),
+    }
+
+
+# ── Constats (« Ce qui fonctionne pour toi ») ────────────────────────────────
+
+def _constat(key, kind, title, detail, feedback) -> dict:
+    return {"key": key, "kind": kind, "title": title, "detail": detail,
+            "status": feedback.get(key, "new")}
+
+
+def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None) -> list[dict]:
+    """3-5 constats déterministes tirés de la matrice, clés stables normalisées.
+    Le verdict du client (agree/reject) est réappliqué à chaque régénération."""
+    if not matrix:
+        return []
+    fb = insight_feedback or {}
+    out: list[dict] = []
+    period_days = matrix["period"]["days"]
+    period_txt = f"sur {period_days} jours d'historique"
+    has_ga4 = matrix["coverage"]["ga4"]
+
+    # 1) Meilleur thème — ROAS (GA4) sinon CTR (pub) sinon engagement (organique)
+    themes = matrix["themes"]
+    best_t = None
+    if has_ga4:
+        cands = [t for t in themes if t.get("roas") is not None]
+        if cands:
+            best_t = max(cands, key=lambda t: t["roas"])
+            out.append(_constat(
+                f"theme_best:{_slug(best_t['label'])}", "theme_best",
+                f"Le thème « {best_t['label']} » est ton moteur",
+                f"{best_t['spend']:.0f} CHF investis → {best_t['revenue']:.0f} CHF attribués "
+                f"(ROAS {best_t['roas']:.1f}) {period_txt}.", fb))
+    if best_t is None:
+        cands = [t for t in themes if t["spend"] >= C_SEUILS["theme_spend_min"] and t.get("ctr")]
+        if cands:
+            best_t = max(cands, key=lambda t: t["ctr"])
+            out.append(_constat(
+                f"theme_best:{_slug(best_t['label'])}", "theme_best",
+                f"Le thème « {best_t['label']} » attire le plus de clics",
+                f"CTR {best_t['ctr']:.1f} % pour {best_t['spend']:.0f} CHF investis {period_txt} "
+                "(revenu inconnu tant que Google Analytics est muet).", fb))
+    if best_t is None:
+        cands = [t for t in themes
+                 if t["posts"] >= C_SEUILS["theme_posts_min"] and t.get("eng_avg")]
+        if cands:
+            best_t = max(cands, key=lambda t: t["eng_avg"])
+            out.append(_constat(
+                f"theme_best:{_slug(best_t['label'])}", "theme_best",
+                f"Le thème « {best_t['label']} » fait le plus réagir",
+                f"{best_t['eng_avg']:.1f} % d'engagement moyen sur {best_t['posts']} posts {period_txt}.",
+                fb))
+
+    # 2) Thème qui dépense sans rien rapporter (GA4 seulement — sinon on ne sait pas)
+    if has_ga4:
+        worst = [t for t in themes
+                 if t["spend"] >= C_SEUILS["theme_spend_min"] and (t.get("revenue") or 0) == 0]
+        if worst:
+            w = max(worst, key=lambda t: t["spend"])
+            out.append(_constat(
+                f"theme_worst:{_slug(w['label'])}", "theme_worst",
+                f"Le thème « {w['label']} » dépense sans vente attribuée",
+                f"{w['spend']:.0f} CHF investis {period_txt}, 0 CHF de revenu attribué — "
+                "à challenger en priorité.", fb))
+
+    # 3) Format gagnant (≥ 5 posts, ≥ +20 % vs la portée moyenne du compte)
+    avg_reach = matrix.get("account_reach_avg") or 0
+    if avg_reach > 0:
+        cands = [f for f in matrix["formats"]
+                 if f["posts"] >= C_SEUILS["format_posts_min"]
+                 and f["reach_avg"] >= avg_reach * C_SEUILS["format_reach_boost"]]
+        if cands:
+            f = max(cands, key=lambda f: f["reach_avg"])
+            out.append(_constat(
+                f"format_best:{_slug(f['format'])}", "format_best",
+                f"Le format {f['format']} porte plus loin",
+                f"{f['reach_avg']:,.0f} de portée moyenne sur {f['posts']} posts, contre "
+                f"{avg_reach:,.0f} pour ton post moyen ({(f['reach_avg'] / avg_reach - 1) * 100:+.0f} %).",
+                fb))
+
+    # 4) Créneau en or (la meilleure case fiable de la heatmap)
+    if matrix["slots"]:
+        s = matrix["slots"][0]
+        out.append(_constat(
+            f"slot_best:{s['dow']}_{s['slot']}", "slot_best",
+            f"Ton créneau en or : {DAYS[s['dow']]} {HOURS[s['slot']]}",
+            f"{s['reach_avg']:,.0f} de portée moyenne sur {s['posts']} posts publiés à ce "
+            "moment — ton créneau le plus régulier.", fb))
+
+    # 5) Campagne locomotive (revenu max avec GA4, sinon CTR nettement au-dessus)
+    camps = matrix["campaigns"]
+    loco = None
+    if has_ga4:
+        cands = [c for c in camps
+                 if c["spend"] >= C_SEUILS["camp_spend_min"] and (c.get("revenue") or 0) > 0
+                 and c["revenue"] / c["spend"] >= C_SEUILS["camp_roas_min"]]
+        if cands:
+            loco = max(cands, key=lambda c: c["revenue"])
+            det = (f"{loco['revenue']:.0f} CHF attribués pour {loco['spend']:.0f} CHF investis "
+                   f"(ROAS {loco['revenue'] / loco['spend']:.1f}) {period_txt}.")
+    if loco is None:
+        tot_clicks = sum(c["clicks"] for c in camps)
+        tot_impr = sum(c["impressions"] for c in camps)
+        pub_ctr = tot_clicks / tot_impr * 100 if tot_impr > 0 else 0
+        cands = [c for c in camps
+                 if c["spend"] >= C_SEUILS["camp_spend_min"] and pub_ctr > 0
+                 and c["ctr"] >= pub_ctr * C_SEUILS["camp_ctr_boost"]]
+        if cands:
+            loco = max(cands, key=lambda c: c["ctr"])
+            det = (f"CTR {loco['ctr']:.1f} % contre {pub_ctr:.1f} % en moyenne sur ta pub, "
+                   f"pour {loco['spend']:.0f} CHF investis {period_txt}.")
+    if loco is not None:
+        out.append(_constat(
+            f"campagne_locomotive:{_slug(loco['name'])}", "campagne_locomotive",
+            f"« {loco['name']} » est ta campagne locomotive", det, fb))
+
+    out = out[:5]
+
+    # Toujours en dernier : l'angle mort de couverture (items sans thème)
+    cov = matrix["coverage"]
+    miss_posts = cov["posts_total"] - cov["posts_labeled"]
+    miss_camps = cov["campaigns_total"] - cov["campaigns_labeled"]
+    if miss_posts > 0 or miss_camps > 0:
+        parts = []
+        if miss_posts > 0:
+            parts.append(f"{miss_posts} post{'s' if miss_posts > 1 else ''}")
+        if miss_camps > 0:
+            parts.append(f"{miss_camps} campagne{'s' if miss_camps > 1 else ''}")
+        out.append(_constat(
+            "angle_mort:couverture", "angle_mort",
+            "Une partie de tes contenus n'est pas encore classée",
+            f"{' et '.join(parts)} sans thème — cette analyse ne les voit pas encore. "
+            "Clique « ✨ Classer mes contenus » sur la page Thèmes.", fb))
+
+    return out

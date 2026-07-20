@@ -631,6 +631,7 @@ def build_recos(
     ga4: dict | None = None,
     objectif: str | None = None,
     feedback: dict | None = None,
+    vision: list | None = None,
 ) -> list[dict]:
     """Évalue toutes les règles, trie par priorité (1 = plus fort).
 
@@ -638,6 +639,8 @@ def build_recos(
     objectif : 'ventes' | 'notoriete' | 'engagement' — remonte les recos pertinentes.
     feedback : {reco_key: "useful"|"not_for_me"|"done"} — la dernière réaction connue ;
                'not_for_me' déprioritise, 'done' déprioritise légèrement (déjà traité).
+    vision : constats de la vision globale [{kind, status, …}] (worker) — un constat
+             validé remonte les règles qui le prolongent, un constat rejeté les recule.
     Défensif : une règle qui plante est ignorée — le rapport ne casse jamais.
     """
     candidates = [
@@ -673,6 +676,28 @@ def build_recos(
             r["priority"] += 6   # pousse en bas sans masquer (un signal réel reste visible)
         elif react == "done":
             r["priority"] += 2   # déjà traité cette semaine → laisse la place au reste
+
+    # Vision globale : les règles hebdo qui PROLONGENT un constat validé remontent,
+    # celles qui s'appuient sur un constat rejeté reculent (sans jamais disparaître).
+    VISION_RULES = {
+        "theme_best": {"roas", "scaler"},
+        "campagne_locomotive": {"roas", "scaler"},
+        "theme_worst": {"roas", "gaspillage"},
+        "format_best": {"format_gagnant"},
+        "slot_best": {"creneau"},
+    }
+    for c in (vision or []):
+        keys = VISION_RULES.get(c.get("kind"))
+        if not keys:
+            continue
+        status = c.get("status")
+        for r in recos:
+            if r["key"] not in keys:
+                continue
+            if status in ("agree", "new"):
+                r["priority"] -= 1
+            elif status == "reject":
+                r["priority"] += 4 if c["kind"] in ("format_best", "slot_best") else 2
 
     recos.sort(key=lambda r: r["priority"])
     return recos

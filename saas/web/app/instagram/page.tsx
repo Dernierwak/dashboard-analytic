@@ -274,6 +274,7 @@ function PostsTable({
                     postId={p.id}
                     current={p.labels[0] ?? null}
                     labels={labels}
+                    source={p.labelSource}
                   />
                 </td>
                 <td className="px-2 py-3 text-muted">{p.type}</td>

@@ -3,6 +3,7 @@
 import { getLabelsData } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
+import { ClassifyButton } from "@/components/classify-button";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,13 @@ export default async function LabelsPage() {
           <span style={{ color: "#7b4fff" }}>◎</span> — le rapport peut alors dire ce que
           chaque thème te rapporte. Renommer ou supprimer se propage partout.
         </p>
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
+          <ClassifyButton />
+          <span className="text-[11.5px] text-faint">
+            L&apos;IA donne un thème à chaque post et campagne sans thème — tes choix
+            manuels ne sont jamais réécrits.
+          </span>
+        </div>
       </div>
 
       <CreateLabel />

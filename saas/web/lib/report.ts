@@ -35,6 +35,22 @@ export type PayloadReco = {
 
 export type ThemeRow = { label: string; spend: number; rev: number };
 
+// Constat de la vision globale (« Ce qui fonctionne pour toi ») — clé stable,
+// verdict du client persistant (insight_feedback).
+export type VisionConstat = {
+  key: string;
+  kind: string; // theme_best | theme_worst | format_best | slot_best | campagne_locomotive | angle_mort
+  title: string;
+  detail: string;
+  status: "new" | "agree" | "reject";
+};
+
+export type VisionBlock = {
+  generated_at: string;
+  period_label: string; // « depuis le 1 jan »
+  constats: VisionConstat[];
+};
+
 export type ProofOutcome = {
   key: string;
   title: string;
@@ -49,6 +65,9 @@ export type ProofOutcome = {
 
 export type ReportPayload = {
   version: number;
+  // v2 (worker) — absents des payloads v1 : tout est optionnel.
+  vision?: VisionBlock | null;
+  matrice?: unknown | null;
   week_label: string;
   since: string;
   until: string;
@@ -73,6 +92,8 @@ export type WeeklyData = {
   report: ReportPayload | null;
   // Dernière réaction par type de conseil (4 semaines) — live, comme le Streamlit.
   feedback: Record<string, string>;
+  // Verdicts sur les constats de la vision globale — live (le payload peut dater).
+  insightFeedback: Record<string, string>;
   // Commentaires de la semaine courante (pré-remplissage) + objectif du compte.
   comments: Record<string, string>;
   objectif: string | null;
@@ -111,7 +132,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes] =
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -157,6 +178,12 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .gte("date", iso(addDays(new Date(), -35)))
       .limit(300),
+    // Verdicts ✓/✗ sur les constats de la vision (table absente avant la
+    // migration → error, on dégrade en {}).
+    supabase
+      .from("insight_feedback")
+      .select("insight_key, verdict")
+      .eq("user_id", uid),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -166,6 +193,11 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // simplement l'invitation à ouvrir le rapport Streamlit une fois.
   const report: ReportPayload | null =
     (reportRes.data?.[0]?.payload as ReportPayload | undefined) ?? null;
+
+  const insightFeedback: Record<string, string> = {};
+  for (const row of insightRes.data ?? []) {
+    if (row.insight_key && row.verdict) insightFeedback[row.insight_key] = row.verdict;
+  }
 
   // Dernière réaction par clé (tri desc → première vue = la plus récente),
   // même logique que fetch_reco_feedback côté Python.
@@ -388,6 +420,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     channels,
     report,
     feedback,
+    insightFeedback,
     comments,
     objectif,
     onboarded,

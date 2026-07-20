@@ -154,7 +154,7 @@ def _fetch_instagram(sb, uid, token, biz_id) -> str:
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
-def run(force: bool = False, only_user: str | None = None) -> None:
+def run(force: bool = False, only_user: str | None = None, label_only: bool = False) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
                 .select("id, fetch_schedule")
@@ -163,13 +163,30 @@ def run(force: bool = False, only_user: str | None = None) -> None:
         # Bouton « Mes données » de Pulse : un seul user, sans attendre son jour
         profiles = [p for p in profiles if p["id"] == only_user]
         force = True
-    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils")
+    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils"
+          + (" · labels seulement" if label_only else ""))
 
     for p in profiles:
         uid = p["id"]
         if not force and not _due_today(p.get("fetch_schedule")):
             continue
         logs = []
+
+        # Bouton « ✨ Classer mes contenus » : labellisation IA + republication du
+        # rapport, sans re-fetch réseau (~1 min au lieu de 2-3).
+        if label_only:
+            try:
+                from saas.worker.labeling import auto_label
+                logs.append(auto_label(sb, uid))
+            except Exception as e:
+                logs.append(f"labels KO: {e}")
+            try:
+                from saas.worker.build_report import publish_weekly_report
+                logs.append(publish_weekly_report(sb, uid))
+            except Exception as e:
+                logs.append(f"rapport KO: {e}")
+            print(f"  {uid} → " + " | ".join(logs))
+            continue
 
         # Toutes les connexions de l'utilisateur (Meta + Google) vivent dans
         # connected_accounts. provider='google' porte les tokens Google (Ads + GA4).
@@ -214,6 +231,15 @@ def run(force: bool = False, only_user: str | None = None) -> None:
             except Exception as e:
                 logs.append(f"ga4 KO: {e}")
 
+        # Labellisation IA des nouveaux contenus (posts + campagnes sans thème).
+        # Best-effort : jamais bloquant, ne touche jamais un label posé à la main.
+        if logs:
+            try:
+                from saas.worker.labeling import auto_label
+                logs.append(auto_label(sb, uid))
+            except Exception as e:
+                logs.append(f"labels KO: {e}")
+
         # Rapport hebdo précalculé → weekly_reports (lu par Pulse) + email hebdo.
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
         # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
@@ -241,8 +267,12 @@ if __name__ == "__main__":
     only_user = None
     if "--user" in sys.argv:       # un seul utilisateur (bouton Pulse), force implicite
         only_user = sys.argv[sys.argv.index("--user") + 1]
+    label_only = False
+    if "--label-only" in sys.argv:  # labellisation IA + republication, sans fetch
+        only_user = sys.argv[sys.argv.index("--label-only") + 1]
+        label_only = True
     try:
-        run(force=force, only_user=only_user)
+        run(force=force, only_user=only_user, label_only=label_only)
     except Exception:
         traceback.print_exc()
         sys.exit(1)

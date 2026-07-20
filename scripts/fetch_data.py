@@ -416,6 +416,24 @@ def fetch_reco_decisions(supabase: Client, user_id: str, recent_weeks: int = 5) 
     return out
 
 
+def fetch_insight_feedback(supabase: Client, user_id: str) -> dict[str, str]:
+    """Validation des constats de la vision globale — permanente (pas de fenêtre).
+    Returns: {insight_key: "agree"|"reject"} — un constat rejeté reste écarté
+    même quand le worker le régénère à l'identique.
+    """
+    try:
+        res = (
+            supabase.table("insight_feedback")
+            .select("insight_key, verdict")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return {r["insight_key"]: r["verdict"]
+                for r in (res.data or []) if r.get("insight_key") and r.get("verdict")}
+    except Exception:
+        return {}
+
+
 def fetch_reco_comments(supabase: Client, user_id: str, limit: int = 60) -> list[dict]:
     """Commentaires libres laissés sur les conseils (les plus récents d'abord).
 
