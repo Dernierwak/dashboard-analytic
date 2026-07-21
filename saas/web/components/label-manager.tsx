@@ -46,6 +46,8 @@ export function CreateLabel() {
   );
 }
 
+// Ligne de thème — pensée pouce d'abord : étoile et boutons ≥ 40 px de zone
+// tactile, nom bien lisible, actions qui passent à la ligne sur petit écran.
 export function LabelRow({ row, priority }: { row: LabelRowData; priority: boolean }) {
   const [mode, setMode] = useState<"view" | "rename" | "confirm-delete">("view");
   const [newName, setNewName] = useState(row.name);
@@ -55,7 +57,7 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
   const total = row.meta + row.google + row.instagram;
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5 flex-wrap">
+    <div className="flex items-center gap-2 px-3 sm:px-5 py-2.5 flex-wrap">
       {/* ★ Prioritaire (max 3) — le moteur concentre ses conseils dessus */}
       <button
         disabled={pending}
@@ -66,42 +68,46 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
             setMessage(r.ok ? null : r.message ?? null);
           })
         }
-        className={`text-[16px] leading-none transition-colors disabled:opacity-50 ${
-          priority ? "text-warn" : "text-line hover:text-warn/60"
+        className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full text-[22px] leading-none transition-colors disabled:opacity-50 ${
+          priority ? "text-warn" : "text-line hover:text-warn/60 active:text-warn/60"
         }`}
       >
         {priority ? "★" : "☆"}
       </button>
-      {mode === "rename" ? (
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          autoFocus
-          className="rounded-lg border border-brand bg-canvas px-2.5 py-1.5 text-[13px] text-ink outline-none w-44"
-        />
-      ) : (
-        <span className="text-[13.5px] font-semibold text-ink">{row.name}</span>
-      )}
 
-      <span className="text-[11.5px] text-faint">
-        <span style={{ color: "#1a56ff" }}>▣</span> {row.meta} ·{" "}
-        <span style={{ color: "#1a7a4a" }}>◆</span> {row.google} ·{" "}
-        <span style={{ color: "#7b4fff" }}>◎</span> {row.instagram}
-        {total === 0 && <span className="ml-1.5">— jamais utilisé</span>}
-      </span>
+      <div className="min-w-0 flex-1">
+        {mode === "rename" ? (
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            autoFocus
+            className="rounded-lg border border-brand bg-canvas px-3 py-2 text-[14px] text-ink outline-none w-full max-w-[240px]"
+          />
+        ) : (
+          <div className="text-[15px] font-semibold text-ink leading-snug truncate">
+            {row.name}
+          </div>
+        )}
+        <div className="text-[11.5px] text-faint mt-0.5">
+          <span style={{ color: "#1a56ff" }}>▣</span> {row.meta} ·{" "}
+          <span style={{ color: "#1a7a4a" }}>◆</span> {row.google} ·{" "}
+          <span style={{ color: "#7b4fff" }}>◎</span> {row.instagram}
+          {total === 0 && <span className="ml-1.5">— jamais utilisé</span>}
+        </div>
+      </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
         {mode === "view" && (
           <>
             <button
               onClick={() => setMode("rename")}
-              className="text-[11px] font-semibold text-muted border border-line rounded-full px-2.5 py-1 hover:bg-black/[0.03]"
+              className="text-[12px] font-semibold text-muted border border-line rounded-full px-3.5 py-2 hover:bg-black/[0.03] active:bg-black/[0.05]"
             >
               Renommer
             </button>
             <button
               onClick={() => setMode("confirm-delete")}
-              className="text-[11px] font-semibold text-muted border border-line rounded-full px-2.5 py-1 hover:bg-black/[0.03]"
+              className="text-[12px] font-semibold text-muted border border-line rounded-full px-3.5 py-2 hover:bg-black/[0.03] active:bg-black/[0.05]"
             >
               Supprimer
             </button>
@@ -118,7 +124,7 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
                   if (r.ok) setMode("view");
                 })
               }
-              className="text-[11px] font-semibold text-white bg-brand rounded-full px-3 py-1 disabled:opacity-40"
+              className="text-[12px] font-semibold text-white bg-brand rounded-full px-4 py-2 disabled:opacity-40"
             >
               {pending ? "…" : "OK"}
             </button>
@@ -128,7 +134,7 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
                 setNewName(row.name);
                 setMessage(null);
               }}
-              className="text-[11px] text-faint"
+              className="text-[12px] text-faint px-2 py-2"
             >
               annuler
             </button>
@@ -136,7 +142,7 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
         )}
         {mode === "confirm-delete" && (
           <>
-            <span className="text-[11px] text-neg font-medium">
+            <span className="text-[11.5px] text-neg font-medium">
               Retiré de {total} élément{total > 1 ? "s" : ""} — sûr ?
             </span>
             <button
@@ -147,17 +153,17 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
                   setMode("view");
                 })
               }
-              className="text-[11px] font-semibold text-white bg-neg rounded-full px-3 py-1 disabled:opacity-40"
+              className="text-[12px] font-semibold text-white bg-neg rounded-full px-4 py-2 disabled:opacity-40"
             >
               {pending ? "…" : "Supprimer"}
             </button>
-            <button onClick={() => setMode("view")} className="text-[11px] text-faint">
+            <button onClick={() => setMode("view")} className="text-[12px] text-faint px-2 py-2">
               annuler
             </button>
           </>
         )}
       </div>
-      {message && <p className="w-full text-[11px] text-neg">{message}</p>}
+      {message && <p className="w-full text-[11.5px] text-neg pl-12">{message}</p>}
     </div>
   );
 }

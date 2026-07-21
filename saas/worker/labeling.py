@@ -74,11 +74,28 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
     une config n'existe qu'après un premier label) → couverture complète.
     """
     labels: list[str] = []
+    business = ""
     try:
-        r = sb.table("profiles").select("labels").eq("id", user_id).execute().data
-        labels = list((r or [{}])[0].get("labels") or [])
+        r = sb.table("profiles").select("labels, business_type, objectif").eq("id", user_id).execute().data
+        row = (r or [{}])[0]
+        labels = list(row.get("labels") or [])
+        # Contexte déclaré à l'onboarding → des thèmes qui collent au business
+        _biz = {"ecommerce": "e-commerce", "local": "commerce local",
+                "services": "services / B2B", "createur": "créateur / média"}
+        _obj = {"ventes": "générer des ventes", "notoriete": "gagner en notoriété",
+                "engagement": "faire réagir sa communauté"}
+        bits = []
+        if row.get("business_type"):
+            bits.append(_biz.get(row["business_type"], row["business_type"]))
+        if row.get("objectif"):
+            bits.append(f"objectif : {_obj.get(row['objectif'], row['objectif'])}")
+        business = ", ".join(bits)
     except Exception:
-        pass
+        try:
+            r = sb.table("profiles").select("labels").eq("id", user_id).execute().data
+            labels = list((r or [{}])[0].get("labels") or [])
+        except Exception:
+            pass
 
     # Posts Instagram — id (pk), caption, type, labels, label_source
     posts = []
@@ -154,16 +171,19 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
         candidates.append({"kind": "google", "id": cid, "name": cname,
                            "desc": f"[Campagne Google] «{cname}»"})
 
-    return candidates, {"labels": labels}
+    return candidates, {"labels": labels, "business": business}
 
 
-def _classify_chunk(items: list[dict], known_labels: list[str]) -> tuple[dict[str, str], list[str]]:
+def _classify_chunk(items: list[dict], known_labels: list[str],
+                    business: str = "") -> tuple[dict[str, str], list[str]]:
     """Un appel Gemini pour un lot d'items → ({ref: thème}, nouveaux thèmes retenus)."""
     lines = "\n".join(f"{i + 1}. {it['desc']}" for i, it in enumerate(items))
     existing = ", ".join(f"«{l}»" for l in known_labels) or "aucun pour l'instant"
+    biz = f"Le client : {business}. " if business else ""
     data = call_gemini_json(
         "Tu classes les contenus marketing d'une PME suisse par THÈME (sujet business : "
         "produit, gamme, offre, événement… — jamais le format ni le canal). "
+        f"{biz}"
         f"Thèmes existants, à réutiliser en priorité : {existing}. "
         f"Si aucun ne convient, propose au plus {_MAX_NEW_THEMES} nouveaux thèmes courts "
         "(1 à 3 mots, français, sans emoji). Chaque item reçoit EXACTEMENT un thème. "
@@ -208,7 +228,7 @@ def auto_label(sb, user_id: str) -> str:
     created: list[str] = []
     for i in range(0, len(candidates), _CHUNK):
         chunk = candidates[i:i + _CHUNK]
-        assign, new_themes = _classify_chunk(chunk, known)
+        assign, new_themes = _classify_chunk(chunk, known, ctx.get("business", ""))
         assignments.update(assign)
         for t in new_themes:
             if t not in known:
@@ -219,7 +239,7 @@ def auto_label(sb, user_id: str) -> str:
     missed = [c for c in candidates if f"{c['kind']}::{c['id']}" not in assignments]
     if missed and assignments:
         for i in range(0, len(missed), _CHUNK):
-            assign, new_themes = _classify_chunk(missed[i:i + _CHUNK], known)
+            assign, new_themes = _classify_chunk(missed[i:i + _CHUNK], known, ctx.get("business", ""))
             assignments.update(assign)
             for t in new_themes:
                 if t not in known:

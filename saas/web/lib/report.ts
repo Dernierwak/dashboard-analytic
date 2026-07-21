@@ -64,11 +64,19 @@ export type ProofOutcome = {
   verdict: "better" | "worse" | "stable";
 };
 
+export type MatriceCoverage = {
+  posts_labeled: number;
+  posts_total: number;
+  campaigns_labeled: number;
+  campaigns_total: number;
+  ga4: boolean;
+};
+
 export type ReportPayload = {
   version: number;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
   vision?: VisionBlock | null;
-  matrice?: unknown | null;
+  matrice?: { coverage?: MatriceCoverage } | null;
   week_label: string;
   since: string;
   until: string;
@@ -99,6 +107,8 @@ export type WeeklyData = {
   comments: Record<string, string>;
   objectif: string | null;
   onboarded: boolean;
+  // Liste maîtresse des thèmes (étape « priorités » du parcours de démarrage).
+  labels: string[];
 };
 
 function iso(d: Date): string {
@@ -165,7 +175,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .gte("week_start", fbCutoff)
       .order("week_start", { ascending: false }),
-    supabase.from("profiles").select("objectif, business_type").eq("id", uid).limit(1),
+    supabase.from("profiles").select("objectif, business_type, labels").eq("id", uid).limit(1),
     // Pour la Vue d'ensemble selon la mission (ventes → revenu, noto/eng → posts)
     supabase
       .from("ga4_insights")
@@ -222,14 +232,18 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // Si la colonne business_type n'existe pas encore (migration §7 pas passée),
   // la requête combinée échoue → on retombe sur objectif seul, onboarding masqué.
-  let profRow: { objectif?: string | null; business_type?: string | null } | null =
-    profileRes.data?.[0] ?? null;
+  let profRow: {
+    objectif?: string | null;
+    business_type?: string | null;
+    labels?: string[] | null;
+  } | null = profileRes.data?.[0] ?? null;
   let migrated = !profileRes.error;
   if (profileRes.error) {
-    const retry = await supabase.from("profiles").select("objectif").eq("id", uid).limit(1);
+    const retry = await supabase.from("profiles").select("objectif, labels").eq("id", uid).limit(1);
     profRow = retry.data?.[0] ?? null;
   }
   const objectif: string | null = profRow?.objectif ?? null;
+  const labels: string[] = profRow?.labels ?? [];
   // Onboarded si déjà répondu — ou si la migration n'est pas passée (pas de formulaire cassé)
   const onboarded: boolean =
     !migrated || Boolean(objectif) || Boolean(profRow?.business_type);
@@ -425,5 +439,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     comments,
     objectif,
     onboarded,
+    labels,
   };
 }

@@ -12,7 +12,7 @@ import {
 import { RecoActions } from "@/components/reco-actions";
 import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
-import { OnboardingCard } from "@/components/onboarding-card";
+import { SetupWizard } from "@/components/setup-wizard";
 import { Trajectoire } from "@/components/trajectoire";
 import { VisionCard } from "@/components/vision-card";
 import { getMissionData, MISSIONS } from "@/lib/mission";
@@ -299,8 +299,25 @@ export default async function Page() {
         </div>
       </div>
 
-      {/* Onboarding express — première visite (30 s, tout au clic) */}
-      {!data.onboarded && <OnboardingCard />}
+      {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
+      <SetupWizard
+        onboarded={data.onboarded}
+        toLabel={
+          report?.matrice?.coverage
+            ? {
+                posts:
+                  report.matrice.coverage.posts_total - report.matrice.coverage.posts_labeled,
+                camps:
+                  report.matrice.coverage.campaigns_total -
+                  report.matrice.coverage.campaigns_labeled,
+              }
+            : null
+        }
+        themes={data.labels}
+        priorities={Object.keys(data.insightFeedback)
+          .filter((k) => k.startsWith("priority_label:"))
+          .map((k) => k.split(":").slice(1).join(":"))}
+      />
 
       {/* Vision globale — ce qui fonctionne sur TOUT l'historique, à valider.
           Les conseils hebdo (plus bas) s'ancrent sur les constats validés. */}
