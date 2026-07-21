@@ -68,45 +68,122 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[14px] font-semibold text-ink mb-3">{children}</h2>;
 }
 
-// « Ce que chaque thème rapporte » — dépense par label × revenu GA4.
-function ThemesCard({ themes }: { themes: NonNullable<ReportPayload["themes"]> }) {
+// « Tes priorités cette semaine » — le pont entre la vision (tout l'historique,
+// en haut) et la semaine : les thèmes que TU as choisis, avec leurs chiffres 7j.
+// Sans priorité posée, on retombe sur « ce que chaque thème rapporte » (tout).
+function ThemeLine({
+  label,
+  spend,
+  rev,
+  star,
+  idle,
+}: {
+  label: string;
+  spend: number;
+  rev: number;
+  star: boolean;
+  idle?: boolean;
+}) {
+  const roas = spend > 0 ? rev / spend : null;
+  return (
+    <div className="flex items-baseline gap-3 py-2.5">
+      <span className="text-[13px] font-semibold text-ink flex-1 min-w-0 truncate">
+        {star && <span className="text-warn">★ </span>}
+        {label}
+      </span>
+      {idle ? (
+        <span className="font-mono text-[12px] text-faint/80">
+          — pas d&apos;activité cette semaine
+        </span>
+      ) : (
+        <>
+          <span className="font-mono text-[12.5px] text-muted text-right">
+            {fmtCHF(spend)} CHF → {fmtCHF(rev)} CHF
+          </span>
+          <span className="w-40 text-right">
+            {rev <= 0 || roas === null ? (
+              <span className="font-mono text-[12px] text-faint/80">
+                — pas de vente attribuée
+              </span>
+            ) : (
+              <span
+                className="font-mono text-[12px] font-semibold"
+                style={{ color: roas >= 3 ? "#1a7a4a" : roas >= 1 ? "#0e0f12" : "#c0392b" }}
+              >
+                ● ROAS {roas.toFixed(1)}
+              </span>
+            )}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ThemesCard({
+  themes,
+  priorities,
+}: {
+  themes: NonNullable<ReportPayload["themes"]>;
+  priorities: string[];
+}) {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const byLabel = new Map(themes.rows.map((t) => [norm(t.label), t]));
+  const hasPrio = priorities.length > 0;
+
+  // Avec priorités : on montre CES thèmes-là d'abord (même à 0 d'activité),
+  // puis le reste replié. Sans priorité : comportement d'origine (tout).
+  const prioRows = priorities.map((label) => ({
+    label,
+    row: byLabel.get(norm(label)) ?? null,
+  }));
+  const prioSet = new Set(priorities.map(norm));
+  const others = themes.rows.filter((t) => !hasPrio || !prioSet.has(norm(t.label)));
+
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between mb-2 gap-3">
         <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Ce que chaque thème rapporte · 7 jours pleins
+          {hasPrio ? "Tes priorités cette semaine" : "Ce que chaque thème rapporte"} · 7 jours
         </div>
-        <div className="text-[10px] text-faint/70">attribution GA4 · dernier clic</div>
+        <div className="text-[10px] text-faint/70 shrink-0">attribution GA4 · dernier clic</div>
       </div>
-      <div className="divide-y divide-line">
-        {themes.rows.map((t) => {
-          const roas = t.spend > 0 ? t.rev / t.spend : null;
-          return (
-            <div key={t.label} className="flex items-baseline gap-3 py-2.5">
-              <span className="text-[13px] font-semibold text-ink flex-1">{t.label}</span>
-              <span className="font-mono text-[12.5px] text-muted text-right">
-                {fmtCHF(t.spend)} CHF → {fmtCHF(t.rev)} CHF
-              </span>
-              <span className="w-40 text-right">
-                {t.rev <= 0 || roas === null ? (
-                  <span className="font-mono text-[12px] text-faint/80">
-                    — pas de vente attribuée
-                  </span>
-                ) : (
-                  <span
-                    className="font-mono text-[12px] font-semibold"
-                    style={{
-                      color: roas >= 3 ? "#1a7a4a" : roas >= 1 ? "#0e0f12" : "#c0392b",
-                    }}
-                  >
-                    ● ROAS {roas.toFixed(1)}
-                  </span>
-                )}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+
+      {hasPrio ? (
+        <>
+          <div className="divide-y divide-line">
+            {prioRows.map(({ label, row }) => (
+              <ThemeLine
+                key={label}
+                label={label}
+                spend={row?.spend ?? 0}
+                rev={row?.rev ?? 0}
+                star
+                idle={!row}
+              />
+            ))}
+          </div>
+          {others.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-[11px] font-semibold text-faint cursor-pointer select-none hover:text-muted">
+                ▸ Tes autres thèmes ({others.length})
+              </summary>
+              <div className="divide-y divide-line mt-1">
+                {others.map((t) => (
+                  <ThemeLine key={t.label} label={t.label} spend={t.spend} rev={t.rev} star={false} />
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      ) : (
+        <div className="divide-y divide-line">
+          {themes.rows.map((t) => (
+            <ThemeLine key={t.label} label={t.label} spend={t.spend} rev={t.rev} star={false} />
+          ))}
+        </div>
+      )}
+
       {themes.orphan > 0 && (
         <p className="text-[11px] text-faint mt-2.5">
           + {fmtCHF(themes.orphan)} CHF attribués à des campagnes sans thème — ajoute un
@@ -278,6 +355,11 @@ export default async function Page() {
   const recosMission = (report?.recos ?? []).filter(inMission);
   const recosAutres = (report?.recos ?? []).filter((r) => !inMission(r));
 
+  // Thèmes prioritaires (≤ 3) — le fil qui relie la vision aux conseils.
+  const priorities = Object.keys(data.insightFeedback)
+    .filter((k) => k.startsWith("priority_label:"))
+    .map((k) => k.split(":").slice(1).join(":"));
+
   return (
     <main className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
       <SiteHeader email={data.email} active="rapport" />
@@ -314,9 +396,7 @@ export default async function Page() {
             : null
         }
         themes={data.labels}
-        priorities={Object.keys(data.insightFeedback)
-          .filter((k) => k.startsWith("priority_label:"))
-          .map((k) => k.split(":").slice(1).join(":"))}
+        priorities={priorities}
       />
 
       {/* Vision globale — ce qui fonctionne sur TOUT l'historique, à valider.
@@ -393,6 +473,28 @@ export default async function Page() {
             </>
           )}
 
+          {/* Le pont vision → semaine : tes priorités, avec leurs chiffres 7j */}
+          {report?.themes && report.themes.rows.length > 0 && (
+            <>
+              <SectionTitle>
+                {priorities.length > 0 ? (
+                  <>
+                    Tes priorités cette semaine{" "}
+                    <span className="text-faint font-normal">
+                      · les thèmes que tu pilotes, côté chiffres
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Ce que chaque thème rapporte{" "}
+                    <span className="text-faint font-normal">· choisis tes priorités sur ◫ Thèmes</span>
+                  </>
+                )}
+              </SectionTitle>
+              <ThemesCard themes={report.themes} priorities={priorities} />
+            </>
+          )}
+
           {/* Vue d'ensemble — carrousel horizontal sur téléphone */}
           <SectionTitle>Vue d&apos;ensemble</SectionTitle>
           <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-8 pb-1 sm:pb-0">
@@ -428,11 +530,6 @@ export default async function Page() {
             })}
           </div>
 
-          {/* Ce que chaque thème rapporte (labels × ventes GA4) */}
-          {report?.themes && report.themes.rows.length > 0 && (
-            <ThemesCard themes={report.themes} />
-          )}
-
           {/* Boucle de la preuve : les « Fait » re-mesurés */}
           {report?.preuve &&
             (report.preuve.outcomes.length > 0 || report.preuve.pending.length > 0) && (
@@ -451,6 +548,13 @@ export default async function Page() {
                   "Le détail, canal par canal"
                 )}
               </SectionTitle>
+              {priorities.length > 0 && (
+                <p className="text-[12px] text-muted -mt-1 mb-3 leading-relaxed">
+                  Cadrés sur tes priorités{" "}
+                  <span className="text-warn font-semibold">★ {priorities.join(" · ")}</span> —
+                  c&apos;est là qu&apos;on met l&apos;énergie cette semaine.
+                </p>
+              )}
               {(["instagram", "pub", "meta", "google", "ia"] as const).map((chKey) => {
                 const items = recosMission.filter((r) => r.platform === chKey);
                 if (items.length === 0) return null;
