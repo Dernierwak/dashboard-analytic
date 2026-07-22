@@ -58,6 +58,59 @@ def _call_gemini(prompt: str) -> str | None:
         return None
 
 
+# Champs d'une reco tels que stockés dans le payload (miroir du dict _reco()).
+RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
+               "repere", "angle_mort", "confidence", "priority", "source")
+
+
+def _strip_reco(r: dict) -> dict:
+    return {k: r.get(k) for k in RECO_FIELDS}
+
+
+def _theme_ai_reco(theme: str, camps: list, tsummary: dict | None,
+                   obj_txt: str, known: str) -> dict | None:
+    """UNE piste IA scopée à un thème : comment l'améliorer, à partir de SES
+    campagnes uniquement. None si Gemini échoue → jamais bloquant."""
+    import json as _json
+    facts = "; ".join(
+        f"{c['name']} [{c['channel']}] {c['spend']:.0f} CHF, CTR {c.get('ctr', 0):.1f} %"
+        + (f", revenu {c['revenue']:.0f} CHF" if c.get("revenue") is not None else "")
+        for c in camps[:12]) or "aucune campagne pub sur ce thème"
+    s = tsummary or {}
+    roas_txt = f", ROAS {s['roas']:.1f}" if s.get("roas") is not None else ""
+    raw = _call_gemini(
+        "Tu es un consultant marketing senior pour une PME suisse. "
+        f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif du compte : {obj_txt}). "
+        f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
+        f"{roas_txt}, {s.get('posts', 0)} posts. "
+        f"Ses campagnes : {facts}. "
+        f"Conseils déjà donnés sur ce thème (n'en répète aucun) : {known or 'aucun'}. "
+        "Propose UNE seule idée concrète pour améliorer CE thème cette semaine. "
+        "Réponds UNIQUEMENT en JSON avec ces clés : "
+        '{"title","observation","pourquoi","verifier","angle_mort"}. '
+        "Français, ton direct, ne déforme aucun chiffre fourni."
+    )
+    if not raw:
+        return None
+    try:
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            txt = txt[4:] if txt.lower().startswith("json") else txt
+        d = _json.loads(txt.strip())
+        if all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+            return {
+                "key": f"ai_{theme}", "platform": "ia", "title": str(d["title"])[:90],
+                "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
+                "verifier": str(d["verifier"]), "repere": "",
+                "angle_mort": str(d["angle_mort"]),
+                "confidence": "piste", "priority": 9, "source": "ai",
+            }
+    except Exception:
+        return None
+    return None
+
+
 def build_payload(sb, user_id: str) -> dict | None:
     """Prépare le payload du rapport hebdo. None si pas assez de données."""
     today = date.today()
@@ -285,6 +338,97 @@ def build_payload(sb, user_id: str) -> dict | None:
         feedback=feedback,
         vision=constats,
     )
+
+    # ── Recos PAR THÈME : le client travaille label par label, cross-canal ────
+    # Chaque thème prioritaire (≤3 ; sinon les 3 plus gros) reçoit ses propres
+    # conseils, calculés sur SES campagnes (Meta+Google) et SES posts seulement.
+    # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part.
+    SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
+    _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
+
+    def _nrm(s):
+        return str(s or "").strip().lower()
+
+    name2label = {}
+    for _n, _c in (meta_cfg or {}).items():
+        if (_c or {}).get("label"):
+            name2label[_nrm(_n)] = _c["label"]
+    for _cid, _c in (goog_cfg or {}).items():
+        if (_c or {}).get("label") and (_c or {}).get("campaign_name"):
+            name2label[_nrm(_c["campaign_name"])] = _c["label"]
+
+    theme_list = list(priority_labels)
+    if not theme_list and matrix and matrix.get("themes"):
+        theme_list = [t["label"] for t in matrix["themes"][:3] if (t.get("spend") or 0) > 0]
+
+    matrix_campaigns = (matrix or {}).get("campaigns", [])
+    matrix_themes_by = {_nrm(t["label"]): t for t in (matrix or {}).get("themes", [])}
+
+    themes_focus = []
+    for lbl in theme_list:
+        nlbl = _nrm(lbl)
+        t_camps = [c for c in matrix_campaigns if _nrm(c.get("label")) == nlbl]
+
+        # Sous-ensembles de la semaine pour faire tourner les règles sur ce thème
+        tc = None
+        if df_camp is not None and not df_camp.empty:
+            _mask = df_camp["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)
+            tc = df_camp[_mask]
+            tc = tc if not tc.empty else None
+
+        def _has(labels, _l=lbl):
+            return isinstance(labels, (list, tuple)) and _l in labels
+        ti = pd.DataFrame()
+        tw = pd.DataFrame()
+        if df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
+            ti = df_insta[df_insta["labels"].map(_has)]
+        if df_week_posts is not None and not df_week_posts.empty and "labels" in df_week_posts.columns:
+            tw = df_week_posts[df_week_posts["labels"].map(_has)]
+
+        t_recos = build_recos(
+            df_camp=tc, avg_ctr=avg_ctr,
+            df_insta=ti if not ti.empty else None,
+            df_week_posts=tw, followers_current=followers_current,
+            ga4=ga4_ctx, objectif=objectif, feedback=feedback, vision=constats,
+        )
+        t_recos = sorted((r for r in t_recos if r.get("key") not in SETUP_KEYS),
+                         key=lambda r: r["priority"])
+        # 1 piste IA scopée au thème comble le manque (priority 9 → en dernier,
+        # gardée seulement s'il reste de la place dans le top 3).
+        try:
+            _ai = _theme_ai_reco(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0,
+                                 " ; ".join(r["title"] for r in t_recos))
+        except Exception:
+            _ai = None
+        if _ai:
+            t_recos.append(_ai)
+        t_recos = t_recos[:3]
+
+        tt = matrix_themes_by.get(nlbl, {})
+        summary = {
+            "spend": tt.get("spend"), "revenue": tt.get("revenue"), "roas": tt.get("roas"),
+            "ctr": tt.get("ctr"), "posts": tt.get("posts"),
+            "reach_avg": tt.get("reach_avg"), "eng_avg": tt.get("eng_avg"),
+            "spend_week": round(float(tc["spend"].sum()), 2) if tc is not None else 0.0,
+            "best_campaign": t_camps[0]["name"] if t_camps else None,
+            "n_campaigns": len(t_camps),
+        }
+        themes_focus.append({
+            "label": lbl,
+            "is_priority": lbl in priority_labels,
+            "summary": summary,
+            "campaigns": [
+                {k: c.get(k) for k in ("name", "channel", "key", "label",
+                                       "label_source", "spend", "revenue", "ctr", "cpc")}
+                for c in t_camps[:8]
+            ],
+            "recos": [_strip_reco(r) for r in t_recos],
+        })
+
+    # Réglages de base : les conseils « socle » (GA4 muet, connexion, funnel),
+    # sortis du flux par thème — ce sont des prérequis, pas du pilotage hebdo.
+    reglages = [_strip_reco(r) for r in sorted(rule_recos, key=lambda r: r["priority"])
+                if r.get("key") in SETUP_KEYS][:3]
 
     # ── Verdict déterministe (même logique que le rapport) ───────────────────
     _signals = []
@@ -645,6 +789,9 @@ def build_payload(sb, user_id: str) -> dict | None:
                 "verifier", "repere", "angle_mort", "confidence", "priority", "source")}
             for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
         ] + ([ai_reco] if ai_reco else []),
+        # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
+        "themes_focus": themes_focus,
+        "reglages": reglages,
         "themes": themes,
         "preuve": preuve,
     }

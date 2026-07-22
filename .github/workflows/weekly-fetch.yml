@@ -19,6 +19,10 @@ on:
         description: "Labellisation IA seule + republication du rapport (bouton « Classer mes contenus »)"
         type: boolean
         default: false
+      report_only:
+        description: "Republie juste le rapport/conseils depuis les données en base (bouton « Recharger mes conseils »)"
+        type: boolean
+        default: false
 
 jobs:
   fetch:
@@ -47,7 +51,9 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
-          if [ "${{ inputs.label_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
+          if [ "${{ inputs.report_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
+            python saas/worker/fetch_all.py --report-only "${{ inputs.user_id }}"
+          elif [ "${{ inputs.label_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
             python saas/worker/fetch_all.py --label-only "${{ inputs.user_id }}"
           elif [ -n "${{ inputs.user_id }}" ]; then
             python saas/worker/fetch_all.py --user "${{ inputs.user_id }}"

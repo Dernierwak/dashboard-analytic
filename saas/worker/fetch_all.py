@@ -154,7 +154,8 @@ def _fetch_instagram(sb, uid, token, biz_id) -> str:
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
-def run(force: bool = False, only_user: str | None = None, label_only: bool = False) -> None:
+def run(force: bool = False, only_user: str | None = None,
+        label_only: bool = False, report_only: bool = False) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
                 .select("id, fetch_schedule")
@@ -163,14 +164,25 @@ def run(force: bool = False, only_user: str | None = None, label_only: bool = Fa
         # Bouton « Mes données » de Pulse : un seul user, sans attendre son jour
         profiles = [p for p in profiles if p["id"] == only_user]
         force = True
-    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils"
-          + (" · labels seulement" if label_only else ""))
+    _mode = " · labels seulement" if label_only else (" · rapport seulement" if report_only else "")
+    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils{_mode}")
 
     for p in profiles:
         uid = p["id"]
         if not force and not _due_today(p.get("fetch_schedule")):
             continue
         logs = []
+
+        # Bouton « ↻ Recharger mes conseils » : republie juste le rapport à partir
+        # des données déjà en base (ni fetch réseau, ni relabel) — ~30 s.
+        if report_only:
+            try:
+                from saas.worker.build_report import publish_weekly_report
+                logs.append(publish_weekly_report(sb, uid))
+            except Exception as e:
+                logs.append(f"rapport KO: {e}")
+            print(f"  {uid} → " + " | ".join(logs))
+            continue
 
         # Bouton « ✨ Classer mes contenus » : labellisation IA + republication du
         # rapport, sans re-fetch réseau (~1 min au lieu de 2-3).
@@ -271,8 +283,12 @@ if __name__ == "__main__":
     if "--label-only" in sys.argv:  # labellisation IA + republication, sans fetch
         only_user = sys.argv[sys.argv.index("--label-only") + 1]
         label_only = True
+    report_only = False
+    if "--report-only" in sys.argv:  # republie juste le rapport (conseils), ~30 s
+        only_user = sys.argv[sys.argv.index("--report-only") + 1]
+        report_only = True
     try:
-        run(force=force, only_user=only_user, label_only=label_only)
+        run(force=force, only_user=only_user, label_only=label_only, report_only=report_only)
     except Exception:
         traceback.print_exc()
         sys.exit(1)

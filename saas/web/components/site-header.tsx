@@ -4,11 +4,11 @@ export type PageKey = "rapport" | "couts" | "meta" | "google" | "instagram" | "l
 
 const NAV: { key: PageKey; href: string; label: string }[] = [
   { key: "rapport", href: "/", label: "Rapport" },
+  { key: "labels", href: "/labels", label: "◫ Thèmes" },
   { key: "couts", href: "/couts", label: "Coûts" },
   { key: "meta", href: "/meta", label: "▣ Meta" },
   { key: "google", href: "/google", label: "◆ Google" },
   { key: "instagram", href: "/instagram", label: "◎ Instagram" },
-  { key: "labels", href: "/labels", label: "Labels" },
 ];
 
 // Header commun : logo, navigation, mes données, email, déconnexion.
@@ -22,10 +22,10 @@ export function SiteHeader({ email, active }: { email: string; active: PageKey }
             <a
               key={n.key}
               href={n.href}
-              className={`text-[12px] rounded-full px-3 py-1 transition-colors whitespace-nowrap ${
+              className={`text-[12.5px] rounded-full px-3.5 py-1.5 transition-colors whitespace-nowrap ${
                 active === n.key
                   ? "bg-ink text-white font-semibold"
-                  : "text-muted hover:bg-black/[0.04] font-medium"
+                  : "text-ink/80 hover:bg-black/[0.05] font-medium"
               }`}
             >
               {n.label}

@@ -72,11 +72,48 @@ export type MatriceCoverage = {
   ga4: boolean;
 };
 
+// Carte « par thème » du rapport v2 — le cœur : un label, ses chiffres, ses
+// campagnes (éditables) et ≤3 conseils cross-canal.
+export type ThemeCampaign = {
+  name: string;
+  channel: "meta" | "google";
+  key: string; // campaign_name (Meta) | campaign_id (Google) — clé d'édition
+  label: string | null;
+  label_source: string | null;
+  spend: number;
+  revenue: number | null;
+  ctr: number;
+  cpc: number;
+};
+
+export type ThemeSummary = {
+  spend: number | null;
+  revenue: number | null;
+  roas: number | null;
+  ctr: number | null;
+  posts: number | null;
+  reach_avg: number | null;
+  eng_avg: number | null;
+  spend_week: number;
+  best_campaign: string | null;
+  n_campaigns: number;
+};
+
+export type ThemeFocus = {
+  label: string;
+  is_priority: boolean;
+  summary: ThemeSummary;
+  campaigns: ThemeCampaign[];
+  recos: PayloadReco[];
+};
+
 export type ReportPayload = {
   version: number;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
   vision?: VisionBlock | null;
   matrice?: { coverage?: MatriceCoverage } | null;
+  themes_focus?: ThemeFocus[] | null;
+  reglages?: PayloadReco[] | null;
   week_label: string;
   since: string;
   until: string;

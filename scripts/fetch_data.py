@@ -136,17 +136,19 @@ def fetch_meta_budget_global(supabase: Client, user_id: str) -> float:
 
 
 def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
-    """Retourne {campaign_name: {"label": str|None, "budget_max": float, "effective_status": str|None}}."""
+    """Retourne {campaign_name: {"label", "label_source", "budget_max", "effective_status"}}."""
     try:
+        # "*" : tolérant au schéma (label_source peut ne pas exister avant migration)
         res = (
             supabase.table("meta_campaign_config")
-            .select("campaign_name, label, budget_max, effective_status")
+            .select("*")
             .eq("user_id", user_id)
             .execute()
         )
         return {
             row["campaign_name"]: {
                 "label": row.get("label"),
+                "label_source": row.get("label_source"),
                 "budget_max": float(row.get("budget_max") or 0),
                 "effective_status": row.get("effective_status"),
             }
@@ -214,18 +216,20 @@ def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
 
 
 def fetch_google_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
-    """Retourne {campaign_id: {"campaign_name": str, "label": str|None, "budget_max": float, "effective_status": str|None}}."""
+    """Retourne {campaign_id: {"campaign_name", "label", "label_source", "budget_max", "effective_status"}}."""
     try:
+        # "*" : tolérant au schéma (label_source peut ne pas exister avant migration)
         res = (
             supabase.table("google_campaign_config")
-            .select("campaign_id, campaign_name, label, budget_max, effective_status")
+            .select("*")
             .eq("user_id", user_id)
             .execute()
         )
         return {
-            row["campaign_id"]: {
+            str(row["campaign_id"]): {
                 "campaign_name": row.get("campaign_name") or "",
                 "label": row.get("label"),
+                "label_source": row.get("label_source"),
                 "budget_max": float(row.get("budget_max") or 0),
                 "effective_status": row.get("effective_status"),
             }

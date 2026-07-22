@@ -67,11 +67,15 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         agg = m.groupby("campaign_name", as_index=False).agg(
             spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
         for _, r in agg.iterrows():
+            cfg = meta_cfg.get(r["campaign_name"], {}) or {}
             campaigns.append({
+                # key = clé d'édition du thème (campaign_name pour Meta) → rend la
+                # campagne réassignable depuis le rapport (CampaignLabelSelect)
                 "name": str(r["campaign_name"]), "channel": "meta",
+                "key": str(r["campaign_name"]),
                 "spend": float(r["spend"]), "clicks": int(r["clicks"]),
                 "impressions": int(r["impressions"]),
-                "label": (meta_cfg.get(r["campaign_name"], {}) or {}).get("label"),
+                "label": cfg.get("label"), "label_source": cfg.get("label_source"),
             })
 
     # Google : agrégat par campagne sur tout l'historique
@@ -88,10 +92,12 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         for _, r in agg.iterrows():
             cfg = goog_cfg.get(r["_cid"], {}) or {}
             campaigns.append({
+                # key = campaign_id pour Google (clé d'édition du thème)
                 "name": cfg.get("campaign_name") or f"Campagne {r['_cid']}", "channel": "google",
+                "key": str(r["_cid"]),
                 "spend": float(r["spend"]) / 1_000_000.0, "clicks": int(r["clicks"]),
                 "impressions": int(r["impressions"]),
-                "label": cfg.get("label"),
+                "label": cfg.get("label"), "label_source": cfg.get("label_source"),
             })
 
     # Revenu GA4 par campagne (matching nom normalisé, comme le bloc thèmes 7 j)
@@ -202,7 +208,7 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         c["spend"] = round(c["spend"], 2)
         c["ctr"] = round(c["ctr"], 2)
         c["cpc"] = round(c["cpc"], 2)
-        if c["revenue"] is not None:
+        if c.get("revenue") is not None:
             c["revenue"] = round(c["revenue"], 2)
 
     since = min(dates) if dates else last_full_day

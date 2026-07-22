@@ -361,6 +361,7 @@ export async function setCampaignLabel(
     revalidatePath("/google");
   }
   revalidatePath("/labels");
+  revalidatePath("/"); // le rapport regroupe les campagnes par thème
   return { ok: true };
 }
 
@@ -466,6 +467,43 @@ export async function triggerClassify(): Promise<{ ok: boolean; message: string 
       ok: true,
       message: "Classement lancé — l'IA labellise tes contenus, ~1 minute.",
     };
+  }
+  return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
+}
+
+// « ↻ Recharger mes conseils » : republie le rapport depuis les données déjà
+// en base (recalcul des conseils, sans re-fetch ni relabel) — ~30 s.
+export async function triggerReport(): Promise<{ ok: boolean; message: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Non connecté." };
+
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
+  if (!token) {
+    return {
+      ok: false,
+      message:
+        "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
+    };
+  }
+
+  const r = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: "main", inputs: { user_id: user.id, report_only: true } }),
+    }
+  );
+  if (r.status === 204) {
+    return { ok: true, message: "Conseils en cours de recalcul — ~30 secondes." };
   }
   return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
 }
