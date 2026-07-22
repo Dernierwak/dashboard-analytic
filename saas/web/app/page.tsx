@@ -123,7 +123,7 @@ export default async function Page() {
   const reglages = report?.reglages ?? [];
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
       <SiteHeader email={data.email} active="rapport" />
 
       {/* Hero */}
@@ -135,12 +135,9 @@ export default async function Page() {
           {report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref."}
         </h1>
         {report && (
-          <p className="text-[14px] text-muted mt-2 leading-relaxed">{report.verdict}</p>
+          <p className="text-[14px] text-muted mt-2 leading-relaxed max-w-2xl">{report.verdict}</p>
         )}
-        <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
-          <ObjectifSelect current={data.objectif} />
-          {report && <Suivi feedback={data.feedback} />}
-        </div>
+        {report && <Suivi feedback={data.feedback} />}
       </div>
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
@@ -161,12 +158,6 @@ export default async function Page() {
         priorities={priorities}
       />
 
-      {/* Vision globale — ce qui fonctionne sur TOUT l'historique, à valider.
-          Les conseils hebdo (plus bas) s'ancrent sur les constats validés. */}
-      {report?.vision && report.vision.constats.length > 0 && (
-        <VisionCard vision={report.vision} insightFeedback={data.insightFeedback} />
-      )}
-
       {!data.hasData ? (
         <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
           <p className="text-[14px] text-ink font-medium">Pas encore de données ici.</p>
@@ -177,34 +168,86 @@ export default async function Page() {
         </div>
       ) : (
         <>
-          {/* Le brief — 30 secondes pour situer la semaine */}
-          {report?.brief && (
-            <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
-                  Le brief de la semaine
-                </span>
-                <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
-                  IA
-                </span>
+          {/* 1 . NOS OBJECTIFS - ce qu'on cherche + les themes qu'on pilote */}
+          <section className="mb-9">
+            <SectionTitle>
+              <span className="text-faint font-mono mr-1.5">1</span> Nos objectifs
+            </SectionTitle>
+            <div className="bg-white border border-line rounded-xl shadow-card p-5 grid gap-5 lg:grid-cols-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+                  Ce qu&apos;on cherche
+                </div>
+                <ObjectifSelect current={data.objectif} />
               </div>
-              <p className="text-[13.5px] text-ink leading-relaxed">{report.brief}</p>
+              <div className="lg:border-l border-line lg:pl-5">
+                <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+                  On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
+                </div>
+                {priorities.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {priorities.map((p) => (
+                      <span
+                        key={p}
+                        className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1"
+                      >
+                        {"★"} {p}
+                      </span>
+                    ))}
+                    <Link
+                      href="/labels"
+                      className="text-[12px] font-semibold text-brand hover:underline ml-1"
+                    >
+                      {"Changer →"}
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="text-[12.5px] text-muted leading-relaxed">
+                    Aucune priorité — le rapport prend tes 3 plus gros thèmes.{" "}
+                    <Link href="/labels" className="text-brand font-semibold hover:underline">
+                      {"Choisis les tiens →"}
+                    </Link>
+                  </p>
+                )}
+              </div>
             </div>
+          </section>
+
+          {/* 2 . OU ON EN EST - le bilan general + le brief de la semaine */}
+          {(report?.brief || (report?.vision && report.vision.constats.length > 0)) && (
+            <section className="mb-9">
+              <SectionTitle>
+                <span className="text-faint font-mono mr-1.5">2</span> Où on en est
+              </SectionTitle>
+              {report?.brief && (
+                <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
+                      Le brief de la semaine
+                    </span>
+                    <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
+                      IA
+                    </span>
+                  </div>
+                  <p className="text-[13.5px] text-ink leading-relaxed">{report.brief}</p>
+                </div>
+              )}
+              {report?.vision && report.vision.constats.length > 0 && (
+                <VisionCard vision={report.vision} insightFeedback={data.insightFeedback} />
+              )}
+            </section>
           )}
 
-          {/* Le cœur : par thème (cross-canal) — campagnes éditables + ≤3 conseils */}
-          {themesFocus.length > 0 ? (
-            <>
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-                <SectionTitle>
-                  Par thème{" "}
-                  <span className="text-faint font-normal">
-                    · {priorities.length > 0 ? "tes priorités" : "tes 3 plus gros thèmes"} — ce qui marche + comment l&apos;améliorer
-                  </span>
-                </SectionTitle>
-                <ReloadRecosButton />
-              </div>
-              {themesFocus.map((t) => (
+          {/* 3 . TES CONSEILS, THEME PAR THEME - le coeur, cross-canal */}
+          <section className="mb-9">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <SectionTitle>
+                <span className="text-faint font-mono mr-1.5">3</span> Tes conseils, thème par thème
+              </SectionTitle>
+              {themesFocus.length > 0 && <ReloadRecosButton />}
+            </div>
+            {themesFocus.length > 0 ? (
+              themesFocus.map((t) => (
                 <ThemeFocusCard
                   key={t.label}
                   theme={t}
@@ -212,26 +255,19 @@ export default async function Page() {
                   feedback={data.feedback}
                   comments={data.comments}
                 />
-              ))}
-              {priorities.length === 0 && (
-                <p className="text-[12px] text-faint mb-8">
-                  Astuce : marque jusqu&apos;à 3 thèmes prioritaires sur{" "}
+              ))
+            ) : (
+              <div className="bg-brand/[0.04] border border-brand/[0.14] rounded-xl p-5">
+                <p className="text-[13px] text-ink leading-relaxed">
+                  <span className="font-semibold text-brand">Presque prêt — </span>
+                  classe tes contenus sur la page{" "}
                   <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
-                  pour concentrer le rapport sur ce qui compte pour toi.
+                  (bouton « ✨ Classer mes contenus »), puis recharge : le rapport se
+                  construit thème par thème.
                 </p>
-              )}
-            </>
-          ) : (
-            <div className="bg-brand/[0.04] border border-brand/[0.14] rounded-xl p-5 mb-8">
-              <p className="text-[13px] text-ink leading-relaxed">
-                <span className="font-semibold text-brand">Presque prêt — </span>
-                classe tes contenus sur la page{" "}
-                <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
-                (bouton « ✨ Classer mes contenus »), puis recharge : le rapport se
-                construit thème par thème.
-              </p>
-            </div>
-          )}
+              </div>
+            )}
+          </section>
 
           {/* Réglages de base — prérequis (GA4, funnel) sortis du flux par thème */}
           {reglages.length > 0 && (

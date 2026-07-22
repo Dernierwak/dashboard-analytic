@@ -100,42 +100,36 @@ export function VisionCard({
   if (vision.constats.length === 0) return null;
 
   return (
-    <section className="mb-8">
-      <div className="mb-3">
-        <div className="flex items-baseline justify-between flex-wrap gap-x-3 gap-y-1">
-          <h2 className="text-[14px] font-semibold text-ink">
-            ◈ Ce qui fonctionne pour toi
-          </h2>
-          <span className="text-[11px] text-faint">
-            tout ton historique{vision.period_label ? ` · ${vision.period_label}` : ""}
-          </span>
-        </div>
-        <p className="text-[11.5px] text-faint mt-0.5">
-          Valide ou écarte chaque constat — les conseils s&apos;appuient dessus.
-          {(vision.priorities?.length ?? 0) > 0 && (
-            <span className="text-warn font-semibold">
-              {" "}★ Priorités : {vision.priorities!.join(" · ")}
-            </span>
-          )}
-        </p>
-      </div>
-      <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
+    <div>
+      <p className="text-[12.5px] text-muted leading-relaxed mb-3 max-w-2xl">
+        Le bilan de ton compte sur tout ton historique
+        {vision.period_label ? ` (${vision.period_label})` : ""} : ce qui marche, ce
+        qui coince. <span className="text-ink font-medium">Dis-nous si chaque constat
+        te parle</span> — tes conseils, plus bas, s&apos;appuient dessus (et ignorent ce
+        que tu écartes).
+      </p>
+      {/* Grille sur desktop : les constats côte à côte, pas une colonne étirée. */}
+      <div className="grid gap-3 lg:grid-cols-2">
         {visible.map((c) => (
-          <ConstatRow key={c.key} c={c} verdict={verdictOf(c)} />
+          <div key={c.key} className="bg-white border border-line rounded-xl shadow-card">
+            <ConstatRow c={c} verdict={verdictOf(c)} />
+          </div>
         ))}
       </div>
       {rejected.length > 0 && (
-        <details className="mt-2">
+        <details className="mt-3">
           <summary className="text-[11.5px] text-faint cursor-pointer select-none">
             Écartés ({rejected.length}) — le moteur ne s&apos;appuie plus dessus
           </summary>
-          <div className="mt-2 bg-white border border-line rounded-xl divide-y divide-line opacity-60">
+          <div className="grid gap-3 lg:grid-cols-2 mt-2 opacity-60">
             {rejected.map((c) => (
-              <ConstatRow key={c.key} c={c} verdict="reject" />
+              <div key={c.key} className="bg-white border border-line rounded-xl">
+                <ConstatRow c={c} verdict="reject" />
+              </div>
             ))}
           </div>
         </details>
       )}
-    </section>
+    </div>
   );
 }
