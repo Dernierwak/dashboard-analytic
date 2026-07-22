@@ -7,7 +7,6 @@ import { getWeeklyData, type ReportPayload } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
-import { VisionCard } from "@/components/vision-card";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { RecoCard } from "@/components/reco-card";
@@ -213,28 +212,24 @@ export default async function Page() {
             </div>
           </section>
 
-          {/* 2 . OU ON EN EST - le bilan general + le brief de la semaine */}
-          {(report?.brief || (report?.vision && report.vision.constats.length > 0)) && (
+          {/* 2 . OU ON EN EST - le brief de la semaine (le bilan a valider a ete
+               retire : l'outil teste et pondere seul, il ne demande pas de valider) */}
+          {report?.brief && (
             <section className="mb-9">
               <SectionTitle>
                 <span className="text-faint font-mono mr-1.5">2</span> Où on en est
               </SectionTitle>
-              {report?.brief && (
-                <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
-                      Le brief de la semaine
-                    </span>
-                    <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
-                      IA
-                    </span>
-                  </div>
-                  <p className="text-[13.5px] text-ink leading-relaxed">{report.brief}</p>
+              <div className="bg-white border border-line rounded-xl shadow-card p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
+                    Le brief de la semaine
+                  </span>
+                  <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
+                    IA
+                  </span>
                 </div>
-              )}
-              {report?.vision && report.vision.constats.length > 0 && (
-                <VisionCard vision={report.vision} insightFeedback={data.insightFeedback} />
-              )}
+                <p className="text-[13.5px] text-ink leading-relaxed">{report.brief}</p>
+              </div>
             </section>
           )}
 

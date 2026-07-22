@@ -73,15 +73,16 @@ export function ThemeFocusCard({
         )}
       </div>
 
-      {/* Corps : campagnes (gauche) · conseils (droite) sur desktop */}
-      <div className="grid lg:grid-cols-3">
-        {/* Colonne campagnes — scroll quand la liste est longue */}
+      {/* Corps : campagnes (gauche) · conseils (droite) sur desktop.
+          Tient dans ~46 % de l'écran puis SCROLLE — l'en-tête reste visible. */}
+      <div className="grid lg:grid-cols-3 max-h-[46vh] overflow-y-auto">
+        {/* Colonne campagnes */}
         <div className="lg:col-span-1 p-4 lg:border-r border-line border-b lg:border-b-0">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2 sticky top-0 bg-white">
             Ses campagnes ({theme.campaigns.length})
           </div>
           {theme.campaigns.length > 0 ? (
-            <div className="max-h-72 overflow-y-auto pr-1 divide-y divide-line">
+            <div className="pr-1 divide-y divide-line">
               {theme.campaigns.map((c) => {
                 const ch = CH_ICON[c.channel] ?? CH_ICON.meta;
                 return (

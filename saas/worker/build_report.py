@@ -67,11 +67,13 @@ def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
 
-def _theme_ai_reco(theme: str, camps: list, tsummary: dict | None,
-                   obj_txt: str, known: str) -> dict | None:
-    """UNE piste IA scopée à un thème : comment l'améliorer, à partir de SES
-    campagnes uniquement. None si Gemini échoue → jamais bloquant."""
+def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
+                    obj_txt: str, want: int = 3) -> list[dict]:
+    """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
+    (léger, thinking off). [] si Gemini échoue → jamais bloquant."""
     import json as _json
+    if want <= 0:
+        return []
     facts = "; ".join(
         f"{c['name']} [{c['channel']}] {c['spend']:.0f} CHF, CTR {c.get('ctr', 0):.1f} %"
         + (f", revenu {c['revenue']:.0f} CHF" if c.get("revenue") is not None else "")
@@ -84,31 +86,39 @@ def _theme_ai_reco(theme: str, camps: list, tsummary: dict | None,
         f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
         f"{roas_txt}, {s.get('posts', 0)} posts. "
         f"Ses campagnes : {facts}. "
-        f"Conseils déjà donnés sur ce thème (n'en répète aucun) : {known or 'aucun'}. "
-        "Propose UNE seule idée concrète pour améliorer CE thème cette semaine. "
-        "Réponds UNIQUEMENT en JSON avec ces clés : "
+        f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
+        "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
+        "Réponds UNIQUEMENT avec un tableau JSON de "
+        f"{want} objets, chacun avec ces clés : "
         '{"title","observation","pourquoi","verifier","angle_mort"}. '
-        "Français, ton direct, ne déforme aucun chiffre fourni."
+        "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
     )
     if not raw:
-        return None
+        return []
     try:
         txt = raw.strip()
         if txt.startswith("```"):
             txt = txt.strip("`")
             txt = txt[4:] if txt.lower().startswith("json") else txt
-        d = _json.loads(txt.strip())
-        if all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-            return {
-                "key": f"ai_{theme}", "platform": "ia", "title": str(d["title"])[:90],
-                "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
-                "verifier": str(d["verifier"]), "repere": "",
-                "angle_mort": str(d["angle_mort"]),
-                "confidence": "piste", "priority": 9, "source": "ai",
-            }
+        arr = _json.loads(txt.strip())
+        if isinstance(arr, dict):  # tolérance : un seul objet renvoyé
+            arr = [arr]
+        out = []
+        for i, d in enumerate(arr[:want]):
+            if not isinstance(d, dict):
+                continue
+            if all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+                out.append({
+                    "key": f"ai_{theme}_{i + 1}", "platform": "ia",
+                    "title": str(d["title"])[:90],
+                    "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
+                    "verifier": str(d["verifier"]), "repere": "",
+                    "angle_mort": str(d["angle_mort"]),
+                    "confidence": "piste", "priority": 9 + i, "source": "ai",
+                })
+        return out
     except Exception:
-        return None
-    return None
+        return []
 
 
 def build_payload(sb, user_id: str) -> dict | None:
@@ -393,16 +403,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         )
         t_recos = sorted((r for r in t_recos if r.get("key") not in SETUP_KEYS),
                          key=lambda r: r["priority"])
-        # 1 piste IA scopée au thème comble le manque (priority 9 → en dernier,
-        # gardée seulement s'il reste de la place dans le top 3).
+        # On vise 3 conseils par thème : les règles d'abord, puis on COMPLÈTE avec
+        # autant de pistes IA distinctes que nécessaire (souvent 3, car les règles
+        # se déclenchent rarement sur un seul thème).
+        _need = max(0, 3 - len(t_recos))
         try:
-            _ai = _theme_ai_reco(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0,
-                                 " ; ".join(r["title"] for r in t_recos))
+            _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
         except Exception:
-            _ai = None
-        if _ai:
-            t_recos.append(_ai)
-        t_recos = t_recos[:3]
+            _ai = []
+        t_recos = (t_recos + _ai)[:3]
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {

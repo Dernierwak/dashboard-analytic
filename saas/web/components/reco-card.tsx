@@ -7,9 +7,9 @@ const CONF: Record<string, { symbol: string; label: string }> = {
   piste: { symbol: "○", label: "Piste" },
 };
 
-// Une recommandation : observation → pourquoi → avant d'agir → repère → angle
-// mort, plus les boutons de feedback. Réutilisée par le rapport (par thème) et
-// les réglages de base.
+// Carte de reco ALLÉGÉE : par défaut on ne voit que l'essentiel (badge, titre,
+// le fait, feedback). Le détail (pourquoi / comment tester / angle mort) est
+// replié derrière « ▸ Pourquoi & comment tester » — <details> natif, zéro JS.
 export function RecoCard({
   r,
   current,
@@ -20,45 +20,62 @@ export function RecoCard({
   comment: string | null;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
+  const hasDetail = Boolean(r.pourquoi || r.verifier || r.repere || r.angle_mort);
   return (
-    <div className="bg-white border border-line rounded-xl shadow-card p-5">
+    <div className="bg-white border border-line rounded-xl shadow-card p-4 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5">
         {r.source === "ai" ? (
-          <span className="text-[10px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
-            IA · idée à tester
+          <span className="text-[9.5px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
+            IA · à tester
           </span>
         ) : (
-          <span className="text-[10px] font-semibold text-muted bg-black/[0.06] rounded-full px-2 py-0.5">
+          <span className="text-[9.5px] font-semibold text-muted bg-black/[0.06] rounded-full px-2 py-0.5">
             Règle
           </span>
         )}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted">
-          <span className="text-[13px] text-ink">{cf.symbol}</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] font-semibold text-muted">
+          <span className="text-[12px] text-ink">{cf.symbol}</span>
           {cf.label}
         </span>
       </div>
-      <h3 className="text-[15px] font-semibold text-ink leading-snug">{r.title}</h3>
-      <p className="text-[13px] text-ink leading-relaxed mt-1.5">{r.observation}</p>
-      <p className="text-[13px] text-muted leading-relaxed mt-1.5">
-        <span className="font-semibold text-ink">Pourquoi — </span>
-        {r.pourquoi}
-      </p>
-      <p className="text-[13px] text-muted leading-relaxed mt-1.5">
-        <span className="font-semibold text-ink">Avant d&apos;agir — </span>
-        {r.verifier}
-      </p>
-      {r.repere && (
-        <div className="text-[12.5px] text-ink leading-relaxed mt-2.5 bg-brand/[0.05] border border-brand/[0.14] rounded-lg px-3 py-2">
-          <span className="font-semibold text-brand">Repère — </span>
-          {r.repere}
-        </div>
+      <h3 className="text-[14px] font-semibold text-ink leading-snug">{r.title}</h3>
+      <p className="text-[12.5px] text-muted leading-relaxed mt-1">{r.observation}</p>
+
+      {hasDetail && (
+        <details className="mt-2 group">
+          <summary className="text-[11.5px] font-semibold text-brand cursor-pointer select-none list-none">
+            <span className="group-open:hidden">▸ Pourquoi &amp; comment tester</span>
+            <span className="hidden group-open:inline">▾ Replier</span>
+          </summary>
+          <div className="mt-1.5 space-y-1.5">
+            {r.pourquoi && (
+              <p className="text-[12px] text-muted leading-relaxed">
+                <span className="font-semibold text-ink">Pourquoi — </span>
+                {r.pourquoi}
+              </p>
+            )}
+            {r.verifier && (
+              <p className="text-[12px] text-muted leading-relaxed">
+                <span className="font-semibold text-ink">Avant d&apos;agir — </span>
+                {r.verifier}
+              </p>
+            )}
+            {r.repere && (
+              <div className="text-[12px] text-ink leading-relaxed bg-brand/[0.05] border border-brand/[0.14] rounded-lg px-2.5 py-1.5">
+                <span className="font-semibold text-brand">Repère — </span>
+                {r.repere}
+              </div>
+            )}
+            {r.angle_mort && (
+              <p className="text-[11.5px] text-faint leading-relaxed">
+                <span className="font-semibold">Angle mort — </span>
+                {r.angle_mort}
+              </p>
+            )}
+          </div>
+        </details>
       )}
-      {r.angle_mort && (
-        <p className="text-[12px] text-faint leading-relaxed mt-2.5">
-          <span className="font-semibold">Angle mort — </span>
-          {r.angle_mort}
-        </p>
-      )}
+
       <RecoActions recoKey={r.key} current={current} comment={comment} />
     </div>
   );
