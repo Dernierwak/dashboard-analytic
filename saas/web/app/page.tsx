@@ -9,68 +9,13 @@ import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
+import { TrackingSection } from "@/components/tracking-section";
 import { RecoCard } from "@/components/reco-card";
 
 export const dynamic = "force-dynamic";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[14px] font-semibold text-ink mb-3">{children}</h2>;
-}
-
-// « Tes décisions — ce que ça a donné » — la boucle de la preuve.
-const PROOF_STYLE: Record<string, { icon: string; color: string; verdict: string }> = {
-  better: { icon: "✓", color: "#1a7a4a", verdict: "effet visible" },
-  worse: { icon: "▸", color: "#b86b00", verdict: "pas encore d'effet — à surveiller" },
-  stable: { icon: "≈", color: "#8b8e98", verdict: "stable pour l'instant" },
-};
-
-function PreuveSection({ preuve }: { preuve: NonNullable<ReportPayload["preuve"]> }) {
-  return (
-    <div className="mb-8">
-      <SectionTitle>Tes décisions — ce que ça a donné</SectionTitle>
-      {preuve.outcomes.length > 0 && (
-        <div className="bg-white border border-line rounded-xl shadow-card overflow-hidden divide-y divide-line">
-          {preuve.outcomes.map((o) => {
-            const s = PROOF_STYLE[o.verdict] ?? PROOF_STYLE.stable;
-            const unit = o.unit ? ` ${o.unit}` : "";
-            return (
-              <div
-                key={o.key}
-                className="flex gap-3.5 px-4 py-3.5 items-start"
-                style={{ borderLeft: `3px solid ${s.color}` }}
-              >
-                <div
-                  className="w-7 h-7 rounded-lg grid place-items-center text-[14px] font-bold shrink-0 mt-0.5"
-                  style={{ color: s.color, background: `${s.color}16` }}
-                >
-                  {s.icon}
-                </div>
-                <div>
-                  <div className="text-[13.5px] font-semibold text-ink leading-snug">
-                    {o.title} — {s.verdict}
-                  </div>
-                  <div className="text-[12px] text-muted mt-0.5 leading-relaxed">
-                    Décidé {o.week_label} · {o.kpi} : {o.then}
-                    {unit} → <strong className="text-ink">{o.now}{unit}</strong>
-                    {o.delta !== null && ` (${o.delta > 0 ? "+" : ""}${o.delta.toFixed(0)} %)`}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {preuve.pending.map((p) => (
-        <p key={p.key} className="text-[12px] text-faint mt-2">
-          ◷ « {p.title} » — décidé cette semaine, effet mesuré dès le prochain rapport.
-        </p>
-      ))}
-      <p className="text-[11px] text-faint/80 mt-2.5 leading-relaxed">
-        Avant/après honnête, pas une preuve absolue — la saisonnalité et le contenu jouent
-        aussi. Sur la durée, c&apos;est le meilleur indicateur de ce qui marche chez toi.
-      </p>
-    </div>
-  );
 }
 
 function Suivi({ feedback }: { feedback: Record<string, string> }) {
@@ -249,6 +194,7 @@ export default async function Page() {
                   labels={data.labels}
                   feedback={data.feedback}
                   comments={data.comments}
+                  trackedKeys={data.trackedKeys}
                 />
               ))
             ) : (
@@ -278,17 +224,15 @@ export default async function Page() {
                     r={r}
                     current={data.feedback[r.key] ?? null}
                     comment={data.comments[r.key] ?? null}
+                    theme={null}
+                    tracked={data.trackedKeys.includes(r.key)}
                   />
                 ))}
               </div>
             </details>
           )}
 
-          {/* Boucle de la preuve : les « Fait » re-mesurés */}
-          {report?.preuve &&
-            (report.preuve.outcomes.length > 0 || report.preuve.pending.length > 0) && (
-              <PreuveSection preuve={report.preuve} />
-            )}
+          {report?.tracking && <TrackingSection tracking={report.tracking} />}
         </>
       )}
     </main>

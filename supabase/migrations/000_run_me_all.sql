@@ -431,3 +431,46 @@ CREATE POLICY "insight_fb_update_own" ON public.insight_feedback
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "insight_fb_delete_own" ON public.insight_feedback
     FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 9) Suivi des recommandations — « ▶ Je le teste » puis verdict 2 semaines
+--    après. Voir suivi_actions.sql. La décision est photographiée (titre,
+--    indicateur-cible, valeur de départ) → elle reste « en cours » jusqu'à ce
+--    qu'elle soit faite / vérifiée.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.suivi_actions (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    reco_key    text NOT NULL,
+    title       text NOT NULL,
+    theme       text,
+    metric      text,
+    metric_label text,
+    direction   text,
+    baseline    numeric(14, 4),
+    decided_at  date NOT NULL DEFAULT current_date,
+    check_at    date NOT NULL,
+    status      text NOT NULL DEFAULT 'running',
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT suivi_actions_uq UNIQUE (user_id, reco_key, decided_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_suivi_actions_user
+    ON public.suivi_actions (user_id, check_at);
+
+ALTER TABLE public.suivi_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "suivi_actions_select_own" ON public.suivi_actions;
+DROP POLICY IF EXISTS "suivi_actions_insert_own" ON public.suivi_actions;
+DROP POLICY IF EXISTS "suivi_actions_update_own" ON public.suivi_actions;
+DROP POLICY IF EXISTS "suivi_actions_delete_own" ON public.suivi_actions;
+CREATE POLICY "suivi_actions_select_own" ON public.suivi_actions
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "suivi_actions_insert_own" ON public.suivi_actions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "suivi_actions_update_own" ON public.suivi_actions
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "suivi_actions_delete_own" ON public.suivi_actions
+    FOR DELETE USING (auth.uid() = user_id);

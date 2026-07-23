@@ -59,8 +59,11 @@ def _call_gemini(prompt: str) -> str | None:
 
 
 # Champs d'une reco tels que stockés dans le payload (miroir du dict _reco()).
+# metric/metric_label/direction/baseline : indicateur-cible + sa valeur du moment,
+# pour le suivi « ▶ Je le teste » (photographie de la décision).
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
-               "repere", "angle_mort", "confidence", "priority", "source")
+               "repere", "angle_mort", "confidence", "priority", "source",
+               "metric", "metric_label", "direction", "baseline")
 
 
 def _strip_reco(r: dict) -> dict:
@@ -741,6 +744,70 @@ def build_payload(sb, user_id: str) -> dict | None:
         if (outcomes or pending) else None
     )
 
+    # ── Suivi des actions « ▶ Je le teste » ──────────────────────────────────
+    # 1) On attache à chaque conseil son indicateur-cible + sa valeur du moment :
+    #    c'est la photo prise si l'utilisateur décide de le tester.
+    if cur_kpis is None:
+        cur_kpis = _kpis_window(cur_since, last_full_day)
+
+    def _attach_metric(r):
+        spec = PROOF_KPI.get(r.get("key"))
+        if not spec:
+            return
+        kpi, lbl_k, _unit, direction, _fmt = spec
+        base = cur_kpis.get(kpi)
+        r["metric"], r["metric_label"], r["direction"] = kpi, lbl_k, direction
+        r["baseline"] = round(base, 4) if base is not None else None
+
+    for _tf in themes_focus:
+        for _r in _tf["recos"]:
+            _attach_metric(_r)
+    for _r in reglages:
+        _attach_metric(_r)
+
+    # 2) Les actions déjà lancées restent EN COURS jusqu'à être faites/vérifiées ;
+    #    à l'échéance (check_at), on remesure l'indicateur → verdict.
+    tracking = None
+    try:
+        _sa = (sb.table("suivi_actions").select("*")
+               .eq("user_id", user_id).eq("status", "running")
+               .order("check_at").execute().data) or []
+    except Exception:
+        _sa = []
+    if _sa:
+        running, verified = [], []
+        for a in _sa:
+            metric = a.get("metric")
+            base = a.get("baseline")
+            now = cur_kpis.get(metric) if metric else None
+            try:
+                chk = date.fromisoformat(str(a.get("check_at"))[:10])
+            except Exception:
+                chk = today
+            due = today >= chk
+            entry = {
+                "id": a.get("id"), "title": a.get("title"), "theme": a.get("theme"),
+                "metric_label": a.get("metric_label"),
+                "decided_at": str(a.get("decided_at"))[:10],
+                "check_at": str(a.get("check_at"))[:10],
+            }
+            if due and metric and base is not None and now is not None:
+                b = float(base)
+                delta = ((now - b) / b * 100) if abs(b) > 1e-9 else None
+                direction = a.get("direction") or "up"
+                better = delta is not None and ((delta <= -5) if direction == "down" else (delta >= 5))
+                worse = delta is not None and ((delta >= 5) if direction == "down" else (delta <= -5))
+                entry.update({
+                    "then": round(b, 2), "now": round(float(now), 2),
+                    "delta": round(delta, 1) if delta is not None else None,
+                    "verdict": "better" if better else ("worse" if worse else "stable"),
+                })
+                verified.append(entry)
+            else:
+                entry["due"] = due  # échéance atteinte mais pas de chiffre auto → à juger soi-même
+                running.append(entry)
+        tracking = {"running": running, "verified": verified}
+
     # ── Vision + matrice compacte pour le payload ────────────────────────────
     vision = None
     if constats:
@@ -801,6 +868,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
         "themes_focus": themes_focus,
         "reglages": reglages,
+        "tracking": tracking,
         "themes": themes,
         "preuve": preuve,
     }

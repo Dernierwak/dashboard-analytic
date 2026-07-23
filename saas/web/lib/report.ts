@@ -31,6 +31,25 @@ export type PayloadReco = {
   confidence: "solide" | "creuser" | "piste";
   priority: number;
   source?: "rule" | "ai";
+  // Suivi « ▶ Je le teste » : indicateur-cible + sa valeur du moment (photo).
+  metric?: string | null;
+  metric_label?: string | null;
+  direction?: string | null;
+  baseline?: number | null;
+};
+
+export type TrackedAction = {
+  id: string;
+  title: string;
+  theme: string | null;
+  metric_label: string | null;
+  decided_at: string;
+  check_at: string;
+  due?: boolean;
+  then?: number;
+  now?: number;
+  delta?: number | null;
+  verdict?: "better" | "worse" | "stable";
 };
 
 export type ThemeRow = { label: string; spend: number; rev: number };
@@ -114,6 +133,7 @@ export type ReportPayload = {
   matrice?: { coverage?: MatriceCoverage } | null;
   themes_focus?: ThemeFocus[] | null;
   reglages?: PayloadReco[] | null;
+  tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   week_label: string;
   since: string;
   until: string;
@@ -146,6 +166,8 @@ export type WeeklyData = {
   onboarded: boolean;
   // Liste maîtresse des thèmes (étape « priorités » du parcours de démarrage).
   labels: string[];
+  // Clés des conseils actuellement suivis (« ▶ Je le teste » → en cours).
+  trackedKeys: string[];
 };
 
 function iso(d: Date): string {
@@ -180,7 +202,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes] =
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -232,6 +254,12 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .from("insight_feedback")
       .select("insight_key, verdict")
       .eq("user_id", uid),
+    // Conseils en cours de suivi (« ▶ Je le teste ») — état live du bouton.
+    supabase
+      .from("suivi_actions")
+      .select("reco_key")
+      .eq("user_id", uid)
+      .eq("status", "running"),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -246,6 +274,10 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   for (const row of insightRes.data ?? []) {
     if (row.insight_key && row.verdict) insightFeedback[row.insight_key] = row.verdict;
   }
+
+  const trackedKeys: string[] = (trackRes.data ?? [])
+    .map((r) => String(r.reco_key))
+    .filter(Boolean);
 
   // Dernière réaction par clé (tri desc → première vue = la plus récente),
   // même logique que fetch_reco_feedback côté Python.
@@ -477,5 +509,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     objectif,
     onboarded,
     labels,
+    trackedKeys,
   };
 }

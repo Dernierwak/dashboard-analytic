@@ -14,10 +14,14 @@ export function RecoCard({
   r,
   current,
   comment,
+  theme = null,
+  tracked = false,
 }: {
   r: PayloadReco;
   current: string | null;
   comment: string | null;
+  theme?: string | null;
+  tracked?: boolean;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
   const hasDetail = Boolean(r.pourquoi || r.verifier || r.repere || r.angle_mort);
@@ -76,7 +80,20 @@ export function RecoCard({
         </details>
       )}
 
-      <RecoActions recoKey={r.key} current={current} comment={comment} />
+      <RecoActions
+        recoKey={r.key}
+        current={current}
+        comment={comment}
+        tracked={tracked}
+        track={{
+          title: r.title,
+          theme,
+          metric: r.metric ?? null,
+          metricLabel: r.metric_label ?? null,
+          direction: r.direction ?? null,
+          baseline: r.baseline ?? null,
+        }}
+      />
     </div>
   );
 }

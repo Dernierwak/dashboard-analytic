@@ -15,6 +15,90 @@ function mondayISO(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function isoDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// « ▶ Je le teste » : photographie la décision (titre, indicateur-cible + sa
+// valeur du moment) et pose l'échéance à +14 j. L'action reste « en cours »
+// jusqu'à être faite/vérifiée. Re-cliquer sur un conseil déjà suivi le retire.
+export async function startTracking(a: {
+  recoKey: string;
+  title: string;
+  theme: string | null;
+  metric: string | null;
+  metricLabel: string | null;
+  direction: string | null;
+  baseline: number | null;
+  tracked: boolean;
+}): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+
+  if (a.tracked) {
+    // Toggle off : on retire les suivis « en cours » de ce conseil.
+    await supabase
+      .from("suivi_actions")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("reco_key", a.recoKey)
+      .eq("status", "running");
+    revalidatePath("/");
+    return { ok: true };
+  }
+
+  const today = new Date();
+  const check = new Date(today);
+  check.setDate(check.getDate() + 14);
+  const r = await supabase.from("suivi_actions").upsert(
+    {
+      user_id: user.id,
+      reco_key: a.recoKey,
+      title: a.title,
+      theme: a.theme,
+      metric: a.metric,
+      metric_label: a.metricLabel,
+      direction: a.direction,
+      baseline: a.baseline,
+      decided_at: isoDate(today),
+      check_at: isoDate(check),
+      status: "running",
+    },
+    { onConflict: "user_id,reco_key,decided_at" }
+  );
+  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table suivi_actions)." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// Sur une action en cours : « ✓ Fait » (archive, on garde le verdict mesuré) ou
+// « retirer » (supprime le suivi).
+export async function resolveAction(
+  id: string,
+  action: "done" | "drop"
+): Promise<{ ok: boolean }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  if (action === "drop") {
+    await supabase.from("suivi_actions").delete().eq("id", id).eq("user_id", user.id);
+  } else {
+    await supabase
+      .from("suivi_actions")
+      .update({ status: "archived" })
+      .eq("id", id)
+      .eq("user_id", user.id);
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // Enregistre / bascule la réaction d'un conseil. Re-cliquer la réaction active
 // la retire (toggle) ; en choisir une autre la remplace. Même table que le
 // Streamlit (reco_feedback) → la boucle de la preuve voit aussi les « Fait »

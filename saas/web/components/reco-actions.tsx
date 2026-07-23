@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveRecoFeedback, saveComment, type Reaction } from "@/app/actions";
+import { saveRecoFeedback, saveComment, startTracking, type Reaction } from "@/app/actions";
 
-// Boutons de réaction sous chaque conseil — même boucle que le Streamlit :
-// « Fait » nourrit la boucle de la preuve (effet mesuré la semaine suivante),
-// « Utile » / « Pas pour moi » re-pondèrent les conseils de l'IA.
+export type TrackInfo = {
+  title: string;
+  theme: string | null;
+  metric: string | null;
+  metricLabel: string | null;
+  direction: string | null;
+  baseline: number | null;
+};
+
+// Boutons de réaction sous chaque conseil.
+// « ▶ Je le teste » : démarre le suivi (photo de la décision, échéance +2 sem.).
+// « ✓ Fait » / « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
 // + commentaire libre : agrégé dans ton profil, l'IA adapte son ton.
 const BUTTONS: { reaction: Reaction; label: string; activeCls: string }[] = [
   { reaction: "done", label: "✓ Fait", activeCls: "bg-pos text-white border-pos" },
@@ -17,18 +26,41 @@ export function RecoActions({
   recoKey,
   current,
   comment,
+  track,
+  tracked = false,
 }: {
   recoKey: string;
   current: string | null;
   comment?: string | null;
+  track?: TrackInfo;
+  tracked?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [showComment, setShowComment] = useState(false);
   const [text, setText] = useState(comment ?? "");
   const [commentSaved, setCommentSaved] = useState(false);
+  const [isTracked, setIsTracked] = useState(tracked);
 
   return (
     <div className="mt-3.5 pt-3 border-t border-line">
+      {track && (
+        <button
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const r = await startTracking({ recoKey, ...track, tracked: isTracked });
+              if (r.ok) setIsTracked(!isTracked);
+            })
+          }
+          className={`w-full mb-2 text-[12px] font-semibold rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+            isTracked
+              ? "bg-brand/[0.06] text-brand border-brand/30"
+              : "bg-brand text-white border-brand hover:bg-brand/90"
+          }`}
+        >
+          {isTracked ? "◷ En test — on revérifie dans ~2 semaines (retirer)" : "▶ Je le teste"}
+        </button>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         {BUTTONS.map((b) => {
           const active = current === b.reaction;

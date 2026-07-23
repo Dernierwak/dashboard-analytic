@@ -16,11 +16,13 @@ export function ThemeFocusCard({
   labels,
   feedback,
   comments,
+  trackedKeys,
 }: {
   theme: ThemeFocus;
   labels: string[];
   feedback: Record<string, string>;
   comments: Record<string, string>;
+  trackedKeys: string[];
 }) {
   const s = theme.summary;
   const hasRoas = s.roas !== null && s.roas !== undefined;
@@ -136,6 +138,8 @@ export function ThemeFocusCard({
                   r={r}
                   current={feedback[r.key] ?? null}
                   comment={comments[r.key] ?? null}
+                  theme={theme.label}
+                  tracked={trackedKeys.includes(r.key)}
                 />
               ))}
             </div>
