@@ -118,10 +118,17 @@ export type ThemeSummary = {
   n_campaigns: number;
 };
 
+export type ThemeSeries = {
+  metric_label: string;
+  points: { label: string; value: number }[];
+  markers: number[]; // index de semaine où une action a été lancée
+};
+
 export type ThemeFocus = {
   label: string;
   is_priority: boolean;
   summary: ThemeSummary;
+  series?: ThemeSeries | null;
   campaigns: ThemeCampaign[];
   recos: PayloadReco[];
 };

@@ -377,6 +377,76 @@ def build_payload(sb, user_id: str) -> dict | None:
     matrix_campaigns = (matrix or {}).get("campaigns", [])
     matrix_themes_by = {_nrm(t["label"]): t for t in (matrix or {}).get("themes", [])}
 
+    # ── Frise (Phase 2) : série hebdo de la métrique du thème + repères d'actions
+    _markers = {}
+    try:
+        for _a in (sb.table("suivi_actions").select("theme, decided_at")
+                   .eq("user_id", user_id).execute().data or []):
+            _markers.setdefault(_nrm(_a.get("theme")), []).append(str(_a.get("decided_at"))[:10])
+    except Exception:
+        _markers = {}
+    _WK = 10
+    _serie_start = last_full_day - timedelta(days=7 * _WK - 1)
+
+    def _wk_idx(d):
+        n = (d - _serie_start).days
+        return n // 7 if 0 <= n < 7 * _WK else None
+
+    def _theme_series(lbl):
+        nlbl = _nrm(lbl)
+        spend_w = [0.0] * _WK
+        reach_w = [[] for _ in range(_WK)]
+        has_spend = False
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            mm = df_meta_raw[df_meta_raw["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
+            for _d, _sp in zip(mm["date_start"], mm["spend"]):
+                _dd = _d.date() if hasattr(_d, "date") else _d
+                _wi = _wk_idx(_dd) if _dd is not None else None
+                if _wi is not None:
+                    spend_w[_wi] += float(_sp or 0); has_spend = True
+        if df_google is not None and not df_google.empty and "campaign_id" in df_google.columns:
+            gg = df_google[df_google["campaign_id"].astype(str).map(
+                lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
+            for _d, _cm in zip(gg["date_start"], gg["cost_micros"]):
+                _dd = _d.date() if hasattr(_d, "date") else _d
+                _wi = _wk_idx(_dd) if _dd is not None else None
+                if _wi is not None:
+                    spend_w[_wi] += float(_cm or 0) / 1e6; has_spend = True
+        if not has_spend and df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
+            _dtp = pd.to_datetime(df_insta["date"], errors="coerce")
+            for _i in range(len(df_insta)):
+                _lb = df_insta.iloc[_i].get("labels")
+                if not (isinstance(_lb, (list, tuple)) and lbl in _lb):
+                    continue
+                _d = _dtp.iloc[_i]
+                if pd.isna(_d):
+                    continue
+                _wi = _wk_idx(_d.date())
+                if _wi is not None:
+                    reach_w[_wi].append(float(df_insta.iloc[_i].get("reach") or 0))
+        if has_spend:
+            pts = [round(v, 2) for v in spend_w]
+            metric_label = "Dépense (CHF)"
+        else:
+            pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
+            metric_label = "Portée moyenne"
+        if sum(1 for v in pts if v > 0) < 3:
+            return None  # trop clairsemé → pas de frise
+        labels = [f"S{(_serie_start + timedelta(days=7 * j)).isocalendar()[1]}" for j in range(_WK)]
+        mk = []
+        for _x in _markers.get(nlbl, []):
+            try:
+                _wi = _wk_idx(date.fromisoformat(_x))
+            except Exception:
+                _wi = None
+            if _wi is not None:
+                mk.append(_wi)
+        return {
+            "metric_label": metric_label,
+            "points": [{"label": labels[j], "value": pts[j]} for j in range(_WK)],
+            "markers": sorted(set(mk)),
+        }
+
     themes_focus = []
     for lbl in theme_list:
         nlbl = _nrm(lbl)
@@ -425,10 +495,15 @@ def build_payload(sb, user_id: str) -> dict | None:
             "best_campaign": t_camps[0]["name"] if t_camps else None,
             "n_campaigns": len(t_camps),
         }
+        try:
+            _series = _theme_series(lbl)
+        except Exception:
+            _series = None
         themes_focus.append({
             "label": lbl,
             "is_priority": lbl in priority_labels,
             "summary": summary,
+            "series": _series,
             "campaigns": [
                 {k: c.get(k) for k in ("name", "channel", "key", "label",
                                        "label_source", "spend", "revenue", "ctr", "cpc")}
