@@ -49,6 +49,21 @@ export type CoutsData = {
   byTheme: ThemeSpend[];
 };
 
+// PostgREST plafonne chaque requête à 1000 lignes : on pagine, sinon la
+// dépense du mois est fausse (Google a >1000 lignes/an → juillet tronqué).
+async function fetchAllRows<T>(
+  build: () => { range: (a: number, b: number) => PromiseLike<{ data: T[] | null }> }
+): Promise<T[]> {
+  const page = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += page) {
+    const { data } = await build().range(from, from + page - 1);
+    const chunk = (data ?? []) as T[];
+    out.push(...chunk);
+    if (chunk.length < page) return out;
+  }
+}
+
 export async function getCoutsData(): Promise<CoutsData> {
   const supabase = createClient();
   const {
@@ -64,24 +79,31 @@ export async function getCoutsData(): Promise<CoutsData> {
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const elapsed = Math.min(1, now.getDate() / daysInMonth);
 
-  const [metaRes, googleRes, budgetsRes, metaCfgRes, googCfgRes] = await Promise.all([
-    supabase
-      .from("meta_ads_insights")
-      .select("date_start, campaign_name, spend")
-      .eq("user_id", uid)
-      .gte("date_start", yearStart),
-    supabase
-      .from("google_ads_insights")
-      .select("date_start, campaign_id, cost_micros")
-      .eq("user_id", uid)
-      .gte("date_start", yearStart),
+  type MetaRow = { date_start: string; campaign_name: string | null; spend: number | null };
+  type GoogRow = { date_start: string; campaign_id: string | number; cost_micros: number | null };
+  const [metaRows, googleRaw, budgetsRes, metaCfgRes, googCfgRes] = await Promise.all([
+    fetchAllRows<MetaRow>(() =>
+      supabase
+        .from("meta_ads_insights")
+        .select("date_start, campaign_name, spend")
+        .eq("user_id", uid)
+        .gte("date_start", yearStart)
+        .order("date_start", { ascending: false })
+    ),
+    fetchAllRows<GoogRow>(() =>
+      supabase
+        .from("google_ads_insights")
+        .select("date_start, campaign_id, cost_micros")
+        .eq("user_id", uid)
+        .gte("date_start", yearStart)
+        .order("date_start", { ascending: false })
+    ),
     supabase.from("channel_budgets").select("channel, month, amount").eq("user_id", uid),
     supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
     supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
   ]);
 
-  const metaRows = metaRes.data ?? [];
-  const googleRows = (googleRes.data ?? []).map((r) => ({
+  const googleRows = googleRaw.map((r) => ({
     date_start: r.date_start,
     campaign_id: String(r.campaign_id),
     chf: (Number(r.cost_micros) || 0) / 1_000_000,
