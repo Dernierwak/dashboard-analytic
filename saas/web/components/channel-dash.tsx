@@ -66,7 +66,12 @@ function Delta({ value, invert = false }: { value: number | null; invert?: boole
 }
 
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
-export function AdsKpis({ d }: { d: ChannelDash }) {
+export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
+  // Google n'a pas de portée (reach) → on montre les impressions à la place.
+  const firstTile =
+    channel === "google"
+      ? { label: "Impressions", value: fmtCHF(d.impressions), delta: d.imprDelta, invert: false }
+      : { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false };
   return (
     <div className="mb-8">
       {/* Hero */}
@@ -87,7 +92,7 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
       {/* Perf — carrousel horizontal sur téléphone */}
       <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-3 pb-1 sm:pb-0">
         {[
-          { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false },
+          firstTile,
           { label: "Clics", value: fmtCHF(d.clicks), delta: d.clicksDelta, invert: false },
           { label: "CTR moyen", value: `${d.ctr.toFixed(2)} %`, delta: d.ctrDelta, invert: false },
         ].map((k) => (

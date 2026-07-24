@@ -48,7 +48,7 @@ export default async function GooglePage({
         current={d.filters}
       />
 
-      <AdsKpis d={d} />
+      <AdsKpis d={d} channel="google" />
       <MetricChart d={d} path="/google" />
       <ByLabelTable d={d} />
 

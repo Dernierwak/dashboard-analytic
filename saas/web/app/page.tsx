@@ -15,8 +15,52 @@ import { RecoCard } from "@/components/reco-card";
 
 export const dynamic = "force-dynamic";
 
+const ONB_OBJ: Record<string, string> = {
+  ventes: "Plus de ventes",
+  notoriete: "Être plus connu",
+  engagement: "Une communauté qui réagit",
+};
+
+// H2 soigné : plus gros, sérif, avec un filet — hiérarchie nette, lisible mobile.
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[14px] font-semibold text-ink mb-3">{children}</h2>;
+  return (
+    <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink mb-3.5 flex items-center gap-2.5">
+      <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
+      {children}
+    </h2>
+  );
+}
+
+// Lecture simple des métriques clés — 4 tuiles, balayables au pouce sur mobile.
+function MetricsRead({
+  m,
+}: {
+  m: NonNullable<ReportPayload["metrics_read"]>;
+}) {
+  const fmt = (n: number | null) =>
+    n === null || n === undefined ? "—" : n.toLocaleString("fr-CH").replace(/ /g, " ");
+  const tiles = [
+    { label: "Trafic", value: fmt(m.trafic), sub: "sessions (GA4)" },
+    { label: "Vues", value: fmt(m.vues), sub: "Instagram" },
+    { label: "Clics", value: fmt(m.clics), sub: "publicité" },
+    { label: "CTR", value: m.ctr === null ? "—" : `${m.ctr.toFixed(1)} %`, sub: "publicité" },
+  ];
+  return (
+    <div className="flex overflow-x-auto sm:grid sm:grid-cols-4 gap-2.5 pb-1 sm:pb-0">
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          className="bg-white border border-line rounded-xl p-3.5 min-w-[130px] shrink-0 sm:min-w-0"
+        >
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+            {t.label}
+          </div>
+          <div className="font-mono text-[19px] font-medium text-ink mt-1">{t.value}</div>
+          <div className="text-[10.5px] text-faint mt-0.5">{t.sub}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Suivi({ feedback }: { feedback: Record<string, string> }) {
@@ -79,9 +123,6 @@ export default async function Page() {
         <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
           {report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref."}
         </h1>
-        {report && (
-          <p className="text-[14px] text-muted mt-2 leading-relaxed max-w-2xl">{report.verdict}</p>
-        )}
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
@@ -116,19 +157,34 @@ export default async function Page() {
         </div>
       ) : (
         <>
-          {/* 1 . NOS OBJECTIFS - ce qu'on cherche + les themes qu'on pilote */}
-          <section className="mb-9">
-            <SectionTitle>
-              <span className="text-faint font-mono mr-1.5">1</span> Nos objectifs
-            </SectionTitle>
-            <div className="bg-white border border-line rounded-xl shadow-card p-5 grid gap-5 lg:grid-cols-2">
+          {/* 1 . NOS OBJECTIFS - compact : un titre repliable, plus une grande carte */}
+          <details className="group mb-7 rounded-xl border border-line bg-white">
+            <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none flex-wrap">
+              <span className="text-[15px]">🎯</span>
+              <span className="text-[14px] font-semibold text-ink">
+                Objectif :{" "}
+                <span className="text-brand">
+                  {ONB_OBJ[data.objectif ?? ""] ?? "à définir"}
+                </span>
+              </span>
+              {priorities.length > 0 ? (
+                <span className="text-[13px] font-semibold text-warn">
+                  · ★ {priorities.join(" · ")}
+                </span>
+              ) : (
+                <span className="text-[12.5px] text-faint">· 3 plus gros thèmes</span>
+              )}
+              <span className="ml-auto text-[11px] text-faint group-open:hidden">modifier ▾</span>
+              <span className="ml-auto text-[11px] text-faint hidden group-open:inline">replier ▴</span>
+            </summary>
+            <div className="px-4 pb-4 pt-1 border-t border-line grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
                   Ce qu&apos;on cherche
                 </div>
                 <ObjectifSelect current={data.objectif} />
               </div>
-              <div className="lg:border-l border-line lg:pl-5">
+              <div>
                 <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
                   On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
                 </div>
@@ -137,48 +193,54 @@ export default async function Page() {
                     {priorities.map((p) => (
                       <span
                         key={p}
-                        className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1"
+                        className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1.5"
                       >
-                        {"★"} {p}
+                        ★ {p}
                       </span>
                     ))}
-                    <Link
-                      href="/labels"
-                      className="text-[12px] font-semibold text-brand hover:underline ml-1"
-                    >
-                      {"Changer →"}
+                    <Link href="/labels" className="text-[12px] font-semibold text-brand hover:underline ml-1">
+                      Changer →
                     </Link>
                   </div>
                 ) : (
                   <p className="text-[12.5px] text-muted leading-relaxed">
                     Aucune priorité — le rapport prend tes 3 plus gros thèmes.{" "}
                     <Link href="/labels" className="text-brand font-semibold hover:underline">
-                      {"Choisis les tiens →"}
+                      Choisis les tiens →
                     </Link>
                   </p>
                 )}
               </div>
             </div>
-          </section>
+          </details>
 
-          {/* 2 . OU ON EN EST - le brief de la semaine (le bilan a valider a ete
-               retire : l'outil teste et pondere seul, il ne demande pas de valider) */}
-          {report?.brief && (
+          {/* 2 . OU ON EN EST - phrase de synthese + resume hebdo + metriques cles */}
+          {(report?.brief || report?.metrics_read) && (
             <section className="mb-9">
               <SectionTitle>
                 <span className="text-faint font-mono mr-1.5">2</span> Où on en est
               </SectionTitle>
-              <div className="bg-white border border-line rounded-xl shadow-card p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
-                    Le brief de la semaine
-                  </span>
-                  <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
-                    IA
-                  </span>
+              {report?.verdict && (
+                <p className="text-[14px] font-semibold text-ink leading-snug mb-3">
+                  {report.verdict}
+                </p>
+              )}
+              {report?.metrics_read && <MetricsRead m={report.metrics_read} />}
+              {report?.brief && (
+                <div className="bg-white border border-line rounded-xl shadow-card p-5 mt-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
+                      Le résumé de la semaine
+                    </span>
+                    <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
+                      IA
+                    </span>
+                  </div>
+                  <p className="text-[13.5px] text-ink leading-relaxed whitespace-pre-line">
+                    {report.brief}
+                  </p>
                 </div>
-                <p className="text-[13.5px] text-ink leading-relaxed">{report.brief}</p>
-              </div>
+              )}
             </section>
           )}
 

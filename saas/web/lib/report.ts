@@ -141,6 +141,13 @@ export type ReportPayload = {
   themes_focus?: ThemeFocus[] | null;
   reglages?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
+  // Lecture simple des métriques clés de la semaine (section « Où on en est »).
+  metrics_read?: {
+    trafic: number | null;
+    vues: number | null;
+    clics: number | null;
+    ctr: number | null;
+  } | null;
   week_label: string;
   since: string;
   until: string;

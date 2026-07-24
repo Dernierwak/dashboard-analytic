@@ -4,6 +4,7 @@ import { getLabelsData } from "@/lib/channels";
 import { SiteHeader } from "@/components/site-header";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
+import { ScrollList } from "@/components/scroll-list";
 
 export const dynamic = "force-dynamic";
 
@@ -55,11 +56,11 @@ export default async function LabelsPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
+        <ScrollList title="Tes thèmes" count={data.rows.length} maxH="max-h-[60vh]">
           {data.rows.map((row) => (
             <LabelRow key={row.name} row={row} priority={data.priorities.includes(row.name)} />
           ))}
-        </div>
+        </ScrollList>
       )}
     </main>
   );

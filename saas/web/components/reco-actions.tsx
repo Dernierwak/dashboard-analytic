@@ -73,7 +73,7 @@ export function RecoActions({
                   await saveRecoFeedback(recoKey, b.reaction, active);
                 })
               }
-              className={`text-[11.5px] font-semibold rounded-full border px-3 py-1.5 transition-colors disabled:opacity-50 ${
+              className={`text-[12px] font-semibold rounded-full border px-3.5 py-2 transition-colors disabled:opacity-50 ${
                 active
                   ? b.activeCls
                   : "border-line text-muted hover:bg-black/[0.03] bg-white"
@@ -85,7 +85,7 @@ export function RecoActions({
         })}
         <button
           onClick={() => setShowComment((v) => !v)}
-          className={`ml-auto text-[11.5px] font-semibold rounded-full border px-3 py-1.5 transition-colors ${
+          className={`ml-auto text-[12px] font-semibold rounded-full border px-3.5 py-2 transition-colors ${
             comment || showComment
               ? "border-brand/30 text-brand bg-brand/[0.04]"
               : "border-line text-muted hover:bg-black/[0.03] bg-white"
@@ -116,7 +116,7 @@ export function RecoActions({
                   setCommentSaved(true);
                 })
               }
-              className="text-[11.5px] font-semibold text-white bg-brand rounded-full px-3 py-1.5 hover:bg-brand/90 disabled:opacity-40"
+              className="text-[12px] font-semibold text-white bg-brand rounded-full px-4 py-2 hover:bg-brand/90 disabled:opacity-40"
             >
               {pending ? "…" : "Envoyer"}
             </button>

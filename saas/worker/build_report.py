@@ -70,6 +70,19 @@ def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
 
+def _compares_channels(reco: dict) -> bool:
+    """True si le conseil OPPOSE Meta et Google (comparaison des deux régies) —
+    à écarter. Permissif : cite les deux ET un mot de comparaison/opposition."""
+    txt = f"{reco.get('title', '')} {reco.get('observation', '')} {reco.get('pourquoi', '')}".lower()
+    if "meta" not in txt or "google" not in txt:
+        return False
+    cmp_words = ("plutôt que", "au lieu de", "mieux que", "moins que", "vs", "versus",
+                 "comparé", "par rapport", "davantage que", "plus que google",
+                 "plus que meta", "au détriment", "surperforme", "sous-performe",
+                 "bat ", "dépasse google", "dépasse meta")
+    return any(w in txt for w in cmp_words)
+
+
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                     obj_txt: str, want: int = 3) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
@@ -91,6 +104,9 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         f"Ses campagnes : {facts}. "
         f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
         "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
+        "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
+        "« Meta fait mieux que Google » ni l'inverse — chaque conseil porte sur UN levier, "
+        "pas sur un arbitrage entre les deux régies. "
         "Réponds UNIQUEMENT avec un tableau JSON de "
         f"{want} objets, chacun avec ces clés : "
         '{"title","observation","pourquoi","verifier","angle_mort"}. '
@@ -484,7 +500,9 @@ def build_payload(sb, user_id: str) -> dict | None:
             _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
         except Exception:
             _ai = []
-        t_recos = (t_recos + _ai)[:3]
+        # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
+        # (le client n'en veut pas — filtre à la génération, pas qu'à l'affichage).
+        t_recos = [r for r in (t_recos + _ai) if not _compares_channels(r)][:3]
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {
@@ -588,18 +606,42 @@ def build_payload(sb, user_id: str) -> dict | None:
     if _v_no:
         vision_txt += (" Constats REJETÉS par le client (ne t'appuie JAMAIS dessus) : "
                        + " | ".join(c["title"] for c in _v_no) + ".")
+    # Digest de la semaine : TOUS les posts + TOUTES les campagnes (pas un extrait)
+    _wk = []
+    _npw = len(df_week_posts) if df_week_posts is not None else 0
+    if _npw > 0:
+        _wk.append(f"{_npw} post(s) publiés"
+                   + (f", portée moyenne {week_reach:.0f}" if week_reach else "")
+                   + (f", engagement {week_eng:.1f} %" if week_eng else ""))
+    else:
+        _wk.append("aucun post publié cette semaine")
+    if not df_camp.empty:
+        _ncmp = len(df_camp)
+        _cw = df_camp.sort_values("spend", ascending=False)
+        _cbits = "; ".join(
+            f"{r['campaign_name']} ({r['spend']:.0f} CHF, CTR {r['ctr']:.1f} %)"
+            for _, r in _cw.head(6).iterrows())
+        _wk.append(f"{_ncmp} campagne(s) actives, {float(df_camp['spend'].sum()):.0f} CHF au total — {_cbits}")
+    else:
+        _wk.append("aucune campagne pub active")
+    week_digest = " · ".join(_wk)
+
     brief = _call_gemini(
-        "Tu es un consultant marketing pour une PME. Rédige le brief de la semaine en "
-        "3 phrases maximum (français, ton concret et direct, pas de guillemets) : "
-        "1) ce qui a MARCHÉ cette semaine et vaut d'être reproduit ; "
-        "2) si des actions ont déjà été traitées, reconnais-le en un mot ; "
-        "3) termine par la priorité n°1, formulée simplement. "
-        "Vocabulaire précis exigé : un ROAS sous 1 se dit « inférieur à 1 », "
-        "jamais « négatif » ; ne déforme aucun chiffre fourni. "
+        "Tu es un consultant marketing pour une PME. Écris un VRAI résumé de la semaine "
+        "en 4 à 6 phrases (français, ton concret et direct, pas de guillemets) qui couvre "
+        "À LA FOIS tous les posts ET toutes les campagnes de la semaine : "
+        "1) une phrase de synthèse (la tendance générale) ; "
+        "2) ce qui s'est passé côté contenu (posts, portée, engagement) ; "
+        "3) ce qui s'est passé côté pub (campagnes, dépense, ce qui ressort) ; "
+        "4) termine par la priorité n°1, formulée simplement. "
+        "Ne compare JAMAIS Meta et Google entre eux. "
+        "Vocabulaire précis : un ROAS sous 1 se dit « inférieur à 1 », jamais « négatif » ; "
+        "ne déforme aucun chiffre fourni. "
         f"Objectif principal du compte : {obj_txt}.{fb_txt}{vision_txt} "
         f"{_prio_line}"
-        f"Données : abonnés {followers_delta:+d}, engagement {avg_engagement:.1f}%, "
-        f"CTR {avg_ctr:.2f}%, dépense {total_spend:.0f} CHF. "
+        f"Semaine : {week_digest}. "
+        f"Totaux : abonnés {followers_delta:+d}, engagement {avg_engagement:.1f} %, "
+        f"CTR {avg_ctr:.2f} %, dépense {total_spend:.0f} CHF. "
         "Si rien n'a vraiment marché, dis-le simplement — pas de flatterie artificielle."
     )
     if not brief:
@@ -911,10 +953,30 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     _all_clicks = total_clicks + g_clicks
     _all_impr = total_impr + g_impr
+
+    # Bloc « lecture simple » des métriques clés de la semaine (section Où on en est).
+    _vues = None
+    if df_week_posts is not None and not df_week_posts.empty and "views" in df_week_posts.columns:
+        _vues = int(pd.to_numeric(df_week_posts["views"], errors="coerce").fillna(0).sum())
+    _trafic = None
+    try:
+        if ga4_ctx:
+            _s = ga4_ctx.get("sessions") or (ga4_ctx.get("totals") or {}).get("sessions")
+            _trafic = int(_s) if _s is not None else None
+    except Exception:
+        _trafic = None
+    metrics_read = {
+        "trafic": _trafic,   # sessions GA4 (None tant que Google muet)
+        "vues": _vues,       # vues Instagram de la semaine
+        "clics": _all_clicks,
+        "ctr": round((_all_clicks / _all_impr * 100), 2) if _all_impr > 0 else None,
+    }
+
     return {
         "version": 2,
         "vision": vision,
         "matrice": matrice,
+        "metrics_read": metrics_read,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
             "spend": round(total_spend + g_spend, 2),
