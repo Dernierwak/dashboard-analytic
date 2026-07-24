@@ -10,6 +10,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
+import { TrackingRappel } from "@/components/tracking-rappel";
 import { RecoCard } from "@/components/reco-card";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,9 @@ export default async function Page() {
         )}
         {report && <Suivi feedback={data.feedback} />}
       </div>
+
+      {/* Rappel automatique : tes tests arrivés à échéance, tout en haut */}
+      {report?.tracking && <TrackingRappel tracking={report.tracking} />}
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
