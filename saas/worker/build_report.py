@@ -396,9 +396,11 @@ def build_payload(sb, user_id: str) -> dict | None:
     # ── Frise (Phase 2) : série hebdo de la métrique du thème + repères d'actions
     _markers = {}
     try:
-        for _a in (sb.table("suivi_actions").select("theme, decided_at")
+        # Le repere se pose au jour ou l'action a ete FAITE (a defaut, decidee).
+        for _a in (sb.table("suivi_actions").select("*")
                    .eq("user_id", user_id).execute().data or []):
-            _markers.setdefault(_nrm(_a.get("theme")), []).append(str(_a.get("decided_at"))[:10])
+            _d = _a.get("done_at") or _a.get("decided_at")
+            _markers.setdefault(_nrm(_a.get("theme")), []).append(str(_d)[:10])
     except Exception:
         _markers = {}
     _WK = 10
@@ -887,7 +889,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     tracking = None
     try:
         _sa = (sb.table("suivi_actions").select("*")
-               .eq("user_id", user_id).eq("status", "running")
+               .eq("user_id", user_id).in_("status", ["running", "done"])
                .order("check_at").execute().data) or []
     except Exception:
         _sa = []
@@ -901,10 +903,16 @@ def build_payload(sb, user_id: str) -> dict | None:
                 chk = date.fromisoformat(str(a.get("check_at"))[:10])
             except Exception:
                 chk = today
-            due = today >= chk
+            status = str(a.get("status") or "running")
+            done_at = str(a.get("done_at"))[:10] if a.get("done_at") else None
+            # Le compteur des 2 semaines ne tourne que sur une action FAITE :
+            # tant qu'elle est a faire, il n'y a rien a mesurer.
+            due = status == "done" and today >= chk
             entry = {
                 "id": a.get("id"), "title": a.get("title"), "theme": a.get("theme"),
+                "reco_key": a.get("reco_key"),
                 "metric_label": a.get("metric_label"),
+                "status": status, "done_at": done_at,
                 "decided_at": str(a.get("decided_at"))[:10],
                 "check_at": str(a.get("check_at"))[:10],
             }

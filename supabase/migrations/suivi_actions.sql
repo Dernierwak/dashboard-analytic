@@ -42,3 +42,18 @@ CREATE POLICY "suivi_actions_update_own" ON public.suivi_actions
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "suivi_actions_delete_own" ON public.suivi_actions
     FOR DELETE USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- 10) Suivi des recommandations, suite : la colonne done_at.
+--     Un conseil passe par trois etats :
+--       'running'  = a faire (tu as clique sur "Je le teste") -> en haut du rapport
+--       'done'     = fait le done_at -> on observe 14 jours a partir de CE jour
+--       'archived' = verdict vu, range dans l'historique
+--     Le compteur des deux semaines part donc du jour ou l'action est reellement
+--     appliquee, pas du jour ou elle a ete decidee.
+-- ============================================================================
+
+ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS done_at date;
+
+CREATE INDEX IF NOT EXISTS idx_suivi_actions_status
+    ON public.suivi_actions (user_id, status, check_at);

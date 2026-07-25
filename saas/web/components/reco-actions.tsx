@@ -13,8 +13,10 @@ export type TrackInfo = {
 };
 
 // Boutons de réaction sous chaque conseil.
-// « ▶ Je le teste » : démarre le suivi (photo de la décision, échéance +2 sem.).
-// « ✓ Fait » / « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
+// « ▶ Je le teste » : la décision part dans ta liste, tout en haut du rapport,
+// et n'en bouge plus tant que tu ne l'as pas marquée faite (c'est là-haut que
+// se fait le « ✓ C'est fait » — ici on masque donc le doublon).
+// « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
 // + commentaire libre : agrégé dans ton profil, l'IA adapte son ton.
 const BUTTONS: { reaction: Reaction; label: string; activeCls: string }[] = [
   { reaction: "done", label: "✓ Fait", activeCls: "bg-pos text-white border-pos" },
@@ -58,11 +60,11 @@ export function RecoActions({
               : "bg-brand text-white border-brand hover:bg-brand/90"
           }`}
         >
-          {isTracked ? "◷ En test — on revérifie dans ~2 semaines (retirer)" : "▶ Je le teste"}
+          {isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
         </button>
       )}
       <div className="flex items-center gap-2 flex-wrap">
-        {BUTTONS.map((b) => {
+        {BUTTONS.filter((b) => !(isTracked && b.reaction === "done")).map((b) => {
           const active = current === b.reaction;
           return (
             <button

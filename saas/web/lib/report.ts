@@ -38,13 +38,20 @@ export type PayloadReco = {
   baseline?: number | null;
 };
 
+// Une action décidée depuis un conseil. Trois états :
+//   running  = à faire (elle vit en haut du rapport)
+//   done     = faite le done_at, on observe 14 jours à partir de ce jour
+//   archived = verdict vu, rangée dans l'historique
 export type TrackedAction = {
   id: string;
+  reco_key?: string;
   title: string;
   theme: string | null;
   metric_label: string | null;
   decided_at: string;
   check_at: string;
+  done_at?: string | null;
+  status?: "running" | "done" | "archived";
   due?: boolean;
   then?: number;
   now?: number;
@@ -182,6 +189,10 @@ export type WeeklyData = {
   labels: string[];
   // Clés des conseils actuellement suivis (« ▶ Je le teste » → en cours).
   trackedKeys: string[];
+  // Actions en cours / faites — lues en direct (le bloc du haut s'affiche au clic).
+  actions: TrackedAction[];
+  // Actions rangées (verdict vu) — l'historique de la section Suivi.
+  actionsArchived: TrackedAction[];
 };
 
 function iso(d: Date): string {
@@ -268,12 +279,14 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .from("insight_feedback")
       .select("insight_key, verdict")
       .eq("user_id", uid),
-    // Conseils en cours de suivi (« ▶ Je le teste ») — état live du bouton.
+    // Actions décidées (« ▶ Je le teste ») — lues en entier et en direct : le
+    // bloc « ce que tu dois faire » s'affiche au clic, sans attendre le worker.
     supabase
       .from("suivi_actions")
-      .select("reco_key")
+      .select("*")
       .eq("user_id", uid)
-      .eq("status", "running"),
+      .order("decided_at", { ascending: false })
+      .limit(60),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -289,9 +302,37 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     if (row.insight_key && row.verdict) insightFeedback[row.insight_key] = row.verdict;
   }
 
-  const trackedKeys: string[] = (trackRes.data ?? [])
-    .map((r) => String(r.reco_key))
-    .filter(Boolean);
+  // Les chiffres du verdict (avant → après) sont calculés par le worker : on
+  // les rapatrie par id sur les lignes lues en direct.
+  const todayIso = iso(new Date());
+  const measured = new Map<string, TrackedAction>();
+  for (const v of report?.tracking?.verified ?? []) measured.set(String(v.id), v);
+
+  const allActions: TrackedAction[] = (trackRes.data ?? []).map((r: any) => {
+    const status = String(r.status ?? "running") as TrackedAction["status"];
+    const check = String(r.check_at ?? "").slice(0, 10);
+    const m = measured.get(String(r.id));
+    return {
+      id: String(r.id),
+      reco_key: String(r.reco_key ?? ""),
+      title: String(r.title ?? ""),
+      theme: (r.theme as string | null) ?? null,
+      metric_label: (r.metric_label as string | null) ?? null,
+      decided_at: String(r.decided_at ?? "").slice(0, 10),
+      check_at: check,
+      done_at: r.done_at ? String(r.done_at).slice(0, 10) : null,
+      status,
+      due: status === "done" && check !== "" && check <= todayIso,
+      then: m?.then,
+      now: m?.now,
+      delta: m?.delta ?? null,
+      verdict: m?.verdict,
+    };
+  });
+  const actions = allActions.filter((a) => a.status !== "archived");
+  const actionsArchived = allActions.filter((a) => a.status === "archived");
+  // Un conseil reste « en test » tant que son action n'est pas rangée.
+  const trackedKeys: string[] = actions.map((a) => a.reco_key ?? "").filter(Boolean);
 
   // Dernière réaction par clé (tri desc → première vue = la plus récente),
   // même logique que fetch_reco_feedback côté Python.
@@ -524,5 +565,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     onboarded,
     labels,
     trackedKeys,
+    actions,
+    actionsArchived,
   };
 }

@@ -40,13 +40,13 @@ export async function startTracking(a: {
   if (!user) return { ok: false };
 
   if (a.tracked) {
-    // Toggle off : on retire les suivis « en cours » de ce conseil.
+    // Toggle off : on retire de la liste les suivis non rangés de ce conseil.
     await supabase
       .from("suivi_actions")
       .delete()
       .eq("user_id", user.id)
       .eq("reco_key", a.recoKey)
-      .eq("status", "running");
+      .in("status", ["running", "done"]);
     revalidatePath("/");
     return { ok: true };
   }
@@ -75,25 +75,56 @@ export async function startTracking(a: {
   return { ok: true };
 }
 
-// Sur une action en cours : « ✓ Fait » (archive, on garde le verdict mesuré) ou
-// « retirer » (supprime le suivi).
+// Cycle de vie d'une action, écrit dans Supabase à chaque étape :
+//   « ✓ C'est fait »  → status='done' + done_at=aujourd'hui, et l'échéance du
+//                       verdict repart de CE jour (+14 j) : on mesure l'effet
+//                       à partir du moment où le changement existe vraiment.
+//   « ✓ Vu »          → status='archived' : rangée dans l'historique.
+//   « retirer »       → la ligne est supprimée.
 export async function resolveAction(
   id: string,
-  action: "done" | "drop"
+  action: "done" | "seen" | "drop",
+  recoKey?: string
 ): Promise<{ ok: boolean }> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false };
+
   if (action === "drop") {
     await supabase.from("suivi_actions").delete().eq("id", id).eq("user_id", user.id);
-  } else {
+  } else if (action === "seen") {
     await supabase
       .from("suivi_actions")
       .update({ status: "archived" })
       .eq("id", id)
       .eq("user_id", user.id);
+  } else {
+    const today = new Date();
+    const check = new Date(today);
+    check.setDate(check.getDate() + 14);
+    const r = await supabase
+      .from("suivi_actions")
+      .update({ status: "done", done_at: isoDate(today), check_at: isoDate(check) })
+      .eq("id", id)
+      .eq("user_id", user.id);
+    // Repli si la colonne done_at n'existe pas encore (migration §10 pas passée).
+    if (r.error) {
+      await supabase
+        .from("suivi_actions")
+        .update({ status: "done", check_at: isoDate(check) })
+        .eq("id", id)
+        .eq("user_id", user.id);
+    }
+    // Un seul geste, deux tables : le conseil est aussi marqué « appliqué »
+    // côté reco_feedback → l'IA sait ce que tu as réellement mis en place.
+    if (recoKey) {
+      await supabase.from("reco_feedback").upsert(
+        { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
+        { onConflict: "user_id,reco_key,week_start" }
+      );
+    }
   }
   revalidatePath("/");
   return { ok: true };

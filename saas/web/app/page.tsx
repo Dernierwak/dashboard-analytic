@@ -10,7 +10,7 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
-import { TrackingRappel } from "@/components/tracking-rappel";
+import { ActionTop } from "@/components/action-top";
 import { RecoCard } from "@/components/reco-card";
 
 export const dynamic = "force-dynamic";
@@ -126,8 +126,8 @@ export default async function Page() {
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
-      {/* Rappel automatique : tes tests arrivés à échéance, tout en haut */}
-      {report?.tracking && <TrackingRappel tracking={report.tracking} />}
+      {/* Ce que tu dois faire — tes décisions vivent ici jusqu'à être faites */}
+      <ActionTop actions={data.actions} />
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
@@ -298,7 +298,7 @@ export default async function Page() {
             </details>
           )}
 
-          {report?.tracking && <TrackingSection tracking={report.tracking} />}
+          <TrackingSection actions={data.actions} archived={data.actionsArchived} />
         </>
       )}
     </main>

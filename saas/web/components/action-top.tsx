@@ -1,0 +1,174 @@
+"use client";
+
+import { useTransition } from "react";
+import { resolveAction } from "@/app/actions";
+import type { TrackedAction } from "@/lib/report";
+
+// « Ce que tu dois faire » — le bloc tout en haut du rapport.
+// Un conseil que tu décides de tester atterrit ICI et n'en bouge plus tant que
+// tu ne l'as pas marqué fait. Une fois fait, il passe en observation 14 jours,
+// puis revient te demander un verdict. Tout est écrit dans Supabase à chaque
+// étape (status running → done → archived) : c'est ça, le suivi d'activité.
+
+const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
+
+function jour(iso: string): string {
+  const dt = new Date(iso + "T00:00:00");
+  if (isNaN(dt.getTime())) return iso;
+  return `${dt.getDate()} ${MOIS[dt.getMonth()]}`;
+}
+
+function depuis(iso: string): string {
+  const t = new Date(iso + "T00:00:00").getTime();
+  if (isNaN(t)) return "";
+  const days = Math.max(0, Math.round((Date.now() - t) / 86_400_000));
+  if (days === 0) return "aujourd'hui";
+  if (days === 1) return "hier";
+  if (days < 14) return `il y a ${days} jours`;
+  return `il y a ${Math.round(days / 7)} semaines`;
+}
+
+const V: Record<string, { cls: string; border: string; icon: string; label: string }> = {
+  better: { cls: "text-pos", border: "#1a7a4a", icon: "✓", label: "ça a marché" },
+  worse: { cls: "text-neg", border: "#c0392b", icon: "▲", label: "pas d'effet — à revoir" },
+  stable: { cls: "text-warn", border: "#b86b00", icon: "≈", label: "stable" },
+};
+
+// À FAIRE — la ligne de to-do : gros titre, gros bouton.
+function TodoCard({ a }: { a: TrackedAction }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <div
+      className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5"
+      style={{ borderLeft: "3px solid #1a56ff" }}
+    >
+      <div className="text-[15px] font-semibold text-ink leading-snug">{a.title}</div>
+      <div className="text-[11.5px] text-faint mt-1">
+        {a.theme && <span className="text-warn font-semibold">★ {a.theme} · </span>}
+        décidé {depuis(a.decided_at)}
+        {a.metric_label ? ` · on suivra : ${a.metric_label}` : ""}
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <button
+          disabled={pending}
+          onClick={() => startTransition(async () => { await resolveAction(a.id, "done", a.reco_key); })}
+          className="text-[13px] font-semibold text-white bg-pos rounded-full px-4 py-2.5 disabled:opacity-50"
+        >
+          {pending ? "…" : "✓ C'est fait"}
+        </button>
+        <button
+          disabled={pending}
+          onClick={() => startTransition(async () => { await resolveAction(a.id, "drop"); })}
+          className="ml-auto text-[12px] text-faint hover:text-muted px-3 py-2.5"
+        >
+          retirer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// À JUGER — l'action est faite depuis 2 semaines : voilà ce que ça a donné.
+function JudgeCard({ a }: { a: TrackedAction }) {
+  const [pending, startTransition] = useTransition();
+  const v = a.verdict ? V[a.verdict] ?? V.stable : null;
+  return (
+    <div
+      className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5"
+      style={{ borderLeft: `3px solid ${v ? v.border : "#b86b00"}` }}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        {v ? (
+          <span className={`text-[11px] font-bold ${v.cls}`}>{v.icon} {v.label}</span>
+        ) : (
+          <span className="text-[11px] font-bold text-warn">◷ à juger maintenant</span>
+        )}
+        <span className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+          fait {depuis(a.done_at ?? a.decided_at)}
+        </span>
+      </div>
+      <div className="text-[14px] font-semibold text-ink leading-snug mt-1">{a.title}</div>
+      {v && a.metric_label && a.then !== undefined ? (
+        <div className="text-[12.5px] text-muted mt-1">
+          {a.metric_label} <b className="text-ink">{a.then}</b> → <b className="text-ink">{a.now}</b>
+          {a.delta != null && (
+            <span className={v.cls}> ({a.delta > 0 ? "+" : ""}{a.delta.toFixed(0)} %)</span>
+          )}
+        </div>
+      ) : (
+        <div className="text-[12.5px] text-muted mt-1">
+          Deux semaines ont passé — est-ce que ça a bougé pour toi ?
+        </div>
+      )}
+      <button
+        disabled={pending}
+        onClick={() => startTransition(async () => { await resolveAction(a.id, "seen"); })}
+        className="mt-3 text-[13px] font-semibold text-white bg-ink rounded-full px-4 py-2.5 disabled:opacity-50"
+      >
+        {pending ? "…" : "✓ Vu — je range"}
+      </button>
+    </div>
+  );
+}
+
+export function ActionTop({ actions }: { actions: TrackedAction[] }) {
+  const todo = actions.filter((a) => a.status !== "done");
+  const judge = actions.filter((a) => a.status === "done" && a.due);
+  const watch = actions.filter((a) => a.status === "done" && !a.due);
+  if (actions.length === 0) return null;
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
+        <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink flex items-center gap-2.5">
+          <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
+          <span className="text-faint font-mono text-[15px]">1</span> Ce que tu dois faire
+        </h2>
+        <span className="text-[11.5px] text-faint">
+          {todo.length > 0 && `${todo.length} à faire`}
+          {todo.length > 0 && (judge.length > 0 || watch.length > 0) && " · "}
+          {judge.length > 0 && `${judge.length} à juger`}
+          {judge.length > 0 && watch.length > 0 && " · "}
+          {watch.length > 0 && `${watch.length} en observation`}
+        </span>
+      </div>
+
+      {todo.length > 0 && (
+        <div className="grid gap-2.5 lg:grid-cols-2">
+          {todo.map((a) => (
+            <TodoCard key={a.id} a={a} />
+          ))}
+        </div>
+      )}
+
+      {judge.length > 0 && (
+        <div className="grid gap-2.5 lg:grid-cols-2 mt-2.5">
+          {judge.map((a) => (
+            <JudgeCard key={a.id} a={a} />
+          ))}
+        </div>
+      )}
+
+      {watch.length > 0 && (
+        <div className="mt-2.5 rounded-xl border border-line bg-white divide-y divide-line">
+          {watch.map((a) => (
+            <div key={a.id} className="px-4 py-2.5 flex items-baseline gap-2 flex-wrap">
+              <span className="text-[11px] font-bold text-pos shrink-0">✓ fait</span>
+              <span className="text-[13px] text-ink leading-snug">{a.title}</span>
+              <span className="ml-auto text-[11px] text-faint shrink-0">
+                verdict le <b className="text-muted">{jour(a.check_at)}</b>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {todo.length === 0 && judge.length === 0 && (
+        <p className="text-[11.5px] text-faint mt-2 leading-relaxed">
+          Rien à faire dans l&apos;immédiat — on mesure l&apos;effet de ce que tu as
+          appliqué, puis on revient vers toi.
+        </p>
+      )}
+    </section>
+  );
+}
