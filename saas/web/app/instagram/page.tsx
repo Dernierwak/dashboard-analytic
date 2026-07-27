@@ -13,6 +13,7 @@ import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
 import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
+import { ScrollList } from "@/components/scroll-list";
 
 export const dynamic = "force-dynamic";
 
@@ -521,7 +522,8 @@ export default async function InstagramPage({
           <h2 className="text-[14px] font-semibold text-ink mb-3">
             Top 3 posts{" "}
             <span className="text-faint font-normal">
-              · par portée{d.heatmapScope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
+              · par {(INSTA_METRICS.find((m) => m.key === d.topMetric) ?? INSTA_METRICS[0]).label.toLowerCase()}
+              {d.heatmapScope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
             </span>
           </h2>
           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -543,11 +545,24 @@ export default async function InstagramPage({
                   <div className="text-[13px] font-medium text-ink leading-snug line-clamp-2 mb-2.5">
                     {p.caption || "(sans légende)"}
                   </div>
+                  {/* On montre d'abord la métrique sur laquelle ce top est classé */}
                   <div className="flex items-baseline justify-between text-[12px]">
                     <span className="font-mono text-ink font-semibold">
-                      {fmtCHF(p.reach)} portée
+                      {d.topMetric === "eng"
+                        ? `${p.eng.toFixed(1)} % eng.`
+                        : `${fmtCHF(
+                            d.topMetric === "views" ? p.views
+                            : d.topMetric === "likes" ? p.likes
+                            : d.topMetric === "comments" ? p.comments
+                            : d.topMetric === "saved" ? p.saved
+                            : p.reach
+                          )} ${(INSTA_METRICS.find((m) => m.key === d.topMetric) ?? INSTA_METRICS[0]).label.toLowerCase()}`}
                     </span>
-                    <span className="font-mono text-muted">{p.eng.toFixed(1)} % eng.</span>
+                    <span className="font-mono text-muted">
+                      {d.topMetric === "reach"
+                        ? `${p.eng.toFixed(1)} % eng.`
+                        : `${fmtCHF(p.reach)} portée`}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -559,10 +574,11 @@ export default async function InstagramPage({
       {/* ── PAR LABEL ── */}
       {d.byLabel.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-[14px] font-semibold text-ink mb-3">
-            Performance par label <span className="text-faint font-normal">· posts labellisés</span>
-          </h2>
-          <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
+          <ScrollList
+            title="Performance par thème · posts labellisés"
+            count={d.byLabel.length}
+            maxH="max-h-[46vh]"
+          >
             {d.byLabel.map((l) => (
               <div key={l.label} className="flex items-center gap-3 px-5 py-3">
                 <span className="text-[13px] font-semibold text-brand">{l.label}</span>
@@ -575,7 +591,7 @@ export default async function InstagramPage({
                 </span>
               </div>
             ))}
-          </div>
+          </ScrollList>
         </div>
       )}
 

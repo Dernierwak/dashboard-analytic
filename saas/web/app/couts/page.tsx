@@ -6,6 +6,7 @@ import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
 import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
+import { ScrollList } from "@/components/scroll-list";
 
 export const dynamic = "force-dynamic";
 
@@ -193,13 +194,11 @@ export default async function CoutsPage() {
       {/* Par thème — où va ton budget, thème par thème */}
       {data.byTheme.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-[14px] font-semibold text-ink mb-3">
-            Par thème{" "}
-            <span className="text-faint font-normal">
-              · dépense du mois · fixe un budget par thème pour suivre
-            </span>
-          </h2>
-          <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
+          <ScrollList
+            title="Par thème · dépense du mois · fixe un budget pour suivre"
+            count={data.byTheme.length}
+            maxH="max-h-[52vh]"
+          >
             {data.byTheme.map((t) => {
               const share = data.totalSpent > 0 ? (t.spend / data.totalSpent) * 100 : 0;
               const ratio = t.budget > 0 ? t.spend / t.budget : null;
@@ -257,7 +256,7 @@ export default async function CoutsPage() {
                 </div>
               );
             })}
-          </div>
+          </ScrollList>
         </div>
       )}
 

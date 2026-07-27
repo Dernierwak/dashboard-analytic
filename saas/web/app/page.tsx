@@ -111,7 +111,9 @@ export default async function Page() {
 
   const themesFocus = report?.themes_focus ?? [];
   const reglages = report?.reglages ?? [];
-  const topRecos = report?.top_recos ?? [];
+  // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
+  // elle répétait mot pour mot les conseils affichés juste en dessous.
+  const topRecos = themesFocus.length > 1 ? report?.top_recos ?? [] : [];
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;

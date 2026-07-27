@@ -216,15 +216,17 @@ export function ByLabelTable({ d }: { d: ChannelDash }) {
         Par thème{" "}
         <span className="text-faint font-normal">· période filtrée · {d.periodLabel}</span>
       </h2>
+      {/* Règle maison : une liste longue scrolle DANS sa boîte, jamais la page. */}
       <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
-        <table className="w-full min-w-[480px] text-[12.5px]">
+        <div className="max-h-[46vh] overflow-y-auto min-w-[480px]">
+        <table className="w-full text-[12.5px]">
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-faint">
-              <th className="text-left font-semibold px-5 py-3">Thème</th>
-              <th className="text-right font-semibold px-2 py-3">Dépensé</th>
-              <th className="text-right font-semibold px-2 py-3">Clics</th>
-              <th className="text-right font-semibold px-2 py-3">CTR</th>
-              <th className="text-right font-semibold px-5 py-3">CPC</th>
+              <th className="text-left font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">Thème</th>
+              <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Dépensé</th>
+              <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Clics</th>
+              <th className="text-right font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">CTR</th>
+              <th className="text-right font-semibold px-5 py-3 sticky top-0 bg-white z-10 border-b border-line">CPC</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -241,6 +243,7 @@ export function ByLabelTable({ d }: { d: ChannelDash }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

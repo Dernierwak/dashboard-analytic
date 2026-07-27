@@ -508,6 +508,7 @@ export type InstaDash = {
   heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — tout l'historique
   bestSlot: { day: number; slot: number; avgReach: number; count: number } | null;
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
+  topMetric: string;       // métrique sur laquelle ce top est classé
   byLabel: PostLabelAgg[];
   posts: InstaPost[];
   allPosts: InstaPost[];
@@ -627,8 +628,21 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
         bestSlot = { day, slot, avgReach: c.avgReach, count: c.count };
     }
 
-  // Top 3 posts de la période filtrée (fallback historique, même signal)
-  const topPosts = [...heatPool].sort((a, b) => b.reach - a.reach).slice(0, 3);
+  // Top 3 posts de la période filtrée (fallback historique, même signal).
+  // Il SUIT la métrique choisie en haut de page : filtrer sur les vues doit
+  // donner le top des vues, pas celui de la portée.
+  const _METRICS = ["reach", "views", "likes", "comments", "saved", "eng"] as const;
+  const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
+    ? String(sp!.m)
+    : "reach";
+  const _mval = (p: InstaPost): number =>
+    topMetric === "views" ? p.views
+    : topMetric === "likes" ? p.likes
+    : topMetric === "comments" ? p.comments
+    : topMetric === "saved" ? p.saved
+    : topMetric === "eng" ? p.eng
+    : p.reach;
+  const topPosts = [...heatPool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
 
   // Performance par label (posts labellisés, tout l'historique)
   const lblMap = new Map<string, { count: number; reach: number; eng: number }>();
@@ -669,6 +683,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     heatmap,
     bestSlot,
     topPosts,
+    topMetric,
     byLabel,
     posts,
     allPosts: all,
