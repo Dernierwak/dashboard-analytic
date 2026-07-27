@@ -59,12 +59,14 @@ export function ThemeFocusCard({
   feedback,
   comments,
   trackedKeys,
+  capReached = false,
 }: {
   theme: ThemeFocus;
   labels: string[];
   feedback: Record<string, string>;
   comments: Record<string, string>;
   trackedKeys: string[];
+  capReached?: boolean;
 }) {
   const s = theme.summary;
   const hasRoas = s.roas !== null && s.roas !== undefined;
@@ -177,6 +179,7 @@ export function ThemeFocusCard({
                       comment={comments[r.key] ?? null}
                       theme={theme.label}
                       tracked={trackedKeys.includes(r.key)}
+                      capReached={capReached}
                     />
                   </div>
                 ))}

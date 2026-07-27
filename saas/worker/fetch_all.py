@@ -167,6 +167,27 @@ def run(force: bool = False, only_user: str | None = None,
     _mode = " · labels seulement" if label_only else (" · rapport seulement" if report_only else "")
     print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils{_mode}")
 
+    # Sans ces secrets, le refresh du token Google echoue et TOUT Google Ads +
+    # GA4 est saute en silence. On le dit fort une fois, en tete de run.
+    if not (label_only or report_only):
+        _needed = {
+            "GOOGLE_ADS_CLIENT_ID": "google_ads.client_id",
+            "GOOGLE_ADS_CLIENT_SECRET": "google_ads.client_secret",
+            "GOOGLE_ADS_DEVELOPER_TOKEN": "google_ads.developer_token",
+        }
+        _missing = []
+        for _env, _path in _needed.items():
+            try:
+                _val = os.getenv(_env) or secret(_path)
+            except Exception:
+                _val = None
+            if not _val:
+                _missing.append(_env)
+        if _missing:
+            print("!! ATTENTION - secrets Google absents : " + ", ".join(_missing)
+                  + " -> Google Ads et GA4 ne seront PAS mis a jour "
+                    "(a ajouter dans les secrets GitHub du repo).")
+
     for p in profiles:
         uid = p["id"]
         if not force and not _due_today(p.get("fetch_schedule")):

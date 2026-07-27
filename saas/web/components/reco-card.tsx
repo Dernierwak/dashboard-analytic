@@ -16,12 +16,14 @@ export function RecoCard({
   comment,
   theme = null,
   tracked = false,
+  capReached = false,
 }: {
   r: PayloadReco;
   current: string | null;
   comment: string | null;
   theme?: string | null;
   tracked?: boolean;
+  capReached?: boolean;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
   const hasDetail = Boolean(r.pourquoi || r.verifier || r.repere || r.angle_mort);
@@ -44,6 +46,23 @@ export function RecoCard({
       </div>
       <h3 className="text-[14px] font-semibold text-ink leading-snug">{r.title}</h3>
       <p className="text-[12.5px] text-muted leading-relaxed mt-1">{r.observation}</p>
+
+      {/* Les deux infos qui permettent de trancher en 5 secondes : ce que ça
+          coûte à faire, et l'indicateur qu'on regardera après. */}
+      {(r.effort || r.metric_label) && (
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          {r.effort && (
+            <span className="text-[11px] font-semibold text-muted bg-black/[0.05] rounded-full px-2.5 py-1">
+              ⏱ {r.effort}
+            </span>
+          )}
+          {r.metric_label && (
+            <span className="text-[11px] font-semibold text-brand bg-brand/[0.07] rounded-full px-2.5 py-1">
+              ↗ {r.metric_label}
+            </span>
+          )}
+        </div>
+      )}
 
       {hasDetail && (
         <details className="mt-2 group">
@@ -85,6 +104,7 @@ export function RecoCard({
         current={current}
         comment={comment}
         tracked={tracked}
+        capReached={capReached}
         track={{
           title: r.title,
           theme,

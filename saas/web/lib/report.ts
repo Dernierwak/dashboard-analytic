@@ -36,7 +36,12 @@ export type PayloadReco = {
   metric_label?: string | null;
   direction?: string | null;
   baseline?: number | null;
+  // Temps à prévoir pour l'appliquer (« 10 min », « 30 min », « 1 h », « 2 h+ »).
+  effort?: string | null;
 };
+
+// Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
+export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolean };
 
 // Une action décidée depuis un conseil. Trois états :
 //   running  = à faire (elle vit en haut du rapport)
@@ -146,6 +151,8 @@ export type ReportPayload = {
   vision?: VisionBlock | null;
   matrice?: { coverage?: MatriceCoverage } | null;
   themes_focus?: ThemeFocus[] | null;
+  // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
+  top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).

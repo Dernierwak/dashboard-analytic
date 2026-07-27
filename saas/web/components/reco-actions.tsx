@@ -30,12 +30,14 @@ export function RecoActions({
   comment,
   track,
   tracked = false,
+  capReached = false,
 }: {
   recoKey: string;
   current: string | null;
   comment?: string | null;
   track?: TrackInfo;
   tracked?: boolean;
+  capReached?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [showComment, setShowComment] = useState(false);
@@ -45,24 +47,32 @@ export function RecoActions({
 
   return (
     <div className="mt-3.5 pt-3 border-t border-line">
-      {track && (
-        <button
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const r = await startTracking({ recoKey, ...track, tracked: isTracked });
-              if (r.ok) setIsTracked(!isTracked);
-            })
-          }
-          className={`w-full mb-2 text-[12px] font-semibold rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
-            isTracked
-              ? "bg-brand/[0.06] text-brand border-brand/30"
-              : "bg-brand text-white border-brand hover:bg-brand/90"
-          }`}
-        >
-          {isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
-        </button>
-      )}
+      {track &&
+        (capReached && !isTracked ? (
+          // Plafond : on ne peut pas mener 4 chantiers de front. Le conseil
+          // reste lisible, mais on t'invite d'abord à en boucler un.
+          <div className="w-full mb-2 text-[11.5px] font-semibold text-faint bg-black/[0.03] border border-line rounded-lg px-3 py-2 text-center leading-snug">
+            Tu as déjà 3 chantiers en cours — finis-en un avant d&apos;en prendre un
+            nouveau.
+          </div>
+        ) : (
+          <button
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                const r = await startTracking({ recoKey, ...track, tracked: isTracked });
+                if (r.ok) setIsTracked(!isTracked);
+              })
+            }
+            className={`w-full mb-2 text-[12px] font-semibold rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+              isTracked
+                ? "bg-brand/[0.06] text-brand border-brand/30"
+                : "bg-brand text-white border-brand hover:bg-brand/90"
+            }`}
+          >
+            {isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
+          </button>
+        ))}
       <div className="flex items-center gap-2 flex-wrap">
         {BUTTONS.filter((b) => !(isTracked && b.reaction === "done")).map((b) => {
           const active = current === b.reaction;

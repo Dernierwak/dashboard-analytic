@@ -63,7 +63,23 @@ def _call_gemini(prompt: str) -> str | None:
 # pour le suivi « ▶ Je le teste » (photographie de la décision).
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
                "repere", "angle_mort", "confidence", "priority", "source",
-               "metric", "metric_label", "direction", "baseline")
+               "metric", "metric_label", "direction", "baseline", "effort")
+
+# Effort a prevoir pour appliquer un conseil-regle : c'est la moitie de la
+# decision (l'autre moitie, c'est l'indicateur vise). Affiche en pastille.
+EFFORTS = ("10 min", "30 min", "1 h", "2 h+")
+EFFORT_BY_KEY = {
+    "gaspillage": "10 min",
+    "scaler": "10 min",
+    "creneau": "10 min",
+    "connecter_ga4": "10 min",
+    "roas": "30 min",
+    "funnel": "30 min",
+    "ga4_muet": "30 min",
+    "silence": "1 h",
+    "format_gagnant": "1 h",
+    "page_endormie": "1 h",
+}
 
 
 def _strip_reco(r: dict) -> dict:
@@ -109,7 +125,9 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "pas sur un arbitrage entre les deux régies. "
         "Réponds UNIQUEMENT avec un tableau JSON de "
         f"{want} objets, chacun avec ces clés : "
-        '{"title","observation","pourquoi","verifier","angle_mort"}. '
+        '{"title","observation","pourquoi","verifier","angle_mort","effort"}. '
+        '"effort" = le temps qu\'il faut pour le mettre en place, EXACTEMENT une '
+        'de ces valeurs : "10 min", "30 min", "1 h", "2 h+". '
         "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
     )
     if not raw:
@@ -134,6 +152,7 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                     "verifier": str(d["verifier"]), "repere": "",
                     "angle_mort": str(d["angle_mort"]),
                     "confidence": "piste", "priority": 9 + i, "source": "ai",
+                    "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
                 })
         return out
     except Exception:
@@ -878,11 +897,35 @@ def build_payload(sb, user_id: str) -> dict | None:
         r["metric"], r["metric_label"], r["direction"] = kpi, lbl_k, direction
         r["baseline"] = round(base, 4) if base is not None else None
 
+    def _attach_effort(r):
+        if not r.get("effort"):
+            r["effort"] = EFFORT_BY_KEY.get(r.get("key"), "30 min")
+
     for _tf in themes_focus:
         for _r in _tf["recos"]:
             _attach_metric(_r)
+            _attach_effort(_r)
     for _r in reglages:
         _attach_metric(_r)
+        _attach_effort(_r)
+
+    # ── Les 3 du moment ──────────────────────────────────────────────────────
+    # Jusqu'a 9 conseils repartis en 3 themes, personne ne choisit dans 9. Une
+    # seule selection en tete, tous themes confondus, classee par
+    # (theme prioritaire, confiance, facilite) : de quoi decider en 5 secondes.
+    _CONF_W = {"solide": 0, "creuser": 1, "piste": 2}
+    _EFF_W = {"10 min": 0, "30 min": 1, "1 h": 2, "2 h+": 3}
+    _pool = []
+    for _tf in themes_focus:
+        for _r in _tf["recos"]:
+            _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
+    top_recos = sorted(
+        _pool,
+        key=lambda r: (0 if r.get("is_priority") else 1,
+                       _CONF_W.get(r.get("confidence"), 3),
+                       _EFF_W.get(r.get("effort"), 2),
+                       r.get("priority", 99)),
+    )[:3]
 
     # 2) Les actions déjà lancées restent EN COURS jusqu'à être faites/vérifiées ;
     #    à l'échéance (check_at), on remesure l'indicateur → verdict.
@@ -1012,6 +1055,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         ] + ([ai_reco] if ai_reco else []),
         # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
         "themes_focus": themes_focus,
+        "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,
         "themes": themes,

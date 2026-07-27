@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
+import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
 import { ActionTop } from "@/components/action-top";
@@ -110,6 +111,10 @@ export default async function Page() {
 
   const themesFocus = report?.themes_focus ?? [];
   const reglages = report?.reglages ?? [];
+  const topRecos = report?.top_recos ?? [];
+  // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
+  // les autres conseils invitent à en boucler un d'abord.
+  const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
 
   return (
     <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
@@ -252,8 +257,21 @@ export default async function Page() {
               </SectionTitle>
               {themesFocus.length > 0 && <ReloadRecosButton />}
             </div>
+            <TopRecos
+              recos={topRecos}
+              feedback={data.feedback}
+              comments={data.comments}
+              trackedKeys={data.trackedKeys}
+              capReached={capReached}
+            />
             {themesFocus.length > 0 ? (
-              themesFocus.map((t) => (
+              <>
+              {topRecos.length > 0 && (
+                <h3 className="text-[14px] font-bold text-ink mb-2.5">
+                  Le détail, thème par thème
+                </h3>
+              )}
+              {themesFocus.map((t) => (
                 <ThemeFocusCard
                   key={t.label}
                   theme={t}
@@ -261,8 +279,10 @@ export default async function Page() {
                   feedback={data.feedback}
                   comments={data.comments}
                   trackedKeys={data.trackedKeys}
+                  capReached={capReached}
                 />
-              ))
+              ))}
+              </>
             ) : (
               <div className="bg-brand/[0.04] border border-brand/[0.14] rounded-xl p-5">
                 <p className="text-[13px] text-ink leading-relaxed">
