@@ -301,30 +301,31 @@ def fetch_ga4_property_id(supabase: Client, user_id: str) -> str | None:
 
 
 def fetch_ga4_events(supabase: Client, user_id: str) -> list[dict]:
-    """Funnel GA4 par événement (view_item → purchase). [] si table absente."""
+    """Funnel GA4 par événement (view_item → purchase). [] si table absente.
+    Paginé : sans ça, PostgREST coupe à 1000 lignes et tout ce qui dépasse
+    quelques jours devient invisible (le compte a des dizaines de milliers de
+    lignes GA4)."""
     try:
-        return (
-            supabase.table("ga4_events")
+        return _all_pages(
+            lambda: supabase.table("ga4_events")
             .select("date, source, medium, campaign, event_name, event_count, event_value")
             .eq("user_id", user_id)
             .order("date", desc=True)
-            .execute()
-            .data
         ) or []
     except Exception:
         return []
 
 
 def fetch_ga4_insights(supabase: Client, user_id: str) -> list[dict]:
-    """Tous les insights GA4 d'un user (filtre date côté appelant)."""
+    """Tous les insights GA4 d'un user (filtre date côté appelant).
+    Paginé pour la même raison que fetch_ga4_events : au-delà de 1000 lignes,
+    une fenêtre un peu ancienne se retrouvait silencieusement tronquée."""
     try:
-        return (
-            supabase.table("ga4_insights")
+        return _all_pages(
+            lambda: supabase.table("ga4_insights")
             .select("*")
             .eq("user_id", user_id)
             .order("date", desc=True)
-            .execute()
-            .data
         )
     except Exception:
         return []

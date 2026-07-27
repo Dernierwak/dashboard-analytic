@@ -151,12 +151,21 @@ export type ReportPayload = {
   vision?: VisionBlock | null;
   matrice?: { coverage?: MatriceCoverage } | null;
   themes_focus?: ThemeFocus[] | null;
+  // Phrase de passage : relie le constat de la semaine aux conseils qui suivent.
+  themes_intro?: string | null;
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).
   metrics_read?: {
+    trafic: number | null;
+    vues: number | null;
+    clics: number | null;
+    ctr: number | null;
+  } | null;
+  // Les mêmes sur la fenêtre précédente — le repère qui rend le chiffre lisible.
+  metrics_prev?: {
     trafic: number | null;
     vues: number | null;
     clics: number | null;

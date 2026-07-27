@@ -111,7 +111,13 @@ function JudgeCard({ a }: { a: TrackedAction }) {
   );
 }
 
-export function ActionTop({ actions }: { actions: TrackedAction[] }) {
+export function ActionTop({
+  actions,
+  num,
+}: {
+  actions: TrackedAction[];
+  num?: number;
+}) {
   const todo = actions.filter((a) => a.status !== "done");
   const judge = actions.filter((a) => a.status === "done" && a.due);
   const watch = actions.filter((a) => a.status === "done" && !a.due);
@@ -122,7 +128,10 @@ export function ActionTop({ actions }: { actions: TrackedAction[] }) {
       <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
         <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink flex items-center gap-2.5">
           <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
-          <span className="text-faint font-mono text-[15px]">1</span> Ce que tu dois faire
+          {num !== undefined && (
+            <span className="text-faint font-mono text-[15px]">{num}</span>
+          )}{" "}
+          Ce que tu dois faire
         </h2>
         <span className="text-[11.5px] text-faint">
           {todo.length > 0 && `${todo.length} à faire`}

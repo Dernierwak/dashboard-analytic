@@ -33,36 +33,66 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 // Lecture simple des métriques clés — 4 tuiles, balayables au pouce sur mobile.
+// Chaque chiffre porte son repère (semaine précédente + variation) : un nombre
+// nu ne se lit pas, le lecteur invente une conclusion à la place.
 function MetricsRead({
   m,
+  prev,
 }: {
   m: NonNullable<ReportPayload["metrics_read"]>;
+  prev?: ReportPayload["metrics_prev"];
 }) {
-  const fmt = (n: number | null) =>
-    n === null || n === undefined ? "—" : n.toLocaleString("fr-CH").replace(/ /g, " ");
+  const fmt = (n: number | null | undefined) =>
+    n === null || n === undefined ? "—" : n.toLocaleString("fr-CH").replace(/ /g, " ");
+  const pct = (n: number | null | undefined) =>
+    n === null || n === undefined ? "—" : `${n.toFixed(1)} %`;
   const tiles = [
-    { label: "Trafic", value: fmt(m.trafic), sub: "sessions (GA4)" },
-    { label: "Vues", value: fmt(m.vues), sub: "Instagram" },
-    { label: "Clics", value: fmt(m.clics), sub: "publicité" },
-    { label: "CTR", value: m.ctr === null ? "—" : `${m.ctr.toFixed(1)} %`, sub: "publicité" },
+    { key: "trafic" as const, label: "Trafic", value: fmt(m.trafic), sub: "sessions (GA4)", cur: m.trafic },
+    { key: "vues" as const, label: "Vues", value: fmt(m.vues), sub: "Instagram", cur: m.vues },
+    { key: "clics" as const, label: "Clics", value: fmt(m.clics), sub: "publicité", cur: m.clics },
+    { key: "ctr" as const, label: "CTR", value: pct(m.ctr), sub: "publicité", cur: m.ctr },
   ];
   return (
     <div className="flex overflow-x-auto sm:grid sm:grid-cols-4 gap-2.5 pb-1 sm:pb-0">
-      {tiles.map((t) => (
-        <div
-          key={t.label}
-          className="bg-white border border-line rounded-xl p-3.5 min-w-[130px] shrink-0 sm:min-w-0"
-        >
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-            {t.label}
+      {tiles.map((t) => {
+        const p = prev?.[t.key] ?? null;
+        // Sous 0,5 % d'écart on dit « stable » — même seuil que partout ailleurs.
+        const delta =
+          p !== null && p !== 0 && t.cur !== null && t.cur !== undefined
+            ? ((t.cur - p) / Math.abs(p)) * 100
+            : null;
+        const stable = delta !== null && Math.abs(delta) < 0.5;
+        const cls = delta === null || stable ? "text-faint" : delta > 0 ? "text-pos" : "text-neg";
+        const arrow = delta === null ? "" : stable ? "≈" : delta > 0 ? "▲" : "▼";
+        return (
+          <div
+            key={t.label}
+            className="bg-white border border-line rounded-xl p-3.5 min-w-[146px] shrink-0 sm:min-w-0"
+          >
+            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+              {t.label}
+            </div>
+            <div className="font-mono text-[19px] font-medium text-ink mt-1">{t.value}</div>
+            {delta !== null ? (
+              <div className="text-[10.5px] mt-1 leading-snug">
+                <span className={`font-semibold ${cls}`}>
+                  {arrow} {stable ? "stable" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)} %`}
+                </span>
+                <span className="text-faint">
+                  {" "}· {t.key === "ctr" ? pct(p) : fmt(p)} la sem. dernière
+                </span>
+              </div>
+            ) : (
+              <div className="text-[10.5px] text-faint mt-1">pas de semaine comparable</div>
+            )}
+            <div className="text-[10.5px] text-faint mt-0.5">{t.sub}</div>
           </div>
-          <div className="font-mono text-[19px] font-medium text-ink mt-1">{t.value}</div>
-          <div className="text-[10.5px] text-faint mt-0.5">{t.sub}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
+
 
 function Suivi({ feedback }: { feedback: Record<string, string> }) {
   // Compté en LIVE depuis reco_feedback — reflète immédiatement les clics ici.
@@ -118,23 +148,35 @@ export default async function Page() {
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
 
+  // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
+  // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
+  // page à 2, et un lecteur qui voit un 2 cherche le 1.
+  let _n = 0;
+  const nActions = data.actions.length > 0 ? ++_n : undefined;
+  const nPourquoi = report?.brief || report?.metrics_read ? ++_n : undefined;
+  const nConseils = ++_n;
+  const nHistorique =
+    data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
+
   return (
     <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
       <SiteHeader email={data.email} active="rapport" />
 
-      {/* Hero */}
+      {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
+          première question du lecteur, elle doit trouver sa réponse avant le
+          premier scroll. Une phrase d'accroche à la place ne dit rien. */}
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           {report?.week_label ?? data.weekLabel}
         </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
-          {report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref."}
+        <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
+          {report?.verdict ?? (report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref.")}
         </h1>
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
       {/* Ce que tu dois faire — tes décisions vivent ici jusqu'à être faites */}
-      <ActionTop actions={data.actions} />
+      <ActionTop actions={data.actions} num={nActions} />
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
@@ -221,18 +263,16 @@ export default async function Page() {
             </div>
           </details>
 
-          {/* 2 . OU ON EN EST - phrase de synthese + resume hebdo + metriques cles */}
+          {/* POURQUOI - les chiffres et le resume expliquent le titre.
+              Le verdict n'est plus ici : il EST le titre de la page. */}
           {(report?.brief || report?.metrics_read) && (
             <section className="mb-9">
               <SectionTitle>
-                <span className="text-faint font-mono mr-1.5">2</span> Où on en est
+                <span className="text-faint font-mono mr-1.5">{nPourquoi}</span> Pourquoi
               </SectionTitle>
-              {report?.verdict && (
-                <p className="text-[14px] font-semibold text-ink leading-snug mb-3">
-                  {report.verdict}
-                </p>
+              {report?.metrics_read && (
+                <MetricsRead m={report.metrics_read} prev={report.metrics_prev} />
               )}
-              {report?.metrics_read && <MetricsRead m={report.metrics_read} />}
               {report?.brief && (
                 <div className="bg-white border border-line rounded-xl shadow-card p-5 mt-3">
                   <div className="flex items-center gap-2 mb-2">
@@ -255,10 +295,15 @@ export default async function Page() {
           <section className="mb-9">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <SectionTitle>
-                <span className="text-faint font-mono mr-1.5">3</span> Tes conseils, thème par thème
+                <span className="text-faint font-mono mr-1.5">{nConseils}</span> Tes conseils, thème par thème
               </SectionTitle>
               {themesFocus.length > 0 && <ReloadRecosButton />}
             </div>
+            {report?.themes_intro && (
+              <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1">
+                {report.themes_intro}
+              </p>
+            )}
             <TopRecos
               recos={topRecos}
               feedback={data.feedback}
@@ -320,7 +365,11 @@ export default async function Page() {
             </details>
           )}
 
-          <TrackingSection actions={data.actions} archived={data.actionsArchived} />
+          <TrackingSection
+            actions={data.actions}
+            archived={data.actionsArchived}
+            num={nHistorique}
+          />
         </>
       )}
     </main>

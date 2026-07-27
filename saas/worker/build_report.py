@@ -213,6 +213,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     total_spend = 0.0
     total_clicks = 0
     total_impr = 0
+    m_clicks_prev = 0
+    m_impr_prev = 0
     avg_ctr = 0.0
     clicks_delta_pct = None
     df_camp = pd.DataFrame()
@@ -236,6 +238,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             avg_ctr = (total_clicks / total_impr * 100) if total_impr > 0 else 0.0
             if not df_meta_prev.empty:
                 prev_clicks = int(df_meta_prev["clicks"].sum())
+                m_clicks_prev = prev_clicks
+                m_impr_prev = int(df_meta_prev["impressions"].sum())
                 if prev_clicks > 0:
                     clicks_delta_pct = round((total_clicks - prev_clicks) / prev_clicks * 100)
             df_camp = df_meta.groupby("campaign_name", as_index=False).agg(
@@ -251,6 +255,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     g_spend = 0.0
     g_clicks = 0
     g_impr = 0
+    g_clicks_prev = 0
+    g_impr_prev = 0
     if not df_google.empty and "date_start" in df_google.columns:
         df_google["date_start"] = pd.to_datetime(df_google["date_start"], errors="coerce")
         for col in ["cost_micros", "clicks", "impressions"]:
@@ -260,6 +266,14 @@ def build_payload(sb, user_id: str) -> dict | None:
             (df_google["date_start"] >= pd.Timestamp(cur_since))
             & (df_google["date_start"] <= pd.Timestamp(last_full_day))
         ].copy()
+        # Fenetre precedente : sert uniquement aux reperes du bloc metriques.
+        df_g_prev = df_google[
+            (df_google["date_start"] >= pd.Timestamp(prev_since))
+            & (df_google["date_start"] <= pd.Timestamp(prev_until))
+        ]
+        if not df_g_prev.empty:
+            g_clicks_prev = int(df_g_prev["clicks"].sum())
+            g_impr_prev = int(df_g_prev["impressions"].sum())
         if not df_g.empty:
             g_spend = float(df_g["cost_micros"].sum()) / 1_000_000.0
             g_clicks = int(df_g["clicks"].sum())
@@ -292,6 +306,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     week_reach = None
     hist_reach = None
     df_week_posts = pd.DataFrame()
+    df_prev_posts = pd.DataFrame()
     if not df_follows.empty and "followers" in df_follows.columns:
         df_follows = df_follows.sort_values("fetched_at", ascending=False)
         followers_current = int(df_follows.iloc[0]["followers"])
@@ -310,7 +325,9 @@ def build_payload(sb, user_id: str) -> dict | None:
             if "date" in df_insta.columns:
                 _dt = pd.to_datetime(df_insta["date"], errors="coerce")
                 mask_week = (_dt.dt.date >= cur_since) & (_dt.dt.date <= last_full_day)
+                mask_prev = (_dt.dt.date >= prev_since) & (_dt.dt.date <= prev_until)
                 df_week_posts = df_insta[mask_week]
+                df_prev_posts = df_insta[mask_prev]
                 if len(df_week_posts) > 0:
                     week_eng = float(df_week_posts["eng"].mean())
                     week_reach = float(df_week_posts["reach"].mean())
@@ -338,6 +355,12 @@ def build_payload(sb, user_id: str) -> dict | None:
         ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
     except Exception:
         ga4_ctx = None
+    # Meme contexte sur la fenetre precedente — sert le repere du bloc metriques.
+    try:
+        from components.ga4 import build_ga4_context as _bgc_prev
+        ga4_prev = _bgc_prev(sb, user_id, prev_since, prev_until)
+    except Exception:
+        ga4_prev = None
 
     # ── Configs campagnes (labels) — servent la matrice ET le bloc thèmes ─────
     try:
@@ -484,6 +507,36 @@ def build_payload(sb, user_id: str) -> dict | None:
             "markers": sorted(set(mk)),
         }
 
+    # Un theme ne doit voir QUE ses propres conversions GA4. Sans ce filtre, la
+    # regle ROAS/CPA divise la depense DU THEME par les conversions DU COMPTE
+    # ENTIER : chaque theme se voyait attribuer toutes les conversions, d'ou un
+    # cout par conversion beaucoup trop flatteur et en contradiction avec le
+    # resume de la semaine.
+    def _theme_ga4(lbl):
+        if not ga4_ctx:
+            return None
+        by = ga4_ctx.get("by_campaign") or {}
+        conv = 0.0
+        rev = 0.0
+        sub = {}
+        for _cname, _d in by.items():
+            if name2label.get(_nrm(_cname)) != lbl:
+                continue
+            sub[_cname] = _d
+            conv += float((_d or {}).get("conversions") or 0)
+            rev += float((_d or {}).get("revenue") or 0)
+        ctx = dict(ga4_ctx)
+        ctx["by_campaign"] = sub
+        if sub:
+            ctx["paid_conversions"] = conv
+            ctx["paid_revenue"] = rev
+        else:
+            # Rien de rattachable a ce theme (UTM absents ou differents des noms
+            # de campagne) : on se tait plutot que d'afficher un chiffre faux.
+            ctx["paid_conversions"] = None
+            ctx["paid_revenue"] = None
+        return ctx
+
     themes_focus = []
     for lbl in theme_list:
         nlbl = _nrm(lbl)
@@ -509,7 +562,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             df_camp=tc, avg_ctr=avg_ctr,
             df_insta=ti if not ti.empty else None,
             df_week_posts=tw, followers_current=followers_current,
-            ga4=ga4_ctx, objectif=objectif, feedback=feedback, vision=constats,
+            ga4=_theme_ga4(lbl), objectif=objectif, feedback=feedback, vision=constats,
         )
         t_recos = sorted((r for r in t_recos if r.get("key") not in SETUP_KEYS),
                          key=lambda r: r["priority"])
@@ -1027,11 +1080,50 @@ def build_payload(sb, user_id: str) -> dict | None:
         "ctr": round((_all_clicks / _all_impr * 100), 2) if _all_impr > 0 else None,
     }
 
+    # Les memes metriques sur la fenetre PRECEDENTE : un chiffre sans repere ne
+    # dit rien, le lecteur invente une conclusion. None = pas comparable, et la
+    # tuile reste alors muette plutot que d'afficher une variation inventee.
+    _vues_prev = None
+    if df_prev_posts is not None and not df_prev_posts.empty and "views" in df_prev_posts.columns:
+        _vues_prev = int(pd.to_numeric(df_prev_posts["views"], errors="coerce").fillna(0).sum())
+    _trafic_prev = None
+    try:
+        if ga4_prev:
+            _sp = ga4_prev.get("total_sessions")
+            _trafic_prev = int(_sp) if _sp else None
+    except Exception:
+        _trafic_prev = None
+    _clicks_prev = m_clicks_prev + g_clicks_prev
+    _impr_prev = m_impr_prev + g_impr_prev
+    metrics_prev = {
+        "trafic": _trafic_prev,
+        "vues": _vues_prev,
+        "clics": _clicks_prev or None,
+        "ctr": round((_clicks_prev / _impr_prev * 100), 2) if _impr_prev > 0 else None,
+    }
+
+    # Phrase de passage constat -> conseils. Sans elle, le lecteur voit des
+    # chiffres puis une liste de conseils sans comprendre que les seconds
+    # decoulent des premiers. Deterministe : le verdict est deja calcule, on
+    # ne rappelle pas l'IA pour une phrase de liaison.
+    themes_intro = None
+    if themes_focus:
+        _noms = [t["label"] for t in themes_focus[:3]]
+        _sur = (_noms[0] if len(_noms) == 1
+                else " et ".join([", ".join(_noms[:-1]), _noms[-1]]))
+        # Le verdict peut compter plusieurs phrases : on ne reprend que la
+        # premiere, sinon la phrase de passage devient un pave.
+        _tete = (verdict or "").split(".")[0].strip()
+        _quoi = "le levier" if sum(len(t["recos"]) for t in themes_focus) <= 1 else "les leviers"
+        themes_intro = (f"{_tete} — voilà {_quoi} sur {_sur}."
+                        if _tete else f"Voilà {_quoi} sur {_sur}.")
+
     return {
         "version": 2,
         "vision": vision,
         "matrice": matrice,
         "metrics_read": metrics_read,
+        "metrics_prev": metrics_prev,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
             "spend": round(total_spend + g_spend, 2),
@@ -1059,6 +1151,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         ] + ([ai_reco] if ai_reco else []),
         # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
         "themes_focus": themes_focus,
+        "themes_intro": themes_intro,
         "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,

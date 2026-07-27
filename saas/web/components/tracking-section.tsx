@@ -31,9 +31,11 @@ function etat(a: TrackedAction): { icon: string; cls: string; label: string } {
 export function TrackingSection({
   actions,
   archived,
+  num,
 }: {
   actions: TrackedAction[];
   archived: TrackedAction[];
+  num?: number;
 }) {
   const rows = [...actions, ...archived].sort((a, b) =>
     a.decided_at < b.decided_at ? 1 : a.decided_at > b.decided_at ? -1 : 0
@@ -47,7 +49,10 @@ export function TrackingSection({
     <section className="mb-9">
       <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink mb-3.5 flex items-center gap-2.5">
         <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
-        <span className="text-faint font-mono text-[15px]">4</span> Ton historique d&apos;actions
+        {num !== undefined && (
+          <span className="text-faint font-mono text-[15px]">{num}</span>
+        )}{" "}
+        Ton historique d&apos;actions
       </h2>
       <p className="text-[12px] text-faint mb-2.5">
         {rows.length} lancée{rows.length > 1 ? "s" : ""} · {faites} faite{faites > 1 ? "s" : ""} ·{" "}
