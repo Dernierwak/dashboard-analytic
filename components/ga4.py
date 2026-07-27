@@ -120,7 +120,7 @@ def build_ga4_context(
     ctx = {
         "connected": True,
         "paid_conversions": 0.0, "paid_revenue": 0.0, "paid_sessions": 0,
-        "total_conversions": 0.0, "total_revenue": 0.0,
+        "total_conversions": 0.0, "total_revenue": 0.0, "total_sessions": 0,
         "funnel": {}, "by_campaign": {},
     }
     in_window = False
@@ -133,6 +133,8 @@ def build_ga4_context(
         rev = float(r.get("revenue") or 0)
         ctx["total_conversions"] += conv
         ctx["total_revenue"] += rev
+        # Sessions tous canaux — c'est le « trafic » lu dans le rapport hebdo.
+        ctx["total_sessions"] += int(r.get("sessions") or 0)
         if any(k in str(r.get("medium", "")).lower() for k in ("cpc", "ppc", "paid")):
             ctx["paid_conversions"] += conv
             ctx["paid_revenue"] += rev
@@ -159,4 +161,5 @@ def build_ga4_context(
         ctx["paid_conversions"] = None
         ctx["paid_revenue"] = None
         ctx["paid_sessions"] = None
+        ctx["total_sessions"] = None
     return ctx

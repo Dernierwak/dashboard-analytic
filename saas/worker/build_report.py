@@ -519,6 +519,10 @@ def build_payload(sb, user_id: str) -> dict | None:
         _need = max(0, 3 - len(t_recos))
         try:
             _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+            # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
+            # on retente une fois avant d'abandonner.
+            if _need and not _ai:
+                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
         except Exception:
             _ai = []
         # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
@@ -1012,8 +1016,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     _trafic = None
     try:
         if ga4_ctx:
-            _s = ga4_ctx.get("sessions") or (ga4_ctx.get("totals") or {}).get("sessions")
-            _trafic = int(_s) if _s is not None else None
+            _s = ga4_ctx.get("total_sessions")
+            _trafic = int(_s) if _s else None
     except Exception:
         _trafic = None
     metrics_read = {
