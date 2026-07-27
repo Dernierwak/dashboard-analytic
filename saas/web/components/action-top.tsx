@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { resolveAction } from "@/app/actions";
 import type { TrackedAction } from "@/lib/report";
 
@@ -28,6 +28,19 @@ function depuis(iso: string): string {
   return `il y a ${Math.round(days / 7)} semaines`;
 }
 
+// Un echec doit se voir et se comprendre : un clic sans reponse est la chose
+// qui fait le plus douter d'un produit.
+function Erreur({ texte, onFermer }: { texte: string; onFermer: () => void }) {
+  return (
+    <div className="mt-2 text-[11.5px] leading-snug text-neg bg-neg/[0.05] border border-neg/25 rounded-lg px-3 py-2">
+      {texte}
+      <button onClick={onFermer} className="block mt-1 text-[10.5px] font-semibold text-faint">
+        fermer
+      </button>
+    </div>
+  );
+}
+
 const V: Record<string, { cls: string; border: string; icon: string; label: string }> = {
   better: { cls: "text-pos", border: "#1a7a4a", icon: "✓", label: "ça a marché" },
   worse: { cls: "text-neg", border: "#c0392b", icon: "▲", label: "pas d'effet — à revoir" },
@@ -37,6 +50,7 @@ const V: Record<string, { cls: string; border: string; icon: string; label: stri
 // À FAIRE — la ligne de to-do : gros titre, gros bouton.
 function TodoCard({ a }: { a: TrackedAction }) {
   const [pending, startTransition] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
   return (
     <div
       className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5"
@@ -51,19 +65,32 @@ function TodoCard({ a }: { a: TrackedAction }) {
       <div className="flex items-center gap-2 mt-3">
         <button
           disabled={pending}
-          onClick={() => startTransition(async () => { await resolveAction(a.id, "done", a.reco_key); })}
-          className="text-[13px] font-semibold text-white bg-pos rounded-full px-4 py-2.5 disabled:opacity-50"
+          onClick={() =>
+            startTransition(async () => {
+              setErreur(null);
+              const r = await resolveAction(a.id, "done", a.reco_key);
+              if (!r.ok) setErreur(r.message ?? "Enregistrement impossible — réessaie.");
+            })
+          }
+          className="text-[13px] font-semibold text-white bg-pos rounded-full px-4 py-2.5 disabled:opacity-60"
         >
           {pending ? "…" : "✓ C'est fait"}
         </button>
         <button
           disabled={pending}
-          onClick={() => startTransition(async () => { await resolveAction(a.id, "drop"); })}
+          onClick={() =>
+            startTransition(async () => {
+              setErreur(null);
+              const r = await resolveAction(a.id, "drop");
+              if (!r.ok) setErreur(r.message ?? "Impossible de retirer cette action — réessaie.");
+            })
+          }
           className="ml-auto text-[12px] text-faint hover:text-muted px-3 py-2.5"
         >
           retirer
         </button>
       </div>
+      {erreur && <Erreur texte={erreur} onFermer={() => setErreur(null)} />}
     </div>
   );
 }
@@ -71,6 +98,7 @@ function TodoCard({ a }: { a: TrackedAction }) {
 // À JUGER — l'action est faite depuis 2 semaines : voilà ce que ça a donné.
 function JudgeCard({ a }: { a: TrackedAction }) {
   const [pending, startTransition] = useTransition();
+  const [erreur, setErreur] = useState<string | null>(null);
   const v = a.verdict ? V[a.verdict] ?? V.stable : null;
   return (
     <div
@@ -102,11 +130,18 @@ function JudgeCard({ a }: { a: TrackedAction }) {
       )}
       <button
         disabled={pending}
-        onClick={() => startTransition(async () => { await resolveAction(a.id, "seen"); })}
-        className="mt-3 text-[13px] font-semibold text-white bg-ink rounded-full px-4 py-2.5 disabled:opacity-50"
+        onClick={() =>
+          startTransition(async () => {
+            setErreur(null);
+            const r = await resolveAction(a.id, "seen");
+            if (!r.ok) setErreur(r.message ?? "Impossible de ranger cette action — réessaie.");
+          })
+        }
+        className="mt-3 text-[13px] font-semibold text-white bg-ink rounded-full px-4 py-2.5 disabled:opacity-60"
       >
         {pending ? "…" : "✓ Vu — je range"}
       </button>
+      {erreur && <Erreur texte={erreur} onFermer={() => setErreur(null)} />}
     </div>
   );
 }
@@ -124,7 +159,7 @@ export function ActionTop({
   if (actions.length === 0) return null;
 
   return (
-    <section className="mb-8">
+    <section id="a-faire" className="mb-8 scroll-mt-4">
       <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
         <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink flex items-center gap-2.5">
           <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />

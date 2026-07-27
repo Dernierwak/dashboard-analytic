@@ -14,12 +14,12 @@ export type TrackInfo = {
 
 // Boutons de réaction sous chaque conseil.
 // « ▶ Je le teste » : la décision part dans ta liste, tout en haut du rapport,
-// et n'en bouge plus tant que tu ne l'as pas marquée faite (c'est là-haut que
-// se fait le « ✓ C'est fait » — ici on masque donc le doublon).
+// et n'en bouge plus tant que tu ne l'as pas marquée faite. Le « ✓ C'est fait »
+// n'est QUE là-haut : un conseil se prend ici, il ne se termine pas ici. Deux
+// chemins pour le même résultat, c'est une hésitation à chaque semaine.
 // « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
 // + commentaire libre : agrégé dans ton profil, l'IA adapte son ton.
 const BUTTONS: { reaction: Reaction; label: string; activeCls: string }[] = [
-  { reaction: "done", label: "✓ Fait", activeCls: "bg-pos text-white border-pos" },
   { reaction: "useful", label: "● Utile", activeCls: "bg-brand text-white border-brand" },
   { reaction: "not_for_me", label: "✕ Pas pour moi", activeCls: "bg-faint text-white border-faint" },
 ];
@@ -44,6 +44,8 @@ export function RecoActions({
   const [text, setText] = useState(comment ?? "");
   const [commentSaved, setCommentSaved] = useState(false);
   const [isTracked, setIsTracked] = useState(tracked);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState(false);
 
   return (
     <div className="mt-3.5 pt-3 border-t border-line">
@@ -58,23 +60,57 @@ export function RecoActions({
         ) : (
           <button
             disabled={pending}
-            onClick={() =>
+            onClick={() => {
+              // Retour optimiste : l'état change tout de suite, on revient en
+              // arrière si le serveur refuse. Un clic doit répondre, pas attendre.
+              const avant = isTracked;
+              setErreur(null);
+              setIsTracked(!avant);
+              setJustAdded(!avant);
               startTransition(async () => {
-                const r = await startTracking({ recoKey, ...track, tracked: isTracked });
-                if (r.ok) setIsTracked(!isTracked);
-              })
-            }
-            className={`w-full mb-2 text-[12px] font-semibold rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+                const r = await startTracking({ recoKey, ...track, tracked: avant });
+                if (!r.ok) {
+                  setIsTracked(avant);
+                  setJustAdded(false);
+                  setErreur(r.message ?? "Enregistrement impossible — réessaie dans un instant.");
+                }
+              });
+            }}
+            className={`w-full mb-2 text-[12.5px] font-semibold rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60 ${
               isTracked
                 ? "bg-brand/[0.06] text-brand border-brand/30"
                 : "bg-brand text-white border-brand hover:bg-brand/90"
             }`}
           >
-            {isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
+            {pending ? "…" : isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
           </button>
         ))}
+
+      {/* Ce qui part en haut de page est à 3 écrans d'ici : on le confirme sur
+          place, avec un lien qui y remonte. */}
+      {justAdded && !erreur && (
+        <a
+          href="#a-faire"
+          className="flex items-center gap-1.5 mb-2 text-[11.5px] font-semibold text-pos bg-pos/[0.07] border border-pos/25 rounded-lg px-3 py-2"
+        >
+          ◷ Ajouté à ta liste, tout en haut
+          <span className="ml-auto underline">y aller ↑</span>
+        </a>
+      )}
+
+      {erreur && (
+        <div className="mb-2 text-[11.5px] leading-snug text-neg bg-neg/[0.05] border border-neg/25 rounded-lg px-3 py-2">
+          {erreur}
+          <button
+            onClick={() => setErreur(null)}
+            className="block mt-1 text-[10.5px] font-semibold text-faint"
+          >
+            fermer
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
-        {BUTTONS.filter((b) => !(isTracked && b.reaction === "done")).map((b) => {
+        {BUTTONS.map((b) => {
           const active = current === b.reaction;
           return (
             <button
@@ -82,10 +118,11 @@ export function RecoActions({
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  await saveRecoFeedback(recoKey, b.reaction, active);
+                  const r = await saveRecoFeedback(recoKey, b.reaction, active);
+                  if (!r?.ok) setErreur("Ton retour n'a pas pu être enregistré — réessaie.");
                 })
               }
-              className={`text-[12px] font-semibold rounded-full border px-3.5 py-2 transition-colors disabled:opacity-50 ${
+              className={`text-[12.5px] font-semibold rounded-full border px-4 py-2.5 transition-colors disabled:opacity-50 ${
                 active
                   ? b.activeCls
                   : "border-line text-muted hover:bg-black/[0.03] bg-white"
@@ -97,7 +134,7 @@ export function RecoActions({
         })}
         <button
           onClick={() => setShowComment((v) => !v)}
-          className={`ml-auto text-[12px] font-semibold rounded-full border px-3.5 py-2 transition-colors ${
+          className={`ml-auto text-[12.5px] font-semibold rounded-full border px-4 py-2.5 transition-colors ${
             comment || showComment
               ? "border-brand/30 text-brand bg-brand/[0.04]"
               : "border-line text-muted hover:bg-black/[0.03] bg-white"

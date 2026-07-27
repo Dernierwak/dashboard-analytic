@@ -85,21 +85,23 @@ export async function resolveAction(
   id: string,
   action: "done" | "seen" | "drop",
   recoKey?: string
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  if (!user) return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
 
   if (action === "drop") {
-    await supabase.from("suivi_actions").delete().eq("id", id).eq("user_id", user.id);
+    const r = await supabase.from("suivi_actions").delete().eq("id", id).eq("user_id", user.id);
+    if (r.error) return { ok: false, message: "Impossible de retirer cette action — réessaie." };
   } else if (action === "seen") {
-    await supabase
+    const r = await supabase
       .from("suivi_actions")
       .update({ status: "archived" })
       .eq("id", id)
       .eq("user_id", user.id);
+    if (r.error) return { ok: false, message: "Impossible de ranger cette action — réessaie." };
   } else {
     const today = new Date();
     const check = new Date(today);
@@ -111,11 +113,13 @@ export async function resolveAction(
       .eq("user_id", user.id);
     // Repli si la colonne done_at n'existe pas encore (migration §10 pas passée).
     if (r.error) {
-      await supabase
+      const r2 = await supabase
         .from("suivi_actions")
         .update({ status: "done", check_at: isoDate(check) })
         .eq("id", id)
         .eq("user_id", user.id);
+      if (r2.error)
+        return { ok: false, message: "Enregistrement impossible — rejoue le SQL Supabase (suivi_actions)." };
     }
     // Un seul geste, deux tables : le conseil est aussi marqué « appliqué »
     // côté reco_feedback → l'IA sait ce que tu as réellement mis en place.
