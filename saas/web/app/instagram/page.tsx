@@ -117,9 +117,10 @@ function PostsMetricChart({
     : p.reach;
   const vals = pts.map(val);
   const max = Math.max(...vals, 0.001);
-  const W = 640, H = 130, PAD = 4;
-  const bw = (W - PAD * 2) / pts.length;
+  const W = 640, H = 130, PAD = 8;
   const step = Math.max(1, Math.ceil(pts.length / 8));
+  const cx = (i: number) => PAD + (pts.length === 1 ? (W - PAD * 2) / 2 : (i * (W - PAD * 2)) / (pts.length - 1));
+  const cy = (v: number) => H - Math.max(v > 0 ? 2 : 0, (v / max) * (H - 12));
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
   const dq = days === 7 ? "" : `d=${days}&`;
   return (
@@ -145,30 +146,26 @@ function PostsMetricChart({
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${meta.label} par post`}>
-        {pts.map((p, i) => {
-          const v = val(p);
-          const h = Math.max(v > 0 ? 2 : 0, (v / max) * (H - 8));
-          return (
-            <g key={i}>
-              <rect
-                x={PAD + i * bw + bw * 0.15}
-                y={H - h}
-                width={bw * 0.7}
-                height={h}
-                rx={2}
-                fill="#7b4fff"
-                opacity={0.85}
-              >
-                <title>{`${fmtDate(p.date)} · ${p.type} — ${meta.label} ${fmtV(v)}${meta.unit} · « ${(p.caption || "").slice(0, 50)} »`}</title>
-              </rect>
-              {i % step === 0 && (
-                <text x={PAD + i * bw + bw / 2} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
-                  {fmtDate(p.date).slice(0, 6)}
-                </text>
-              )}
-            </g>
-          );
-        })}
+        <polyline
+          points={pts.map((p, i) => `${cx(i)},${cy(val(p))}`).join(" ")}
+          fill="none"
+          stroke="#7b4fff"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={cx(i)} cy={cy(val(p))} r={pts.length > 40 ? 1.8 : 3} fill="#7b4fff">
+              <title>{`${fmtDate(p.date)} · ${p.type} — ${meta.label} ${fmtV(val(p))}${meta.unit} · « ${(p.caption || "").slice(0, 50)} »`}</title>
+            </circle>
+            {i % step === 0 && (
+              <text x={cx(i)} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
+                {fmtDate(p.date).slice(0, 6)}
+              </text>
+            )}
+          </g>
+        ))}
       </svg>
       <div className="text-[10.5px] text-faint mt-1 text-right">
         max {fmtV(max)}{meta.unit} · {pts.length} posts
@@ -299,6 +296,12 @@ function PostsTable({
       </div>
     </div>
   );
+}
+
+// Le libellé de la métrique qui pilote la page — évite d'écrire « portée » en
+// dur alors que l'utilisateur a filtré sur les vues.
+function metricLabel(key: string): string {
+  return (INSTA_METRICS.find((m) => m.key === key) ?? INSTA_METRICS[0]).label.toLowerCase();
 }
 
 export default async function InstagramPage({
@@ -437,7 +440,7 @@ export default async function InstagramPage({
                   {f.count} post{f.count > 1 ? "s" : ""}
                 </span>
                 <span className="ml-auto font-mono text-[12.5px] text-muted">
-                  portée {fmtCHF(f.avgReach)}
+                  {metricLabel(d.topMetric)} {fmtCHF(f.avgReach)}
                 </span>
                 <span className="font-mono text-[12.5px] text-muted w-24 text-right">
                   eng. {f.avgEng.toFixed(1)} %
@@ -458,7 +461,7 @@ export default async function InstagramPage({
         <h2 className="text-[14px] font-semibold text-ink mb-3">
           Quand publier ?{" "}
           <span className="text-faint font-normal">
-            · portée moyenne par jour et créneau
+            · {metricLabel(d.topMetric)} moyenne par jour et créneau
             {d.heatmapScope === "historique"
               ? " (période trop vide → tout l'historique)"
               : " (période filtrée)"}
@@ -491,7 +494,7 @@ export default async function InstagramPage({
                             isBest ? "ring-2 ring-pos" : ""
                           } ${c.count > 0 ? "text-ink" : "text-faint/50"}`}
                           style={{ background: c.count > 0 ? `rgba(123,79,255,${intensity})` : "rgba(14,15,18,0.02)" }}
-                          title={c.count > 0 ? `${c.count} post(s) · portée moyenne ${fmtCHF(c.avgReach)}` : "aucun post"}
+                          title={c.count > 0 ? `${c.count} post(s) · ${metricLabel(d.topMetric)} moyenne ${fmtCHF(c.avgReach)}` : "aucun post"}
                         >
                           {c.count > 0 ? fmtCHF(c.avgReach) : "·"}
                         </div>
@@ -509,7 +512,7 @@ export default async function InstagramPage({
                 {["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"][d.bestSlot.day]}{" "}
                 {INSTA_SLOTS[d.bestSlot.slot]}
               </strong>{" "}
-              — {fmtCHF(d.bestSlot.avgReach)} de portée moyenne sur {d.bestSlot.count} posts.
+              — {fmtCHF(d.bestSlot.avgReach)} de {metricLabel(d.topMetric)} en moyenne sur {d.bestSlot.count} posts.
               Publie quand TON audience est active, pas selon les « meilleures heures » génériques.
             </p>
           )}
@@ -584,7 +587,7 @@ export default async function InstagramPage({
                 <span className="text-[13px] font-semibold text-brand">{l.label}</span>
                 <span className="text-[11.5px] text-faint">{l.count} post{l.count > 1 ? "s" : ""}</span>
                 <span className="ml-auto font-mono text-[12.5px] text-muted">
-                  portée {fmtCHF(l.avgReach)}
+                  {metricLabel(d.topMetric)} {fmtCHF(l.avgReach)}
                 </span>
                 <span className="font-mono text-[12.5px] text-muted w-24 text-right">
                   eng. {l.avgEng.toFixed(1)} %

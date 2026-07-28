@@ -1,7 +1,7 @@
 // Coûts du mois — même base que la page Streamlit : dépense par canal vs
 // budget avec repère, graphe journalier empilé, budgets de l'année (table
 // éditable, dépliable), dépense du mois par thème.
-import { getCoutsData, type ChannelCout, type CoutDay } from "@/lib/couts";
+import { getCoutsData, type ChannelCout, type CoutDay, type ThemeSpend } from "@/lib/couts";
 import { fmtCHF } from "@/lib/report";
 import { SiteHeader } from "@/components/site-header";
 import { BudgetEditor } from "@/components/budget-editor";
@@ -63,10 +63,13 @@ function Pacing({ ch, elapsed }: { ch: ChannelCout; elapsed: number }) {
 // Graphe empilé : dépense par jour, Meta (bleu) + Google (vert).
 function StackedDaily({ daily }: { daily: CoutDay[] }) {
   if (daily.length === 0) return null;
-  const max = Math.max(...daily.map((p) => p.meta + p.google), 1);
-  const W = 640, H = 130, PAD = 4;
-  const bw = (W - PAD * 2) / daily.length;
+  // Deux courbes plutôt qu'un empilement : on compare les canaux entre eux,
+  // au lieu de lire une somme dont il faut soustraire mentalement le bas.
+  const max = Math.max(...daily.map((p) => Math.max(p.meta, p.google)), 1);
+  const W = 640, H = 130, PAD = 8;
   const step = Math.max(1, Math.ceil(daily.length / 8));
+  const cx = (i: number) => PAD + (daily.length === 1 ? (W - PAD * 2) / 2 : (i * (W - PAD * 2)) / (daily.length - 1));
+  const cy = (v: number) => H - (v / max) * (H - 12);
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
@@ -76,33 +79,136 @@ function StackedDaily({ daily }: { daily: CoutDay[] }) {
         <div className="flex items-center gap-3 text-[10.5px] text-faint">
           <span><span style={{ color: "#1a56ff" }}>■</span> Meta</span>
           <span><span style={{ color: "#1a7a4a" }}>■</span> Google</span>
-          <span>max {fmtCHF(max)} CHF / jour</span>
+          <span>max {fmtCHF(max)} CHF / jour et canal</span>
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label="Dépense par jour et par canal">
-        {daily.map((p, i) => {
-          const hMeta = (p.meta / max) * (H - 8);
-          const hGoog = (p.google / max) * (H - 8);
-          const x = PAD + i * bw + bw * 0.15;
-          const wRect = bw * 0.7;
-          return (
-            <g key={p.date}>
+        {([["meta", "#1a56ff"], ["google", "#1a7a4a"]] as const).map(([k, color]) => (
+          <polyline
+            key={k}
+            points={daily.map((p, i2) => `${cx(i2)},${cy(k === "meta" ? p.meta : p.google)}`).join(" ")}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ))}
+        {daily.map((p, i2) => (
+          <g key={p.date}>
+            <circle cx={cx(i2)} cy={cy(p.meta)} r="2.4" fill="#1a56ff" />
+            <circle cx={cx(i2)} cy={cy(p.google)} r="2.4" fill="#1a7a4a" />
+            <rect x={cx(i2) - 6} y={0} width={12} height={H} fill="transparent">
               <title>{`${p.label} — Meta ${p.meta.toFixed(0)} CHF · Google ${p.google.toFixed(0)} CHF`}</title>
-              {p.google > 0 && (
-                <rect x={x} y={H - hGoog} width={wRect} height={hGoog} rx={1.5} fill="#1a7a4a" opacity={0.85} />
-              )}
-              {p.meta > 0 && (
-                <rect x={x} y={H - hGoog - hMeta} width={wRect} height={hMeta} rx={1.5} fill="#1a56ff" opacity={0.85} />
-              )}
-              {i % step === 0 && (
-                <text x={x + wRect / 2} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
-                  {p.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
+            </rect>
+            {i2 % step === 0 && (
+              <text x={cx(i2)} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
+                {p.label}
+              </text>
+            )}
+          </g>
+        ))}
       </svg>
+    </div>
+  );
+}
+
+
+// Réconciliation des deux niveaux de budget : celui que tu fixes par PLATEFORME
+// (Meta, Google) et ceux que tu fixes par THÈME. Les seconds se découpent dans
+// les premiers — sans cette vue, on ne sait jamais s'il reste de la marge à
+// répartir ni si on a promis deux fois le même franc.
+function RepartitionBudget({
+  byTheme,
+  totalBudget,
+}: {
+  byTheme: ThemeSpend[];
+  totalBudget: number;
+}) {
+  const attribue = byTheme.reduce((a, t) => a + t.budget, 0);
+  const avecBudget = byTheme.filter((t) => t.budget > 0);
+  const reste = totalBudget - attribue;
+  const depasse = reste < 0;
+
+  if (totalBudget <= 0) {
+    return (
+      <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
+        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
+          Répartition du budget
+        </div>
+        <p className="text-[12.5px] text-muted leading-relaxed">
+          Fixe d&apos;abord un budget par plateforme ci-dessus — les budgets par
+          thème viendront s&apos;y découper, et tu verras ce qu&apos;il te reste à
+          répartir.
+        </p>
+      </div>
+    );
+  }
+
+  // Chaque thème prend sa part de la barre ; le reste est le non-attribué.
+  const base = Math.max(totalBudget, attribue);
+  return (
+    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2.5">
+        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+          Répartition du budget · thèmes dans plateformes
+        </div>
+        <div className="font-mono text-[12.5px] text-ink">
+          {fmtCHF(attribue)} <span className="text-faint">/ {fmtCHF(totalBudget)} CHF</span>
+        </div>
+      </div>
+
+      <div className="flex h-3 rounded-full overflow-hidden bg-black/[0.05]">
+        {avecBudget.map((t, i) => (
+          <div
+            key={t.label}
+            style={{
+              width: `${(t.budget / base) * 100}%`,
+              background: "#1a56ff",
+              opacity: 1 - Math.min(0.55, i * 0.13),
+            }}
+            title={`${t.label} — ${fmtCHF(t.budget)} CHF`}
+          />
+        ))}
+        {!depasse && reste > 0 && (
+          <div
+            style={{ width: `${(reste / base) * 100}%` }}
+            className="bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.10)_0_4px,transparent_4px_8px)]"
+            title={`Non attribué — ${fmtCHF(reste)} CHF`}
+          />
+        )}
+      </div>
+
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mt-2">
+        <div className="flex items-center gap-3 flex-wrap text-[11px] text-faint">
+          {avecBudget.slice(0, 6).map((t, i) => (
+            <span key={t.label} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full inline-block"
+                style={{ background: "#1a56ff", opacity: 1 - Math.min(0.55, i * 0.13) }}
+              />
+              {t.label} <span className="font-mono text-muted">{fmtCHF(t.budget)}</span>
+            </span>
+          ))}
+          {avecBudget.length === 0 && <span>aucun budget par thème pour l&apos;instant</span>}
+        </div>
+        <span
+          className={`text-[12px] font-semibold ${depasse ? "text-neg" : reste > 0 ? "text-warn" : "text-pos"}`}
+        >
+          {depasse
+            ? `${fmtCHF(-reste)} CHF de trop répartis`
+            : reste > 0
+              ? `${fmtCHF(reste)} CHF encore à répartir`
+              : "tout est réparti"}
+        </span>
+      </div>
+
+      {depasse && (
+        <p className="text-[11.5px] text-neg leading-relaxed mt-2">
+          La somme de tes budgets par thème dépasse ce que tu as prévu sur Meta +
+          Google. Baisse un thème, ou remonte le budget de la plateforme.
+        </p>
+      )}
     </div>
   );
 }
@@ -194,6 +300,7 @@ export default async function CoutsPage() {
       {/* Par thème — où va ton budget, thème par thème */}
       {data.byTheme.length > 0 && (
         <div className="mb-8">
+          <RepartitionBudget byTheme={data.byTheme} totalBudget={data.totalBudget} />
           <ScrollList
             title="Par thème · dépense du mois · fixe un budget pour suivre"
             count={data.byTheme.length}

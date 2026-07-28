@@ -480,6 +480,7 @@ export type InstaPost = {
   labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
 };
 
+// avgReach = moyenne de la MÉTRIQUE CHOISIE (pas forcément la portée).
 export type FormatStat = { type: string; count: number; avgReach: number; avgEng: number };
 export type FollowerPoint = { date: string; followers: number };
 export type SlotCell = { count: number; avgReach: number };
@@ -508,7 +509,7 @@ export type InstaDash = {
   heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — tout l'historique
   bestSlot: { day: number; slot: number; avgReach: number; count: number } | null;
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
-  topMetric: string;       // métrique sur laquelle ce top est classé
+  topMetric: string;       // métrique qui pilote formats, heatmap, top 3 et thèmes
   byLabel: PostLabelAgg[];
   posts: InstaPost[];
   allPosts: InstaPost[];
@@ -586,10 +587,25 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     .map((f) => ({ date: String(f.fetched_at).slice(0, 10), followers: Number(f.followers) || 0 }))
     .reverse();
 
+  // La métrique choisie en haut de page pilote TOUTE la page : formats,
+  // heatmap, top 3 et performance par thème. Filtrer sur les vues et voir
+  // ensuite des classements par portée, c'est répondre à côté de la question.
+  const _METRICS = ["reach", "views", "likes", "comments", "saved", "eng"] as const;
+  const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
+    ? String(sp!.m)
+    : "reach";
+  const _mval = (p: InstaPost): number =>
+    topMetric === "views" ? p.views
+    : topMetric === "likes" ? p.likes
+    : topMetric === "comments" ? p.comments
+    : topMetric === "saved" ? p.saved
+    : topMetric === "eng" ? p.eng
+    : p.reach;
+
   const fmtMap = new Map<string, { count: number; reach: number; eng: number }>();
   for (const p of all) {
     const f = fmtMap.get(p.type) ?? { count: 0, reach: 0, eng: 0 };
-    f.count += 1; f.reach += p.reach; f.eng += p.eng;
+    f.count += 1; f.reach += _mval(p); f.eng += p.eng;
     fmtMap.set(p.type, f);
   }
   const formats: FormatStat[] = [...fmtMap.entries()]
@@ -615,7 +631,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     const day = (d.getDay() + 6) % 7; // lundi = 0
     const slot = slotOf(d.getHours());
     acc[day][slot].count += 1;
-    acc[day][slot].reach += p.reach;
+    acc[day][slot].reach += _mval(p);
   }
   const heatmap: SlotCell[][] = acc.map((row) =>
     row.map((c) => ({ count: c.count, avgReach: c.count ? c.reach / c.count : 0 }))
@@ -629,19 +645,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     }
 
   // Top 3 posts de la période filtrée (fallback historique, même signal).
-  // Il SUIT la métrique choisie en haut de page : filtrer sur les vues doit
-  // donner le top des vues, pas celui de la portée.
-  const _METRICS = ["reach", "views", "likes", "comments", "saved", "eng"] as const;
-  const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
-    ? String(sp!.m)
-    : "reach";
-  const _mval = (p: InstaPost): number =>
-    topMetric === "views" ? p.views
-    : topMetric === "likes" ? p.likes
-    : topMetric === "comments" ? p.comments
-    : topMetric === "saved" ? p.saved
-    : topMetric === "eng" ? p.eng
-    : p.reach;
   const topPosts = [...heatPool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
 
   // Performance par label (posts labellisés, tout l'historique)
@@ -649,7 +652,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   for (const p of all)
     for (const l of p.labels) {
       const x = lblMap.get(l) ?? { count: 0, reach: 0, eng: 0 };
-      x.count += 1; x.reach += p.reach; x.eng += p.eng;
+      x.count += 1; x.reach += _mval(p); x.eng += p.eng;
       lblMap.set(l, x);
     }
   const byLabel: PostLabelAgg[] = [...lblMap.entries()]
