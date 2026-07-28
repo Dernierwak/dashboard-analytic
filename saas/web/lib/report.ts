@@ -40,6 +40,21 @@ export type PayloadReco = {
   effort?: string | null;
 };
 
+// « Ta boussole » — l'indicateur qui compte, choisi selon l'objectif du compte,
+// avec sa trajectoire sur 10 semaines et les zones qui le rendent lisible.
+export type KpiFocus = {
+  key: string;
+  titre: string;
+  unite: string;
+  direction: "up" | "down";
+  valeur: number;
+  precedent: number | null;
+  repere: string | null;
+  labels: string[];
+  points: (number | null)[];
+  bandes: { max: number | null; label: string; tone: "neg" | "warn" | "pos" }[];
+};
+
 // Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
 export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolean };
 
@@ -167,6 +182,8 @@ export type ReportPayload = {
     clics: number | null;
     ctr: number | null;
   } | null;
+  // L'indicateur qui compte pour cet objectif, avec sa pente et ses zones.
+  kpi_focus?: KpiFocus | null;
   // Les mêmes sur la fenêtre précédente — le repère qui rend le chiffre lisible.
   metrics_prev?: {
     trafic: number | null;

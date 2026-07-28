@@ -9,6 +9,7 @@ import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ThemeTimeline } from "@/components/theme-timeline";
+import { KpiFocusCard } from "@/components/kpi-focus";
 import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
@@ -200,7 +201,7 @@ export default async function Page() {
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
 
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
+    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
       <SiteHeader email={data.email} active="rapport" />
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
@@ -279,9 +280,14 @@ export default async function Page() {
       {/* Ce que ça a donné — la frise répond à « mes actions ont bougé quoi ? »,
           elle a donc sa place juste après la liste d'actions, pas au fond
           d'une carte de thème. Les chiffres de la semaine la complètent. */}
-      {(series.length > 0 || report?.metrics_read) && (
+      {(series.length > 0 || report?.metrics_read || report?.kpi_focus) && (
         <section className="mb-9">
           <SectionTitle tone="discret">Ce que ça donne</SectionTitle>
+          {report?.kpi_focus && (
+            <div className="mb-3">
+              <KpiFocusCard k={report.kpi_focus} />
+            </div>
+          )}
           {series.length > 0 && (
             <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 mb-3 grid gap-5 lg:grid-cols-2">
               {series.map((s2) => (

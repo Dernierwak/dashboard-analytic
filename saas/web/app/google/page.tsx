@@ -23,7 +23,7 @@ export default async function GooglePage({
   const d = await getGoogleDash(searchParams);
 
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
       <SiteHeader email={d.email} active="google" />
 
       <div className="mb-5">

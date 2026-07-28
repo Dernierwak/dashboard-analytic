@@ -14,6 +14,7 @@ import { SiteHeader } from "@/components/site-header";
 import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
+import { LineChart } from "@/components/line-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -117,10 +118,6 @@ function PostsMetricChart({
     : p.reach;
   const vals = pts.map(val);
   const max = Math.max(...vals, 0.001);
-  const W = 640, H = 130, PAD = 8;
-  const step = Math.max(1, Math.ceil(pts.length / 8));
-  const cx = (i: number) => PAD + (pts.length === 1 ? (W - PAD * 2) / 2 : (i * (W - PAD * 2)) / (pts.length - 1));
-  const cy = (v: number) => H - Math.max(v > 0 ? 2 : 0, (v / max) * (H - 12));
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
   const dq = days === 7 ? "" : `d=${days}&`;
   return (
@@ -145,28 +142,13 @@ function PostsMetricChart({
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${meta.label} par post`}>
-        <polyline
-          points={pts.map((p, i) => `${cx(i)},${cy(val(p))}`).join(" ")}
-          fill="none"
-          stroke="#7b4fff"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {pts.map((p, i) => (
-          <g key={i}>
-            <circle cx={cx(i)} cy={cy(val(p))} r={pts.length > 40 ? 1.8 : 3} fill="#7b4fff">
-              <title>{`${fmtDate(p.date)} · ${p.type} — ${meta.label} ${fmtV(val(p))}${meta.unit} · « ${(p.caption || "").slice(0, 50)} »`}</title>
-            </circle>
-            {i % step === 0 && (
-              <text x={cx(i)} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
-                {fmtDate(p.date).slice(0, 6)}
-              </text>
-            )}
-          </g>
-        ))}
-      </svg>
+      <LineChart
+        labels={pts.map((p) => fmtDate(p.date).slice(0, 6))}
+        series={[{ name: meta.label, color: "#7b4fff", values: pts.map(val) }]}
+        fmt={fmtV}
+        unit={meta.unit}
+        ariaLabel={`${meta.label} par post`}
+      />
       <div className="text-[10.5px] text-faint mt-1 text-right">
         max {fmtV(max)}{meta.unit} · {pts.length} posts
       </div>
@@ -338,7 +320,7 @@ export default async function InstagramPage({
   const maxCell = Math.max(...d.heatmap.flat().map((c) => c.avgReach), 1);
 
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
       <SiteHeader email={d.email} active="instagram" />
 
       <div className="mb-7">

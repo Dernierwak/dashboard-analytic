@@ -1152,6 +1152,127 @@ def build_payload(sb, user_id: str) -> dict | None:
         "ctr": round((_clicks_prev / _impr_prev * 100), 2) if _impr_prev > 0 else None,
     }
 
+    # ── Ta boussole : LE chiffre qui compte, avec son échelle ────────────────
+    # Un nombre seul ne dit rien. Ce module donne les trois choses qui le
+    # rendent lisible d'un coup d'oeil : sa valeur, sa trajectoire sur 10
+    # semaines, et surtout la ZONE où il se situe (« tu perds » / « sain » /
+    # « scalable ») — c'est la zone qui transforme un chiffre en décision.
+    def _semaines(nb=10):
+        out = []
+        for k in range(nb):
+            fin = last_full_day - timedelta(days=7 * (nb - 1 - k))
+            out.append((fin - timedelta(days=6), fin))
+        return out
+
+    def _pub_semaine(d1, d2):
+        sp = cl = im = 0.0
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                            & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+            sp += float(m["spend"].sum()); cl += float(m["clicks"].sum()); im += float(m["impressions"].sum())
+        if df_google is not None and not df_google.empty and "date_start" in df_google.columns:
+            g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
+                          & (df_google["date_start"] <= pd.Timestamp(d2))]
+            sp += float(g["cost_micros"].sum()) / 1_000_000.0
+            cl += float(g["clicks"].sum()); im += float(g["impressions"].sum())
+        return sp, cl, im
+
+    def _insta_semaine(d1, d2):
+        if df_insta is None or df_insta.empty or "date" not in df_insta.columns:
+            return None, None, 0
+        dt = pd.to_datetime(df_insta["date"], errors="coerce")
+        w = df_insta[(dt.dt.date >= d1) & (dt.dt.date <= d2)]
+        if len(w) == 0:
+            return None, None, 0
+        eng = float(w["eng"].mean()) if "eng" in w.columns else None
+        rch = float(w["reach"].mean()) if "reach" in w.columns else None
+        return eng, rch, len(w)
+
+    # Revenu payant par semaine : UNE seule lecture GA4 pour les 10 fenêtres.
+    _rev_par_sem = {}
+    try:
+        from scripts.fetch_data import fetch_ga4_insights as _fga4
+        for _r in (_fga4(sb, user_id) or []):
+            _m = str(_r.get("medium") or "").lower()
+            if not any(k in _m for k in ("cpc", "ppc", "paid")):
+                continue
+            _d = str(_r.get("date") or "")[:10]
+            if _d:
+                _rev_par_sem[_d] = _rev_par_sem.get(_d, 0.0) + float(_r.get("revenue") or 0)
+    except Exception:
+        _rev_par_sem = {}
+
+    def _revenu_semaine(d1, d2):
+        if not _rev_par_sem:
+            return None
+        tot, j = 0.0, d1
+        while j <= d2:
+            tot += _rev_par_sem.get(j.isoformat(), 0.0)
+            j += timedelta(days=1)
+        return tot
+
+    _BANDES = {
+        "roas": [(1, "tu perds", "neg"), (2, "fragile", "warn"),
+                 (3, "sain", "pos"), (None, "tu peux scaler", "pos")],
+        "eng": [(1, "faible", "neg"), (3, "correct", "warn"),
+                (6, "bon", "pos"), (None, "excellent", "pos")],
+        "ctr": [(1, "faible", "neg"), (2, "moyen", "warn"),
+                (5, "bon", "pos"), (None, "excellent", "pos")],
+    }
+
+    kpi_focus = None
+    try:
+        _sems = _semaines(10)
+        _pts, _lab = [], []
+        _cle = _unite = _titre = _repere = None
+        _sens = "up"
+        for (d1, d2) in _sems:
+            _lab.append(f"S{d2.isocalendar()[1]}")
+        _rev_now = _revenu_semaine(*_sems[-1])
+        if objectif == "ventes" and _rev_now is not None and _rev_now > 0:
+            _cle, _titre, _unite = "roas", "ROAS", ""
+            _repere = ("Sous 1 tu perds de l'argent. Entre 1 et 2, la pub s'autofinance "
+                       "à peine. Au-dessus de 3, tu peux augmenter les budgets.")
+            for (d1, d2) in _sems:
+                sp, _, _ = _pub_semaine(d1, d2)
+                rv = _revenu_semaine(d1, d2)
+                _pts.append(round(rv / sp, 2) if (sp > 0 and rv is not None) else None)
+        elif objectif == "engagement":
+            _cle, _titre, _unite, _sens = "eng", "Engagement moyen", " %", "up"
+            _repere = ("Part de ton audience touchée qui réagit. Sous 1 % le contenu "
+                       "glisse ; au-dessus de 3 % il accroche vraiment.")
+            for (d1, d2) in _sems:
+                e, _, _ = _insta_semaine(d1, d2)
+                _pts.append(round(e, 2) if e is not None else None)
+        elif objectif == "notoriete":
+            _cle, _titre, _unite = "reach", "Portée moyenne par post", ""
+            _repere = ("Nombre de comptes touchés par publication. Ce qui compte n'est "
+                       "pas le niveau absolu mais sa pente sur plusieurs semaines.")
+            for (d1, d2) in _sems:
+                _, r, _ = _insta_semaine(d1, d2)
+                _pts.append(round(r) if r is not None else None)
+        else:
+            _cle, _titre, _unite = "ctr", "CTR publicitaire", " %"
+            _repere = ("Part des gens qui cliquent après avoir vu ta pub. Sous 1 % le "
+                       "message ne parle pas à l'audience visée.")
+            for (d1, d2) in _sems:
+                _, cl, im = _pub_semaine(d1, d2)
+                _pts.append(round(cl / im * 100, 2) if im > 0 else None)
+
+        _reels = [v for v in _pts if v is not None]
+        if _reels:
+            _val = _pts[-1] if _pts[-1] is not None else _reels[-1]
+            _prev = next((v for v in reversed(_pts[:-1]) if v is not None), None)
+            kpi_focus = {
+                "key": _cle, "titre": _titre, "unite": _unite, "direction": _sens,
+                "valeur": _val, "precedent": _prev,
+                "repere": _repere,
+                "labels": _lab, "points": _pts,
+                "bandes": [{"max": m, "label": l, "tone": t} for (m, l, t) in _BANDES.get(_cle, [])],
+            }
+    except Exception:
+        kpi_focus = None
+
     # Phrase de passage constat -> conseils. Sans elle, le lecteur voit des
     # chiffres puis une liste de conseils sans comprendre que les seconds
     # decoulent des premiers. Deterministe : le verdict est deja calcule, on
@@ -1180,6 +1301,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         "matrice": matrice,
         "metrics_read": metrics_read,
         "metrics_prev": metrics_prev,
+        "kpi_focus": kpi_focus,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
             "spend": round(total_spend + g_spend, 2),

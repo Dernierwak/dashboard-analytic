@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
+import { LineChart } from "@/components/line-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -66,10 +67,6 @@ function StackedDaily({ daily }: { daily: CoutDay[] }) {
   // Deux courbes plutôt qu'un empilement : on compare les canaux entre eux,
   // au lieu de lire une somme dont il faut soustraire mentalement le bas.
   const max = Math.max(...daily.map((p) => Math.max(p.meta, p.google)), 1);
-  const W = 640, H = 130, PAD = 8;
-  const step = Math.max(1, Math.ceil(daily.length / 8));
-  const cx = (i: number) => PAD + (daily.length === 1 ? (W - PAD * 2) / 2 : (i * (W - PAD * 2)) / (daily.length - 1));
-  const cy = (v: number) => H - (v / max) * (H - 12);
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
@@ -82,33 +79,16 @@ function StackedDaily({ daily }: { daily: CoutDay[] }) {
           <span>max {fmtCHF(max)} CHF / jour et canal</span>
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label="Dépense par jour et par canal">
-        {([["meta", "#1a56ff"], ["google", "#1a7a4a"]] as const).map(([k, color]) => (
-          <polyline
-            key={k}
-            points={daily.map((p, i2) => `${cx(i2)},${cy(k === "meta" ? p.meta : p.google)}`).join(" ")}
-            fill="none"
-            stroke={color}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-        {daily.map((p, i2) => (
-          <g key={p.date}>
-            <circle cx={cx(i2)} cy={cy(p.meta)} r="2.4" fill="#1a56ff" />
-            <circle cx={cx(i2)} cy={cy(p.google)} r="2.4" fill="#1a7a4a" />
-            <rect x={cx(i2) - 6} y={0} width={12} height={H} fill="transparent">
-              <title>{`${p.label} — Meta ${p.meta.toFixed(0)} CHF · Google ${p.google.toFixed(0)} CHF`}</title>
-            </rect>
-            {i2 % step === 0 && (
-              <text x={cx(i2)} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
-                {p.label}
-              </text>
-            )}
-          </g>
-        ))}
-      </svg>
+      <LineChart
+        labels={daily.map((p) => p.label)}
+        series={[
+          { name: "Meta", color: "#1a56ff", values: daily.map((p) => p.meta) },
+          { name: "Google", color: "#1a7a4a", values: daily.map((p) => p.google) },
+        ]}
+        fmt={(v) => fmtCHF(v)}
+        unit=" CHF"
+        ariaLabel="Dépense par jour et par canal"
+      />
     </div>
   );
 }
@@ -218,7 +198,7 @@ export default async function CoutsPage() {
   const reste = data.totalBudget - data.totalSpent;
 
   return (
-    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
       <SiteHeader email={data.email} active="couts" />
 
       {/* Hero */}
