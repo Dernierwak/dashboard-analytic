@@ -159,6 +159,56 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         return []
 
 
+def _themes_tips(labels: list, obj_txt: str, business: str = "") -> list:
+    """Savoir-faire de fond par thematique — PAS lie aux chiffres de la semaine.
+
+    Les conseils hebdo repondent a « que faire maintenant » ; ceux-ci repondent a
+    « comment on fait bien ce genre de contenu, en general ». Ils changent peu et
+    se lisent quand on a cinq minutes. Un seul appel Gemini pour tous les themes.
+    [] si Gemini echoue — jamais bloquant.
+    """
+    import json as _json
+    if not labels:
+        return []
+    raw = _call_gemini(
+        "Tu es un consultant marketing senior pour une PME suisse"
+        + (f" ({business})" if business else "")
+        + f". Objectif du compte : {obj_txt}. "
+        f"Voici ses thematiques de communication : {', '.join(labels)}. "
+        "Pour CHAQUE thematique, donne 2 conseils de FOND : des bonnes pratiques "
+        "durables et concretes sur ce type de contenu ou de campagne (angle, "
+        "format, structure d'accroche, saisonnalite, erreurs classiques). "
+        "Ce ne sont PAS des conseils sur les chiffres de la semaine : ils doivent "
+        "rester valables dans six mois. Pas de generalites creuses du type "
+        "« publie regulierement » — du concret qu'on peut appliquer demain. "
+        "Reponds UNIQUEMENT avec un tableau JSON : "
+        '[{"theme":"...","tips":[{"titre":"...","texte":"..."}]}]. '
+        "Titres courts (5 mots max), textes de 2 phrases. Francais, ton direct."
+    )
+    if not raw:
+        return []
+    try:
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            txt = txt[4:] if txt.lower().startswith("json") else txt
+        arr = _json.loads(txt.strip())
+        out = []
+        for d in arr if isinstance(arr, list) else []:
+            if not isinstance(d, dict):
+                continue
+            tips = [
+                {"titre": str(t["titre"])[:70], "texte": str(t["texte"])}
+                for t in (d.get("tips") or [])
+                if isinstance(t, dict) and t.get("titre") and t.get("texte")
+            ][:3]
+            if d.get("theme") and tips:
+                out.append({"theme": str(d["theme"]), "tips": tips})
+        return out[:3]
+    except Exception:
+        return []
+
+
 def build_payload(sb, user_id: str) -> dict | None:
     """Prépare le payload du rapport hebdo. None si pas assez de données."""
     today = date.today()
@@ -1118,6 +1168,12 @@ def build_payload(sb, user_id: str) -> dict | None:
         themes_intro = (f"{_tete} — voilà {_quoi} sur {_sur}."
                         if _tete else f"Voilà {_quoi} sur {_sur}.")
 
+    # Savoir-faire de fond par thematique — se lit quand on a cinq minutes.
+    try:
+        themes_tips = _themes_tips([t["label"] for t in themes_focus[:3]], _obj_txt0)
+    except Exception:
+        themes_tips = []
+
     return {
         "version": 2,
         "vision": vision,
@@ -1152,6 +1208,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
         "themes_focus": themes_focus,
         "themes_intro": themes_intro,
+        "themes_tips": themes_tips,
         "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,

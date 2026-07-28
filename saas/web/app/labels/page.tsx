@@ -12,7 +12,7 @@ export default async function LabelsPage() {
   const data = await getLabelsData();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
       <SiteHeader email={data.email} active="labels" />
 
       <div className="mb-7">

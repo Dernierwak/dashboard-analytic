@@ -80,7 +80,9 @@ export async function startTracking(a: {
 //                       verdict repart de CE jour (+14 j) : on mesure l'effet
 //                       à partir du moment où le changement existe vraiment.
 //   « ✓ Vu »          → status='archived' : rangée dans l'historique.
-//   « retirer »       → la ligne est supprimée.
+//   « retirer »       → status='dropped' : abandonnée, mais CONSERVÉE. Ce que
+//                       tu as renoncé à faire fait partie de ton histoire —
+//                       l'effacer te priverait de l'info six mois plus tard.
 export async function resolveAction(
   id: string,
   action: "done" | "seen" | "drop",
@@ -93,7 +95,11 @@ export async function resolveAction(
   if (!user) return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
 
   if (action === "drop") {
-    const r = await supabase.from("suivi_actions").delete().eq("id", id).eq("user_id", user.id);
+    const r = await supabase
+      .from("suivi_actions")
+      .update({ status: "dropped" })
+      .eq("id", id)
+      .eq("user_id", user.id);
     if (r.error) return { ok: false, message: "Impossible de retirer cette action — réessaie." };
   } else if (action === "seen") {
     const r = await supabase

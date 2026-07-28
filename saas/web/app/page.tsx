@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
+import { ThemeTimeline } from "@/components/theme-timeline";
 import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
@@ -185,6 +186,9 @@ export default async function Page() {
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
+  const series = themesFocus
+    .filter((t) => t.series && t.series.points.length > 1)
+    .map((t) => ({ label: t.label, series: t.series! }));
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
@@ -196,7 +200,7 @@ export default async function Page() {
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
+    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
       <SiteHeader email={data.email} active="rapport" />
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
@@ -210,11 +214,86 @@ export default async function Page() {
           {report?.verdict ?? (report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref.")}
         </h1>
         {report?.brief && <ResumeSemaine brief={report.brief} />}
+      {/* L'objectif est un RÉGLAGE, pas du contenu : il se range sous le
+          résumé, replié, à portée mais sans peser sur la lecture. */}
+        <details className="group mt-4 rounded-xl border border-line bg-white max-w-[68ch]">
+          <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none flex-wrap">
+            <span className="text-[14px] font-semibold text-ink">
+              Objectif :{" "}
+              <span className="text-brand">
+                {ONB_OBJ[data.objectif ?? ""] ?? "à définir"}
+              </span>
+            </span>
+            {priorities.length > 0 ? (
+              <span className="text-[13px] font-semibold text-warn">
+                · ★ {priorities.join(" · ")}
+              </span>
+            ) : (
+              <span className="text-[12.5px] text-faint">· 3 plus gros thèmes</span>
+            )}
+            <span className="ml-auto text-[11px] text-faint group-open:hidden">modifier ▾</span>
+            <span className="ml-auto text-[11px] text-faint hidden group-open:inline">replier ▴</span>
+          </summary>
+          <div className="px-4 pb-4 pt-1 border-t border-line grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+                Ce qu&apos;on cherche
+              </div>
+              <ObjectifSelect current={data.objectif} />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+                On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
+              </div>
+              {priorities.length > 0 ? (
+                <div className="flex flex-wrap gap-2 items-center">
+                  {priorities.map((p) => (
+                    <span
+                      key={p}
+                      className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1.5"
+                    >
+                      ★ {p}
+                    </span>
+                  ))}
+                  <Link href="/labels" className="text-[12px] font-semibold text-brand hover:underline ml-1">
+                    Changer →
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-[12.5px] text-muted leading-relaxed">
+                  Aucune priorité — le rapport prend tes 3 plus gros thèmes.{" "}
+                  <Link href="/labels" className="text-brand font-semibold hover:underline">
+                    Choisis les tiens →
+                  </Link>
+                </p>
+              )}
+            </div>
+          </div>
+        </details>
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
       {/* Ce que tu dois faire — tes décisions vivent ici jusqu'à être faites */}
       <ActionTop actions={data.actions} num={nActions} />
+
+      {/* Ce que ça a donné — la frise répond à « mes actions ont bougé quoi ? »,
+          elle a donc sa place juste après la liste d'actions, pas au fond
+          d'une carte de thème. Les chiffres de la semaine la complètent. */}
+      {(series.length > 0 || report?.metrics_read) && (
+        <section className="mb-9">
+          <SectionTitle tone="discret">Ce que ça donne</SectionTitle>
+          {series.length > 0 && (
+            <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 mb-3 grid gap-5 lg:grid-cols-2">
+              {series.map((s2) => (
+                <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
+              ))}
+            </div>
+          )}
+          {report?.metrics_read && (
+            <MetricsRead m={report.metrics_read} prev={report.metrics_prev} />
+          )}
+        </section>
+      )}
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
@@ -244,88 +323,7 @@ export default async function Page() {
         </div>
       ) : (
         <>
-          {/* 1 . NOS OBJECTIFS - compact : un titre repliable, plus une grande carte */}
-          <details className="group mb-7 rounded-xl border border-line bg-white">
-            <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none flex-wrap">
-              <span className="text-[15px]">🎯</span>
-              <span className="text-[14px] font-semibold text-ink">
-                Objectif :{" "}
-                <span className="text-brand">
-                  {ONB_OBJ[data.objectif ?? ""] ?? "à définir"}
-                </span>
-              </span>
-              {priorities.length > 0 ? (
-                <span className="text-[13px] font-semibold text-warn">
-                  · ★ {priorities.join(" · ")}
-                </span>
-              ) : (
-                <span className="text-[12.5px] text-faint">· 3 plus gros thèmes</span>
-              )}
-              <span className="ml-auto text-[11px] text-faint group-open:hidden">modifier ▾</span>
-              <span className="ml-auto text-[11px] text-faint hidden group-open:inline">replier ▴</span>
-            </summary>
-            <div className="px-4 pb-4 pt-1 border-t border-line grid gap-4 sm:grid-cols-2">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-                  Ce qu&apos;on cherche
-                </div>
-                <ObjectifSelect current={data.objectif} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-                  On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
-                </div>
-                {priorities.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    {priorities.map((p) => (
-                      <span
-                        key={p}
-                        className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1.5"
-                      >
-                        ★ {p}
-                      </span>
-                    ))}
-                    <Link href="/labels" className="text-[12px] font-semibold text-brand hover:underline ml-1">
-                      Changer →
-                    </Link>
-                  </div>
-                ) : (
-                  <p className="text-[12.5px] text-muted leading-relaxed">
-                    Aucune priorité — le rapport prend tes 3 plus gros thèmes.{" "}
-                    <Link href="/labels" className="text-brand font-semibold hover:underline">
-                      Choisis les tiens →
-                    </Link>
-                  </p>
-                )}
-              </div>
-            </div>
-          </details>
 
-          {/* LES CHIFFRES - niveau 3 : du detail qu'on consulte, pas une
-              destination. Le verdict et le resume ont deja dit l'essentiel. */}
-          {report?.metrics_read && (
-            <section className="mb-9">
-              <SectionTitle tone="discret">Les chiffres de la semaine</SectionTitle>
-              {report?.metrics_read && (
-                <MetricsRead m={report.metrics_read} prev={report.metrics_prev} />
-              )}
-              {report?.brief && (
-                <div className="bg-white border border-line rounded-xl shadow-card p-5 mt-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] uppercase tracking-wide text-ig font-bold">
-                      Le résumé de la semaine
-                    </span>
-                    <span className="text-[9px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
-                      IA
-                    </span>
-                  </div>
-                  <p className="text-[13.5px] text-ink leading-relaxed whitespace-pre-line">
-                    {report.brief}
-                  </p>
-                </div>
-              )}
-            </section>
-          )}
 
           {/* TES CONSEILS, THEME PAR THEME - le coeur, cross-canal */}
           <section id="conseils" className="mb-9 scroll-mt-4">
@@ -406,6 +404,43 @@ export default async function Page() {
             archived={data.actionsArchived}
             num={nHistorique}
           />
+
+          {/* POUR ALLER PLUS LOIN — du savoir-faire de fond sur tes thématiques.
+              Les conseils du haut disent quoi faire CETTE semaine ; ceux-ci
+              restent vrais dans six mois et se lisent quand on a le temps. */}
+          {(report?.themes_tips ?? []).length > 0 && (
+            <section className="mb-9">
+              <SectionTitle tone="discret">
+                Pour aller plus loin · le métier, thème par thème
+              </SectionTitle>
+              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                {(report?.themes_tips ?? []).map((t) => (
+                  <div
+                    key={t.theme}
+                    className="bg-white border border-line rounded-xl shadow-card p-4"
+                  >
+                    <h3 className="text-[13.5px] font-semibold text-ink mb-2.5">{t.theme}</h3>
+                    <div className="space-y-2.5">
+                      {t.tips.map((tip) => (
+                        <div key={tip.titre}>
+                          <div className="text-[12.5px] font-semibold text-brand leading-snug">
+                            {tip.titre}
+                          </div>
+                          <p className="text-[12.5px] text-muted leading-relaxed mt-0.5">
+                            {tip.texte}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10.5px] text-faint mt-2">
+                Bonnes pratiques écrites par l&apos;IA pour tes thématiques — pas de
+                l&apos;actualité, et pas lié aux chiffres de ta semaine.
+              </p>
+            </section>
+          )}
         </>
       )}
     </main>

@@ -19,6 +19,8 @@ const VERDICT: Record<string, { icon: string; cls: string; label: string }> = {
 };
 
 function etat(a: TrackedAction): { icon: string; cls: string; label: string } {
+  if (a.status === "dropped")
+    return { icon: "✕", cls: "text-faint", label: "abandonnée" };
   if (a.status === "archived")
     return a.verdict ? VERDICT[a.verdict] ?? VERDICT.stable : { icon: "✓", cls: "text-muted", label: "rangée" };
   if (a.status === "done")
@@ -43,6 +45,7 @@ export function TrackingSection({
   if (rows.length === 0) return null;
 
   const faites = rows.filter((a) => a.status === "done" || a.status === "archived").length;
+  const abandons = rows.filter((a) => a.status === "dropped").length;
   const jugees = rows.filter((a) => a.status === "archived").length;
 
   return (
@@ -54,6 +57,7 @@ export function TrackingSection({
       <p className="text-[12px] text-faint mb-2.5">
         {rows.length} lancée{rows.length > 1 ? "s" : ""} · {faites} faite{faites > 1 ? "s" : ""} ·{" "}
         {jugees} jugée{jugees > 1 ? "s" : ""}
+        {abandons > 0 && ` · ${abandons} abandonnée${abandons > 1 ? "s" : ""}`}
       </p>
 
       <ScrollList title="Tout ce que tu as décidé" count={rows.length} maxH="max-h-[46vh]">

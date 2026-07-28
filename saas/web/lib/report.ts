@@ -47,6 +47,7 @@ export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolea
 //   running  = à faire (elle vit en haut du rapport)
 //   done     = faite le done_at, on observe 14 jours à partir de ce jour
 //   archived = verdict vu, rangée dans l'historique
+//   dropped  = abandonnée — elle quitte la liste mais reste dans l'historique
 export type TrackedAction = {
   id: string;
   reco_key?: string;
@@ -56,7 +57,7 @@ export type TrackedAction = {
   decided_at: string;
   check_at: string;
   done_at?: string | null;
-  status?: "running" | "done" | "archived";
+  status?: "running" | "done" | "archived" | "dropped";
   due?: boolean;
   then?: number;
   now?: number;
@@ -153,6 +154,8 @@ export type ReportPayload = {
   themes_focus?: ThemeFocus[] | null;
   // Phrase de passage : relie le constat de la semaine aux conseils qui suivent.
   themes_intro?: string | null;
+  // Savoir-faire de fond par thématique — durable, pas lié à la semaine.
+  themes_tips?: { theme: string; tips: { titre: string; texte: string }[] }[] | null;
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
@@ -345,8 +348,9 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       verdict: m?.verdict,
     };
   });
-  const actions = allActions.filter((a) => a.status !== "archived");
-  const actionsArchived = allActions.filter((a) => a.status === "archived");
+  const vivantes = (st?: string) => st !== "archived" && st !== "dropped";
+  const actions = allActions.filter((a) => vivantes(a.status));
+  const actionsArchived = allActions.filter((a) => !vivantes(a.status));
   // Un conseil reste « en test » tant que son action n'est pas rangée.
   const trackedKeys: string[] = actions.map((a) => a.reco_key ?? "").filter(Boolean);
 

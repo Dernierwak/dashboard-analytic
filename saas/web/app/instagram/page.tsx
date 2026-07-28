@@ -335,7 +335,7 @@ export default async function InstagramPage({
   const maxCell = Math.max(...d.heatmap.flat().map((c) => c.avgReach), 1);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
       <SiteHeader email={d.email} active="instagram" />
 
       <div className="mb-7">

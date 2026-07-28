@@ -23,7 +23,7 @@ export default async function MetaPage({
   const d = await getMetaDash(searchParams);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
+    <main className="w-full px-4 sm:px-6 lg:px-10 py-8">
       <SiteHeader email={d.email} active="meta" />
 
       <div className="mb-5">
