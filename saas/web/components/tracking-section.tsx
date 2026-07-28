@@ -47,11 +47,8 @@ export function TrackingSection({
 
   return (
     <section className="mb-9">
-      <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink mb-3.5 flex items-center gap-2.5">
-        <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
-        {num !== undefined && (
-          <span className="text-faint font-mono text-[15px]">{num}</span>
-        )}{" "}
+      <h2 className="text-[11px] uppercase tracking-widest text-faint font-bold mb-2">
+        {num !== undefined && <span className="font-mono">{num} · </span>}
         Ton historique d&apos;actions
       </h2>
       <p className="text-[12px] text-faint mb-2.5">

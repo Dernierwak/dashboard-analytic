@@ -22,13 +22,51 @@ const ONB_OBJ: Record<string, string> = {
   engagement: "Une communauté qui réagit",
 };
 
-// H2 soigné : plus gros, sérif, avec un filet — hiérarchie nette, lisible mobile.
-function SectionTitle({ children }: { children: React.ReactNode }) {
+// Deux niveaux de titre, pas un seul. « Fort » est réservé à ce sur quoi on
+// AGIT ; « discret » habille le détail qu'on consulte. Quand tous les titres
+// ont la même force, l'œil n'a plus de classement et tout se vaut.
+function SectionTitle({
+  children,
+  tone = "fort",
+}: {
+  children: React.ReactNode;
+  tone?: "fort" | "discret";
+}) {
+  if (tone === "discret") {
+    return (
+      <h2 className="text-[11px] uppercase tracking-widest text-faint font-bold mb-2.5">
+        {children}
+      </h2>
+    );
+  }
   return (
     <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink mb-3.5 flex items-center gap-2.5">
       <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
       {children}
     </h2>
+  );
+}
+
+// Le résumé de la semaine — niveau 1, juste sous le titre, en typographie
+// éditoriale et SANS carte : au milieu de blocs encadrés, un bloc nu attire
+// l'œil plus fort qu'un cadre de plus. Sa première phrase porte l'essentiel,
+// on la met en avant à l'intérieur même du résumé.
+function ResumeSemaine({ brief }: { brief: string }) {
+  const i = brief.indexOf(". ");
+  const tete = i > 0 ? brief.slice(0, i + 1) : brief;
+  const suite = i > 0 ? brief.slice(i + 2) : "";
+  return (
+    <div className="mt-3.5 max-w-[68ch]">
+      <p className="text-[15px] sm:text-[16px] leading-relaxed text-ink font-medium">{tete}</p>
+      {suite && (
+        <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted mt-1.5 whitespace-pre-line">
+          {suite}
+        </p>
+      )}
+      <p className="text-[10.5px] text-faint mt-2.5">
+        Résumé écrit par l&apos;IA à partir de tous tes posts et campagnes de la semaine.
+      </p>
+    </div>
   );
 }
 
@@ -153,7 +191,6 @@ export default async function Page() {
   // page à 2, et un lecteur qui voit un 2 cherche le 1.
   let _n = 0;
   const nActions = data.actions.length > 0 ? ++_n : undefined;
-  const nPourquoi = report?.brief || report?.metrics_read ? ++_n : undefined;
   const nConseils = ++_n;
   const nHistorique =
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
@@ -172,6 +209,7 @@ export default async function Page() {
         <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
           {report?.verdict ?? (report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref.")}
         </h1>
+        {report?.brief && <ResumeSemaine brief={report.brief} />}
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
@@ -263,13 +301,11 @@ export default async function Page() {
             </div>
           </details>
 
-          {/* POURQUOI - les chiffres et le resume expliquent le titre.
-              Le verdict n'est plus ici : il EST le titre de la page. */}
-          {(report?.brief || report?.metrics_read) && (
+          {/* LES CHIFFRES - niveau 3 : du detail qu'on consulte, pas une
+              destination. Le verdict et le resume ont deja dit l'essentiel. */}
+          {report?.metrics_read && (
             <section className="mb-9">
-              <SectionTitle>
-                <span className="text-faint font-mono mr-1.5">{nPourquoi}</span> Pourquoi
-              </SectionTitle>
+              <SectionTitle tone="discret">Les chiffres de la semaine</SectionTitle>
               {report?.metrics_read && (
                 <MetricsRead m={report.metrics_read} prev={report.metrics_prev} />
               )}
@@ -291,8 +327,8 @@ export default async function Page() {
             </section>
           )}
 
-          {/* 3 . TES CONSEILS, THEME PAR THEME - le coeur, cross-canal */}
-          <section className="mb-9">
+          {/* TES CONSEILS, THEME PAR THEME - le coeur, cross-canal */}
+          <section id="conseils" className="mb-9 scroll-mt-4">
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <SectionTitle>
                 <span className="text-faint font-mono mr-1.5">{nConseils}</span> Tes conseils, thème par thème
