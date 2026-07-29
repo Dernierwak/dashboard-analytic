@@ -137,3 +137,43 @@ export function LineChart({
     </svg>
   );
 }
+
+// Version minuscule et nue — pas d'axe, pas de point, juste la forme. Glissée
+// dans une tuile, elle transforme un chiffre nu en tendance lisible d'un coup.
+export function Sparkline({
+  values,
+  color = "#1a56ff",
+  height = 26,
+}: {
+  values: (number | null)[];
+  color?: string;
+  height?: number;
+}) {
+  const reels = values.filter((v): v is number => v !== null);
+  if (reels.length < 2) return null;
+  const W = 100, H = height, PAD = 2;
+  const max = Math.max(...reels), min = Math.min(...reels);
+  const span = Math.max(max - min, 1e-9);
+  const n = values.length;
+  const x = (i: number) => (i * W) / (n - 1);
+  const y = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
+  const pts = values
+    .map((v, i) => (v === null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
+    .filter(Boolean) as string[];
+  const dernier = values.length - 1 - [...values].reverse().findIndex((v) => v !== null);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" aria-hidden="true">
+      <polyline
+        points={pts.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle cx={x(dernier)} cy={y(values[dernier] as number)} r="2.5" fill={color}
+        vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}

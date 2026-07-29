@@ -57,3 +57,12 @@ ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS done_at date;
 
 CREATE INDEX IF NOT EXISTS idx_suivi_actions_status
     ON public.suivi_actions (user_id, status, check_at);
+
+-- ============================================================================
+-- 11) Le detail du conseil, conserve avec l'action.
+--     Une action ne gardait que son titre : deux jours plus tard, impossible de
+--     se rappeler de quoi il s'agissait ni pourquoi on l'avait prise. On
+--     photographie donc aussi le constat, le pourquoi et le comment tester.
+-- ============================================================================
+
+ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS detail jsonb;

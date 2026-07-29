@@ -10,6 +10,8 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ThemeTimeline } from "@/components/theme-timeline";
 import { KpiFocusCard } from "@/components/kpi-focus";
+import { Sparkline } from "@/components/line-chart";
+import { ThemeDonut } from "@/components/theme-donut";
 import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
@@ -78,9 +80,11 @@ function ResumeSemaine({ brief }: { brief: string }) {
 function MetricsRead({
   m,
   prev,
+  serie,
 }: {
   m: NonNullable<ReportPayload["metrics_read"]>;
   prev?: ReportPayload["metrics_prev"];
+  serie?: ReportPayload["metrics_series"];
 }) {
   const fmt = (n: number | null | undefined) =>
     n === null || n === undefined ? "—" : n.toLocaleString("fr-CH").replace(/ /g, " ");
@@ -112,7 +116,15 @@ function MetricsRead({
             <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
               {t.label}
             </div>
-            <div className="font-mono text-[19px] font-medium text-ink mt-1">{t.value}</div>
+            <div className="font-mono text-[21px] font-medium text-ink mt-1">{t.value}</div>
+            {serie?.[t.key] && (
+              <div className="mt-1.5 -mx-0.5">
+                <Sparkline
+                  values={serie[t.key]}
+                  color={delta === null || stable ? "#8b8e98" : delta > 0 ? "#1a7a4a" : "#c0392b"}
+                />
+              </div>
+            )}
             {delta !== null ? (
               <div className="text-[10.5px] mt-1 leading-snug">
                 <span className={`font-semibold ${cls}`}>
@@ -283,13 +295,14 @@ export default async function Page() {
       {(series.length > 0 || report?.metrics_read || report?.kpi_focus) && (
         <section className="mb-9">
           <SectionTitle tone="discret">Ce que ça donne</SectionTitle>
-          {report?.kpi_focus && (
-            <div className="mb-3">
-              <KpiFocusCard k={report.kpi_focus} />
-            </div>
-          )}
+          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr] mb-3">
+            {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
+            {report?.themes && report.themes.rows.length > 0 && (
+              <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} />
+            )}
+          </div>
           {series.length > 0 && (
-            <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 mb-3 grid gap-5 lg:grid-cols-2">
+            <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 mb-3 space-y-6">
               {series.map((s2) => (
                 <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
               ))}

@@ -94,8 +94,37 @@ function TodoRow({ a }: { a: TrackedAction }) {
           <div className="text-[11.5px] text-faint mt-0.5">
             {a.theme && <span className="text-warn font-semibold">★ {a.theme} · </span>}
             décidé {depuis(a.decided_at)}
+            {a.detail?.effort ? ` · ⏱ ${a.detail.effort}` : ""}
             {a.metric_label ? ` · on suivra : ${a.metric_label}` : ""}
           </div>
+
+          {/* Le conseil aura disparu du rapport dans deux jours : sans son
+              détail sous la main, l'action redevient un titre énigmatique. */}
+          {(a.detail?.observation || a.detail?.pourquoi || a.detail?.verifier) && (
+            <details className="group mt-1.5">
+              <summary className="text-[11.5px] font-semibold text-brand cursor-pointer select-none list-none">
+                <span className="group-open:hidden">▸ Voir pourquoi</span>
+                <span className="hidden group-open:inline">▾ Replier</span>
+              </summary>
+              <div className="mt-1.5 space-y-1.5">
+                {a.detail?.observation && (
+                  <p className="text-[12px] text-muted leading-relaxed">{a.detail.observation}</p>
+                )}
+                {a.detail?.pourquoi && (
+                  <p className="text-[12px] text-muted leading-relaxed">
+                    <span className="font-semibold text-ink">Pourquoi — </span>
+                    {a.detail.pourquoi}
+                  </p>
+                )}
+                {a.detail?.verifier && (
+                  <p className="text-[12px] text-muted leading-relaxed">
+                    <span className="font-semibold text-ink">Comment faire — </span>
+                    {a.detail.verifier}
+                  </p>
+                )}
+              </div>
+            </details>
+          )}
         </div>
         <button
           disabled={pending}

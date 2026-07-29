@@ -112,6 +112,12 @@ export function RecoCard({
           metricLabel: r.metric_label ?? null,
           direction: r.direction ?? null,
           baseline: r.baseline ?? null,
+          detail: {
+            observation: r.observation,
+            pourquoi: r.pourquoi,
+            verifier: r.verifier,
+            effort: r.effort ?? null,
+          },
         }}
       />
     </div>

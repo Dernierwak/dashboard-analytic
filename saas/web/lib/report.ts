@@ -42,7 +42,7 @@ export type PayloadReco = {
 
 // « Ta boussole » — l'indicateur qui compte, choisi selon l'objectif du compte,
 // avec sa trajectoire sur 10 semaines et les zones qui le rendent lisible.
-export type KpiFocus = {
+export type KpiOption = {
   key: string;
   titre: string;
   unite: string;
@@ -50,9 +50,14 @@ export type KpiFocus = {
   valeur: number;
   precedent: number | null;
   repere: string | null;
-  labels: string[];
   points: (number | null)[];
   bandes: { max: number | null; label: string; tone: "neg" | "warn" | "pos" }[];
+};
+
+export type KpiFocus = {
+  labels: string[];
+  defaut: string;
+  options: KpiOption[];
 };
 
 // Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
@@ -78,6 +83,8 @@ export type TrackedAction = {
   now?: number;
   delta?: number | null;
   verdict?: "better" | "worse" | "stable";
+  // Photo du conseil au moment de la décision — pour s'en souvenir plus tard.
+  detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
 };
 
 export type ThemeRow = { label: string; spend: number; rev: number };
@@ -184,6 +191,14 @@ export type ReportPayload = {
   } | null;
   // L'indicateur qui compte pour cet objectif, avec sa pente et ses zones.
   kpi_focus?: KpiFocus | null;
+  // Les quatre tuiles sur 10 semaines — une pente vaut mieux qu'un chiffre nu.
+  metrics_series?: {
+    labels: string[];
+    trafic: (number | null)[];
+    vues: (number | null)[];
+    clics: (number | null)[];
+    ctr: (number | null)[];
+  } | null;
   // Les mêmes sur la fenêtre précédente — le repère qui rend le chiffre lisible.
   metrics_prev?: {
     trafic: number | null;
@@ -359,6 +374,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       done_at: r.done_at ? String(r.done_at).slice(0, 10) : null,
       status,
       due: status === "done" && check !== "" && check <= todayIso,
+      detail: (r.detail as TrackedAction["detail"]) ?? null,
       then: m?.then,
       now: m?.now,
       delta: m?.delta ?? null,

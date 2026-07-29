@@ -542,7 +542,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             metric_label = "Portée moyenne"
         if sum(1 for v in pts if v > 0) < 3:
             return None  # trop clairsemé → pas de frise
-        labels = [f"S{(_serie_start + timedelta(days=7 * j)).isocalendar()[1]}" for j in range(_WK)]
+        labels = [(lambda d: f"{d.day} {MONTHS_FR[d.month]}")(_serie_start + timedelta(days=7 * j))
+                  for j in range(_WK)]
         mk = []
         for _x in _markers.get(nlbl, []):
             try:
@@ -1190,17 +1191,19 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     # Revenu payant par semaine : UNE seule lecture GA4 pour les 10 fenêtres.
     _rev_par_sem = {}
+    _sess_par_jour = {}
     try:
         from scripts.fetch_data import fetch_ga4_insights as _fga4
         for _r in (_fga4(sb, user_id) or []):
-            _m = str(_r.get("medium") or "").lower()
-            if not any(k in _m for k in ("cpc", "ppc", "paid")):
-                continue
             _d = str(_r.get("date") or "")[:10]
-            if _d:
+            if not _d:
+                continue
+            _sess_par_jour[_d] = _sess_par_jour.get(_d, 0) + int(_r.get("sessions") or 0)
+            _m = str(_r.get("medium") or "").lower()
+            if any(k in _m for k in ("cpc", "ppc", "paid")):
                 _rev_par_sem[_d] = _rev_par_sem.get(_d, 0.0) + float(_r.get("revenue") or 0)
     except Exception:
-        _rev_par_sem = {}
+        _rev_par_sem, _sess_par_jour = {}, {}
 
     def _revenu_semaine(d1, d2):
         if not _rev_par_sem:
@@ -1221,13 +1224,14 @@ def build_payload(sb, user_id: str) -> dict | None:
     }
 
     kpi_focus = None
+    metrics_series = None
     try:
         _sems = _semaines(10)
         _pts, _lab = [], []
         _cle = _unite = _titre = _repere = None
         _sens = "up"
-        for (d1, d2) in _sems:
-            _lab.append(f"S{d2.isocalendar()[1]}")
+        for (d1, _d2) in _sems:
+            _lab.append(f"{d1.day} {MONTHS_FR[d1.month]}")
         _rev_now = _revenu_semaine(*_sems[-1])
         if objectif == "ventes" and _rev_now is not None and _rev_now > 0:
             _cle, _titre, _unite = "roas", "ROAS", ""
@@ -1259,19 +1263,113 @@ def build_payload(sb, user_id: str) -> dict | None:
                 _, cl, im = _pub_semaine(d1, d2)
                 _pts.append(round(cl / im * 100, 2) if im > 0 else None)
 
-        _reels = [v for v in _pts if v is not None]
-        if _reels:
-            _val = _pts[-1] if _pts[-1] is not None else _reels[-1]
-            _prev = next((v for v in reversed(_pts[:-1]) if v is not None), None)
+        # Toutes les metriques suivables, pour que le module soit pilotable :
+        # on ne sait jamais mieux que l'utilisateur ce qu'il veut regarder ce
+        # jour-la. Celle de son objectif reste celle ouverte par defaut.
+        def _serie(f):
+            return [f(d1, d2) for (d1, d2) in _sems]
+
+        def _f_roas(d1, d2):
+            sp, _, _ = _pub_semaine(d1, d2)
+            rv = _revenu_semaine(d1, d2)
+            return round(rv / sp, 2) if (sp > 0 and rv is not None) else None
+
+        def _f_ctr(d1, d2):
+            _, cl, im = _pub_semaine(d1, d2)
+            return round(cl / im * 100, 2) if im > 0 else None
+
+        def _f_cpc(d1, d2):
+            sp, cl, _ = _pub_semaine(d1, d2)
+            return round(sp / cl, 2) if cl > 0 else None
+
+        def _f_spend(d1, d2):
+            sp, _, _ = _pub_semaine(d1, d2)
+            return round(sp, 2) if sp > 0 else None
+
+        def _f_eng(d1, d2):
+            e, _, _ = _insta_semaine(d1, d2)
+            return round(e, 2) if e is not None else None
+
+        def _f_reach(d1, d2):
+            _, r, _ = _insta_semaine(d1, d2)
+            return round(r) if r is not None else None
+
+        _CANDIDATS = [
+            ("roas", "ROAS", "", "up", _f_roas,
+             "Ce que chaque franc de pub te rapporte. Sous 1 tu perds de l'argent ; "
+             "au-dessus de 3 tu peux augmenter les budgets."),
+            ("ctr", "CTR publicitaire", " %", "up", _f_ctr,
+             "Part des gens qui cliquent apres avoir vu ta pub. Sous 1 % le message "
+             "ne parle pas a l'audience visee."),
+            ("cpc", "Coût par clic", " CHF", "down", _f_cpc,
+             "Ce que te coûte une visite. Plus il baisse a volume egal, mieux ton "
+             "ciblage et ta creation travaillent."),
+            ("eng", "Engagement moyen", " %", "up", _f_eng,
+             "Part de ton audience touchee qui reagit. Sous 1 % le contenu glisse ; "
+             "au-dessus de 3 % il accroche vraiment."),
+            ("reach", "Portée moyenne par post", "", "up", _f_reach,
+             "Nombre de comptes touches par publication. Ce qui compte n'est pas le "
+             "niveau absolu mais sa pente sur plusieurs semaines."),
+            ("spend", "Dépense publicitaire", " CHF", "up", _f_spend,
+             "Ce que tu investis chaque semaine, tous canaux confondus."),
+        ]
+
+        _options = []
+        for (ck, ct, cu, cd, cf, cr) in _CANDIDATS:
+            pts = _serie(cf)
+            reels = [v for v in pts if v is not None]
+            if len(reels) < 2:
+                continue
+            val = pts[-1] if pts[-1] is not None else reels[-1]
+            prev = next((v for v in reversed(pts[:-1]) if v is not None), None)
+            _options.append({
+                "key": ck, "titre": ct, "unite": cu, "direction": cd,
+                "valeur": val, "precedent": prev, "repere": cr,
+                "points": pts,
+                "bandes": [{"max": m, "label": l, "tone": t} for (m, l, t) in _BANDES.get(ck, [])],
+            })
+
+        if _options:
+            _def = next((o for o in _options if o["key"] == _cle), _options[0])
             kpi_focus = {
-                "key": _cle, "titre": _titre, "unite": _unite, "direction": _sens,
-                "valeur": _val, "precedent": _prev,
-                "repere": _repere,
-                "labels": _lab, "points": _pts,
-                "bandes": [{"max": m, "label": l, "tone": t} for (m, l, t) in _BANDES.get(_cle, [])],
+                "labels": _lab,
+                "defaut": _def["key"],
+                "options": _options,
             }
+
+        # Les memes 10 semaines pour les quatre tuiles de lecture rapide.
+        def _f_trafic(d1, d2):
+            if not _sess_par_jour:
+                return None
+            tot, j = 0, d1
+            while j <= d2:
+                tot += _sess_par_jour.get(j.isoformat(), 0)
+                j += timedelta(days=1)
+            return tot or None
+
+        def _f_vues(d1, d2):
+            if df_insta is None or df_insta.empty or "views" not in df_insta.columns:
+                return None
+            dt = pd.to_datetime(df_insta["date"], errors="coerce")
+            w = df_insta[(dt.dt.date >= d1) & (dt.dt.date <= d2)]
+            if len(w) == 0:
+                return None
+            return int(pd.to_numeric(w["views"], errors="coerce").fillna(0).sum())
+
+        def _f_clics(d1, d2):
+            _, cl, _ = _pub_semaine(d1, d2)
+            return int(cl) if cl > 0 else None
+
+        metrics_series = {
+            "labels": _lab,
+            "trafic": _serie(_f_trafic),
+            "vues": _serie(_f_vues),
+            "clics": _serie(_f_clics),
+            "ctr": _serie(_f_ctr),
+        }
     except Exception:
         kpi_focus = None
+        metrics_series = None
 
     # Phrase de passage constat -> conseils. Sans elle, le lecteur voit des
     # chiffres puis une liste de conseils sans comprendre que les seconds
@@ -1302,6 +1400,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         "metrics_read": metrics_read,
         "metrics_prev": metrics_prev,
         "kpi_focus": kpi_focus,
+        "metrics_series": metrics_series,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
             "spend": round(total_spend + g_spend, 2),

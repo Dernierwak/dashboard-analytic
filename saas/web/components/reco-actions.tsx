@@ -10,6 +10,7 @@ export type TrackInfo = {
   metricLabel: string | null;
   direction: string | null;
   baseline: number | null;
+  detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
 };
 
 // Boutons de réaction sous chaque conseil.

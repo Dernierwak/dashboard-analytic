@@ -32,6 +32,9 @@ export async function startTracking(a: {
   direction: string | null;
   baseline: number | null;
   tracked: boolean;
+  // Le conseil disparaîtra du rapport la semaine prochaine : sans cette photo,
+  // l'action ne garde qu'un titre et devient incompréhensible en deux jours.
+  detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
 }): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
   const {
@@ -67,10 +70,23 @@ export async function startTracking(a: {
       decided_at: isoDate(today),
       check_at: isoDate(check),
       status: "running",
+      detail: a.detail ?? null,
     },
     { onConflict: "user_id,reco_key,decided_at" }
   );
-  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table suivi_actions)." };
+  // Repli si la colonne detail n'existe pas encore (migration §11 pas passée).
+  if (r.error) {
+    const r2 = await supabase.from("suivi_actions").upsert(
+      {
+        user_id: user.id, reco_key: a.recoKey, title: a.title, theme: a.theme,
+        metric: a.metric, metric_label: a.metricLabel, direction: a.direction,
+        baseline: a.baseline, decided_at: isoDate(today), check_at: isoDate(check),
+        status: "running",
+      },
+      { onConflict: "user_id,reco_key,decided_at" }
+    );
+    if (r2.error) return { ok: false, message: "Rejoue le SQL Supabase (table suivi_actions)." };
+  }
   revalidatePath("/");
   return { ok: true };
 }
