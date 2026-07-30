@@ -19,10 +19,14 @@ export type TrackInfo = {
 // n'est QUE là-haut : un conseil se prend ici, il ne se termine pas ici. Deux
 // chemins pour le même résultat, c'est une hésitation à chaque semaine.
 // « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
+// « Trop compliqué » : tu vois l'intérêt mais tu ne sais pas t'y prendre. Ce
+// retour-là ne jette pas le conseil, il commande un mode d'emploi — il remonte
+// dans « Pour aller plus loin » la semaine suivante.
 // + commentaire libre : agrégé dans ton profil, l'IA adapte son ton.
 const BUTTONS: { reaction: Reaction; label: string; activeCls: string }[] = [
   { reaction: "useful", label: "● Utile", activeCls: "bg-brand text-white border-brand" },
   { reaction: "not_for_me", label: "✕ Pas pour moi", activeCls: "bg-faint text-white border-faint" },
+  { reaction: "too_hard", label: "◇ Trop compliqué", activeCls: "bg-warn text-white border-warn" },
 ];
 
 export function RecoActions({

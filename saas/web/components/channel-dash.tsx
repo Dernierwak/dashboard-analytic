@@ -3,6 +3,7 @@
 // graphe journalier à métrique sélectionnable, campagnes avec statut et
 // drill-down adset/groupe → annonce, vue Par thème.
 import { fmtCHF } from "@/lib/report";
+import { LineChart } from "@/components/line-chart";
 import type { ChannelDash } from "@/lib/channels";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { SummaryStop } from "@/components/summary-stop";
@@ -149,9 +150,6 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
   const meta = METRICS.find((m) => m.key === d.metric) ?? METRICS[0];
   const vals = pts.map(val);
   const max = Math.max(...vals, 0.001);
-  const W = 640, H = 130, PAD = 4;
-  const bw = (W - PAD * 2) / pts.length;
-  const step = Math.max(1, Math.ceil(pts.length / 8));
   const fmtV = (v: number) => (v >= 100 ? fmtCHF(v) : v.toFixed(2));
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
@@ -175,32 +173,13 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${meta.label} par jour`}>
-        {pts.map((p, i) => {
-          const v = val(p);
-          const h = Math.max(v > 0 ? 2 : 0, (v / max) * (H - 8));
-          return (
-            <g key={p.date}>
-              <rect
-                x={PAD + i * bw + bw * 0.15}
-                y={H - h}
-                width={bw * 0.7}
-                height={h}
-                rx={2}
-                fill="#1a56ff"
-                opacity={0.85}
-              >
-                <title>{`${p.label} — ${fmtV(v)} ${meta.unit}`}</title>
-              </rect>
-              {i % step === 0 && (
-                <text x={PAD + i * bw + bw / 2} y={H + 14} textAnchor="middle" fontSize="10" fill="#8b8e98">
-                  {p.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
+      <LineChart
+        labels={pts.map((p) => p.label)}
+        series={[{ name: meta.label, color: "#1a56ff", values: vals }]}
+        fmt={fmtV}
+        unit={` ${meta.unit}`}
+        ariaLabel={`${meta.label} par jour`}
+      />
       <div className="text-[10.5px] text-faint mt-1 text-right">
         max {fmtV(max)} {meta.unit} / jour
       </div>

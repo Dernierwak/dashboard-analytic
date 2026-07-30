@@ -10,7 +10,6 @@ import {
   type InstaPost,
 } from "@/lib/channels";
 import { fmtCHF } from "@/lib/report";
-import { SiteHeader } from "@/components/site-header";
 import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
@@ -323,8 +322,7 @@ export default async function InstagramPage({
   const maxCell = Math.max(...d.heatmap.flat().map((c) => c.avgReach), 1);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={d.email} active="instagram" compte={compte} />
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
@@ -562,24 +560,44 @@ export default async function InstagramPage({
       {/* ── PAR LABEL ── */}
       {d.byLabel.length > 0 && (
         <div className="mb-8">
-          <ScrollList
-            title="Performance par thème · posts labellisés"
-            count={d.byLabel.length}
-            maxH="max-h-[46vh]"
-          >
-            {d.byLabel.map((l) => (
-              <div key={l.label} className="flex items-center gap-3 px-5 py-3">
-                <span className="text-[13px] font-semibold text-brand">{l.label}</span>
-                <span className="text-[11.5px] text-faint">{l.count} post{l.count > 1 ? "s" : ""}</span>
-                <span className="ml-auto font-mono text-[12.5px] text-muted">
-                  {metricLabel(d.topMetric)} {fmtCHF(l.avgReach)}
-                </span>
-                <span className="font-mono text-[12.5px] text-muted w-24 text-right">
-                  eng. {l.avgEng.toFixed(1)} %
-                </span>
-              </div>
-            ))}
-          </ScrollList>
+          <h2 className="text-[14px] font-semibold text-ink mb-3">
+            Performance par thème{" "}
+            <span className="text-faint font-normal">
+              · moyennes par post · triée par {metricLabel(d.topMetric)}
+            </span>
+          </h2>
+          <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
+            <div className="max-h-[46vh] overflow-y-auto min-w-[640px]">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wide text-faint">
+                    {["Thème", "Posts", "Portée", "Vues", "J'aime", "Comm.", "Enreg.", "Eng."].map((h, hi) => (
+                      <th
+                        key={h}
+                        className={`${hi === 0 ? "text-left px-5" : "text-right px-2"} ${hi === 7 ? "pr-5" : ""} font-semibold py-3 sticky top-0 bg-white z-10 border-b border-line`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {d.byLabel.map((l) => (
+                    <tr key={l.label}>
+                      <td className="px-5 py-3 font-semibold text-brand">{l.label}</td>
+                      <td className="px-2 py-3 text-right font-mono text-muted">{l.count}</td>
+                      <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mReach)}</td>
+                      <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mViews)}</td>
+                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mLikes)}</td>
+                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mComments)}</td>
+                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mSaved)}</td>
+                      <td className="px-2 pr-5 py-3 text-right font-mono text-ink">{l.avgEng.toFixed(1)} %</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

@@ -485,7 +485,14 @@ export type InstaPost = {
 export type FormatStat = { type: string; count: number; avgReach: number; avgEng: number };
 export type FollowerPoint = { date: string; followers: number };
 export type SlotCell = { count: number; avgReach: number };
-export type PostLabelAgg = { label: string; count: number; avgReach: number; avgEng: number };
+export type PostLabelAgg = {
+  label: string;
+  count: number;
+  avgReach: number;   // moyenne de la MÉTRIQUE PILOTE (tri de la table)
+  avgEng: number;
+  // Toutes les moyennes par post, pour la table complète.
+  mReach: number; mViews: number; mLikes: number; mComments: number; mSaved: number;
+};
 
 export const INSTA_DAYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
 export const INSTA_SLOTS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"];
@@ -648,20 +655,33 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   // Top 3 posts de la période filtrée (fallback historique, même signal).
   const topPosts = [...heatPool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
 
-  // Performance par label (posts labellisés, tout l'historique)
-  const lblMap = new Map<string, { count: number; reach: number; eng: number }>();
+  // Performance par label (posts labellisés, tout l'historique) — TOUTES les
+  // métriques, triées sur celle qui pilote la page.
+  const lblMap = new Map<string, {
+    count: number; pilote: number; eng: number;
+    reach: number; views: number; likes: number; comments: number; saved: number;
+  }>();
   for (const p of all)
     for (const l of p.labels) {
-      const x = lblMap.get(l) ?? { count: 0, reach: 0, eng: 0 };
-      x.count += 1; x.reach += _mval(p); x.eng += p.eng;
+      const x = lblMap.get(l) ?? {
+        count: 0, pilote: 0, eng: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0,
+      };
+      x.count += 1; x.pilote += _mval(p); x.eng += p.eng;
+      x.reach += p.reach; x.views += p.views; x.likes += p.likes;
+      x.comments += p.comments; x.saved += p.saved;
       lblMap.set(l, x);
     }
   const byLabel: PostLabelAgg[] = [...lblMap.entries()]
     .map(([label, x]) => ({
       label,
       count: x.count,
-      avgReach: x.count ? x.reach / x.count : 0,
+      avgReach: x.count ? x.pilote / x.count : 0,
       avgEng: x.count ? x.eng / x.count : 0,
+      mReach: x.count ? x.reach / x.count : 0,
+      mViews: x.count ? x.views / x.count : 0,
+      mLikes: x.count ? x.likes / x.count : 0,
+      mComments: x.count ? x.comments / x.count : 0,
+      mSaved: x.count ? x.saved / x.count : 0,
     }))
     .sort((a, b) => b.avgReach - a.avgReach);
 

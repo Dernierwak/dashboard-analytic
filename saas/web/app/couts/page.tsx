@@ -1,9 +1,8 @@
 // Coûts du mois — même base que la page Streamlit : dépense par canal vs
 // budget avec repère, graphe journalier empilé, budgets de l'année (table
 // éditable, dépliable), dépense du mois par thème.
-import { getCoutsData, type ChannelCout, type CoutDay, type ThemeSpend } from "@/lib/couts";
+import { getCoutsData, type ChannelCout, type CoutDay, type ThemeSpend, type MonthRow } from "@/lib/couts";
 import { fmtCHF } from "@/lib/report";
-import { SiteHeader } from "@/components/site-header";
 import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
@@ -195,14 +194,79 @@ function RepartitionBudget({
   );
 }
 
+// L'année — dépense cumulée vs budget annuel (somme des budgets mensuels,
+// carry-forward compris). Le mois dit où tu en es ; l'année dit si tu tiens
+// ton enveloppe — c'est elle qu'on regarde pour décider d'un vrai changement.
+function AnneeSection({ months }: { months: MonthRow[] }) {
+  const annee = months[0]?.monthIso?.slice(0, 4) ?? "";
+  const passes = months.filter((m) => !m.isFuture);
+  const depense = passes.reduce((a, m) => a + m.metaSpent + m.googleSpent, 0);
+  const budgetAnnee = months.reduce((a, m) => a + m.metaBudget + m.googleBudget, 0);
+  const budgetAcePoint = passes.reduce((a, m) => a + m.metaBudget + m.googleBudget, 0);
+  const ecart = budgetAcePoint - depense;
+  if (depense <= 0 && budgetAnnee <= 0) return null;
+
+  return (
+    <div className="mb-8">
+      <h2 className="text-[14px] font-semibold text-ink mb-3">
+        Année {annee}{" "}
+        <span className="text-faint font-normal">· dépense cumulée vs budget annuel</span>
+      </h2>
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
+            Dépensé depuis janvier
+          </div>
+          <div className="font-mono text-xl font-medium text-ink">{fmtCHF(depense)} CHF</div>
+          <div className="text-[11px] text-faint mt-1">
+            Meta + Google · {passes.length} mois
+          </div>
+        </div>
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
+            Budget de l&apos;année
+          </div>
+          <div className="font-mono text-xl font-medium text-ink">
+            {budgetAnnee > 0 ? `${fmtCHF(budgetAnnee)} CHF` : "—"}
+          </div>
+          <div className="text-[11px] text-faint mt-1">somme des 12 budgets mensuels</div>
+        </div>
+        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
+            Où tu en es
+          </div>
+          {budgetAcePoint > 0 ? (
+            <>
+              <div className={`font-mono text-xl font-medium ${ecart < 0 ? "text-neg" : "text-pos"}`}>
+                {ecart < 0 ? `+${fmtCHF(-ecart)} CHF` : `−${fmtCHF(ecart)} CHF`}
+              </div>
+              <div className="text-[11px] text-faint mt-1">
+                {ecart < 0
+                  ? "au-dessus du budget prévu à ce point de l'année"
+                  : "sous le budget prévu à ce point de l'année"}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-mono text-xl font-medium text-ink">—</div>
+              <div className="text-[11px] text-faint mt-1">
+                fixe des budgets mensuels pour te situer
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function CoutsPage() {
   const data = await getCoutsData();
   const compte = await getCompteActif();
   const reste = data.totalBudget - data.totalSpent;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="couts" compte={compte} />
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       {/* Hero */}
       <div className="mb-7">
@@ -349,6 +413,9 @@ export default async function CoutsPage() {
           </ScrollList>
         </div>
       )}
+
+      {/* L'année en un coup d'œil : où on en est sur 12 mois, pas juste ce mois */}
+      <AnneeSection months={data.months} />
 
       {/* Budgets de l'année — dépliable, on travaille directement dedans */}
       <details className="mb-6">

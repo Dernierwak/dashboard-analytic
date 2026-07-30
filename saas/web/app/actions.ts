@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
 
-export type Reaction = "useful" | "not_for_me" | "done";
+// « too_hard » : ni un rejet ni un accord — « je vois l'intérêt mais je ne sais
+// pas le faire ». C'est le retour le plus utile qu'on puisse recevoir : il dit
+// exactement quel savoir-faire manque, et alimente les conseils de fond.
+export type Reaction = "useful" | "not_for_me" | "done" | "too_hard";
 
 // Lundi de la semaine courante (même convention que le Streamlit : week_start).
 function mondayISO(): string {

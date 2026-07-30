@@ -1,7 +1,6 @@
 // Labels unifiés — une seule liste de thèmes pour Meta + Google + Instagram.
 // Renommer / supprimer se propage partout (mêmes règles que scripts/labels.py).
 import { getLabelsData } from "@/lib/channels";
-import { SiteHeader } from "@/components/site-header";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
@@ -15,8 +14,7 @@ export default async function LabelsPage() {
   const compte = await getCompteActif();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="labels" compte={compte} />
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

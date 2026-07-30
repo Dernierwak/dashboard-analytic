@@ -4,7 +4,6 @@
 
 import Link from "next/link";
 import { getWeeklyData, type ReportPayload } from "@/lib/report";
-import { SiteHeader } from "@/components/site-header";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
@@ -81,6 +80,7 @@ function Suivi({ feedback }: { feedback: Record<string, string> }) {
   const applique = vals.filter((v) => v === "done").length;
   const utile = vals.filter((v) => v === "useful").length;
   const ecarte = vals.filter((v) => v === "not_for_me").length;
+  const bloque = vals.filter((v) => v === "too_hard").length;
   const bits: React.ReactNode[] = [];
   if (applique)
     bits.push(
@@ -98,6 +98,12 @@ function Suivi({ feedback }: { feedback: Record<string, string> }) {
     bits.push(
       <span key="e" className="text-faint font-medium">
         ✕ {ecarte} écarté{ecarte > 1 ? "s" : ""}
+      </span>
+    );
+  if (bloque)
+    bits.push(
+      <span key="b" className="text-warn font-semibold">
+        ◇ {bloque} trop compliqué{bloque > 1 ? "s" : ""}
       </span>
     );
   if (bits.length === 0) return null;
@@ -143,8 +149,7 @@ export default async function Page() {
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="rapport" compte={compte} />
+    <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
           première question du lecteur, elle doit trouver sa réponse avant le

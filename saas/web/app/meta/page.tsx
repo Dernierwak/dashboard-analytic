@@ -2,7 +2,6 @@
 // filtres statut/campagne/thème, hero impressions, KPIs perf + coût,
 // évolution quotidienne à métrique au choix, campagnes → adsets → annonces.
 import { getMetaDash, type DashParams } from "@/lib/channels";
-import { SiteHeader } from "@/components/site-header";
 import { FilterBar } from "@/components/filter-bar";
 import { DateRange } from "@/components/date-range";
 import {
@@ -26,8 +25,7 @@ export default async function MetaPage({
   const compte = await getCompteActif();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={d.email} active="meta" compte={compte} />
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-5">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

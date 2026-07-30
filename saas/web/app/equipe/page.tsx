@@ -3,7 +3,6 @@
 // compte de l'invité. Les jetons Meta/Google, eux, ne sont jamais partagés.
 import { getCompteActif } from "@/lib/account";
 import { listerMembres } from "@/app/actions";
-import { SiteHeader } from "@/components/site-header";
 import { EquipeManager } from "@/components/equipe-manager";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +13,7 @@ export default async function EquipePage() {
   const invite = compte.uid !== compte.moi;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={compte.email} active="equipe" compte={compte} />
+    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

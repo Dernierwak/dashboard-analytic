@@ -159,7 +159,8 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         return []
 
 
-def _themes_tips(labels: list, obj_txt: str, business: str = "") -> list:
+def _themes_tips(labels: list, obj_txt: str, business: str = "",
+                 bloques: list | None = None) -> list:
     """Savoir-faire de fond par thematique — PAS lie aux chiffres de la semaine.
 
     Les conseils hebdo repondent a « que faire maintenant » ; ceux-ci repondent a
@@ -170,10 +171,17 @@ def _themes_tips(labels: list, obj_txt: str, business: str = "") -> list:
     import json as _json
     if not labels:
         return []
+    _bloc = ""
+    if bloques:
+        _bloc = (" Cette personne a marque les conseils suivants comme TROP "
+                 "COMPLIQUES a mettre en place : "
+                 + " ; ".join(f'"{b}"' for b in bloques[:6])
+                 + ". Traite ces sujets EN PRIORITE, en expliquant le "
+                   "savoir-faire qui manque, pas en repetant le conseil.")
     raw = _call_gemini(
         "Tu es un consultant marketing senior pour une PME suisse"
         + (f" ({business})" if business else "")
-        + f". Objectif du compte : {obj_txt}. "
+        + f". Objectif du compte : {obj_txt}.{_bloc} "
         f"Voici ses thematiques de communication : {', '.join(labels)}. "
         "Pour CHAQUE thematique, donne 2 conseils de FOND : des bonnes pratiques "
         "durables et concretes sur ce type de contenu ou de campagne (angle, "
@@ -1411,8 +1419,25 @@ def build_payload(sb, user_id: str) -> dict | None:
                         if _tete else f"Voilà {_quoi} sur {_sur}.")
 
     # Savoir-faire de fond par thematique — se lit quand on a cinq minutes.
+    _bloques = []
     try:
-        themes_tips = _themes_tips([t["label"] for t in themes_focus[:3]], _obj_txt0)
+        _bl = (sb.table("reco_feedback").select("reco_key")
+               .eq("user_id", user_id).eq("reaction", "too_hard")
+               .order("week_start", desc=True).limit(8).execute().data) or []
+        _vus = {r["reco_key"] for r in _bl}
+        # on remonte le TITRE du conseil, pas sa clé technique
+        _titres = {}
+        for _tf in themes_focus:
+            for _r in _tf["recos"]:
+                _titres[_r["key"]] = _r["title"]
+        for _r in reglages:
+            _titres[_r["key"]] = _r["title"]
+        _bloques = [_titres.get(k, KEY_LABELS.get(k, k)) for k in _vus]
+    except Exception:
+        _bloques = []
+    try:
+        themes_tips = _themes_tips([t["label"] for t in themes_focus[:3]], _obj_txt0,
+                                   bloques=_bloques)
     except Exception:
         themes_tips = []
 
