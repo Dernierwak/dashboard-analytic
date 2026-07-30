@@ -16,6 +16,8 @@ import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 
+import { getCompteActif } from "@/lib/account";
+
 export const dynamic = "force-dynamic";
 
 const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
@@ -292,6 +294,7 @@ export default async function InstagramPage({
   searchParams: DashParams;
 }) {
   const d = await getInstaDash(searchParams);
+  const compte = await getCompteActif();
   const metric = ["reach", "views", "likes", "comments", "saved", "eng"].includes(
     searchParams?.m ?? ""
   )
@@ -321,7 +324,7 @@ export default async function InstagramPage({
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={d.email} active="instagram" />
+      <SiteHeader email={d.email} active="instagram" compte={compte} />
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCompteActif } from "@/lib/account";
 
 // Couche données du rapport hebdo.
 // Règles maison (identiques au Streamlit) :
@@ -271,10 +272,8 @@ function pctDelta(cur: number, prev: number): number | null {
 
 export async function getWeeklyData(): Promise<WeeklyData> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
@@ -605,7 +604,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   ];
 
   return {
-    email: user?.email ?? "",
+    email: compte.email,
     weekLabel: `${fmtDay(curSince)} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()} · 7 jours pleins`,
     hasData,
     kpis,

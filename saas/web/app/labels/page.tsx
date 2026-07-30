@@ -6,14 +6,17 @@ import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 
+import { getCompteActif } from "@/lib/account";
+
 export const dynamic = "force-dynamic";
 
 export default async function LabelsPage() {
   const data = await getLabelsData();
+  const compte = await getCompteActif();
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="labels" />
+      <SiteHeader email={data.email} active="labels" compte={compte} />
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

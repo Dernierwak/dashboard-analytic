@@ -18,6 +18,8 @@ import { TrackingSection } from "@/components/tracking-section";
 import { ActionTop } from "@/components/action-top";
 import { RecoCard } from "@/components/reco-card";
 
+import { getCompteActif } from "@/lib/account";
+
 export const dynamic = "force-dynamic";
 
 const ONB_OBJ: Record<string, string> = {
@@ -184,6 +186,7 @@ function Suivi({ feedback }: { feedback: Record<string, string> }) {
 
 export default async function Page() {
   const data = await getWeeklyData();
+  const compte = await getCompteActif();
   const report = data.report;
 
   // Thèmes prioritaires (≤ 3) — le fil qui relie la vision aux conseils.
@@ -214,7 +217,7 @@ export default async function Page() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="rapport" />
+      <SiteHeader email={data.email} active="rapport" compte={compte} />
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
           première question du lecteur, elle doit trouver sa réponse avant le

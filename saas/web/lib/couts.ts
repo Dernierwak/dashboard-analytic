@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCompteActif } from "@/lib/account";
 
 // Couche données de la page Coûts : dépense du mois en cours par canal,
 // budget mensuel avec CARRY-FORWARD (même règle que budget_for_month côté
@@ -66,10 +67,8 @@ async function fetchAllRows<T>(
 
 export async function getCoutsData(): Promise<CoutsData> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
 
   const now = new Date();
   const y = now.getFullYear();
@@ -207,7 +206,7 @@ export async function getCoutsData(): Promise<CoutsData> {
   ];
 
   return {
-    email: user?.email ?? "",
+    email: compte.email,
     monthLabel: `${MOIS_FULL[m]} ${y}`,
     elapsed,
     channels,

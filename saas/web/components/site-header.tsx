@@ -1,6 +1,8 @@
 import { FetchButton } from "@/components/fetch-button";
+import { CompteSwitch } from "@/components/compte-switch";
+import type { CompteActif } from "@/lib/account";
 
-export type PageKey = "rapport" | "couts" | "meta" | "google" | "instagram" | "labels";
+export type PageKey = "rapport" | "couts" | "meta" | "google" | "instagram" | "labels" | "equipe";
 
 const NAV: { key: PageKey; href: string; label: string }[] = [
   { key: "rapport", href: "/", label: "Rapport" },
@@ -9,10 +11,19 @@ const NAV: { key: PageKey; href: string; label: string }[] = [
   { key: "meta", href: "/meta", label: "▣ Meta" },
   { key: "google", href: "/google", label: "◆ Google" },
   { key: "instagram", href: "/instagram", label: "◎ Instagram" },
+  { key: "equipe", href: "/equipe", label: "Équipe" },
 ];
 
 // Header commun : logo, navigation, mes données, email, déconnexion.
-export function SiteHeader({ email, active }: { email: string; active: PageKey }) {
+export function SiteHeader({
+  email,
+  active,
+  compte,
+}: {
+  email: string;
+  active: PageKey;
+  compte?: CompteActif;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
       <div className="flex items-center gap-3 flex-wrap">
@@ -34,7 +45,8 @@ export function SiteHeader({ email, active }: { email: string; active: PageKey }
         </nav>
       </div>
       <div className="flex items-center gap-3">
-        <FetchButton />
+        {compte && <CompteSwitch comptes={compte.comptes} actif={compte.uid} />}
+        {(!compte || compte.peutEditer) && <FetchButton />}
         <span className="text-[11px] text-faint hidden lg:inline">{email}</span>
         <form action="/auth/signout" method="post">
           <button

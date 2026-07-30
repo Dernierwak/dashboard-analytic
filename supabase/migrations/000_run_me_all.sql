@@ -498,3 +498,10 @@ CREATE INDEX IF NOT EXISTS idx_suivi_actions_status
 -- ============================================================================
 
 ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS detail jsonb;
+
+-- ============================================================================
+-- 12) Partage d'acces (equipe) — voir equipe_partage.sql, a executer tel quel.
+--     Table dashboard_members + fonctions a_acces()/peut_editer() + ouverture
+--     des policies sur les tables de donnees. connected_accounts en est exclue
+--     volontairement : elle porte les jetons Meta/Google.
+-- ============================================================================

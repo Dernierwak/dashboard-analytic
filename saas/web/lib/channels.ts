@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCompteActif } from "@/lib/account";
 
 // Couche données des dashboards par canal — mêmes règles que le Streamlit :
 // fenêtre de N jours PLEINS ancrée sur la dernière date de données (jamais
@@ -365,8 +366,8 @@ function buildDash(
 
 export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDash> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
   const days = periodDays(sp);
 
   const [rowsRes, cfgRes, labelsRes] = await Promise.all([
@@ -403,13 +404,13 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
   // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
-  return buildDash(rows, rows, days, sp, cfg, labels, user?.email ?? "");
+  return buildDash(rows, rows, days, sp, cfg, labels, compte.email);
 }
 
 export async function getGoogleDash(sp: DashParams | undefined): Promise<ChannelDash> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
   const days = periodDays(sp);
 
   const [rowsRes, adsRes, cfgRes, labelsRes] = await Promise.all([
@@ -459,7 +460,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
   );
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
-  return buildDash(rows, drillRows, days, sp, cfg, labels, user?.email ?? "");
+  return buildDash(rows, drillRows, days, sp, cfg, labels, compte.email);
 }
 
 // ── Instagram organique ───────────────────────────────────────────────────────
@@ -526,8 +527,8 @@ const FORMAT_LABEL: Record<string, string> = {
 
 export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDash> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
   const days = periodDays(sp);
 
   const [postsRes, followsRes, labelsRes] = await Promise.all([
@@ -667,7 +668,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
   return {
-    email: user?.email ?? "",
+    email: compte.email,
     periodLabel: w.label,
     days,
     labels: masterLabels,
@@ -705,8 +706,8 @@ export async function getLabelsData(): Promise<{
   priorities: string[]; // ≤ 3 thèmes prioritaires (insight_feedback priority_label:*)
 }> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
 
   const [labelsRes, metaRes, googleRes, instaRes, prioRes] = await Promise.all([
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
@@ -738,5 +739,5 @@ export async function getLabelsData(): Promise<{
   );
   for (const [name, row] of counts) if (!master.includes(name)) rows.push(row);
 
-  return { email: user?.email ?? "", rows, priorities };
+  return { email: compte.email, rows, priorities };
 }

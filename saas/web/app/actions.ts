@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
 
 export type Reaction = "useful" | "not_for_me" | "done";
 
@@ -37,10 +39,10 @@ export async function startTracking(a: {
   detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
 }): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   if (a.tracked) {
     // Toggle off : on retire de la liste les suivis non rangés de ce conseil.
@@ -105,10 +107,10 @@ export async function resolveAction(
   recoKey?: string
 ): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   if (action === "drop") {
     const r = await supabase
@@ -162,10 +164,10 @@ export async function resolveAction(
 // posés depuis Pulse.
 export async function saveRecoFeedback(recoKey: string, reaction: Reaction, active: boolean) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const week = mondayISO();
   if (active) {
@@ -201,10 +203,10 @@ export async function saveInsightFeedback(
   active: boolean
 ) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   if (active) {
     await supabase
@@ -231,10 +233,10 @@ export async function togglePriorityLabel(
   active: boolean
 ): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const key = `priority_label:${name}`;
   if (active) {
@@ -267,10 +269,10 @@ export async function togglePriorityLabel(
 // Re-pondère les conseils — pris en compte à la prochaine publication du rapport.
 export async function saveObjectif(objectif: string | null) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   await supabase
     .from("profiles")
     .update({ objectif: objectif || null })
@@ -283,10 +285,10 @@ export async function saveObjectif(objectif: string | null) {
 // semaine courante — ne touche pas à la réaction existante.
 export async function saveComment(recoKey: string, comment: string) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   await supabase.from("reco_feedback").upsert(
     {
       user_id: user.id,
@@ -304,10 +306,10 @@ export async function saveComment(recoKey: string, comment: string) {
 // month omis → mois en cours.
 export async function saveBudget(channel: string, amount: number, monthIso?: string) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const now = new Date();
   const month =
     monthIso && /^\d{4}-\d{2}-01$/.test(monthIso)
@@ -361,8 +363,10 @@ export async function saveOnboarding(answers: {
   frustration: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   await supabase
     .from("profiles")
     .update({
@@ -403,8 +407,10 @@ async function _labels(supabase: ReturnType<typeof createClient>, uid: string): 
 
 export async function createLabel(name: string) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = name.trim();
   if (!clean) return { ok: false, message: "Nom vide." };
   const current = await _labels(supabase, user.id);
@@ -417,8 +423,10 @@ export async function createLabel(name: string) {
 // Renomme partout : liste maîtresse + assignations Meta/Google + posts Instagram.
 export async function renameLabel(oldName: string, newName: string) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = newName.trim();
   if (!clean) return { ok: false, message: "Nouveau nom vide." };
   const current = await _labels(supabase, user.id);
@@ -444,8 +452,10 @@ export async function renameLabel(oldName: string, newName: string) {
 // Supprime partout : liste maîtresse + désassigne Meta/Google + retire des posts.
 export async function deleteLabel(name: string) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const current = await _labels(supabase, user.id);
   await supabase.from("profiles")
     .update({ labels: current.filter((l) => l !== name) }).eq("id", user.id);
@@ -472,8 +482,10 @@ export async function setCampaignLabel(
   label: string | null
 ) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
   // (repli sans la colonne si la migration n'est pas encore passée)
   if (channel === "meta") {
@@ -509,8 +521,10 @@ export async function setCampaignLabel(
 // Thème d'un post Instagram — un seul thème par post (labels = [thème] ou []).
 export async function setPostLabel(postId: string, label: string | null) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
   // (repli sans la colonne si la migration n'est pas encore passée)
   const r = await supabase
@@ -535,10 +549,10 @@ export async function setPostLabel(postId: string, label: string | null) {
 // données arrivent en base ~2-3 minutes plus tard.
 export async function triggerFetch(): Promise<{ ok: boolean; message: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
@@ -576,10 +590,10 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
 // en mode label_only (pas de re-fetch réseau, ~1 min).
 export async function triggerClassify(): Promise<{ ok: boolean; message: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
@@ -616,10 +630,10 @@ export async function triggerClassify(): Promise<{ ok: boolean; message: string 
 // en base (recalcul des conseils, sans re-fetch ni relabel) — ~30 s.
 export async function triggerReport(): Promise<{ ok: boolean; message: string }> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Non connecté." };
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
@@ -672,4 +686,111 @@ export async function checkFetchStatus(): Promise<{
   } catch {
     return { state: "unknown" };
   }
+}
+
+// ── Partage d'accès ─────────────────────────────────────────────────────────
+// Inviter, changer un rôle, révoquer : ces trois-là s'appliquent TOUJOURS à mon
+// propre compte (compte.moi), jamais au compte que je suis en train de
+// regarder. Un invité ne peut donc pas inviter à son tour sur le dashboard de
+// quelqu'un d'autre — la base le refuserait de toute façon (policy dm_insert).
+
+export type Membre = {
+  id: string;
+  member_email: string;
+  role: "viewer" | "editor";
+  accepted_at: string | null;
+  created_at: string;
+};
+
+export async function listerMembres(): Promise<Membre[]> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  try {
+    const r = await supabase
+      .from("dashboard_members")
+      .select("id, member_email, role, accepted_at, created_at")
+      .eq("owner_id", compte.moi)
+      .order("created_at", { ascending: true });
+    return (r.data ?? []) as Membre[];
+  } catch {
+    return [];
+  }
+}
+
+export async function inviterMembre(
+  email: string,
+  role: "viewer" | "editor"
+): Promise<{ ok: boolean; message: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const propre = email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(propre))
+    return { ok: false, message: "Cette adresse e-mail n'a pas l'air valide." };
+  if (propre === compte.email.toLowerCase())
+    return { ok: false, message: "C'est ta propre adresse — tu as déjà tous les accès." };
+
+  const r = await supabase.from("dashboard_members").upsert(
+    {
+      owner_id: compte.moi,
+      owner_email: compte.email,
+      member_email: propre,
+      role,
+    },
+    { onConflict: "owner_id,member_email" }
+  );
+  if (r.error)
+    return {
+      ok: false,
+      message: "Enregistrement impossible — as-tu joué le SQL equipe_partage.sql ?",
+    };
+  revalidatePath("/equipe");
+  return {
+    ok: true,
+    message: `${propre} a l'accès. Il ou elle le verra en se connectant à Pulse avec cette adresse.`,
+  };
+}
+
+export async function changerRoleMembre(
+  id: string,
+  role: "viewer" | "editor"
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const r = await supabase
+    .from("dashboard_members")
+    .update({ role })
+    .eq("id", id)
+    .eq("owner_id", compte.moi);
+  if (r.error) return { ok: false, message: "Changement impossible — réessaie." };
+  revalidatePath("/equipe");
+  return { ok: true };
+}
+
+export async function revoquerMembre(id: string): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const r = await supabase
+    .from("dashboard_members")
+    .delete()
+    .eq("id", id)
+    .eq("owner_id", compte.moi);
+  if (r.error) return { ok: false, message: "Révocation impossible — réessaie." };
+  revalidatePath("/equipe");
+  return { ok: true };
+}
+
+// Basculer d'un compte à l'autre : un simple cookie, relu par getCompteActif.
+// Il ne DONNE aucun droit — si le compte n'est pas dans ma liste, il est ignoré.
+export async function choisirCompte(id: string): Promise<{ ok: boolean }> {
+  const compte = await getCompteActif();
+  if (!compte.comptes.some((c) => c.id === id)) return { ok: false };
+  cookies().set(COOKIE_COMPTE, id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

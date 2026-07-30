@@ -13,6 +13,8 @@ import {
   ByLabelTable,
 } from "@/components/channel-dash";
 
+import { getCompteActif } from "@/lib/account";
+
 export const dynamic = "force-dynamic";
 
 export default async function GooglePage({
@@ -21,10 +23,11 @@ export default async function GooglePage({
   searchParams: DashParams;
 }) {
   const d = await getGoogleDash(searchParams);
+  const compte = await getCompteActif();
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={d.email} active="google" />
+      <SiteHeader email={d.email} active="google" compte={compte} />
 
       <div className="mb-5">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

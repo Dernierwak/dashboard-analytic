@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCompteActif } from "@/lib/account";
 
 // La Mission + la Trajectoire — le fil rouge du rapport.
 // Mission = l'objectif du compte, rendu visible : UN chiffre north-star,
@@ -77,8 +78,8 @@ function isoLocal(d: Date): string {
 
 export async function getMissionData(objectif: string | null): Promise<MissionData> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user!.id;
+  const compte = await getCompteActif();
+  const uid = compte.uid;
 
   const WEEKS = 12;
   const thisMonday = mondayOf(new Date());

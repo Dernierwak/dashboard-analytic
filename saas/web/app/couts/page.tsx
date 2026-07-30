@@ -9,6 +9,8 @@ import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 
+import { getCompteActif } from "@/lib/account";
+
 export const dynamic = "force-dynamic";
 
 function Pacing({ ch, elapsed }: { ch: ChannelCout; elapsed: number }) {
@@ -195,11 +197,12 @@ function RepartitionBudget({
 
 export default async function CoutsPage() {
   const data = await getCoutsData();
+  const compte = await getCompteActif();
   const reste = data.totalBudget - data.totalSpent;
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
-      <SiteHeader email={data.email} active="couts" />
+      <SiteHeader email={data.email} active="couts" compte={compte} />
 
       {/* Hero */}
       <div className="mb-7">
