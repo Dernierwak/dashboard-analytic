@@ -358,6 +358,24 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const measured = new Map<string, TrackedAction>();
   for (const v of report?.tracking?.verified ?? []) measured.set(String(v.id), v);
 
+  // Les actions prises AVANT que la photo du conseil existe n'ont pas de
+  // detail : on le retrouve dans le rapport courant tant que le conseil y est
+  // encore (même clé). Mieux qu'un titre orphelin.
+  const recoDetail = new Map<string, TrackedAction["detail"]>();
+  const collecte = (x?: PayloadReco | null) => {
+    if (x?.key && !recoDetail.has(x.key))
+      recoDetail.set(x.key, {
+        observation: x.observation,
+        pourquoi: x.pourquoi,
+        verifier: x.verifier,
+        effort: x.effort ?? null,
+      });
+  };
+  for (const tf of report?.themes_focus ?? []) for (const x of tf.recos) collecte(x);
+  for (const x of report?.reglages ?? []) collecte(x);
+  for (const x of report?.top_recos ?? []) collecte(x);
+  for (const x of report?.recos ?? []) collecte(x);
+
   const allActions: TrackedAction[] = (trackRes.data ?? []).map((r: any) => {
     const status = String(r.status ?? "running") as TrackedAction["status"];
     const check = String(r.check_at ?? "").slice(0, 10);
@@ -373,7 +391,10 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       done_at: r.done_at ? String(r.done_at).slice(0, 10) : null,
       status,
       due: status === "done" && check !== "" && check <= todayIso,
-      detail: (r.detail as TrackedAction["detail"]) ?? null,
+      detail:
+        (r.detail as TrackedAction["detail"]) ??
+        recoDetail.get(String(r.reco_key ?? "")) ??
+        null,
       then: m?.then,
       now: m?.now,
       delta: m?.delta ?? null,

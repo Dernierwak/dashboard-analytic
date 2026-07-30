@@ -134,6 +134,28 @@ export function LineChart({
           </text>
         ) : null
       )}
+
+      {/* Bandes de survol : viser un point de 3 px à la souris est impossible —
+          chaque colonne entière répond et donne la date + toutes les valeurs. */}
+      {labels.map((l, i) => {
+        const bw = (W - PAD_L - PAD_R) / (n - 1);
+        return (
+          <rect
+            key={`h${i}`}
+            x={x(i) - bw / 2}
+            y={0}
+            width={bw}
+            height={H}
+            fill="transparent"
+          >
+            <title>
+              {`${l} — ${series
+                .map((s2) => `${s2.name} ${s2.values[i] === null ? "—" : fmt(s2.values[i] as number)}${unit}`)
+                .join(" · ")}`}
+            </title>
+          </rect>
+        );
+      })}
     </svg>
   );
 }

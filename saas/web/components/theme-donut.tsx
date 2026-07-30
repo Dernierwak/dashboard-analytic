@@ -42,10 +42,10 @@ export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number 
         {parts.length} thème{parts.length > 1 ? "s" : ""} · {fmtCHF(total)} CHF au total
       </div>
 
-      <div className="flex items-center gap-5">
-        <svg viewBox="0 0 100 100" className="w-[104px] h-[104px] shrink-0 -rotate-90" role="img"
+      <div className="flex items-center gap-5 sm:gap-7 flex-wrap sm:flex-nowrap justify-center sm:justify-start">
+        <svg viewBox="0 0 100 100" className="w-[150px] h-[150px] sm:w-[190px] sm:h-[190px] shrink-0 -rotate-90" role="img"
           aria-label="Répartition de la dépense par thème">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="14" />
+          <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="16" />
           {arcs.map((a) => (
             <circle
               key={a.label}
@@ -54,7 +54,7 @@ export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number 
               r={R}
               fill="none"
               stroke={a.color}
-              strokeWidth="14"
+              strokeWidth="16"
               strokeDasharray={`${a.dash} ${C - a.dash}`}
               strokeDashoffset={-a.offset}
             >

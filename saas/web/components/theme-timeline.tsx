@@ -46,7 +46,26 @@ export function ThemeTimeline({
         <text x={W - PAD} y={H - 2} textAnchor="end" fontSize="9" fill="#8b8e98">
           {series.points[n - 1]?.label}
         </text>
+        {/* Bandes de survol : chaque semaine répond à la souris */}
+        {series.points.map((pt, i) => {
+          const bw = (W - PAD * 2) / (n - 1);
+          const marque = series.markers.includes(i);
+          return (
+            <rect key={`h${i}`} x={x(i) - bw / 2} y={0} width={bw} height={H} fill="transparent">
+              <title>
+                {`Semaine du ${pt.label} — ${series.metric_label.toLowerCase()} ${Math.round(pt.value).toLocaleString("fr-CH")}${marque ? " · ▲ action lancée cette semaine-là" : ""}`}
+              </title>
+            </rect>
+          );
+        })}
       </svg>
+      <p className="text-[11px] text-muted leading-relaxed mt-2">
+        <span className="font-semibold text-ink">Comment le lire — </span>
+        {series.metric_label.toLowerCase()} de ce thème, semaine par semaine.
+        {series.markers.length > 0
+          ? " Chaque ▲ marque une semaine où tu as lancé une action : compare la courbe avant et après pour voir si elle a eu un effet."
+          : " Quand tu lanceras une action sur ce thème, un ▲ marquera la semaine — tu verras si la courbe a suivi."}
+      </p>
     </div>
   );
 }

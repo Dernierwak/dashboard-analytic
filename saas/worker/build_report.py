@@ -1367,6 +1367,29 @@ def build_payload(sb, user_id: str) -> dict | None:
             "clics": _serie(_f_clics),
             "ctr": _serie(_f_ctr),
         }
+
+        # Ces trois-la rejoignent la boussole : un seul module pour tout suivre,
+        # au lieu de tuiles qui repetaient la meme information a cote.
+        if kpi_focus:
+            _EXTRAS = [
+                ("trafic", "Trafic (sessions)", "", metrics_series["trafic"],
+                 "Visites sur ton site, tous canaux confondus (GA4)."),
+                ("vues", "Vues Instagram", "", metrics_series["vues"],
+                 "Vues de tes posts Instagram, semaine par semaine."),
+                ("clics", "Clics publicitaires", "", metrics_series["clics"],
+                 "Clics sur tes publicites Meta + Google."),
+            ]
+            for ck, ct, cu, pts, cr in _EXTRAS:
+                reels = [v for v in pts if v is not None]
+                if len(reels) < 2:
+                    continue
+                val = pts[-1] if pts[-1] is not None else reels[-1]
+                prev = next((v for v in reversed(pts[:-1]) if v is not None), None)
+                kpi_focus["options"].append({
+                    "key": ck, "titre": ct, "unite": cu, "direction": "up",
+                    "valeur": val, "precedent": prev, "repere": cr,
+                    "points": pts, "bandes": [],
+                })
     except Exception:
         kpi_focus = None
         metrics_series = None

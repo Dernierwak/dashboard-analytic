@@ -10,7 +10,6 @@ import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ThemeTimeline } from "@/components/theme-timeline";
 import { KpiFocusCard } from "@/components/kpi-focus";
-import { Sparkline } from "@/components/line-chart";
 import { ThemeDonut } from "@/components/theme-donut";
 import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
@@ -75,78 +74,6 @@ function ResumeSemaine({ brief }: { brief: string }) {
     </div>
   );
 }
-
-// Lecture simple des métriques clés — 4 tuiles, balayables au pouce sur mobile.
-// Chaque chiffre porte son repère (semaine précédente + variation) : un nombre
-// nu ne se lit pas, le lecteur invente une conclusion à la place.
-function MetricsRead({
-  m,
-  prev,
-  serie,
-}: {
-  m: NonNullable<ReportPayload["metrics_read"]>;
-  prev?: ReportPayload["metrics_prev"];
-  serie?: ReportPayload["metrics_series"];
-}) {
-  const fmt = (n: number | null | undefined) =>
-    n === null || n === undefined ? "—" : n.toLocaleString("fr-CH").replace(/ /g, " ");
-  const pct = (n: number | null | undefined) =>
-    n === null || n === undefined ? "—" : `${n.toFixed(1)} %`;
-  const tiles = [
-    { key: "trafic" as const, label: "Trafic", value: fmt(m.trafic), sub: "sessions (GA4)", cur: m.trafic },
-    { key: "vues" as const, label: "Vues", value: fmt(m.vues), sub: "Instagram", cur: m.vues },
-    { key: "clics" as const, label: "Clics", value: fmt(m.clics), sub: "publicité", cur: m.clics },
-    { key: "ctr" as const, label: "CTR", value: pct(m.ctr), sub: "publicité", cur: m.ctr },
-  ];
-  return (
-    <div className="flex overflow-x-auto sm:grid sm:grid-cols-4 gap-2.5 pb-1 sm:pb-0">
-      {tiles.map((t) => {
-        const p = prev?.[t.key] ?? null;
-        // Sous 0,5 % d'écart on dit « stable » — même seuil que partout ailleurs.
-        const delta =
-          p !== null && p !== 0 && t.cur !== null && t.cur !== undefined
-            ? ((t.cur - p) / Math.abs(p)) * 100
-            : null;
-        const stable = delta !== null && Math.abs(delta) < 0.5;
-        const cls = delta === null || stable ? "text-faint" : delta > 0 ? "text-pos" : "text-neg";
-        const arrow = delta === null ? "" : stable ? "≈" : delta > 0 ? "▲" : "▼";
-        return (
-          <div
-            key={t.label}
-            className="bg-white border border-line rounded-xl p-3.5 min-w-[146px] shrink-0 sm:min-w-0"
-          >
-            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-              {t.label}
-            </div>
-            <div className="font-mono text-[21px] font-medium text-ink mt-1">{t.value}</div>
-            {serie?.[t.key] && (
-              <div className="mt-1.5 -mx-0.5">
-                <Sparkline
-                  values={serie[t.key]}
-                  color={delta === null || stable ? "#8b8e98" : delta > 0 ? "#1a7a4a" : "#c0392b"}
-                />
-              </div>
-            )}
-            {delta !== null ? (
-              <div className="text-[10.5px] mt-1 leading-snug">
-                <span className={`font-semibold ${cls}`}>
-                  {arrow} {stable ? "stable" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)} %`}
-                </span>
-                <span className="text-faint">
-                  {" "}· {t.key === "ctr" ? pct(p) : fmt(p)} la sem. dernière
-                </span>
-              </div>
-            ) : (
-              <div className="text-[10.5px] text-faint mt-1">pas de semaine comparable</div>
-            )}
-            <div className="text-[10.5px] text-faint mt-0.5">{t.sub}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 
 function Suivi({ feedback }: { feedback: Record<string, string> }) {
   // Compté en LIVE depuis reco_feedback — reflète immédiatement les clics ici.
@@ -295,7 +222,7 @@ export default async function Page() {
       {/* Ce que ça a donné — la frise répond à « mes actions ont bougé quoi ? »,
           elle a donc sa place juste après la liste d'actions, pas au fond
           d'une carte de thème. Les chiffres de la semaine la complètent. */}
-      {(series.length > 0 || report?.metrics_read || report?.kpi_focus) && (
+      {(series.length > 0 || report?.kpi_focus) && (
         <section className="mb-9">
           <SectionTitle tone="discret">Ce que ça donne</SectionTitle>
           <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr] mb-3">
@@ -310,9 +237,6 @@ export default async function Page() {
                 <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
               ))}
             </div>
-          )}
-          {report?.metrics_read && (
-            <MetricsRead m={report.metrics_read} prev={report.metrics_prev} />
           )}
         </section>
       )}
