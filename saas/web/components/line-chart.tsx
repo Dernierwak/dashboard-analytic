@@ -50,7 +50,7 @@ export function LineChart({
       <defs>
         {series.map((s, si) => (
           <linearGradient key={s.name} id={`lc-${uid}-${si}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={s.color} stopOpacity="0.20" />
+            <stop offset="0%" stopColor={s.color} stopOpacity="0.16" />
             <stop offset="100%" stopColor={s.color} stopOpacity="0" />
           </linearGradient>
         ))}

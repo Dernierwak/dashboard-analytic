@@ -35,13 +35,56 @@ export function ThemeTimeline({
         aria-label={`Évolution de ${series.metric_label}${label ? ` du thème ${label}` : ""} sur 10 semaines`}>
         <line x1={PAD} y1={base} x2={W - PAD} y2={base} stroke="var(--color-line, #e6e6e9)" />
         <path d={area} fill="#1a56ff" opacity="0.08" />
-        <polyline points={line} fill="none" stroke="#1a56ff" strokeWidth="2" strokeLinejoin="round" />
+        <polyline points={line} fill="none" stroke="#1a56ff" strokeWidth="2.5"
+          strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+
+        {/* Un point par semaine : sans eux on ne sait pas où sont les relevés,
+            et deux semaines plates ressemblent à une seule longue. */}
+        {vals.map((v, i) => (
+          <circle
+            key={`p${i}`}
+            cx={x(i)}
+            cy={y(v)}
+            r="3"
+            fill="#fff"
+            stroke="#1a56ff"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {/* Repère d'échelle : sans lui, la courbe n'a pas d'ordre de grandeur */}
+        <text x={PAD} y={11} fontSize="9" fill="#8b8e98">
+          {Math.round(max).toLocaleString("fr-CH")}
+        </text>
+
         {series.markers.map((mi) => (
           <g key={mi}>
-            <line x1={x(mi)} y1={2} x2={x(mi)} y2={base} stroke="#1a7a4a" strokeDasharray="3 3" opacity="0.7" />
-            <circle cx={x(mi)} cy={y(vals[mi])} r="3.5" fill="#fff" stroke="#1a7a4a" strokeWidth="2" />
+            <line x1={x(mi)} y1={2} x2={x(mi)} y2={base} stroke="#1a7a4a" strokeDasharray="3 3" opacity="0.75" />
+            <circle cx={x(mi)} cy={y(vals[mi])} r="4" fill="#fff" stroke="#1a7a4a" strokeWidth="2.5" />
+            {/* L'action est nommée sur le graphe, pas seulement en légende */}
+            <text
+              x={Math.min(W - PAD - 44, Math.max(PAD, x(mi) - 20))}
+              y={y(vals[mi]) - 9}
+              fontSize="9"
+              fontWeight="700"
+              fill="#1a7a4a"
+            >
+              ▲ action
+            </text>
           </g>
         ))}
+
+        {/* La dernière valeur, écrite : « environ combien » sans survoler */}
+        <text
+          x={W - PAD}
+          y={Math.max(16, y(vals[n - 1]) - 8)}
+          textAnchor="end"
+          fontSize="10"
+          fontWeight="600"
+          fill="#1a56ff"
+        >
+          {Math.round(vals[n - 1]).toLocaleString("fr-CH")}
+        </text>
         <text x={PAD} y={H - 2} fontSize="9" fill="#8b8e98">{series.points[0]?.label}</text>
         <text x={W - PAD} y={H - 2} textAnchor="end" fontSize="9" fill="#8b8e98">
           {series.points[n - 1]?.label}

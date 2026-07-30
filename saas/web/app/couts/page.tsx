@@ -7,6 +7,7 @@ import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
+import { teinte } from "@/lib/palette";
 
 import { getCompteActif } from "@/lib/account";
 
@@ -145,8 +146,8 @@ function RepartitionBudget({
             key={t.label}
             style={{
               width: `${(t.budget / base) * 100}%`,
-              background: "#1a56ff",
-              opacity: 1 - Math.min(0.55, i * 0.13),
+              background: teinte(i).trait,
+              opacity: 0.85,
             }}
             title={`${t.label} — ${fmtCHF(t.budget)} CHF`}
           />
@@ -165,8 +166,8 @@ function RepartitionBudget({
           {avecBudget.slice(0, 6).map((t, i) => (
             <span key={t.label} className="inline-flex items-center gap-1.5">
               <span
-                className="h-2 w-2 rounded-full inline-block"
-                style={{ background: "#1a56ff", opacity: 1 - Math.min(0.55, i * 0.13) }}
+                className="h-2.5 w-2.5 rounded-full inline-block border-2"
+                style={{ background: teinte(i).aplat, borderColor: teinte(i).trait }}
               />
               {t.label} <span className="font-mono text-muted">{fmtCHF(t.budget)}</span>
             </span>
@@ -356,56 +357,62 @@ export default async function CoutsPage() {
             {data.byTheme.map((t) => {
               const share = data.totalSpent > 0 ? (t.spend / data.totalSpent) * 100 : 0;
               const ratio = t.budget > 0 ? t.spend / t.budget : null;
+              const ratioAn = t.budgetYear > 0 ? t.spendYear / t.budgetYear : null;
               return (
                 <div key={t.label} className="px-5 py-3.5">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-[13px] font-semibold text-brand">{t.label}</span>
+                    <span className="text-[13.5px] font-semibold text-brand">{t.label}</span>
                     <span className="text-[11px] text-faint">
                       {share.toFixed(0)} % de la dépense du mois
                     </span>
-                    <span className="ml-auto font-mono text-[13px] text-ink">
-                      {fmtCHF(t.spend)} CHF
-                      {t.budget > 0 && (
-                        <span className="text-faint text-[11.5px]"> / {fmtCHF(t.budget)}</span>
-                      )}
-                    </span>
                   </div>
-                  {ratio !== null ? (
-                    <div className="mt-2">
-                      <div className="relative h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-full"
-                          style={{
-                            width: `${Math.min(100, ratio * 100)}%`,
-                            background: ratio > 1 ? "#c0392b" : ratio > data.elapsed + 0.1 ? "#b86b00" : "#1a56ff",
-                          }}
-                        />
-                        <div
-                          className="absolute inset-y-0 w-[2px] bg-ink/50"
-                          style={{ left: `${data.elapsed * 100}%` }}
-                          title="Repère : part du mois écoulée"
-                        />
-                      </div>
-                      <div className="flex items-baseline justify-between mt-1">
-                        <span className="text-[10.5px] text-faint">
-                          {Math.round(ratio * 100)} % du budget thème · repère{" "}
-                          {Math.round(data.elapsed * 100)} %
-                        </span>
-                        {ratio > 1 && (
-                          <span className="text-[11px] font-semibold text-neg">
-                            dépassé de {fmtCHF(t.spend - t.budget)} CHF
-                          </span>
+
+                  {/* Mois et année côte à côte : le mois dit où on en est, l'année
+                      dit si on tient l'enveloppe. Les deux se lisent ensemble. */}
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    {[
+                      { titre: "Ce mois-ci", d: t.spend, b: t.budget, r: ratio },
+                      { titre: "Depuis janvier", d: t.spendYear, b: t.budgetYear, r: ratioAn },
+                    ].map((c) => (
+                      <div key={c.titre}>
+                        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+                          {c.titre}
+                        </div>
+                        <div className="font-mono text-[13.5px] text-ink mt-0.5">
+                          {fmtCHF(c.d)} CHF
+                          {c.b > 0 && (
+                            <span className="text-faint text-[11.5px]"> / {fmtCHF(c.b)}</span>
+                          )}
+                        </div>
+                        {c.r !== null ? (
+                          <>
+                            <div className="relative h-1.5 rounded-full bg-black/[0.06] overflow-hidden mt-1.5">
+                              <div
+                                className="absolute inset-y-0 left-0 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, c.r * 100)}%`,
+                                  background:
+                                    c.r > 1 ? "#c0392b" : c.r > data.elapsed + 0.1 ? "#b86b00" : "#1a56ff",
+                                }}
+                              />
+                            </div>
+                            <div
+                              className={`text-[11px] mt-1 font-semibold ${
+                                c.r > 1 ? "text-neg" : "text-muted"
+                              }`}
+                            >
+                              {c.r > 1
+                                ? `dépassé de ${fmtCHF(c.d - c.b)} CHF`
+                                : `${Math.round(c.r * 100)} % du budget`}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-[11px] text-faint mt-1.5">pas de budget fixé</div>
                         )}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="mt-1.5 h-1.5 rounded-full bg-black/[0.05] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-brand/40"
-                        style={{ width: `${Math.min(100, share)}%` }}
-                      />
-                    </div>
-                  )}
+                    ))}
+                  </div>
+
                   <BudgetEditor channel={`label:${t.label}`} current={t.budget} />
                 </div>
               );

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { FetchButton } from "@/components/fetch-button";
@@ -35,13 +36,36 @@ export type InfosNav = {
 export function SideNav({ compte, infos }: { compte: CompteActif; infos: InfosNav }) {
   const path = usePathname() ?? "/";
   const actif = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  // Repliée, la colonne ne garde que les glyphes : sur un petit portable, 232 px
+  // pris en permanence se paient sur le contenu. Le choix se retient.
+  const [replie, setReplie] = useState(false);
+  useEffect(() => {
+    setReplie(localStorage.getItem("pulse_nav_repliee") === "1");
+  }, []);
+  const basculer = () =>
+    setReplie((v) => {
+      localStorage.setItem("pulse_nav_repliee", v ? "0" : "1");
+      return !v;
+    });
+  const cache = replie ? "lg:hidden" : "";
 
   return (
-    <aside className="lg:w-[232px] lg:shrink-0 lg:h-screen lg:sticky lg:top-0 border-b lg:border-b-0 lg:border-r border-line bg-white/70 backdrop-blur">
+    <aside
+      className={(replie ? "lg:w-[64px]" : "lg:w-[232px]") +
+        " lg:shrink-0 lg:h-screen lg:sticky lg:top-0 border-b lg:border-b-0 lg:border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200"}
+    >
       <div className="flex lg:flex-col lg:h-full items-center lg:items-stretch gap-3 lg:gap-0 px-4 lg:px-4 py-3 lg:py-5">
-        <span className="text-[14px] font-bold tracking-tight text-ink lg:mb-5 shrink-0">
-          Pulse
-        </span>
+        <div className="flex items-center gap-2 lg:mb-5 shrink-0">
+          <span className={"text-[14px] font-bold tracking-tight text-ink " + cache}>Pulse</span>
+          <button
+            onClick={basculer}
+            aria-label={replie ? "Déplier la navigation" : "Replier la navigation"}
+            title={replie ? "Déplier" : "Replier"}
+            className="hidden lg:flex ml-auto h-7 w-7 items-center justify-center rounded-lg text-faint hover:bg-black/[0.05] hover:text-ink text-[13px]"
+          >
+            {replie ? "»" : "«"}
+          </button>
+        </div>
 
         <nav className="flex lg:flex-col items-center lg:items-stretch gap-1 overflow-x-auto lg:overflow-visible flex-1 lg:flex-none min-w-0">
           {NAV.map((n) => {
@@ -56,12 +80,14 @@ export function SideNav({ compte, infos }: { compte: CompteActif; infos: InfosNa
                     : "text-ink/75 hover:bg-black/[0.05] font-medium"
                 }`}
               >
-                {n.glyphe && (
-                  <span className={`text-[13px] ${on ? "text-white/70" : "text-faint"}`}>
-                    {n.glyphe}
-                  </span>
-                )}
-                {n.label}
+                <span
+                  className={`text-[13px] w-[14px] text-center shrink-0 ${
+                    on ? "text-white/70" : "text-faint"
+                  }`}
+                >
+                  {n.glyphe ?? n.label.charAt(0)}
+                </span>
+                <span className={cache}>{n.label}</span>
                 {n.href === "/" && infos.aFaire > 0 && (
                   <span
                     className={`ml-auto text-[10.5px] font-bold rounded-full px-1.5 py-0.5 ${
@@ -77,7 +103,7 @@ export function SideNav({ compte, infos }: { compte: CompteActif; infos: InfosNa
         </nav>
 
         {/* Ce qu'on doit savoir en permanence, sans avoir à le chercher */}
-        <div className="hidden lg:block mt-5 pt-4 border-t border-line">
+        <div className={(replie ? "lg:hidden" : "hidden lg:block") + " mt-5 pt-4 border-t border-line"}>
           <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-2">
             Où on en est
           </div>
@@ -96,7 +122,7 @@ export function SideNav({ compte, infos }: { compte: CompteActif; infos: InfosNa
           )}
         </div>
 
-        <div className="lg:mt-auto flex lg:flex-col items-center lg:items-stretch gap-2 lg:gap-2.5 lg:pt-4 shrink-0">
+        <div className={"lg:mt-auto flex lg:flex-col items-center lg:items-stretch gap-2 lg:gap-2.5 lg:pt-4 shrink-0 " + cache}>
           <CompteSwitch comptes={compte.comptes} actif={compte.uid} />
           {compte.peutEditer && <FetchButton />}
           <span className="hidden lg:block text-[10.5px] text-faint truncate" title={compte.email}>

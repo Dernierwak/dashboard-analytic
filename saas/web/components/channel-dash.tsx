@@ -68,10 +68,16 @@ function Delta({ value, invert = false }: { value: number | null; invert?: boole
 
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
 export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
-  // Google n'a pas de portée (reach) → on montre les impressions à la place.
+  // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
+  // grand dans le hero, on montre le CPC — l'autre chiffre qu'on regarde.
   const firstTile =
     channel === "google"
-      ? { label: "Impressions", value: fmtCHF(d.impressions), delta: d.imprDelta, invert: false }
+      ? {
+          label: "CPC moyen",
+          value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—",
+          delta: d.cpc > 0 ? d.cpcDelta : null,
+          invert: true,
+        }
       : { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false };
   return (
     <div className="mb-8">

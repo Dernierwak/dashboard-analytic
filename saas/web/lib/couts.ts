@@ -36,7 +36,13 @@ export type MonthRow = {
 
 // Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
 // (même carry-forward que les canaux, zéro migration).
-export type ThemeSpend = { label: string; spend: number; budget: number };
+export type ThemeSpend = {
+  label: string;
+  spend: number;        // dépense du mois en cours
+  budget: number;       // budget mensuel du thème
+  spendYear: number;    // dépense cumulée depuis janvier
+  budgetYear: number;   // somme des 12 budgets mensuels (carry-forward compris)
+};
 
 export type CoutsData = {
   email: string;
@@ -116,6 +122,7 @@ export async function getCoutsData(): Promise<CoutsData> {
   let googleSpent = 0;
   const dayMap = new Map<string, { meta: number; google: number }>();
   const themeMap = new Map<string, number>();
+  const themeYear = new Map<string, number>(); // même découpage, sur toute l'année
 
   for (const r of metaRows) {
     const dk = String(r.date_start).slice(0, 10);
@@ -128,6 +135,11 @@ export async function getCoutsData(): Promise<CoutsData> {
     const lbl = metaLbl.get(String(r.campaign_name));
     if (lbl) themeMap.set(lbl, (themeMap.get(lbl) ?? 0) + s);
   }
+  // Année : mêmes lignes, sans le filtre « ce mois-ci »
+  for (const r of metaRows) {
+    const lbl = metaLbl.get(String(r.campaign_name));
+    if (lbl) themeYear.set(lbl, (themeYear.get(lbl) ?? 0) + (Number(r.spend) || 0));
+  }
   for (const r of googleRows) {
     const dk = String(r.date_start).slice(0, 10);
     if (dk < monthStart) continue;
@@ -137,6 +149,10 @@ export async function getCoutsData(): Promise<CoutsData> {
     dayMap.set(dk, d);
     const lbl = googLbl.get(r.campaign_id);
     if (lbl) themeMap.set(lbl, (themeMap.get(lbl) ?? 0) + r.chf);
+  }
+  for (const r of googleRows) {
+    const lbl = googLbl.get(r.campaign_id);
+    if (lbl) themeYear.set(lbl, (themeYear.get(lbl) ?? 0) + r.chf);
   }
 
   const daily: CoutDay[] = [];
@@ -167,8 +183,22 @@ export async function getCoutsData(): Promise<CoutsData> {
     }
   }
   const byTheme: ThemeSpend[] = [...themeMap.entries()]
-    .map(([label, spend]) => ({ label, spend, budget: budgetFor(`label:${label}`, monthStart) }))
-    .sort((a, b) => b.spend - a.spend);
+    .map(([label, spend]) => {
+      // Le budget annuel n'est pas « mensuel × 12 » : il suit le carry-forward,
+      // donc on additionne les 12 mois tels qu'ils sont réellement réglés.
+      let budgetYear = 0;
+      for (let mm = 0; mm < 12; mm++) {
+        budgetYear += budgetFor(`label:${label}`, `${y}-${String(mm + 1).padStart(2, "0")}-01`);
+      }
+      return {
+        label,
+        spend,
+        budget: budgetFor(`label:${label}`, monthStart),
+        spendYear: themeYear.get(label) ?? 0,
+        budgetYear,
+      };
+    })
+    .sort((a, b) => b.spendYear - a.spendYear);
 
   // ── Table des budgets de l'année : dépensé par mois × canal ──────────────
   const spentByMonth = new Map<string, { meta: number; google: number }>();

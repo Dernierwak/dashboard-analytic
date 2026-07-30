@@ -1,5 +1,6 @@
 import { fmtCHF } from "@/lib/report";
 import type { ThemeRow } from "@/lib/report";
+import { teinte } from "@/lib/palette";
 
 // « Où part ton argent » — l'anneau de répartition par thème.
 //
@@ -8,7 +9,7 @@ import type { ThemeRow } from "@/lib/report";
 // un thème ou éparpillée sur dix. C'est le complément visuel de la boussole —
 // elle dit COMMENT ça se passe, celui-ci dit OÙ ça se joue.
 
-const TEINTES = ["#1a56ff", "#1a7a4a", "#7b4fff", "#b86b00", "#c0392b", "#5b6472"];
+
 
 export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number }) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
@@ -17,8 +18,8 @@ export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number 
   const top = tries.slice(0, 5);
   const reste = tries.slice(5).reduce((a, r) => a + r.spend, 0) + (orphan > 0 ? orphan : 0);
   const parts = [
-    ...top.map((r, i) => ({ label: r.label, spend: r.spend, color: TEINTES[i] })),
-    ...(reste > 0 ? [{ label: "autres", spend: reste, color: TEINTES[5] }] : []),
+    ...top.map((r, i) => ({ label: r.label, spend: r.spend, t: teinte(i) })),
+    ...(reste > 0 ? [{ label: "autres", spend: reste, t: teinte(9) }] : []),
   ];
   const total = parts.reduce((a, p) => a + p.spend, 0);
   if (total <= 0) return null;
@@ -53,8 +54,9 @@ export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number 
               cy="50"
               r={R}
               fill="none"
-              stroke={a.color}
+              stroke={a.t.trait}
               strokeWidth="16"
+              opacity={0.9}
               strokeDasharray={`${a.dash} ${C - a.dash}`}
               strokeDashoffset={-a.offset}
             >
@@ -67,8 +69,8 @@ export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number 
           {arcs.map((a) => (
             <div key={a.label} className="flex items-baseline gap-2">
               <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ background: a.color }}
+                className="h-3 w-3 rounded-full shrink-0 border-2"
+                style={{ background: a.t.aplat, borderColor: a.t.trait }}
               />
               <span className="text-[12.5px] text-ink truncate">{a.label}</span>
               <span className="ml-auto font-mono text-[12px] text-muted shrink-0">
