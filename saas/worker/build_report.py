@@ -514,6 +514,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         nlbl = _nrm(lbl)
         spend_w = [0.0] * _WK
         reach_w = [[] for _ in range(_WK)]
+        eng_w = [[] for _ in range(_WK)]
         has_spend = False
         if df_meta_raw is not None and not df_meta_raw.empty:
             mm = df_meta_raw[df_meta_raw["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
@@ -530,7 +531,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 _wi = _wk_idx(_dd) if _dd is not None else None
                 if _wi is not None:
                     spend_w[_wi] += float(_cm or 0) / 1e6; has_spend = True
-        if not has_spend and df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
+        if df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
             _dtp = pd.to_datetime(df_insta["date"], errors="coerce")
             for _i in range(len(df_insta)):
                 _lb = df_insta.iloc[_i].get("labels")
@@ -542,9 +543,26 @@ def build_payload(sb, user_id: str) -> dict | None:
                 _wi = _wk_idx(_d.date())
                 if _wi is not None:
                     reach_w[_wi].append(float(df_insta.iloc[_i].get("reach") or 0))
-        if has_spend:
+                    eng_w[_wi].append(float(df_insta.iloc[_i].get("eng") or 0))
+        # L'indicateur suit l'objectif du compte. Quand celui qu'on VOULAIT
+        # suivre n'est pas mesurable (le ROAS sans valeur de conversion GA4),
+        # on se rabat sur le meilleur substitut ET on le dit — plutôt que
+        # d'afficher un 0,0 qui ressemble a une catastrophe.
+        note = None
+        if objectif == "notoriete" and any(x for x in reach_w):
+            pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
+            metric_label = "Portée moyenne"
+        elif objectif == "engagement" and any(x for x in eng_w):
+            pts = [round(sum(x) / len(x), 2) if x else 0 for x in eng_w]
+            metric_label = "Engagement moyen (%)"
+        elif has_spend:
             pts = [round(v, 2) for v in spend_w]
             metric_label = "Dépense (CHF)"
+            if objectif == "ventes":
+                note = ("Le ROAS de ce thème n'est pas mesurable : Google Analytics "
+                        "remonte tes conversions sans leur valeur en CHF. On suit la "
+                        "dépense en attendant — configure la valeur de tes événements "
+                        "clés dans GA4 et cette courbe passera au ROAS.")
         else:
             pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
             metric_label = "Portée moyenne"
@@ -562,6 +580,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 mk.append(_wi)
         return {
             "metric_label": metric_label,
+            "note": note,
             "points": [{"label": labels[j], "value": pts[j]} for j in range(_WK)],
             "markers": sorted(set(mk)),
         }
@@ -1419,6 +1438,38 @@ def build_payload(sb, user_id: str) -> dict | None:
                         if _tete else f"Voilà {_quoi} sur {_sur}.")
 
     # Savoir-faire de fond par thematique — se lit quand on a cinq minutes.
+    # Conseils proposés semaine après semaine SANS jamais être appliqués : le
+    # signal le plus honnête qu'il manque un savoir-faire, pas de la volonté.
+    _recurrents = []
+    try:
+        _hist = (sb.table("weekly_reports").select("payload")
+                 .eq("user_id", user_id).order("week_start", desc=True)
+                 .limit(8).execute().data) or []
+        _compte, _titre_hist = {}, {}
+        for _h in _hist:
+            _pl = _h.get("payload") or {}
+            _vus_sem = set()
+            for _tf in (_pl.get("themes_focus") or []):
+                for _r in (_tf.get("recos") or []):
+                    _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
+            for _r in (_pl.get("reglages") or []):
+                _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
+            for _k in _vus_sem:
+                _compte[_k] = _compte.get(_k, 0) + 1
+        _faits = set()
+        try:
+            _faits = {r["reco_key"] for r in ((sb.table("reco_feedback").select("reco_key")
+                      .eq("user_id", user_id).eq("reaction", "done").execute().data) or [])}
+        except Exception:
+            _faits = set()
+        _recurrents = [
+            {"titre": _titre_hist.get(k) or KEY_LABELS.get(k, k), "fois": n}
+            for k, n in sorted(_compte.items(), key=lambda kv: -kv[1])
+            if n >= 3 and k not in _faits
+        ][:4]
+    except Exception:
+        _recurrents = []
+
     _bloques = []
     try:
         _bl = (sb.table("reco_feedback").select("reco_key")
@@ -1437,7 +1488,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         _bloques = []
     try:
         themes_tips = _themes_tips([t["label"] for t in themes_focus[:3]], _obj_txt0,
-                                   bloques=_bloques)
+                                   bloques=_bloques + [r["titre"] for r in _recurrents])
     except Exception:
         themes_tips = []
 
@@ -1478,6 +1529,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         "themes_focus": themes_focus,
         "themes_intro": themes_intro,
         "themes_tips": themes_tips,
+        "apprentissage": {
+            "bloques": _bloques,
+            "recurrents": _recurrents,
+            "tips": themes_tips,
+        },
         "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,

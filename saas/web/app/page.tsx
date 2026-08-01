@@ -14,6 +14,7 @@ import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
 import { ActionTop } from "@/components/action-top";
+import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 
 import { getCompteActif } from "@/lib/account";
@@ -143,10 +144,13 @@ export default async function Page() {
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
   // page à 2, et un lecteur qui voit un 2 cherche le 1.
   let _n = 0;
+  const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
+  const nThemes = series.length > 0 ? ++_n : undefined;
   const nActions = data.actions.length > 0 ? ++_n : undefined;
   const nConseils = ++_n;
   const nHistorique =
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
+  const nApprendre = report?.apprentissage ? ++_n : undefined;
 
   return (
     <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -221,30 +225,53 @@ export default async function Page() {
         {report && <Suivi feedback={data.feedback} />}
       </div>
 
-      {/* Ce que tu dois faire — tes décisions vivent ici jusqu'à être faites */}
-      <ActionTop actions={data.actions} num={nActions} />
-
-      {/* Ce que ça a donné — la frise répond à « mes actions ont bougé quoi ? »,
-          elle a donc sa place juste après la liste d'actions, pas au fond
-          d'une carte de thème. Les chiffres de la semaine la complètent. */}
-      {(series.length > 0 || report?.kpi_focus) && (
+      {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
+             indicateur en grand, et où part l'argent. Rien de filtré ici. */}
+      {(report?.kpi_focus || (report?.themes && report.themes.rows.length > 0)) && (
         <section className="mb-9">
-          <SectionTitle tone="discret">Ce que ça donne</SectionTitle>
-          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr] mb-3">
+          <SectionTitle>
+            <span className="text-faint font-mono mr-1.5">{nSemaine}</span> Ta semaine, tous
+            thèmes confondus
+          </SectionTitle>
+          <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
+            La vue d&apos;ensemble du compte : tout ce que tu publies et achètes, sans
+            filtre. Choisis l&apos;indicateur que tu veux suivre.
+          </p>
+          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
             {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
             {report?.themes && report.themes.rows.length > 0 && (
               <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} />
             )}
           </div>
-          {series.length > 0 && (
-            <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 mb-3 space-y-6">
-              {series.map((s2) => (
-                <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
-              ))}
-            </div>
-          )}
         </section>
       )}
+
+      {/* 2 · TES THÈMES PRIORITAIRES — le même regard, mais restreint à ce que
+             tu as décidé de travailler, et sur l'indicateur de ton objectif. */}
+      {series.length > 0 && (
+        <section className="mb-9">
+          <SectionTitle>
+            <span className="text-faint font-mono mr-1.5">{nThemes}</span> Tes thèmes
+            prioritaires
+          </SectionTitle>
+          <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
+            Objectif <span className="font-semibold text-ink">{ONB_OBJ[data.objectif ?? ""] ?? "à définir"}</span>
+            {priorities.length > 0 && (
+              <> · thèmes suivis <span className="font-semibold text-warn">{priorities.join(" · ")}</span></>
+            )}{" "}
+            — l&apos;évolution de l&apos;indicateur de ton objectif sur chacun, avec un ▲ à
+            chaque semaine où tu as lancé une action.
+          </p>
+          <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 space-y-7">
+            {series.map((s2) => (
+              <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 3 · CE QUE TU DOIS FAIRE — tes décisions vivent ici jusqu'à être faites */}
+      <ActionTop actions={data.actions} num={nActions} />
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
@@ -356,41 +383,9 @@ export default async function Page() {
             num={nHistorique}
           />
 
-          {/* POUR ALLER PLUS LOIN — du savoir-faire de fond sur tes thématiques.
-              Les conseils du haut disent quoi faire CETTE semaine ; ceux-ci
-              restent vrais dans six mois et se lisent quand on a le temps. */}
-          {(report?.themes_tips ?? []).length > 0 && (
-            <section className="mb-9">
-              <SectionTitle tone="discret">
-                Pour aller plus loin · le métier, thème par thème
-              </SectionTitle>
-              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-                {(report?.themes_tips ?? []).map((t) => (
-                  <div
-                    key={t.theme}
-                    className="bg-white border border-line rounded-xl shadow-card p-4"
-                  >
-                    <h3 className="text-[13.5px] font-semibold text-ink mb-2.5">{t.theme}</h3>
-                    <div className="space-y-2.5">
-                      {t.tips.map((tip) => (
-                        <div key={tip.titre}>
-                          <div className="text-[12.5px] font-semibold text-brand leading-snug">
-                            {tip.titre}
-                          </div>
-                          <p className="text-[12.5px] text-muted leading-relaxed mt-0.5">
-                            {tip.texte}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10.5px] text-faint mt-2">
-                Bonnes pratiques écrites par l&apos;IA pour tes thématiques — pas de
-                l&apos;actualité, et pas lié aux chiffres de ta semaine.
-              </p>
-            </section>
+          {/* ALLER PLUS LOIN — le savoir-faire qui répond à ce qui te bloque */}
+          {report?.apprentissage && (
+            <Apprentissage data={report.apprentissage} num={nApprendre} />
           )}
         </>
       )}

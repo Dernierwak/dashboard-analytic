@@ -156,6 +156,8 @@ export type ThemeSummary = {
 
 export type ThemeSeries = {
   metric_label: string;
+  // Pourquoi ce n'est pas l'indicateur de ton objectif qu'on suit ici.
+  note?: string | null;
   points: { label: string; value: number }[];
   markers: number[]; // index de semaine où une action a été lancée
 };
@@ -179,6 +181,12 @@ export type ReportPayload = {
   themes_intro?: string | null;
   // Savoir-faire de fond par thématique — durable, pas lié à la semaine.
   themes_tips?: { theme: string; tips: { titre: string; texte: string }[] }[] | null;
+  // Ce que tu n'arrives pas à appliquer, et le savoir-faire qui répond.
+  apprentissage?: {
+    bloques: string[];
+    recurrents: { titre: string; fois: number }[];
+    tips: { theme: string; tips: { titre: string; texte: string }[] }[];
+  } | null;
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;

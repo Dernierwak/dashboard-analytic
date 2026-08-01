@@ -109,6 +109,11 @@ export function ThemeTimeline({
           ? " Chaque ▲ marque une semaine où tu as lancé une action : compare la courbe avant et après pour voir si elle a eu un effet."
           : " Quand tu lanceras une action sur ce thème, un ▲ marquera la semaine — tu verras si la courbe a suivi."}
       </p>
+      {series.note && (
+        <p className="text-[11px] text-warn leading-relaxed mt-1.5 bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5">
+          {series.note}
+        </p>
+      )}
     </div>
   );
 }
