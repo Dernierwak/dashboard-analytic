@@ -3,7 +3,20 @@ from datetime import date, timedelta
 
 
 def insert_instagram_org(supabase: Client, results):
-    supabase.table("instagram_organic_posts").upsert(results, on_conflict="post_id").execute()
+    """Écrit les posts récoltés — un jeu de lignes PAR UTILISATEUR.
+
+    Le conflit porte sur (user_id, post_id) et surtout PAS sur post_id seul :
+    deux comptes Pulse peuvent suivre la même page Instagram, et avec un
+    conflit global l'upsert de l'un réécrivait le user_id des lignes de
+    l'autre. Chaque récolte volait donc les posts du voisin au lieu d'ajouter
+    les siens, sans lever la moindre erreur. Voir
+    supabase/migrations/instagram_posts_par_user.sql.
+    """
+    if not results:
+        return
+    supabase.table("instagram_organic_posts").upsert(
+        results, on_conflict="user_id,post_id"
+    ).execute()
 
 
 def insert_instagram_total_posts_id(supabase: Client, user_id, total_posts_id):
