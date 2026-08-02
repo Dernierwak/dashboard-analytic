@@ -25,6 +25,7 @@ const NAV: { href: string; label: string; glyphe?: string }[] = [
   { href: "/meta", label: "Meta", glyphe: "▣" },
   { href: "/google", label: "Google", glyphe: "◆" },
   { href: "/instagram", label: "Instagram", glyphe: "◎" },
+  { href: "/comptes", label: "Connexions", glyphe: "⚯" },
   { href: "/equipe", label: "Équipe" },
 ];
 
@@ -68,7 +69,9 @@ export function SideNav({ compte, infos }: { compte: CompteActif; infos: InfosNa
         </div>
 
         <nav className="flex lg:flex-col items-center lg:items-stretch gap-1 overflow-x-auto lg:overflow-visible flex-1 lg:flex-none min-w-0">
-          {NAV.map((n) => {
+          {/* Les connexions ne se gèrent que sur son propre compte : sur celui
+              d'un autre, l'entrée disparaît au lieu de mener à un refus. */}
+          {NAV.filter((n) => n.href !== "/comptes" || compte.uid === compte.moi).map((n) => {
             const on = actif(n.href);
             return (
               <Link

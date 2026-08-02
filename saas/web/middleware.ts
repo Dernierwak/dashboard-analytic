@@ -35,6 +35,10 @@ export async function middleware(request: NextRequest) {
   if (!user && !isLogin) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // Les paramètres ne suivent pas : si la session expire pendant un retour
+    // OAuth, le code d'autorisation se retrouverait dans l'URL de la page de
+    // connexion — donc dans l'historique du navigateur et dans les journaux.
+    url.search = "";
     return NextResponse.redirect(url);
   }
   if (user && isLogin) {
