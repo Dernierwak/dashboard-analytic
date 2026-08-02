@@ -35,13 +35,25 @@ export type MonthRow = {
 };
 
 // Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
-// (même carry-forward que les canaux, zéro migration).
+// pour le mensuel et "an:label:<nom>" pour l'annuel (même carry-forward que
+// les canaux, zéro migration).
 export type ThemeSpend = {
   label: string;
   spend: number;        // dépense du mois en cours
   budget: number;       // budget mensuel du thème
   spendYear: number;    // dépense cumulée depuis janvier
-  budgetYear: number;   // somme des 12 budgets mensuels (carry-forward compris)
+  budgetYear: number;   // budget annuel EFFECTIF (saisi, sinon somme des 12 mois)
+  budgetYearSaisi: number; // ce qui a été saisi explicitement (0 = rien)
+};
+
+// Un jour dont la dépense dépasse le budget quotidien. C'est le garde-fou que
+// le budget mensuel seul ne donne pas : à la fin du mois il est trop tard, et
+// une seule journée emballée peut manger une semaine d'enveloppe.
+export type AlerteJour = {
+  date: string;
+  label: string;
+  montant: number;
+  ratio: number; // 1.8 = 80 % au-dessus du budget du jour
 };
 
 export type CoutsData = {
@@ -50,7 +62,15 @@ export type CoutsData = {
   elapsed: number; // fraction du mois écoulée (repère), 0..1
   channels: ChannelCout[];
   totalSpent: number;
-  totalBudget: number;
+  totalBudget: number;      // budget MENSUEL effectif, tous canaux
+  budgetGlobalSaisi: number; // saisi en tant que budget unique (0 = hérité des canaux)
+  spentYear: number;
+  budgetAnnuel: number;      // budget ANNUEL effectif
+  budgetAnnuelSaisi: number; // saisi explicitement (0 = somme des 12 mois)
+  joursMois: number;
+  budgetJour: number;    // budget mensuel ÷ jours du mois
+  moyenneJour: number;   // dépense réelle ÷ jours écoulés
+  alertes: AlerteJour[]; // jours au-dessus du budget quotidien, du pire au moindre
   daily: CoutDay[];
   months: MonthRow[];
   byTheme: ThemeSpend[];
@@ -174,28 +194,43 @@ export async function getCoutsData(): Promise<CoutsData> {
     return best ? best[1] : 0;
   };
 
-  // Thèmes budgétés sans dépense ce mois : on les montre quand même (suivi)
+  // Thèmes budgétés sans dépense ce mois : on les montre quand même (suivi).
+  // Y compris ceux qui n'ont qu'un budget ANNUEL — sinon poser une enveloppe
+  // d'année sur un thème le ferait disparaître de la liste jusqu'à sa première
+  // dépense, c'est-à-dire exactement quand on veut le surveiller.
   for (const b of budgets) {
     const ch = String(b.channel ?? "");
-    if (ch.startsWith("label:") && (Number(b.amount) || 0) > 0) {
-      const name = ch.slice(6);
-      if (!themeMap.has(name)) themeMap.set(name, 0);
-    }
+    if ((Number(b.amount) || 0) <= 0) continue;
+    const name = ch.startsWith("label:")
+      ? ch.slice(6)
+      : ch.startsWith("an:label:")
+        ? ch.slice(9)
+        : null;
+    if (name && !themeMap.has(name)) themeMap.set(name, 0);
   }
+  // Un budget annuel se SAISIT, il ne se devine pas. Beaucoup de campagnes
+  // vivent sur une enveloppe posée pour l'année (un salon, une saison) qu'aucune
+  // multiplication du mensuel ne reproduit. On stocke donc l'annuel à part, sur
+  // le 1er janvier, et on ne retombe sur la somme des 12 mois que faute de mieux.
+  const anneeIso = `${y}-01-01`;
+  const sommeDouze = (channel: string): number => {
+    let t = 0;
+    for (let mm = 0; mm < 12; mm++) {
+      t += budgetFor(channel, `${y}-${String(mm + 1).padStart(2, "0")}-01`);
+    }
+    return t;
+  };
+
   const byTheme: ThemeSpend[] = [...themeMap.entries()]
     .map(([label, spend]) => {
-      // Le budget annuel n'est pas « mensuel × 12 » : il suit le carry-forward,
-      // donc on additionne les 12 mois tels qu'ils sont réellement réglés.
-      let budgetYear = 0;
-      for (let mm = 0; mm < 12; mm++) {
-        budgetYear += budgetFor(`label:${label}`, `${y}-${String(mm + 1).padStart(2, "0")}-01`);
-      }
+      const saisi = budgetFor(`an:label:${label}`, anneeIso);
       return {
         label,
         spend,
         budget: budgetFor(`label:${label}`, monthStart),
         spendYear: themeYear.get(label) ?? 0,
-        budgetYear,
+        budgetYear: saisi > 0 ? saisi : sommeDouze(`label:${label}`),
+        budgetYearSaisi: saisi,
       };
     })
     .sort((a, b) => b.spendYear - a.spendYear);
@@ -235,13 +270,61 @@ export async function getCoutsData(): Promise<CoutsData> {
     { key: "google", name: "Google Ads", icon: "◆", color: "#1a7a4a", spent: googleSpent, budget: budgetFor("google", monthStart) },
   ];
 
+  const totalSpent = channels.reduce((a, c) => a + c.spent, 0);
+
+  // UN SEUL BUDGET, pas un par plateforme. Personne ne raisonne « 2 000 sur
+  // Meta et 10 000 sur Google » : on a une enveloppe publicitaire, et on la
+  // répartit par thème. Les budgets par plateforme déjà saisis restent
+  // honorés — leur somme sert de valeur de départ tant qu'aucun budget unique
+  // n'est posé, pour que personne ne perde ce qu'il avait réglé.
+  const budgetGlobalSaisi = budgetFor("global", monthStart);
+  const totalBudget =
+    budgetGlobalSaisi > 0 ? budgetGlobalSaisi : channels.reduce((a, c) => a + c.budget, 0);
+
+  const budgetAnnuelSaisi = budgetFor("an:global", anneeIso);
+  const budgetAnnuel =
+    budgetAnnuelSaisi > 0
+      ? budgetAnnuelSaisi
+      : sommeDouze("global") > 0
+        ? sommeDouze("global")
+        : sommeDouze("meta") + sommeDouze("google");
+
+  const spentYear = months.reduce((a, mo) => a + mo.metaSpent + mo.googleSpent, 0);
+
+  // Le rythme quotidien : le seul niveau où l'on peut encore réagir. Un budget
+  // mensuel ne se constate qu'à la fin du mois, quand l'argent est parti.
+  const joursMois = daysInMonth;
+  const budgetJour = totalBudget > 0 ? totalBudget / joursMois : 0;
+  const joursEcoules = Math.max(1, now.getDate());
+  const moyenneJour = totalSpent / joursEcoules;
+  const alertes: AlerteJour[] =
+    budgetJour > 0
+      ? daily
+          .map((d) => ({
+            date: d.date,
+            label: d.label,
+            montant: d.meta + d.google,
+            ratio: (d.meta + d.google) / budgetJour,
+          }))
+          .filter((a) => a.ratio > 1)
+          .sort((a, b) => b.montant - a.montant)
+      : [];
+
   return {
     email: compte.email,
     monthLabel: `${MOIS_FULL[m]} ${y}`,
     elapsed,
     channels,
-    totalSpent: channels.reduce((a, c) => a + c.spent, 0),
-    totalBudget: channels.reduce((a, c) => a + c.budget, 0),
+    totalSpent,
+    totalBudget,
+    budgetGlobalSaisi,
+    spentYear,
+    budgetAnnuel,
+    budgetAnnuelSaisi,
+    joursMois,
+    budgetJour,
+    moyenneJour,
+    alertes,
     daily,
     months,
     byTheme,

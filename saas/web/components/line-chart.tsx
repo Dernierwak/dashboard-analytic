@@ -16,6 +16,7 @@ export function LineChart({
   fmt = (v: number) => String(Math.round(v)),
   unit = "",
   ariaLabel,
+  repere,
 }: {
   labels: string[];
   series: Serie[];
@@ -23,6 +24,9 @@ export function LineChart({
   fmt?: (v: number) => string;
   unit?: string;
   ariaLabel: string;
+  // Ligne de référence horizontale — le budget du jour, par exemple. Une
+  // courbe sans seuil ne dit pas si ce qu'on voit est normal ou anormal.
+  repere?: { value: number; label: string; color?: string };
 }) {
   const n = labels.length;
   if (n < 2 || series.length === 0) return null;
@@ -33,7 +37,9 @@ export function LineChart({
   const plotH = H - PAD_T - PAD_B;
 
   const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
-  const max = Math.max(...all, 1);
+  // Le repère entre dans l'échelle : sinon un seuil au-dessus du plus haut
+  // point sortirait du cadre, et un seuil jamais atteint resterait invisible.
+  const max = Math.max(...all, repere?.value ?? 0, 1);
 
   const x = (i: number) => PAD_L + (i * (W - PAD_L - PAD_R)) / (n - 1);
   const y = (v: number) => PAD_T + (1 - v / max) * plotH;
@@ -77,6 +83,31 @@ export function LineChart({
         stroke="#d8d8de"
         vectorEffect="non-scaling-stroke"
       />
+
+      {repere && repere.value > 0 && (
+        <g>
+          <line
+            x1={PAD_L}
+            y1={y(repere.value)}
+            x2={W - PAD_R}
+            y2={y(repere.value)}
+            stroke={repere.color ?? "#b86b00"}
+            strokeWidth="1.5"
+            strokeDasharray="6 3"
+            vectorEffect="non-scaling-stroke"
+          />
+          <text
+            x={W - PAD_R}
+            y={Math.max(9, y(repere.value) - 4)}
+            textAnchor="end"
+            fontSize="9"
+            fill={repere.color ?? "#b86b00"}
+            fontWeight="600"
+          >
+            {repere.label}
+          </text>
+        </g>
+      )}
 
       {series.map((s, si) => {
         const pts = s.values

@@ -26,7 +26,18 @@ function fmtDate(isoStr: string): string {
   return `${String(d.getDate()).padStart(2, "0")} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function PeriodPillsInsta({ days }: { days: number }) {
+// Changer de période ne doit pas effacer les autres réglages : la métrique
+// suivie et le tri des tables survivent au clic. Seule la période sur mesure
+// disparaît — c'est justement ce qu'on remplace.
+function PeriodPillsInsta({
+  days,
+  metric,
+  sort,
+}: {
+  days: number;
+  metric: string;
+  sort: string;
+}) {
   const opts = [
     { v: 7, label: "7 j" },
     { v: 14, label: "14 j" },
@@ -34,12 +45,20 @@ function PeriodPillsInsta({ days }: { days: number }) {
     { v: 90, label: "90 j" },
     { v: 0, label: "Tout" },
   ];
+  const lien = (v: number) => {
+    const q = new URLSearchParams();
+    if (v !== 7) q.set("d", String(v));
+    if (metric !== "reach") q.set("m", metric);
+    if (sort !== "date") q.set("s", sort);
+    const s = q.toString();
+    return s ? `/instagram?${s}` : "/instagram";
+  };
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {opts.map((o) => (
         <a
           key={o.v}
-          href={o.v === 7 ? "/instagram" : `/instagram?d=${o.v}`}
+          href={lien(o.v)}
           className={`text-[11.5px] font-semibold rounded-full px-3 py-1 border transition-colors ${
             days === o.v
               ? "bg-ink text-white border-ink"
@@ -333,7 +352,7 @@ export default async function InstagramPage({
             <span style={{ color: "#7b4fff" }}>◎</span> Instagram.
           </h1>
           <div className="flex items-center gap-3 flex-wrap">
-            <PeriodPillsInsta days={d.days} />
+            <PeriodPillsInsta days={d.days} metric={metric} sort={sort} />
             <DateRange from={searchParams?.from} to={searchParams?.to} />
           </div>
         </div>
@@ -413,7 +432,10 @@ export default async function InstagramPage({
         <div className="mb-8">
           <h2 className="text-[14px] font-semibold text-ink mb-3">
             Ce qui marche pour toi{" "}
-            <span className="text-faint font-normal">· par format</span>
+            <span className="text-faint font-normal">
+              · par format
+              {d.scope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
+            </span>
           </h2>
           <div className="bg-white border border-line rounded-xl shadow-card divide-y divide-line">
             {d.formats.map((f, i) => (
@@ -445,7 +467,7 @@ export default async function InstagramPage({
           Quand publier ?{" "}
           <span className="text-faint font-normal">
             · {metricLabel(d.topMetric)} moyenne par jour et créneau
-            {d.heatmapScope === "historique"
+            {d.scope === "historique"
               ? " (période trop vide → tout l'historique)"
               : " (période filtrée)"}
           </span>
@@ -509,7 +531,7 @@ export default async function InstagramPage({
             Top 3 posts{" "}
             <span className="text-faint font-normal">
               · par {(INSTA_METRICS.find((m) => m.key === d.topMetric) ?? INSTA_METRICS[0]).label.toLowerCase()}
-              {d.heatmapScope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
+              {d.scope === "historique" ? " (tout l'historique)" : " (période filtrée)"}
             </span>
           </h2>
           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -564,6 +586,7 @@ export default async function InstagramPage({
             Performance par thème{" "}
             <span className="text-faint font-normal">
               · moyennes par post · triée par {metricLabel(d.topMetric)}
+              {d.scope === "historique" ? " · tout l'historique" : " · période filtrée"}
             </span>
           </h2>
           <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">

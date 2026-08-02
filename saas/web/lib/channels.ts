@@ -502,7 +502,9 @@ export type InstaDash = {
   periodLabel: string;
   days: Days;
   labels: string[]; // liste maîtresse (assignation de thème par post)
-  heatmapScope: "periode" | "historique"; // fallback si fenêtre trop vide
+  // Périmètre réellement utilisé pour formats / créneaux / top 3 / thèmes :
+  // « periode » sauf si la fenêtre compte moins de 2 posts.
+  scope: "periode" | "historique";
   followers: number;
   followersDelta: number | null;
   growth30: number | null;
@@ -514,7 +516,7 @@ export type InstaDash = {
   avgViews: number;
   followersSeries: FollowerPoint[];
   formats: FormatStat[];
-  heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — tout l'historique
+  heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — sur la période retenue
   bestSlot: { day: number; slot: number; avgReach: number; count: number } | null;
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
   topMetric: string;       // métrique qui pilote formats, heatmap, top 3 et thèmes
@@ -542,7 +544,9 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
     supabase.from("instagram_organic_posts")
       .select("*")
-      .eq("user_id", uid).order("date", { ascending: false }).limit(600),
+      // Pas de plafond : « Tout l'historique » doit dire la vérité. À 600 posts
+      // on en cachait plus de la moitié sans le signaler nulle part.
+      .eq("user_id", uid).order("date", { ascending: false }).limit(5000),
     supabase.from("followers_history")
       .select("fetched_at, followers")
       .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(90),
@@ -610,8 +614,18 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     : topMetric === "eng" ? p.eng
     : p.reach;
 
+  // LA PÉRIODE PILOTE AUSSI TOUTE LA PAGE. C'est le pendant de la règle
+  // ci-dessus, et il manquait : les formats et la performance par thème se
+  // calculaient sur tout l'historique, si bien que changer la période ne
+  // bougeait rien à l'écran — le filtre avait l'air cassé parce qu'il l'était.
+  // Une seule réserve, déjà appliquée à la carte des créneaux : sous 2 posts
+  // dans la fenêtre, aucune moyenne ne veut rien dire, alors on retombe sur
+  // l'historique — et on le DIT, au lieu de laisser croire au contraire.
+  const pool = posts.length >= 2 ? posts : all;
+  const scope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
+
   const fmtMap = new Map<string, { count: number; reach: number; eng: number }>();
-  for (const p of all) {
+  for (const p of pool) {
     const f = fmtMap.get(p.type) ?? { count: 0, reach: 0, eng: 0 };
     f.count += 1; f.reach += _mval(p); f.eng += p.eng;
     fmtMap.set(p.type, f);
@@ -625,10 +639,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     }))
     .sort((a, b) => b.avgReach - a.avgReach);
 
-  // « Quand publier ? » + Top 3 : suivent la PÉRIODE filtrée. Fenêtre trop
-  // vide (< 2 posts) → fallback sur l'historique, signalé au rendu.
-  const heatPool = posts.length >= 2 ? posts : all;
-  const heatmapScope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
+  const heatPool = pool;
   const slotOf = (h: number) => (h < 7 ? 0 : h < 10 ? 1 : h < 13 ? 2 : h < 16 ? 3 : h < 19 ? 4 : 5);
   const acc: { count: number; reach: number }[][] = Array.from({ length: 7 }, () =>
     Array.from({ length: 6 }, () => ({ count: 0, reach: 0 }))
@@ -655,13 +666,13 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   // Top 3 posts de la période filtrée (fallback historique, même signal).
   const topPosts = [...heatPool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
 
-  // Performance par label (posts labellisés, tout l'historique) — TOUTES les
-  // métriques, triées sur celle qui pilote la page.
+  // Performance par thème, sur la période retenue — TOUTES les métriques,
+  // triées sur celle qui pilote la page.
   const lblMap = new Map<string, {
     count: number; pilote: number; eng: number;
     reach: number; views: number; likes: number; comments: number; saved: number;
   }>();
-  for (const p of all)
+  for (const p of pool)
     for (const l of p.labels) {
       const x = lblMap.get(l) ?? {
         count: 0, pilote: 0, eng: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0,
@@ -692,7 +703,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     periodLabel: w.label,
     days,
     labels: masterLabels,
-    heatmapScope,
+    scope,
     followers,
     followersDelta,
     growth30,
