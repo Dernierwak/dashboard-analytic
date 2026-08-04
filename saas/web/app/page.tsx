@@ -3,7 +3,7 @@
 // bientôt par le worker cron) : même contenu partout.
 
 import Link from "next/link";
-import { getWeeklyData, type ReportPayload } from "@/lib/report";
+import { getWeeklyData, type ReportPayload, type TrackedAction } from "@/lib/report";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
@@ -17,7 +17,6 @@ import { ActionTop } from "@/components/action-top";
 import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 
-import { getCompteActif } from "@/lib/account";
 
 export const dynamic = "force-dynamic";
 
@@ -52,22 +51,22 @@ function SectionTitle({
   );
 }
 
-// Le résumé de la semaine — niveau 1, juste sous le titre, en typographie
-// éditoriale et SANS carte : au milieu de blocs encadrés, un bloc nu attire
-// l'œil plus fort qu'un cadre de plus. Sa première phrase porte l'essentiel,
-// on la met en avant à l'intérieur même du résumé.
+// Le résumé de la semaine — sans carte : au milieu de blocs encadrés, un bloc
+// nu attire l'œil plus fort qu'un cadre de plus.
+//
+// Sa première phrase n'est plus mise en avant. Elle l'était, et elle disait la
+// même chose que le verdict juste au-dessus — le worker demande à l'IA « une
+// phrase de synthèse » alors que le verdict EST déjà une phrase de synthèse,
+// calculée de façon déterministe. Deux affirmations identiques et de poids
+// proche, collées l'une à l'autre : le doublon retiré de la section 2 vivait
+// encore ici. Le résumé garde tout son texte, il cesse seulement de se
+// disputer le niveau 1.
 function ResumeSemaine({ brief }: { brief: string }) {
-  const i = brief.indexOf(". ");
-  const tete = i > 0 ? brief.slice(0, i + 1) : brief;
-  const suite = i > 0 ? brief.slice(i + 2) : "";
   return (
     <div className="mt-3.5 max-w-[68ch]">
-      <p className="text-[15px] sm:text-[16px] leading-relaxed text-ink font-medium">{tete}</p>
-      {suite && (
-        <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted mt-1.5 whitespace-pre-line">
-          {suite}
-        </p>
-      )}
+      <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted whitespace-pre-line">
+        {brief}
+      </p>
       <p className="text-[10.5px] text-faint mt-2.5">
         Résumé écrit par l&apos;IA à partir de tous tes posts et campagnes de la semaine.
       </p>
@@ -75,52 +74,68 @@ function ResumeSemaine({ brief }: { brief: string }) {
   );
 }
 
-function Suivi({ feedback }: { feedback: Record<string, string> }) {
-  // Compté en LIVE depuis reco_feedback — reflète immédiatement les clics ici.
-  const vals = Object.values(feedback);
-  const applique = vals.filter((v) => v === "done").length;
-  const utile = vals.filter((v) => v === "useful").length;
-  const ecarte = vals.filter((v) => v === "not_for_me").length;
-  const bloque = vals.filter((v) => v === "too_hard").length;
-  const bits: React.ReactNode[] = [];
-  if (applique)
-    bits.push(
-      <span key="a" className="text-pos font-semibold">
-        ✓ {applique} appliqué{applique > 1 ? "s" : ""}
-      </span>
+// Le verdict, en chiffre. Une page dont le niveau 1 est une phrase de 26 px
+// alors qu'un module affiche 46 px plus bas n'a pas la hiérarchie qu'elle
+// croit avoir : c'est la typographie qui classe, pas l'intention. L'écart
+// passe donc en très grand, et la phrase entière reste juste dessous.
+// Sans les nouvelles clés (rapports publiés avant), on retombe sur la phrase.
+function Verdict({ report }: { report: ReportPayload }) {
+  const pct = report.verdict_pct;
+  const ton = report.verdict_tone ?? "stable";
+  if (pct === null || pct === undefined || !report.verdict_metric) {
+    return (
+      <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
+        {report.verdict}
+      </h1>
     );
-  if (utile)
-    bits.push(
-      <span key="u" className="text-brand font-semibold">
-        ● {utile} utile{utile > 1 ? "s" : ""}
-      </span>
-    );
-  if (ecarte)
-    bits.push(
-      <span key="e" className="text-faint font-medium">
-        ✕ {ecarte} écarté{ecarte > 1 ? "s" : ""}
-      </span>
-    );
-  if (bloque)
-    bits.push(
-      <span key="b" className="text-warn font-semibold">
-        ◇ {bloque} trop compliqué{bloque > 1 ? "s" : ""}
-      </span>
-    );
-  if (bits.length === 0) return null;
+  }
+  const cls = ton === "pos" ? "text-pos" : ton === "neg" ? "text-neg" : "text-muted";
+  const fleche = pct > 0.5 ? "▲" : pct < -0.5 ? "▼" : "≈";
   return (
-    <div className="flex items-center gap-3 text-[12px] mt-2.5">
-      <span className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-        Suivi des conseils
-      </span>
-      {bits}
+    <div>
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <span className={`font-mono text-[52px] sm:text-[68px] leading-[0.9] font-medium ${cls}`}>
+          {fleche} {pct > 0 ? "+" : ""}
+          {pct.toFixed(0)}
+          <span className="text-[26px] sm:text-[32px]"> %</span>
+        </span>
+        <span className="font-serif text-[17px] sm:text-[19px] text-muted leading-tight">
+          {report.verdict_metric}
+        </span>
+      </div>
+      <h1 className="font-serif text-[17px] sm:text-[19px] leading-snug text-ink text-balance mt-2 max-w-[60ch]">
+        {report.verdict}
+      </h1>
     </div>
+  );
+}
+
+// Le hero ne se termine plus sur un compteur rétrospectif. Il portait
+// « Suivi des conseils » — quatre nombres qui regardent les quatre semaines
+// écoulées — juste avant la première section. La dernière chose lue avant de
+// commencer regardait donc en arrière. Ces compteurs vivent maintenant en tête
+// de « Ton historique d'actions », qui est leur sujet, et leur place est prise
+// par un lien vers la seule section où l'on agit.
+function VersLaction({ actions }: { actions: TrackedAction[] }) {
+  const aFaire = actions.filter((a) => a.status === "running").length;
+  const aJuger = actions.filter((a) => a.status === "done" && !a.due).length;
+  if (aFaire + aJuger === 0) return null;
+  const bouts = [
+    aFaire > 0 ? `${aFaire} action${aFaire > 1 ? "s" : ""} en cours` : null,
+    aJuger > 0 ? `${aJuger} à juger` : null,
+  ].filter(Boolean);
+  return (
+    <a
+      href="#a-faire"
+      className="inline-flex items-center gap-1.5 mt-4 text-[12.5px] font-semibold text-brand border border-brand/25 rounded-full px-3.5 py-1.5 hover:bg-brand/[0.06] transition-colors"
+    >
+      ▸ {bouts.join(" · ")} <span className="text-faint font-normal">— y aller ↓</span>
+    </a>
   );
 }
 
 export default async function Page() {
   const data = await getWeeklyData();
-  const compte = await getCompteActif();
   const report = data.report;
 
   // Thèmes prioritaires (≤ 3) — le fil qui relie la vision aux conseils.
@@ -162,9 +177,13 @@ export default async function Page() {
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           {report?.week_label ?? data.weekLabel}
         </p>
-        <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
-          {report?.verdict ?? (report ? "Voici ce qui compte cette semaine." : "Ta semaine en bref.")}
-        </h1>
+        {report ? (
+          <Verdict report={report} />
+        ) : (
+          <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
+            Ta semaine en bref.
+          </h1>
+        )}
         {report?.brief && <ResumeSemaine brief={report.brief} />}
       {/* L'objectif est un RÉGLAGE, pas du contenu : il se range sous le
           résumé, replié, à portée mais sans peser sur la lecture. */}
@@ -222,7 +241,7 @@ export default async function Page() {
             </div>
           </div>
         </details>
-        {report && <Suivi feedback={data.feedback} />}
+        <VersLaction actions={data.actions} />
       </div>
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
@@ -381,6 +400,7 @@ export default async function Page() {
             actions={data.actions}
             archived={data.actionsArchived}
             num={nHistorique}
+            feedback={data.feedback}
           />
 
           {/* ALLER PLUS LOIN — le savoir-faire qui répond à ce qui te bloque */}

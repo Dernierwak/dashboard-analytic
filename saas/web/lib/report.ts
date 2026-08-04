@@ -59,6 +59,9 @@ export type KpiFocus = {
   labels: string[];
   defaut: string;
   options: KpiOption[];
+  // Semaines où une action a été appliquée, tous thèmes confondus. Absent des
+  // payloads publiés avant — la courbe s'affiche alors sans repères.
+  markers?: number[];
 };
 
 // Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
@@ -219,6 +222,11 @@ export type ReportPayload = {
   since: string;
   until: string;
   verdict: string;
+  // Les ingrédients du verdict, pour l'afficher en grand plutôt qu'en phrase.
+  // Absents des payloads publiés avant → repli sur la phrase seule.
+  verdict_pct?: number | null;
+  verdict_metric?: string | null;
+  verdict_tone?: "pos" | "neg" | "stable" | null;
   brief: string | null;
   suivi: { applique: number; utile: number; ecarte: number };
   todo: { key: string; title: string; platform: string; done: boolean }[];

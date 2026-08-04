@@ -701,8 +701,19 @@ def build_payload(sb, user_id: str) -> dict | None:
                          "la portée de tes posts"))
     if clicks_delta_pct:
         _signals.append((clicks_delta_pct, "les clics publicitaires"))
+    # Le verdict sort d'ici en DEUX formes. La phrase, pour la lire ; et ses
+    # trois ingredients bruts, pour que le front puisse afficher l'ecart en
+    # grand. Une phrase de 26 px ne peut pas etre le niveau 1 d'une page ou un
+    # autre module affiche un chiffre de 46 px : c'est la typographie qui
+    # decide de la hierarchie, pas l'intention.
+    verdict_pct = None
+    verdict_metric = None
+    verdict_tone = "stable"
     if _signals:
         _val, _name = max(_signals, key=lambda s: abs(s[0]))
+        verdict_pct = round(float(_val), 1)
+        verdict_metric = _name
+        verdict_tone = "pos" if _val >= 10 else ("neg" if _val <= -10 else "stable")
         if _val >= 10:
             verdict = f"Semaine en progression — portée par {_name} ({_val:+.0f} %)."
         elif _val <= -10:
@@ -1358,10 +1369,26 @@ def build_payload(sb, user_id: str) -> dict | None:
 
         if _options:
             _def = next((o for o in _options if o["key"] == _cle), _options[0])
+            # Les memes reperes ▲ que sur les frises par theme, mais TOUS
+            # themes confondus. La courbe de la boussole est la premiere du
+            # rapport : c'est la qu'on doit pouvoir relier « j'ai fait ca » a
+            # « ca a bouge », pas trois sections plus bas.
+            _kmk = []
+            for _dates in _markers.values():
+                for _x in _dates:
+                    try:
+                        _dx = date.fromisoformat(str(_x)[:10])
+                    except Exception:
+                        continue
+                    for _j, (_a1, _a2) in enumerate(_sems):
+                        if _a1 <= _dx <= _a2:
+                            _kmk.append(_j)
+                            break
             kpi_focus = {
                 "labels": _lab,
                 "defaut": _def["key"],
                 "options": _options,
+                "markers": sorted(set(_kmk)),
             }
 
         # Les memes 10 semaines pour les quatre tuiles de lecture rapide.
@@ -1512,6 +1539,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         "since": cur_since.isoformat(),
         "until": last_full_day.isoformat(),
         "verdict": verdict,
+        # Les ingredients du verdict, pour l'afficher en grand. Absents des
+        # payloads deja publies → le front retombe sur la phrase seule.
+        "verdict_pct": verdict_pct,
+        "verdict_metric": verdict_metric,
+        "verdict_tone": verdict_tone,
         "brief": brief,
         "suivi": {"applique": _n_done, "utile": _n_useful, "ecarte": _n_skip},
         "todo": [

@@ -75,3 +75,28 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 ### Mode dark
 - CSS tokens déjà en place (`--ink`, `--ink-3`, etc.)
 - Toggle dans Paramètres
+
+### Frise chronologique de la semaine (rapport, section 1)
+Dans « Ta semaine, tous thèmes confondus » : une vue du temps, à côté de la
+boussole et de l'anneau. On voit *ce qui tournait* pendant la semaine, pas
+seulement ce que ça a donné.
+
+- **Campagnes** : une barre horizontale par campagne, du début à la fin de sa
+  diffusion. Une campagne lancée mercredi n'a eu que la moitié de la semaine —
+  aujourd'hui rien ne le dit, et on lui compare des chiffres de semaine pleine.
+- **Publications** : un point (ou une vignette) à sa date de publication, sur la
+  même échelle de temps. On voit d'un coup le rythme, les trous, et si un pic
+  de portée suit un post ou une campagne.
+- Couleur par thème (`lib/palette.ts`) → la frise dit aussi *dans quel thème* on
+  a été actif cette semaine, ce que l'anneau dit en dépense seulement.
+- Réutiliser les marqueurs ▲ d'action de `theme-timeline.tsx` : on verrait la
+  décision, la campagne et le post sur la même ligne de temps.
+
+Données déjà en base : `meta_ads_insights.date_start` et
+`google_ads_insights.date_start` donnent les jours où une campagne a dépensé
+(donc début/fin réels de diffusion, sans appel API supplémentaire) ;
+`instagram_organic_posts.date` donne la date de publication.
+
+À trancher : période affichée (la semaine seule, ou 30 jours pour du contexte),
+et comportement quand il y a 18 campagnes — regroupement par thème plutôt qu'une
+barre par campagne.

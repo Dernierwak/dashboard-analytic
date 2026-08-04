@@ -51,25 +51,13 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
   return (
     <div className="bg-white border border-line rounded-2xl shadow-card overflow-hidden">
       <div className="p-5 sm:p-6">
+        {/* Le surtitre dit CE QU'ON REGARDE ; le chiffre vient tout de suite
+            après. Les boutons de sélection sont passés sous le module : neuf
+            pastilles au-dessus de la valeur, c'était la télécommande avant
+            l'écran — sur un téléphone, ~145 px de contrôles à traverser pour
+            atteindre le seul chiffre qui compte. */}
         <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-3">
-          Ta boussole
-        </div>
-
-        {/* Les indicateurs disponibles — celui de ton objectif est ouvert par défaut */}
-        <div className="flex items-center gap-1.5 flex-wrap mb-4">
-          {k.options.map((op) => (
-            <button
-              key={op.key}
-              onClick={() => setCle(op.key)}
-              className={`text-[11.5px] font-semibold rounded-full px-3 py-1.5 border transition-colors ${
-                op.key === cle
-                  ? "bg-ink text-white border-ink"
-                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
-              }`}
-            >
-              {op.titre}
-            </button>
-          ))}
+          Ta boussole <span className="text-ink">· {o.titre}</span>
         </div>
 
         <div className="flex items-baseline gap-3 flex-wrap">
@@ -142,7 +130,33 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           fmt={(v) => fmtVal(o, v)}
           unit={o.unite}
           ariaLabel={`${o.titre} sur 10 semaines`}
+          markers={k.markers}
         />
+        {(k.markers?.length ?? 0) > 0 && (
+          <p className="text-[10px] text-faint px-3 pb-1.5">
+            <span className="text-brand">▲</span> une semaine où tu as appliqué une action
+          </p>
+        )}
+      </div>
+
+      {/* Changer d'indicateur : une rangée qui défile horizontalement plutôt
+          que quatre lignes de pastilles repliées. */}
+      <div className="border-t border-line px-3 py-2.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+          {k.options.map((op) => (
+            <button
+              key={op.key}
+              onClick={() => setCle(op.key)}
+              className={`shrink-0 text-[11.5px] font-semibold rounded-full px-3 py-1.5 border transition-colors ${
+                op.key === cle
+                  ? "bg-ink text-white border-ink"
+                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
+              }`}
+            >
+              {op.titre}
+            </button>
+          ))}
+        </div>
       </div>
 
       {o.repere && (

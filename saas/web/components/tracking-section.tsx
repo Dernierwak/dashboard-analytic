@@ -30,14 +30,48 @@ function etat(a: TrackedAction): { icon: string; cls: string; label: string } {
   return { icon: "▸", cls: "text-brand", label: "à faire" };
 }
 
+// Tes réactions aux conseils — descendues du hero, où elles fermaient la page
+// sur un compteur tourné vers le passé.
+//
+// Elles portent leur propre titre plutôt que de rejoindre la ligne du dessus :
+// ce sont DEUX comptages différents de la même activité. Celui du dessus lit
+// les actions lancées (suivi_actions), celui-ci lit les réactions laissées sur
+// les conseils (reco_feedback). Les fondre en une seule ligne donnerait des
+// nombres voisins qui se contredisent sans qu'on sache pourquoi.
+function Retours({ feedback }: { feedback: Record<string, string> }) {
+  const vals = Object.values(feedback);
+  const bits: { icon: string; n: number; mot: string; cls: string }[] = [
+    { icon: "✓", n: vals.filter((v) => v === "done").length, mot: "appliqué", cls: "text-pos" },
+    { icon: "●", n: vals.filter((v) => v === "useful").length, mot: "utile", cls: "text-brand" },
+    { icon: "✕", n: vals.filter((v) => v === "not_for_me").length, mot: "écarté", cls: "text-faint" },
+    { icon: "◇", n: vals.filter((v) => v === "too_hard").length, mot: "trop compliqué", cls: "text-warn" },
+  ].filter((b) => b.n > 0);
+  if (bits.length === 0) return null;
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-[12px] mb-2.5">
+      <span className="text-[10px] uppercase tracking-wide text-faint font-semibold">
+        Tes retours sur les conseils
+      </span>
+      {bits.map((b) => (
+        <span key={b.icon} className={`${b.cls} font-semibold`}>
+          {b.icon} {b.n} {b.mot}
+          {b.n > 1 ? "s" : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TrackingSection({
   actions,
   archived,
   num,
+  feedback,
 }: {
   actions: TrackedAction[];
   archived: TrackedAction[];
   num?: number;
+  feedback?: Record<string, string>;
 }) {
   const rows = [...actions, ...archived].sort((a, b) =>
     a.decided_at < b.decided_at ? 1 : a.decided_at > b.decided_at ? -1 : 0
@@ -56,10 +90,11 @@ export function TrackingSection({
         Ton historique d&apos;actions
       </h2>
       <p className="text-[12px] text-faint mb-2.5">
-        {rows.length} lancée{rows.length > 1 ? "s" : ""} · {faites} faite{faites > 1 ? "s" : ""} ·{" "}
-        {jugees} jugée{jugees > 1 ? "s" : ""}
+        {rows.length} action{rows.length > 1 ? "s" : ""} lancée{rows.length > 1 ? "s" : ""} ·{" "}
+        {faites} faite{faites > 1 ? "s" : ""} · {jugees} jugée{jugees > 1 ? "s" : ""}
         {abandons > 0 && ` · ${abandons} abandonnée${abandons > 1 ? "s" : ""}`}
       </p>
+      {feedback && <Retours feedback={feedback} />}
 
       <ScrollList title="Tout ce que tu as décidé" count={rows.length} maxH="max-h-[46vh]">
         {rows.map((a) => {

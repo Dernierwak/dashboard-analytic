@@ -17,6 +17,7 @@ export function LineChart({
   unit = "",
   ariaLabel,
   repere,
+  markers,
 }: {
   labels: string[];
   series: Serie[];
@@ -27,6 +28,9 @@ export function LineChart({
   // Ligne de référence horizontale — le budget du jour, par exemple. Une
   // courbe sans seuil ne dit pas si ce qu'on voit est normal ou anormal.
   repere?: { value: number; label: string; color?: string };
+  // Index des colonnes où une action a été appliquée. Le ▲ posé SUR le graphe
+  // relie le geste à son effet ; en légende à côté, il ne relie rien.
+  markers?: number[];
 }) {
   const n = labels.length;
   if (n < 2 || series.length === 0) return null;
@@ -107,6 +111,26 @@ export function LineChart({
             {repere.label}
           </text>
         </g>
+      )}
+
+      {(markers ?? []).map((mi) =>
+        mi >= 0 && mi < n ? (
+          <g key={`mk-${mi}`}>
+            <line
+              x1={x(mi)}
+              y1={PAD_T}
+              x2={x(mi)}
+              y2={PAD_T + plotH}
+              stroke="#1a56ff"
+              strokeOpacity="0.22"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+            <text x={x(mi)} y={PAD_T - 2} textAnchor="middle" fontSize="8" fill="#1a56ff">
+              ▲
+            </text>
+          </g>
+        ) : null
       )}
 
       {series.map((s, si) => {
