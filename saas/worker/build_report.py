@@ -1527,18 +1527,18 @@ def build_payload(sb, user_id: str) -> dict | None:
     # semaine pleine ; un creux de portee suivi de dix jours sans publication
     # n'est pas un probleme d'algorithme.
     #
-    # Fenetre de 90 jours (un trimestre) plutot que 7 : sur sept colonnes une
-    # barre ne raconte rien, et ce qu'on cherche ici c'est le rythme, les trous
-    # et la duree reelle des campagnes — qui depassent tres souvent le mois.
-    # L'affichage defile horizontalement ; la semaine du rapport est marquee a
-    # part pour qu'on la retrouve sans chercher.
+    # Fenetre d'un AN. Une campagne dure 82 jours en mediane sur le compte
+    # reel, et la saisonnalite — printemps, ete, fetes — ne se lit pas sur un
+    # trimestre. L'affichage defile horizontalement et s'ouvre sur aujourd'hui ;
+    # la semaine du rapport est marquee a part pour qu'on la retrouve sans
+    # chercher.
     #
     # Aucune requete supplementaire : les jours ou une campagne a DEPENSE sont
     # deja en base, et ils donnent son debut et sa fin de diffusion reels —
     # mieux que des dates declarees, qui ne disent pas si elle a tourne.
     frise = None
     try:
-        _F_JOURS = 90
+        _F_JOURS = 365
         _f_fin = last_full_day
         _f_debut = _f_fin - timedelta(days=_F_JOURS - 1)
 
