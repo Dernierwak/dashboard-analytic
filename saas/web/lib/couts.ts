@@ -58,6 +58,9 @@ export type AlerteJour = {
 
 export type CoutsData = {
   email: string;
+  // Liste maîtresse des thèmes (profiles.labels) — elle fixe la couleur de
+  // chacun, la même ici que dans le rapport.
+  labels: string[];
   monthLabel: string;
   elapsed: number; // fraction du mois écoulée (repère), 0..1
   channels: ChannelCout[];
@@ -106,7 +109,7 @@ export async function getCoutsData(): Promise<CoutsData> {
 
   type MetaRow = { date_start: string; campaign_name: string | null; spend: number | null };
   type GoogRow = { date_start: string; campaign_id: string | number; cost_micros: number | null };
-  const [metaRows, googleRaw, budgetsRes, metaCfgRes, googCfgRes] = await Promise.all([
+  const [metaRows, googleRaw, budgetsRes, labelsRes, metaCfgRes, googCfgRes] = await Promise.all([
     fetchAllRows<MetaRow>(() =>
       supabase
         .from("meta_ads_insights")
@@ -124,6 +127,7 @@ export async function getCoutsData(): Promise<CoutsData> {
         .order("date_start", { ascending: false })
     ),
     supabase.from("channel_budgets").select("channel, month, amount").eq("user_id", uid),
+    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
     supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
     supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
   ]);
@@ -312,6 +316,7 @@ export async function getCoutsData(): Promise<CoutsData> {
 
   return {
     email: compte.email,
+    labels: ((labelsRes.data?.[0]?.labels as string[] | null) ?? []),
     monthLabel: `${MOIS_FULL[m]} ${y}`,
     elapsed,
     channels,

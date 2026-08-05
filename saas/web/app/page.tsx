@@ -260,17 +260,14 @@ export default async function Page() {
           <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
             {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
             {report?.themes && report.themes.rows.length > 0 && (
-              <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} />
+              <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} univers={data.labels} />
             )}
           </div>
           {/* Le temps, sous les chiffres : ce qui était en l'air pour les
               obtenir. Les couleurs sont celles de l'anneau juste au-dessus. */}
           {report?.frise && (
             <div className="mt-3">
-              <FriseSemaine
-                f={report.frise}
-                ordreThemes={(report.themes?.rows ?? []).map((r) => r.label)}
-              />
+              <FriseSemaine f={report.frise} univers={data.labels} />
             </div>
           )}
         </section>

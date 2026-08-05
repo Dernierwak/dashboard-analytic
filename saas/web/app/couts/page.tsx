@@ -15,7 +15,7 @@ import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
-import { teinte } from "@/lib/palette";
+import { teinteLabel } from "@/lib/palette";
 
 export const dynamic = "force-dynamic";
 
@@ -197,10 +197,12 @@ function Repartition({
   byTheme,
   total,
   periode,
+  univers,
 }: {
   byTheme: ThemeSpend[];
   total: number;
   periode: "mois" | "an";
+  univers: string[];
 }) {
   const budgetDe = (t: ThemeSpend) => (periode === "an" ? t.budgetYear : t.budget);
   const attribue = byTheme.reduce((a, t) => a + budgetDe(t), 0);
@@ -231,10 +233,14 @@ function Repartition({
       </div>
 
       <div className="flex h-3 rounded-full overflow-hidden bg-black/[0.05]">
-        {avecBudget.map((t, i) => (
+        {avecBudget.map((t) => (
           <div
             key={t.label}
-            style={{ width: `${(budgetDe(t) / base) * 100}%`, background: teinte(i).trait, opacity: 0.85 }}
+            style={{
+              width: `${(budgetDe(t) / base) * 100}%`,
+              background: teinteLabel(t.label, univers).trait,
+              opacity: 0.85,
+            }}
             title={`${t.label} — ${fmtCHF(budgetDe(t))} CHF`}
           />
         ))}
@@ -249,11 +255,14 @@ function Repartition({
 
       <div className="flex items-baseline justify-between gap-3 flex-wrap mt-2">
         <div className="flex items-center gap-3 flex-wrap text-[11px] text-faint">
-          {avecBudget.slice(0, 6).map((t, i) => (
+          {avecBudget.slice(0, 6).map((t) => (
             <span key={t.label} className="inline-flex items-center gap-1.5">
               <span
                 className="h-2.5 w-2.5 rounded-full inline-block border-2"
-                style={{ background: teinte(i).aplat, borderColor: teinte(i).trait }}
+                style={{
+                  background: teinteLabel(t.label, univers).aplat,
+                  borderColor: teinteLabel(t.label, univers).trait,
+                }}
               />
               {t.label} <span className="font-mono text-muted">{fmtCHF(budgetDe(t))}</span>
             </span>
@@ -417,7 +426,7 @@ export default async function CoutsPage() {
         <CourbeJournaliere daily={data.daily} budgetJour={data.budgetJour} />
 
         {data.byTheme.length > 0 && (
-          <Repartition byTheme={data.byTheme} total={data.totalBudget} periode="mois" />
+          <Repartition byTheme={data.byTheme} total={data.totalBudget} periode="mois" univers={data.labels} />
         )}
       </section>
 
@@ -449,7 +458,7 @@ export default async function CoutsPage() {
         </div>
 
         {data.byTheme.length > 0 && (
-          <Repartition byTheme={data.byTheme} total={data.budgetAnnuel} periode="an" />
+          <Repartition byTheme={data.byTheme} total={data.budgetAnnuel} periode="an" univers={data.labels} />
         )}
 
         <details className="mb-2">
@@ -485,7 +494,16 @@ export default async function CoutsPage() {
               return (
                 <div key={t.label} className="px-5 py-4">
                   <div className="flex items-center gap-3 flex-wrap mb-2">
-                    <span className="text-[13.5px] font-semibold text-brand">{t.label}</span>
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0 border-2"
+                        style={{
+                          background: teinteLabel(t.label, data.labels).aplat,
+                          borderColor: teinteLabel(t.label, data.labels).trait,
+                        }}
+                      />
+                      <span className="text-[13.5px] font-semibold text-ink truncate">{t.label}</span>
+                    </span>
                     <span className="text-[11px] text-faint">
                       {share.toFixed(0)} % de la dépense du mois
                     </span>

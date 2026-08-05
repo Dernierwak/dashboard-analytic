@@ -1,5 +1,5 @@
 import type { Frise } from "@/lib/report";
-import { teinte } from "@/lib/palette";
+import { teinteLabel } from "@/lib/palette";
 
 // « Ce qui tournait » — le temps, enfin visible.
 //
@@ -36,20 +36,16 @@ function libelle(iso: string): string {
 
 const CANAL: Record<string, string> = { meta: "▣", google: "◆" };
 
-export function FriseSemaine({ f, ordreThemes }: { f: Frise; ordreThemes: string[] }) {
+export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   const grille = jours(f.debut, f.fin);
   const n = grille.length;
   if (n < 7) return null;
 
   const idx = (iso: string) => grille.indexOf(iso);
   const pos = (i: number) => (i / n) * 100;
-  // Un thème garde la teinte que l'anneau lui a donnée ; les thèmes absents de
-  // l'anneau prennent la suite de la gamme plutôt qu'une couleur au hasard.
-  const couleur = (theme: string | null) => {
-    if (!theme) return null;
-    const i = ordreThemes.indexOf(theme);
-    return teinte(i >= 0 ? i : ordreThemes.length + theme.length);
-  };
+  // La couleur vient du LABEL, pas de sa position ici : c'est ce qui la rend
+  // identique dans l'anneau juste au-dessus et stable la semaine prochaine.
+  const couleur = (theme: string | null) => (theme ? teinteLabel(theme, univers) : null);
 
   const debutSemaine = Math.max(0, idx(f.semaine_debut));
 

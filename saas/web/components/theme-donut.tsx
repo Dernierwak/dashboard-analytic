@@ -1,6 +1,6 @@
 import { fmtCHF } from "@/lib/report";
 import type { ThemeRow } from "@/lib/report";
-import { teinte } from "@/lib/palette";
+import { teinteLabel, NEUTRE } from "@/lib/palette";
 
 // « Où part ton argent » — l'anneau de répartition par thème.
 //
@@ -11,15 +11,25 @@ import { teinte } from "@/lib/palette";
 
 
 
-export function ThemeDonut({ rows, orphan }: { rows: ThemeRow[]; orphan: number }) {
+export function ThemeDonut({
+  rows,
+  orphan,
+  univers,
+}: {
+  rows: ThemeRow[];
+  orphan: number;
+  // La liste maîtresse des thèmes : elle fixe la couleur de chacun, pour qu'un
+  // thème garde la sienne d'un module à l'autre et d'une semaine à l'autre.
+  univers?: string[];
+}) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
   if (tries.length === 0) return null;
 
   const top = tries.slice(0, 5);
   const reste = tries.slice(5).reduce((a, r) => a + r.spend, 0) + (orphan > 0 ? orphan : 0);
   const parts = [
-    ...top.map((r, i) => ({ label: r.label, spend: r.spend, t: teinte(i) })),
-    ...(reste > 0 ? [{ label: "autres", spend: reste, t: teinte(9) }] : []),
+    ...top.map((r) => ({ label: r.label, spend: r.spend, t: teinteLabel(r.label, univers) })),
+    ...(reste > 0 ? [{ label: "autres", spend: reste, t: NEUTRE }] : []),
   ];
   const total = parts.reduce((a, p) => a + p.spend, 0);
   if (total <= 0) return null;
