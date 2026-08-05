@@ -1519,6 +1519,125 @@ def build_payload(sb, user_id: str) -> dict | None:
     except Exception:
         themes_tips = []
 
+
+    # ── Frise : ce qui TOURNAIT pendant ces semaines ─────────────────────────
+    # Les chiffres disent ce que la semaine a donne. Ils ne disent pas ce qui
+    # etait en l'air pour l'obtenir. Une campagne lancee le mercredi n'a eu que
+    # la moitie de la semaine, et on lui compare pourtant des chiffres de
+    # semaine pleine ; un creux de portee suivi de dix jours sans publication
+    # n'est pas un probleme d'algorithme.
+    #
+    # Fenetre de 28 jours (4 semaines pleines) plutot que 7 : sur sept colonnes
+    # une barre ne raconte rien, et ce qu'on cherche ici c'est le rythme et les
+    # trous. La semaine du rapport est marquee a part pour rester lisible.
+    #
+    # Aucune requete supplementaire : les jours ou une campagne a DEPENSE sont
+    # deja en base, et ils donnent son debut et sa fin de diffusion reels —
+    # mieux que des dates declarees, qui ne disent pas si elle a tourne.
+    frise = None
+    try:
+        _F_JOURS = 28
+        _f_fin = last_full_day
+        _f_debut = _f_fin - timedelta(days=_F_JOURS - 1)
+
+        def _f_theme(nom):
+            return name2label.get(_nrm(nom)) or None
+
+        _camps = {}
+
+        def _ajoute(nom, canal, jour, montant):
+            if not nom or jour is None:
+                return
+            if not (_f_debut <= jour <= _f_fin):
+                return
+            c = _camps.setdefault((canal, str(nom)), {
+                "nom": str(nom)[:60], "canal": canal, "theme": _f_theme(nom),
+                "debut": jour, "fin": jour, "jours": set(), "depense": 0.0,
+            })
+            c["debut"] = min(c["debut"], jour)
+            c["fin"] = max(c["fin"], jour)
+            c["jours"].add(jour)
+            c["depense"] += float(montant or 0)
+
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            _m = df_meta_raw.copy()
+            _m["jourdt"] = pd.to_datetime(_m["date_start"], errors="coerce")
+            for _r in _m.itertuples():
+                if pd.isna(_r.jourdt) or float(getattr(_r, "spend", 0) or 0) <= 0:
+                    continue
+                _ajoute(getattr(_r, "campaign_name", None), "meta",
+                        _r.jourdt.date(), getattr(_r, "spend", 0))
+
+        if not df_google.empty and "campaign_name" in df_google.columns:
+            _g = df_google.copy()
+            _g["jourdt"] = pd.to_datetime(_g["date_start"], errors="coerce")
+            for _r in _g.itertuples():
+                _cost = float(getattr(_r, "cost_micros", 0) or 0) / 1_000_000.0
+                if pd.isna(_r.jourdt) or _cost <= 0:
+                    continue
+                _ajoute(getattr(_r, "campaign_name", None), "google", _r.jourdt.date(), _cost)
+
+        _campagnes = sorted(_camps.values(), key=lambda c: -c["depense"])
+        _campagnes = [{
+            "nom": c["nom"], "canal": c["canal"], "theme": c["theme"],
+            "debut": c["debut"].isoformat(), "fin": c["fin"].isoformat(),
+            "jours": len(c["jours"]),
+            # Un trou au milieu d'une diffusion (campagne coupee puis relancee)
+            # doit se voir : sinon la barre ment sur la continuite.
+            "continu": len(c["jours"]) == (c["fin"] - c["debut"]).days + 1,
+            "depense": round(c["depense"], 2),
+        } for c in _campagnes]
+
+        _pubs = []
+        if not df_insta.empty and "date" in df_insta.columns:
+            _i = df_insta.copy()
+            _i["jourdt"] = pd.to_datetime(_i["date"], errors="coerce", utc=True)
+            for _r in _i.itertuples():
+                if pd.isna(_r.jourdt):
+                    continue
+                _dj = _r.jourdt.date()
+                if not (_f_debut <= _dj <= _f_fin):
+                    continue
+                _lbls = getattr(_r, "labels", None) or []
+                _pubs.append({
+                    "date": _dj.isoformat(),
+                    "theme": str(_lbls[0]) if len(_lbls) else None,
+                    "type": str(getattr(_r, "type", "") or ""),
+                })
+        _pubs.sort(key=lambda x: x["date"])
+
+        # Jusqu'ou chaque source est REELLEMENT a jour. Sans cette limite, une
+        # barre qui s'arrete au dernier jour recolte se lit « campagne
+        # terminee » alors que ce sont les donnees qui s'arretent — les canaux
+        # ne se rafraichissent pas tous le meme jour. C'est la regle maison :
+        # aucun chiffre non mesure presente comme mesure.
+        def _dernier(df, col, utc=False):
+            try:
+                if df is None or df.empty or col not in df.columns:
+                    return None
+                _d = pd.to_datetime(df[col], errors="coerce", utc=utc).max()
+                return _d.date().isoformat() if pd.notna(_d) else None
+            except Exception:
+                return None
+
+        _couverture = {
+            "meta": _dernier(df_meta_raw, "date_start"),
+            "google": _dernier(df_google, "date_start"),
+            "instagram": _dernier(df_insta, "date", utc=True),
+        }
+
+        if _campagnes or _pubs:
+            frise = {
+                "debut": _f_debut.isoformat(),
+                "fin": _f_fin.isoformat(),
+                "semaine_debut": cur_since.isoformat(),
+                "couverture": _couverture,
+                "campagnes": _campagnes,
+                "posts": _pubs,
+            }
+    except Exception:
+        frise = None
+
     return {
         "version": 2,
         "vision": vision,
@@ -1526,6 +1645,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         "metrics_read": metrics_read,
         "metrics_prev": metrics_prev,
         "kpi_focus": kpi_focus,
+        "frise": frise,
         "metrics_series": metrics_series,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse

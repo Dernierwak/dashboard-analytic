@@ -10,6 +10,7 @@ import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ThemeTimeline } from "@/components/theme-timeline";
 import { KpiFocusCard } from "@/components/kpi-focus";
 import { ThemeDonut } from "@/components/theme-donut";
+import { FriseSemaine } from "@/components/frise-semaine";
 import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
@@ -262,6 +263,16 @@ export default async function Page() {
               <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} />
             )}
           </div>
+          {/* Le temps, sous les chiffres : ce qui était en l'air pour les
+              obtenir. Les couleurs sont celles de l'anneau juste au-dessus. */}
+          {report?.frise && (
+            <div className="mt-3">
+              <FriseSemaine
+                f={report.frise}
+                ordreThemes={(report.themes?.rows ?? []).map((r) => r.label)}
+              />
+            </div>
+          )}
         </section>
       )}
 

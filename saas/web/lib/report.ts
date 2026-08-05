@@ -55,6 +55,28 @@ export type KpiOption = {
   bandes: { max: number | null; label: string; tone: "neg" | "warn" | "pos" }[];
 };
 
+// « Ce qui tournait » — les campagnes en barres et les publications en points,
+// sur une même échelle de 4 semaines. `couverture` dit jusqu'où chaque source
+// est réellement à jour : sans elle, une barre qui s'arrête au dernier jour
+// récolté se lirait « campagne terminée ».
+export type Frise = {
+  debut: string;
+  fin: string;
+  semaine_debut: string;
+  couverture?: { meta: string | null; google: string | null; instagram: string | null } | null;
+  campagnes: {
+    nom: string;
+    canal: string;
+    theme: string | null;
+    debut: string;
+    fin: string;
+    jours: number;
+    continu: boolean;
+    depense: number;
+  }[];
+  posts: { date: string; theme: string | null; type: string }[];
+};
+
 export type KpiFocus = {
   labels: string[];
   defaut: string;
@@ -203,6 +225,7 @@ export type ReportPayload = {
   } | null;
   // L'indicateur qui compte pour cet objectif, avec sa pente et ses zones.
   kpi_focus?: KpiFocus | null;
+  frise?: Frise | null;
   // Les quatre tuiles sur 10 semaines — une pente vaut mieux qu'un chiffre nu.
   metrics_series?: {
     labels: string[];
