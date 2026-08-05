@@ -94,3 +94,10 @@ Secrets stored in `.streamlit/secrets.toml`:
 ## Dependencies
 
 Main packages: `streamlit`, `supabase`, `stripe`, `requests`, `flask` (for callback server), `pandas`
+
+## Grammaire des modules
+
+Tout module d'interface suit `docs/03-grammaire-des-modules.md` : neuf rangs,
+dans l'ordre, dont le troisième est **le chiffre — aucune forme graphique ne
+peut apparaître avant lui**. Un module créé ou restructuré met le document à
+jour dans le même commit (section « Où on en est »).

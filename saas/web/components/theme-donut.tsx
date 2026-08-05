@@ -49,31 +49,40 @@ export function ThemeDonut({
       <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
         Où part ton argent
       </div>
-      <div className="text-[11.5px] text-faint mb-3">
-        {parts.length} thème{parts.length > 1 ? "s" : ""} · {fmtCHF(total)} CHF au total
-      </div>
 
       <div className="flex items-center gap-5 sm:gap-7 flex-wrap sm:flex-nowrap justify-center sm:justify-start">
-        <svg viewBox="0 0 100 100" className="w-[150px] h-[150px] sm:w-[190px] sm:h-[190px] shrink-0 -rotate-90" role="img"
-          aria-label="Répartition de la dépense par thème">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="16" />
-          {arcs.map((a) => (
-            <circle
-              key={a.label}
-              cx="50"
-              cy="50"
-              r={R}
-              fill="none"
-              stroke={a.t.trait}
-              strokeWidth="16"
-              opacity={0.9}
-              strokeDasharray={`${a.dash} ${C - a.dash}`}
-              strokeDashoffset={-a.offset}
-            >
-              <title>{`${a.label} — ${fmtCHF(a.spend)} CHF (${Math.round(a.frac * 100)} %)`}</title>
-            </circle>
-          ))}
-        </svg>
+        {/* Le total au CENTRE de l'anneau, pas en sous-titre gris. Un anneau
+            sans son total est une forme sans sa valeur. */}
+        <div className="relative shrink-0">
+          <svg viewBox="0 0 100 100" className="w-[150px] h-[150px] sm:w-[190px] sm:h-[190px] -rotate-90" role="img"
+            aria-label="Répartition de la dépense par thème">
+            <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="16" />
+            {arcs.map((a) => (
+              <circle
+                key={a.label}
+                cx="50"
+                cy="50"
+                r={R}
+                fill="none"
+                stroke={a.t.trait}
+                strokeWidth="16"
+                opacity={0.9}
+                strokeDasharray={`${a.dash} ${C - a.dash}`}
+                strokeDashoffset={-a.offset}
+              >
+                <title>{`${a.label} — ${fmtCHF(a.spend)} CHF (${Math.round(a.frac * 100)} %)`}</title>
+              </circle>
+            ))}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="font-mono text-[22px] sm:text-[26px] leading-none font-medium text-ink">
+              {fmtCHF(total)}
+            </span>
+            <span className="text-[10.5px] text-faint mt-1">
+              CHF · {parts.length} thème{parts.length > 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
 
         {/* Sur toute la largeur, une légende en colonne unique laisse un grand
             vide à droite. Elle s'étale en colonnes dès qu'il y a la place. */}

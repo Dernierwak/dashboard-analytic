@@ -17,6 +17,25 @@ export function ThemeTimeline({
   const n = vals.length;
   if (n < 2) return null;
   const x = (i: number) => PAD + (i * (W - PAD * 2)) / (n - 1);
+
+  // La valeur courante et la PENTE, en clair, avant la courbe. Elles étaient
+  // dans le SVG en 10 px : le seul module de Pulse qui n'avait aucun chiffre
+  // avant sa forme. Sur un téléphone, trois frises empilées de 74 px ne se
+  // distinguent pas — une pastille de trois mots, si.
+  const derniere = vals[n - 1];
+  const fmt = (v: number) => Math.round(v).toLocaleString("fr-CH");
+  // Quatre dernières semaines contre les quatre précédentes : une semaine seule
+  // se laisse trop facilement emporter par un accident.
+  const moy = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const recent = moy(vals.slice(-4));
+  const avant = moy(vals.slice(-8, -4));
+  const ecart = avant > 0 ? ((recent - avant) / avant) * 100 : null;
+  const pente =
+    ecart === null || Math.abs(ecart) < 8
+      ? { texte: "≈ stable", cls: "text-muted", fond: "rgba(0,0,0,0.05)" }
+      : ecart > 0
+        ? { texte: `▲ en hausse de ${Math.round(ecart)} %`, cls: "text-pos", fond: "#1a7a4a14" }
+        : { texte: `▼ en baisse de ${Math.round(-ecart)} %`, cls: "text-neg", fond: "#c0392b14" };
   const y = (v: number) => 6 + (1 - v / max) * (base - 6);
   const line = vals.map((v, i) => `${x(i)},${y(v)}`).join(" ");
   const area = `M${x(0)},${base} L${vals.map((v, i) => `${x(i)},${y(v)}`).join(" L")} L${x(n - 1)},${base} Z`;
@@ -30,6 +49,19 @@ export function ThemeTimeline({
         {series.markers.length > 0 && (
           <span className="text-[10px] text-brand font-semibold">▲ tes actions</span>
         )}
+      </div>
+
+      <div className="flex items-baseline gap-2.5 flex-wrap mb-1">
+        <span className="font-mono text-[24px] leading-none font-medium text-ink">
+          {fmt(derniere)}
+        </span>
+        <span
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${pente.cls}`}
+          style={{ background: pente.fond }}
+          title="Moyenne des 4 dernières semaines comparée aux 4 précédentes"
+        >
+          {pente.texte}
+        </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
         aria-label={`Évolution de ${series.metric_label}${label ? ` du thème ${label}` : ""} sur 10 semaines`}>
@@ -74,17 +106,8 @@ export function ThemeTimeline({
           </g>
         ))}
 
-        {/* La dernière valeur, écrite : « environ combien » sans survoler */}
-        <text
-          x={W - PAD}
-          y={Math.max(16, y(vals[n - 1]) - 8)}
-          textAnchor="end"
-          fontSize="10"
-          fontWeight="600"
-          fill="#1a56ff"
-        >
-          {Math.round(vals[n - 1]).toLocaleString("fr-CH")}
-        </text>
+        {/* La dernière valeur n'est plus écrite ici : elle est en 24 px
+            au-dessus du graphe, à sa place. */}
         <text x={PAD} y={H - 2} fontSize="9" fill="#8b8e98">{series.points[0]?.label}</text>
         <text x={W - PAD} y={H - 2} textAnchor="end" fontSize="9" fill="#8b8e98">
           {series.points[n - 1]?.label}
@@ -102,13 +125,6 @@ export function ThemeTimeline({
           );
         })}
       </svg>
-      <p className="text-[11px] text-muted leading-relaxed mt-2">
-        <span className="font-semibold text-ink">Comment le lire — </span>
-        {series.metric_label.toLowerCase()} de ce thème, semaine par semaine.
-        {series.markers.length > 0
-          ? " Chaque ▲ marque une semaine où tu as lancé une action : compare la courbe avant et après pour voir si elle a eu un effet."
-          : " Quand tu lanceras une action sur ce thème, un ▲ marquera la semaine — tu verras si la courbe a suivi."}
-      </p>
       {series.note && (
         <p className="text-[11px] text-warn leading-relaxed mt-1.5 bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5">
           {series.note}

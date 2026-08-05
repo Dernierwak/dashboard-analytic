@@ -152,12 +152,38 @@ function Quotidien({
 // lieu de lire une somme dont il faut soustraire mentalement le bas.
 function CourbeJournaliere({ daily, budgetJour }: { daily: CoutDay[]; budgetJour: number }) {
   if (daily.length === 0) return null;
+
+  // Le cumul du mois AVANT la courbe. Il existait déjà, mais deux blocs plus
+  // haut, dans une tuile : ce module ouvrait donc sur une forme sans sa
+  // valeur. Et le pire jour, nommé — c'est lui qu'on cherche des yeux.
+  const total = daily.reduce((a, p) => a + p.meta + p.google, 0);
+  const pire = daily.reduce(
+    (m, p) => (p.meta + p.google > m.montant ? { label: p.label, montant: p.meta + p.google } : m),
+    { label: "", montant: 0 }
+  );
+
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
-      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Dépense par jour · mois en cours
-        </div>
+      <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+        Dépense par jour · mois en cours
+      </div>
+
+      <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
+        <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
+          {fmtCHF(total)}
+          <span className="text-[15px] text-faint"> CHF</span>
+        </span>
+        <span className="text-[11px] text-faint">
+          cumulés sur {daily.length} jour{daily.length > 1 ? "s" : ""}
+        </span>
+        {pire.montant > 0 && (
+          <span className="text-[11px] font-bold text-warn bg-warn/[0.08] px-2 py-0.5 rounded-full">
+            pic le {pire.label} · {fmtCHF(pire.montant)} CHF
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-baseline justify-end mb-2 flex-wrap gap-2">
         <div className="flex items-center gap-3 text-[10.5px] text-faint">
           <span><span style={{ color: "#1a56ff" }}>■</span> Meta</span>
           <span><span style={{ color: "#1a7a4a" }}>■</span> Google</span>

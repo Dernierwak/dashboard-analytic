@@ -157,28 +157,53 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
   const vals = pts.map(val);
   const max = Math.max(...vals, 0.001);
   const fmtV = (v: number) => (v >= 100 ? fmtCHF(v) : v.toFixed(2));
+
+  // Le CUMUL de la métrique choisie, en clair, avant la courbe. Ce module
+  // n'avait aucun chiffre : il ouvrait sur un surtitre et une rangée de
+  // boutons, puis un graphe. Un graphe dit la forme, jamais la valeur.
+  // Une moyenne pour ce qui est un taux, un total pour ce qui s'additionne.
+  const taux = d.metric === "ctr" || d.metric === "cpc";
+  const valeur = taux
+    ? vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.filter((v) => v > 0).length)
+    : vals.reduce((a, b) => a + b, 0);
+
+  // La pente : 2e moitié de la période contre la 1re. Trois mots au lieu de
+  // dix secondes de lecture de courbe.
+  const moy = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const mi = Math.floor(vals.length / 2);
+  const av = moy(vals.slice(0, mi));
+  const ap = moy(vals.slice(mi));
+  const ec = av > 0 ? ((ap - av) / av) * 100 : null;
+  // « Mieux » dépend de la métrique : un CPC qui baisse est une bonne nouvelle.
+  const baisseEstBonne = d.metric === "cpc";
+  const pente =
+    ec === null || Math.abs(ec) < 8
+      ? { texte: "≈ stable", cls: "text-muted", fond: "rgba(0,0,0,0.05)" }
+      : (ec > 0) !== baisseEstBonne
+        ? { texte: `▲ +${Math.round(ec)} % sur la période`, cls: "text-pos", fond: "#1a7a4a14" }
+        : { texte: `▼ ${Math.round(ec)} % sur la période`, cls: "text-neg", fond: "#c0392b14" };
+
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Évolution quotidienne
-        </div>
-        <div className="flex items-center gap-1">
-          {METRICS.map((m) => (
-            <a
-              key={m.key}
-              href={`${path}${qs({ d: d.days === 7 ? undefined : d.days, m: m.key, ...keepFilters(d) })}`}
-              className={`text-[10.5px] font-semibold rounded-full px-2.5 py-0.5 border ${
-                d.metric === m.key
-                  ? "bg-ink text-white border-ink"
-                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
-              }`}
-            >
-              {m.label}
-            </a>
-          ))}
-        </div>
+      <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+        Évolution quotidienne <span className="text-ink">· {meta.label}</span>
       </div>
+
+      <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
+        <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
+          {fmtV(valeur)}
+          <span className="text-[15px] text-faint"> {meta.unit}</span>
+        </span>
+        <span className="text-[11px] text-faint">{taux ? "en moyenne" : "au total"}</span>
+        <span
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${pente.cls}`}
+          style={{ background: pente.fond }}
+          title="Seconde moitié de la période comparée à la première"
+        >
+          {pente.texte}
+        </span>
+      </div>
+
       <LineChart
         labels={pts.map((p) => p.label)}
         series={[{ name: meta.label, color: "#1a56ff", values: vals }]}
@@ -186,8 +211,27 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
         unit={` ${meta.unit}`}
         ariaLabel={`${meta.label} par jour`}
       />
-      <div className="text-[10.5px] text-faint mt-1 text-right">
-        max {fmtV(max)} {meta.unit} / jour
+
+      {/* Le sélecteur passe SOUS le graphe : il pilote ce module, il ne le
+          quitte pas. Au-dessus, c'était la télécommande avant l'écran — le
+          défaut déjà corrigé sur la boussole du rapport. */}
+      <div className="flex items-center gap-1 overflow-x-auto pt-3 mt-1 border-t border-line">
+        {METRICS.map((m) => (
+          <a
+            key={m.key}
+            href={`${path}${qs({ d: d.days === 7 ? undefined : d.days, m: m.key, ...keepFilters(d) })}`}
+            className={`shrink-0 text-[10.5px] font-semibold rounded-full px-2.5 py-1 border ${
+              d.metric === m.key
+                ? "bg-ink text-white border-ink"
+                : "border-line text-muted hover:bg-black/[0.03] bg-white"
+            }`}
+          >
+            {m.label}
+          </a>
+        ))}
+        <span className="ml-auto shrink-0 text-[10.5px] text-faint pl-3">
+          max {fmtV(max)} {meta.unit} / jour
+        </span>
       </div>
     </div>
   );
