@@ -169,7 +169,7 @@ export default async function Page() {
   const nApprendre = report?.apprentissage ? ++_n : undefined;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
           première question du lecteur, elle doit trouver sa réponse avant le
@@ -257,7 +257,11 @@ export default async function Page() {
             La vue d&apos;ensemble du compte : tout ce que tu publies et achètes, sans
             filtre. Choisis l&apos;indicateur que tu veux suivre.
           </p>
-          <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
+          {/* Tout sur toute la largeur, empilé. La boussole partageait sa
+              ligne avec l'anneau : à deux, aucun des deux n'avait la place de
+              son chiffre, et la courbe de trajectoire — qui est l'intérêt du
+              module — était écrasée sur un tiers de page. */}
+          <div className="space-y-3">
             {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
             {report?.themes && report.themes.rows.length > 0 && (
               <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} univers={data.labels} />

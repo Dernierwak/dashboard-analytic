@@ -75,7 +75,9 @@ export function ThemeDonut({
           ))}
         </svg>
 
-        <div className="min-w-0 flex-1 space-y-1.5">
+        {/* Sur toute la largeur, une légende en colonne unique laisse un grand
+            vide à droite. Elle s'étale en colonnes dès qu'il y a la place. */}
+        <div className="min-w-0 flex-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {arcs.map((a) => (
             <div key={a.label} className="flex items-baseline gap-2">
               <span
