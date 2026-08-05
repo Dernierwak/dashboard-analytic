@@ -148,7 +148,6 @@ dernier jour plein.
 | `MetricChart` | aucun chiffre ; sélecteur au-dessus du graphe | cumul en 34 px + pente ; sélecteur descendu sous la courbe |
 | `CourbeJournaliere` | aucun chiffre (le total était deux blocs plus haut) | cumul du mois en 34 px + le pic nommé |
 | `vision-card`, `trajectoire`, `lib/mission` | jamais rendus | supprimés (519 lignes) |
-
 | `theme-focus-card` | bilan en phrase | six chiffres alignés sous leur libellé |
 | `Tuile` + `AdsKpis` | le même objet écrit deux fois | `components/chiffre.tsx` partagé — les deux pages gagnent delta coloré et sparkline |
 | `kpi-focus` | jauge sans bornes ; deux pieds | bornes chiffrées sous la jauge ; le `repere` devient l'info-bulle de la jauge qu'il commente |
