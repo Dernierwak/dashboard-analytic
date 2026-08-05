@@ -135,7 +135,11 @@ function VersLaction({ actions }: { actions: TrackedAction[] }) {
   );
 }
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: { vue?: string };
+}) {
   const data = await getWeeklyData();
   const report = data.report;
 
@@ -152,6 +156,21 @@ export default async function Page() {
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
+
+  // Les onglets de la section conseils. « Les 3 du moment » n'existe que s'il
+  // y a plus d'un thème — avec un seul, la sélection répéterait mot pour mot
+  // ce qui suit.
+  const vues: { cle: string; titre: string; n: number }[] = [
+    ...(topRecos.length > 0 ? [{ cle: "top", titre: "Les 3 du moment", n: topRecos.length }] : []),
+    ...themesFocus.map((t) => ({
+      cle: t.label,
+      titre: `${t.is_priority ? "★ " : ""}${t.label}`,
+      n: t.recos.length,
+    })),
+    ...(themesFocus.length > 1 ? [{ cle: "tous", titre: "Tous les thèmes", n: 0 }] : []),
+  ];
+  const demande = searchParams?.vue ?? "";
+  const vueActive = vues.some((v) => v.cle === demande) ? demande : (vues[0]?.cle ?? "top");
   const series = themesFocus
     .filter((t) => t.series && t.series.points.length > 1)
     .map((t) => ({ label: t.label, series: t.series! }));
@@ -347,21 +366,57 @@ export default async function Page() {
                 {report.themes_intro}
               </p>
             )}
-            <TopRecos
-              recos={topRecos}
-              feedback={data.feedback}
-              comments={data.comments}
-              trackedKeys={data.trackedKeys}
-              capReached={capReached}
-            />
+            {/* UN SEUL PANNEAU À LA FOIS. La même RecoCard était rendue deux
+                fois sur cette page : dans « Si tu ne fais que 3 choses », puis
+                dans le détail du thème. Le contournement — masquer la
+                sélection quand il n'y a qu'un thème — disait bien que le
+                doublon était connu.
+                Des onglets-compteurs le remplacent : chacun porte son nombre
+                de conseils, « Les 3 du moment » reste ouvert par défaut, et
+                « Tous les thèmes » garde la lecture d'enfilade pour qui la
+                veut. Personne ne perd rien, plus rien n'est rendu deux fois. */}
+            {vues.length > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-4">
+                {vues.map((v) => (
+                  <a
+                    key={v.cle}
+                    href={v.cle === "top" ? "/#conseils" : `/?vue=${encodeURIComponent(v.cle)}#conseils`}
+                    className={`shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-3 py-1.5 border transition-colors ${
+                      v.cle === vueActive
+                        ? "bg-ink text-white border-ink"
+                        : "border-line text-muted hover:bg-black/[0.03] bg-white"
+                    }`}
+                  >
+                    {v.titre}
+                    {v.n > 0 && (
+                      <span
+                        className={`text-[10.5px] font-bold rounded-full px-1.5 ${
+                          v.cle === vueActive ? "bg-white/20" : "bg-black/[0.06] text-ink"
+                        }`}
+                      >
+                        {v.n}
+                      </span>
+                    )}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {vueActive === "top" && (
+              <TopRecos
+                recos={topRecos}
+                feedback={data.feedback}
+                comments={data.comments}
+                trackedKeys={data.trackedKeys}
+                capReached={capReached}
+              />
+            )}
+
             {themesFocus.length > 0 ? (
               <>
-              {topRecos.length > 0 && (
-                <h3 className="text-[14px] font-bold text-ink mb-2.5">
-                  Le détail, thème par thème
-                </h3>
-              )}
-              {themesFocus.map((t) => (
+              {themesFocus
+                .filter((t) => vueActive === "tous" || t.label === vueActive)
+                .map((t) => (
                 <ThemeFocusCard
                   key={t.label}
                   theme={t}

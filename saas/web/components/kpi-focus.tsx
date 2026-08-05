@@ -86,7 +86,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
 
         {/* La jauge : les zones nommées, et où tu te situes dedans */}
         {bandes.length > 0 && (
-          <div className="mt-5">
+          <div className="mt-5" title={o.repere ?? undefined}>
             <div className="flex h-2.5 rounded-full overflow-hidden">
               {bandes.map((b, i) => {
                 const bas = i === 0 ? 0 : bandes[i - 1].max ?? 0;
@@ -112,7 +112,24 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
                 }}
               />
             </div>
-            <div className="flex justify-between mt-2.5 text-[10px] text-faint">
+            {/* Les zones ET leurs bornes. « sain » ne veut rien dire tant
+                qu'on ne sait pas où ça commence. */}
+            <div className="relative h-[13px] mt-2">
+              {bandes.map((b, i) => {
+                const bas = i === 0 ? 0 : bandes[i - 1].max ?? 0;
+                if (i === 0) return null;
+                return (
+                  <span
+                    key={`b-${b.label}`}
+                    className="absolute top-0 font-mono text-[9.5px] text-faint -translate-x-1/2"
+                    style={{ left: `${Math.min(98, (bas / echelle) * 100)}%` }}
+                  >
+                    {bas.toLocaleString("fr-CH")}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[10px] text-faint">
               {bandes.map((b) => (
                 <span key={b.label}>{b.label}</span>
               ))}
@@ -159,12 +176,6 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         </div>
       </div>
 
-      {o.repere && (
-        <p className="text-[11.5px] text-muted leading-relaxed px-5 sm:px-6 py-3 border-t border-line">
-          <span className="font-semibold text-ink">Comment le lire — </span>
-          {o.repere}
-        </p>
-      )}
     </div>
   );
 }

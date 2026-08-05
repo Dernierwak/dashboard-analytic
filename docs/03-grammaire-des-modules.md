@@ -149,18 +149,16 @@ dernier jour plein.
 | `CourbeJournaliere` | aucun chiffre (le total était deux blocs plus haut) | cumul du mois en 34 px + le pic nommé |
 | `vision-card`, `trajectoire`, `lib/mission` | jamais rendus | supprimés (519 lignes) |
 
-**Restent à traiter**, par ordre de gain :
+| `theme-focus-card` | bilan en phrase | six chiffres alignés sous leur libellé |
+| `Tuile` + `AdsKpis` | le même objet écrit deux fois | `components/chiffre.tsx` partagé — les deux pages gagnent delta coloré et sparkline |
+| `kpi-focus` | jauge sans bornes ; deux pieds | bornes chiffrées sous la jauge ; le `repere` devient l'info-bulle de la jauge qu'il commente |
+| `top-recos` | même `RecoCard` rendue deux fois sur la page | onglets-compteurs, un seul panneau rendu à la fois |
 
-- `theme-focus-card` — son bilan est une phrase, pas des chiffres. Trois nombres
-  alignés avec DÉPENSÉ / REVENU / ROAS en majuscules dessous.
-- `Tuile` (coûts, ×7) et `AdsKpis` (×7) — **le même objet écrit deux fois**,
-  deux tailles de chiffre et deux formes de delta. Un `<Chiffre>` partagé, et
-  les deux pages gagnent la sparkline et le delta coloré d'un coup.
-- `kpi-focus` — jauge à bandes nommées sans bornes chiffrées ; deux pieds.
-- `tracking-section` — deux comptages de même poids au rang 3.
-- `top-recos` — rend la même `RecoCard` que `ThemeFocusCard` sur la même page.
-  À remplacer par une rangée de compteurs-onglets qui filtre les thèmes en
-  dessous, « Les 3 du moment » ouvert par défaut.
+**Reste à traiter :**
+
+- `tracking-section` — deux comptages de même poids au rang 3. Un seul rang de
+  compteurs (`suivi_actions`), et `reco_feedback` replié en pied de section.
+- `AdsKpis` — le hero n'a toujours pas de forme (rang 6).
 
 ---
 

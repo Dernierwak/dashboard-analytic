@@ -15,6 +15,7 @@ import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
+import { Chiffre, type Ton } from "@/components/chiffre";
 import { teinteLabel } from "@/lib/palette";
 
 export const dynamic = "force-dynamic";
@@ -33,28 +34,23 @@ function Titre({ children, sur }: { children: React.ReactNode; sur?: string }) {
   );
 }
 
+// `Tuile` était un doublon de la tuile de AdsKpis, en 20 px au lieu de 18 et
+// sans delta ni forme. Elle n'est plus qu'un nom local sur la brique partagée
+// — les sept tuiles de cette page gagnent le delta coloré et la sparkline.
 function Tuile({
   titre,
   valeur,
   sous,
   ton = "ink",
+  serie,
 }: {
   titre: string;
   valeur: string;
   sous: string;
-  ton?: "ink" | "pos" | "neg" | "warn";
+  ton?: Ton;
+  serie?: number[];
 }) {
-  const cls =
-    ton === "neg" ? "text-neg" : ton === "pos" ? "text-pos" : ton === "warn" ? "text-warn" : "text-ink";
-  return (
-    <div className="bg-white border border-line rounded-xl p-4 min-w-[190px] shrink-0 sm:min-w-0 sm:shrink">
-      <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-        {titre}
-      </div>
-      <div className={`font-mono text-xl font-medium ${cls}`}>{valeur}</div>
-      <div className="text-[11px] text-faint mt-1 leading-snug">{sous}</div>
-    </div>
-  );
+  return <Chiffre titre={titre} valeur={valeur} sous={sous} ton={ton} serie={serie} />;
 }
 
 // ── LE JOUR ────────────────────────────────────────────────────────────────
@@ -403,6 +399,7 @@ export default async function CoutsPage() {
             titre="Dépensé"
             valeur={`${fmtCHF(data.totalSpent)} CHF`}
             sous={`tous canaux · ${Math.round(data.elapsed * 100)} % du mois écoulé`}
+            serie={data.daily.map((j) => j.meta + j.google)}
           />
           <Tuile
             titre="Enveloppe du mois"

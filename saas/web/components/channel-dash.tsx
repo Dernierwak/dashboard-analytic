@@ -4,6 +4,7 @@
 // drill-down adset/groupe → annonce, vue Par thème.
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
+import { Chiffre } from "@/components/chiffre";
 import type { ChannelDash } from "@/lib/channels";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { SummaryStop } from "@/components/summary-stop";
@@ -96,38 +97,59 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           <Delta value={d.imprDelta} />
         </div>
       </div>
-      {/* Perf — carrousel horizontal sur téléphone */}
+      {/* Ce qu'on regarde d'abord : trois chiffres, chacun avec sa forme.
+          Sept tuiles de poids identique, c'était une liste, pas une page. */}
       <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-3 pb-1 sm:pb-0">
-        {[
-          firstTile,
-          { label: "Clics", value: fmtCHF(d.clicks), delta: d.clicksDelta, invert: false },
-          { label: "CTR moyen", value: `${d.ctr.toFixed(2)} %`, delta: d.ctrDelta, invert: false },
-        ].map((k) => (
-          <div key={k.label} className="bg-white border border-line rounded-xl p-4 min-w-[180px] shrink-0 sm:min-w-0 sm:shrink">
-            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-              {k.label}
-            </div>
-            <div className="font-mono text-lg font-medium text-ink">{k.value}</div>
-            <Delta value={k.delta} invert={k.invert} />
-          </div>
-        ))}
+        <Chiffre
+          titre="Dépensé"
+          valeur={fmtCHF(d.spend)}
+          unite="CHF"
+          delta={d.spendDelta}
+          serie={d.daily.map((p) => p.spend)}
+          grand
+        />
+        <Chiffre
+          titre="Clics"
+          valeur={fmtCHF(d.clicks)}
+          delta={d.clicksDelta}
+          serie={d.daily.map((p) => p.clicks)}
+          grand
+        />
+        <Chiffre
+          titre="CTR moyen"
+          valeur={`${d.ctr.toFixed(2)}`}
+          unite="%"
+          delta={d.ctrDelta}
+          serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
+          grand
+        />
       </div>
-      {/* Coût — baisse = bon (vert) · carrousel horizontal sur téléphone */}
-      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
-        {[
-          { label: "Dépensé", value: `${fmtCHF(d.spend)} CHF`, delta: d.spendDelta, invert: false },
-          { label: "CPM moyen", value: d.cpm > 0 ? `${d.cpm.toFixed(2)} CHF` : "—", delta: d.cpm > 0 ? d.cpmDelta : null, invert: true },
-          { label: "CPC moyen", value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—", delta: d.cpc > 0 ? d.cpcDelta : null, invert: true },
-        ].map((k) => (
-          <div key={k.label} className="bg-white border border-line rounded-xl p-4 min-w-[180px] shrink-0 sm:min-w-0 sm:shrink">
-            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-              {k.label}
-            </div>
-            <div className="font-mono text-lg font-medium text-ink">{k.value}</div>
-            <Delta value={k.delta} invert={k.invert} />
-          </div>
-        ))}
-      </div>
+
+      {/* Les coûts unitaires descendent d'un cran : on les replie, on ne les
+          supprime pas — ils sont regardés par ceux qui savent ce qu'ils
+          regardent, et ils restent sur la page. */}
+      <details>
+        <summary className="text-[11.5px] font-semibold text-muted cursor-pointer select-none mb-2.5 hover:text-ink">
+          Coûts unitaires et {channel === "google" ? "CPC" : "portée"} — voir
+        </summary>
+        <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
+          <Chiffre titre={firstTile.label} valeur={firstTile.value} delta={firstTile.delta} baisseEstBonne={firstTile.invert} />
+          <Chiffre
+            titre="CPM moyen"
+            valeur={d.cpm > 0 ? d.cpm.toFixed(2) : "—"}
+            unite={d.cpm > 0 ? "CHF" : undefined}
+            delta={d.cpm > 0 ? d.cpmDelta : null}
+            baisseEstBonne
+          />
+          <Chiffre
+            titre="CPC moyen"
+            valeur={d.cpc > 0 ? d.cpc.toFixed(2) : "—"}
+            unite={d.cpc > 0 ? "CHF" : undefined}
+            delta={d.cpc > 0 ? d.cpcDelta : null}
+            baisseEstBonne
+          />
+        </div>
+      </details>
     </div>
   );
 }

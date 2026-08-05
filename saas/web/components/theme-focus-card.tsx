@@ -30,20 +30,23 @@ export function ThemeFocusCard({
   const s = theme.summary;
   const hasRoas = s.roas !== null && s.roas !== undefined;
 
-  const bits: string[] = [];
+  // Le bilan était UNE PHRASE : « 1 240 CHF → 3 100 CHF (ROAS 2,5) — 4 posts ·
+  // 3,2 % d'engagement ». Une phrase de chiffres demande une seconde lecture ;
+  // des chiffres alignés sous leur libellé, non. On garde exactement les mêmes
+  // valeurs, on change leur forme.
+  const cases: { cle: string; valeur: string; unite?: string }[] = [];
   if (s.spend != null && s.spend > 0) {
-    bits.push(
-      hasRoas
-        ? `${fmtCHF(s.spend)} CHF → ${fmtCHF(s.revenue ?? 0)} CHF (ROAS ${s.roas!.toFixed(1)})`
-        : `${fmtCHF(s.spend)} CHF investis${s.ctr != null ? ` · CTR ${s.ctr.toFixed(1)} %` : ""}`
-    );
+    cases.push({ cle: "Dépensé", valeur: fmtCHF(s.spend), unite: "CHF" });
+    if (hasRoas) {
+      cases.push({ cle: "Revenu", valeur: fmtCHF(s.revenue ?? 0), unite: "CHF" });
+      cases.push({ cle: "ROAS", valeur: s.roas!.toFixed(1) });
+    } else if (s.ctr != null) {
+      cases.push({ cle: "CTR", valeur: s.ctr.toFixed(1), unite: "%" });
+    }
   }
   if (s.posts != null && s.posts > 0) {
-    bits.push(
-      `${s.posts} post${s.posts > 1 ? "s" : ""}${
-        s.eng_avg != null ? ` · ${s.eng_avg.toFixed(1)} % d'engagement` : ""
-      }`
-    );
+    cases.push({ cle: "Publications", valeur: String(s.posts) });
+    if (s.eng_avg != null) cases.push({ cle: "Engagement", valeur: s.eng_avg.toFixed(1), unite: "%" });
   }
 
   return (
@@ -61,16 +64,30 @@ export function ThemeFocusCard({
             </span>
           )}
         </div>
-        {bits.length > 0 ? (
-          <p className="text-[12.5px] text-muted leading-relaxed mt-1">
-            <span className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-              Ce qui fonctionne ·{" "}
-            </span>
-            {bits.join(" — ")}
+        {cases.length > 0 ? (
+          <>
+            {/* Les chiffres qui vont ensemble partagent un fond, pas un cadre
+                chacun : c'est ce qui les fait lire comme un seul bilan. */}
+            <div className="mt-2.5 flex gap-x-7 gap-y-3 flex-wrap">
+              {cases.map((c) => (
+                <div key={c.cle}>
+                  <div className="font-mono text-[19px] leading-none font-medium text-ink">
+                    {c.valeur}
+                    {c.unite && <span className="text-[11.5px] text-faint"> {c.unite}</span>}
+                  </div>
+                  <div className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-1">
+                    {c.cle}
+                  </div>
+                </div>
+              ))}
+            </div>
             {!hasRoas && s.spend != null && s.spend > 0 && (
-              <span className="text-faint"> (revenu inconnu tant que Google Analytics est muet)</span>
+              <p className="text-[11px] text-faint mt-2.5">
+                Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
+                conversions.
+              </p>
             )}
-          </p>
+          </>
         ) : (
           <p className="text-[12.5px] text-faint leading-relaxed mt-1">
             Pas encore assez de données sur ce thème pour en tirer une tendance.
