@@ -25,6 +25,19 @@ import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actio
 
 export const dynamic = "force-dynamic";
 
+// ATTENTION en modifiant cette page : les actions ci-dessus se passent à
+// `ChoixCompte` TELLES QUELLES, jamais enveloppées.
+//
+//   action={choisirCompteGoogle}        ✅
+//   action={(id) => choisirCompteGoogle(id)}   ❌ plante la page
+//
+// `ChoixCompte` est un composant client ; une fonction ne franchit la frontière
+// que si c'est une action serveur, reconnaissable comme telle. Une flèche créée
+// ici est une fonction ordinaire — React ne peut pas la sérialiser et la page
+// entière tombe en « server-side exception ». Le piège est que TypeScript
+// l'accepte et que le build passe : ça ne se voit qu'à l'exécution, et
+// seulement quand la liste de choix s'affiche.
+
 // Une erreur OAuth brute ne dit rien à personne. Chaque code porte ici une
 // phrase qui nomme la cause ET le geste qui la corrige.
 const ERREURS: Record<string, string> = {
@@ -141,20 +154,30 @@ export default async function ComptesPage({
   const besoinGa4 = cx.canaux[3].connecte === false;
 
   if (besoinAds || besoinGa4) {
-    const supabase = createClient();
-    const r = await supabase
-      .from("connected_accounts")
-      .select("google_refresh_token")
-      .eq("user_id", compte.moi)
-      .eq("provider", "google")
-      .limit(1);
-    const refresh = r.data?.[0]?.google_refresh_token as string | null | undefined;
-    if (refresh) {
-      const access = await accessTokenGoogle(refresh);
-      if (access) {
-        if (besoinAds) choixAds = await comptesGoogleAds(access);
-        if (besoinGa4) choixGa4 = await proprietesGa4(access);
+    try {
+      const supabase = createClient();
+      const r = await supabase
+        .from("connected_accounts")
+        .select("google_refresh_token")
+        .eq("user_id", compte.moi)
+        .eq("provider", "google")
+        .limit(1);
+      const refresh = r.data?.[0]?.google_refresh_token as string | null | undefined;
+      if (refresh) {
+        const access = await accessTokenGoogle(refresh);
+        if (access) {
+          if (besoinAds) choixAds = await comptesGoogleAds(access);
+          if (besoinGa4) choixGa4 = await proprietesGa4(access);
+        }
       }
+    } catch (e) {
+      // Cette page est le SEUL endroit d'où l'on peut réparer une connexion.
+      // Si elle tombe, il n'y a plus aucun chemin de sortie : ni reconnecter,
+      // ni déconnecter, ni même lire l'état. Une étape qui échoue perd donc son
+      // encadré, pas la page.
+      const m = (e as Error)?.message ?? "cause inconnue";
+      if (besoinAds) choixAds = { ok: false, erreur: `Impossible de lister tes comptes Google Ads (${m}).` };
+      if (besoinGa4) choixGa4 = { ok: false, erreur: `Impossible de lister tes propriétés Analytics (${m}).` };
     }
   }
 
@@ -227,7 +250,7 @@ export default async function ComptesPage({
             titre="Quel compte Google Ads ?"
             aide="Celui qui porte les campagnes que tu veux suivre dans Pulse."
             choix={choixAds.choix}
-            action={(id) => choisirCompteGoogle(id)}
+            action={choisirCompteGoogle}
             libelleBouton="Suivre ce compte"
           />
         ) : (
@@ -249,7 +272,7 @@ export default async function ComptesPage({
               "visiteurs — sans elle, on voit ce que la pub coûte, jamais ce qu'elle rapporte."
             }
             choix={choixGa4.choix}
-            action={(id) => choisirProprieteGa4(id)}
+            action={choisirProprieteGa4}
             libelleBouton="Suivre cette propriété"
           />
         ) : (
