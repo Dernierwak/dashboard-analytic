@@ -68,11 +68,23 @@ export type Frise = {
     nom: string;
     canal: string;
     theme: string | null;
+    /** Premier et dernier jour où la campagne a RÉELLEMENT dépensé. */
     debut: string;
     fin: string;
     jours: number;
     continu: boolean;
     depense: number;
+    // ── Ce qui est DÉCLARÉ dans la plateforme, pas observé ────────────────
+    // Absent tant que le worker ne va pas chercher les dates de campagne chez
+    // Meta (`start_time`/`stop_time`) et Google Ads (`campaign.start_date`/
+    // `campaign.end_date`). Elles ne se déduisent pas de la dépense : une
+    // campagne programmée jusqu'en décembre et une campagne arrêtée hier ont
+    // exactement la même trace. Tant que ces champs sont absents, la frise
+    // n'affiche aucun segment prévisionnel — elle ne devine pas.
+    /** Fin programmée. `null` = explicitement sans date de fin. */
+    fin_prevue?: string | null;
+    /** true quand la campagne est créée mais n'a encore rien dépensé. */
+    planifiee?: boolean;
   }[];
   posts: { date: string; theme: string | null; type: string }[];
 };

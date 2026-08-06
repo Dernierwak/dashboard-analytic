@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Frise } from "@/lib/report";
 import { teinteLabel } from "@/lib/palette";
 
@@ -12,14 +12,18 @@ import { teinteLabel } from "@/lib/palette";
 // compare pourtant des chiffres de semaine pleine ; un creux de portée suivi de
 // dix jours sans publication n'est pas un problème d'algorithme.
 //
-// DEUX ANS, pas un trimestre : la durée médiane de diffusion est de 82 jours,
-// la saisonnalité — printemps, été, fêtes — ne se lit pas sur trois mois, et
-// surtout des campagnes ont démarré au 1er janvier 2025 pour courir jusqu'à fin
-// 2026. Une fenêtre glissante de douze mois coupait les deux bouts.
+// DEUX ANS : la durée médiane de diffusion est de 82 jours, la saisonnalité —
+// printemps, été, fêtes — ne se lit pas sur trois mois, et des campagnes ont
+// démarré au 1er janvier 2025 pour courir jusqu'à fin 2026.
 //
-// La partie qui suit la dernière donnée récoltée est hachurée et nommée
-// « à venir ». C'est du futur : il est vide parce qu'il n'a pas eu lieu, pas
-// parce que la récolte a échoué — et les deux ne doivent pas se confondre.
+// TROIS NATURES DE TRAIT, et il ne faut jamais les confondre :
+//   ▬ plein          la campagne a dépensé ce jour-là — c'est mesuré ;
+//   ▬ estompé        on ne sait plus : la récolte s'arrête là, pas la campagne ;
+//   ┈ pointillé      c'est déclaré dans la plateforme, rien n'a été dépensé.
+// Le pointillé n'apparaît que si la campagne porte une date de fin déclarée
+// (`fin_prevue`) ou est marquée `planifiee`. La frise ne déduit JAMAIS un
+// prévisionnel de la dépense : une campagne programmée jusqu'en décembre et une
+// campagne arrêtée hier laissent exactement la même trace.
 //
 // UN SEUL CADRE DE DÉFILEMENT, et c'est important. La version précédente en
 // avait deux imbriqués : le cadre horizontal, et la liste des campagnes en
@@ -52,6 +56,75 @@ function mois(iso: string): string {
 
 const CANAL: Record<string, string> = { meta: "▣", google: "◆" };
 
+// Le format d'une publication. Un point unique disait « il s'est passé quelque
+// chose » ; il ne disait pas quoi. Le glyphe porte le format, la couleur
+// continue de porter le thème — ce sont deux questions différentes et elles
+// tiennent dans le même badge.
+const FORMAT: Record<string, { glyphe: string; nom: string }> = {
+  IMAGE: { glyphe: "▢", nom: "Image" },
+  CAROUSEL_ALBUM: { glyphe: "▤", nom: "Carrousel" },
+  VIDEO: { glyphe: "▶", nom: "Vidéo" },
+  REEL: { glyphe: "▶", nom: "Reel" },
+  REELS: { glyphe: "▶", nom: "Reel" },
+  STORY: { glyphe: "◷", nom: "Story" },
+};
+const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };
+const format = (t: string) => FORMAT[(t || "").toUpperCase()] ?? FORMAT_INCONNU;
+
+const HACHURE =
+  "repeating-linear-gradient(45deg, rgba(17,17,16,0.035) 0 5px, transparent 5px 10px)";
+
+type Repere = {
+  bornes: { i: number; j: string; an: boolean }[];
+  x: (i: number) => number;
+  largeur: number;
+  debutFutur: number;
+  futur: boolean;
+  debutSemaine: number;
+  largeurSemaine: number;
+  ajd: number | null;
+  PX: number;
+};
+
+// Le fond commun à toutes les bandes : les débuts de mois, la zone à venir, la
+// semaine en cours et le trait d'aujourd'hui. Répété dans chaque bande pour
+// rester aligné au défilement.
+//
+// DÉFINI ICI, hors du composant, et ce n'est pas un détail de style : tant
+// qu'il était déclaré dans le corps de `FriseSemaine`, chaque rendu en créait
+// un type NEUF, donc React démontait et remontait tout le fond. Le premier
+// effet posait le défilement sur la semaine en cours, le second (le calcul
+// d'aujourd'hui) provoquait un rendu, et la frise repartait au 1er janvier.
+function Fond({ r }: { r: Repere }) {
+  return (
+    <>
+      {r.futur && (
+        <div
+          className="absolute inset-y-0 pointer-events-none"
+          style={{ left: r.x(r.debutFutur), width: r.largeur - r.x(r.debutFutur), background: HACHURE }}
+        />
+      )}
+      {r.bornes.map((b) => (
+        <div
+          key={b.j}
+          className={`absolute inset-y-0 border-l ${b.an ? "border-ink/25" : "border-line"}`}
+          style={{ left: r.x(b.i) }}
+        />
+      ))}
+      <div
+        className="absolute inset-y-0 bg-brand/[0.06] border-x border-brand/25 pointer-events-none"
+        style={{ left: r.x(r.debutSemaine), width: r.largeurSemaine }}
+      />
+      {r.ajd !== null && (
+        <div
+          className="absolute inset-y-0 w-px bg-ink/45 pointer-events-none"
+          style={{ left: r.x(r.ajd) + r.PX / 2 }}
+        />
+      )}
+    </>
+  );
+}
+
 export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   const cadre = useRef<HTMLDivElement>(null);
   const grille = jours(f.debut, f.fin);
@@ -66,14 +139,54 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   const PX = n > 500 ? 5 : n > 200 ? 7 : 11;
   const largeur = n * PX;
 
-  // On arrive sur la semaine du rapport, ni sur le 1er janvier de l'an dernier
-  // ni sur le 31 décembre à venir : elle se pose aux deux tiers du cadre, le
+  // On se pose sur la semaine du rapport, ni sur le 1er janvier de l'an dernier
+  // ni sur le 31 décembre à venir : elle occupe les deux tiers du cadre, le
   // passé derrière, les mois à venir juste à droite.
+  const recentrer = useCallback(() => {
+    const el = cadre.current;
+    if (!el) return;
+    el.scrollTo({ left: Math.max(0, debutSemaine * PX - el.clientWidth * 0.62), behavior: "smooth" });
+  }, [debutSemaine, PX]);
+
+  // La position d'ouverture attend que le cadre ait une largeur.
+  //
+  // Posée directement au montage, elle était perdue une fois sur deux : tant
+  // que la mise en page n'a pas eu lieu, `scrollWidth` vaut 0 et le navigateur
+  // ramène silencieusement `scrollLeft` à 0. La frise s'ouvrait alors au
+  // 1er janvier 2025 — vingt mois avant ce qu'on venait lire. Un observateur de
+  // taille attend le premier vrai calibrage, positionne, puis se retire.
+  const place = useRef(false);
   useEffect(() => {
     const el = cadre.current;
     if (!el) return;
-    el.scrollLeft = Math.max(0, debutSemaine * PX - el.clientWidth * 0.62);
+    place.current = false;
+    const poser = () => {
+      if (place.current || el.clientWidth === 0 || el.scrollWidth <= el.clientWidth) return false;
+      el.scrollLeft = Math.max(0, debutSemaine * PX - el.clientWidth * 0.62);
+      place.current = true;
+      return true;
+    };
+    if (poser()) return;
+    const ro = new ResizeObserver(() => {
+      if (poser()) ro.disconnect();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [largeur, debutSemaine, PX]);
+
+  // Aujourd'hui est calculé APRÈS le montage : la date du serveur et celle du
+  // navigateur ne tombent pas dans le même fuseau, et un trait qui saute d'un
+  // jour à l'hydratation est un bug qu'on ne comprend qu'au troisième essai.
+  const [ajd, setAjd] = useState<number | null>(null);
+  useEffect(() => {
+    const t = new Date();
+    const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(
+      t.getDate()
+    ).padStart(2, "0")}`;
+    const i = grille.indexOf(iso);
+    setAjd(i >= 0 ? i : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.debut, f.fin]);
 
   if (n < 7) return null;
 
@@ -88,6 +201,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
     const i = idx(c);
     return i >= 0 ? i : n - 1;
   };
+
   // Où s'arrête ce qu'on sait. Au-delà, ce n'est pas un trou de données : c'est
   // du futur. La zone est hachurée et nommée, pour qu'on ne lise pas un silence
   // là où il n'y a qu'une date pas encore arrivée.
@@ -121,48 +235,47 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
     l.push(p);
     postsParJour.set(p.date, l);
   }
+  // La légende ne nomme que les formats réellement présents : une légende qui
+  // annonce ce qu'on ne verra pas fait chercher pour rien.
+  const formats = [...new Set(f.posts.map((p) => format(p.type).nom))];
 
-  // Le fond commun à toutes les bandes : les débuts de mois et la semaine
-  // en cours. Posé dans chaque bande pour rester aligné au défilement.
-  const HACHURE =
-    "repeating-linear-gradient(45deg, rgba(17,17,16,0.035) 0 5px, transparent 5px 10px)";
+  // Même règle pour le pointillé : tant que les dates déclarées ne sont pas
+  // récoltées, aucune campagne n'en porte — et une légende qui décrit un trait
+  // absent de l'écran fait chercher pour rien.
+  const aDuPrevu = f.campagnes.some((c) => c.planifiee || c.fin_prevue !== undefined);
 
-  const Fond = () => (
-    <>
-      {futur && (
-        <div
-          className="absolute inset-y-0 pointer-events-none"
-          style={{ left: x(debutFutur), width: largeur - x(debutFutur), background: HACHURE }}
-        />
-      )}
-      {bornes.map((b) => (
-        <div
-          key={b.j}
-          className={`absolute inset-y-0 border-l ${b.an ? "border-ink/25" : "border-line"}`}
-          style={{ left: x(b.i) }}
-        />
-      ))}
-      <div
-        className="absolute inset-y-0 bg-brand/[0.06] border-x border-brand/25 pointer-events-none"
-        style={{ left: x(debutSemaine), width: largeurSemaine }}
-      />
-    </>
-  );
+  const rep: Repere = {
+    bornes,
+    x,
+    largeur,
+    debutFutur,
+    futur,
+    debutSemaine,
+    largeurSemaine,
+    ajd,
+    PX,
+  };
 
   return (
     <div className="bg-white border border-line rounded-xl shadow-card overflow-hidden">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap px-4 sm:px-5 pt-4 pb-2">
-        <div className="text-[10px] uppercase tracking-widest text-faint font-bold">
-          Ce qui tournait{" "}
-          <span className="text-ink">
-            · {f.debut.slice(0, 4)}
-            {f.fin.slice(0, 4) !== f.debut.slice(0, 4) && ` → ${f.fin.slice(0, 4)}`}
-          </span>
-        </div>
-        <div className="text-[10.5px] text-faint">
+      <div className="flex items-center gap-2.5 flex-wrap px-4 sm:px-5 pt-4 pb-2">
+        <h3 className="text-[10px] uppercase tracking-widest text-faint font-bold">
+          Ce qui tournait
+        </h3>
+        <span className="text-[10.5px] font-bold text-ink bg-black/[0.05] rounded-full px-2 py-0.5">
+          {f.debut.slice(0, 4)}
+          {f.fin.slice(0, 4) !== f.debut.slice(0, 4) && ` → ${f.fin.slice(0, 4)}`}
+        </span>
+        <span className="text-[10.5px] text-faint">
           {f.campagnes.length} campagne{f.campagnes.length > 1 ? "s" : ""} ·{" "}
           {f.posts.length} publication{f.posts.length > 1 ? "s" : ""} · glisse ← →
-        </div>
+        </span>
+        <button
+          onClick={recentrer}
+          className="ml-auto text-[11px] font-semibold text-brand border border-brand/25 rounded-full px-3 py-1 hover:bg-brand/[0.06] transition-colors"
+        >
+          Recentrer
+        </button>
       </div>
 
       {/* Un seul cadre, deux axes. Tout ce qui est dedans partage la même
@@ -189,6 +302,12 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                 className="absolute inset-y-0 bg-brand/[0.07] border-x border-brand/25"
                 style={{ left: x(debutSemaine), width: largeurSemaine }}
               />
+              {ajd !== null && (
+                <div
+                  className="absolute inset-y-0 w-px bg-ink/45"
+                  style={{ left: x(ajd) + PX / 2 }}
+                />
+              )}
               {bornes.map((b) => (
                 <span
                   key={`t-${b.j}`}
@@ -222,13 +341,41 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
           {/* Les campagnes — une barre chacune, du premier au dernier jour où
               elle a réellement dépensé. Triées par dépense. */}
           <div className="relative pt-1">
-            <Fond />
+            <Fond r={rep} />
             {f.campagnes.map((c) => {
               const a = Math.max(0, idx(c.debut));
               const b = Math.min(n - 1, idx(c.fin));
               const t = couleur(c.theme);
               const lim = limite(c.canal);
               const coupe = b >= lim && lim < n - 1;
+
+              // Le segment déclaré : de la fin observée à la fin programmée.
+              // Absent tant que le worker ne récolte pas ces dates — la frise
+              // ne fabrique pas de prévisionnel à partir de la dépense.
+              const iPrevu = c.fin_prevue ? idx(c.fin_prevue) : -1;
+              const plan = iPrevu > b ? { de: b + 1, a: iPrevu } : null;
+
+              // Ce qu'on peut dire de la fin, et RIEN de plus.
+              //
+              // Le cas `coupe` — la barre s'arrête sur la limite de récolte —
+              // ne porte AUCUN texte, et c'est délibéré : toutes les campagnes
+              // d'un même canal s'arrêtent au même jour, donc la même phrase
+              // s'écrivait douze fois à la même abscisse. Le dégradé de fin de
+              // barre, la légende du pied et l'avertissement en bas disent déjà
+              // la chose, une seule fois chacun. Une étiquette n'apparaît que
+              // là où elle apprend quelque chose de propre à la ligne.
+              const finTexte = c.planifiee
+                ? "planifiée"
+                : c.fin_prevue === null
+                  ? "sans date de fin"
+                  : c.fin_prevue
+                    ? `fin prévue ${libelle(c.fin_prevue)}`
+                    : coupe
+                      ? null
+                      : `fin ${libelle(c.fin)}`;
+              const finX = x(plan ? plan.a : b) + PX;
+              const aGauche = finX + 96 > largeur;
+
               return (
                 <div key={`${c.canal}-${c.nom}`} className="relative h-[24px]">
                   <div
@@ -249,6 +396,17 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                       c.continu ? "" : " · diffusion interrompue puis reprise"
                     }`}
                   />
+                  {plan && (
+                    <div
+                      className="absolute inset-y-[4px] rounded-full border border-dashed"
+                      style={{
+                        left: x(plan.de),
+                        width: Math.max(5, (plan.a - plan.de + 1) * PX),
+                        borderColor: t?.trait ?? "#d8d8de",
+                      }}
+                      title={`${c.nom} · programmée jusqu'au ${libelle(c.fin_prevue!)} — rien de dépensé sur cette portion`}
+                    />
+                  )}
                   <span
                     className="absolute inset-y-0 flex items-center text-[10.5px] text-ink/80 whitespace-nowrap pl-2 pointer-events-none"
                     style={{ left: x(a) }}
@@ -261,6 +419,19 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                       </span>
                     )}
                   </span>
+                  {/* La fin, écrite au bout de la barre. Une barre qui s'arrête
+                      ne dit pas POURQUOI elle s'arrête : campagne terminée,
+                      données qui manquent, ou fin programmée. Ici c'est écrit. */}
+                  {finTexte && (
+                    <span
+                      className={`absolute inset-y-0 flex items-center text-[9.5px] text-faint whitespace-nowrap pointer-events-none ${
+                        aGauche ? "-translate-x-full pr-2" : "pl-1.5"
+                      }`}
+                      style={{ left: finX }}
+                    >
+                      {finTexte}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -270,8 +441,8 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
               — un pic qui suit un post ou le lancement d'une campagne. */}
           <div className="sticky bottom-0 z-10 bg-white border-t border-line pt-1.5">
             <div className="relative h-7">
-              <Fond />
-              <div className="absolute inset-x-0 top-1/2 border-t border-line" />
+              <Fond r={rep} />
+              <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-line" />
               <span
                 className="sticky left-2 z-20 float-left text-[9.5px] uppercase tracking-wide text-faint font-semibold bg-white/90 px-1 rounded"
                 style={{ lineHeight: "28px" }}
@@ -282,21 +453,27 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                 const i = idx(jour);
                 if (i < 0) return null;
                 const t = couleur(liste[0].theme);
+                const fm = format(liste[0].type);
                 return (
                   <span
                     key={jour}
-                    className="absolute top-1/2 -translate-y-1/2 rounded-full border-2"
+                    className="absolute top-1/2 -translate-y-1/2 rounded-[4px] border flex items-center justify-center font-bold"
                     style={{
-                      left: x(i) + PX / 2 - 4,
-                      height: 8,
-                      width: 8,
+                      left: x(i) + PX / 2 - 6,
+                      height: 12,
+                      width: 12,
+                      fontSize: 8,
+                      lineHeight: 1,
                       background: t?.aplat ?? "rgba(0,0,0,0.06)",
                       borderColor: t?.trait ?? "#8a8a94",
+                      color: t?.trait ?? "#5a5d66",
                     }}
                     title={`${libelle(jour)} · ${liste
-                      .map((p) => p.theme ?? "sans thème")
-                      .join(", ")}${liste.length > 1 ? ` (${liste.length} posts)` : ""}`}
-                  />
+                      .map((p) => `${format(p.type).nom} — ${p.theme ?? "sans thème"}`)
+                      .join(" · ")}`}
+                  >
+                    {liste.length > 1 ? liste.length : fm.glyphe}
+                  </span>
                 );
               })}
             </div>
@@ -304,13 +481,38 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
         </div>
       </div>
 
-      <div className="px-4 sm:px-5 pt-2 pb-2.5 text-[10px] text-faint">
-        Une barre = une campagne, du premier au dernier jour où elle a réellement dépensé.
-        Un point = une publication. <span className="text-warn">⌇</span> diffusion
-        interrompue puis reprise. La frise s&apos;ouvre sur la semaine du rapport — glisse
-        à gauche pour remonter jusqu&apos;à {f.debut.slice(0, 4)}, à droite pour aller
-        jusqu&apos;à fin {f.fin.slice(0, 4)}. La zone hachurée n&apos;est pas encore
-        arrivée.
+      {formats.length > 1 && (
+        <div className="flex items-center gap-3.5 flex-wrap px-4 sm:px-5 pt-2.5 text-[10px] text-faint font-semibold">
+          {formats.map((nom) => {
+            const g = Object.values(FORMAT).find((v) => v.nom === nom)?.glyphe ?? "·";
+            return (
+              <span key={nom} className="flex items-center gap-1.5">
+                <span className="h-[12px] w-[12px] rounded-[4px] border border-line bg-black/[0.04] flex items-center justify-center text-[8px] text-muted">
+                  {g}
+                </span>
+                {nom}
+              </span>
+            );
+          })}
+          <span className="text-faint/70 font-normal">
+            la couleur porte le thème, le glyphe le format
+          </span>
+        </div>
+      )}
+
+      {/* Une légende par nature de trait. Quatre traits différents cohabitent
+          sur la même frise et aucun ne se devine : ce pied est la seule chose
+          qui empêche de lire « campagne terminée » là où c'est la récolte qui
+          s'arrête. */}
+      <div className="flex gap-x-4 gap-y-1 flex-wrap px-4 sm:px-5 pt-2.5 pb-3 text-[10px] text-faint">
+        <span>
+          <b className="text-warn">⌇</b> diffusion interrompue puis reprise
+        </span>
+        {futur && <span>barre estompée = fin de la couverture des données, pas fin de campagne</span>}
+        {aDuPrevu && (
+          <span>contour pointillé = fin prévue ou campagne planifiée, rien de dépensé encore</span>
+        )}
+        {ajd !== null && <span>trait vertical sombre = aujourd&apos;hui</span>}
       </div>
 
       {retards.length > 0 && (
