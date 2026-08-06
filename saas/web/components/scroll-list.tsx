@@ -10,6 +10,7 @@ export function ScrollList({
   children,
   maxH = "max-h-[52vh]",
   className = "",
+  divise = true,
 }: {
   title: string;
   count?: number;
@@ -17,6 +18,9 @@ export function ScrollList({
   children: ReactNode;
   maxH?: string;
   className?: string;
+  /** false quand le contenu porte déjà sa propre continuité — un rail de frise,
+   *  par exemple, que les filets horizontaux viendraient hacher. */
+  divise?: boolean;
 }) {
   return (
     <div className={className}>
@@ -27,7 +31,11 @@ export function ScrollList({
         </h3>
         {action && <span className="ml-auto">{action}</span>}
       </div>
-      <div className={`${maxH} overflow-y-auto rounded-xl border border-line bg-white divide-y divide-line`}>
+      <div
+        className={`${maxH} overflow-y-auto rounded-xl border border-line bg-white ${
+          divise ? "divide-y divide-line" : ""
+        }`}
+      >
         {children}
       </div>
     </div>

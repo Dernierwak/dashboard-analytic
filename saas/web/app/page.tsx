@@ -17,6 +17,7 @@ import { TrackingSection } from "@/components/tracking-section";
 import { ActionTop } from "@/components/action-top";
 import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
+import { Triangle } from "@/components/pente";
 
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ function SectionTitle({
 // disputer le niveau 1.
 function ResumeSemaine({ brief }: { brief: string }) {
   return (
-    <div className="mt-3.5 max-w-[68ch]">
+    <div className="mt-5 max-w-[68ch]">
       <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted whitespace-pre-line">
         {brief}
       </p>
@@ -91,12 +92,12 @@ function Verdict({ report }: { report: ReportPayload }) {
     );
   }
   const cls = ton === "pos" ? "text-pos" : ton === "neg" ? "text-neg" : "text-muted";
-  const fleche = pct > 0.5 ? "▲" : pct < -0.5 ? "▼" : "≈";
+  const plat = Math.abs(pct) <= 0.5;
   return (
     <div>
       <div className="flex items-baseline gap-3 flex-wrap">
         <span className={`font-mono text-[52px] sm:text-[68px] leading-[0.9] font-medium ${cls}`}>
-          {fleche} {pct > 0 ? "+" : ""}
+          {plat ? "≈" : <Triangle sens={pct > 0 ? "haut" : "bas"} />} {pct > 0 ? "+" : ""}
           {pct.toFixed(0)}
           <span className="text-[26px] sm:text-[32px]"> %</span>
         </span>
@@ -128,7 +129,7 @@ function VersLaction({ actions }: { actions: TrackedAction[] }) {
   return (
     <a
       href="#a-faire"
-      className="inline-flex items-center gap-1.5 mt-4 text-[12.5px] font-semibold text-brand border border-brand/25 rounded-full px-3.5 py-1.5 hover:bg-brand/[0.06] transition-colors"
+      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand border border-brand/25 rounded-full px-3.5 py-1.5 hover:bg-brand/[0.06] transition-colors"
     >
       ▸ {bouts.join(" · ")} <span className="text-faint font-normal">— y aller ↓</span>
     </a>
@@ -194,16 +195,30 @@ export default async function Page({
           première question du lecteur, elle doit trouver sa réponse avant le
           premier scroll. Une phrase d'accroche à la place ne dit rien. */}
       <div className="mb-7">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          {report?.week_label ?? data.weekLabel}
-        </p>
-        {report ? (
-          <Verdict report={report} />
-        ) : (
-          <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
-            Ta semaine en bref.
-          </h1>
-        )}
+        {/* Ce qui est CALCULÉ entre en carte ; ce qui est RÉDIGÉ reste nu.
+            La ligne de partage n'est pas esthétique, c'est une convention de
+            lecture : l'écart, la métrique et la phrase de verdict sont produits
+            par des règles déterministes, le résumé est écrit par une IA. Un
+            cadre autour du second lui donnerait l'autorité du premier. */}
+        <div className="rounded-2xl border border-line bg-white shadow-card px-5 py-5 sm:px-7 sm:py-6">
+          <div className="flex items-baseline gap-3 flex-wrap mb-2">
+            <p className="text-[11px] uppercase tracking-widest text-faint font-semibold">
+              {report?.week_label ?? data.weekLabel}
+            </p>
+            {/* Le raccourci vers l'action était la DERNIÈRE chose du hero, après
+                200 px d'objectif replié — donc loin du chiffre qui le motive. */}
+            <span className="ml-auto">
+              <VersLaction actions={data.actions} />
+            </span>
+          </div>
+          {report ? (
+            <Verdict report={report} />
+          ) : (
+            <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
+              Ta semaine en bref.
+            </h1>
+          )}
+        </div>
         {report?.brief && <ResumeSemaine brief={report.brief} />}
       {/* L'objectif est un RÉGLAGE, pas du contenu : il se range sous le
           résumé, replié, à portée mais sans peser sur la lecture. */}
@@ -261,7 +276,6 @@ export default async function Page({
             </div>
           </div>
         </details>
-        <VersLaction actions={data.actions} />
       </div>
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
@@ -309,7 +323,7 @@ export default async function Page({
             {priorities.length > 0 && (
               <> · thèmes suivis <span className="font-semibold text-warn">{priorities.join(" · ")}</span></>
             )}{" "}
-            — l&apos;évolution de l&apos;indicateur de ton objectif sur chacun, avec un ▲ à
+            — l&apos;évolution de l&apos;indicateur de ton objectif sur chacun, avec un repère ┄ à
             chaque semaine où tu as lancé une action.
           </p>
           <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 space-y-7">

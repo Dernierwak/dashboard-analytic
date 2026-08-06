@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { resolveAction } from "@/app/actions";
 import type { TrackedAction } from "@/lib/report";
+import { Triangle } from "@/components/pente";
 
 // « Ce que tu dois faire » — le bloc tout en haut du rapport.
 // C'est le SEUL bloc teinté de la page : sur un empilement de cartes blanches
@@ -30,11 +31,21 @@ function depuis(iso: string): string {
   return `il y a ${Math.round(days / 7)} semaines`;
 }
 
-const V: Record<string, { cls: string; border: string; icon: string; label: string }> = {
+// « Pas d'effet » portait un ▲ ROUGE, pointe en haut, sur une mauvaise
+// nouvelle : le troisième sens du triangle, et le plus trompeur des trois.
+// Le verdict emprunte maintenant la flèche du delta RÉEL — un chiffre qui a
+// baissé montre une flèche vers le bas, quoi qu'on pense du résultat.
+const V: Record<string, { cls: string; border: string; icon: string | null; label: string }> = {
   better: { cls: "text-pos", border: "#1a7a4a", icon: "✓", label: "ça a marché" },
-  worse: { cls: "text-neg", border: "#c0392b", icon: "▲", label: "pas d'effet — à revoir" },
+  worse: { cls: "text-neg", border: "#c0392b", icon: null, label: "pas d'effet — à revoir" },
   stable: { cls: "text-warn", border: "#b86b00", icon: "≈", label: "stable" },
 };
+
+function Marque({ icon, delta }: { icon: string | null; delta?: number | null }) {
+  if (icon) return <>{icon}</>;
+  if (delta === null || delta === undefined || Math.abs(delta) < 0.5) return <>✕</>;
+  return <Triangle sens={delta > 0 ? "haut" : "bas"} />;
+}
 
 // Un échec doit se voir et se comprendre : un clic sans réponse est la chose
 // qui fait le plus douter d'un produit.
@@ -159,7 +170,9 @@ function JudgeCard({ a }: { a: TrackedAction }) {
     >
       <div className="flex items-center gap-2 flex-wrap">
         {v ? (
-          <span className={`text-[11px] font-bold ${v.cls}`}>{v.icon} {v.label}</span>
+          <span className={`text-[11px] font-bold ${v.cls}`}>
+            <Marque icon={v.icon} delta={a.delta} /> {v.label}
+          </span>
         ) : (
           <span className="text-[11px] font-bold text-warn">◷ à juger maintenant</span>
         )}

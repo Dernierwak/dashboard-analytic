@@ -16,6 +16,7 @@ import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 
 import { getCompteActif } from "@/lib/account";
+import { Triangle } from "@/components/pente";
 
 export const dynamic = "force-dynamic";
 
@@ -372,7 +373,8 @@ export default async function InstagramPage({
                 d.followersDelta >= 0 ? "text-pos" : "text-neg"
               }`}
             >
-              {d.followersDelta >= 0 ? "▲ +" : "▼ "}
+              <Triangle sens={d.followersDelta >= 0 ? "haut" : "bas"} />{" "}
+              {d.followersDelta >= 0 ? "+" : "−"}
               {fmtCHF(Math.abs(d.followersDelta))}{" "}
               <span className="text-faint font-normal">sur la période</span>
             </div>
@@ -631,7 +633,8 @@ export default async function InstagramPage({
       </h2>
       {engDiff !== null && Math.abs(engDiff) >= 10 && (
         <p className={`text-[12px] font-semibold mb-3 ${engDiff > 0 ? "text-pos" : "text-warn"}`}>
-          {engDiff > 0 ? "▲" : "▼"} Tes posts de la période engagent {engDiff > 0 ? "+" : ""}
+          <Triangle sens={engDiff > 0 ? "haut" : "bas"} /> Tes posts de la période engagent{" "}
+          {engDiff > 0 ? "+" : ""}
           {engDiff.toFixed(0)} % vs ton habitude ({d.postsEng!.toFixed(1)} % contre{" "}
           {d.avgEng.toFixed(1)} %).
         </p>

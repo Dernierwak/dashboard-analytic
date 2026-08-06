@@ -8,6 +8,7 @@ import { Chiffre } from "@/components/chiffre";
 import type { ChannelDash } from "@/lib/channels";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { SummaryStop } from "@/components/summary-stop";
+import { Pente, Triangle, sensPente } from "@/components/pente";
 
 function qs(base: Record<string, string | number | undefined>): string {
   const q = new URLSearchParams();
@@ -53,20 +54,6 @@ export function PeriodPills({ path, d }: { path: string; d: ChannelDash }) {
   );
 }
 
-function Delta({ value, invert = false }: { value: number | null; invert?: boolean }) {
-  if (value === null) return null;
-  if (Math.abs(value) < 0.5)
-    return <div className="text-[11px] text-faint font-medium mt-1.5">≈ stable</div>;
-  const up = value > 0;
-  const good = invert ? !up : up;
-  return (
-    <div className={`text-[11px] font-semibold mt-1.5 ${good ? "text-pos" : "text-neg"}`}>
-      {up ? "▲ +" : "▼ "}
-      {value.toFixed(0)} % <span className="text-faint font-normal">vs période préc.</span>
-    </div>
-  );
-}
-
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
 export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
   // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
@@ -94,7 +81,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           <div className="font-mono text-[32px] font-medium text-ink leading-tight">
             {fmtCHF(d.impressions)}
           </div>
-          <Delta value={d.imprDelta} />
+          <Pente delta={d.imprDelta} base="vs période préc." />
         </div>
       </div>
       {/* Ce qu'on regarde d'abord : trois chiffres, chacun avec sa forme.
@@ -198,12 +185,7 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
   const ec = av > 0 ? ((ap - av) / av) * 100 : null;
   // « Mieux » dépend de la métrique : un CPC qui baisse est une bonne nouvelle.
   const baisseEstBonne = d.metric === "cpc";
-  const pente =
-    ec === null || Math.abs(ec) < 8
-      ? { texte: "≈ stable", cls: "text-muted", fond: "rgba(0,0,0,0.05)" }
-      : (ec > 0) !== baisseEstBonne
-        ? { texte: `▲ +${Math.round(ec)} % sur la période`, cls: "text-pos", fond: "#1a7a4a14" }
-        : { texte: `▼ ${Math.round(ec)} % sur la période`, cls: "text-neg", fond: "#c0392b14" };
+  const s = sensPente(ec, baisseEstBonne, 8);
 
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
@@ -218,11 +200,18 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
         </span>
         <span className="text-[11px] text-faint">{taux ? "en moyenne" : "au total"}</span>
         <span
-          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${pente.cls}`}
-          style={{ background: pente.fond }}
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}
+          style={{ background: s.fond }}
           title="Seconde moitié de la période comparée à la première"
         >
-          {pente.texte}
+          {s.plat ? (
+            "≈ stable"
+          ) : (
+            <>
+              <Triangle sens={s.monte ? "haut" : "bas"} /> {ec! > 0 ? "+" : ""}
+              {Math.round(ec!)} % sur la période
+            </>
+          )}
         </span>
       </div>
 

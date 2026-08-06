@@ -28,8 +28,12 @@ export function LineChart({
   // Ligne de référence horizontale — le budget du jour, par exemple. Une
   // courbe sans seuil ne dit pas si ce qu'on voit est normal ou anormal.
   repere?: { value: number; label: string; color?: string };
-  // Index des colonnes où une action a été appliquée. Le ▲ posé SUR le graphe
-  // relie le geste à son effet ; en légende à côté, il ne relie rien.
+  // Index des colonnes où une action a été appliquée. Le repère posé SUR le
+  // graphe relie le geste à son effet ; en légende à côté, il ne relie rien.
+  // C'est un TRAIT POINTILLÉ, pas un glyphe : le ▲ est réservé à la pente
+  // (docs/03-grammaire-des-modules.md), et il servait ici un troisième sens.
+  // Et il est en encre, pas en bleu : le bleu est la couleur de la courbe
+  // elle-même — un repère invisible sur la ligne qu'il commente.
   markers?: number[];
 }) {
   const n = labels.length;
@@ -121,14 +125,13 @@ export function LineChart({
               y1={PAD_T}
               x2={x(mi)}
               y2={PAD_T + plotH}
-              stroke="#1a56ff"
-              strokeOpacity="0.22"
+              stroke="#0e0f12"
+              strokeOpacity="0.4"
               strokeWidth="1"
+              strokeDasharray="3 3"
               vectorEffect="non-scaling-stroke"
             />
-            <text x={x(mi)} y={PAD_T - 2} textAnchor="middle" fontSize="8" fill="#1a56ff">
-              ▲
-            </text>
+            <circle cx={x(mi)} cy={PAD_T} r="2.5" fill="#0e0f12" />
           </g>
         ) : null
       )}

@@ -133,6 +133,32 @@ dernier jour plein.
 
 ---
 
+## Le lexique des signes
+
+Un signe qui dit trois choses ne dit plus rien. Le `▲` servait à la hausse, au
+repère d'action sur un graphe et au verdict « pas d'effet » — dix-huit endroits,
+trois sens. Attribution arrêtée, elle ne se renégocie pas module par module :
+
+| Sens | Signe | Règle |
+|---|---|---|
+| la pente | `▲` `▼` | **exclusif**. Jamais sans un nombre à côté. Coloré par le SENS, jamais par le signe |
+| un repère d'action sur un graphe | trait vertical pointillé + point plein, en encre | légende : `┄ une semaine où tu as appliqué une action` |
+| verdict « pas d'effet » | la flèche du **delta réel**, en `text-neg` | ce n'est plus un sens à part, c'est le premier correctement employé |
+
+Le triangle est **dessiné** (`components/pente.tsx`), pas tapé : le caractère se
+cale mal sur la ligne de base selon la plateforme, et il doit tenir de 11 px
+(une tuile) à 68 px (le hero). Ses dimensions sont en `em`.
+
+Un repère d'action est un **fait daté, pas un jugement** : il est en encre. Il
+était bleu sur une courbe (la couleur de la courbe elle-même — invisible) et
+vert sur une autre (ce qui préjuge du résultat avant que le verdict existe).
+
+**Ce qui est calculé peut être encadré ; ce qui est rédigé reste nu.** Le hero
+en est le cas type : le verdict chiffré est en carte, le résumé écrit par l'IA
+est posé à même la page. Un cadre donnerait au second l'autorité du premier.
+
+---
+
 ## Où on en est
 
 **Conformes sans retouche** — c'est sur eux qu'on s'appuie :
@@ -152,11 +178,12 @@ dernier jour plein.
 | `Tuile` + `AdsKpis` | le même objet écrit deux fois | `components/chiffre.tsx` partagé — les deux pages gagnent delta coloré et sparkline |
 | `kpi-focus` | jauge sans bornes ; deux pieds | bornes chiffrées sous la jauge ; le `repere` devient l'info-bulle de la jauge qu'il commente |
 | `top-recos` | même `RecoCard` rendue deux fois sur la page | onglets-compteurs, un seul panneau rendu à la fois |
+| `tracking-section` | deux comptages de même poids au rang 3 | un seul chiffre — `X/Y` actions jugées qui ont bougé la métrique ; `reco_feedback` replié en pied de section ; la liste devient un fil vertical |
+| `kpi-focus` (jauge) | noms de paliers en `justify-between` sur des bandes proportionnelles | chaque nom occupe la largeur de sa bande |
+| huit blocs de delta recopiés | trois seuils de « stable » différents | `components/pente.tsx` — un seul composant, un seul seuil |
 
 **Reste à traiter :**
 
-- `tracking-section` — deux comptages de même poids au rang 3. Un seul rang de
-  compteurs (`suivi_actions`), et `reco_feedback` replié en pied de section.
 - `AdsKpis` — le hero n'a toujours pas de forme (rang 6).
 
 ---
@@ -170,6 +197,12 @@ Elles se ressemblent, elles ne disent pas la même chose :
   métrique ; aucune n'est un cas particulier de l'autre ;
 - **`action-top` et `tracking-section`** — le vivant et la trace. `action-top`
   est en haut parce qu'on y agit ; le descendre rendrait l'app rétrospective.
+  Le fil vertical n'y change rien, au contraire : un rail est **passif par
+  construction**, son unité est l'événement daté. Une action à faire n'est pas
+  un événement mais un engagement en attente, et sa forme est une case à cocher
+  de 44 px. Ce qui les distingue à l'œil : là-haut le seul bloc teinté de la
+  page et des cercles cliquables de 22 px ; ici des pastilles de 7 px enfilées
+  sur un trait, qu'on ne clique pas.
 
 ---
 
@@ -196,3 +229,24 @@ Deux points de grammaire en sont sortis, et ils valent au-delà de ce module :
   panne de collecte — et l'avertissement « pas de données après le … », qui
   compare chaque canal aux autres, se serait déclenché pour tout le monde tous
   les jours.
+
+**6 août 2026 (2)** — Passe sur les maquettes du kit de composants.
+Établissement du **lexique des signes** ci-dessus et de `components/pente.tsx`
+(huit blocs de delta recopiés, trois seuils de « stable » différents → un seul).
+`tracking-section` devient un fil vertical et gagne son rang 3. Le hero passe en
+carte — le calculé dedans, le rédigé dehors. Les noms de paliers de la boussole
+deviennent proportionnels à leurs bandes.
+
+Trois demandes des maquettes ont été **refusées**, et la raison compte autant
+que la décision :
+
+- **quatre habillages de `Chiffre`** (fonds jaune, noir, bleu) — `action-top`
+  est le seul bloc teinté du rapport, et c'est ce qui dit « ici, on agit » sans
+  qu'on ait à lire un titre. Quatre tuiles colorées effacent ce signal ;
+- **histogramme *ou* sparkline comme variantes** — ce n'est pas un habillage
+  mais la règle du rang 6, calculable depuis `serie.length` ;
+- **le verdict « Zone scalable » sur une tuile quelconque** — il n'existe que
+  pour les métriques qui ont une table de bandes (`roas`, `ctr`, `eng` dans
+  `_BANDES`, `saas/worker/build_report.py`). Sur un CPC ou une portée, il serait
+  écrit à la main. Un verdict non calculé tombe sous la même règle qu'un chiffre
+  non mesuré.

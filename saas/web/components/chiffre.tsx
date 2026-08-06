@@ -1,4 +1,5 @@
 import { Sparkline } from "@/components/line-chart";
+import { Pente } from "@/components/pente";
 
 // La tuile-chiffre, une seule fois.
 //
@@ -51,25 +52,6 @@ export function Chiffre({
   ton?: Ton;
   grand?: boolean;
 }) {
-  // Le delta est coloré par le SENS, jamais par le signe : un CPC qui baisse
-  // est une bonne nouvelle et sort en vert.
-  let deltaBloc = null;
-  if (delta !== null && delta !== undefined) {
-    if (Math.abs(delta) < 0.5) {
-      deltaBloc = <div className="text-[11px] text-faint font-medium mt-1.5">≈ stable</div>;
-    } else {
-      const monte = delta > 0;
-      const bon = baisseEstBonne ? !monte : monte;
-      deltaBloc = (
-        <div className={`text-[11px] font-semibold mt-1.5 ${bon ? "text-pos" : "text-neg"}`}>
-          {monte ? "▲ +" : "▼ "}
-          {delta.toFixed(0)} %{" "}
-          <span className="text-faint font-normal">vs période préc.</span>
-        </div>
-      );
-    }
-  }
-
   const utile = (serie ?? []).filter((v) => v > 0).length >= 2;
 
   return (
@@ -94,7 +76,9 @@ export function Chiffre({
             </span>
           )}
         </div>
-        {deltaBloc}
+        {/* Le delta est coloré par le SENS, jamais par le signe : un CPC qui
+            baisse est une bonne nouvelle et sort en vert. */}
+        <Pente delta={delta} baisseEstBonne={baisseEstBonne} base="vs période préc." />
         {sous && <div className="text-[11px] text-faint mt-1 leading-snug">{sous}</div>}
       </div>
       {utile && (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LineChart } from "@/components/line-chart";
+import { Pente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
 
 // « Ta boussole » — le module de l'indicateur qui compte.
@@ -44,9 +45,6 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
     o.precedent !== null && o.precedent !== 0
       ? ((o.valeur - o.precedent) / Math.abs(o.precedent)) * 100
       : null;
-  const stable = delta !== null && Math.abs(delta) < 0.5;
-  const bon = delta === null ? null : o.direction === "down" ? delta < 0 : delta > 0;
-  const deltaCls = delta === null || stable ? "text-faint" : bon ? "text-pos" : "text-neg";
 
   return (
     <div className="bg-white border border-line rounded-2xl shadow-card overflow-hidden">
@@ -74,15 +72,17 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
             </span>
           )}
         </div>
-        {delta !== null && (
-          <div className={`text-[12.5px] font-semibold mt-1.5 ${deltaCls}`}>
-            {stable ? "≈ stable" : `${delta > 0 ? "▲ +" : "▼ "}${delta.toFixed(0)} %`}
-            <span className="text-faint font-normal">
-              {" "}vs la semaine dernière ({fmtVal(o, o.precedent!)}
+        <Pente
+          delta={delta}
+          baisseEstBonne={o.direction === "down"}
+          className="text-[12.5px] mt-1.5"
+          base={
+            <>
+              vs la semaine dernière ({fmtVal(o, o.precedent ?? 0)}
               {o.unite})
-            </span>
-          </div>
-        )}
+            </>
+          }
+        />
 
         {/* La jauge : les zones nommées, et où tu te situes dedans */}
         {bandes.length > 0 && (
@@ -129,10 +129,30 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
                 );
               })}
             </div>
-            <div className="flex justify-between text-[10px] text-faint">
-              {bandes.map((b) => (
-                <span key={b.label}>{b.label}</span>
-              ))}
+            {/* Chaque nom occupe la LARGEUR DE SA BANDE. En `justify-between`
+                les quatre noms se répartissaient à intervalles égaux alors que
+                les bandes, elles, sont proportionnelles : sur le CTR, « bon »
+                couvre 22 → 74 % de la jauge et s'affichait à 33 %. Un nom qui
+                ne tombe pas sur sa bande dit le contraire de ce qu'il désigne. */}
+            <div className="flex text-[10px] text-faint">
+              {bandes.map((b, i) => {
+                const bas = i === 0 ? 0 : bandes[i - 1].max ?? 0;
+                const haut = b.max ?? echelle;
+                const part = Math.max(0, ((haut - bas) / echelle) * 100);
+                const dernier = i === bandes.length - 1;
+                return (
+                  <span
+                    key={b.label}
+                    className={`truncate px-0.5 ${
+                      i === 0 ? "text-left" : dernier ? "text-right" : "text-center"
+                    }`}
+                    style={{ width: `${part}%` }}
+                    title={b.label}
+                  >
+                    {b.label}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -151,7 +171,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         />
         {(k.markers?.length ?? 0) > 0 && (
           <p className="text-[10px] text-faint px-3 pb-1.5">
-            <span className="text-brand">▲</span> une semaine où tu as appliqué une action
+            <span className="text-ink font-bold">┄</span> une semaine où tu as appliqué une action
           </p>
         )}
       </div>

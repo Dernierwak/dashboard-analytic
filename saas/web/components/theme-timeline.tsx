@@ -1,6 +1,7 @@
 import type { ThemeSeries } from "@/lib/report";
+import { Triangle, sensPente } from "@/components/pente";
 
-// La frise : la métrique du thème sur 10 semaines, avec un repère ▲ à chaque
+// La frise : la métrique du thème sur 10 semaines, avec un repère ┄ à chaque
 // semaine où une action a été lancée. Sa place est juste sous « Ce que tu dois
 // faire » : c'est là qu'elle répond à la seule question qui compte pour elle —
 // est-ce que ce que j'ai fait a bougé la courbe ?
@@ -30,12 +31,7 @@ export function ThemeTimeline({
   const recent = moy(vals.slice(-4));
   const avant = moy(vals.slice(-8, -4));
   const ecart = avant > 0 ? ((recent - avant) / avant) * 100 : null;
-  const pente =
-    ecart === null || Math.abs(ecart) < 8
-      ? { texte: "≈ stable", cls: "text-muted", fond: "rgba(0,0,0,0.05)" }
-      : ecart > 0
-        ? { texte: `▲ en hausse de ${Math.round(ecart)} %`, cls: "text-pos", fond: "#1a7a4a14" }
-        : { texte: `▼ en baisse de ${Math.round(-ecart)} %`, cls: "text-neg", fond: "#c0392b14" };
+  const s = sensPente(ecart, false, 8);
   const y = (v: number) => 6 + (1 - v / max) * (base - 6);
   const line = vals.map((v, i) => `${x(i)},${y(v)}`).join(" ");
   const area = `M${x(0)},${base} L${vals.map((v, i) => `${x(i)},${y(v)}`).join(" L")} L${x(n - 1)},${base} Z`;
@@ -47,7 +43,7 @@ export function ThemeTimeline({
           {series.metric_label} · 10 semaines
         </span>
         {series.markers.length > 0 && (
-          <span className="text-[10px] text-brand font-semibold">▲ tes actions</span>
+          <span className="text-[10px] text-muted font-semibold">┄ tes actions</span>
         )}
       </div>
 
@@ -56,11 +52,18 @@ export function ThemeTimeline({
           {fmt(derniere)}
         </span>
         <span
-          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${pente.cls}`}
-          style={{ background: pente.fond }}
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}
+          style={{ background: s.fond }}
           title="Moyenne des 4 dernières semaines comparée aux 4 précédentes"
         >
-          {pente.texte}
+          {s.plat ? (
+            "≈ stable"
+          ) : (
+            <>
+              <Triangle sens={s.monte ? "haut" : "bas"} /> en {s.monte ? "hausse" : "baisse"} de{" "}
+              {Math.round(Math.abs(ecart!))} %
+            </>
+          )}
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
@@ -91,17 +94,17 @@ export function ThemeTimeline({
 
         {series.markers.map((mi) => (
           <g key={mi}>
-            <line x1={x(mi)} y1={2} x2={x(mi)} y2={base} stroke="#1a7a4a" strokeDasharray="3 3" opacity="0.75" />
-            <circle cx={x(mi)} cy={y(vals[mi])} r="4" fill="#fff" stroke="#1a7a4a" strokeWidth="2.5" />
+            <line x1={x(mi)} y1={2} x2={x(mi)} y2={base} stroke="#0e0f12" strokeDasharray="3 3" opacity="0.4" />
+            <circle cx={x(mi)} cy={y(vals[mi])} r="4" fill="#0e0f12" stroke="#fff" strokeWidth="1.5" />
             {/* L'action est nommée sur le graphe, pas seulement en légende */}
             <text
               x={Math.min(W - PAD - 44, Math.max(PAD, x(mi) - 20))}
               y={y(vals[mi]) - 9}
               fontSize="9"
               fontWeight="700"
-              fill="#1a7a4a"
+              fill="#0e0f12"
             >
-              ▲ action
+              action
             </text>
           </g>
         ))}
@@ -119,7 +122,7 @@ export function ThemeTimeline({
           return (
             <rect key={`h${i}`} x={x(i) - bw / 2} y={0} width={bw} height={H} fill="transparent">
               <title>
-                {`Semaine du ${pt.label} — ${series.metric_label.toLowerCase()} ${Math.round(pt.value).toLocaleString("fr-CH")}${marque ? " · ▲ action lancée cette semaine-là" : ""}`}
+                {`Semaine du ${pt.label} — ${series.metric_label.toLowerCase()} ${Math.round(pt.value).toLocaleString("fr-CH")}${marque ? " · action lancée cette semaine-là" : ""}`}
               </title>
             </rect>
           );
