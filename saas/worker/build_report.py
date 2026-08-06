@@ -1538,9 +1538,19 @@ def build_payload(sb, user_id: str) -> dict | None:
     # mieux que des dates declarees, qui ne disent pas si elle a tourne.
     frise = None
     try:
-        _F_JOURS = 365
-        _f_fin = last_full_day
-        _f_debut = _f_fin - timedelta(days=_F_JOURS - 1)
+        # De janvier de l'annee PRECEDENTE a fin decembre de l'annee EN COURS —
+        # deux ans, et les deux bornes viennent des donnees reelles : des
+        # campagnes ont demarre le 1er janvier 2025, que la fenetre glissante de
+        # 365 jours coupait net, et d'autres sont programmees jusqu'a fin 2026,
+        # ou l'on doit pouvoir aller regarder.
+        #
+        # La borne de gauche se resserre sur le premier evenement : sans ca, un
+        # compte ouvert en mars afficherait quatorze mois de vide avant sa
+        # premiere campagne. La borne de droite, elle, ne bouge pas : c'est le
+        # futur, il est vide par nature. Ce qui suit la derniere donnee recoltee
+        # est marque « a venir » a l'affichage — jamais presente comme mesure.
+        _f_fin = date(today.year, 12, 31)
+        _f_debut = date(today.year - 1, 1, 1)
 
         def _f_theme(nom):
             return name2label.get(_nrm(nom)) or None
@@ -1627,6 +1637,13 @@ def build_payload(sb, user_id: str) -> dict | None:
             "google": _dernier(df_google, "date_start"),
             "instagram": _dernier(df_insta, "date", utc=True),
         }
+
+        # La borne de gauche se cale sur le premier evenement reel, sans jamais
+        # depasser la semaine du rapport (qui doit rester dans le cadre).
+        _premiers = [c["debut"] for c in _camps.values()]
+        _premiers += [date.fromisoformat(p["date"]) for p in _pubs]
+        if _premiers:
+            _f_debut = max(_f_debut, min(min(_premiers), cur_since))
 
         if _campagnes or _pubs:
             frise = {

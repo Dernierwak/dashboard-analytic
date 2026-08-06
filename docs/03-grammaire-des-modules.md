@@ -178,3 +178,21 @@ Elles se ressemblent, elles ne disent pas la même chose :
 **4 août 2026** — Établissement de la grammaire. Corrections du rang 3 sur
 `theme-timeline`, `theme-donut`, `MetricChart`, `CourbeJournaliere`.
 Suppression de trois fichiers morts.
+
+**6 août 2026** — `frise-semaine` passe de douze à vingt-quatre mois (janvier de
+l'année précédente → 31 décembre de l'année en cours). La fenêtre glissante
+coupait les campagnes démarrées début 2025 et interdisait de regarder vers
+l'avant, alors que des campagnes courent jusqu'à fin 2026.
+
+Deux points de grammaire en sont sortis, et ils valent au-delà de ce module :
+
+- **Une bande de contexte se borne à ce qu'elle désigne.** La bande « cette
+  semaine » courait jusqu'au bord droit du cadre — juste tant que le cadre
+  s'arrêtait au dernier jour récolté. Sur une fenêtre qui va jusqu'au 31
+  décembre, elle aurait teinté cinq mois. Elle fait sept jours parce que la
+  semaine fait sept jours.
+- **Le futur n'est pas une donnée manquante.** Ce qui suit la dernière récolte
+  est hachuré et nommé « à venir ». Sans ça, cinq mois vides se lisent comme une
+  panne de collecte — et l'avertissement « pas de données après le … », qui
+  compare chaque canal aux autres, se serait déclenché pour tout le monde tous
+  les jours.
