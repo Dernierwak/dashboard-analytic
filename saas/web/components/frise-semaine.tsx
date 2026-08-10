@@ -71,16 +71,16 @@ const FORMAT: Record<string, { glyphe: string; nom: string }> = {
 const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };
 const format = (t: string) => FORMAT[(t || "").toUpperCase()] ?? FORMAT_INCONNU;
 
-// La plateforme d'une publication. Aujourd'hui une seule source alimente la
-// frise (Instagram), donc un glyphe de plateforme ne distinguerait rien : tant
-// qu'il n'y en a qu'une, le badge porte le FORMAT, qui lui différencie
-// vraiment. Dès qu'une deuxième arrive, il bascule sur la plateforme et le
-// format passe en info-bulle — c'est alors la question la plus discriminante.
+// La plateforme d'une publication. Le badge la porte TOUJOURS, même quand une
+// seule source alimente la frise : c'est ce qui la rend lisible le jour où
+// TikTok ou LinkedIn arrivent, et ça se lit dès aujourd'hui. Le format se lit
+// juste dessous — la bande a été agrandie pour tenir les deux, plutôt que de
+// choisir l'un OU l'autre selon le nombre de sources.
 const PLATEFORME: Record<string, { glyphe: string; nom: string }> = {
   instagram: { glyphe: "◎", nom: "Instagram" },
   facebook: { glyphe: "▣", nom: "Facebook" },
   tiktok: { glyphe: "⬢", nom: "TikTok" },
-  linkedin: { glyphe: "▤", nom: "LinkedIn" },
+  linkedin: { glyphe: "▦", nom: "LinkedIn" },
   youtube: { glyphe: "▶", nom: "YouTube" },
 };
 const PLATEFORME_INCONNUE = { glyphe: "◈", nom: "Autre" };
@@ -265,6 +265,15 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
     .map((j, i) => ({ i, j, an: j.slice(5, 7) === "01" }))
     .filter((v) => v.j.slice(8) === "01");
 
+  // À l'échelle « jour », l'axe porte les jours. Sans eux, on lit « quelque part
+  // dans août » alors que c'est précisément pour situer un lancement au jour
+  // près qu'on a zoomé. Un chiffre à 8,5 px fait ~11 px de large : il tient
+  // dans les 16 px d'une journée, mais pas dans les 5 px d'une semaine.
+  const parJour = PX >= 14;
+  const numeros = parJour
+    ? grille.map((j, i) => ({ i, j, n: Number(j.slice(8, 10)), lundi: new Date(j + "T00:00:00Z").getUTCDay() === 1 }))
+    : [];
+
   // La semaine du rapport fait SEPT JOURS. Tant que la frise s'arrêtait au
   // dernier jour récolté, une bande allant jusqu'au bord disait la même chose ;
   // sur une fenêtre qui court jusqu'au 31 décembre, elle en couvrirait cinq
@@ -275,7 +284,11 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   // superposeraient en une bouillie : on les regroupe sur la largeur qu'occupe
   // un badge, et le badge porte alors leur nombre. Au zoom « jour », un badge
   // par jour, comme avant.
-  const pasGroupe = Math.max(1, Math.ceil(13 / PX));
+  const pasGroupe = Math.max(1, Math.ceil(17 / PX));
+  // La bande des publications gagne de la hauteur quand l'échelle le permet :
+  // à 16 px/jour les badges ne se touchent plus, on peut donc empiler la
+  // plateforme et le format l'un sous l'autre.
+  const hautePub = PX >= 14 ? 46 : 34;
   const paquets = new Map<number, typeof f.posts>();
   for (const p of f.posts) {
     const i = idx(p.date);
@@ -289,14 +302,9 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   // Tant qu'une seule plateforme alimente la frise, c'est le FORMAT qui
   // distingue les publications. Dès qu'il y en a deux, c'est la plateforme.
   const plateformes = [...new Set(f.posts.map((p) => plateforme(p.plateforme).nom))];
-  const parPlateforme = plateformes.length > 1;
-  const marque = (p: (typeof f.posts)[number]) =>
-    parPlateforme ? plateforme(p.plateforme) : format(p.type);
   // La légende ne nomme que ce qui est réellement présent : une légende qui
   // annonce ce qu'on ne verra pas fait chercher pour rien.
-  const legende = parPlateforme
-    ? plateformes
-    : [...new Set(f.posts.map((p) => format(p.type).nom))];
+  const formatsPresents = [...new Set(f.posts.map((p) => format(p.type).nom))];
 
   // Même règle pour le pointillé : tant que les dates déclarées ne sont pas
   // récoltées, aucune campagne n'en porte — et une légende qui décrit un trait
@@ -402,14 +410,22 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
               {/* À l'échelle « mois », la semaine ne fait que 14 px : l'étiquette
                   déborde sur deux noms de mois pour désigner un trait. La bande
                   bleue reste, elle suffit à la repérer. */}
-              {PX >= 4 && (
-                <span
-                  className="absolute top-[7px] text-[9.5px] font-bold text-brand uppercase tracking-wide pr-1.5 whitespace-nowrap -translate-x-full"
-                  style={{ left: x(debutSemaine) }}
-                >
-                  cette sem. →
-                </span>
-              )}
+              {PX >= 4 &&
+                (largeurSemaine >= 66 ? (
+                  <span
+                    className="absolute top-[7px] text-[9.5px] font-bold text-brand uppercase tracking-wide whitespace-nowrap text-center"
+                    style={{ left: x(debutSemaine), width: largeurSemaine }}
+                  >
+                    cette sem.
+                  </span>
+                ) : (
+                  <span
+                    className="absolute top-[7px] text-[9.5px] font-bold text-brand uppercase tracking-wide pr-1.5 whitespace-nowrap -translate-x-full"
+                    style={{ left: x(debutSemaine) }}
+                  >
+                    cette sem. →
+                  </span>
+                ))}
               {futur && (
                 // Au MILIEU de la zone, pas à sa frontière : posée sur le bord,
                 // elle se superposait à l'étiquette du mois courant.
@@ -421,6 +437,23 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                 </span>
               )}
             </div>
+
+            {parJour && (
+              <div className="relative h-[15px] border-t border-line/70">
+                {numeros.map((d) => (
+                  <span
+                    key={`d-${d.j}`}
+                    className={`absolute top-[2px] text-center font-mono text-[8.5px] ${
+                      d.lundi ? "text-ink font-semibold" : "text-faint"
+                    }`}
+                    style={{ left: x(d.i), width: PX }}
+                    title={libelle(d.j)}
+                  >
+                    {d.n}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Les campagnes — une barre chacune, du premier au dernier jour où
@@ -523,48 +556,80 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
           </div>
 
           {/* Les publications, même échelle : c'est le rapprochement qui compte
-              — un pic qui suit un post ou le lancement d'une campagne. */}
+              — un pic qui suit un post ou le lancement d'une campagne.
+
+              LA BANDE RESPIRE, et elle porte deux informations au lieu d'une :
+              la PLATEFORME dans le badge, le FORMAT juste dessous. Sur 28 px on
+              ne pouvait en montrer qu'une seule — c'est ce qui obligeait à
+              choisir entre les deux selon le nombre de sources. */}
           <div className="sticky bottom-0 z-10 bg-white border-t border-line pt-1.5">
-            <div className="relative h-7">
+            <div className="relative" style={{ height: hautePub }}>
               <Fond r={rep} />
-              <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-line" />
+              <div
+                className="absolute inset-x-0 border-t border-dashed border-line"
+                style={{ top: 17 }}
+              />
               <span
                 className="sticky left-2 z-20 float-left text-[9.5px] uppercase tracking-wide text-faint font-semibold bg-white/90 px-1 rounded"
-                style={{ lineHeight: "28px" }}
+                style={{ lineHeight: "34px" }}
               >
                 publications
               </span>
               {[...paquets.entries()].map(([i, liste]) => {
                 const t = couleur(liste[0].theme);
                 const seul = liste.length === 1;
+                const pf = plateforme(liste[0].plateforme);
+                const fm = format(liste[0].type);
+                // Toutes du même format dans le paquet ? alors on peut encore
+                // le nommer. Sinon on ne prétend pas.
+                const memeFormat = liste.every((q) => format(q.type).nom === fm.nom);
+                const memePf = liste.every((q) => plateforme(q.plateforme).nom === pf.nom);
                 const periode =
                   pasGroupe === 1 || seul
                     ? libelle(liste[0].date)
                     : `${libelle(grille[i])} → ${libelle(grille[Math.min(n - 1, i + pasGroupe - 1)])}`;
+                const bulle = `${periode} · ${liste
+                  .map(
+                    (q) =>
+                      `${plateforme(q.plateforme).nom} ${format(q.type).nom} — ${
+                        q.theme ?? "sans thème"
+                      }`
+                  )
+                  .join(" · ")}`;
                 return (
                   <span
                     key={i}
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[4px] border flex items-center justify-center font-bold"
-                    style={{
-                      left: x(i) + (pasGroupe * PX) / 2 - 6,
-                      height: 12,
-                      width: 12,
-                      fontSize: 8,
-                      lineHeight: 1,
-                      background: t?.aplat ?? "rgba(0,0,0,0.06)",
-                      borderColor: t?.trait ?? "#8a8a94",
-                      color: t?.trait ?? "#5a5d66",
-                    }}
-                    title={`${periode} · ${liste
-                      .map(
-                        (p) =>
-                          `${plateforme(p.plateforme).nom} ${format(p.type).nom} — ${
-                            p.theme ?? "sans thème"
-                          }`
-                      )
-                      .join(" · ")}`}
+                    className="absolute flex flex-col items-center"
+                    style={{ left: x(i) + (pasGroupe * PX) / 2 - 8, top: 6, width: 16 }}
+                    title={bulle}
                   >
-                    {seul ? marque(liste[0]).glyphe : liste.length}
+                    {/* La plateforme — toujours, même quand il n'y en a qu'une :
+                        c'est ce qui rend la frise lisible le jour où TikTok ou
+                        LinkedIn arrivent, et ça se lit dès aujourd'hui. */}
+                    <span
+                      className="rounded-[4px] border flex items-center justify-center font-bold"
+                      style={{
+                        height: 14,
+                        width: 14,
+                        fontSize: 9,
+                        lineHeight: 1,
+                        background: t?.aplat ?? "rgba(0,0,0,0.06)",
+                        borderColor: t?.trait ?? "#8a8a94",
+                        color: t?.trait ?? "#5a5d66",
+                      }}
+                    >
+                      {seul || memePf ? pf.glyphe : liste.length}
+                    </span>
+                    {/* Le format, dessous, en petit. Il ne s'affiche que si la
+                        bande est assez haute — sinon il chevaucherait l'axe. */}
+                    {hautePub >= 40 && (
+                      <span
+                        className="font-bold leading-none mt-[3px]"
+                        style={{ fontSize: 8, color: t?.trait ?? "#8b8e98", opacity: 0.85 }}
+                      >
+                        {seul || memeFormat ? fm.glyphe : `×${liste.length}`}
+                      </span>
+                    )}
                   </span>
                 );
               })}
@@ -573,26 +638,38 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
         </div>
       </div>
 
-      {legende.length > 1 && (
-        <div className="flex items-center gap-3.5 flex-wrap px-4 sm:px-5 pt-2.5 text-[10px] text-faint font-semibold">
-          {legende.map((nom) => {
-            const src = parPlateforme ? PLATEFORME : FORMAT;
-            const g = Object.values(src).find((v) => v.nom === nom)?.glyphe ?? "·";
-            return (
-              <span key={nom} className="flex items-center gap-1.5">
-                <span className="h-[12px] w-[12px] rounded-[4px] border border-line bg-black/[0.04] flex items-center justify-center text-[8px] text-muted">
-                  {g}
-                </span>
-                {nom}
+      <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap px-4 sm:px-5 pt-2.5 text-[10px] text-faint font-semibold">
+        <span className="text-faint/80 font-normal">Plateforme</span>
+        {plateformes.map((nom) => {
+          const g = Object.values(PLATEFORME).find((v) => v.nom === nom)?.glyphe ?? "◈";
+          return (
+            <span key={nom} className="flex items-center gap-1.5">
+              <span className="h-[14px] w-[14px] rounded-[4px] border border-line bg-black/[0.04] flex items-center justify-center text-[9px] text-muted">
+                {g}
               </span>
-            );
-          })}
-          <span className="text-faint/70 font-normal">
-            la couleur porte le thème, le glyphe {parPlateforme ? "la plateforme" : "le format"}
-            {pasGroupe > 1 && " · un chiffre = plusieurs publications regroupées"}
-          </span>
-        </div>
-      )}
+              {nom}
+            </span>
+          );
+        })}
+        {hautePub >= 40 && formatsPresents.length > 1 && (
+          <>
+            <span className="text-faint/80 font-normal ml-2">Format</span>
+            {formatsPresents.map((nom) => {
+              const g = Object.values(FORMAT).find((v) => v.nom === nom)?.glyphe ?? "·";
+              return (
+                <span key={nom} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted">{g}</span>
+                  {nom}
+                </span>
+              );
+            })}
+          </>
+        )}
+        <span className="text-faint/70 font-normal">
+          la couleur porte le thème
+          {pasGroupe > 1 && " · un chiffre = plusieurs publications regroupées"}
+        </span>
+      </div>
 
       {/* Une légende par nature de trait. Quatre traits différents cohabitent
           sur la même frise et aucun ne se devine : ce pied est la seule chose
