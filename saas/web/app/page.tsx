@@ -7,7 +7,7 @@ import { getWeeklyData, type ReportPayload, type TrackedAction } from "@/lib/rep
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeFocusCard } from "@/components/theme-focus-card";
-import { ThemeTimeline } from "@/components/theme-timeline";
+import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { KpiFocusCard } from "@/components/kpi-focus";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
@@ -172,16 +172,35 @@ export default async function Page({
   ];
   const demande = searchParams?.vue ?? "";
   const vueActive = vues.some((v) => v.cle === demande) ? demande : (vues[0]?.cle ?? "top");
-  const series = themesFocus
-    .filter((t) => t.series && t.series.points.length > 1)
-    .map((t) => ({ label: t.label, series: t.series! }));
+  // Les thèmes qui ont assez de relevés pour porter une courbe.
+  const cartes = themesFocus.filter((t) => t.series && t.series.points.length > 1);
+  // Le classement entre thèmes n'a de sens que s'ils suivent LE MÊME
+  // indicateur : comparer une portée à une dépense ne veut rien dire.
+  const memeMetrique =
+    cartes.length > 1 &&
+    cartes.every((t) => t.series!.metric_label === cartes[0].series!.metric_label);
+  // Le classement entre tes thèmes. Pas de verdict absolu possible — il n'y a
+  // pas de seuil de référence par thème — mais une comparaison qui reste À
+  // L'INTÉRIEUR du même compte est légitime, et elle répond à la seule question
+  // que cette section doit servir : où je mets mes dix minutes cette semaine.
+  // …sauf quand l'indicateur commun est la DÉPENSE : un thème dont la dépense
+  // baisse n'est pas un thème qui décroche, c'est un thème qu'on a coupé.
+  const pentes = memeMetrique && !penteNeutre(cartes[0].series!.metric_label)
+    ? cartes.map((t) => ({
+        label: t.label,
+        ecart: ecartTheme(t.series!.points.map((p) => p.value)),
+      }))
+    : [];
+  const pire = pentes
+    .filter((x): x is { label: string; ecart: number } => x.ecart !== null && x.ecart < -8)
+    .sort((a, b) => a.ecart - b.ecart)[0];
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
   // page à 2, et un lecteur qui voit un 2 cherche le 1.
   let _n = 0;
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
-  const nThemes = series.length > 0 ? ++_n : undefined;
+  const nThemes = cartes.length > 0 ? ++_n : undefined;
   const nActions = data.actions.length > 0 ? ++_n : undefined;
   const nConseils = ++_n;
   const nHistorique =
@@ -312,7 +331,7 @@ export default async function Page({
 
       {/* 2 · TES THÈMES PRIORITAIRES — le même regard, mais restreint à ce que
              tu as décidé de travailler, et sur l'indicateur de ton objectif. */}
-      {series.length > 0 && (
+      {cartes.length > 0 && (
         <section className="mb-9">
           <SectionTitle>
             <span className="text-faint font-mono mr-1.5">{nThemes}</span> Tes thèmes
@@ -323,12 +342,19 @@ export default async function Page({
             {priorities.length > 0 && (
               <> · thèmes suivis <span className="font-semibold text-warn">{priorities.join(" · ")}</span></>
             )}{" "}
-            — l&apos;évolution de l&apos;indicateur de ton objectif sur chacun, avec un repère ┄ à
-            chaque semaine où tu as lancé une action.
+            — le bilan de chacun, sa courbe, et un repère ┄ à chaque semaine où tu as lancé
+            une action dessus.
           </p>
-          <div className="bg-white border border-line rounded-xl shadow-card p-4 sm:p-5 space-y-7">
-            {series.map((s2) => (
-              <ThemeTimeline key={s2.label} series={s2.series} label={s2.label} />
+          <div className="space-y-3">
+            {cartes.map((t) => (
+              <ThemeCard
+                key={t.label}
+                theme={t}
+                actions={data.actions}
+                archived={data.actionsArchived}
+                fenetre={report?.vision?.period_label || null}
+                decroche={pire?.label === t.label}
+              />
             ))}
           </div>
         </section>
@@ -439,6 +465,9 @@ export default async function Page({
                   comments={data.comments}
                   trackedKeys={data.trackedKeys}
                   capReached={capReached}
+                  ancre={
+                    cartes.some((c) => c.label === t.label) ? ancreTheme(t.label) : null
+                  }
                 />
               ))}
               </>

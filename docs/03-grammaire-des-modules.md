@@ -119,6 +119,11 @@ monte au niveau de la section.
 - deux pieds ;
 - une jauge, une barre ou un anneau sans sa valeur ou sa cible écrite ;
 - un sélecteur au-dessus du chiffre qu'il pilote ;
+- **une pente jugée sur un indicateur qui ne se juge pas.** La dépense en est
+  le cas type : dépenser moins n'est ni une victoire ni un échec tant qu'on ne
+  sait pas ce que ça rapporte. Sa pastille reste grise, son filet reste gris,
+  et elle ne peut pas servir à classer des thèmes entre eux — sinon « celui qui
+  décroche » désigne celui qui a simplement coupé une campagne ;
 - un module qui rend un composant déjà rendu ailleurs sur la même page ;
 - un bloc vide affiché pour dire qu'il est vide — **une exception** : quand le
   vide enseigne le mécanisme (`action-top` explique comment une action arrive
@@ -135,6 +140,44 @@ l'anneau (le réel) et la répartition budgétaire (le prévu) ne fusionnent pas
 **Toute comparaison exclut le jour en cours.** Les fenêtres s'ancrent sur le
 dernier jour plein.
 
+**Toute valeur porte sa fenêtre dès qu'elle diffère de celle du module.** La
+carte de thème l'a appris à ses dépens : « 103 CHF cette semaine » voisinait
+« 4 520 dépensé · ROAS 0,2 » sans que rien ne dise que le second couvre tout
+l'historique depuis janvier. Deux fenêtres collées et muettes se lisent comme
+une seule — c'est un chiffre présenté pour autre chose que ce qu'il mesure.
+
+---
+
+## Le graphe : la géométrie en SVG, les caractères en HTML
+
+Règle de fabrication, pas de goût, et elle vient d'un défaut mesuré. Un
+`viewBox="0 0 720 150"` en `w-full` sans hauteur laisse le navigateur mettre
+**tout** à l'échelle de la largeur : sur un téléphone (≈ 327 px de conteneur) le
+facteur vaut 0,45, et une date écrite `fontSize="10"` se rendait à **4,5 px**.
+Sur un écran de bureau, le même texte faisait 17 px. Aucun caractère de nos
+courbes n'avait de taille décidée.
+
+La correction n'est pas de régler les tailles une par une : c'est de **sortir le
+texte du SVG**. Le SVG s'étire librement pour remplir une boîte dont la hauteur
+est en pixels CSS ; dates, étiquettes, noms de zones et info-bulles sont posés
+par-dessus en HTML absolu, positionnés en pourcentages calculés avec la même
+arithmétique. Les deux couches coïncident au pixel près.
+
+Trois conséquences qui tiennent lieu de règles :
+
+- **les points sont des ronds HTML** — un cercle SVG étiré sans rapport d'aspect
+  uniforme donne un œuf ;
+- **l'info-bulle est une vraie bulle**, immédiate, et non le `<title>` natif qui
+  met une seconde à venir et n'existe pas au doigt ;
+- **une étiquette peut enfin être arrondie et lisible sur la courbe** — c'est ce
+  qui transforme un pointillé muet en `action · sem. du 22 jul`.
+
+**Un bilan de trois à cinq chiffres est autorisé sous le chiffre de tête** s'il
+est au moins 1,7 fois plus petit et partage **un seul fond** (pas un cadre par
+chiffre). L'interdit visé par « deux chiffres de même taille » est la
+concurrence, pas la densité : 34 px puis 19 px se lisent comme un titre et sa
+suite, pas comme deux titres.
+
 ---
 
 ## Le lexique des signes
@@ -146,7 +189,7 @@ trois sens. Attribution arrêtée, elle ne se renégocie pas module par module :
 | Sens | Signe | Règle |
 |---|---|---|
 | la pente | `▲` `▼` | **exclusif**. Jamais sans un nombre à côté. Coloré par le SENS, jamais par le signe |
-| un repère d'action sur un graphe | trait vertical pointillé + point plein, en encre | légende : `┄ une semaine où tu as appliqué une action` |
+| un repère d'action sur un graphe | trait vertical pointillé + point plein, en encre, **≤ 2 étiquettes nommées** | au-delà de deux repères, plus aucune étiquette : les traits restent et le pied écrit combien il y en a. Une seule étiquette sur téléphone — l'écart en colonnes ne suffit pas, une pastille fait ~130 px et deux ne tiennent pas dans 335 px |
 | verdict « pas d'effet » | la flèche du **delta réel**, en `text-neg` | ce n'est plus un sens à part, c'est le premier correctement employé |
 
 Le triangle est **dessiné** (`components/pente.tsx`), pas tapé : le caractère se
@@ -190,9 +233,19 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 
 | `action-top` | aucun chiffre — la section ouvrait sur un titre puis une liste | rang 3 : la part des actions jugées qui ont bougé la métrique, remontée de la section 18 |
 
+| `line-chart` | tout le texte à l'échelle de la largeur : 4,5 px sur téléphone, 17 px sur écran | géométrie en SVG, caractères en HTML ; hauteur en pixels CSS ; info-bulle immédiate à la place du `<title>` natif |
+| `kpi-focus` | **deux formes** — une jauge de zones puis une courbe | la jauge est supprimée, les zones passent en fond de courbe : elles disent « où tu es ET depuis quand ». Le seuil courant remonte dans la pastille (`excellent · au-dessus de 5 %`), le `repere` sort du `title=` et devient un `<details>` |
+| `kpi-focus` (sélecteur) | neuf pastilles muettes — il fallait cliquer neuf fois pour savoir laquelle regarder | grille de neuf cellules portant nom, valeur et pente, groupées **par terrain** (`Ta pub` / `Ton Instagram` / `Ton site`) et non par source : cinq des neuf agrègent Meta ET Google, une pastille « Google Ads » sur le CTR ferait couper Google à qui croit lire Google |
+| `theme-timeline` → `theme-card` | une frise nue, sans bilan, sans lien vers l'action | une carte par thème : bilan avec sa fenêtre, courbe, ligne-ancre vers les actions en cours, repli lecture seule de ce qui a été fait |
+| `theme-focus-card` | même bilan que la carte de thème, en 19 px, sur la même page | rappel d'une ligne en corps de texte + ancre `↑ voir la courbe` |
+| `tracking-section` | le lexique des états vivait dans le module | extrait en `components/etat-action.tsx`, partagé avec la carte de thème |
+
 **Reste à traiter :**
 
 - `AdsKpis` — le hero n'a toujours pas de forme (rang 6).
+- `MetricChart` (pages canal) — même sélecteur muet que l'ancienne boussole, et
+  pas de zones sur le CTR alors que c'est la même métrique avec les mêmes seuils
+  `_BANDES`.
 
 ---
 
@@ -252,6 +305,35 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**10 août 2026 (2)** — Refonte de « Ta boussole » et de « Tes thèmes
+prioritaires », d'après deux maquettes de David passées au banc d'essai.
+
+Le point de départ n'était pas dans les maquettes : **aucun texte de nos courbes
+n'avait de taille décidée** (4,5 px sur téléphone, 17 px sur écran). D'où la
+règle du graphe ci-dessus, faite une fois dans `line-chart` et qui retombe sur
+les cinq pages qui l'utilisent.
+
+Trois demandes des maquettes ont été **refusées**, et la raison compte :
+
+- **grouper les indicateurs par source connectée** — faux pour cinq des neuf.
+  Le regroupement se fait par terrain, et chaque terrain écrit sa provenance
+  sous le chiffre (`Meta + Google confondus`) ;
+- **des pastilles TikTok / LinkedIn / Pinterest** — aucune de ces sources
+  n'existe dans Pulse. On n'affiche pas l'emplacement d'une fonction qu'on ne
+  vend pas ;
+- **une troisième liste d'actions dans la section 2**, avec un état « encore à
+  valider » — cet état n'existe pas en base (`running / done / archived /
+  dropped`), et un état d'interface sans état en base disparaît au
+  rechargement. On donne une ligne-ancre, pas une colonne.
+
+Une décision a été prise **contre** l'avis initial, après l'avoir vue à l'écran :
+l'échelle commune entre les trois thèmes. Elle est juste en principe — trois
+courbes ne devraient pas monter pareil quand l'une pèse 4 500 CHF et l'autre 90
+— mais elle écrase le petit thème en une ligne plate au ras de l'axe, et une
+carte de thème est d'abord là pour montrer la tendance de *ce* thème. Le poids
+est donc **écrit** (chiffre de tête en 34 px, haut de l'échelle sur le graphe)
+au lieu d'être subi.
 
 **4 août 2026** — Établissement de la grammaire. Corrections du rang 3 sur
 `theme-timeline`, `theme-donut`, `MetricChart`, `CourbeJournaliere`.

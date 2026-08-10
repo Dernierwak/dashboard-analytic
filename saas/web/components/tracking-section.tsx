@@ -1,6 +1,7 @@
 import type { TrackedAction } from "@/lib/report";
 import { ScrollList } from "@/components/scroll-list";
 import { Triangle } from "@/components/pente";
+import { Pastille, dateCourte as d, etat } from "@/components/etat-action";
 
 // LE FIL D'ACTIONS — tout ce que tu as décidé, fait, et ce que ça a donné.
 //
@@ -17,56 +18,8 @@ import { Triangle } from "@/components/pente";
 // deux ne se confondent pas : là-haut, un bloc teinté et des cercles cliquables
 // de 22 px ; ici, des pastilles de 7 px sur un trait, qu'on ne clique pas.
 
-const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-function d(iso: string): string {
-  const dt = new Date(iso + "T00:00:00");
-  if (isNaN(dt.getTime())) return iso;
-  return `${dt.getDate()} ${MOIS[dt.getMonth()]}`;
-}
-
-// La pastille porte l'ÉTAT, jamais toute seule : le mot reste écrit à côté.
-// Une forme qui doit être apprise pour être lue n'est pas une information.
-type Forme = "pleine" | "creuse" | "barree";
-type Etat = { forme: Forme; couleur: string; cls: string; label: string };
-
-const VERDICT: Record<string, Etat> = {
-  better: { forme: "pleine", couleur: "#1a7a4a", cls: "text-pos", label: "ça a marché" },
-  worse: { forme: "pleine", couleur: "#c0392b", cls: "text-neg", label: "pas d'effet" },
-  stable: { forme: "pleine", couleur: "#b86b00", cls: "text-warn", label: "stable" },
-};
-
-function etat(a: TrackedAction): Etat {
-  if (a.status === "dropped")
-    return { forme: "barree", couleur: "#8b8e98", cls: "text-faint", label: "abandonnée" };
-  if (a.status === "archived")
-    return a.verdict
-      ? VERDICT[a.verdict] ?? VERDICT.stable
-      : { forme: "pleine", couleur: "#5a5d66", cls: "text-muted", label: "rangée" };
-  if (a.status === "done")
-    return a.due
-      ? { forme: "creuse", couleur: "#b86b00", cls: "text-warn", label: "à juger" }
-      : { forme: "creuse", couleur: "#1a7a4a", cls: "text-pos", label: "en observation" };
-  return { forme: "creuse", couleur: "#1a56ff", cls: "text-brand", label: "à faire" };
-}
-
-function Pastille({ e }: { e: Etat }) {
-  if (e.forme === "barree")
-    return (
-      <span className="relative block h-[7px] w-[7px] rounded-full bg-white border border-faint">
-        <span className="absolute inset-x-[-2px] top-1/2 h-px bg-faint rotate-45" />
-      </span>
-    );
-  return (
-    <span
-      className="block h-[7px] w-[7px] rounded-full"
-      style={
-        e.forme === "pleine"
-          ? { background: e.couleur }
-          : { background: "#fff", boxShadow: `inset 0 0 0 2px ${e.couleur}` }
-      }
-    />
-  );
-}
+// Le lexique des états (pastille + mot) vit dans `components/etat-action.tsx` :
+// la carte de thème montre les mêmes actions, elle doit les nommer pareil.
 
 // Tes réactions aux conseils. Elles portaient un rang de compteurs de même
 // poids que celui des actions, juste au-dessus : deux comptages voisins de la

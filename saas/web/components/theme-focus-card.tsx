@@ -19,6 +19,7 @@ export function ThemeFocusCard({
   comments,
   trackedKeys,
   capReached = false,
+  ancre = null,
 }: {
   theme: ThemeFocus;
   labels: string[];
@@ -26,27 +27,35 @@ export function ThemeFocusCard({
   comments: Record<string, string>;
   trackedKeys: string[];
   capReached?: boolean;
+  /** L'ancre de la carte du même thème en section 2, quand elle existe. */
+  ancre?: string | null;
 }) {
   const s = theme.summary;
   const hasRoas = s.roas !== null && s.roas !== undefined;
 
-  // Le bilan était UNE PHRASE : « 1 240 CHF → 3 100 CHF (ROAS 2,5) — 4 posts ·
-  // 3,2 % d'engagement ». Une phrase de chiffres demande une seconde lecture ;
-  // des chiffres alignés sous leur libellé, non. On garde exactement les mêmes
-  // valeurs, on change leur forme.
-  const cases: { cle: string; valeur: string; unite?: string }[] = [];
+  // LE BILAN A DÉMÉNAGÉ. Il occupait ici six chiffres en 19 px — exactement les
+  // mêmes que ceux de la carte de thème en section 2, sur la même page. Deux
+  // bilans identiques à 800 px d'écart : le doublon passait inaperçu parce que
+  // cette section est derrière des onglets, donc les deux ne sont presque
+  // jamais visibles ensemble — c'est aussi pour ça qu'il n'a jamais été corrigé.
+  //
+  // Le bilan complet vit désormais là où il est adossé à la courbe qui le
+  // raconte. Il reste ici en RAPPEL d'une ligne, en corps de texte : aucune
+  // valeur ne disparaît, et un rappel de 12,5 px ne dispute rien à un rang 3.
+  const bouts: string[] = [];
   if (s.spend != null && s.spend > 0) {
-    cases.push({ cle: "Dépensé", valeur: fmtCHF(s.spend), unite: "CHF" });
-    if (hasRoas) {
-      cases.push({ cle: "Revenu", valeur: fmtCHF(s.revenue ?? 0), unite: "CHF" });
-      cases.push({ cle: "ROAS", valeur: s.roas!.toFixed(1) });
-    } else if (s.ctr != null) {
-      cases.push({ cle: "CTR", valeur: s.ctr.toFixed(1), unite: "%" });
-    }
+    bouts.push(
+      hasRoas
+        ? `${fmtCHF(s.spend)} CHF → ${fmtCHF(s.revenue ?? 0)} CHF · ROAS ${s.roas!.toFixed(1)}`
+        : `${fmtCHF(s.spend)} CHF dépensés${s.ctr != null ? ` · CTR ${s.ctr.toFixed(1)} %` : ""}`
+    );
   }
   if (s.posts != null && s.posts > 0) {
-    cases.push({ cle: "Publications", valeur: String(s.posts) });
-    if (s.eng_avg != null) cases.push({ cle: "Engagement", valeur: s.eng_avg.toFixed(1), unite: "%" });
+    bouts.push(
+      `${s.posts} publication${s.posts > 1 ? "s" : ""}${
+        s.eng_avg != null ? ` · ${s.eng_avg.toFixed(1)} % d'engagement` : ""
+      }`
+    );
   }
 
   return (
@@ -64,25 +73,21 @@ export function ThemeFocusCard({
             </span>
           )}
         </div>
-        {cases.length > 0 ? (
+        {bouts.length > 0 ? (
           <>
-            {/* Les chiffres qui vont ensemble partagent un fond, pas un cadre
-                chacun : c'est ce qui les fait lire comme un seul bilan. */}
-            <div className="mt-2.5 flex gap-x-7 gap-y-3 flex-wrap">
-              {cases.map((c) => (
-                <div key={c.cle}>
-                  <div className="font-mono text-[19px] leading-none font-medium text-ink">
-                    {c.valeur}
-                    {c.unite && <span className="text-[11.5px] text-faint"> {c.unite}</span>}
-                  </div>
-                  <div className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-1">
-                    {c.cle}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="text-[12.5px] text-muted leading-relaxed mt-1.5">
+              {bouts.join(" · ")}
+              {ancre && (
+                <>
+                  {" "}
+                  <a href={`#${ancre}`} className="text-brand font-semibold hover:underline">
+                    ↑ voir la courbe
+                  </a>
+                </>
+              )}
+            </p>
             {!hasRoas && s.spend != null && s.spend > 0 && (
-              <p className="text-[11px] text-faint mt-2.5">
+              <p className="text-[11px] text-faint mt-1.5">
                 Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
                 conversions.
               </p>
