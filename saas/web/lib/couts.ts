@@ -310,7 +310,14 @@ export async function getCoutsData(): Promise<CoutsData> {
             montant: d.meta + d.google,
             ratio: (d.meta + d.google) / budgetJour,
           }))
-          .filter((a) => a.ratio > 1)
+          // SEUIL À 2×, et ce n'est pas un réglage de confort. Google Ads
+          // s'autorise lui-même jusqu'à DEUX FOIS le budget quotidien un jour
+          // donné et ne garantit que le total du mois ; Meta dépasse
+          // couramment de 25 %, parfois de 75 %, et lisse sur la semaine.
+          // À `ratio > 1`, cette alerte mesurait donc le pilotage des
+          // plateformes, pas un dérapage — elle criait au loup par
+          // construction, tous les mois, sans qu'il y ait rien à corriger.
+          .filter((a) => a.ratio > 2)
           .sort((a, b) => b.montant - a.montant)
       : [];
 

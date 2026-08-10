@@ -109,9 +109,13 @@ monte au niveau de la section.
 ## Les interdits, en toutes lettres
 
 - un graphe avant son chiffre ;
-- deux chiffres de même taille qui se disputent le module — sauf comparaison
-  explicite, même ligne, même unité (le cas de `Quotidien` : budget/jour contre
-  moyenne réelle) ;
+- deux chiffres de même taille qui se disputent le module. **L'exception qu'on
+  s'était accordée est tombée** : `Quotidien` opposait budget/jour et moyenne
+  réelle comme s'il s'agissait d'une comparaison, alors que le rapport des deux
+  vaut *exactement* `ratio du mois / part du mois écoulée` — déjà écrit dans la
+  tuile « Reste » et déjà dessiné par la barre. Une identité algébrique n'est
+  pas une comparaison ; le module a été supprimé, l'interdit n'a plus
+  d'exception ;
 - deux pieds ;
 - une jauge, une barre ou un anneau sans sa valeur ou sa cible écrite ;
 - un sélecteur au-dessus du chiffre qu'il pilote ;

@@ -1,7 +1,21 @@
-// Coûts — trois horizons, dans l'ordre où l'on peut encore agir dessus :
-//   LE JOUR   on peut couper une campagne emballée aujourd'hui ;
-//   LE MOIS   on peut corriger le rythme avant la fin ;
-//   L'ANNÉE   on ne peut plus que constater, et décider pour la suite.
+// Coûts — UN horizon qui se pilote, LE MOIS. Le reste s'y rattache.
+//
+// La page a porté trois horizons de même poids (jour, mois, année) et
+// demandait le même montant par quatre portes différentes : enveloppe du mois,
+// enveloppe de l'année, douze mois × deux plateformes, plus deux champs par
+// thème. Trente-huit champs de saisie sur un compte à six thèmes, et une règle
+// de préséance muette — un client qui avait réglé 2 000 Meta et 1 000 Google
+// lisait une enveloppe de 3 000 CHF qu'il n'avait jamais tapée.
+//
+// Ce qui reste à l'écran : le mois et son repère d'avancement, la dépense par
+// jour pour sa FORME, et la répartition par thème. L'année passe en une ligne
+// sous le mois — un budget annuel ne se pilote pas le lundi matin, il se fixe
+// une fois et se consulte. Tous les éditeurs descendent dans « Réglages du
+// budget », replié : rien n'est perdu, rien n'est détruit, la page visible
+// perd trente champs.
+//
+// L'alerte quotidienne survit sans son module : elle n'apparaît que quand elle
+// se déclenche, et son seuil est passé à 2× (voir lib/couts.ts).
 //
 // Un seul budget, pas un par plateforme : personne ne raisonne « 2 000 sur
 // Meta et 10 000 sur Google ». On a une enveloppe publicitaire, et la vraie
@@ -9,7 +23,7 @@
 // reste calculé et lisible dans le graphe, il n'est simplement plus un endroit
 // où l'on fixe un budget (voir le bloc mis en commentaire plus bas).
 
-import { getCoutsData, type CoutDay, type ThemeSpend, type MonthRow, type AlerteJour } from "@/lib/couts";
+import { getCoutsData, type CoutDay, type ThemeSpend, type AlerteJour } from "@/lib/couts";
 import { fmtCHF } from "@/lib/report";
 import { BudgetEditor } from "@/components/budget-editor";
 import { BudgetYearTable } from "@/components/budget-year-table";
@@ -53,93 +67,46 @@ function Tuile({
   return <Chiffre titre={titre} valeur={valeur} sous={sous} ton={ton} serie={serie} />;
 }
 
-// ── LE JOUR ────────────────────────────────────────────────────────────────
-// Le garde-fou que le budget mensuel ne donne pas : à la fin du mois, l'argent
-// est déjà parti. Ramené à la journée, un dérapage se voit le lendemain.
-function Quotidien({
-  budgetJour,
-  moyenneJour,
-  alertes,
-  joursMois,
-}: {
-  budgetJour: number;
-  moyenneJour: number;
-  alertes: AlerteJour[];
-  joursMois: number;
-}) {
-  if (budgetJour <= 0) return null;
-  const ecart = moyenneJour / budgetJour;
+// L'alerte quotidienne — une LIGNE, plus un module.
+//
+// Le module « Rythme quotidien » affichait deux chiffres à 22 px qui étaient le
+// même nombre que la barre du dessus : `moyenneJour / budgetJour` vaut
+// exactement `ratioMois / elapsed`, c'est-à-dire « 62 % consommé · repère
+// 45 % », déjà imprimé dans la tuile « Reste » et déjà dessiné par la barre.
+// Une identité algébrique, pas une comparaison.
+//
+// Ce qui restait vrai, c'est le pic isolé — et il n'a pas besoin d'un horizon
+// permanent, il a besoin d'apparaître quand il existe.
+function AlerteDepassement({ alertes, budgetJour }: { alertes: AlerteJour[]; budgetJour: number }) {
+  if (budgetJour <= 0 || alertes.length === 0) return null;
   const pire = alertes[0];
-
   return (
-    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Rythme quotidien
-        </div>
-        <div className="text-[11px] text-faint">
-          budget ÷ {joursMois} jours
-        </div>
+    <div className="rounded-xl border border-warn/25 bg-warn/[0.05] px-4 py-3 mb-4">
+      <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1.5">
+        {alertes.length} journée{alertes.length > 1 ? "s" : ""} à plus du double du budget du jour
       </div>
-
-      <div className="flex items-end gap-6 flex-wrap">
-        <div>
-          <div className="font-mono text-[22px] font-medium text-ink leading-none">
-            {fmtCHF(budgetJour)} <span className="text-[13px] text-faint">CHF / jour</span>
-          </div>
-          <div className="text-[11.5px] text-faint mt-1">ce que tu peux dépenser par jour</div>
+      <p className="text-[12.5px] text-ink leading-relaxed">
+        La pire : <span className="font-semibold">{pire.label}</span> à{" "}
+        <span className="font-mono">{fmtCHF(pire.montant)} CHF</span>, soit{" "}
+        {pire.ratio.toFixed(1)}× la référence de {fmtCHF(budgetJour)} CHF par jour.
+      </p>
+      {alertes.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {alertes.slice(1, 10).map((a) => (
+            <span
+              key={a.date}
+              title={`${fmtCHF(a.montant)} CHF`}
+              className="font-mono text-[10.5px] text-warn bg-white border border-warn/25 rounded-full px-2 py-0.5"
+            >
+              {a.label} ×{a.ratio.toFixed(1)}
+            </span>
+          ))}
         </div>
-        <div>
-          <div
-            className={`font-mono text-[22px] font-medium leading-none ${
-              ecart > 1.1 ? "text-neg" : ecart > 0.95 ? "text-warn" : "text-pos"
-            }`}
-          >
-            {fmtCHF(moyenneJour)} <span className="text-[13px] text-faint">CHF / jour</span>
-          </div>
-          <div className="text-[11.5px] text-faint mt-1">
-            ta moyenne réelle —{" "}
-            {ecart > 1.1
-              ? `${Math.round((ecart - 1) * 100)} % au-dessus`
-              : ecart > 0.95
-                ? "au niveau"
-                : `${Math.round((1 - ecart) * 100)} % en dessous`}
-          </div>
-        </div>
-      </div>
-
-      {alertes.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-warn/25 bg-warn/[0.05] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1.5">
-            {alertes.length} journée{alertes.length > 1 ? "s" : ""} au-dessus du budget du jour
-          </div>
-          <p className="text-[12.5px] text-ink leading-relaxed">
-            La pire : <span className="font-semibold">{pire.label}</span> à{" "}
-            <span className="font-mono">{fmtCHF(pire.montant)} CHF</span>, soit{" "}
-            {Math.round((pire.ratio - 1) * 100)} % de plus que prévu pour une journée.
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {alertes.slice(0, 12).map((a) => (
-              <span
-                key={a.date}
-                title={`${fmtCHF(a.montant)} CHF — ${Math.round(a.ratio * 100)} % du budget du jour`}
-                className="font-mono text-[10.5px] text-warn bg-white border border-warn/25 rounded-full px-2 py-0.5"
-              >
-                {a.label} ×{a.ratio.toFixed(1)}
-              </span>
-            ))}
-            {alertes.length > 12 && (
-              <span className="text-[10.5px] text-faint self-center">
-                +{alertes.length - 12} autres
-              </span>
-            )}
-          </div>
-        </div>
-      ) : (
-        <p className="text-[11.5px] text-pos font-medium mt-3">
-          Aucune journée au-dessus du budget quotidien ce mois-ci.
-        </p>
       )}
+      <p className="text-[10.5px] text-faint mt-2 leading-relaxed">
+        Les plateformes s\u2019autorisent des dépassements quotidiens tant que le total du
+        mois tient — on ne signale donc que le double, pas le simple écart.
+      </p>
     </div>
   );
 }
@@ -327,45 +294,50 @@ function BarreBudget({ ratio, repere }: { ratio: number; repere?: number }) {
   );
 }
 
-function AnneeTuiles({ months, spentYear, budgetAnnuel }: { months: MonthRow[]; spentYear: number; budgetAnnuel: number }) {
-  const passes = months.filter((m) => !m.isFuture);
+// L'ANNÉE, EN UNE LIGNE. Elle occupait trois tuiles, un éditeur et une
+// répartition — soit autant de place que le mois, pour un objet qu'on ne pilote
+// pas le lundi matin : un budget annuel se fixe une fois et se consulte.
+// Elle se lit maintenant sous le mois, en une phrase, et se règle dans les
+// réglages repliés en bas de page.
+function LigneAnnee({
+  spentYear,
+  budgetAnnuel,
+  annee,
+}: {
+  spentYear: number;
+  budgetAnnuel: number;
+  annee: number;
+}) {
   // En jours, pas en mois entiers : le 2 août, compter août comme écoulé
   // annoncerait 67 % d'année passée au lieu de 58, et ferait croire qu'on est
   // très en dessous du budget alors qu'on est dans les clous.
   const now = new Date();
   const debut = new Date(now.getFullYear(), 0, 1);
   const fin = new Date(now.getFullYear() + 1, 0, 1);
-  const partEcoulee = (now.getTime() - debut.getTime()) / (fin.getTime() - debut.getTime());
-  const attendu = budgetAnnuel * partEcoulee;
-  const ecart = attendu - spentYear;
+  const part = (now.getTime() - debut.getTime()) / (fin.getTime() - debut.getTime());
 
+  if (budgetAnnuel <= 0) {
+    return (
+      <p className="text-[11.5px] text-faint mt-2.5 leading-relaxed">
+        Sur {annee} : <span className="font-mono text-muted">{fmtCHF(spentYear)} CHF</span>{" "}
+        dépensés depuis janvier. Fixe une enveloppe d&apos;année dans les réglages pour te
+        situer.
+      </p>
+    );
+  }
+  const ratio = spentYear / budgetAnnuel;
+  const enAvance = ratio > part + 0.05;
   return (
-    <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
-      <Tuile
-        titre="Dépensé depuis janvier"
-        valeur={`${fmtCHF(spentYear)} CHF`}
-        sous={`Meta + Google · ${passes.length} mois`}
-      />
-      <Tuile
-        titre="Enveloppe de l'année"
-        valeur={budgetAnnuel > 0 ? `${fmtCHF(budgetAnnuel)} CHF` : "—"}
-        sous={budgetAnnuel > 0 ? `${Math.round(partEcoulee * 100)} % de l'année écoulée` : "à fixer ci-dessous"}
-      />
-      {budgetAnnuel > 0 ? (
-        <Tuile
-          titre="Où tu en es"
-          valeur={ecart < 0 ? `+${fmtCHF(-ecart)} CHF` : `−${fmtCHF(ecart)} CHF`}
-          sous={
-            ecart < 0
-              ? "au-dessus du rythme prévu à ce point de l'année"
-              : "sous le rythme prévu à ce point de l'année"
-          }
-          ton={ecart < 0 ? "neg" : "pos"}
-        />
-      ) : (
-        <Tuile titre="Où tu en es" valeur="—" sous="fixe une enveloppe annuelle pour te situer" />
-      )}
-    </div>
+    <p className="text-[11.5px] text-faint mt-2.5 leading-relaxed">
+      Sur {annee} :{" "}
+      <span className="font-mono text-ink">{fmtCHF(spentYear)}</span>
+      <span className="font-mono"> / {fmtCHF(budgetAnnuel)} CHF</span> —{" "}
+      <span className={enAvance ? "text-warn font-semibold" : "text-muted font-semibold"}>
+        {Math.round(ratio * 100)} % de ton enveloppe pour {Math.round(part * 100)} % de
+        l&apos;année écoulée
+      </span>
+      .
+    </p>
   );
 }
 
@@ -385,14 +357,16 @@ export default async function CoutsPage() {
           Où part ton budget.
         </h1>
         <p className="text-[13px] text-muted mt-2 leading-relaxed max-w-[68ch]">
-          Une seule enveloppe publicitaire, lue à trois échelles : la journée pour
-          réagir, le mois pour corriger, l&apos;année pour décider.
+          Une seule enveloppe publicitaire. Ce qui se pilote, c&apos;est le mois — et
+          la vraie question est de savoir dans quels thèmes il part.
         </p>
       </div>
 
       {/* ══ 1 · CE MOIS-CI ══════════════════════════════════════════════════ */}
       <section className="mb-9">
         <Titre sur="Corriger le rythme">Ce mois-ci</Titre>
+
+        <AlerteDepassement alertes={data.alertes} budgetJour={data.budgetJour} />
 
         <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
           <Tuile
@@ -437,14 +411,8 @@ export default async function CoutsPage() {
             trait vertical de la barre marque la part du mois écoulée : le dépasser
             largement, c&apos;est dépenser plus vite que le calendrier.
           </p>
+          <LigneAnnee spentYear={data.spentYear} budgetAnnuel={data.budgetAnnuel} annee={annee} />
         </div>
-
-        <Quotidien
-          budgetJour={data.budgetJour}
-          moyenneJour={data.moyenneJour}
-          alertes={data.alertes}
-          joursMois={data.joursMois}
-        />
 
         <CourbeJournaliere daily={data.daily} budgetJour={data.budgetJour} />
 
@@ -453,54 +421,13 @@ export default async function CoutsPage() {
         )}
       </section>
 
-      {/* ══ 2 · CETTE ANNÉE ═════════════════════════════════════════════════ */}
-      <section className="mb-9">
-        <Titre sur="Décider pour la suite">L&apos;année {annee}</Titre>
-
-        <AnneeTuiles
-          months={data.months}
-          spentYear={data.spentYear}
-          budgetAnnuel={data.budgetAnnuel}
-        />
-
-        <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
-          <BudgetEditor
-            channel="global"
-            current={data.budgetAnnuelSaisi > 0 ? data.budgetAnnuelSaisi : data.budgetAnnuel}
-            periode="an"
-            annee={annee}
-            libelle={`Enveloppe ${annee}`}
-          />
-          <p className="text-[11px] text-faint mt-2 leading-relaxed">
-            L&apos;enveloppe de l&apos;année est indépendante du mensuel : un budget de
-            saison ou de salon ne se répartit pas en douze parts égales.{" "}
-            {data.budgetAnnuelSaisi === 0 && data.budgetAnnuel > 0 && (
-              <>Tant que rien n&apos;est saisi ici, on additionne tes douze budgets mensuels.</>
-            )}
-          </p>
-        </div>
-
-        {data.byTheme.length > 0 && (
-          <Repartition byTheme={data.byTheme} total={data.budgetAnnuel} periode="an" univers={data.labels} />
-        )}
-
-        <details className="mb-2">
-          <summary className="text-[13px] font-semibold text-ink cursor-pointer select-none mb-3">
-            ▦ Le détail mois par mois — voir et modifier
-          </summary>
-          <div className="mt-3">
-            <BudgetYearTable months={data.months} />
-          </div>
-        </details>
-      </section>
-
       {/* ══ 3 · PAR THÈME ═══════════════════════════════════════════════════ */}
       {data.byTheme.length > 0 && (
         <section className="mb-9">
           <Titre sur="La vraie question">Dans quels thèmes ça part</Titre>
           <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
-            Le mois dit où tu en es, l&apos;année dit si tu tiens ton enveloppe. Fixe les
-            deux : ils ne répondent pas à la même question.
+            C&apos;est ici que se prend la seule décision de la page : quel thème mérite
+            l&apos;enveloppe du mois, et lequel en consomme sans le rendre.
           </p>
 
           <ScrollList
@@ -562,18 +489,17 @@ export default async function CoutsPage() {
                           ) : (
                             <div className="text-[11px] text-faint mt-1.5">pas de budget fixé</div>
                           )}
-                          <BudgetEditor
-                            channel={`label:${t.label}`}
-                            current={c.cle === "an" ? t.budgetYearSaisi : t.budget}
-                            periode={c.cle}
-                            annee={annee}
-                            libelle={c.cle === "an" ? `Budget ${annee}` : "Budget du mois"}
-                          />
-                          {c.cle === "an" && t.budgetYearSaisi === 0 && t.budgetYear > 0 && (
-                            <p className="text-[10.5px] text-faint mt-1 leading-snug">
-                              {fmtCHF(t.budgetYear)} CHF déduits de tes budgets mensuels — saisis
-                              un montant pour fixer une vraie enveloppe d&apos;année.
-                            </p>
+                          {/* Un seul éditeur par thème, celui du mois. Le budget
+                              d'année thème par thème demandait douze nombres
+                              pour en obtenir un qui vaut le mensuel × 12 dans
+                              presque tous les cas — il vit dans les réglages. */}
+                          {c.cle === "mois" && (
+                            <BudgetEditor
+                              channel={`label:${t.label}`}
+                              current={t.budget}
+                              periode="mois"
+                              libelle="Budget du mois"
+                            />
                           )}
                         </div>
                       );
@@ -585,6 +511,68 @@ export default async function CoutsPage() {
           </ScrollList>
         </section>
       )}
+
+      {/* ══ RÉGLAGES ════════════════════════════════════════════════════════
+          Tout ce qui se saisit une fois et ne se relit pas. La page perd ainsi
+          une trentaine de champs sans qu'aucune saisie existante ne disparaisse
+          de la base ni ne devienne inaccessible. */}
+      <details className="mb-6">
+        <summary className="text-[13px] font-semibold text-ink cursor-pointer select-none">
+          ⚙ Réglages du budget — enveloppe de l&apos;année, détail mois par mois
+        </summary>
+
+        <div className="mt-4 bg-white border border-line rounded-xl shadow-card p-5 mb-4">
+          <BudgetEditor
+            channel="global"
+            current={data.budgetAnnuelSaisi > 0 ? data.budgetAnnuelSaisi : data.budgetAnnuel}
+            periode="an"
+            annee={annee}
+            libelle={`Enveloppe ${annee}`}
+          />
+          <p className="text-[11px] text-faint mt-2 leading-relaxed">
+            L&apos;enveloppe de l&apos;année est indépendante du mensuel : un budget de
+            saison ou de salon ne se répartit pas en douze parts égales.{" "}
+            {data.budgetAnnuelSaisi === 0 && data.budgetAnnuel > 0 && (
+              <>Tant que rien n&apos;est saisi ici, on additionne tes douze budgets mensuels.</>
+            )}
+          </p>
+        </div>
+
+        {data.byTheme.some((t) => t.budgetYearSaisi > 0) && (
+          <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
+            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-3">
+              Enveloppes d&apos;année déjà fixées par thème
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+              {data.byTheme
+                .filter((t) => t.budgetYearSaisi > 0)
+                .map((t) => (
+                  <div key={t.label} className="border-l-2 border-line pl-3">
+                    <div className="text-[12px] font-semibold text-ink">{t.label}</div>
+                    <BudgetEditor
+                      channel={`label:${t.label}`}
+                      current={t.budgetYearSaisi}
+                      periode="an"
+                      annee={annee}
+                      libelle={`Budget ${annee}`}
+                    />
+                  </div>
+                ))}
+            </div>
+            <p className="text-[11px] text-faint mt-3 leading-relaxed">
+              Ces montants restent actifs et modifiables ici. Ils ne s&apos;affichent plus
+              dans la liste des thèmes : le pilotage se fait au mois.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+            Le détail mois par mois
+          </div>
+          <BudgetYearTable months={data.months} />
+        </div>
+      </details>
 
       {/*
         ── BUDGET PAR PLATEFORME — conservé, plus affiché ─────────────────────
