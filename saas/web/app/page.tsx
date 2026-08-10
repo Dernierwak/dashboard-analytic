@@ -335,7 +335,7 @@ export default async function Page({
       )}
 
       {/* 3 · CE QUE TU DOIS FAIRE — tes décisions vivent ici jusqu'à être faites */}
-      <ActionTop actions={data.actions} num={nActions} />
+      <ActionTop actions={data.actions} archived={data.actionsArchived} num={nActions} />
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard

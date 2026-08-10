@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { resolveAction } from "@/app/actions";
+import { resolveAction, saveParier } from "@/app/actions";
 import type { TrackedAction } from "@/lib/report";
 import { Triangle } from "@/components/pente";
 
@@ -56,6 +56,61 @@ function Erreur({ texte, onFermer }: { texte: string; onFermer: () => void }) {
       <button onClick={onFermer} className="block mt-1 text-[10.5px] font-semibold text-faint">
         fermer
       </button>
+    </div>
+  );
+}
+
+const SENS = [
+  { cle: "hausse" as const, mot: "monter" },
+  { cle: "stable" as const, mot: "ne rien changer" },
+  { cle: "baisse" as const, mot: "baisser" },
+];
+
+// LE PARI. Ce que tu penses qu'il va se passer, dit AVANT de savoir.
+//
+// C'est la seule récompense de cette section qui ne se triche pas : la réponse
+// tombe du worker quatorze jours plus tard, pas du clic. Un compteur d'actions
+// appliquées récompense le geste — et comme cocher « fait » écrit une baseline
+// dans `suivi_actions`, cocher pour faire monter un compteur fabrique un
+// verdict faux qui repondère ensuite les conseils. Ici, on ne gagne qu'en ayant
+// vu juste, et c'est le produit qui tranche.
+function Pari({ a }: { a: TrackedAction }) {
+  const [pending, startTransition] = useTransition();
+  const [choisi, setChoisi] = useState<string | null>(a.detail?.pari ?? null);
+  if (!a.metric_label) return null;
+
+  if (choisi) {
+    const mot = SENS.find((x) => x.cle === choisi)?.mot ?? choisi;
+    return (
+      <div className="text-[11.5px] text-muted mt-1.5">
+        Tu paries que <span className="font-semibold text-ink">{a.metric_label}</span> va{" "}
+        <span className="font-semibold text-ink">{mot}</span> — réponse le {jour(a.check_at)}.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1.5">
+      <div className="text-[11.5px] text-muted mb-1">
+        À ton avis, <span className="font-semibold text-ink">{a.metric_label}</span> va…
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {SENS.map((x) => (
+          <button
+            key={x.cle}
+            disabled={pending}
+            onClick={() => {
+              setChoisi(x.cle);
+              startTransition(async () => {
+                const r = await saveParier(a.id, x.cle);
+                if (!r.ok) setChoisi(null);
+              });
+            }}
+            className="text-[11.5px] font-semibold text-brand border border-brand/25 rounded-full px-2.5 py-1 hover:bg-brand/[0.06] disabled:opacity-50"
+          >
+            {x.mot}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -136,6 +191,7 @@ function TodoRow({ a }: { a: TrackedAction }) {
               </div>
             </details>
           )}
+          <Pari a={a} />
         </div>
         <button
           disabled={pending}
@@ -154,6 +210,37 @@ function TodoRow({ a }: { a: TrackedAction }) {
         </button>
       </div>
       {erreur && <Erreur texte={erreur} onFermer={() => setErreur(null)} />}
+    </div>
+  );
+}
+
+// La réponse au pari. Elle vaut plus que le verdict seul : « ça a marché » dit
+// ce que les chiffres ont fait, « tu avais vu juste » dit ce que TU as compris.
+// C'est la seule chose de cette page qui mesure un apprentissage.
+function VuJuste({ a }: { a: TrackedAction }) {
+  const pari = a.detail?.pari;
+  if (!pari || a.delta === null || a.delta === undefined) return null;
+  const reel = Math.abs(a.delta) < 0.5 ? "stable" : a.delta > 0 ? "hausse" : "baisse";
+  const juste = reel === pari;
+  const mot = SENS.find((x) => x.cle === pari)?.mot ?? pari;
+  return (
+    <div
+      className={`text-[11.5px] font-semibold mt-1.5 ${juste ? "text-pos" : "text-muted"}`}
+    >
+      {juste ? (
+        <>
+          ✓ Tu avais vu juste
+          <span className="text-faint font-normal"> — c&apos;est bien ce qui s&apos;est passé.</span>
+        </>
+      ) : (
+        <>
+          Tu pariais « {mot} »
+          <span className="text-faint font-normal">
+            {" "}— ce n&apos;est pas ce qui s&apos;est passé. C&apos;est là qu&apos;on apprend
+            quelque chose.
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -181,6 +268,7 @@ function JudgeCard({ a }: { a: TrackedAction }) {
         </span>
       </div>
       <div className="text-[14px] font-semibold text-ink leading-snug mt-1">{a.title}</div>
+      <VuJuste a={a} />
       {v && a.metric_label && a.then !== undefined ? (
         <div className="text-[12.5px] text-muted mt-1">
           {a.metric_label} <b className="text-ink">{a.then}</b> → <b className="text-ink">{a.now}</b>
@@ -213,14 +301,26 @@ function JudgeCard({ a }: { a: TrackedAction }) {
 
 export function ActionTop({
   actions,
+  archived = [],
   num,
 }: {
   actions: TrackedAction[];
+  /** Les actions déjà jugées — elles ne s'affichent pas ici, elles se comptent. */
+  archived?: TrackedAction[];
   num?: number;
 }) {
   const todo = actions.filter((a) => a.status !== "done");
   const judge = actions.filter((a) => a.status === "done" && a.due);
   const watch = actions.filter((a) => a.status === "done" && !a.due);
+
+  // Ce qui a MARCHÉ, pas ce qui a été coché.
+  const jugees = archived.filter((a) => a.status === "archived" && a.verdict).length;
+  const gagnantes = archived.filter((a) => a.verdict === "better").length;
+  // Le prochain rendez-vous : la plus proche échéance encore à venir.
+  const prochain = [...watch]
+    .map((a) => a.check_at)
+    .filter(Boolean)
+    .sort()[0];
 
   const compte = [
     todo.length > 0 ? `${todo.length} à faire` : null,
@@ -264,6 +364,29 @@ export function ActionTop({
         </h2>
         {compte && <span className="text-[11.5px] text-muted font-medium">{compte}</span>}
       </div>
+
+      {/* Le rang 3, qui manquait. La section n'avait AUCUN chiffre : elle
+          ouvrait sur un titre puis une liste de tâches. Or elle a le meilleur
+          chiffre du produit sous la main, et il dormait en section 18 — la part
+          des actions jugées qui ont réellement bougé la métrique. Il ne se
+          triche pas : c'est le worker qui le calcule, pas le clic. */}
+      {jugees > 0 && (
+        <div className="mb-2.5">
+          <span className="font-mono text-[26px] leading-none font-medium text-ink">
+            {gagnantes}
+            <span className="text-faint">/{jugees}</span>
+          </span>
+          <span className="text-[12.5px] text-muted ml-2.5">
+            de tes actions jugées ont fait bouger la métrique
+          </span>
+        </div>
+      )}
+      {prochain && (
+        <p className="text-[11.5px] text-muted mb-2.5">
+          Prochain verdict le <span className="font-semibold text-ink">{jour(prochain)}</span> —
+          c&apos;est le rendez-vous qui vaut le retour.
+        </p>
+      )}
 
       {todo.length > 0 && (
         <div className="divide-y divide-brand/[0.12]">

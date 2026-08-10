@@ -126,7 +126,14 @@ export type TrackedAction = {
   delta?: number | null;
   verdict?: "better" | "worse" | "stable";
   // Photo du conseil au moment de la décision — pour s'en souvenir plus tard.
-  detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
+  detail?: {
+    observation?: string;
+    pourquoi?: string;
+    verifier?: string;
+    effort?: string | null;
+    /** Ce que l'utilisateur pariait AVANT de savoir — voir saveParier. */
+    pari?: "hausse" | "stable" | "baisse";
+  } | null;
 };
 
 export type ThemeRow = { label: string; spend: number; rev: number };

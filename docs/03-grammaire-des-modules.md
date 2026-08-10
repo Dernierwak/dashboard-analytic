@@ -188,6 +188,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 
 | `PostsMetricChart` (Instagram) | aucun chiffre avant le graphe ; sélecteur au-dessus | même forme que `MetricChart` : total ou moyenne en 34 px + pente, sélecteur sous la courbe |
 
+| `action-top` | aucun chiffre — la section ouvrait sur un titre puis une liste | rang 3 : la part des actions jugées qui ont bougé la métrique, remontée de la section 18 |
+
 **Reste à traiter :**
 
 - `AdsKpis` — le hero n'a toujours pas de forme (rang 6).
@@ -209,6 +211,43 @@ Elles se ressemblent, elles ne disent pas la même chose :
   de 44 px. Ce qui les distingue à l'œil : là-haut le seul bloc teinté de la
   page et des cercles cliquables de 22 px ; ici des pastilles de 7 px enfilées
   sur un trait, qu'on ne clique pas.
+
+---
+
+## Ce qu'on gamifie, et ce qu'on ne gamifie jamais
+
+Une seule règle, et elle est technique avant d'être morale :
+
+> **On ne récompense que ce que le système peut vérifier.**
+
+Dans Pulse, il y a exactement deux choses de ce genre : **le mouvement mesuré
+d'une métrique**, et **le fait d'être là le jour où un verdict tombe**. Tout le
+reste est déclaratif.
+
+Pourquoi ce n'est pas un débat de goût : cocher « fait » écrit `done_at`,
+`check_at` et une baseline dans `suivi_actions`, et pose un `reco_feedback`
+« done ». Un compteur d'actions appliquées, une série de semaines, un badge
+« 10 actions » récompensent donc un geste qui **fabrique une mesure**. Cocher
+pour faire monter le compteur produit un verdict faux quatorze jours plus tard,
+qui repondère les conseils suivants. Le risque n'est pas cosmétique, il est
+dans les données.
+
+Ce qu'on fait à la place, et qui tient la même promesse :
+
+- **le compteur d'effet** — « 7 de tes 12 actions ont bougé la métrique ».
+  Calculé par le worker, pas par le clic ;
+- **le rendez-vous** — « prochain verdict le 24 août ». On revient pour un
+  résultat en suspens, pas pour un badge. Une app hebdomadaire ne se fait pas
+  ouvrir par une série ;
+- **le pari** — avant d'agir, dire ce qu'on pense qu'il va se passer. Quatorze
+  jours plus tard, le produit ne dit plus « ça a marché » mais « tu avais vu
+  juste ». C'est la seule mesure d'apprentissage du produit, et elle est
+  impossible à tricher.
+
+Le classement entre comptes reste refusé tant qu'il n'y a pas (a) une cohorte
+comparable, (b) un plancher de n, et (c) une clause de contrat. Comparer un
+hôtel et un e-commerce sur le nombre d'actions cochées ne mesure que la
+disponibilité du gérant.
 
 ---
 
@@ -235,6 +274,15 @@ Deux points de grammaire en sont sortis, et ils valent au-delà de ce module :
   panne de collecte — et l'avertissement « pas de données après le … », qui
   compare chaque canal aux autres, se serait déclenché pour tout le monde tous
   les jours.
+
+**10 août 2026** — `action-top` gagne son rang 3 et la section « Ce que tu dois
+faire » gagne sa boucle : compteur d'effet, prochain rendez-vous, et le pari.
+Établissement de la règle de gamification ci-dessus. La maquette à badges et
+séries a été refusée pour la raison écrite là-haut.
+
+`Quotidien` (page Coûts) supprimé : ses deux chiffres étaient une identité
+algébrique de la barre du dessus. L'exception qu'on lui avait accordée dans les
+interdits tombe avec lui.
 
 **6 août 2026 (2)** — Passe sur les maquettes du kit de composants.
 Établissement du **lexique des signes** ci-dessus et de `components/pente.tsx`
