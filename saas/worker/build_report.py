@@ -1612,6 +1612,12 @@ def build_payload(sb, user_id: str) -> dict | None:
                     continue
                 _lbls = getattr(_r, "labels", None) or []
                 _pubs.append({
+                    # La plateforme est portee explicitement, meme si une seule
+                    # source existe aujourd'hui : le jour ou TikTok ou LinkedIn
+                    # arrivent, la frise les distingue sans changer de format de
+                    # payload — et tant qu'il n'y en a qu'une, l'affichage se
+                    # rabat sur le format du post, qui lui differencie vraiment.
+                    "plateforme": "instagram",
                     "date": _dj.isoformat(),
                     "theme": str(_lbls[0]) if len(_lbls) else None,
                     "type": str(getattr(_r, "type", "") or ""),

@@ -86,7 +86,11 @@ export type Frise = {
     /** true quand la campagne est créée mais n'a encore rien dépensé. */
     planifiee?: boolean;
   }[];
-  posts: { date: string; theme: string | null; type: string }[];
+  /**
+   * `plateforme` est absente des payloads publiés avant août 2026 — l'affichage
+   * retombe alors sur « instagram », qui était la seule source.
+   */
+  posts: { date: string; theme: string | null; type: string; plateforme?: string }[];
 };
 
 export type KpiFocus = {

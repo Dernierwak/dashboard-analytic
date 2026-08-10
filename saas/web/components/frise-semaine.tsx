@@ -71,6 +71,33 @@ const FORMAT: Record<string, { glyphe: string; nom: string }> = {
 const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };
 const format = (t: string) => FORMAT[(t || "").toUpperCase()] ?? FORMAT_INCONNU;
 
+// La plateforme d'une publication. Aujourd'hui une seule source alimente la
+// frise (Instagram), donc un glyphe de plateforme ne distinguerait rien : tant
+// qu'il n'y en a qu'une, le badge porte le FORMAT, qui lui différencie
+// vraiment. Dès qu'une deuxième arrive, il bascule sur la plateforme et le
+// format passe en info-bulle — c'est alors la question la plus discriminante.
+const PLATEFORME: Record<string, { glyphe: string; nom: string }> = {
+  instagram: { glyphe: "◎", nom: "Instagram" },
+  facebook: { glyphe: "▣", nom: "Facebook" },
+  tiktok: { glyphe: "⬢", nom: "TikTok" },
+  linkedin: { glyphe: "▤", nom: "LinkedIn" },
+  youtube: { glyphe: "▶", nom: "YouTube" },
+};
+const PLATEFORME_INCONNUE = { glyphe: "◈", nom: "Autre" };
+const plateforme = (p?: string) =>
+  PLATEFORME[(p || "instagram").toLowerCase()] ?? PLATEFORME_INCONNUE;
+
+// Le niveau de zoom, en pixels par jour. Deux ans à 5 px/jour donnent la vue
+// d'ensemble mais écrasent une campagne de trois jours ; à 16 px/jour on lit
+// jour par jour mais la frise fait 12 000 px. Aucun des deux ne remplace
+// l'autre — d'où le réglage.
+const ZOOMS = [
+  { cle: "mois", nom: "Mois", px: 2 },
+  { cle: "semaine", nom: "Semaine", px: 5 },
+  { cle: "jour", nom: "Jour", px: 16 },
+] as const;
+type Zoom = (typeof ZOOMS)[number]["cle"];
+
 const HACHURE =
   "repeating-linear-gradient(45deg, rgba(17,17,16,0.035) 0 5px, transparent 5px 10px)";
 
@@ -133,11 +160,23 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   const idx = (iso: string) => grille.indexOf(iso);
   const debutSemaine = Math.max(0, idx(f.semaine_debut));
 
-  // Sur deux ans, 11 px par jour ferait 8 000 px : on resserre par paliers. À
-  // 5 px, un mois occupe encore 150 px — de quoi lire une durée — et une
-  // campagne de trois jours reste un trait visible (largeur minimale 5 px).
-  const PX = n > 500 ? 5 : n > 200 ? 7 : 11;
+  // Sur une fenêtre courte, le zoom « semaine » serait ridicule : on ouvre
+  // d'un cran plus fin. Au-delà, c'est le réglage qui décide.
+  const [zoom, setZoom] = useState<Zoom>(n > 200 ? "semaine" : "jour");
+  const PX = ZOOMS.find((z) => z.cle === zoom)!.px;
   const largeur = n * PX;
+
+  // Changer de zoom ne doit pas téléporter le lecteur. On retient la DATE au
+  // centre du cadre avant le changement, et on la remet au centre après : on
+  // zoome sur ce qu'on regardait, pas sur le 1er janvier.
+  const pxPrec = useRef(PX);
+  useEffect(() => {
+    const el = cadre.current;
+    if (!el || pxPrec.current === PX) return;
+    const centre = (el.scrollLeft + el.clientWidth / 2) / pxPrec.current;
+    pxPrec.current = PX;
+    el.scrollLeft = Math.max(0, centre * PX - el.clientWidth / 2);
+  }, [PX]);
 
   // On se pose sur la semaine du rapport, ni sur le 1er janvier de l'an dernier
   // ni sur le 31 décembre à venir : elle occupe les deux tiers du cadre, le
@@ -172,7 +211,10 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [largeur, debutSemaine, PX]);
+    // Volontairement PAS de dépendance au zoom : changer d'échelle conserve la
+    // date au centre (effet ci-dessus), il ne ramène pas sur la semaine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.debut, f.fin, debutSemaine]);
 
   // Aujourd'hui est calculé APRÈS le montage : la date du serveur et celle du
   // navigateur ne tombent pas dans le même fuseau, et un trait qui saute d'un
@@ -229,15 +271,32 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   // mois. On la borne.
   const largeurSemaine = 7 * PX;
 
-  const postsParJour = new Map<string, typeof f.posts>();
+  // Un badge fait 12 px. À 2 px/jour, six publications d'affilée se
+  // superposeraient en une bouillie : on les regroupe sur la largeur qu'occupe
+  // un badge, et le badge porte alors leur nombre. Au zoom « jour », un badge
+  // par jour, comme avant.
+  const pasGroupe = Math.max(1, Math.ceil(13 / PX));
+  const paquets = new Map<number, typeof f.posts>();
   for (const p of f.posts) {
-    const l = postsParJour.get(p.date) ?? [];
+    const i = idx(p.date);
+    if (i < 0) continue;
+    const cle = Math.floor(i / pasGroupe) * pasGroupe;
+    const l = paquets.get(cle) ?? [];
     l.push(p);
-    postsParJour.set(p.date, l);
+    paquets.set(cle, l);
   }
-  // La légende ne nomme que les formats réellement présents : une légende qui
+
+  // Tant qu'une seule plateforme alimente la frise, c'est le FORMAT qui
+  // distingue les publications. Dès qu'il y en a deux, c'est la plateforme.
+  const plateformes = [...new Set(f.posts.map((p) => plateforme(p.plateforme).nom))];
+  const parPlateforme = plateformes.length > 1;
+  const marque = (p: (typeof f.posts)[number]) =>
+    parPlateforme ? plateforme(p.plateforme) : format(p.type);
+  // La légende ne nomme que ce qui est réellement présent : une légende qui
   // annonce ce qu'on ne verra pas fait chercher pour rien.
-  const formats = [...new Set(f.posts.map((p) => format(p.type).nom))];
+  const legende = parPlateforme
+    ? plateformes
+    : [...new Set(f.posts.map((p) => format(p.type).nom))];
 
   // Même règle pour le pointillé : tant que les dates déclarées ne sont pas
   // récoltées, aucune campagne n'en porte — et une légende qui décrit un trait
@@ -270,12 +329,33 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
           {f.campagnes.length} campagne{f.campagnes.length > 1 ? "s" : ""} ·{" "}
           {f.posts.length} publication{f.posts.length > 1 ? "s" : ""} · glisse ← →
         </span>
-        <button
-          onClick={recentrer}
-          className="ml-auto text-[11px] font-semibold text-brand border border-brand/25 rounded-full px-3 py-1 hover:bg-brand/[0.06] transition-colors"
-        >
-          Recentrer
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-[9.5px] uppercase tracking-wide text-faint font-semibold">
+            échelle
+          </span>
+          <div className="flex rounded-full border border-line overflow-hidden">
+            {ZOOMS.map((z) => (
+              <button
+                key={z.cle}
+                onClick={() => setZoom(z.cle)}
+                aria-pressed={zoom === z.cle}
+                className={`text-[11px] font-semibold px-2.5 py-1 transition-colors ${
+                  zoom === z.cle
+                    ? "bg-ink text-white"
+                    : "text-muted hover:bg-black/[0.04]"
+                }`}
+              >
+                {z.nom}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={recentrer}
+            className="text-[11px] font-semibold text-brand border border-brand/25 rounded-full px-3 py-1 hover:bg-brand/[0.06] transition-colors"
+          >
+            Recentrer
+          </button>
+        </div>
       </div>
 
       {/* Un seul cadre, deux axes. Tout ce qui est dedans partage la même
@@ -319,12 +399,17 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                   {b.an ? b.j.slice(0, 4) : mois(b.j)}
                 </span>
               ))}
-              <span
-                className="absolute top-[7px] text-[9.5px] font-bold text-brand uppercase tracking-wide pr-1.5 whitespace-nowrap -translate-x-full"
-                style={{ left: x(debutSemaine) }}
-              >
-                cette sem. →
-              </span>
+              {/* À l'échelle « mois », la semaine ne fait que 14 px : l'étiquette
+                  déborde sur deux noms de mois pour désigner un trait. La bande
+                  bleue reste, elle suffit à la repérer. */}
+              {PX >= 4 && (
+                <span
+                  className="absolute top-[7px] text-[9.5px] font-bold text-brand uppercase tracking-wide pr-1.5 whitespace-nowrap -translate-x-full"
+                  style={{ left: x(debutSemaine) }}
+                >
+                  cette sem. →
+                </span>
+              )}
               {futur && (
                 // Au MILIEU de la zone, pas à sa frontière : posée sur le bord,
                 // elle se superposait à l'étiquette du mois courant.
@@ -449,17 +534,19 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
               >
                 publications
               </span>
-              {[...postsParJour.entries()].map(([jour, liste]) => {
-                const i = idx(jour);
-                if (i < 0) return null;
+              {[...paquets.entries()].map(([i, liste]) => {
                 const t = couleur(liste[0].theme);
-                const fm = format(liste[0].type);
+                const seul = liste.length === 1;
+                const periode =
+                  pasGroupe === 1 || seul
+                    ? libelle(liste[0].date)
+                    : `${libelle(grille[i])} → ${libelle(grille[Math.min(n - 1, i + pasGroupe - 1)])}`;
                 return (
                   <span
-                    key={jour}
+                    key={i}
                     className="absolute top-1/2 -translate-y-1/2 rounded-[4px] border flex items-center justify-center font-bold"
                     style={{
-                      left: x(i) + PX / 2 - 6,
+                      left: x(i) + (pasGroupe * PX) / 2 - 6,
                       height: 12,
                       width: 12,
                       fontSize: 8,
@@ -468,11 +555,16 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                       borderColor: t?.trait ?? "#8a8a94",
                       color: t?.trait ?? "#5a5d66",
                     }}
-                    title={`${libelle(jour)} · ${liste
-                      .map((p) => `${format(p.type).nom} — ${p.theme ?? "sans thème"}`)
+                    title={`${periode} · ${liste
+                      .map(
+                        (p) =>
+                          `${plateforme(p.plateforme).nom} ${format(p.type).nom} — ${
+                            p.theme ?? "sans thème"
+                          }`
+                      )
                       .join(" · ")}`}
                   >
-                    {liste.length > 1 ? liste.length : fm.glyphe}
+                    {seul ? marque(liste[0]).glyphe : liste.length}
                   </span>
                 );
               })}
@@ -481,10 +573,11 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
         </div>
       </div>
 
-      {formats.length > 1 && (
+      {legende.length > 1 && (
         <div className="flex items-center gap-3.5 flex-wrap px-4 sm:px-5 pt-2.5 text-[10px] text-faint font-semibold">
-          {formats.map((nom) => {
-            const g = Object.values(FORMAT).find((v) => v.nom === nom)?.glyphe ?? "·";
+          {legende.map((nom) => {
+            const src = parPlateforme ? PLATEFORME : FORMAT;
+            const g = Object.values(src).find((v) => v.nom === nom)?.glyphe ?? "·";
             return (
               <span key={nom} className="flex items-center gap-1.5">
                 <span className="h-[12px] w-[12px] rounded-[4px] border border-line bg-black/[0.04] flex items-center justify-center text-[8px] text-muted">
@@ -495,7 +588,8 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
             );
           })}
           <span className="text-faint/70 font-normal">
-            la couleur porte le thème, le glyphe le format
+            la couleur porte le thème, le glyphe {parPlateforme ? "la plateforme" : "le format"}
+            {pasGroupe > 1 && " · un chiffre = plusieurs publications regroupées"}
           </span>
         </div>
       )}
