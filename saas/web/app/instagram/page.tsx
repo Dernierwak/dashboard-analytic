@@ -16,7 +16,7 @@ import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 
 import { getCompteActif } from "@/lib/account";
-import { Triangle } from "@/components/pente";
+import { Triangle, sensPente } from "@/components/pente";
 
 export const dynamic = "force-dynamic";
 
@@ -141,28 +141,52 @@ function PostsMetricChart({
   const max = Math.max(...vals, 0.001);
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
   const dq = days === 7 ? "" : `d=${days}&`;
+
+  // Ce module ouvrait sur un surtitre et une rangée de boutons, puis un graphe :
+  // aucun chiffre avant sa forme, et le sélecteur au-dessus de ce qu'il pilote.
+  // Deux écarts à la grammaire (docs/03-grammaire-des-modules.md, rangs 3 et 8),
+  // et surtout deux fois la MÊME question posée différemment de Meta et Google.
+  // Il suit maintenant exactement la forme de `MetricChart`.
+  const taux = metric === "eng";
+  const valeur = taux
+    ? vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.filter((v) => v > 0).length)
+    : vals.reduce((a, b) => a + b, 0);
+
+  const moy = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const mi = Math.floor(vals.length / 2);
+  const av = moy(vals.slice(0, mi));
+  const ap = moy(vals.slice(mi));
+  const ec = av > 0 ? ((ap - av) / av) * 100 : null;
+  const sp = sensPente(ec, false, 8);
+
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Tes posts, un par un
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          {INSTA_METRICS.map((m) => (
-            <a
-              key={m.key}
-              href={`/instagram?${dq}${m.key === "reach" ? "" : `m=${m.key}`}`}
-              className={`text-[10.5px] font-semibold rounded-full px-2.5 py-0.5 border ${
-                metric === m.key
-                  ? "bg-ink text-white border-ink"
-                  : "border-line text-muted hover:bg-black/[0.03] bg-white"
-              }`}
-            >
-              {m.label}
-            </a>
-          ))}
-        </div>
+      <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
+        Tes posts, un par un <span className="text-ink">· {meta.label}</span>
       </div>
+
+      <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
+        <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
+          {fmtV(valeur)}
+          <span className="text-[15px] text-faint"> {meta.unit}</span>
+        </span>
+        <span className="text-[11px] text-faint">{taux ? "en moyenne" : "au total"}</span>
+        <span
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${sp.cls}`}
+          style={{ background: sp.fond }}
+          title="Seconde moitié de la période comparée à la première"
+        >
+          {sp.plat ? (
+            "≈ stable"
+          ) : (
+            <>
+              <Triangle sens={sp.monte ? "haut" : "bas"} /> {ec! > 0 ? "+" : ""}
+              {Math.round(ec!)} % sur la période
+            </>
+          )}
+        </span>
+      </div>
+
       <LineChart
         labels={pts.map((p) => fmtDate(p.date).slice(0, 6))}
         series={[{ name: meta.label, color: "#7b4fff", values: pts.map(val) }]}
@@ -170,8 +194,26 @@ function PostsMetricChart({
         unit={meta.unit}
         ariaLabel={`${meta.label} par post`}
       />
-      <div className="text-[10.5px] text-faint mt-1 text-right">
-        max {fmtV(max)}{meta.unit} · {pts.length} posts
+
+      {/* Le sélecteur passe SOUS le graphe, comme sur Meta et Google : il pilote
+          ce module, il ne le précède pas. */}
+      <div className="flex items-center gap-1 overflow-x-auto pt-3 mt-1 border-t border-line">
+        {INSTA_METRICS.map((m) => (
+          <a
+            key={m.key}
+            href={`/instagram?${dq}${m.key === "reach" ? "" : `m=${m.key}`}`}
+            className={`shrink-0 text-[10.5px] font-semibold rounded-full px-2.5 py-1 border ${
+              metric === m.key
+                ? "bg-ink text-white border-ink"
+                : "border-line text-muted hover:bg-black/[0.03] bg-white"
+            }`}
+          >
+            {m.label}
+          </a>
+        ))}
+        <span className="ml-auto shrink-0 text-[10.5px] text-faint pl-3">
+          max {fmtV(max)}{meta.unit} · {pts.length} posts
+        </span>
       </div>
     </div>
   );

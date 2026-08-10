@@ -1,23 +1,42 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { triggerFetch, checkFetchStatus } from "@/app/actions";
 
 type Phase = "idle" | "running" | "ready" | "failed" | "error";
 
-// Les étapes réelles du worker, dans l'ordre où il les exécute — le temps
-// indiqué est le moment où chacune démarre en général. Ça permet de dire ce
-// qui se passe pendant l'attente au lieu d'un sablier muet.
+// « ↻ Mes données » — déclenche la récolte et la suit.
+//
+// LA VÉRITÉ EST SUR GITHUB, PAS DANS CE COMPOSANT. C'est le changement de
+// fond. Avant, tout l'état vivait ici : lancer depuis la page Connexions puis
+// aller voir son rapport démontait le composant, tuait le sondage, et la
+// récolte devenait invisible alors qu'elle tournait toujours. Deux exemplaires
+// cohabitent d'ailleurs — un dans la barre latérale, un sur /comptes — et
+// chacun ignorait l'autre.
+//
+// Désormais chaque exemplaire demande au montage l'état du dernier run et
+// reconstruit tout à partir de sa date de départ. Changer de page, recharger,
+// ouvrir un second onglet : la barre reprend là où elle en est.
+//
+// ET IL N'Y A PLUS DE COUPERET. L'ancienne version abandonnait à 15 minutes
+// avec « vérifie l'onglet Actions » — sur un premier chargement de 200 posts
+// Instagram, la récolte prend 16 minutes et RÉUSSIT. On annonçait donc un échec
+// une minute avant la victoire. Une récolte longue est signalée comme longue,
+// jamais comme cassée.
+
+// Les étapes réelles du worker, dans l'ordre. Les secondes sont indicatives :
+// la première récolte d'un compte est cent fois plus longue que les suivantes,
+// parce que c'est elle qui rapatrie tout l'historique Instagram.
 const ETAPES: { at: number; label: string }[] = [
   { at: 0, label: "Lancement de la récolte" },
   { at: 20, label: "Publicités Meta" },
   { at: 60, label: "Posts Instagram" },
-  { at: 240, label: "Google Ads" },
-  { at: 300, label: "Google Analytics" },
-  { at: 360, label: "Classement des contenus par l'IA" },
-  { at: 400, label: "Rédaction de ton rapport" },
+  { at: 420, label: "Google Ads" },
+  { at: 480, label: "Google Analytics" },
+  { at: 540, label: "Classement des contenus par l'IA" },
+  { at: 600, label: "Rédaction de ton rapport" },
 ];
-const DUREE_TYPE = 460; // secondes : la barre vise ça, sans jamais atteindre 100 %
+const LONGUE = 10 * 60; // au-delà, on prévient que c'est long — pas que c'est cassé
 
 function etapeDe(sec: number): string {
   let cur = ETAPES[0].label;
@@ -27,78 +46,123 @@ function etapeDe(sec: number): string {
 
 function mmss(sec: number): string {
   const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(sec % 60).padStart(2, "0")}`;
 }
 
-// « ↻ Mes données » : déclenche le fetch GitHub Actions pour cet utilisateur,
-// suit son état avec une barre de progression, et propose de recharger la page.
+// La barre n'estime pas une durée — elle n'en connaît aucune qui vaille pour
+// les deux cas (2 min en routine, 16 min au premier chargement). Elle approche
+// 92 % sans jamais l'atteindre : elle avance vite au début, lentement ensuite,
+// et ne promet jamais une fin qu'elle ne sait pas dater.
+function avancement(sec: number): number {
+  return Math.round(92 * (1 - Math.exp(-sec / 260)));
+}
+
 export function FetchButton() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [debut, setDebut] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [lien, setLien] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Le moment où CE navigateur a demandé la récolte. Il sert à ne pas prendre
+  // le run précédent pour le nôtre pendant les secondes où GitHub n'a pas
+  // encore enregistré le nouveau.
+  const demandeA = useRef<number | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      if (tickRef.current) clearInterval(tickRef.current);
-    };
-  }, []);
-
-  const stopAll = () => {
+  const stopAll = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (tickRef.current) clearInterval(tickRef.current);
-  };
+    pollRef.current = null;
+    tickRef.current = null;
+  }, []);
 
-  const startPolling = () => {
-    const startedAt = Date.now();
-    setElapsed(0);
-    tickRef.current = setInterval(
-      () => setElapsed(Math.round((Date.now() - startedAt) / 1000)),
-      1000
-    );
-    let checks = 0;
-    pollRef.current = setInterval(async () => {
-      checks += 1;
-      if (Date.now() - startedAt > 15 * 60_000) {
-        stopAll();
-        setPhase("error");
-        setMessage("Toujours en cours après 15 min — vérifie l'onglet Actions sur GitHub.");
+  useEffect(() => () => stopAll(), [stopAll]);
+
+  // Le chronomètre part de la date du run, pas du montage du composant.
+  useEffect(() => {
+    if (phase !== "running" || debut === null) return;
+    const maj = () => setElapsed(Math.max(0, Math.round((Date.now() - debut) / 1000)));
+    maj();
+    tickRef.current = setInterval(maj, 1000);
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
+    };
+  }, [phase, debut]);
+
+  const lire = useCallback(
+    async (premier: boolean) => {
+      const res = await checkFetchStatus();
+      if (res.debut) setLien(res.url ?? null);
+      const neuf = res.debut ? Date.parse(res.debut) : null;
+      // Un run terminé mais ANTÉRIEUR à notre demande est l'ancien : GitHub ne
+      // publie le nouveau qu'après quelques secondes. On patiente.
+      const aNous =
+        demandeA.current === null || (neuf !== null && neuf >= demandeA.current - 60_000);
+
+      if (res.state === "pending") {
+        setDebut(neuf);
+        setPhase("running");
         return;
       }
-      const res = await checkFetchStatus();
-      if (res.state === "pending" || (res.state === "success" && checks <= 1)) {
-        // (au 1er check, un run « success » peut être l'ANCIEN run — on attend)
+      if (!aNous) {
         setPhase("running");
         return;
       }
       if (res.state === "success") {
         stopAll();
-        setPhase("ready");
-        setMessage(null);
+        // Au tout premier coup d'œil sans demande de notre part, un run réussi
+        // est simplement le dernier en date : rien à annoncer.
+        setPhase(premier && demandeA.current === null ? "idle" : "ready");
       } else if (res.state === "failure") {
         stopAll();
         setPhase("failed");
-        setMessage("La récolte a échoué — regarde l'onglet Actions sur GitHub.");
+        setMessage("La récolte a échoué — regarde le détail du run sur GitHub.");
       }
-      // unknown → on continue de poller
-    }, 12_000);
-  };
+    },
+    [stopAll]
+  );
+
+  // Au montage : si une récolte tourne déjà, on la reprend en cours de route.
+  // C'est ce qui rend la barre indépendante de la page où on se trouve.
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const res = await checkFetchStatus();
+      if (!vivant || res.state !== "pending") return;
+      setDebut(res.debut ? Date.parse(res.debut) : Date.now());
+      setLien(res.url ?? null);
+      setPhase("running");
+    })();
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
+  // Le sondage vit tant qu'une récolte tourne, quelle qu'en soit l'origine.
+  useEffect(() => {
+    if (phase !== "running" || pollRef.current) return;
+    pollRef.current = setInterval(() => void lire(false), 12_000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+  }, [phase, lire]);
 
   const launch = () =>
     startTransition(async () => {
+      demandeA.current = Date.now();
       const res = await triggerFetch();
       if (!res.ok) {
         setPhase("error");
         setMessage(res.message);
         return;
       }
-      setPhase("running");
+      setDebut(Date.now());
       setMessage(null);
-      startPolling();
+      setPhase("running");
     });
 
   if (phase === "ready") {
@@ -112,9 +176,8 @@ export function FetchButton() {
     );
   }
 
-  // Progression estimée : elle avance avec le temps écoulé et plafonne à 92 %
-  // tant que GitHub n'a pas confirmé la fin — jamais de faux 100 %.
-  const pourcent = Math.min(92, Math.round((elapsed / DUREE_TYPE) * 100));
+  const pourcent = avancement(elapsed);
+  const longue = elapsed > LONGUE;
 
   return (
     <div className="relative">
@@ -143,9 +206,29 @@ export function FetchButton() {
             />
           </div>
           <p className="text-[10.5px] text-faint mt-1.5 leading-relaxed">
-            Compte 5 à 8 minutes. Tu peux fermer la page — la récolte continue de son
-            côté et les données t&apos;attendront ici.
+            {longue ? (
+              <>
+                C&apos;est plus long que d&apos;habitude, et c&apos;est normal la première
+                fois : la récolte rapatrie tout ton historique de publications. Elle va au
+                bout.
+              </>
+            ) : (
+              <>
+                Compte 2 à 15 minutes selon ce qu&apos;il reste à rapatrier. Tu peux changer
+                de page ou fermer l&apos;onglet — la barre te retrouvera.
+              </>
+            )}
           </p>
+          {lien && (
+            <a
+              href={lien}
+              target="_blank"
+              rel="noreferrer"
+              className="block mt-1.5 text-[10.5px] font-semibold text-brand hover:underline"
+            >
+              voir le détail →
+            </a>
+          )}
         </div>
       )}
 
@@ -156,6 +239,16 @@ export function FetchButton() {
           }`}
         >
           {message}
+          {lien && (
+            <a
+              href={lien}
+              target="_blank"
+              rel="noreferrer"
+              className="block mt-1 text-[10.5px] font-semibold text-brand hover:underline"
+            >
+              voir le détail →
+            </a>
+          )}
           <button
             onClick={() => setMessage(null)}
             className="block mt-1 text-[10.5px] font-semibold text-faint"

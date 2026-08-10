@@ -182,6 +182,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `kpi-focus` (jauge) | noms de paliers en `justify-between` sur des bandes proportionnelles | chaque nom occupe la largeur de sa bande |
 | huit blocs de delta recopiés | trois seuils de « stable » différents | `components/pente.tsx` — un seul composant, un seul seuil |
 
+| `PostsMetricChart` (Instagram) | aucun chiffre avant le graphe ; sélecteur au-dessus | même forme que `MetricChart` : total ou moyenne en 34 px + pente, sélecteur sous la courbe |
+
 **Reste à traiter :**
 
 - `AdsKpis` — le hero n'a toujours pas de forme (rang 6).

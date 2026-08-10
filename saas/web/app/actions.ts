@@ -669,6 +669,10 @@ export async function triggerReport(): Promise<{ ok: boolean; message: string }>
 // État du dernier run du workflow (pour le suivi du bouton « Mes données »).
 export async function checkFetchStatus(): Promise<{
   state: "pending" | "success" | "failure" | "unknown";
+  /** Début du run, en ISO — c'est LUI qui fait foi pour le temps écoulé.
+   *  Sans ça, la barre repartait de zéro à chaque changement de page. */
+  debut?: string;
+  url?: string;
 }> {
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
@@ -684,8 +688,9 @@ export async function checkFetchStatus(): Promise<{
     if (!r.ok) return { state: "unknown" };
     const run = (await r.json())?.workflow_runs?.[0];
     if (!run) return { state: "unknown" };
-    if (run.status !== "completed") return { state: "pending" };
-    return { state: run.conclusion === "success" ? "success" : "failure" };
+    const meta = { debut: run.created_at as string, url: run.html_url as string };
+    if (run.status !== "completed") return { state: "pending", ...meta };
+    return { state: run.conclusion === "success" ? "success" : "failure", ...meta };
   } catch {
     return { state: "unknown" };
   }
