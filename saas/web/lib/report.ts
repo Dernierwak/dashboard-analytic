@@ -100,6 +100,7 @@ export type KpiFocus = {
   // Semaines où une action a été appliquée, tous thèmes confondus. Absent des
   // payloads publiés avant — la courbe s'affiche alors sans repères.
   markers?: number[];
+  marqueurs?: RepereAction[];
 };
 
 // Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
@@ -202,12 +203,22 @@ export type ThemeSummary = {
   n_campaigns: number;
 };
 
+/**
+ * Un repère d'action sur une courbe. `markers` ne portait que l'index de la
+ * semaine — de quoi tracer un pointillé, pas de quoi écrire ce qu'on a fait.
+ * `titre` est vide quand plusieurs actions tombent la même semaine : elles
+ * partagent un seul repère, et `n` dit combien elles sont.
+ * Absent des payloads publiés avant août 2026.
+ */
+export type RepereAction = { i: number; date: string; titre: string; n: number };
+
 export type ThemeSeries = {
   metric_label: string;
   // Pourquoi ce n'est pas l'indicateur de ton objectif qu'on suit ici.
   note?: string | null;
   points: { label: string; value: number }[];
   markers: number[]; // index de semaine où une action a été lancée
+  marqueurs?: RepereAction[];
 };
 
 export type ThemeFocus = {

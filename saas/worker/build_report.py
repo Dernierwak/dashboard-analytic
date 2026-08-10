@@ -82,6 +82,98 @@ EFFORT_BY_KEY = {
 }
 
 
+# Le LEVIER d'un conseil : sur quoi il demande d'agir.
+#
+# C'est ce qui manquait pour que « les 3 du moment » cessent de se ressembler.
+# La selection triait par (priorite, confiance, facilite) puis prenait les trois
+# premiers — sans regarder si les trois disaient la meme chose. Deux themes en
+# gaspillage donnaient deux fois « ajuste un budget », et le lecteur en concluait
+# que le produit n'a qu'une idee.
+#
+# Quatre leviers, parce qu'un conseil marketing agit sur l'un des quatre :
+#   argent   — combien on met, et ou
+#   contenu  — ce qu'on montre
+#   tempo    — quand et a quelle frequence
+#   audience — a qui on parle
+# `socle` est a part : ce sont les prerequis (GA4, funnel), qui ne se
+# concurrencent pas entre eux.
+_LEVIER_REGLE = {
+    "gaspillage": "argent",
+    "scaler": "argent",
+    "roas": "argent",
+    "creneau": "tempo",
+    "silence": "tempo",
+    "format_gagnant": "contenu",
+    "page_endormie": "contenu",
+    "funnel": "socle",
+    "connecter_ga4": "socle",
+    "ga4_muet": "socle",
+}
+# Les conseils IA n'ont pas de cle stable (`ai_<theme>_<n>`) : leur levier se lit
+# dans ce qu'ils demandent de faire. Ordre volontaire — « budget » l'emporte sur
+# « visuel » quand les deux mots sont la, parce que c'est le geste qui coute.
+_LEVIER_MOTS = (
+    ("argent", ("budget", "depense", "dépense", "investi", "cpc", "cout", "coût",
+                "enchere", "enchère", "reallou", "réallou", "financ")),
+    ("audience", ("audience", "ciblage", "cibl", "lookalike", "similaire",
+                  "interet", "intérêt", "mot-cle", "mot-clé", "requete", "requête",
+                  "exclu", "geograph", "géograph")),
+    ("tempo", ("publie", "publi", "frequence", "fréquence", "rythme", "horaire",
+               "creneau", "créneau", "calendrier", "regularite", "régularité")),
+    ("contenu", ("visuel", "crea", "créa", "accroche", "message", "format",
+                 "carrousel", "reel", "réel", "video", "vidéo", "texte", "titre",
+                 "legende", "légende", "photo", "landing", "page de")),
+)
+
+
+def _levier(reco: dict) -> str:
+    cle = reco.get("key") or ""
+    if cle in _LEVIER_REGLE:
+        return _LEVIER_REGLE[cle]
+    txt = f"{reco.get('title', '')} {reco.get('observation', '')}".lower()
+    for nom, mots in _LEVIER_MOTS:
+        if any(m in txt for m in mots):
+            return nom
+    return "autre"
+
+
+def _diversifier(pool: list, n: int = 3) -> list:
+    """Choisit `n` conseils aussi differents que possible, sans jamais en rendre
+    moins que ce que le tri simple aurait rendu.
+
+    Cinq passes de plus en plus permissives. La premiere exige trois cles, trois
+    themes et trois leviers distincts ; la derniere n'exige rien. On ne descend
+    d'un cran que si le cran du dessus n'a pas rempli les trois places.
+
+    La derniere passe n'est pas un detail : deux themes qui gaspillent, ce SONT
+    deux problemes, pas un doublon — les campagnes concernees ne sont pas les
+    memes. Quand il n'y a rien d'autre a montrer, on remontre la meme regle
+    plutot que de rendre deux conseils au lieu de trois. La variete passe avant
+    la repetition, jamais avant l'information.
+    """
+    exigences = (("cle", "theme", "levier"), ("cle", "theme"),
+                 ("cle", "levier"), ("cle",), ())
+    choisis: list = []
+    vus: set = set()
+    for exig in exigences:
+        for r in pool:
+            if len(choisis) >= n:
+                break
+            if id(r) in vus:
+                continue
+            if "cle" in exig and any(c.get("key") == r.get("key") for c in choisis):
+                continue
+            if "theme" in exig and any(c.get("theme") == r.get("theme") for c in choisis):
+                continue
+            if "levier" in exig and any(_levier(c) == _levier(r) for c in choisis):
+                continue
+            choisis.append(r)
+            vus.add(id(r))
+        if len(choisis) >= n:
+            break
+    return choisis
+
+
 def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
@@ -497,12 +589,43 @@ def build_payload(sb, user_id: str) -> dict | None:
     _markers = {}
     try:
         # Le repere se pose au jour ou l'action a ete FAITE (a defaut, decidee).
+        # On garde son TITRE avec sa date : un pointille muet ne relie rien, et
+        # l'index de semaine seul ne permet pas d'ecrire ce qu'on a fait.
         for _a in (sb.table("suivi_actions").select("*")
                    .eq("user_id", user_id).execute().data or []):
             _d = _a.get("done_at") or _a.get("decided_at")
-            _markers.setdefault(_nrm(_a.get("theme")), []).append(str(_d)[:10])
+            _markers.setdefault(_nrm(_a.get("theme")), []).append(
+                {"date": str(_d)[:10], "titre": (_a.get("title") or "").strip()}
+            )
     except Exception:
         _markers = {}
+
+    def _reperes(dates):
+        """Les reperes d'une serie, groupes par semaine et nommes.
+
+        Deux actions la meme semaine ne peuvent pas porter deux etiquettes au
+        meme endroit : la semaine en porte une seule, qui dit combien elles
+        sont. `markers` (les index nus) reste emis a cote pour les rapports
+        deja publies.
+        """
+        par_sem = {}
+        for _m in dates or []:
+            try:
+                _wi = _wk_idx(date.fromisoformat(_m["date"]))
+            except Exception:
+                _wi = None
+            if _wi is not None:
+                par_sem.setdefault(_wi, []).append(_m)
+        out = []
+        for _wi in sorted(par_sem):
+            _lot = sorted(par_sem[_wi], key=lambda m: m["date"])
+            out.append({
+                "i": _wi,
+                "date": _lot[-1]["date"],
+                "titre": _lot[-1]["titre"] if len(_lot) == 1 else "",
+                "n": len(_lot),
+            })
+        return out
     _WK = 10
     _serie_start = last_full_day - timedelta(days=7 * _WK - 1)
 
@@ -570,19 +693,13 @@ def build_payload(sb, user_id: str) -> dict | None:
             return None  # trop clairsemé → pas de frise
         labels = [(lambda d: f"{d.day} {MONTHS_FR[d.month]}")(_serie_start + timedelta(days=7 * j))
                   for j in range(_WK)]
-        mk = []
-        for _x in _markers.get(nlbl, []):
-            try:
-                _wi = _wk_idx(date.fromisoformat(_x))
-            except Exception:
-                _wi = None
-            if _wi is not None:
-                mk.append(_wi)
+        _rep = _reperes(_markers.get(nlbl, []))
         return {
             "metric_label": metric_label,
             "note": note,
             "points": [{"label": labels[j], "value": pts[j]} for j in range(_WK)],
-            "markers": sorted(set(mk)),
+            "markers": [r["i"] for r in _rep],
+            "marqueurs": _rep,
         }
 
     # Un theme ne doit voir QUE ses propres conversions GA4. Sans ce filtre, la
@@ -1065,13 +1182,16 @@ def build_payload(sb, user_id: str) -> dict | None:
     for _tf in themes_focus:
         for _r in _tf["recos"]:
             _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
-    top_recos = sorted(
-        _pool,
-        key=lambda r: (0 if r.get("is_priority") else 1,
-                       _CONF_W.get(r.get("confidence"), 3),
-                       _EFF_W.get(r.get("effort"), 2),
-                       r.get("priority", 99)),
-    )[:3]
+    top_recos = _diversifier(
+        sorted(
+            _pool,
+            key=lambda r: (0 if r.get("is_priority") else 1,
+                           _CONF_W.get(r.get("confidence"), 3),
+                           _EFF_W.get(r.get("effort"), 2),
+                           r.get("priority", 99)),
+        ),
+        3,
+    )
 
     # 2) Les actions déjà lancées restent EN COURS jusqu'à être faites/vérifiées ;
     #    à l'échéance (check_at), on remesure l'indicateur → verdict.
@@ -1373,22 +1493,34 @@ def build_payload(sb, user_id: str) -> dict | None:
             # themes confondus. La courbe de la boussole est la premiere du
             # rapport : c'est la qu'on doit pouvoir relier « j'ai fait ca » a
             # « ca a bouge », pas trois sections plus bas.
-            _kmk = []
+            # La boussole regarde TOUS les themes : ses semaines sont celles de
+            # `_sems` (10 semaines glissantes), pas celles de `_wk_idx`.
+            _par_sem = {}
             for _dates in _markers.values():
-                for _x in _dates:
+                for _m in _dates:
                     try:
-                        _dx = date.fromisoformat(str(_x)[:10])
+                        _dx = date.fromisoformat(str(_m["date"])[:10])
                     except Exception:
                         continue
                     for _j, (_a1, _a2) in enumerate(_sems):
                         if _a1 <= _dx <= _a2:
-                            _kmk.append(_j)
+                            _par_sem.setdefault(_j, []).append(_m)
                             break
+            _kmq = []
+            for _j in sorted(_par_sem):
+                _lot = sorted(_par_sem[_j], key=lambda m: m["date"])
+                _kmq.append({
+                    "i": _j,
+                    "date": _lot[-1]["date"],
+                    "titre": _lot[-1]["titre"] if len(_lot) == 1 else "",
+                    "n": len(_lot),
+                })
             kpi_focus = {
                 "labels": _lab,
                 "defaut": _def["key"],
                 "options": _options,
-                "markers": sorted(set(_kmk)),
+                "markers": [r["i"] for r in _kmq],
+                "marqueurs": _kmq,
             }
 
         # Les memes 10 semaines pour les quatre tuiles de lecture rapide.

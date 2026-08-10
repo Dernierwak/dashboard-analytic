@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { LineChart, garderEtiquettes, type Marqueur } from "@/components/line-chart";
+import { LineChart, garderEtiquettes } from "@/components/line-chart";
+import { marqueursCourbe } from "@/components/etat-action";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
 
@@ -165,13 +166,17 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
   const delta = ecartPct(o);
   const groupe = TERRAIN[o.key]?.groupe;
 
-  // Les repères d'action, NOMMÉS. `markers` ne porte que des index de semaine :
-  // on écrit donc « sem. du 8 jul », jamais un jour — un seau hebdomadaire
-  // présenté comme une date est un chiffre présenté pour autre chose que ce
-  // qu'il mesure.
-  const marqueurs: Marqueur[] = (k.markers ?? [])
-    .filter((i) => i >= 0 && i < k.labels.length)
-    .map((i) => ({ i, label: `action · sem. du ${k.labels[i]}` }));
+  // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
+  // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
+  // l'index de semaine est connu et on écrit « sem. du 24 jun » — un seau
+  // hebdomadaire présenté comme un jour serait un chiffre présenté pour autre
+  // chose que ce qu'il mesure.
+  const marqueurs = marqueursCourbe(
+    k.marqueurs,
+    k.markers,
+    k.labels.length,
+    (i) => k.labels[i]
+  );
   const etiquettes = garderEtiquettes(marqueurs);
 
   // Les groupes réellement présents, dans l'ordre.

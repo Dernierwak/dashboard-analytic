@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { fmtCHF, type ThemeFocus, type TrackedAction } from "@/lib/report";
-import { LineChart, garderEtiquettes, type Marqueur } from "@/components/line-chart";
+import { LineChart, garderEtiquettes } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
-import { Pastille, dateCourte, etat } from "@/components/etat-action";
+import { Pastille, dateCourte, etat, marqueursCourbe } from "@/components/etat-action";
 
 // UNE CARTE PAR THÈME PRIORITAIRE.
 //
@@ -158,11 +158,17 @@ export function ThemeCard({
       )
     : null;
 
-  // Les repères ┄, nommés. `markers` ne porte que des index de semaine : on
-  // écrit donc « sem. du 8 jul », jamais un jour.
-  const marqueurs: Marqueur[] = (s.markers ?? [])
-    .filter((i) => i >= 0 && i < s.points.length)
-    .map((i) => ({ i, label: `action · sem. du ${s.points[i].label}` }));
+  // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
+  // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
+  // l'index de semaine est connu et on écrit « sem. du 24 jun » — un seau
+  // hebdomadaire présenté comme un jour serait un chiffre présenté pour autre
+  // chose que ce qu'il mesure.
+  const marqueurs = marqueursCourbe(
+    s.marqueurs,
+    s.markers,
+    s.points.length,
+    (i) => s.points[i].label
+  );
   const etiquettes = garderEtiquettes(marqueurs);
 
   return (
