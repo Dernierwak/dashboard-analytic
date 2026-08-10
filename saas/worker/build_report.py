@@ -1589,16 +1589,74 @@ def build_payload(sb, user_id: str) -> dict | None:
                     continue
                 _ajoute(getattr(_r, "campaign_name", None), "google", _r.jourdt.date(), _cost)
 
+        # ── Les dates DECLAREES dans la plateforme ────────────────────────
+        # Elles ne se deduisent pas de la depense, d'ou la lecture separee. La
+        # distinction qui compte : une ligne SANS end_date veut dire « declaree
+        # sans date de fin » ; PAS de ligne du tout veut dire « on ne sait
+        # pas ». Le premier cas s'affiche, le second reste muet.
+        _declare = {}
+        for _table, _canal in (("meta_campaign_config", "meta"),
+                               ("google_campaign_config", "google")):
+            try:
+                _r = (sb.table(_table)
+                      .select("campaign_name, start_date, end_date")
+                      .eq("user_id", user_id).execute().data) or []
+            except Exception:
+                _r = []   # migration pas encore passee — la frise reste muette
+            for _row in _r:
+                _nom = (_row.get("campaign_name") or "").strip()
+                if _nom:
+                    # Meme troncature que `_ajoute` : les deux cotes doivent
+                    # porter la meme forme du nom, sinon une campagne au nom
+                    # long perd sa date declaree sans que rien ne le signale.
+                    _declare[(_canal, str(_nom)[:60])] = {
+                        "start": _row.get("start_date"),
+                        "end": _row.get("end_date"),
+                    }
+
+        # Une campagne DECLAREE mais qui n'a rien depense n'existe nulle part
+        # dans les insights : elle n'aurait aucune barre. C'est pourtant celle
+        # qu'on veut le plus voir — elle est programmee et elle arrive.
+        _deja = {(c["canal"], c["nom"]) for c in _camps.values()}
+        for (_canal, _nom), _d in _declare.items():
+            if (_canal, _nom) in _deja or not _d["start"]:
+                continue
+            try:
+                _dep = date.fromisoformat(str(_d["start"])[:10])
+            except ValueError:
+                continue
+            if not (_f_debut <= _dep <= _f_fin):
+                continue
+            _camps[(_canal, _nom)] = {
+                "nom": str(_nom)[:60], "canal": _canal, "theme": _f_theme(_nom),
+                "debut": _dep, "fin": _dep, "jours": set(), "depense": 0.0,
+                "planifiee": True,
+            }
+
         _campagnes = sorted(_camps.values(), key=lambda c: -c["depense"])
-        _campagnes = [{
-            "nom": c["nom"], "canal": c["canal"], "theme": c["theme"],
-            "debut": c["debut"].isoformat(), "fin": c["fin"].isoformat(),
-            "jours": len(c["jours"]),
-            # Un trou au milieu d'une diffusion (campagne coupee puis relancee)
-            # doit se voir : sinon la barre ment sur la continuite.
-            "continu": len(c["jours"]) == (c["fin"] - c["debut"]).days + 1,
-            "depense": round(c["depense"], 2),
-        } for c in _campagnes]
+
+        def _sortie(c):
+            out = {
+                "nom": c["nom"], "canal": c["canal"], "theme": c["theme"],
+                "debut": c["debut"].isoformat(), "fin": c["fin"].isoformat(),
+                "jours": len(c["jours"]),
+                # Un trou au milieu d'une diffusion (campagne coupee puis
+                # relancee) doit se voir : sinon la barre ment sur la
+                # continuite.
+                "continu": len(c["jours"]) == (c["fin"] - c["debut"]).days + 1,
+                "depense": round(c["depense"], 2),
+            }
+            if c.get("planifiee"):
+                out["planifiee"] = True
+            _d = _declare.get((c["canal"], c["nom"]))
+            if _d is not None:
+                # `None` est une VALEUR ici (« sans date de fin »), pas une
+                # absence : la cle est donc toujours ecrite quand la ligne
+                # existe, et jamais quand elle n'existe pas.
+                out["fin_prevue"] = str(_d["end"])[:10] if _d["end"] else None
+            return out
+
+        _campagnes = [_sortie(c) for c in _campagnes]
 
         _pubs = []
         if not df_insta.empty and "date" in df_insta.columns:

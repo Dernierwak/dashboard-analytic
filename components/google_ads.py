@@ -166,7 +166,7 @@ def run_google_ads_fetch(
     # 4. Statuts campagnes
     _p(85, "Récupération des statuts…")
     status_map_raw, _ = fetch_campaign_statuses(access_token, customer_id)
-    # status_map_raw : {campaign_id: (name, status)}
+    # status_map_raw : {campaign_id: (name, status, start_date, end_date)}
 
     # 5. Persist
     _p(92, "Sauvegarde Supabase…")
@@ -182,7 +182,7 @@ def run_google_ads_fetch(
     try:
         upsert_google_campaign_statuses(supabase, user_id, status_map_raw)
         cfg = st.session_state.setdefault("google_campaign_config", {})
-        for cid, (cname, cstatus) in status_map_raw.items():
+        for cid, (cname, cstatus, _d1, _d2) in status_map_raw.items():
             cur = cfg.setdefault(cid, {})
             cur["campaign_name"] = cname
             cur["effective_status"] = cstatus

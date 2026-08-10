@@ -132,15 +132,34 @@ def upsert_campaign_statuses(
     user_id: str,
     status_map: dict[str, str],
 ) -> None:
-    """Met à jour effective_status pour toutes les campagnes d'un coup.
-    status_map : {campaign_name: effective_status}
+    """Met à jour statut ET dates déclarées, pour toutes les campagnes d'un coup.
+
+    status_map accepte DEUX formes, parce que deux appelants coexistent :
+      · {campaign_name: "ACTIVE"}                       (ancien, Streamlit)
+      · {campaign_name: {"status":…, "start_date":…, "end_date":…}}  (worker)
+    Une chaîne nue n'écrase donc jamais les dates par du vide — elle ne les
+    mentionne simplement pas.
     """
     if not status_map:
         return
-    records = [
-        {"user_id": user_id, "campaign_name": name, "effective_status": status or None}
-        for name, status in status_map.items() if name
-    ]
+    records = []
+    for name, v in status_map.items():
+        if not name:
+            continue
+        if isinstance(v, dict):
+            records.append({
+                "user_id": user_id,
+                "campaign_name": name,
+                "effective_status": v.get("status") or None,
+                "start_date": v.get("start_date") or None,
+                "end_date": v.get("end_date") or None,
+            })
+        else:
+            records.append({
+                "user_id": user_id,
+                "campaign_name": name,
+                "effective_status": v or None,
+            })
     if records:
         supabase.table("meta_campaign_config").upsert(
             records, on_conflict="user_id,campaign_name"
@@ -256,19 +275,27 @@ def upsert_google_campaign_config(
     ).execute()
 
 
-def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict[str, tuple[str, str]]) -> None:
-    """status_map : {campaign_id: (campaign_name, effective_status)}"""
+def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:
+    """status_map : {campaign_id: (campaign_name, effective_status, start, end)}
+
+    `end` à None veut dire « déclarée sans date de fin » : la sentinelle 2037
+    de Google est déjà normalisée à la récolte.
+    """
     if not status_map:
         return
-    records = [
-        {
+    records = []
+    for cid, v in status_map.items():
+        cname, status = v[0], v[1]
+        debut = v[2] if len(v) > 2 else None
+        fin = v[3] if len(v) > 3 else None
+        records.append({
             "user_id": user_id,
             "campaign_id": str(cid),
             "campaign_name": cname,
             "effective_status": status or None,
-        }
-        for cid, (cname, status) in status_map.items()
-    ]
+            "start_date": debut,
+            "end_date": fin,
+        })
     if records:
         supabase.table("google_campaign_config").upsert(
             records, on_conflict="user_id,campaign_id"

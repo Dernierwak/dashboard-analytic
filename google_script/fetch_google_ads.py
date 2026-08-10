@@ -260,16 +260,32 @@ def fetch_ad_insights(
     return rows, None
 
 
+def _fin_declaree(brut) -> str | None:
+    """Google Ads ecrit 2037-12-30 pour « pas de date de fin ».
+
+    On ne stocke jamais cette date : elle se lirait « campagne programmee
+    jusqu'en 2037 » et tracerait une barre de onze ans. NULL veut dire ici
+    « declaree sans fin », ce qui est la verite.
+    """
+    if not brut:
+        return None
+    d = str(brut)[:10]
+    return None if d >= "2037-01-01" else d
+
+
 def fetch_campaign_statuses(
     access_token: str,
     customer_id: str,
     login_customer_id: str | None = None,
-) -> tuple[dict[str, tuple[str, str]], str | None]:
-    """Fetch statut courant de chaque campagne (sans données d'insights).
-    Returns: ({campaign_id: (campaign_name, status)}, error_or_None)
+) -> tuple[dict[str, tuple[str, str, str | None, str | None]], str | None]:
+    """Fetch statut ET dates declarees de chaque campagne (sans insights).
+
+    Returns: ({campaign_id: (name, status, start_date, end_date)}, error|None)
+    `end_date` None = declaree sans date de fin (sentinelle 2037 normalisee).
     """
     query = """
-        SELECT campaign.id, campaign.name, campaign.status
+        SELECT campaign.id, campaign.name, campaign.status,
+               campaign.start_date, campaign.end_date
         FROM campaign
     """
     url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
@@ -290,5 +306,10 @@ def fetch_campaign_statuses(
             camp = row.get("campaign", {})
             cid = str(camp.get("id", ""))
             if cid:
-                out[cid] = (camp.get("name", ""), camp.get("status", ""))
+                out[cid] = (
+                    camp.get("name", ""),
+                    camp.get("status", ""),
+                    camp.get("startDate") or camp.get("start_date") or None,
+                    _fin_declaree(camp.get("endDate") or camp.get("end_date")),
+                )
     return out, None

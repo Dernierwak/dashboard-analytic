@@ -101,14 +101,34 @@ def _fetch_meta(sb, uid, token) -> str:
         end = min(cur + timedelta(days=_CHUNK - 1), today)
         rows += _meta_chunk(token, ad_account_id, cur.isoformat(), end.isoformat())
         cur = end + timedelta(days=1)
-    camp = requests.get(f"{_GRAPH}/{ad_account_id}/campaigns",
-                        params={"access_token": token, "fields": "name,effective_status", "limit": 200},
-                        timeout=30).json()
-    status_map = {c["name"]: c.get("effective_status", "UNKNOWN") for c in camp.get("data", [])}
+    # On demande aussi les dates DECLAREES. Elles ne se deduisent pas de la
+    # depense : une campagne programmee jusqu'en decembre et une campagne
+    # arretee hier laissent exactement la meme trace dans les insights.
+    camp = requests.get(
+        f"{_GRAPH}/{ad_account_id}/campaigns",
+        params={"access_token": token,
+                "fields": "name,effective_status,start_time,stop_time",
+                "limit": 200},
+        timeout=30).json()
+
+    def _jour(v):
+        return str(v)[:10] if v else None
+
+    status_map = {
+        c["name"]: {
+            "status": c.get("effective_status", "UNKNOWN"),
+            "start_date": _jour(c.get("start_time")),
+            # stop_time absent = campagne sans date de fin programmee.
+            "end_date": _jour(c.get("stop_time")),
+        }
+        for c in camp.get("data", []) if c.get("name")
+    }
     for row in rows:
         lc = next((it for it in row.get("actions", []) if it.get("action_type") == "link_click"), None)
         row["link_clicks"] = int(lc.get("value", 0)) if lc else 0
-        row["effective_status"] = status_map.get(row.get("campaign_name", ""), "UNKNOWN")
+        row["effective_status"] = (
+            status_map.get(row.get("campaign_name", ""), {}).get("status") or "UNKNOWN"
+        )
     if rows:
         upsert_meta_ads(sb, uid, rows)
         upsert_campaign_statuses(sb, uid, status_map)
