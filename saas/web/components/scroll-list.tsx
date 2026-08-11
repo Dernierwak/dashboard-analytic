@@ -32,7 +32,7 @@ export function ScrollList({
         {action && <span className="ml-auto">{action}</span>}
       </div>
       <div
-        className={`${maxH} overflow-y-auto rounded-xl border border-line bg-white ${
+        className={`${maxH} defile rounded-xl border border-line bg-white ${
           divise ? "divide-y divide-line" : ""
         }`}
       >

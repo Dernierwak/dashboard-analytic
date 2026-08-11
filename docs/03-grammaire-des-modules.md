@@ -124,7 +124,14 @@ monte au niveau de la section.
   sait pas ce que ça rapporte. Sa pastille reste grise, son filet reste gris,
   et elle ne peut pas servir à classer des thèmes entre eux — sinon « celui qui
   décroche » désigne celui qui a simplement coupé une campagne ;
-- un module qui rend un composant déjà rendu ailleurs sur la même page ;
+- un module qui rend un composant déjà rendu ailleurs sur la même page —
+  **une exception, et une seule** : un même GESTE peut avoir deux points
+  d'entrée s'ils écrivent la même ligne par la même server action, et si les
+  deux vues sont re-rendues depuis la même source. L'interdit vise deux
+  mécanismes concurrents, pas deux boutons sur un même état. Corollaire
+  technique, non négociable : chaque vue est montée avec une `key` qui dépend
+  de l'état — sinon l'état local d'un composant client survit à
+  `revalidatePath` et les deux vues divergent jusqu'au rechargement ;
 - un bloc vide affiché pour dire qu'il est vide — **une exception** : quand le
   vide enseigne le mécanisme (`action-top` explique comment une action arrive
   dans la liste, et c'est le bon moment pour l'apprendre).
@@ -172,6 +179,12 @@ Trois conséquences qui tiennent lieu de règles :
 - **une étiquette peut enfin être arrondie et lisible sur la courbe** — c'est ce
   qui transforme un pointillé muet en `action · sem. du 22 jul`.
 
+**Une colonne d'une carte n'est pas un module.** Elle n'a pas son propre rang 1
+en titre de lecture, elle hérite du rang 3 de la carte : son chiffre est donc un
+chiffre de bilan, au moins 1,7 fois plus petit que le chiffre de tête (34 → 20
+px). Et **un ratio ne s'affiche qu'à partir de deux verdicts** — sur n = 1,
+« 0/1 » n'est pas une mesure, c'est un accident qui condamne.
+
 **Un bilan de trois à cinq chiffres est autorisé sous le chiffre de tête** s'il
 est au moins 1,7 fois plus petit et partage **un seul fond** (pas un cadre par
 chiffre). L'interdit visé par « deux chiffres de même taille » est la
@@ -209,7 +222,7 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 ## Où on en est
 
 **Conformes sans retouche** — c'est sur eux qu'on s'appuie :
-`action-top`, `CampaignTable`, `ByLabelTable`, `Repartition`, `apprentissage`,
+`CampaignTable`, `ByLabelTable`, `Repartition`, `apprentissage`,
 `reco-card`, et `frise-semaine` hors son pied.
 
 **Corrigés lors de l'établissement de cette grammaire :**
@@ -240,6 +253,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `theme-focus-card` | seconde carte du même thème, 900 px plus bas | **supprimé** — ses conseils et ses campagnes rejoignent la carte de thème |
 | `top-recos` | trois `RecoCard` déjà rendues dans leur thème | **supprimé** — remplacé par trois liens vers les thèmes concernés |
 | `tracking-section` | le lexique des états vivait dans le module | extrait en `components/etat-action.tsx`, partagé avec la carte de thème |
+| `action-top` + `tracking-section` | deux sections pour un objet qui appartient au thème ; le conseil et son résultat à 900 px | **supprimés (615 lignes)** — le cycle de vie entier passe dans la colonne droite de `theme-card` (`rail-actions` + `action-vivante`), avec un filet « hors thème » pour les actions qu'aucune carte ne prend |
+| toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
 
 **Reste à traiter :**
 
@@ -250,21 +265,23 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 
 ---
 
-## Trois fusions à ne PAS faire
+## Deux fusions à ne PAS faire
 
 Elles se ressemblent, elles ne disent pas la même chose :
 
 - **`theme-donut` et `Repartition`** — l'un montre le réel, l'autre le prévu ;
 - **`frise-semaine` et la courbe d'une carte de thème** — l'une porte du temps,
   l'autre une métrique ; aucune n'est un cas particulier de l'autre ;
-- **`action-top` et `tracking-section`** — le vivant et la trace. `action-top`
-  est en haut parce qu'on y agit ; le descendre rendrait l'app rétrospective.
-  Le fil vertical n'y change rien, au contraire : un rail est **passif par
-  construction**, son unité est l'événement daté. Une action à faire n'est pas
-  un événement mais un engagement en attente, et sa forme est une case à cocher
-  de 44 px. Ce qui les distingue à l'œil : là-haut le seul bloc teinté de la
-  page et des cercles cliquables de 22 px ; ici des pastilles de 7 px enfilées
-  sur un trait, qu'on ne clique pas.
+*(Une troisième figurait ici — `action-top` et `tracking-section`, « le vivant
+et la trace ». Elle est tombée le 11 août 2026. La règle tenait tant qu'une
+action était un objet du COMPTE ; elle tombe le jour où elle devient un objet du
+THÈME. Les séparer obligeait à traverser 900 px pour relier un conseil à ce
+qu'il a donné, et « Ce que tu dois faire » était devenu une quatrième copie du
+même thème. Ce que la règle protégeait est conservé sous une autre forme : **le
+rail garde ses pastilles de 7 px qu'on ne clique pas ; les gestes sont des
+boutons posés SOUS l'entrée** — une cible de 44 px ne tient de toute façon pas
+dans une gouttière de 24 px sans percuter le trait. La distinction n'était pas
+entre deux modules, elle était entre deux formes ; elle survit à la fusion.)*
 
 ---
 
@@ -288,7 +305,7 @@ dans les données.
 
 Ce qu'on fait à la place, et qui tient la même promesse :
 
-- **le compteur d'effet** — « 7 de tes 12 actions ont bougé la métrique ».
+- **le compteur d'effet** — « 1 de tes 2 actions sur CE thème a bougé l'indicateur ».
   Calculé par le worker, pas par le clic ;
 - **le rendez-vous** — « prochain verdict le 24 août ». On revient pour un
   résultat en suspens, pas pour un badge. Une app hebdomadaire ne se fait pas
@@ -306,6 +323,33 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**11 août 2026 (3)** — **La boucle entière dans la carte de thème.** Le conseil
+était dans la carte, la case à cocher dans « Ce que tu dois faire », le verdict
+dans « Ton historique d'actions » : trois endroits pour un même objet, et
+cliquer « ▶ Je le teste » faisait apparaître une section ailleurs sur la page.
+
+Sous la courbe, deux colonnes : les conseils sur **2/3** (avec un nombre impair,
+le dernier prend toute la largeur — un conseil seul n'occupait qu'une
+demi-colonne et la moitié de la carte restait blanche), et sur **1/3** le rail
+des actions du thème, avec ses pastilles, ses boutons et le mouvement réel de
+l'indicateur suivi.
+
+Trois choses apprises en le construisant :
+
+- **Le conseil disparaît, l'action reste.** Le worker republie chaque semaine un
+  rapport où le conseil appliqué n'est plus : si les gestes ne vivaient que dans
+  sa carte, l'action serait bloquée en `running` à vie tout en occupant une
+  place au plafond des trois chantiers. Le rail est la maison de référence, la
+  carte du conseil en est le miroir.
+- **Une action sans thème existe, et c'est certain** — tout conseil pris depuis
+  « Réglages de base » a `theme = null`. S'y ajoutent les thèmes sortis des
+  priorités et les thèmes renommés. Sans filet, trois actions de réglage
+  bloquaient toute la page sans aucun moyen de débloquer. Le bloc « hors
+  thème » est le complément EXACT du filtre des cartes : ni doublon, ni trou.
+  Et `renameLabel` propage désormais le nouveau nom sur `suivi_actions`.
+- **Le pari se pose au moment où l'on décide**, dans la carte du conseil. Le
+  déplacer dans l'historique, c'eût été parier après coup.
 
 **11 août 2026 (2)** — **Une fusion qu'il FALLAIT faire, elle.** La page portait
 deux cartes pour le même thème, à 900 px d'écart : l'une en section 2 (bilan et

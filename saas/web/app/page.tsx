@@ -11,8 +11,7 @@ import { KpiFocusCard } from "@/components/kpi-focus";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
-import { TrackingSection } from "@/components/tracking-section";
-import { ActionTop } from "@/components/action-top";
+import { RailActions } from "@/components/rail-actions";
 import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 import { Triangle } from "@/components/pente";
@@ -110,13 +109,19 @@ function Verdict({ report }: { report: ReportPayload }) {
   );
 }
 
-// Le hero ne se termine plus sur un compteur rétrospectif. Il portait
-// « Suivi des conseils » — quatre nombres qui regardent les quatre semaines
-// écoulées — juste avant la première section. La dernière chose lue avant de
-// commencer regardait donc en arrière. Ces compteurs vivent maintenant en tête
-// de « Ton historique d'actions », qui est leur sujet, et leur place est prise
-// par un lien vers la seule section où l'on agit.
-function VersLaction({ actions }: { actions: TrackedAction[] }) {
+// Le raccourci du hero vers ce qui t'attend.
+//
+// Il pointait vers « Ce que tu dois faire », une section unique. Les actions
+// vivent maintenant dans la carte de leur thème : il vise donc la carte de la
+// PLUS URGENTE — celle dont le verdict est tombé, sinon celle à faire — et se
+// rabat sur le filet « hors thème » quand elle n'a pas de carte.
+function VersLaction({
+  actions,
+  themesRendus,
+}: {
+  actions: TrackedAction[];
+  themesRendus: Set<string>;
+}) {
   const aFaire = actions.filter((a) => a.status === "running").length;
   const aJuger = actions.filter((a) => a.status === "done" && !a.due).length;
   if (aFaire + aJuger === 0) return null;
@@ -124,9 +129,19 @@ function VersLaction({ actions }: { actions: TrackedAction[] }) {
     aFaire > 0 ? `${aFaire} action${aFaire > 1 ? "s" : ""} en cours` : null,
     aJuger > 0 ? `${aJuger} à juger` : null,
   ].filter(Boolean);
+  const urgente =
+    actions.find((a) => a.status === "done" && a.due) ??
+    actions.find((a) => a.status === "running") ??
+    actions[0];
+  const cible =
+    urgente?.theme && themesRendus.has(urgente.theme)
+      ? `#${ancreTheme(urgente.theme)}`
+      : urgente
+        ? "#actions-hors-theme"
+        : "#conseils";
   return (
     <a
-      href="#a-faire"
+      href={cible}
       className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand border border-brand/25 rounded-full px-3.5 py-1.5 hover:bg-brand/[0.06] transition-colors"
     >
       ▸ {bouts.join(" · ")} <span className="text-faint font-normal">— y aller ↓</span>
@@ -179,21 +194,31 @@ export default async function Page() {
     .filter((x): x is { label: string; ecart: number } => x.ecart !== null && x.ecart < -8)
     .sort((a, b) => a.ecart - b.ecart)[0];
 
+  // LES ACTIONS QUI N'ONT PLUS DE MAISON.
+  //
+  // Le complément EXACT du filtre des cartes (`a.theme === theme.label`), donc
+  // ni doublon ni trou par construction. Trois causes, toutes réelles : un
+  // conseil pris depuis « Réglages de base » n'a pas de thème du tout ; un
+  // thème peut sortir des trois prioritaires ; un thème renommé laisse ses
+  // actions derrière lui.
+  //
+  // Sans ce filet, ces actions seraient invisibles ET inatteignables tout en
+  // continuant de compter dans le plafond des trois chantiers : trois actions
+  // de réglage et toute la page se bloque, sans aucun moyen de débloquer.
+  const themesRendus = new Set(cartes.map((t) => t.label));
+  const orphelines = [...data.actions, ...data.actionsArchived].filter(
+    (a) => !a.theme || !themesRendus.has(a.theme)
+  );
+  const orphelinesVivantes = orphelines.some(
+    (a) => a.status === "running" || a.status === "done"
+  );
+
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
   // page à 2, et un lecteur qui voit un 2 cherche le 1.
   let _n = 0;
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
   const nThemes = cartes.length > 0 ? ++_n : undefined;
-  // La section « Ce que tu dois faire » ne prend un numéro que s'il y a
-  // vraiment quelque chose à faire ou à juger. Avec seulement des actions en
-  // observation, elle se réduit à une ligne de rendez-vous — et une ligne ne
-  // porte pas un rang de section.
-  const nActions = data.actions.some((a) => a.status !== "done" || a.due)
-    ? ++_n
-    : undefined;
-  const nHistorique =
-    data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
   const nApprendre = report?.apprentissage ? ++_n : undefined;
 
   return (
@@ -216,7 +241,7 @@ export default async function Page() {
             {/* Le raccourci vers l'action était la DERNIÈRE chose du hero, après
                 200 px d'objectif replié — donc loin du chiffre qui le motive. */}
             <span className="ml-auto">
-              <VersLaction actions={data.actions} />
+              <VersLaction actions={data.actions} themesRendus={themesRendus} />
             </span>
           </div>
           {report ? (
@@ -383,7 +408,7 @@ export default async function Page() {
                 labels={data.labels}
                 feedback={data.feedback}
                 comments={data.comments}
-                trackedKeys={data.trackedKeys}
+                suivis={data.suivis}
                 capReached={capReached}
               />
             ))}
@@ -391,8 +416,40 @@ export default async function Page() {
         </section>
       )}
 
-      {/* 3 · CE QUE TU DOIS FAIRE — tes décisions vivent ici jusqu'à être faites */}
-      <ActionTop actions={data.actions} archived={data.actionsArchived} num={nActions} />
+      {/* LE FILET — les actions qu'aucune carte ne prend.
+             Pas de numéro de section : c'est un repêchage, pas un chapitre. Et
+             rendu ICI, pas en bas de page : une action qu'on ne voit pas est
+             une action qui bloque le plafond sans qu'on sache pourquoi.
+             Rendu HORS de la branche « pas encore de données » : un compte sans
+             thème classé n'a aucune carte, ce bloc est sa seule liste. */}
+      {orphelines.length > 0 &&
+        (orphelinesVivantes ? (
+          <section id="actions-hors-theme" className="mb-8 scroll-mt-4">
+            <SectionTitle tone="discret">Tes actions hors de tes thèmes</SectionTitle>
+            <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3">
+              <RailActions actions={orphelines} themeCourant={null} />
+              <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
+                Ces actions ne sont rattachées à aucun de tes thèmes suivis : prises depuis
+                les réglages de base, ou sur un thème sorti de tes priorités.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <details id="actions-hors-theme" className="mb-8 scroll-mt-4 group">
+            <summary className="text-[11px] uppercase tracking-widest text-faint font-bold cursor-pointer select-none">
+              Tes actions hors de tes thèmes ({orphelines.length}){" "}
+              <span className="text-brand normal-case tracking-normal group-open:hidden">
+                voir ▾
+              </span>
+              <span className="text-brand normal-case tracking-normal hidden group-open:inline">
+                replier ▴
+              </span>
+            </summary>
+            <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3 mt-2.5">
+              <RailActions actions={orphelines} themeCourant={null} />
+            </div>
+          </details>
+        ))}
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
@@ -459,19 +516,13 @@ export default async function Page() {
                     current={data.feedback[r.key] ?? null}
                     comment={data.comments[r.key] ?? null}
                     theme={null}
-                    tracked={data.trackedKeys.includes(r.key)}
+                    action={data.suivis[r.key] ?? null}
+                    capReached={capReached}
                   />
                 ))}
               </div>
             </details>
           )}
-
-          <TrackingSection
-            actions={data.actions}
-            archived={data.actionsArchived}
-            num={nHistorique}
-            feedback={data.feedback}
-          />
 
           {/* ALLER PLUS LOIN — le savoir-faire qui répond à ce qui te bloque */}
           {report?.apprentissage && (

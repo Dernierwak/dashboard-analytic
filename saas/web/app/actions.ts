@@ -489,6 +489,12 @@ export async function renameLabel(oldName: string, newName: string) {
     .eq("user_id", user.id).eq("label", oldName);
   await supabase.from("google_campaign_config").update({ label: clean })
     .eq("user_id", user.id).eq("label", oldName);
+  // Les actions décidées portent le nom du thème, pas sa clé. Sans cette ligne,
+  // renommer un thème rendait toutes ses actions ORPHELINES pour toujours :
+  // plus aucune carte ne les prenait, et elles continuaient de compter dans le
+  // plafond des trois chantiers.
+  await supabase.from("suivi_actions").update({ theme: clean })
+    .eq("user_id", user.id).eq("theme", oldName);
   const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
     .eq("user_id", user.id).contains("labels", [oldName])).data ?? [];
   for (const p of posts) {

@@ -1,5 +1,5 @@
 import { RecoActions } from "@/components/reco-actions";
-import type { PayloadReco } from "@/lib/report";
+import type { PayloadReco, TrackedAction } from "@/lib/report";
 
 const CONF: Record<string, { symbol: string; label: string }> = {
   solide: { symbol: "●", label: "Solide" },
@@ -15,14 +15,16 @@ export function RecoCard({
   current,
   comment,
   theme = null,
-  tracked = false,
+  action = null,
   capReached = false,
 }: {
   r: PayloadReco;
   current: string | null;
   comment: string | null;
   theme?: string | null;
-  tracked?: boolean;
+  /** L'action que ce conseil a produite, si elle existe et court encore. La
+   *  carte en est le MIROIR : elle lit l'état, elle ne le détient pas. */
+  action?: TrackedAction | null;
   capReached?: boolean;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
@@ -100,10 +102,13 @@ export function RecoCard({
       )}
 
       <RecoActions
+        // La `key` dépend de l'état : sans elle, le `useState` local survit à
+        // `revalidatePath` et la carte reste figée pendant que le rail bouge.
+        key={`${action?.id ?? "libre"}:${action?.status ?? ""}:${action?.detail?.pari ?? ""}`}
         recoKey={r.key}
         current={current}
         comment={comment}
-        tracked={tracked}
+        action={action}
         capReached={capReached}
         track={{
           title: r.title,

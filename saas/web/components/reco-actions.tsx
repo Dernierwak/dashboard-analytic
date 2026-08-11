@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveRecoFeedback, saveComment, startTracking, type Reaction } from "@/app/actions";
+import { saveRecoFeedback, saveComment, startTracking, resolveAction, type Reaction } from "@/app/actions";
+import type { TrackedAction } from "@/lib/report";
+import { dateCourte } from "@/components/etat-action";
+import { Erreur } from "@/components/erreur";
+import { Pari } from "@/components/pari";
 
 export type TrackInfo = {
   title: string;
@@ -14,10 +18,22 @@ export type TrackInfo = {
 };
 
 // Boutons de réaction sous chaque conseil.
-// « ▶ Je le teste » : la décision part dans ta liste, tout en haut du rapport,
-// et n'en bouge plus tant que tu ne l'as pas marquée faite. Le « ✓ C'est fait »
-// n'est QUE là-haut : un conseil se prend ici, il ne se termine pas ici. Deux
-// chemins pour le même résultat, c'est une hésitation à chaque semaine.
+//
+// « ▶ Je le teste » créait une action qui partait dans une SECTION AILLEURS sur
+// la page. Elle n'existe plus : la carte porte maintenant l'état de sa propre
+// décision — prise, pariée, faite — et l'action apparaît en face, dans le rail
+// de la colonne de droite. Il n'y a plus de « tout en haut » où aller.
+//
+// Le « ✓ Je l'ai fait » est ici ET dans le rail. Ce n'est pas une hésitation :
+// c'est la MÊME ligne écrite par la MÊME server action, avec deux points
+// d'entrée. Le rail reste le recours quand le conseil aura disparu du rapport
+// la semaine suivante — et c'est ce cas-là, pas l'autre, qui arrive tout le
+// temps.
+//
+// Deux retraits qui ne font PAS la même chose, et qui doivent le dire :
+//   « annuler » ici     → supprime la ligne, aucune trace, comme un clic repris
+//   « × j'abandonne » là → status `dropped`, la trace reste dans l'historique
+// Les deux rendent le conseil de nouveau disponible.
 // « Utile » / « Pas pour moi » : re-pondèrent les conseils de l'IA.
 // « Trop compliqué » : tu vois l'intérêt mais tu ne sais pas t'y prendre. Ce
 // retour-là ne jette pas le conseil, il commande un mode d'emploi — il remonte
@@ -34,23 +50,23 @@ export function RecoActions({
   current,
   comment,
   track,
-  tracked = false,
+  action = null,
   capReached = false,
 }: {
   recoKey: string;
   current: string | null;
   comment?: string | null;
   track?: TrackInfo;
-  tracked?: boolean;
+  action?: TrackedAction | null;
   capReached?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [showComment, setShowComment] = useState(false);
   const [text, setText] = useState(comment ?? "");
   const [commentSaved, setCommentSaved] = useState(false);
-  const [isTracked, setIsTracked] = useState(tracked);
+  const [isTracked, setIsTracked] = useState(Boolean(action));
+  const [fait, setFait] = useState(action?.status === "done");
   const [erreur, setErreur] = useState<string | null>(null);
-  const [justAdded, setJustAdded] = useState(false);
 
   return (
     <div className="mt-3.5 pt-3 border-t border-line">
@@ -60,7 +76,77 @@ export function RecoActions({
           // reste lisible, mais on t'invite d'abord à en boucler un.
           <div className="w-full mb-2 text-[11.5px] font-semibold text-faint bg-black/[0.03] border border-line rounded-lg px-3 py-2 text-center leading-snug">
             Tu as déjà 3 chantiers en cours — finis-en un avant d&apos;en prendre un
-            nouveau.
+            nouveau. Ils sont à droite de chaque courbe, sous « Tes actions sur ce thème ».
+          </div>
+        ) : isTracked ? (
+          /* PRISE. La carte porte l'état, et le pari — c'est ici qu'on parie,
+             au moment où l'on décide. Parier en relisant l'historique, ce
+             serait parier après coup. */
+          <div className="mb-2 rounded-lg border border-brand/25 bg-brand/[0.05] px-3 py-2.5">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="text-[12px] font-semibold text-brand">
+                {fait
+                  ? `✓ Fait${action?.done_at ? ` le ${dateCourte(action.done_at)}` : ""}`
+                  : `◷ Pris${action ? ` le ${dateCourte(action.decided_at)}` : ""}`}
+              </span>
+              {fait && action && (
+                <span className="text-[11px] text-muted">
+                  verdict le <b className="text-ink">{dateCourte(action.check_at)}</b>
+                </span>
+              )}
+              {!fait && (
+                <button
+                  disabled={pending}
+                  onClick={() => {
+                    setErreur(null);
+                    setIsTracked(false);
+                    startTransition(async () => {
+                      const r = await startTracking({ recoKey, ...track, tracked: true });
+                      if (!r.ok) {
+                        setIsTracked(true);
+                        setErreur(r.message ?? "Enregistrement impossible — réessaie.");
+                      }
+                    });
+                  }}
+                  className="ml-auto text-[11px] font-semibold text-faint hover:text-muted underline disabled:opacity-50"
+                >
+                  annuler
+                </button>
+              )}
+            </div>
+
+            {action && !fait && (
+              <Pari
+                id={action.id}
+                metricLabel={action.metric_label}
+                checkAt={action.check_at}
+                pariInitial={action.detail?.pari ?? null}
+                compact
+              />
+            )}
+
+            {action && !fait && (
+              <button
+                disabled={pending}
+                onClick={() => {
+                  setErreur(null);
+                  setFait(true);
+                  startTransition(async () => {
+                    // Le 3e argument est le SEUL endroit de l'app qui écrit
+                    // `reco_feedback.reaction = "done"` : sans lui, l'IA ne sait
+                    // jamais qu'un conseil a été appliqué.
+                    const r = await resolveAction(action.id, "done", recoKey);
+                    if (!r.ok) {
+                      setFait(false);
+                      setErreur(r.message ?? "Enregistrement impossible — réessaie.");
+                    }
+                  });
+                }}
+                className="w-full mt-2 text-[12.5px] font-semibold rounded-lg bg-ink text-white px-3 py-2.5 hover:opacity-90 disabled:opacity-60"
+              >
+                ✓ Je l&apos;ai fait
+              </button>
+            )}
           </div>
         ) : (
           <button
@@ -68,52 +154,23 @@ export function RecoActions({
             onClick={() => {
               // Retour optimiste : l'état change tout de suite, on revient en
               // arrière si le serveur refuse. Un clic doit répondre, pas attendre.
-              const avant = isTracked;
               setErreur(null);
-              setIsTracked(!avant);
-              setJustAdded(!avant);
+              setIsTracked(true);
               startTransition(async () => {
-                const r = await startTracking({ recoKey, ...track, tracked: avant });
+                const r = await startTracking({ recoKey, ...track, tracked: false });
                 if (!r.ok) {
-                  setIsTracked(avant);
-                  setJustAdded(false);
+                  setIsTracked(false);
                   setErreur(r.message ?? "Enregistrement impossible — réessaie dans un instant.");
                 }
               });
             }}
-            className={`w-full mb-2 text-[12.5px] font-semibold rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60 ${
-              isTracked
-                ? "bg-brand/[0.06] text-brand border-brand/30"
-                : "bg-brand text-white border-brand hover:bg-brand/90"
-            }`}
+            className="w-full mb-2 text-[12.5px] font-semibold rounded-lg border border-brand bg-brand text-white px-3 py-2.5 hover:bg-brand/90 transition-colors disabled:opacity-60"
           >
-            {pending ? "…" : isTracked ? "◷ Dans ta liste, tout en haut — retirer" : "▶ Je le teste"}
+            {pending ? "…" : "▶ Je le teste"}
           </button>
         ))}
 
-      {/* Ce qui part en haut de page est à 3 écrans d'ici : on le confirme sur
-          place, avec un lien qui y remonte. */}
-      {justAdded && !erreur && (
-        <a
-          href="#a-faire"
-          className="flex items-center gap-1.5 mb-2 text-[11.5px] font-semibold text-pos bg-pos/[0.07] border border-pos/25 rounded-lg px-3 py-2"
-        >
-          ◷ Ajouté à ta liste, tout en haut
-          <span className="ml-auto underline">y aller ↑</span>
-        </a>
-      )}
-
-      {erreur && (
-        <div className="mb-2 text-[11.5px] leading-snug text-neg bg-neg/[0.05] border border-neg/25 rounded-lg px-3 py-2">
-          {erreur}
-          <button
-            onClick={() => setErreur(null)}
-            className="block mt-1 text-[10.5px] font-semibold text-faint"
-          >
-            fermer
-          </button>
-        </div>
-      )}
+      {erreur && <Erreur texte={erreur} onFermer={() => setErreur(null)} />}
       <div className="flex items-center gap-2 flex-wrap">
         {BUTTONS.map((b) => {
           const active = current === b.reaction;

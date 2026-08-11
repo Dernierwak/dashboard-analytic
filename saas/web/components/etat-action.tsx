@@ -1,5 +1,6 @@
 import type { RepereAction, TrackedAction } from "@/lib/report";
 import type { Marqueur } from "@/components/line-chart";
+import { Triangle, sensPente } from "@/components/pente";
 
 // L'état d'une action, en un seul endroit.
 //
@@ -106,5 +107,73 @@ export function Pastille({ e }: { e: Etat }) {
           : { background: "#fff", boxShadow: `inset 0 0 0 2px ${e.couleur}` }
       }
     />
+  );
+}
+
+/** Les trois paris possibles, et le mot qu'on emploie pour chacun. */
+export const SENS = [
+  { cle: "hausse" as const, mot: "monter" },
+  { cle: "stable" as const, mot: "ne rien changer" },
+  { cle: "baisse" as const, mot: "baisser" },
+];
+
+// CE QU'UNE ACTION A DONNÉ, en une ligne.
+//
+// L'historique disait « date · titre · état » : le classement d'une action,
+// pas son résultat. Ce qui manquait est en base depuis le premier jour du
+// suivi — l'indicateur surveillé, sa valeur à la décision, sa valeur au
+// verdict. « CTR 3,1 → 5,8 ▲ +87 % » répond à la seule question qu'on se pose
+// en relisant ce qu'on a fait.
+export function Effet({ a }: { a: TrackedAction }) {
+  if (!a.metric_label) return null;
+  if (a.then === undefined || a.now === undefined) {
+    return <span className="text-faint"> · on suit {a.metric_label}</span>;
+  }
+  // Le VERDICT décide du sens, pas le delta brut. Un verdict « stable » à côté
+  // d'un « ▲ +1 % » se contredit à l'œil : le worker a son seuil, l'affichage
+  // n'en invente pas un second.
+  const s = sensPente(a.verdict === "stable" ? 0 : a.delta, false, 0.5);
+  return (
+    <span className="text-faint">
+      {" "}
+      · {a.metric_label} <b className="text-muted">{a.then}</b> →{" "}
+      <b className="text-ink">{a.now}</b>
+      {a.delta != null && !s.plat && (
+        <span className={`font-semibold ${s.cls}`}>
+          {" "}
+          <Triangle sens={s.monte ? "haut" : "bas"} /> {a.delta > 0 ? "+" : ""}
+          {a.delta.toFixed(0)} %
+        </span>
+      )}
+    </span>
+  );
+}
+
+// LA RÉPONSE AU PARI. Elle vaut plus que le verdict seul : « ça a marché » dit
+// ce que les chiffres ont fait, « tu avais vu juste » dit ce que TU as compris.
+// C'est la seule chose de la page qui mesure un apprentissage.
+export function VuJuste({ a }: { a: TrackedAction }) {
+  const pari = a.detail?.pari;
+  if (!pari || a.delta === null || a.delta === undefined) return null;
+  const reel = Math.abs(a.delta) < 0.5 ? "stable" : a.delta > 0 ? "hausse" : "baisse";
+  const juste = reel === pari;
+  const mot = SENS.find((x) => x.cle === pari)?.mot ?? pari;
+  return (
+    <div className={`text-[11.5px] font-semibold mt-1 ${juste ? "text-pos" : "text-muted"}`}>
+      {juste ? (
+        <>
+          ✓ Tu avais vu juste
+          <span className="text-faint font-normal"> — c&apos;est bien ce qui s&apos;est passé.</span>
+        </>
+      ) : (
+        <>
+          Tu pariais « {mot} »
+          <span className="text-faint font-normal">
+            {" "}— ce n&apos;est pas ce qui s&apos;est passé. C&apos;est là qu&apos;on apprend
+            quelque chose.
+          </span>
+        </>
+      )}
+    </div>
   );
 }

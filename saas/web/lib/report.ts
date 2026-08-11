@@ -314,6 +314,9 @@ export type WeeklyData = {
   labels: string[];
   // Clés des conseils actuellement suivis (« ▶ Je le teste » → en cours).
   trackedKeys: string[];
+  // L'action produite par un conseil, par clé de conseil — la carte a besoin
+  // de l'objet, pas seulement de savoir qu'il existe.
+  suivis: Record<string, TrackedAction>;
   // Actions en cours / faites — lues en direct (le bloc du haut s'affiche au clic).
   actions: TrackedAction[];
   // Actions rangées (verdict vu) — l'historique de la section Suivi.
@@ -477,8 +480,17 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const vivantes = (st?: string) => st !== "archived" && st !== "dropped";
   const actions = allActions.filter((a) => vivantes(a.status));
   const actionsArchived = allActions.filter((a) => !vivantes(a.status));
+  // L'ACTION QU'UN CONSEIL A PRODUITE, indexée par sa clé.
+  //
+  // La carte du conseil ne recevait qu'un booléen « déjà pris ». Il lui faut
+  // désormais l'objet : son `id` (pour le pari), son état, son échéance. Bâti
+  // sur les VIVANTES seulement — une action rangée ne re-verrouille pas son
+  // conseil, il peut être repris. `trackRes` est trié `decided_at` décroissant,
+  // donc la première vue est la plus récente.
+  const suivis: Record<string, TrackedAction> = {};
+  for (const a of actions) if (a.reco_key && !(a.reco_key in suivis)) suivis[a.reco_key] = a;
   // Un conseil reste « en test » tant que son action n'est pas rangée.
-  const trackedKeys: string[] = actions.map((a) => a.reco_key ?? "").filter(Boolean);
+  const trackedKeys: string[] = Object.keys(suivis);
 
   // Dernière réaction par clé (tri desc → première vue = la plus récente),
   // même logique que fetch_reco_feedback côté Python.
@@ -711,6 +723,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     onboarded,
     labels,
     trackedKeys,
+    suivis,
     actions,
     actionsArchived,
   };

@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { fmtCHF, type ThemeFocus, type TrackedAction } from "@/lib/report";
 import { LineChart, garderEtiquettes } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
-import { Pastille, dateCourte, etat, marqueursCourbe } from "@/components/etat-action";
+import { dateCourte, marqueursCourbe } from "@/components/etat-action";
+import { RailActions } from "@/components/rail-actions";
 import { RecoCard } from "@/components/reco-card";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
@@ -24,11 +24,17 @@ import { ScrollList } from "@/components/scroll-list";
 // C'est la boucle complète, dans un seul écran : conseil → action → effet. Elle
 // était éclatée sur trois sections, et personne ne la voyait.
 //
-// CE QUE CETTE CARTE NE FAIT TOUJOURS PAS : porter les actions À FAIRE avec
-// leur case à cocher. Elles vivent dans « Ce que tu dois faire », le seul bloc
-// teinté de la page, avec des cibles de 44 px (docs/03-grammaire-des-modules.md,
-// « Trois fusions à ne PAS faire »). Deux endroits où cocher la même case, ce
-// serait deux vérités sur le même objet. On donne un lien.
+// ET ELLE PORTE MAINTENANT LE CYCLE DE VIE ENTIER. « Ce que tu dois faire » et
+// « Ton historique d'actions » étaient deux sections pour un objet qui
+// appartient au thème : cliquer « ▶ Je le teste » faisait apparaître une
+// section ailleurs sur la page, et il fallait traverser 900 px pour relier un
+// conseil à ce qu'il a donné.
+//
+// Ce que l'ancienne règle protégeait — la pastille passive du rail contre la
+// case à cocher de 44 px — est conservé sous une autre forme : le rail garde
+// ses pastilles de 7 px qu'on ne clique pas, et les gestes sont des boutons
+// posés SOUS l'entrée. La distinction n'était pas entre deux modules, elle
+// était entre deux formes ; elle survit à la fusion.
 
 type Cadre = { unite: string; fmt: (v: number) => string; portee: string; neutre: boolean };
 
@@ -99,39 +105,6 @@ export function ecartTheme(vals: number[]): number | null {
   return avant > 0 ? ((recent - avant) / avant) * 100 : null;
 }
 
-// CE QU'UNE ACTION PASSÉE A DONNÉ, en une ligne.
-//
-// L'historique de la carte ne disait que « date · titre · état ». C'est le
-// classement d'une action, pas son résultat. Ce qui manquait est déjà en base
-// depuis le premier jour du suivi : l'indicateur qu'on surveillait, sa valeur
-// au moment de la décision, et sa valeur au verdict. « CTR 3,1 → 5,8 ▲ +87 % »
-// répond à la seule question qu'on se pose en relisant ce qu'on a fait.
-function Effet({ a }: { a: TrackedAction }) {
-  if (!a.metric_label) return null;
-  if (a.then === undefined || a.now === undefined) {
-    return <span className="text-faint"> · on suit {a.metric_label}</span>;
-  }
-  // Le VERDICT décide du sens, pas le delta brut. Un verdict « stable » à côté
-  // d'un « ▲ +1 % » se contredit à l'œil : le worker a son seuil, l'affichage
-  // n'en invente pas un second. Quand c'est stable, on montre les deux valeurs
-  // et on se tait sur la flèche.
-  const s = sensPente(a.verdict === "stable" ? 0 : a.delta, false, 0.5);
-  return (
-    <span className="text-faint">
-      {" "}
-      · {a.metric_label} <b className="text-muted">{a.then}</b> →{" "}
-      <b className="text-ink">{a.now}</b>
-      {a.delta != null && !s.plat && (
-        <span className={`font-semibold ${s.cls}`}>
-          {" "}
-          <Triangle sens={s.monte ? "haut" : "bas"} /> {a.delta > 0 ? "+" : ""}
-          {a.delta.toFixed(0)} %
-        </span>
-      )}
-    </span>
-  );
-}
-
 export function ThemeCard({
   theme,
   actions,
@@ -141,7 +114,7 @@ export function ThemeCard({
   labels,
   feedback,
   comments,
-  trackedKeys,
+  suivis,
   capReached = false,
 }: {
   theme: ThemeFocus;
@@ -153,7 +126,8 @@ export function ThemeCard({
   labels: string[];
   feedback: Record<string, string>;
   comments: Record<string, string>;
-  trackedKeys: string[];
+  /** L'action produite par un conseil, par clé de conseil. */
+  suivis: Record<string, TrackedAction>;
   capReached?: boolean;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
@@ -184,16 +158,18 @@ export function ThemeCard({
       cases.push({ cle: "Engagement", valeur: som.eng_avg.toFixed(1), unite: "%" });
   }
 
-  // Les actions de CE thème, en DEUX ENSEMBLES DISJOINTS — c'est ce qui permet
-  // de les poser de part et d'autre sans que la même action se lise deux fois :
-  // ce qui court encore d'un côté, ce qui est clos de l'autre. Une action
-  // « faite » n'est pas close : son verdict n'est pas tombé.
+  // Les actions de CE thème. Le rail les répartit lui-même entre ce qui court
+  // et ce qui est clos ; ici on ne calcule que ce qui se lit AVANT lui.
   const miennes = [...actions, ...archived].filter((a) => a.theme === theme.label);
-  const aFaire = miennes.filter((a) => a.status === "running");
-  const enObservation = miennes.filter((a) => a.status === "done");
-  const passees = miennes
-    .filter((a) => a.status === "archived" || a.status === "dropped")
-    .sort((a, b) => (a.decided_at < b.decided_at ? 1 : -1));
+  // Ce qui a MARCHÉ sur ce thème, pas ce qui a été coché : le verdict vient du
+  // worker quatorze jours après coup, pas du clic.
+  const jugees = miennes.filter((a) => a.verdict);
+  const gagnantes = jugees.filter((a) => a.verdict === "better").length;
+  const prochain = miennes
+    .filter((a) => a.status === "done" && !a.due)
+    .map((a) => a.check_at)
+    .filter(Boolean)
+    .sort()[0];
   const derniereDecision = miennes.map((a) => a.decided_at).sort().pop();
   const semainesDepuis = derniereDecision
     ? Math.floor(
@@ -331,11 +307,18 @@ export function ThemeCard({
               Comment l&apos;améliorer cette semaine
             </h4>
             {theme.recos.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              /* Les conseils remplissent réellement leurs deux tiers : avec un
+                 nombre impair, le dernier prend toute la largeur au lieu de
+                 laisser un trou de fin de ligne. Un conseil seul occupait une
+                 demi-colonne et la moitié de la carte restait blanche. */
+              <div
+                className={`grid gap-3 sm:grid-cols-2 ${
+                  theme.recos.length % 2 === 1 ? "sm:[&>*:last-child]:col-span-2" : ""
+                }`}
+              >
                 {[...theme.recos]
                   .sort(
-                    (a, b) =>
-                      (trackedKeys.includes(b.key) ? 1 : 0) - (trackedKeys.includes(a.key) ? 1 : 0)
+                    (a, b) => (suivis[b.key] ? 1 : 0) - (suivis[a.key] ? 1 : 0)
                   )
                   .map((r) => (
                     <RecoCard
@@ -344,7 +327,7 @@ export function ThemeCard({
                       current={feedback[r.key] ?? null}
                       comment={comments[r.key] ?? null}
                       theme={theme.label}
-                      tracked={trackedKeys.includes(r.key)}
+                      action={suivis[r.key] ?? null}
                       capReached={capReached}
                     />
                   ))}
@@ -357,65 +340,62 @@ export function ThemeCard({
           </div>
 
           <div className="min-w-0">
-            <h4 className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2.5">
-              Ce que tu as déjà essayé
+            <h4 className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">
+              Tes actions sur ce thème
             </h4>
 
-            {/* « En cours » et « en observation » ne sont pas la même chose : la
-                première attend un geste de toi, la seconde attend une date. */}
-            {aFaire.length > 0 ? (
-              <a
-                href="#a-faire"
-                className="block text-[11.5px] font-semibold text-brand hover:underline mb-2"
-              >
-                ▸ {aFaire.length} action{aFaire.length > 1 ? "s" : ""} à faire sur ce thème —
-                voir ↑
-              </a>
-            ) : enObservation.length > 0 ? (
-              <p className="text-[11.5px] text-muted mb-2">
-                ▸ {enObservation.length} action{enObservation.length > 1 ? "s" : ""} en
-                observation — verdict le{" "}
-                <span className="font-semibold text-ink">
-                  {dateCourte([...enObservation].map((a) => a.check_at).sort()[0] ?? "")}
+            {/* Le chiffre de la colonne. En 20 px : 1,7 fois plus petit que le
+                34 px de tête, donc un chiffre de bilan, pas un second titre.
+                ET IL NE S'AFFICHE QU'À PARTIR DE DEUX VERDICTS — un ratio sur
+                n = 1 n'est pas une mesure, et « 0/1 » condamnerait un thème
+                pour un seul essai. À un verdict, on écrit le fait, qui est plus
+                fort que la fraction. */}
+            {jugees.length >= 2 ? (
+              <div className="mb-2.5">
+                <span className="font-mono text-[20px] leading-none font-medium text-ink">
+                  {gagnantes}
+                  <span className="text-faint">/{jugees.length}</span>
                 </span>
+                <span className="text-[11.5px] text-muted ml-2">
+                  de ce que tu as tenté ici a bougé l&apos;indicateur
+                </span>
+              </div>
+            ) : jugees.length === 1 ? (
+              <p className="text-[11.5px] text-muted mb-2.5">
+                <span className="font-semibold text-ink">1 action jugée</span> sur ce thème —
+                trop peu pour un taux, assez pour un enseignement.
               </p>
             ) : null}
 
-            {passees.length > 0 ? (
-              <div className="max-h-[260px] overflow-y-auto pr-1 -mr-1">
-                {passees.map((a) => {
-                  const e = etat(a);
-                  return (
-                    <div key={a.id} className="flex items-start gap-2 py-1.5">
-                      <span className="mt-[5px] shrink-0">
-                        <Pastille e={e} />
-                      </span>
-                      <span className="text-[12px] text-muted leading-snug min-w-0">
-                        <span className="font-mono text-faint">{dateCourte(a.decided_at)}</span>{" "}
-                        {a.title}
-                        <br />
-                        <span className={`font-semibold ${e.cls}`}>{e.label}</span>
-                        <Effet a={a} />
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : miennes.length === 0 ? (
+            {prochain && (
+              <p className="text-[11.5px] text-muted mb-2">
+                Prochain verdict le{" "}
+                <span className="font-semibold text-ink">{dateCourte(prochain)}</span>
+              </p>
+            )}
+
+            {miennes.length > 0 ? (
+              <RailActions actions={miennes} themeCourant={theme.label} />
+            ) : (
               <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
                 Rien n&apos;a encore été tenté sur ce thème
                 {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}. Prends
                 un conseil à gauche : tu sauras dans deux semaines ce qu&apos;il a donné.
               </p>
-            ) : (
-              <p className="text-[11.5px] text-faint leading-relaxed">
-                Aucun verdict encore rendu sur ce thème — il tombe deux semaines après coup.
+            )}
+
+            {miennes.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
+              <p className="text-[11.5px] text-warn font-semibold mt-2">
+                Rien de nouveau lancé depuis {semainesDepuis} semaines.
               </p>
             )}
 
-            {passees.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
-              <p className="text-[11.5px] text-warn font-semibold mt-2">
-                Rien de nouveau lancé depuis {semainesDepuis} semaines.
+            {/* La phrase qui rend le chiffre honnête. Elle vivait dans
+                « Ton historique d'actions » et serait morte avec lui. */}
+            {jugees.length > 0 && (
+              <p className="text-[10.5px] text-faint/80 mt-2.5 leading-relaxed">
+                Avant/après honnête, pas une preuve absolue — la saisonnalité et le contenu
+                jouent aussi.
               </p>
             )}
           </div>

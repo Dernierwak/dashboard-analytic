@@ -4,3 +4,43 @@
 
 html { -webkit-font-smoothing: antialiased; }
 body { background: theme(colors.canvas); color: theme(colors.ink); }
+
+@layer components {
+  /* UNE BOÎTE QUI DÉFILE DOIT LE DIRE.
+     Sur macOS la barre de défilement est invisible au repos : un contenu coupé
+     net se lit comme un contenu fini, et personne ne pense à faire glisser.
+
+     Deux « couvercles » blancs solidaires du CONTENU (background-attachment:
+     local) sont posés au-dessus de deux ombres solidaires du CADRE (scroll).
+     En haut de course, le couvercle du haut recouvre son ombre — rien ne se
+     voit. Dès qu'on défile, il part avec le contenu et découvre l'ombre. Et
+     quand le contenu ne déborde pas, les deux couvercles restent en place :
+     la boîte reste parfaitement nette. Le signal s'éteint tout seul.
+
+     Aucun JavaScript, donc utilisable dans un composant serveur. Et styler
+     ::-webkit-scrollbar avec une largeur explicite sort macOS du mode
+     « overlay » : la barre devient permanente. C'est le second signal, et le
+     plus littéral des deux.
+
+     `transparent` est proscrit dans les dégradés : certains moteurs
+     l'interpolent en passant par le noir, ce qui donne un liseré gris. */
+  .defile {
+    --fond-defile: #fff;
+    --fond-defile-0: rgba(255, 255, 255, 0);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(14, 15, 18, 0.18) transparent;
+    background:
+      linear-gradient(var(--fond-defile) 30%, var(--fond-defile-0)) top / 100% 22px no-repeat local,
+      linear-gradient(var(--fond-defile-0), var(--fond-defile) 70%) bottom / 100% 22px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, rgba(14, 15, 18, 0.16), rgba(14, 15, 18, 0)) top / 100% 12px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, rgba(14, 15, 18, 0.16), rgba(14, 15, 18, 0)) bottom / 100% 12px no-repeat scroll;
+    background-color: var(--fond-defile);
+  }
+  .defile::-webkit-scrollbar { width: 8px; }
+  .defile::-webkit-scrollbar-track { background: transparent; }
+  .defile::-webkit-scrollbar-thumb { background: rgba(14, 15, 18, 0.18); border-radius: 4px; }
+  .defile::-webkit-scrollbar-thumb:hover { background: rgba(14, 15, 18, 0.30); }
+}
