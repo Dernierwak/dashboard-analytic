@@ -201,7 +201,13 @@ export default async function Page({
   let _n = 0;
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
   const nThemes = cartes.length > 0 ? ++_n : undefined;
-  const nActions = data.actions.length > 0 ? ++_n : undefined;
+  // La section « Ce que tu dois faire » ne prend un numéro que s'il y a
+  // vraiment quelque chose à faire ou à juger. Avec seulement des actions en
+  // observation, elle se réduit à une ligne de rendez-vous — et une ligne ne
+  // porte pas un rang de section.
+  const nActions = data.actions.some((a) => a.status !== "done" || a.due)
+    ? ++_n
+    : undefined;
   const nConseils = ++_n;
   const nHistorique =
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;

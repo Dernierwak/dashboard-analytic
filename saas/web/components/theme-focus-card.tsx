@@ -33,15 +33,18 @@ export function ThemeFocusCard({
   const s = theme.summary;
   const hasRoas = s.roas !== null && s.roas !== undefined;
 
-  // LE BILAN A DÉMÉNAGÉ. Il occupait ici six chiffres en 19 px — exactement les
-  // mêmes que ceux de la carte de thème en section 2, sur la même page. Deux
-  // bilans identiques à 800 px d'écart : le doublon passait inaperçu parce que
-  // cette section est derrière des onglets, donc les deux ne sont presque
-  // jamais visibles ensemble — c'est aussi pour ça qu'il n'a jamais été corrigé.
+  // LE BILAN A DÉMÉNAGÉ, ET IL NE LAISSE PAS DE RAPPEL DERRIÈRE LUI.
   //
-  // Le bilan complet vit désormais là où il est adossé à la courbe qui le
-  // raconte. Il reste ici en RAPPEL d'une ligne, en corps de texte : aucune
-  // valeur ne disparaît, et un rappel de 12,5 px ne dispute rien à un rang 3.
+  // Il occupait ici six chiffres en 19 px — exactement les mêmes que ceux de la
+  // carte de thème en section 2. Il a d'abord été remplacé par un rappel d'une
+  // ligne (« 4 520 CHF → 820 CHF · ROAS 0,2 ↑ voir la courbe »), en pariant que
+  // les onglets rendraient les deux rarement visibles ensemble. Faux : avec un
+  // seul thème prioritaire, la section 2 et la section 4 tiennent dans le même
+  // écran, et les mêmes chiffres s'y lisent deux fois à 900 px d'écart.
+  //
+  // Le rappel ne subsiste donc QUE pour un thème sans courbe — trop peu de
+  // relevés pour une carte en section 2. Là, il n'est pas un doublon : c'est le
+  // seul endroit où ces chiffres existent.
   const bouts: string[] = [];
   if (s.spend != null && s.spend > 0) {
     bouts.push(
@@ -67,24 +70,24 @@ export function ThemeFocusCard({
             {theme.is_priority && <span className="text-warn">★ </span>}
             {theme.label}
           </h3>
-          {s.spend_week > 0 && (
+          {!ancre && s.spend_week > 0 && (
             <span className="text-[11.5px] text-faint">
               {fmtCHF(s.spend_week)} CHF cette semaine
             </span>
           )}
+          {ancre && (
+            <a
+              href={`#${ancre}`}
+              className="text-[11.5px] font-semibold text-brand hover:underline"
+            >
+              ↑ ses chiffres et sa courbe
+            </a>
+          )}
         </div>
-        {bouts.length > 0 ? (
+        {ancre ? null : bouts.length > 0 ? (
           <>
             <p className="text-[12.5px] text-muted leading-relaxed mt-1.5">
               {bouts.join(" · ")}
-              {ancre && (
-                <>
-                  {" "}
-                  <a href={`#${ancre}`} className="text-brand font-semibold hover:underline">
-                    ↑ voir la courbe
-                  </a>
-                </>
-              )}
             </p>
             {!hasRoas && s.spend != null && s.spend > 0 && (
               <p className="text-[11px] text-faint mt-1.5">

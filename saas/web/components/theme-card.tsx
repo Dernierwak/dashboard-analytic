@@ -145,11 +145,16 @@ export function ThemeCard({
       cases.push({ cle: "Engagement", valeur: som.eng_avg.toFixed(1), unite: "%" });
   }
 
-  // Les actions de CE thème.
+  // Les actions de CE thème, réparties en DEUX ENSEMBLES DISJOINTS — c'est ce
+  // qui permet de les poser de part et d'autre sous la courbe sans que la même
+  // action se lise deux fois : à gauche ce qui court encore, à droite ce qui
+  // est clos. Une action « faite » n'est pas close : son verdict n'est pas
+  // tombé, elle reste à gauche, en observation.
   const miennes = [...actions, ...archived].filter((a) => a.theme === theme.label);
-  const enCours = miennes.filter((a) => a.status === "running" || a.status === "done");
+  const aFaire = miennes.filter((a) => a.status === "running");
+  const enObservation = miennes.filter((a) => a.status === "done");
   const passees = miennes
-    .filter((a) => a.status !== "running")
+    .filter((a) => a.status === "archived" || a.status === "dropped")
     .sort((a, b) => (a.decided_at < b.decided_at ? 1 : -1));
   const derniereDecision = miennes.map((a) => a.decided_at).sort().pop();
   const semainesDepuis = derniereDecision
@@ -292,14 +297,36 @@ export function ThemeCard({
             </p>
           )}
 
-          {/* Le lien vers l'action — 30 px au lieu d'une colonne de 200. */}
-          {enCours.length > 0 ? (
+          {/* Sous la courbe, deux colonnes qui se répondent : à GAUCHE ce qui
+              t'attend, à DROITE ce que tu as déjà fait, replié. C'est la lecture
+              naturelle du graphe — la cause à venir d'un côté, les causes
+              passées de l'autre, et entre les deux la courbe qui les relie.
+              Sur téléphone elles s'empilent, l'à-faire d'abord. */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
+            <div className="min-w-0">
+          {/* Le lien vers l'action — 30 px au lieu d'une colonne de 200.
+              « En cours » et « en observation » ne sont pas la même chose : la
+              première attend un geste de toi, la seconde attend une date. Les
+              confondre envoyait vers « Ce que tu dois faire » pour y lire
+              « rien à faire ». */}
+          {aFaire.length > 0 ? (
             <a
               href="#a-faire"
               className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-brand hover:underline"
             >
-              ▸ {enCours.length} action{enCours.length > 1 ? "s" : ""} en cours sur ce thème —
+              ▸ {aFaire.length} action{aFaire.length > 1 ? "s" : ""} à faire sur ce thème —
               voir ↑
+            </a>
+          ) : enObservation.length > 0 ? (
+            <a
+              href="#a-faire"
+              className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-muted hover:underline"
+            >
+              ▸ {enObservation.length} action{enObservation.length > 1 ? "s" : ""} en
+              observation — verdict le{" "}
+              {dateCourte(
+                [...enObservation].map((a) => a.check_at).sort()[0] ?? ""
+              )}
             </a>
           ) : miennes.length === 0 ? (
             <p className="text-[11.5px] text-warn font-semibold">
@@ -323,10 +350,11 @@ export function ThemeCard({
               </Link>
             </p>
           ) : null}
+            </div>
 
           {/* Lecture seule : la légende datée des repères du graphe. */}
           {passees.length > 0 && (
-            <details className="group">
+            <details className="group min-w-0 sm:max-w-[46%] sm:text-right">
               <summary className="cursor-pointer select-none list-none text-[11.5px] font-semibold text-muted">
                 <span className="group-open:hidden">
                   ▸ Ce que tu as fait sur ce thème ({passees.length})
@@ -335,7 +363,9 @@ export function ThemeCard({
                   ▾ Ce que tu as fait sur ce thème ({passees.length})
                 </span>
               </summary>
-              <div className="mt-2 max-h-[220px] overflow-y-auto pr-1">
+              {/* Le contenu revient à gauche : un titre d'action ferré à droite
+                  se lit mal dès qu'il passe sur deux lignes. */}
+              <div className="mt-2 max-h-[220px] overflow-y-auto pr-1 text-left">
                 {passees.map((a) => {
                   const e = etat(a);
                   return (
@@ -353,6 +383,7 @@ export function ThemeCard({
               </div>
             </details>
           )}
+          </div>
         </div>
       </div>
     </section>

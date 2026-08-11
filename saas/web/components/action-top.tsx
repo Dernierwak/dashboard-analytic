@@ -330,6 +330,37 @@ export function ActionTop({
     .filter(Boolean)
     .join(" · ");
 
+  // RIEN À FAIRE, RIEN À JUGER : la section n'a pas lieu d'être.
+  //
+  // Elle s'affichait quand même — titre de niveau 1, numéro de section, bloc
+  // teinté — pour dire qu'il n'y avait rien à faire. Et elle écrivait la même
+  // échéance trois fois : « 1 en observation », puis « Prochain verdict le 16
+  // aoû », puis une ligne « ✓ fait … verdict le 16 aoû ». Trois fois la même
+  // date pour une seule action.
+  //
+  // Ne reste que ce qui est vrai et neuf : le rendez-vous. Le titre des actions
+  // en observation vit dans « Ton historique d'actions », qui est son sujet.
+  if (todo.length === 0 && judge.length === 0) {
+    return (
+      <section id="a-faire" className="mb-8 scroll-mt-4">
+        <p className="text-[12.5px] text-muted leading-relaxed rounded-xl border border-line bg-black/[0.015] px-4 py-3">
+          <span className="font-semibold text-ink">Rien à faire dans l&apos;immédiat.</span>{" "}
+          {watch.length} action{watch.length > 1 ? "s" : ""} en observation
+          {prochain && (
+            <>
+              {" "}— prochain verdict le{" "}
+              <span className="font-semibold text-ink">{jour(prochain)}</span>
+            </>
+          )}
+          .{" "}
+          <a href="#conseils" className="text-brand font-semibold hover:underline">
+            Prends-en une de plus ↓
+          </a>
+        </p>
+      </section>
+    );
+  }
+
   // Liste vide : pas de boîte vide, mais le mécanisme expliqué en une ligne.
   // C'est le moment où l'utilisateur apprend comment l'outil fonctionne.
   if (actions.length === 0) {
@@ -404,19 +435,10 @@ export function ActionTop({
         </div>
       )}
 
-      {watch.length > 0 && (
-        <div className="mt-3 pt-2.5 border-t border-brand/[0.12] space-y-1.5">
-          {watch.map((a) => (
-            <div key={a.id} className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-[11px] font-bold text-pos shrink-0">✓ fait</span>
-              <span className="text-[13px] text-muted leading-snug">{a.title}</span>
-              <span className="ml-auto text-[11px] text-faint shrink-0">
-                verdict le <b className="text-muted">{jour(a.check_at)}</b>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Les actions en observation ne sont plus listées ici : le comptage du
+          titre les annonce, la ligne de rendez-vous donne leur échéance, et
+          leur titre se lit dans « Ton historique d'actions ». Une ligne qui
+          répète une date déjà écrite deux fois plus haut n'apporte rien. */}
     </section>
   );
 }

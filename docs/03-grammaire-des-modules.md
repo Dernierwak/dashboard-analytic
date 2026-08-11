@@ -306,6 +306,28 @@ disponibilité du gérant.
 
 ## Journal
 
+**11 août 2026** — Trois doublons vus par David sur son propre rapport, et une
+règle qui en sort.
+
+**Une section qui n'a rien à faire n'existe pas.** « Ce que tu dois faire »
+s'affichait avec son titre de niveau 1, son numéro et son bloc teinté pour dire
+qu'il n'y avait rien à faire — et elle écrivait la même échéance trois fois :
+dans le comptage, dans la ligne de rendez-vous, puis dans une ligne « ✓ fait …
+verdict le 16 aoû ». Quand il n'y a ni action à faire ni action à juger, elle se
+réduit à une ligne, et elle ne prend plus de numéro de section.
+
+**Le rappel du bilan de thème est retiré quand le thème a sa carte.** Le pari
+était que les onglets rendraient les deux rarement visibles ensemble ; avec un
+seul thème prioritaire, ils tiennent dans le même écran. Le rappel ne subsiste
+que pour un thème sans courbe — là, il n'est pas un doublon, c'est le seul
+endroit où ces chiffres existent.
+
+**Deux colonnes sous une courbe doivent porter des ensembles disjoints.** À
+gauche ce qui court, à droite ce qui est clos. Une action « faite mais pas
+encore jugée » figurait des deux côtés : elle reste à gauche, en observation —
+« en cours » et « en observation » ne sont pas la même chose, la première
+attend un geste, la seconde attend une date.
+
 **10 août 2026 (2)** — Refonte de « Ta boussole » et de « Tes thèmes
 prioritaires », d'après deux maquettes de David passées au banc d'essai.
 
