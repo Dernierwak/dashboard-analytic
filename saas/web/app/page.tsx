@@ -6,12 +6,10 @@ import Link from "next/link";
 import { getWeeklyData, type ReportPayload, type TrackedAction } from "@/lib/report";
 import { ObjectifSelect } from "@/components/objectif-select";
 import { SetupWizard } from "@/components/setup-wizard";
-import { ThemeFocusCard } from "@/components/theme-focus-card";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { KpiFocusCard } from "@/components/kpi-focus";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
-import { TopRecos } from "@/components/top-recos";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { TrackingSection } from "@/components/tracking-section";
 import { ActionTop } from "@/components/action-top";
@@ -136,11 +134,7 @@ function VersLaction({ actions }: { actions: TrackedAction[] }) {
   );
 }
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: { vue?: string };
-}) {
+export default async function Page() {
   const data = await getWeeklyData();
   const report = data.report;
 
@@ -152,41 +146,31 @@ export default async function Page({
   const themesFocus = report?.themes_focus ?? [];
   const reglages = report?.reglages ?? [];
   // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
-  // elle répétait mot pour mot les conseils affichés juste en dessous.
+  // elle désignerait le seul thème de la page.
   const topRecos = themesFocus.length > 1 ? report?.top_recos ?? [] : [];
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
 
-  // Les onglets de la section conseils. « Les 3 du moment » n'existe que s'il
-  // y a plus d'un thème — avec un seul, la sélection répéterait mot pour mot
-  // ce qui suit.
-  const vues: { cle: string; titre: string; n: number }[] = [
-    ...(topRecos.length > 0 ? [{ cle: "top", titre: "Les 3 du moment", n: topRecos.length }] : []),
-    ...themesFocus.map((t) => ({
-      cle: t.label,
-      titre: `${t.is_priority ? "★ " : ""}${t.label}`,
-      n: t.recos.length,
-    })),
-    ...(themesFocus.length > 1 ? [{ cle: "tous", titre: "Tous les thèmes", n: 0 }] : []),
-  ];
-  const demande = searchParams?.vue ?? "";
-  const vueActive = vues.some((v) => v.cle === demande) ? demande : (vues[0]?.cle ?? "top");
-  // Les thèmes qui ont assez de relevés pour porter une courbe.
-  const cartes = themesFocus.filter((t) => t.series && t.series.points.length > 1);
+  // TOUS les thèmes ont désormais une carte, qu'ils aient une courbe ou non :
+  // c'est la carte qui décide de montrer sa courbe. Deux cartes pour le même
+  // thème — une pour le bilan, une pour les conseils — obligeaient le lecteur
+  // à faire lui-même le lien entre « voilà la courbe » et « voilà quoi faire ».
+  const cartes = themesFocus;
+  const avecCourbe = cartes.filter((t) => t.series && t.series.points.length > 1);
   // Le classement entre thèmes n'a de sens que s'ils suivent LE MÊME
   // indicateur : comparer une portée à une dépense ne veut rien dire.
   const memeMetrique =
-    cartes.length > 1 &&
-    cartes.every((t) => t.series!.metric_label === cartes[0].series!.metric_label);
+    avecCourbe.length > 1 &&
+    avecCourbe.every((t) => t.series!.metric_label === avecCourbe[0].series!.metric_label);
   // Le classement entre tes thèmes. Pas de verdict absolu possible — il n'y a
   // pas de seuil de référence par thème — mais une comparaison qui reste À
   // L'INTÉRIEUR du même compte est légitime, et elle répond à la seule question
   // que cette section doit servir : où je mets mes dix minutes cette semaine.
   // …sauf quand l'indicateur commun est la DÉPENSE : un thème dont la dépense
   // baisse n'est pas un thème qui décroche, c'est un thème qu'on a coupé.
-  const pentes = memeMetrique && !penteNeutre(cartes[0].series!.metric_label)
-    ? cartes.map((t) => ({
+  const pentes = memeMetrique && !penteNeutre(avecCourbe[0].series!.metric_label)
+    ? avecCourbe.map((t) => ({
         label: t.label,
         ecart: ecartTheme(t.series!.points.map((p) => p.value)),
       }))
@@ -208,7 +192,6 @@ export default async function Page({
   const nActions = data.actions.some((a) => a.status !== "done" || a.due)
     ? ++_n
     : undefined;
-  const nConseils = ++_n;
   const nHistorique =
     data.actions.length + data.actionsArchived.length > 0 ? ++_n : undefined;
   const nApprendre = report?.apprentissage ? ++_n : undefined;
@@ -335,22 +318,59 @@ export default async function Page({
         </section>
       )}
 
-      {/* 2 · TES THÈMES PRIORITAIRES — le même regard, mais restreint à ce que
-             tu as décidé de travailler, et sur l'indicateur de ton objectif. */}
+      {/* 2 · TES THÈMES PRIORITAIRES — LA section du thème. Elle porte tout ce
+             qui le concerne : son bilan, sa courbe, ses conseils, et ce qu'on a
+             déjà tenté dessus. Il y avait deux sections pour ça, à 900 px
+             d'écart, avec le même titre et la même étoile. */}
       {cartes.length > 0 && (
-        <section className="mb-9">
-          <SectionTitle>
-            <span className="text-faint font-mono mr-1.5">{nThemes}</span> Tes thèmes
-            prioritaires
-          </SectionTitle>
-          <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
+        <section id="conseils" className="mb-9 scroll-mt-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+            <SectionTitle>
+              <span className="text-faint font-mono mr-1.5">{nThemes}</span> Tes thèmes
+              prioritaires
+            </SectionTitle>
+            <ReloadRecosButton />
+          </div>
+          <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 max-w-[68ch]">
             Objectif <span className="font-semibold text-ink">{ONB_OBJ[data.objectif ?? ""] ?? "à définir"}</span>
             {priorities.length > 0 && (
               <> · thèmes suivis <span className="font-semibold text-warn">{priorities.join(" · ")}</span></>
             )}{" "}
-            — le bilan de chacun, sa courbe, et un repère ┄ à chaque semaine où tu as lancé
-            une action dessus.
+            — pour chacun : où il en est, ce qui peut le faire bouger, et ce que tes
+            actions passées ont donné.
           </p>
+          {report?.themes_intro && (
+            <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1.5">
+              {report.themes_intro}
+            </p>
+          )}
+
+          {/* « Si tu ne fais que trois choses » — la sélection cross-thème.
+              Des LIENS, pas des cartes : les mêmes conseils sont rendus en
+              entier dans leur thème juste dessous, et rendre deux fois le même
+              composant sur une page est ce que la grammaire interdit. */}
+          {topRecos.length > 0 && (
+            <div className="mb-4 rounded-xl border border-brand/[0.18] bg-brand/[0.03] px-4 py-3">
+              <div className="text-[10px] uppercase tracking-widest text-brand font-bold mb-1.5">
+                Si tu ne fais que trois choses
+              </div>
+              <ol className="space-y-1">
+                {topRecos.map((r, i) => (
+                  <li key={r.key} className="text-[12.5px] text-muted leading-snug">
+                    <span className="font-mono text-faint">{i + 1}.</span>{" "}
+                    <a
+                      href={`#${ancreTheme(r.theme ?? "")}`}
+                      className="font-semibold text-ink hover:underline"
+                    >
+                      {r.title}
+                    </a>
+                    {r.theme && <span className="text-faint"> · {r.theme}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           <div className="space-y-3">
             {cartes.map((t) => (
               <ThemeCard
@@ -360,6 +380,11 @@ export default async function Page({
                 archived={data.actionsArchived}
                 fenetre={report?.vision?.period_label || null}
                 decroche={pire?.label === t.label}
+                labels={data.labels}
+                feedback={data.feedback}
+                comments={data.comments}
+                trackedKeys={data.trackedKeys}
+                capReached={capReached}
               />
             ))}
           </div>
@@ -399,96 +424,25 @@ export default async function Page({
         <>
 
 
-          {/* TES CONSEILS, THEME PAR THEME - le coeur, cross-canal */}
-          <section id="conseils" className="mb-9 scroll-mt-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-              <SectionTitle>
-                <span className="text-faint font-mono mr-1.5">{nConseils}</span> Tes conseils, thème par thème
-              </SectionTitle>
-              {themesFocus.length > 0 && <ReloadRecosButton />}
-            </div>
-            {report?.themes_intro && (
-              <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1">
-                {report.themes_intro}
+          {/* LA SECTION « TES CONSEILS » A DISPARU.
+              Elle rendait une seconde carte par thème — même titre, même
+              étoile, mêmes campagnes — à 900 px de la première. Ses conseils
+              vivent maintenant dans la carte du thème, à gauche sous la
+              courbe, en face de ce que les actions passées ont donné. C'est la
+              boucle conseil → action → effet dans un seul écran, au lieu de
+              trois sections qui ne se regardaient pas.
+              Le seul cas qu'elle traitait encore seule : aucun thème classé. */}
+          {themesFocus.length === 0 && (
+            <div className="bg-brand/[0.04] border border-brand/[0.14] rounded-xl p-5 mb-8">
+              <p className="text-[13px] text-ink leading-relaxed">
+                <span className="font-semibold text-brand">Presque prêt — </span>
+                classe tes contenus sur la page{" "}
+                <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
+                (bouton « ✨ Classer mes contenus »), puis recharge : le rapport se
+                construit thème par thème.
               </p>
-            )}
-            {/* UN SEUL PANNEAU À LA FOIS. La même RecoCard était rendue deux
-                fois sur cette page : dans « Si tu ne fais que 3 choses », puis
-                dans le détail du thème. Le contournement — masquer la
-                sélection quand il n'y a qu'un thème — disait bien que le
-                doublon était connu.
-                Des onglets-compteurs le remplacent : chacun porte son nombre
-                de conseils, « Les 3 du moment » reste ouvert par défaut, et
-                « Tous les thèmes » garde la lecture d'enfilade pour qui la
-                veut. Personne ne perd rien, plus rien n'est rendu deux fois. */}
-            {vues.length > 1 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-4">
-                {vues.map((v) => (
-                  <a
-                    key={v.cle}
-                    href={v.cle === "top" ? "/#conseils" : `/?vue=${encodeURIComponent(v.cle)}#conseils`}
-                    className={`shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-3 py-1.5 border transition-colors ${
-                      v.cle === vueActive
-                        ? "bg-ink text-white border-ink"
-                        : "border-line text-muted hover:bg-black/[0.03] bg-white"
-                    }`}
-                  >
-                    {v.titre}
-                    {v.n > 0 && (
-                      <span
-                        className={`text-[10.5px] font-bold rounded-full px-1.5 ${
-                          v.cle === vueActive ? "bg-white/20" : "bg-black/[0.06] text-ink"
-                        }`}
-                      >
-                        {v.n}
-                      </span>
-                    )}
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {vueActive === "top" && (
-              <TopRecos
-                recos={topRecos}
-                feedback={data.feedback}
-                comments={data.comments}
-                trackedKeys={data.trackedKeys}
-                capReached={capReached}
-              />
-            )}
-
-            {themesFocus.length > 0 ? (
-              <>
-              {themesFocus
-                .filter((t) => vueActive === "tous" || t.label === vueActive)
-                .map((t) => (
-                <ThemeFocusCard
-                  key={t.label}
-                  theme={t}
-                  labels={data.labels}
-                  feedback={data.feedback}
-                  comments={data.comments}
-                  trackedKeys={data.trackedKeys}
-                  capReached={capReached}
-                  ancre={
-                    cartes.some((c) => c.label === t.label) ? ancreTheme(t.label) : null
-                  }
-                />
-              ))}
-              </>
-            ) : (
-              <div className="bg-brand/[0.04] border border-brand/[0.14] rounded-xl p-5">
-                <p className="text-[13px] text-ink leading-relaxed">
-                  <span className="font-semibold text-brand">Presque prêt — </span>
-                  classe tes contenus sur la page{" "}
-                  <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
-                  (bouton « ✨ Classer mes contenus »), puis recharge : le rapport se
-                  construit thème par thème.
-                </p>
-              </div>
-            )}
-          </section>
+            </div>
+          )}
 
           {/* Réglages de base — prérequis (GA4, funnel) sortis du flux par thème */}
           {reglages.length > 0 && (

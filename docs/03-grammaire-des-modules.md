@@ -237,7 +237,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `kpi-focus` | **deux formes** — une jauge de zones puis une courbe | la jauge est supprimée, les zones passent en fond de courbe : elles disent « où tu es ET depuis quand ». Le seuil courant remonte dans la pastille (`excellent · au-dessus de 5 %`), le `repere` sort du `title=` et devient un `<details>` |
 | `kpi-focus` (sélecteur) | neuf pastilles muettes — il fallait cliquer neuf fois pour savoir laquelle regarder | grille de neuf cellules portant nom, valeur et pente, groupées **par terrain** (`Ta pub` / `Ton Instagram` / `Ton site`) et non par source : cinq des neuf agrègent Meta ET Google, une pastille « Google Ads » sur le CTR ferait couper Google à qui croit lire Google |
 | `theme-timeline` → `theme-card` | une frise nue, sans bilan, sans lien vers l'action | une carte par thème : bilan avec sa fenêtre, courbe, ligne-ancre vers les actions en cours, repli lecture seule de ce qui a été fait |
-| `theme-focus-card` | même bilan que la carte de thème, en 19 px, sur la même page | rappel d'une ligne en corps de texte + ancre `↑ voir la courbe` |
+| `theme-focus-card` | seconde carte du même thème, 900 px plus bas | **supprimé** — ses conseils et ses campagnes rejoignent la carte de thème |
+| `top-recos` | trois `RecoCard` déjà rendues dans leur thème | **supprimé** — remplacé par trois liens vers les thèmes concernés |
 | `tracking-section` | le lexique des états vivait dans le module | extrait en `components/etat-action.tsx`, partagé avec la carte de thème |
 
 **Reste à traiter :**
@@ -254,8 +255,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 Elles se ressemblent, elles ne disent pas la même chose :
 
 - **`theme-donut` et `Repartition`** — l'un montre le réel, l'autre le prévu ;
-- **`frise-semaine` et `theme-timeline`** — l'une porte du temps, l'autre une
-  métrique ; aucune n'est un cas particulier de l'autre ;
+- **`frise-semaine` et la courbe d'une carte de thème** — l'une porte du temps,
+  l'autre une métrique ; aucune n'est un cas particulier de l'autre ;
 - **`action-top` et `tracking-section`** — le vivant et la trace. `action-top`
   est en haut parce qu'on y agit ; le descendre rendrait l'app rétrospective.
   Le fil vertical n'y change rien, au contraire : un rail est **passif par
@@ -305,6 +306,35 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**11 août 2026 (2)** — **Une fusion qu'il FALLAIT faire, elle.** La page portait
+deux cartes pour le même thème, à 900 px d'écart : l'une en section 2 (bilan et
+courbe), l'autre en section 3 (campagnes et conseils). Même titre, même étoile,
+même thème — et le lecteur devait relier lui-même « voilà la courbe » et
+« voilà quoi faire ».
+
+Une seule carte désormais, et son ordre suit la question qu'on se pose : où
+j'en suis (le bilan), ce que ça donne dans le temps (la courbe), puis **deux
+colonnes** — à gauche ce qui peut la faire bouger (les conseils du thème), à
+droite ce qui a déjà essayé (les actions passées, leur verdict, et l'indicateur
+qu'elles suivaient avec son mouvement réel : `CTR 3,1 → 5,8 ▲ +87 %`). La
+boucle conseil → action → effet tient dans un écran ; elle était éclatée sur
+trois sections qui ne se regardaient pas.
+
+Deux règles en sortent :
+
+- **Le verdict décide du sens, pas le delta brut.** Un verdict « stable » à côté
+  d'un « ▲ +1 % » se contredit à l'œil. Le worker a son seuil ; l'affichage n'en
+  invente pas un second — quand c'est stable, on montre les deux valeurs et on
+  se tait sur la flèche.
+- **Une sélection qui désigne des modules rendus ailleurs sur la page se fait
+  en LIENS, pas en cartes.** « Si tu ne fais que trois choses » listait trois
+  `RecoCard` déjà rendues plus bas ; ce sont maintenant trois titres cliquables
+  qui mènent à leur thème. La sélection garde son rôle, l'interdit du doublon
+  est respecté, et le pilotage cross-thème ne coûte plus une seconde lecture.
+
+`theme-focus-card` et `top-recos` supprimés (269 lignes). Les onglets de la
+section conseils disparaissent avec elle : il n'y a plus qu'un panneau.
 
 **11 août 2026** — Trois doublons vus par David sur son propre rapport, et une
 règle qui en sort.

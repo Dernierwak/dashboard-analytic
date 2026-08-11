@@ -3,39 +3,32 @@ import { fmtCHF, type ThemeFocus, type TrackedAction } from "@/lib/report";
 import { LineChart, garderEtiquettes } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
 import { Pastille, dateCourte, etat, marqueursCourbe } from "@/components/etat-action";
+import { RecoCard } from "@/components/reco-card";
+import { CampaignLabelSelect } from "@/components/campaign-label-select";
+import { ScrollList } from "@/components/scroll-list";
 
-// UNE CARTE PAR THÈME PRIORITAIRE.
+// UNE SEULE CARTE PAR THÈME, ET ELLE PORTE TOUT.
 //
-// La section 2 rendait trois courbes empilées dans une seule carte, et rien
-// d'autre. Elle ne faisait rien faire : on y lisait une pente, puis on passait.
-// Trois manques précis, tous corrigés ici sans une donnée nouvelle :
+// Il y en avait deux, à 900 px d'écart sur la même page : une en section 2 (le
+// bilan et la courbe) et une en section 3 (les campagnes et les conseils). Même
+// titre, même étoile, même thème — et le lecteur devait faire le lien lui-même
+// entre « voilà la courbe » et « voilà quoi faire ». Les deux sont fusionnées.
 //
-//  1. AUCUN CHIFFRE DE TÊTE. La valeur courante était en 24 px, coincée entre
-//     un surtitre et un graphe. Elle passe en 34 px et porte enfin ce qu'elle
-//     mesure — « moyenne par publication », « total de la semaine ». Un même
-//     8 990 ne veut pas dire la même chose selon la réponse.
+// L'ordre suit la question qu'on se pose : où j'en suis (le bilan), ce que ça
+// donne dans le temps (la courbe), et sous elle DEUX COLONNES —
 //
-//  2. AUCUN POIDS AFFICHÉ. Chaque frise calcule son propre maximum : trois
-//     courbes montent pareil alors que l'une pèse 4 500 CHF et l'autre 90.
-//     Une échelle commune a été essayée puis abandonnée — elle écrasait le
-//     petit thème en une ligne plate au ras de l'axe, et une carte de thème
-//     est d'abord là pour montrer LA tendance de CE thème. On dit donc le
-//     poids au lieu de le faire subir : le chiffre de tête en 34 px, et le
-//     haut de l'échelle écrit sur le graphe.
+//   à GAUCHE, ce qui peut la faire bouger : les conseils du thème ;
+//   à DROITE, ce qui a déjà essayé : les actions passées, leur verdict, et
+//   l'indicateur qu'elles suivaient avec son mouvement réel.
 //
-//  3. AUCUN LIEN VERS L'ACTION. Le module montrait l'effet sans jamais montrer
-//     la cause. Il porte maintenant une ligne — combien d'actions tournent sur
-//     ce thème, ou depuis combien de temps on n'y a rien touché — et le repli
-//     de ce qu'on y a déjà fait.
+// C'est la boucle complète, dans un seul écran : conseil → action → effet. Elle
+// était éclatée sur trois sections, et personne ne la voyait.
 //
-// CE QUE CETTE CARTE NE FAIT PAS, ET NE FERA PAS : porter les actions à faire.
-// Elles vivent dans « Ce que tu dois faire », le seul bloc teinté de la page,
-// avec des cibles de 44 px (docs/03-grammaire-des-modules.md, « Trois fusions à
-// ne PAS faire »). Les rendre une seconde fois ici en « encore à valider »
-// créerait deux endroits où cocher la même case, et un état d'interface qui
-// n'existe pas en base disparaît au rechargement. On donne un lien, pas une
-// colonne. Le repli « ce que tu as fait » est en LECTURE SEULE : c'est la table
-// des matières des repères ┄ du graphe juste au-dessus, pas un second historique.
+// CE QUE CETTE CARTE NE FAIT TOUJOURS PAS : porter les actions À FAIRE avec
+// leur case à cocher. Elles vivent dans « Ce que tu dois faire », le seul bloc
+// teinté de la page, avec des cibles de 44 px (docs/03-grammaire-des-modules.md,
+// « Trois fusions à ne PAS faire »). Deux endroits où cocher la même case, ce
+// serait deux vérités sur le même objet. On donne un lien.
 
 type Cadre = { unite: string; fmt: (v: number) => string; portee: string; neutre: boolean };
 
@@ -69,6 +62,11 @@ const PAR_DEFAUT: Cadre = {
   neutre: false,
 };
 
+const CH_ICON: Record<string, { icon: string; color: string }> = {
+  meta: { icon: "▣", color: "#1a56ff" },
+  google: { icon: "◆", color: "#1a7a4a" },
+};
+
 /**
  * Vrai quand la pente de cet indicateur ne se juge pas. Dépenser moins n'est ni
  * une victoire ni un échec tant qu'on ne sait pas ce que ça rapporte : classer
@@ -79,7 +77,7 @@ export function penteNeutre(metricLabel: string): boolean {
   return (CADRES[metricLabel] ?? PAR_DEFAUT).neutre;
 }
 
-/** L'ancre de la carte d'un thème, pour y renvoyer depuis les conseils. */
+/** L'ancre de la carte d'un thème, pour y renvoyer d'ailleurs sur la page. */
 export function ancreTheme(label: string): string {
   return (
     "theme-" +
@@ -101,12 +99,50 @@ export function ecartTheme(vals: number[]): number | null {
   return avant > 0 ? ((recent - avant) / avant) * 100 : null;
 }
 
+// CE QU'UNE ACTION PASSÉE A DONNÉ, en une ligne.
+//
+// L'historique de la carte ne disait que « date · titre · état ». C'est le
+// classement d'une action, pas son résultat. Ce qui manquait est déjà en base
+// depuis le premier jour du suivi : l'indicateur qu'on surveillait, sa valeur
+// au moment de la décision, et sa valeur au verdict. « CTR 3,1 → 5,8 ▲ +87 % »
+// répond à la seule question qu'on se pose en relisant ce qu'on a fait.
+function Effet({ a }: { a: TrackedAction }) {
+  if (!a.metric_label) return null;
+  if (a.then === undefined || a.now === undefined) {
+    return <span className="text-faint"> · on suit {a.metric_label}</span>;
+  }
+  // Le VERDICT décide du sens, pas le delta brut. Un verdict « stable » à côté
+  // d'un « ▲ +1 % » se contredit à l'œil : le worker a son seuil, l'affichage
+  // n'en invente pas un second. Quand c'est stable, on montre les deux valeurs
+  // et on se tait sur la flèche.
+  const s = sensPente(a.verdict === "stable" ? 0 : a.delta, false, 0.5);
+  return (
+    <span className="text-faint">
+      {" "}
+      · {a.metric_label} <b className="text-muted">{a.then}</b> →{" "}
+      <b className="text-ink">{a.now}</b>
+      {a.delta != null && !s.plat && (
+        <span className={`font-semibold ${s.cls}`}>
+          {" "}
+          <Triangle sens={s.monte ? "haut" : "bas"} /> {a.delta > 0 ? "+" : ""}
+          {a.delta.toFixed(0)} %
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ThemeCard({
   theme,
   actions,
   archived,
   fenetre,
   decroche = false,
+  labels,
+  feedback,
+  comments,
+  trackedKeys,
+  capReached = false,
 }: {
   theme: ThemeFocus;
   actions: TrackedAction[];
@@ -114,21 +150,24 @@ export function ThemeCard({
   /** « depuis le 1 jan » — la fenêtre du bilan, qui n'est PAS celle de la courbe. */
   fenetre: string | null;
   decroche?: boolean;
+  labels: string[];
+  feedback: Record<string, string>;
+  comments: Record<string, string>;
+  trackedKeys: string[];
+  capReached?: boolean;
 }) {
-  const s = theme.series;
-  if (!s || s.points.length < 2) return null;
-
-  const vals = s.points.map((p) => p.value);
-  const derniere = vals[vals.length - 1];
-  const cadre = CADRES[s.metric_label] ?? PAR_DEFAUT;
-  const ecart = ecartTheme(vals);
+  const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
+  const vals = s ? s.points.map((p) => p.value) : [];
+  const cadre = s ? CADRES[s.metric_label] ?? PAR_DEFAUT : PAR_DEFAUT;
+  const ecart = s ? ecartTheme(vals) : null;
   const p = sensPente(ecart, false, 8);
   // Pente neutre : on affiche le mouvement, on ne le juge pas.
-  const filet = cadre.neutre || p.plat ? "rgba(14,15,18,0.10)" : p.bon ? "#1a7a4a" : "#c0392b";
+  const filet =
+    !s || cadre.neutre || p.plat ? "rgba(14,15,18,0.10)" : p.bon ? "#1a7a4a" : "#c0392b";
 
   const som = theme.summary;
   const hasRoas = som.roas !== null && som.roas !== undefined;
-  const exclure = s.metric_label.startsWith("Engagement") ? "Engagement" : null;
+  const exclure = s && s.metric_label.startsWith("Engagement") ? "Engagement" : null;
   const cases: { cle: string; valeur: string; unite?: string }[] = [];
   if (som.spend != null && som.spend > 0) {
     cases.push({ cle: "Dépensé", valeur: fmtCHF(som.spend), unite: "CHF" });
@@ -145,11 +184,10 @@ export function ThemeCard({
       cases.push({ cle: "Engagement", valeur: som.eng_avg.toFixed(1), unite: "%" });
   }
 
-  // Les actions de CE thème, réparties en DEUX ENSEMBLES DISJOINTS — c'est ce
-  // qui permet de les poser de part et d'autre sous la courbe sans que la même
-  // action se lise deux fois : à gauche ce qui court encore, à droite ce qui
-  // est clos. Une action « faite » n'est pas close : son verdict n'est pas
-  // tombé, elle reste à gauche, en observation.
+  // Les actions de CE thème, en DEUX ENSEMBLES DISJOINTS — c'est ce qui permet
+  // de les poser de part et d'autre sans que la même action se lise deux fois :
+  // ce qui court encore d'un côté, ce qui est clos de l'autre. Une action
+  // « faite » n'est pas close : son verdict n'est pas tombé.
   const miennes = [...actions, ...archived].filter((a) => a.theme === theme.label);
   const aFaire = miennes.filter((a) => a.status === "running");
   const enObservation = miennes.filter((a) => a.status === "done");
@@ -163,17 +201,9 @@ export function ThemeCard({
       )
     : null;
 
-  // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
-  // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
-  // l'index de semaine est connu et on écrit « sem. du 24 jun » — un seau
-  // hebdomadaire présenté comme un jour serait un chiffre présenté pour autre
-  // chose que ce qu'il mesure.
-  const marqueurs = marqueursCourbe(
-    s.marqueurs,
-    s.markers,
-    s.points.length,
-    (i) => s.points[i].label
-  );
+  const marqueurs = s
+    ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
+    : [];
   const etiquettes = garderEtiquettes(marqueurs);
 
   return (
@@ -182,8 +212,6 @@ export function ThemeCard({
       className="bg-white border border-line rounded-xl shadow-card overflow-hidden scroll-mt-4"
     >
       <div className="border-l-[3px]" style={{ borderColor: filet }}>
-        {/* En-tête — le même habillage que la carte du thème dans les conseils :
-            c'est ce qui dit « c'est le même thème » à travers 800 px de page. */}
         <div className="px-5 py-4 border-b border-line bg-black/[0.015]">
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h3 className="font-serif text-[17px] text-ink">
@@ -200,43 +228,41 @@ export function ThemeCard({
                 {fmtCHF(som.spend_week)} CHF cette semaine
               </span>
             )}
-            <Link
-              href={`/?vue=${encodeURIComponent(theme.label)}#conseils`}
-              className="ml-auto text-[11.5px] font-semibold text-brand hover:underline shrink-0"
-            >
-              ses conseils ↓
-            </Link>
           </div>
 
           {/* Le rang 3 — le chiffre, et c'est celui de la COURBE, jamais un
               autre : sinon l'en-tête et le graphe parlent de deux sujets. */}
-          <div className="flex items-baseline gap-2.5 flex-wrap mt-2.5">
-            <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-              {cadre.fmt(derniere)}
-              <span className="text-[15px] text-faint">{cadre.unite}</span>
-            </span>
-            {ecart !== null && (
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  cadre.neutre ? "text-muted" : p.cls
-                }`}
-                style={{ background: cadre.neutre ? "rgba(0,0,0,0.05)" : p.fond }}
-                title="Moyenne des 4 dernières semaines comparée aux 4 précédentes"
-              >
-                {p.plat ? (
-                  "≈ stable"
-                ) : (
-                  <>
-                    <Triangle sens={p.monte ? "haut" : "bas"} /> {ecart > 0 ? "+" : ""}
-                    {Math.round(ecart)} %
-                  </>
+          {s && (
+            <>
+              <div className="flex items-baseline gap-2.5 flex-wrap mt-2.5">
+                <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
+                  {cadre.fmt(vals[vals.length - 1])}
+                  <span className="text-[15px] text-faint">{cadre.unite}</span>
+                </span>
+                {ecart !== null && (
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      cadre.neutre ? "text-muted" : p.cls
+                    }`}
+                    style={{ background: cadre.neutre ? "rgba(0,0,0,0.05)" : p.fond }}
+                    title="Moyenne des 4 dernières semaines comparée aux 4 précédentes"
+                  >
+                    {p.plat ? (
+                      "≈ stable"
+                    ) : (
+                      <>
+                        <Triangle sens={p.monte ? "haut" : "bas"} /> {ecart > 0 ? "+" : ""}
+                        {Math.round(ecart)} %
+                      </>
+                    )}
+                  </span>
                 )}
-              </span>
-            )}
-          </div>
-          <p className="text-[10.5px] text-faint mt-1">
-            {s.metric_label.replace(/ \(.*\)$/, "").toLowerCase()} · {cadre.portee}
-          </p>
+              </div>
+              <p className="text-[10.5px] text-faint mt-1">
+                {s.metric_label.replace(/ \(.*\)$/, "").toLowerCase()} · {cadre.portee}
+              </p>
+            </>
+          )}
 
           {/* Le bilan. Il porte SA fenêtre : « 103 CHF cette semaine » et
               « 4 520 dépensé » se lisaient comme une même période alors que le
@@ -259,10 +285,9 @@ export function ThemeCard({
               <p className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-2">
                 {fenetre ? `Ce bilan couvre tout ${fenetre}` : "Ce bilan couvre tout l'historique"}
               </p>
-              {/* La note de la série dit déjà pourquoi le ROAS manque, en bas de
-                  carte : deux fois la même explication à 200 px d'écart, c'est
-                  une de trop. */}
-              {!hasRoas && !s.note && som.spend != null && som.spend > 0 && (
+              {/* La note de la série dit déjà pourquoi le ROAS manque, sous la
+                  courbe : deux fois la même explication, c'est une de trop. */}
+              {!hasRoas && !s?.note && som.spend != null && som.spend > 0 && (
                 <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
                   Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
                   conversions — donc pas de ROAS ici, plutôt qu&apos;un ROAS faux.
@@ -272,100 +297,92 @@ export function ThemeCard({
           )}
         </div>
 
-        <div className="px-3 pt-3 pb-2">
-          <LineChart
-            labels={s.points.map((pt) => pt.label)}
-            series={[{ name: s.metric_label, color: "#1a56ff", values: vals }]}
-            height={180}
-            fmt={cadre.fmt}
-            unit={cadre.unite}
-            ariaLabel={`${s.metric_label} du thème ${theme.label} sur ${s.points.length} semaines`}
-            marqueurs={marqueurs}
-          />
-          {marqueurs.length > etiquettes.length && (
-            <p className="text-[10px] text-faint px-1 pt-1">
-              <span className="text-ink font-bold">┄</span> {marqueurs.length} semaines où tu as
-              lancé une action sur ce thème.
-            </p>
-          )}
-        </div>
+        {s && (
+          <div className="px-3 pt-3 pb-2">
+            <LineChart
+              labels={s.points.map((pt) => pt.label)}
+              series={[{ name: s.metric_label, color: "#1a56ff", values: vals }]}
+              height={180}
+              fmt={cadre.fmt}
+              unit={cadre.unite}
+              ariaLabel={`${s.metric_label} du thème ${theme.label} sur ${s.points.length} semaines`}
+              marqueurs={marqueurs}
+            />
+            {marqueurs.length > etiquettes.length && (
+              <p className="text-[10px] text-faint px-1 pt-1">
+                <span className="text-ink font-bold">┄</span> {marqueurs.length} semaines où tu as
+                lancé une action sur ce thème.
+              </p>
+            )}
+            {s.note && (
+              <p className="text-[11px] text-warn leading-relaxed bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5 mt-2 mx-1">
+                {s.note}
+              </p>
+            )}
+          </div>
+        )}
 
-        <div className="px-5 pb-4 pt-1 space-y-2">
-          {s.note && (
-            <p className="text-[11px] text-warn leading-relaxed bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5">
-              {s.note}
-            </p>
-          )}
+        {/* LES DEUX COLONNES. À gauche ce qui peut faire bouger la courbe, à
+            droite ce qui a déjà essayé et ce que ça a donné. Sur téléphone
+            elles s'empilent, les conseils d'abord. */}
+        <div className="border-t border-line px-4 py-4 grid gap-5 lg:grid-cols-3">
+          <div className="lg:col-span-2 min-w-0">
+            <h4 className="text-[11px] uppercase tracking-wide text-brand font-bold mb-2.5">
+              Comment l&apos;améliorer cette semaine
+            </h4>
+            {theme.recos.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[...theme.recos]
+                  .sort(
+                    (a, b) =>
+                      (trackedKeys.includes(b.key) ? 1 : 0) - (trackedKeys.includes(a.key) ? 1 : 0)
+                  )
+                  .map((r) => (
+                    <RecoCard
+                      key={r.key}
+                      r={r}
+                      current={feedback[r.key] ?? null}
+                      comment={comments[r.key] ?? null}
+                      theme={theme.label}
+                      tracked={trackedKeys.includes(r.key)}
+                      capReached={capReached}
+                    />
+                  ))}
+              </div>
+            ) : (
+              <p className="text-[12.5px] text-faint">
+                Rien d&apos;urgent sur ce thème cette semaine — il tourne dans ses normes.
+              </p>
+            )}
+          </div>
 
-          {/* Sous la courbe, deux colonnes qui se répondent : à GAUCHE ce qui
-              t'attend, à DROITE ce que tu as déjà fait, replié. C'est la lecture
-              naturelle du graphe — la cause à venir d'un côté, les causes
-              passées de l'autre, et entre les deux la courbe qui les relie.
-              Sur téléphone elles s'empilent, l'à-faire d'abord. */}
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
-            <div className="min-w-0">
-          {/* Le lien vers l'action — 30 px au lieu d'une colonne de 200.
-              « En cours » et « en observation » ne sont pas la même chose : la
-              première attend un geste de toi, la seconde attend une date. Les
-              confondre envoyait vers « Ce que tu dois faire » pour y lire
-              « rien à faire ». */}
-          {aFaire.length > 0 ? (
-            <a
-              href="#a-faire"
-              className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-brand hover:underline"
-            >
-              ▸ {aFaire.length} action{aFaire.length > 1 ? "s" : ""} à faire sur ce thème —
-              voir ↑
-            </a>
-          ) : enObservation.length > 0 ? (
-            <a
-              href="#a-faire"
-              className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-muted hover:underline"
-            >
-              ▸ {enObservation.length} action{enObservation.length > 1 ? "s" : ""} en
-              observation — verdict le{" "}
-              {dateCourte(
-                [...enObservation].map((a) => a.check_at).sort()[0] ?? ""
-              )}
-            </a>
-          ) : miennes.length === 0 ? (
-            <p className="text-[11.5px] text-warn font-semibold">
-              Aucune action lancée sur ce thème
-              {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}.{" "}
-              <Link
-                href={`/?vue=${encodeURIComponent(theme.label)}#conseils`}
-                className="text-brand hover:underline"
+          <div className="min-w-0">
+            <h4 className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2.5">
+              Ce que tu as déjà essayé
+            </h4>
+
+            {/* « En cours » et « en observation » ne sont pas la même chose : la
+                première attend un geste de toi, la seconde attend une date. */}
+            {aFaire.length > 0 ? (
+              <a
+                href="#a-faire"
+                className="block text-[11.5px] font-semibold text-brand hover:underline mb-2"
               >
-                ses conseils ↓
-              </Link>
-            </p>
-          ) : semainesDepuis !== null && semainesDepuis >= 6 ? (
-            <p className="text-[11.5px] text-warn font-semibold">
-              Rien de lancé depuis {semainesDepuis} semaines sur ce thème.{" "}
-              <Link
-                href={`/?vue=${encodeURIComponent(theme.label)}#conseils`}
-                className="text-brand hover:underline"
-              >
-                ses conseils ↓
-              </Link>
-            </p>
-          ) : null}
-            </div>
+                ▸ {aFaire.length} action{aFaire.length > 1 ? "s" : ""} à faire sur ce thème —
+                voir ↑
+              </a>
+            ) : enObservation.length > 0 ? (
+              <p className="text-[11.5px] text-muted mb-2">
+                ▸ {enObservation.length} action{enObservation.length > 1 ? "s" : ""} en
+                observation — verdict le{" "}
+                <span className="font-semibold text-ink">
+                  {dateCourte([...enObservation].map((a) => a.check_at).sort()[0] ?? "")}
+                </span>
+              </p>
+            ) : null}
 
-          {/* Lecture seule : la légende datée des repères du graphe. */}
-          {passees.length > 0 && (
-            <details className="group min-w-0 sm:max-w-[46%] sm:text-right">
-              <summary className="cursor-pointer select-none list-none text-[11.5px] font-semibold text-muted">
-                <span className="group-open:hidden">
-                  ▸ Ce que tu as fait sur ce thème ({passees.length})
-                </span>
-                <span className="hidden group-open:inline">
-                  ▾ Ce que tu as fait sur ce thème ({passees.length})
-                </span>
-              </summary>
-              {/* Le contenu revient à gauche : un titre d'action ferré à droite
-                  se lit mal dès qu'il passe sur deux lignes. */}
-              <div className="mt-2 max-h-[220px] overflow-y-auto pr-1 text-left">
+            {passees.length > 0 ? (
+              <div className="max-h-[260px] overflow-y-auto pr-1 -mr-1">
                 {passees.map((a) => {
                   const e = etat(a);
                   return (
@@ -373,18 +390,89 @@ export function ThemeCard({
                       <span className="mt-[5px] shrink-0">
                         <Pastille e={e} />
                       </span>
-                      <span className="text-[12px] text-muted leading-snug">
+                      <span className="text-[12px] text-muted leading-snug min-w-0">
                         <span className="font-mono text-faint">{dateCourte(a.decided_at)}</span>{" "}
-                        {a.title} <span className={`font-semibold ${e.cls}`}>· {e.label}</span>
+                        {a.title}
+                        <br />
+                        <span className={`font-semibold ${e.cls}`}>{e.label}</span>
+                        <Effet a={a} />
                       </span>
                     </div>
                   );
                 })}
               </div>
-            </details>
-          )}
+            ) : miennes.length === 0 ? (
+              <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
+                Rien n&apos;a encore été tenté sur ce thème
+                {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}. Prends
+                un conseil à gauche : tu sauras dans deux semaines ce qu&apos;il a donné.
+              </p>
+            ) : (
+              <p className="text-[11.5px] text-faint leading-relaxed">
+                Aucun verdict encore rendu sur ce thème — il tombe deux semaines après coup.
+              </p>
+            )}
+
+            {passees.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
+              <p className="text-[11.5px] text-warn font-semibold mt-2">
+                Rien de nouveau lancé depuis {semainesDepuis} semaines.
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Les campagnes du thème — c'est ici qu'on répare une étiquette. En
+            pied, replié : on ne vient pas sur cette carte pour ça. */}
+        {theme.campaigns.length > 0 && (
+          <details className="group border-t border-line">
+            <summary className="flex items-center gap-2 cursor-pointer select-none list-none px-4 py-2.5">
+              <span className="text-[11px] uppercase tracking-wide text-faint font-bold">
+                Ses campagnes <span className="text-faint/70">({theme.campaigns.length})</span>
+              </span>
+              <span className="text-[11px] text-brand font-semibold group-open:hidden">
+                déplier ▾
+              </span>
+              <span className="text-[11px] text-brand font-semibold hidden group-open:inline">
+                replier ▴
+              </span>
+            </summary>
+            <div className="px-4 pb-4">
+              <ScrollList title="" maxH="max-h-[40vh]">
+                {theme.campaigns.map((c) => {
+                  const ch = CH_ICON[c.channel] ?? CH_ICON.meta;
+                  return (
+                    <div key={`${c.channel}:${c.key}`} className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[15px]" style={{ color: ch.color }}>
+                          {ch.icon}
+                        </span>
+                        <span className="text-[13.5px] text-ink truncate flex-1" title={c.name}>
+                          {c.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="font-mono text-[12px] text-faint">
+                          {fmtCHF(c.spend)} CHF
+                          {c.revenue != null && c.revenue > 0 && ` → ${fmtCHF(c.revenue)}`}
+                        </span>
+                        <span className="ml-auto">
+                          <CampaignLabelSelect
+                            channel={c.channel}
+                            campaignKey={c.key}
+                            campaignName={c.name}
+                            current={c.label}
+                            labels={labels}
+                            source={c.label_source}
+                          />
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </ScrollList>
+            </div>
+          </details>
+        )}
       </div>
     </section>
   );
