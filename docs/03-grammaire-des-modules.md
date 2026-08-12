@@ -146,6 +146,17 @@ mesurable, on le dit dans un `note` — on n'affiche pas 0,0. C'est pour ça qu'
 dépense constatée et un budget promis ne partagent jamais la même forme : un
 anneau dont les parts mélangeraient les deux serait illisible et faux.
 
+**Une limite de mesure se vérifie contre les chiffres affichés à côté d'elle.**
+Un `note` est une affirmation comme une autre, et rien ne la vérifiait : la
+carte « Audio Tour » écrivait « 820 CHF revenu · 0,2 ROAS » puis, deux lignes
+plus bas, « le ROAS de ce thème n'est pas mesurable ». C'est le pied du module
+qui ment, et il ment plus gravement qu'un chiffre — parce qu'on le lit comme la
+phrase honnête du module. L'affichage tient donc la note pour une hypothèse à
+confronter, jamais pour un texte à recopier : `noteSerie()` la supprime dès que
+le thème porte un revenu. Un producteur de données qu'on ne peut pas corriger
+tout de suite (ici le worker, dont le rapport ne se régénère qu'à la demande) ne
+dispense pas d'afficher juste aujourd'hui.
+
 **Toute comparaison exclut le jour en cours.** Les fenêtres s'ancrent sur le
 dernier jour plein.
 
@@ -287,6 +298,7 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
 | toute rangée en `overflow-x-auto` | une rangée coupée à droite ne se devine pas — elle se lit comme une mise en page ratée, pas comme une invitation à glisser | `.defile-x`, le même mécanisme tourné d'un quart de tour |
 | `theme-card` (les conseils) | `sm:grid-cols-2` : trois conseils faisaient deux lignes dont la seconde à moitié vide, et le troisième passait sous la ligne de flottaison de la carte | une rangée unique en `.defile-x`, largeur fixe et hauteur commune, `scroll-snap` par carte — trois conseils s'alignent donc se comparent |
+| `theme-card` (la note du ROAS) | « 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas, « le ROAS de ce thème n'est pas mesurable » | `noteSerie(serie, revenu)` — la note ne s'affiche que si le thème n'a AUCUN revenu. Le juge est le revenu, pas la présence d'un ROAS calculé |
 | `objectif-select` → `objectif-theme` | un `<details>` écrit à même la page, flottant sous le résumé, à 600 px des cartes qu'il pondère | module à part, posé au-dessus de la première carte de thème ; il prend son thème et son objectif en PROPS, jamais un état global — un objectif par thème se branchera sans le toucher |
 | `line-chart` (repères) | deux étiquettes de texte se chevauchaient et se coupaient en haut du graphe ; le plafond de deux repères payait la lisibilité en information | le repère devient un point de 7 px, nommé au survol (bulle immédiate, `focus-within` pour le doigt) — plafond et comptage en pied supprimés |
 | page Coûts (les modules) | tous écrits dans `app/couts/page.tsx`, donc invisibles hors session connectée et invérifiables autrement qu'en production | extraits en `components/couts-modules.tsx` ; la page compose, elle ne dessine plus rien |

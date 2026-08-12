@@ -147,6 +147,58 @@ export type TrackedAction = {
 
 export type ThemeRow = { label: string; spend: number; rev: number };
 
+/**
+ * LE REVENU RÉELLEMENT CONSTATÉ SUR UN THÈME, quelle que soit la source qui le
+ * porte.
+ *
+ * Deux endroits du payload le connaissent, et ils ne sont pas remplis par le
+ * même chemin : `themes.rows[].rev` (la ventilation GA4 du compte) et
+ * `themes_focus[].summary.revenue` (le bilan de la carte). Un rapport peut
+ * porter l'un sans l'autre selon la version du worker qui l'a publié — on prend
+ * donc le plus grand des deux plutôt que d'en élire un et de rater le cas où
+ * c'est l'autre qui sait.
+ */
+export function revenuTheme(theme: ThemeFocus, rows?: ThemeRow[] | null): number {
+  const bilan = theme.summary?.revenue ?? 0;
+  const ligne = (rows ?? []).find((r) => r.label === theme.label)?.rev ?? 0;
+  return Math.max(bilan > 0 ? bilan : 0, ligne > 0 ? ligne : 0);
+}
+
+/**
+ * LA NOTE DE LA SÉRIE, MAIS SEULEMENT QUAND ELLE EST VRAIE.
+ *
+ * Défaut vu sur le rapport de David : la carte « Audio Tour » affichait
+ * « 4 521 CHF dépensé · 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas,
+ * « Le ROAS de ce thème n'est pas mesurable ». Les deux ne peuvent pas être
+ * vrais en même temps.
+ *
+ * La cause est dans le worker (`_theme_series`, `saas/worker/build_report.py`) :
+ * quand l'objectif est « ventes », aucune branche n'essaie de construire une
+ * série de ROAS — on tombe directement sur `has_spend`, la courbe passe en
+ * « Dépense (CHF) » et la note est écrite sans qu'on ait regardé si le thème a
+ * du revenu. Le rapport ne se régénérant qu'à la demande, la correction du
+ * worker ne suffirait pas : les payloads déjà publiés porteraient la note
+ * fausse pendant des semaines. Pulse la filtre donc à l'affichage.
+ *
+ * Le juge est le revenu du thème, pas la présence d'un ROAS : un thème avec du
+ * revenu et sans ROAS calculé n'est pas un thème « non mesurable », c'est un
+ * thème dont on n'a pas fait la division.
+ *
+ * Le test sur « ROAS » n'est pas une précaution de style : c'est le seul motif
+ * de note que le worker écrit aujourd'hui, mais il en écrira d'autres — « on
+ * suit la portée faute d'engagement », par exemple — et celles-là ne sont pas
+ * démenties par un revenu.
+ */
+export function noteSerie(
+  serie: ThemeSeries | null | undefined,
+  revenu: number
+): string | null {
+  const note = serie?.note;
+  if (!note) return null;
+  if (revenu > 0 && /roas/i.test(note)) return null;
+  return note;
+}
+
 // Constat de la vision globale (« Ce qui fonctionne pour toi ») — clé stable,
 // verdict du client persistant (insight_feedback).
 export type VisionConstat = {

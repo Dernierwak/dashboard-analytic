@@ -1,7 +1,10 @@
 import {
   fmtCHF,
+  noteSerie,
+  revenuTheme,
   type ChangementPlateforme,
   type ThemeFocus,
+  type ThemeRow,
   type TrackedAction,
 } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
@@ -116,6 +119,7 @@ export function ThemeCard({
   actions,
   archived,
   changements = [],
+  rows,
   fenetre,
   decroche = false,
   labels,
@@ -129,6 +133,9 @@ export function ThemeCard({
   archived: TrackedAction[];
   /** Ce qui a bougé sur les plateformes pour CE thème. */
   changements?: ChangementPlateforme[];
+  /** La ventilation par thème du rapport — l'autre endroit qui connaît le
+   *  revenu du thème, et le seul à le connaître sur les anciens payloads. */
+  rows?: ThemeRow[] | null;
   /** « depuis le 1 jan » — la fenêtre du bilan, qui n'est PAS celle de la courbe. */
   fenetre: string | null;
   decroche?: boolean;
@@ -150,6 +157,12 @@ export function ThemeCard({
 
   const som = theme.summary;
   const hasRoas = som.roas !== null && som.roas !== undefined;
+  // LE REVENU EST LE JUGE DE LA NOTE. Le worker écrit « le ROAS de ce thème
+  // n'est pas mesurable » sans regarder si le thème a du revenu : la carte
+  // affichait donc « 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas, que
+  // le ROAS n'était pas mesurable. On ne garde la note que quand elle est vraie.
+  const revenu = revenuTheme(theme, rows);
+  const note = noteSerie(s, revenu);
   const exclure = s && s.metric_label.startsWith("Engagement") ? "Engagement" : null;
   const cases: { cle: string; valeur: string; unite?: string }[] = [];
   if (som.spend != null && som.spend > 0) {
@@ -270,8 +283,11 @@ export function ThemeCard({
                 {fenetre ? `Ce bilan couvre tout ${fenetre}` : "Ce bilan couvre tout l'historique"}
               </p>
               {/* La note de la série dit déjà pourquoi le ROAS manque, sous la
-                  courbe : deux fois la même explication, c'est une de trop. */}
-              {!hasRoas && !s?.note && som.spend != null && som.spend > 0 && (
+                  courbe : deux fois la même explication, c'est une de trop.
+                  Et ce texte-ci ne s'écrit que si le thème n'a AUCUN revenu :
+                  « revenu inconnu » sous un revenu affiché serait le même
+                  mensonge que la note du worker, une ligne plus haut. */}
+              {!hasRoas && !note && revenu === 0 && som.spend != null && som.spend > 0 && (
                 <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
                   Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
                   conversions — donc pas de ROAS ici, plutôt qu&apos;un ROAS faux.
@@ -296,9 +312,9 @@ export function ThemeCard({
                 avec le plafond de deux étiquettes qui le rendait nécessaire :
                 chaque repère porte maintenant son nom au survol du point. Un
                 nombre qui ne dit ni quoi ni quand n'était qu'un pis-aller. */}
-            {s.note && (
+            {note && (
               <p className="text-[11px] text-warn leading-relaxed bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5 mt-2 mx-1">
-                {s.note}
+                {note}
               </p>
             )}
           </div>

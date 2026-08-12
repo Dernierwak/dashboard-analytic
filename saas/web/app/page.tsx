@@ -392,6 +392,7 @@ export default async function Page() {
                   actions={data.actions}
                   archived={data.actionsArchived}
                   changements={chgParTheme(t.label)}
+                  rows={report?.themes?.rows ?? null}
                   fenetre={report?.vision?.period_label || null}
                   decroche={pire?.label === t.label}
                   labels={data.labels}
