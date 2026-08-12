@@ -1,5 +1,4 @@
 import { fmtCHF } from "@/lib/report";
-import type { ThemeRow } from "@/lib/report";
 import { teinteLabel, NEUTRE } from "@/lib/palette";
 
 // « Où part ton argent » — l'anneau de répartition par thème.
@@ -8,19 +7,33 @@ import { teinteLabel, NEUTRE } from "@/lib/palette";
 // lit d'un coup d'œil : on voit tout de suite si la dépense est concentrée sur
 // un thème ou éparpillée sur dix. C'est le complément visuel de la boussole —
 // elle dit COMMENT ça se passe, celui-ci dit OÙ ça se joue.
-
-
+//
+// Il sert deux pages : le rapport hebdomadaire et les coûts. D'où la forme
+// minimale de `rows` — un nom, un montant. `ThemeRow` la satisfait sans rien
+// changer, et la page Coûts n'a pas eu à fabriquer un faux `ThemeRow` avec un
+// revenu à zéro pour se servir de l'anneau.
 
 export function ThemeDonut({
   rows,
-  orphan,
+  orphan = 0,
   univers,
+  titre = "Où part ton argent",
+  sousTitre,
+  note,
+  montants = false,
 }: {
-  rows: ThemeRow[];
-  orphan: number;
+  rows: { label: string; spend: number }[];
+  /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». */
+  orphan?: number;
   // La liste maîtresse des thèmes : elle fixe la couleur de chacun, pour qu'un
   // thème garde la sienne d'un module à l'autre et d'une semaine à l'autre.
   univers?: string[];
+  titre?: string;
+  /** La fenêtre de lecture, quand elle n'est pas évidente (page Coûts). */
+  sousTitre?: string;
+  note?: string;
+  /** Écrire le montant à côté du pourcentage, et pas seulement la part. */
+  montants?: boolean;
 }) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
   if (tries.length === 0) return null;
@@ -47,7 +60,8 @@ export function ThemeDonut({
   return (
     <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6">
       <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
-        Où part ton argent
+        {titre}
+        {sousTitre && <span className="text-faint/70 normal-case tracking-normal"> · {sousTitre}</span>}
       </div>
 
       <div className="flex items-center gap-5 sm:gap-7 flex-wrap sm:flex-nowrap justify-center sm:justify-start">
@@ -84,9 +98,11 @@ export function ThemeDonut({
           </div>
         </div>
 
-        {/* Sur toute la largeur, une légende en colonne unique laisse un grand
-            vide à droite. Elle s'étale en colonnes dès qu'il y a la place. */}
-        <div className="min-w-0 flex-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Sur téléphone, la légende passe SOUS l'anneau (`basis-full`). À côté,
+            il lui restait 150 px : « Audio Tour » s'y écrivait « Aud… », et un
+            nom de thème tronqué ne nomme plus rien. Sur grand écran elle
+            reprend sa place à droite et s'étale en colonnes. */}
+        <div className="min-w-0 basis-full sm:basis-auto sm:flex-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {arcs.map((a) => (
             <div key={a.label} className="flex items-baseline gap-2">
               <span
@@ -95,7 +111,11 @@ export function ThemeDonut({
               />
               <span className="text-[12.5px] text-ink truncate">{a.label}</span>
               <span className="ml-auto font-mono text-[12px] text-muted shrink-0">
-                {Math.round(a.frac * 100)} %
+                {montants && <span className="text-ink">{fmtCHF(a.spend)}</span>}
+                {montants && " "}
+                <span className={montants ? "text-faint" : undefined}>
+                  {Math.round(a.frac * 100)} %
+                </span>
               </span>
             </div>
           ))}
@@ -103,8 +123,8 @@ export function ThemeDonut({
       </div>
 
       <p className="text-[11px] text-faint leading-relaxed mt-3.5">
-        Dépense cumulée par thème. Un thème qui prend la moitié du budget mérite la
-        moitié de ton attention — c&apos;est rarement le cas.
+        {note ??
+          "Dépense cumulée par thème. Un thème qui prend la moitié du budget mérite la moitié de ton attention — c'est rarement le cas."}
       </p>
     </div>
   );

@@ -44,8 +44,6 @@ export async function startTracking(a: {
     pourquoi?: string;
     verifier?: string;
     effort?: string | null;
-    /** Ce que l'utilisateur pariait AVANT de savoir. */
-    pari?: "hausse" | "stable" | "baisse";
   } | null;
 }): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
@@ -164,47 +162,6 @@ export async function resolveAction(
       );
     }
   }
-  revalidatePath("/");
-  return { ok: true };
-}
-
-/**
- * Le pari — ce que TU penses qu'il va se passer, avant de savoir.
- *
- * C'est la seule forme de récompense de cette section qui ne peut pas être
- * trichée : la réponse est calculée par le worker quatorze jours plus tard, pas
- * produite par le clic. Compter les actions appliquées récompense le geste — et
- * comme cocher « fait » écrit `done_at` et une baseline dans `suivi_actions`,
- * cocher pour faire monter un compteur fabrique un verdict faux, qui repondère
- * ensuite les conseils. Le pari, lui, ne rapporte que si on a vu juste.
- *
- * Stocké dans `detail`, qui est déjà du jsonb : aucune migration.
- */
-export async function saveParier(
-  id: string,
-  sens: "hausse" | "stable" | "baisse"
-): Promise<{ ok: boolean; message?: string }> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  const lu = await supabase
-    .from("suivi_actions")
-    .select("detail")
-    .eq("id", id)
-    .eq("user_id", compte.uid)
-    .limit(1);
-  if (lu.error)
-    return { ok: false, message: "Impossible d'enregistrer ton pari — réessaie." };
-
-  const detail = { ...((lu.data?.[0]?.detail as Record<string, unknown>) ?? {}), pari: sens };
-  const r = await supabase
-    .from("suivi_actions")
-    .update({ detail })
-    .eq("id", id)
-    .eq("user_id", compte.uid);
-  if (r.error) return { ok: false, message: "Impossible d'enregistrer ton pari — réessaie." };
   revalidatePath("/");
   return { ok: true };
 }

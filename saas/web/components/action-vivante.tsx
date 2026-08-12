@@ -3,9 +3,8 @@
 import { useState, useTransition } from "react";
 import { resolveAction } from "@/app/actions";
 import type { TrackedAction } from "@/lib/report";
-import { Effet, Etape, VuJuste, dateCourte, etat } from "@/components/etat-action";
+import { Effet, Etape, dateCourte, etat } from "@/components/etat-action";
 import { Erreur } from "@/components/erreur";
-import { Pari } from "@/components/pari";
 
 // UNE ACTION QUI COURT ENCORE, dans le rail de la carte de thème.
 //
@@ -91,7 +90,6 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
         )}
       </div>
 
-      {aJuger && <VuJuste a={a} />}
       {enObservation && <Etape a={a} />}
 
       {/* Le conseil aura disparu du rapport dans deux jours : sans son détail
@@ -122,16 +120,6 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
             </div>
           </details>
         )}
-
-      {a.status === "running" && !fait && (
-        <Pari
-          id={a.id}
-          metricLabel={a.metric_label}
-          checkAt={a.check_at}
-          pariInitial={a.detail?.pari ?? null}
-          compact
-        />
-      )}
 
       <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
         {a.status === "running" && !fait && (

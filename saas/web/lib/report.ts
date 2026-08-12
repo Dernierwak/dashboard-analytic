@@ -135,8 +135,6 @@ export type TrackedAction = {
     pourquoi?: string;
     verifier?: string;
     effort?: string | null;
-    /** Ce que l'utilisateur pariait AVANT de savoir — voir saveParier. */
-    pari?: "hausse" | "stable" | "baisse";
   } | null;
   /**
    * LE POINT D'ÉTAPE À SEPT JOURS — à mi-parcours, pas un verdict.
@@ -518,7 +516,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // L'ACTION QU'UN CONSEIL A PRODUITE, indexée par sa clé.
   //
   // La carte du conseil ne recevait qu'un booléen « déjà pris ». Il lui faut
-  // désormais l'objet : son `id` (pour le pari), son état, son échéance. Bâti
+  // désormais l'objet : son `id` (pour la résoudre), son état, son échéance. Bâti
   // sur les VIVANTES seulement — une action rangée ne re-verrouille pas son
   // conseil, il peut être repris. `trackRes` est trié `decided_at` décroissant,
   // donc la première vue est la plus récente.

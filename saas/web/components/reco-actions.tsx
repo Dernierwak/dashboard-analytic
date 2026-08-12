@@ -5,7 +5,6 @@ import { saveRecoFeedback, saveComment, startTracking, resolveAction, type React
 import type { TrackedAction } from "@/lib/report";
 import { dateCourte } from "@/components/etat-action";
 import { Erreur } from "@/components/erreur";
-import { Pari } from "@/components/pari";
 
 export type TrackInfo = {
   title: string;
@@ -21,7 +20,7 @@ export type TrackInfo = {
 //
 // « ▶ Je le teste » créait une action qui partait dans une SECTION AILLEURS sur
 // la page. Elle n'existe plus : la carte porte maintenant l'état de sa propre
-// décision — prise, pariée, faite — et l'action apparaît en face, dans le rail
+// décision — prise, faite — et l'action apparaît en face, dans le rail
 // de la colonne de droite. Il n'y a plus de « tout en haut » où aller.
 //
 // Le « ✓ Je l'ai fait » est ici ET dans le rail. Ce n'est pas une hésitation :
@@ -79,9 +78,10 @@ export function RecoActions({
             nouveau. Ils sont à droite de chaque courbe, sous « Tes actions sur ce thème ».
           </div>
         ) : isTracked ? (
-          /* PRISE. La carte porte l'état, et le pari — c'est ici qu'on parie,
-             au moment où l'on décide. Parier en relisant l'historique, ce
-             serait parier après coup. */
+          /* PRISE. La carte porte l'état de sa propre décision : quand elle a
+             été prise, quand elle a été faite, quand le verdict tombe. Le sens
+             — ça monte, ça baisse, ça ne bouge pas — n'est jamais demandé : il
+             se lit dans les chiffres, à sept jours puis à quatorze. */
           <div className="mb-2 rounded-lg border border-brand/25 bg-brand/[0.05] px-3 py-2.5">
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className="text-[12px] font-semibold text-brand">
@@ -115,14 +115,11 @@ export function RecoActions({
               )}
             </div>
 
-            {action && !fait && (
-              <Pari
-                id={action.id}
-                metricLabel={action.metric_label}
-                checkAt={action.check_at}
-                pariInitial={action.detail?.pari ?? null}
-                compact
-              />
+            {action && !fait && action.metric_label && (
+              <div className="text-[11.5px] text-muted mt-1">
+                On suivra <span className="font-semibold text-ink">{action.metric_label}</span> —
+                réponse le {dateCourte(action.check_at)}.
+              </div>
             )}
 
             {action && !fait && (

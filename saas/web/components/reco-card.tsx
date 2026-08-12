@@ -104,7 +104,7 @@ export function RecoCard({
       <RecoActions
         // La `key` dépend de l'état : sans elle, le `useState` local survit à
         // `revalidatePath` et la carte reste figée pendant que le rail bouge.
-        key={`${action?.id ?? "libre"}:${action?.status ?? ""}:${action?.detail?.pari ?? ""}`}
+        key={`${action?.id ?? "libre"}:${action?.status ?? ""}`}
         recoKey={r.key}
         current={current}
         comment={comment}

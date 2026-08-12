@@ -96,7 +96,7 @@ export function RailActions({
           // La `key` dépend de l'état : sans elle, l'état local du composant
           // client survit à `revalidatePath` et les deux vues du même objet
           // divergent jusqu'au rechargement.
-          <ActionVivante key={`${a.id}:${a.status}:${a.detail?.pari ?? ""}`} a={a} />
+          <ActionVivante key={`${a.id}:${a.status}`} a={a} />
         ) : (
           <div className="text-[11.5px] mt-0.5 flex items-baseline gap-2 flex-wrap">
             <span className={`font-semibold ${e.cls}`}>{e.label}</span>

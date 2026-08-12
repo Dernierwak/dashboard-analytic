@@ -121,13 +121,6 @@ export function Pastille({ e }: { e: Etat }) {
   );
 }
 
-/** Les trois paris possibles, et le mot qu'on emploie pour chacun. */
-export const SENS = [
-  { cle: "hausse" as const, mot: "monter" },
-  { cle: "stable" as const, mot: "ne rien changer" },
-  { cle: "baisse" as const, mot: "baisser" },
-];
-
 // CE QU'UNE ACTION A DONNÉ, en une ligne.
 //
 // L'historique disait « date · titre · état » : le classement d'une action,
@@ -157,35 +150,6 @@ export function Effet({ a }: { a: TrackedAction }) {
         </span>
       )}
     </span>
-  );
-}
-
-// LA RÉPONSE AU PARI. Elle vaut plus que le verdict seul : « ça a marché » dit
-// ce que les chiffres ont fait, « tu avais vu juste » dit ce que TU as compris.
-// C'est la seule chose de la page qui mesure un apprentissage.
-export function VuJuste({ a }: { a: TrackedAction }) {
-  const pari = a.detail?.pari;
-  if (!pari || a.delta === null || a.delta === undefined) return null;
-  const reel = Math.abs(a.delta) < 0.5 ? "stable" : a.delta > 0 ? "hausse" : "baisse";
-  const juste = reel === pari;
-  const mot = SENS.find((x) => x.cle === pari)?.mot ?? pari;
-  return (
-    <div className={`text-[11.5px] font-semibold mt-1 ${juste ? "text-pos" : "text-muted"}`}>
-      {juste ? (
-        <>
-          ✓ Tu avais vu juste
-          <span className="text-faint font-normal"> — c&apos;est bien ce qui s&apos;est passé.</span>
-        </>
-      ) : (
-        <>
-          Tu pariais « {mot} »
-          <span className="text-faint font-normal">
-            {" "}— ce n&apos;est pas ce qui s&apos;est passé. C&apos;est là qu&apos;on apprend
-            quelque chose.
-          </span>
-        </>
-      )}
-    </div>
   );
 }
 

@@ -133,16 +133,18 @@ monte au niveau de la section.
   de l'état — sinon l'état local d'un composant client survit à
   `revalidatePath` et les deux vues divergent jusqu'au rechargement ;
 - un bloc vide affiché pour dire qu'il est vide — **une exception** : quand le
-  vide enseigne le mécanisme (`action-top` explique comment une action arrive
-  dans la liste, et c'est le bon moment pour l'apprendre).
+  vide enseigne le mécanisme (le rail d'une carte de thème explique comment une
+  action y arrive, et c'est le bon moment pour l'apprendre ; l'exemple d'origine
+  était `action-top`, supprimé depuis, la règle lui a survécu).
 
 ---
 
-## Deux règles de fond qui priment sur l'esthétique
+## Les règles de fond, qui priment sur l'esthétique
 
 **Aucun chiffre non mesuré présenté comme mesuré.** Quand une valeur n'est pas
-mesurable, on le dit dans un `note` — on n'affiche pas 0,0. C'est pour ça que
-l'anneau (le réel) et la répartition budgétaire (le prévu) ne fusionnent pas.
+mesurable, on le dit dans un `note` — on n'affiche pas 0,0. C'est pour ça qu'une
+dépense constatée et un budget promis ne partagent jamais la même forme : un
+anneau dont les parts mélangeraient les deux serait illisible et faux.
 
 **Toute comparaison exclut le jour en cours.** Les fenêtres s'ancrent sur le
 dernier jour plein.
@@ -152,6 +154,25 @@ carte de thème l'a appris à ses dépens : « 103 CHF cette semaine » voisinai
 « 4 520 dépensé · ROAS 0,2 » sans que rien ne dise que le second couvre tout
 l'historique depuis janvier. Deux fenêtres collées et muettes se lisent comme
 une seule — c'est un chiffre présenté pour autre chose que ce qu'il mesure.
+
+**Un nombre dérivé dit d'où il vient, à l'endroit où il s'affiche.** Le défaut
+fondateur de la page Coûts : un compte qui avait réglé 2 000 sur Meta et 1 000
+sur Google lisait « enveloppe : 3 000 CHF », un montant qu'il n'avait jamais
+tapé, produit par une règle de préséance que rien n'écrivait. Toute valeur
+calculée par défaut porte donc sa provenance en pied (`sourceBudgetAnnuel`,
+`sourceBudgetMois`), et le texte CHANGE avec la branche empruntée — une phrase
+générique du genre « calculé automatiquement » ne vaut rien.
+
+**Un seuil ne survit pas à un filtre qui ne le concerne pas.** Dès qu'on
+restreint la courbe des coûts à deux thèmes, le trait du budget disparaît : il
+porte sur tout le compte, et le laisser ferait passer n'importe quel
+sous-ensemble pour vertueux. Le module écrit alors pourquoi il n'y a plus de
+trait, au lieu de le laisser manquer en silence.
+
+**Une agrégation dit ce qu'elle a agrégé d'incomplet.** Une série hebdomadaire
+finit sur la semaine en cours, mécaniquement plus basse : sans un mot, elle se
+lit comme un effondrement de la dépense. Même famille que « toute comparaison
+exclut le jour en cours », appliquée à la forme plutôt qu'au delta.
 
 ---
 
@@ -231,8 +252,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 ## Où on en est
 
 **Conformes sans retouche** — c'est sur eux qu'on s'appuie :
-`CampaignTable`, `ByLabelTable`, `Repartition`, `apprentissage`,
-`reco-card`, et `frise-semaine` hors son pied.
+`CampaignTable`, `ByLabelTable`, `apprentissage`, `reco-card`, et
+`frise-semaine` hors son pied.
 
 **Corrigés lors de l'établissement de cette grammaire :**
 
@@ -264,6 +285,11 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `tracking-section` | le lexique des états vivait dans le module | extrait en `components/etat-action.tsx`, partagé avec la carte de thème |
 | `action-top` + `tracking-section` | deux sections pour un objet qui appartient au thème ; le conseil et son résultat à 900 px | **supprimés (615 lignes)** — le cycle de vie entier passe dans la colonne droite de `theme-card` (`rail-actions` + `action-vivante`), avec un filet « hors thème » pour les actions qu'aucune carte ne prend |
 | toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
+| page Coûts (les modules) | tous écrits dans `app/couts/page.tsx`, donc invisibles hors session connectée et invérifiables autrement qu'en production | extraits en `components/couts-modules.tsx` ; la page compose, elle ne dessine plus rien |
+| `Repartition` | une barre empilée de budgets PRÉVUS, là où la question posée est « combien a été dépensé par thème » | **supprimée** — l'anneau prend sa place pour le réel, et le prévu redescend dans la liste des thèmes (une enveloppe par thème) plus une ligne de réconciliation dans le module de l'année |
+| `theme-donut` | typé sur `ThemeRow`, donc réservé au rapport hebdomadaire | prend `{label, spend}[]` — `ThemeRow` le satisfait sans rien changer, et la page Coûts s'en sert sans fabriquer de faux revenu à zéro. Sur téléphone la légende passe SOUS l'anneau : à côté, il lui restait 150 px et « Audio Tour » s'écrivait « Aud… » |
+| `EnveloppeAnnee` (page Coûts) | le total annuel s'affichait sans dire d'où il venait | provenance écrite en pied, et le texte change avec la branche empruntée |
+| `Tuile` « Dépensé / Enveloppe / Reste » | trois lectures du même mois, dont deux dérivées l'une de l'autre | trois cadrages qui ne se déduisent pas : budget annuel, budget mensuel, moyenne quotidienne réelle — deux promesses et un fait |
 
 **Reste à traiter :**
 
@@ -274,13 +300,20 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 
 ---
 
-## Deux fusions à ne PAS faire
+## Une fusion à ne PAS faire
 
-Elles se ressemblent, elles ne disent pas la même chose :
-
-- **`theme-donut` et `Repartition`** — l'un montre le réel, l'autre le prévu ;
 - **`frise-semaine` et la courbe d'une carte de thème** — l'une porte du temps,
   l'autre une métrique ; aucune n'est un cas particulier de l'autre ;
+
+*(Une deuxième figurait ici — `theme-donut` et `Repartition`, « le réel et le
+prévu ». Elle n'a pas été enfreinte : `Repartition` a été supprimée le 12 août
+2026, et la fusion n'a pas eu lieu pour autant. Le RÉEL prend la forme de
+l'anneau ; le PRÉVU descend d'un cran, dans la liste des thèmes où chaque
+enveloppe se règle, plus une ligne de réconciliation en pied du module de
+l'année. La règle protégeait deux natures de nombre, pas deux composants : elle
+tient encore, elle a seulement changé de support. Ce qui l'aurait enfreinte,
+c'est un anneau dont les parts auraient mélangé dépense et budget.)*
+
 *(Une troisième figurait ici — `action-top` et `tracking-section`, « le vivant
 et la trace ». Elle est tombée le 11 août 2026. La règle tenait tant qu'une
 action était un objet du COMPTE ; elle tombe le jour où elle devient un objet du
@@ -319,10 +352,19 @@ Ce qu'on fait à la place, et qui tient la même promesse :
 - **le rendez-vous** — « prochain verdict le 24 août ». On revient pour un
   résultat en suspens, pas pour un badge. Une app hebdomadaire ne se fait pas
   ouvrir par une série ;
-- **le pari** — avant d'agir, dire ce qu'on pense qu'il va se passer. Quatorze
-  jours plus tard, le produit ne dit plus « ça a marché » mais « tu avais vu
-  juste ». C'est la seule mesure d'apprentissage du produit, et elle est
-  impossible à tricher.
+- **le point d'étape** — à sept jours, « ça penche dans le bon sens, +50 % ;
+  rien n'est joué, le verdict tombe le 26 ». Calculé, jamais déclaré.
+
+*(Le **pari** figurait ici — avant d'agir, cocher « monter / ne rien changer /
+baisser », et découvrir quatorze jours plus tard si on avait vu juste. Retiré le
+12 août 2026, sur demande de David, et la demande était juste : le sens se
+DÉDUIT des chiffres, à sept jours puis à quatorze, donc le demander à
+l'utilisateur lui faisait taper une information que le produit possède déjà.
+Une récompense qui ne se triche pas ne vaut pas qu'on ajoute un geste par
+conseil. Ce qu'on perd est réel et il faut l'écrire : c'était la seule mesure
+d'APPRENTISSAGE du produit — « tu avais vu juste » disait ce que l'utilisateur
+avait compris, là où « ça a marché » ne dit que ce que les chiffres ont fait. Si
+on veut la retrouver un jour, ce sera sans un clic de plus dans le parcours.)*
 
 Le classement entre comptes reste refusé tant qu'il n'y a pas (a) une cohorte
 comparable, (b) un plancher de n, et (c) une clause de contrat. Comparer un
@@ -332,6 +374,48 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**12 août 2026 (4)** — **Le pari s'en va, parce que la machine sait répondre.**
+
+« À ton avis, le ROAS va monter, ne rien changer, ou baisser ? » — trois boutons
+sous chaque conseil pris. Retirés. Le raisonnement de David tient en une ligne :
+*ça se fait automatiquement*. Le point d'étape à sept jours et le verdict à
+quatorze produisent exactement ce sens-là, à partir des chiffres. Demander à
+l'utilisateur de saisir une donnée que le produit calcule, c'est un geste par
+conseil pour rien.
+
+La règle générale qui en sort : **on ne demande jamais une information qu'on
+sait dériver.** Elle prime sur l'argument qui avait fait naître le pari (une
+récompense non trichable), parce qu'un parcours se juge d'abord au nombre de
+gestes qu'il exige. Ce qui disparaît est noté dans « Ce qu'on gamifie » : c'était
+la seule mesure d'apprentissage du produit.
+
+**12 août 2026 (3)** — **La page Coûts se range sur l'ANNÉE.**
+
+Elle pilotait le mois. C'était le mauvais niveau : une enveloppe publicitaire se
+décide une fois — un exercice, une saison, un salon — et le reste du temps on
+vérifie qu'on la tient. Le mois et le jour deviennent des LECTURES de l'année.
+
+Le gain n'est pas théorique, il se compte en champs de saisie : quand aucun
+budget mensuel n'est posé, le mois se déduit de l'annuel (÷ 12) au lieu de
+valoir zéro. **Un seul nombre à taper fait vivre le mois, le jour, les alertes
+et toutes les barres de la page.**
+
+Trois lectures, et pas une de plus : tenir l'année (trois cadrages qui ne se
+déduisent pas l'un de l'autre — budget annuel, budget mensuel, moyenne
+quotidienne réelle — puis la barre dépensé/promis avec le trait du calendrier) ;
+où ça part (filtrable par période et par thèmes : l'anneau dit la répartition,
+la courbe dit le rythme) ; par thème (une enveloppe d'année par thème, et c'est
+la seule décision de la page).
+
+Quatre règles en sortent, toutes déjà remontées dans « Deux règles de fond » :
+un nombre dérivé dit d'où il vient **à l'endroit où il s'affiche**, et la phrase
+change avec la branche empruntée ; un seuil ne survit pas à un filtre qui ne le
+concerne pas (le trait du budget disparaît dès qu'on restreint à deux thèmes, et
+le module écrit pourquoi) ; une agrégation dit ce qu'elle a agrégé d'incomplet
+(la dernière semaine est en cours, donc plus basse) ; et les modules d'une page
+protégée par une session vivent dans `components/`, pas dans la page — sinon ils
+ne sont vérifiables qu'en production.
 
 **12 août 2026 (2)** — **Une action est enfin mesurée là où elle a eu lieu.**
 
