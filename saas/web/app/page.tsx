@@ -12,6 +12,7 @@ import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { RailActions } from "@/components/rail-actions";
+import { NoteAjout } from "@/components/note-ajout";
 import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 import { Triangle } from "@/components/pente";
@@ -221,7 +222,11 @@ export default async function Page() {
   const orphelinesVivantes = orphelines.some(
     (a) => a.status === "running" || a.status === "done"
   );
-  const filetPlein = orphelines.length + chgOrphelins.length > 0;
+  // Le filet s'affiche aussi quand il est VIDE et qu'aucun thème n'a de carte :
+  // sans lui, un compte qui n'a rien classé n'a aucun endroit où écrire une
+  // note — et une note sans thème ne pourrait jamais naître, faute d'un bloc
+  // pour l'accueillir.
+  const filetPlein = orphelines.length + chgOrphelins.length > 0 || cartes.length === 0;
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
@@ -443,6 +448,7 @@ export default async function Page() {
                 changements={chgOrphelins}
                 themeCourant={null}
               />
+              <NoteAjout theme={null} />
               <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
                 Ces actions ne sont rattachées à aucun de tes thèmes suivis : prises depuis
                 les réglages de base, ou sur un thème sorti de tes priorités.

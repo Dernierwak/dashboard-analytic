@@ -209,6 +209,78 @@ export async function saveParier(
   return { ok: true };
 }
 
+// TA PROPRE NOTE dans le fil.
+//
+// Le fil montre ce que Pulse a conseillé et ce que les plateformes ont fait.
+// Il manquait ce que TOI tu as fait et que personne ne peut deviner : « refait
+// les visuels », « changé le ciblage à la main », « un concurrent a lancé une
+// promo ». Sans ça, dans trois semaines, une courbe qui a bondi reste sans
+// explication.
+//
+// Une note n'est PAS une action : ni indicateur, ni baseline, ni échéance —
+// aucun verdict ne peut tomber dessus. `kind = 'note'` porte cette différence,
+// et `check_at = decided_at` fait qu'elle n'attend rien.
+export async function saveNote(
+  texte: string,
+  theme: string | null,
+  jour?: string
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const titre = texte.trim().slice(0, 180);
+  if (!titre) return { ok: false, message: "Écris quelque chose d'abord." };
+  // Le jour est libre — on note souvent le lendemain ce qu'on a fait la veille.
+  // Mais jamais dans le futur : une note est un fait, pas un projet.
+  const aujourdhui = isoDate(new Date());
+  const quand = jour && /^\d{4}-\d{2}-\d{2}$/.test(jour) && jour <= aujourdhui
+    ? jour
+    : aujourdhui;
+
+  const r = await supabase.from("suivi_actions").insert({
+    user_id: compte.uid,
+    // Unique par construction : deux notes du même jour ne peuvent pas se
+    // heurter sur la contrainte (user_id, reco_key, decided_at).
+    reco_key: `note:${crypto.randomUUID()}`,
+    title: titre,
+    theme,
+    kind: "note",
+    decided_at: quand,
+    // Elle n'attend aucun verdict : son échéance est le jour même.
+    check_at: quand,
+    status: "archived",
+  });
+  if (r.error) {
+    // La colonne `kind` peut ne pas encore exister (migration pas passée).
+    if (String(r.error.message || "").includes("kind"))
+      return {
+        ok: false,
+        message: "La migration des notes n'est pas encore passée en base.",
+      };
+    return { ok: false, message: "Ta note n'a pas pu être enregistrée — réessaie." };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function deleteNote(id: string): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const r = await supabase
+    .from("suivi_actions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", compte.uid)
+    .eq("kind", "note");
+  if (r.error) return { ok: false, message: "Impossible de retirer cette note — réessaie." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // Enregistre / bascule la réaction d'un conseil. Re-cliquer la réaction active
 // la retire (toggle) ; en choisir une autre la remplace. Même table que le
 // Streamlit (reco_feedback) → la boucle de la preuve voit aussi les « Fait »

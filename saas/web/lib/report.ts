@@ -114,6 +114,9 @@ export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolea
 export type TrackedAction = {
   id: string;
   reco_key?: string;
+  /** `note` = écrite à la main, elle ne sera jamais jugée. Absent avant la
+   *  migration `suivi_actions_notes.sql` — tout est alors une `action`. */
+  kind?: "action" | "note";
   title: string;
   theme: string | null;
   metric_label: string | null;
@@ -477,6 +480,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     return {
       id: String(r.id),
       reco_key: String(r.reco_key ?? ""),
+      kind: r.kind === "note" ? "note" : "action",
       title: String(r.title ?? ""),
       theme: (r.theme as string | null) ?? null,
       metric_label: (r.metric_label as string | null) ?? null,
@@ -506,7 +510,8 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // conseil, il peut être repris. `trackRes` est trié `decided_at` décroissant,
   // donc la première vue est la plus récente.
   const suivis: Record<string, TrackedAction> = {};
-  for (const a of actions) if (a.reco_key && !(a.reco_key in suivis)) suivis[a.reco_key] = a;
+  for (const a of actions)
+    if (a.kind !== "note" && a.reco_key && !(a.reco_key in suivis)) suivis[a.reco_key] = a;
   // Un conseil reste « en test » tant que son action n'est pas rangée.
   const trackedKeys: string[] = Object.keys(suivis);
 

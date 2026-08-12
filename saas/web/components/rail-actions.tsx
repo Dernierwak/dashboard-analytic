@@ -8,6 +8,7 @@ import {
   phraseChangement,
 } from "@/components/etat-action";
 import { ActionVivante } from "@/components/action-vivante";
+import { NoteLigne } from "@/components/note-ligne";
 
 // LE FIL D'ACTIONS — un rail vertical, une pastille par action, du plus urgent
 // au plus ancien. La forme suit ce que l'objet EST : une chronologie.
@@ -97,9 +98,10 @@ export function RailActions({
           // divergent jusqu'au rechargement.
           <ActionVivante key={`${a.id}:${a.status}:${a.detail?.pari ?? ""}`} a={a} />
         ) : (
-          <div className="text-[11.5px] mt-0.5">
+          <div className="text-[11.5px] mt-0.5 flex items-baseline gap-2 flex-wrap">
             <span className={`font-semibold ${e.cls}`}>{e.label}</span>
             <Effet a={a} />
+            {a.kind === "note" && <NoteLigne id={a.id} />}
           </div>
         )}
       </div>

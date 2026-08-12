@@ -68,7 +68,7 @@ export function marqueursCourbe(
     .map((i) => ({ i, label: `action · sem. du ${libelleSemaine(i)}` }));
 }
 
-type Forme = "pleine" | "creuse" | "barree";
+type Forme = "pleine" | "creuse" | "barree" | "note";
 export type Etat = { forme: Forme; couleur: string; cls: string; label: string };
 
 const VERDICT: Record<string, Etat> = {
@@ -78,6 +78,11 @@ const VERDICT: Record<string, Etat> = {
 };
 
 export function etat(a: TrackedAction): Etat {
+  // Une note n'a ni indicateur ni échéance : rien à juger, donc pas de verdict.
+  // Elle prend un glyphe, pas une pastille — même règle que les changements de
+  // plateforme : le rond est réservé à ce qu'on a décidé et qui sera mesuré.
+  if (a.kind === "note")
+    return { forme: "note", couleur: "#8b8e98", cls: "text-faint", label: "ta note" };
   if (a.status === "dropped")
     return { forme: "barree", couleur: "#8b8e98", cls: "text-faint", label: "abandonnée" };
   if (a.status === "archived")
@@ -92,6 +97,12 @@ export function etat(a: TrackedAction): Etat {
 }
 
 export function Pastille({ e }: { e: Etat }) {
+  if (e.forme === "note")
+    return (
+      <span className="block text-[10px] leading-none text-faint -ml-[1.5px]" aria-hidden>
+        ✎
+      </span>
+    );
   if (e.forme === "barree")
     return (
       <span className="relative block h-[7px] w-[7px] rounded-full bg-white border border-faint">

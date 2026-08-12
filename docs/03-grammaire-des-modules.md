@@ -202,12 +202,21 @@ trois sens. Attribution arrêtée, elle ne se renégocie pas module par module :
 | Sens | Signe | Règle |
 |---|---|---|
 | la pente | `▲` `▼` | **exclusif**. Jamais sans un nombre à côté. Coloré par le SENS, jamais par le signe |
+| ce qu'on a décidé, et qui sera jugé | pastille **ronde** de 7 px | creuse = ça court · pleine = c'est jugé · barrée = abandonné. Elle ne se clique pas ; les gestes sont des boutons SOUS l'entrée |
+| ce qui s'est produit sur une plateforme | le **glyphe du canal** (▣ Meta, ◆ Google) | un fait daté, pas une décision : ni verdict, ni bouton |
+| ce que tu as noté toi-même | `✎` | ni indicateur ni échéance — rien à juger. Le seul geste qu'une note accepte, c'est disparaître |
 | un repère d'action sur un graphe | trait vertical pointillé + point plein, en encre, **≤ 2 étiquettes nommées** | au-delà de deux repères, plus aucune étiquette : les traits restent et le pied écrit combien il y en a. Une seule étiquette sur téléphone — l'écart en colonnes ne suffit pas, une pastille fait ~130 px et deux ne tiennent pas dans 335 px |
 | verdict « pas d'effet » | la flèche du **delta réel**, en `text-neg` | ce n'est plus un sens à part, c'est le premier correctement employé |
 
 Le triangle est **dessiné** (`components/pente.tsx`), pas tapé : le caractère se
 cale mal sur la ligne de base selon la plateforme, et il doit tenir de 11 px
 (une tuile) à 68 px (le hero). Ses dimensions sont en `em`.
+
+**Le rond est réservé à ce qui sera mesuré.** C'est la règle qui permet aux
+trois voix du fil — les conseils de Pulse, les plateformes, et toi — de tenir
+sur un même rail sans se confondre. Un fait n'a pas de verdict, donc pas de
+pastille : lui en donner une ferait croire que le produit a mesuré quelque
+chose.
 
 Un repère d'action est un **fait daté, pas un jugement** : il est en encre. Il
 était bleu sur une courbe (la couleur de la courbe elle-même — invisible) et
@@ -323,6 +332,31 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**12 août 2026** — **Le fil devient le registre de tout.** Il ne montrait que ce
+qu'on décide DANS Pulse ; il racontait donc un tiers de l'histoire, et quand la
+courbe bougeait, rien n'expliquait pourquoi. Deux voix le rejoignent.
+
+**Les plateformes.** Cinq faits déduits de la dépense quotidienne — lancée,
+arrêtée, reprise, programmée, dépense changée. **Aucun champ d'API ne dit « le
+budget a changé le 2 août »** : le budget n'est récolté nulle part, vérifié dans
+les deux scripts. On écrit donc ce qu'on OBSERVE (« la dépense est passée de 30
+à 75 CHF par jour »), pas ce qu'on suppose. C'est plus prudent et c'est plus
+utile : c'est la dépense qui compte, pas le réglage.
+
+Deux garde-fous qui valent au-delà de ce module : un arrêt n'est annoncé que si
+**le canal a des données plus récentes** — sans ça, Google qui prend deux jours
+de retard « arrêterait » toutes les campagnes du compte le même matin ; et une
+campagne en pointillé ne produit qu'une reprise, la dernière.
+
+**Toi.** Une note manuelle — « refait les visuels », « un concurrent a lancé une
+promo ». Ce n'est pas un journal (on ne tient pas un journal) : c'est un repère
+qui se plante à SA date sur la même frise, pour qu'une courbe qui bondit ait une
+explication trois semaines plus tard.
+
+D'où la règle de forme ci-dessus, qui est la vraie sortie de cette passe : **le
+rond est réservé à ce qui sera mesuré.** Un glyphe de canal pour ce qui s'est
+produit, un `✎` pour ce que tu as écrit. Trois voix, trois signes, un seul rail.
 
 **11 août 2026 (3)** — **La boucle entière dans la carte de thème.** Le conseil
 était dans la carte, la case à cocher dans « Ce que tu dois faire », le verdict

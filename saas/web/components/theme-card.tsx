@@ -8,6 +8,7 @@ import { LineChart, garderEtiquettes } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
 import { dateCourte, marqueursCourbe } from "@/components/etat-action";
 import { RailActions } from "@/components/rail-actions";
+import { NoteAjout } from "@/components/note-ajout";
 import { RecoCard } from "@/components/reco-card";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
@@ -401,6 +402,9 @@ export function ThemeCard({
                 Rien de nouveau lancé depuis {semainesDepuis} semaines.
               </p>
             )}
+
+            {/* La troisième voix du fil : ce que Pulse ne peut pas deviner. */}
+            <NoteAjout theme={theme.label} />
 
             {/* La phrase qui rend le chiffre honnête. Elle vivait dans
                 « Ton historique d'actions » et serait morte avec lui. */}
