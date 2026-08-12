@@ -767,10 +767,13 @@ def fetch_campaign_changes(
                 ev.get("oldResource") or ev.get("old_resource") or {},
             )
             typ = str(ev.get("changeResourceType") or ev.get("change_resource_type") or "").upper()
-            if typ == "AD_GROUP_CRITERION" and rn and not (
-                _mot_cle(ev.get("newResource") or ev.get("new_resource") or {})
-                or _mot_cle(ev.get("oldResource") or ev.get("old_resource") or {})
-            ):
+            _neuf = ev.get("newResource") or ev.get("new_resource") or {}
+            _vieux = ev.get("oldResource") or ev.get("old_resource") or {}
+            if (typ == "AD_GROUP_CRITERION" and rn
+                    and not (_mot_cle(_neuf) or _mot_cle(_vieux))
+                    # Un critère qui se déclare autre chose qu'un mot-clé n'a
+                    # pas de texte à résoudre — on n'encombre pas la requête.
+                    and not (_est_non_motcle(_neuf) or _est_non_motcle(_vieux))):
                 a_resoudre.append(rn)
             evenements.append((ev, str(quand), cid, rn))
 
