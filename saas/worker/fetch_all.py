@@ -33,10 +33,13 @@ from scripts.fetch_data import fetch_meta_ads_latest_date, fetch_google_ads_late
 from scripts.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
     upsert_google_ads, upsert_google_campaign_statuses,
-    insert_instagram_org,
+    insert_instagram_org, upsert_platform_budgets,
 )
 from google_script.fetch_token import get_access_token_from_refresh        # noqa: E402
-from google_script.fetch_google_ads import fetch_campaign_insights, fetch_campaign_statuses  # noqa: E402
+from google_script.fetch_google_ads import (                               # noqa: E402
+    fetch_campaign_insights, fetch_campaign_statuses, fetch_campaign_budgets as google_budgets,
+)
+from meta_script.fetch_meta_ads import fetch_campaign_budgets as meta_budgets  # noqa: E402
 from components.ga4 import run_ga4_fetch                                   # noqa: E402
 from meta_script.fetch_instagram import OrganicInstagramm                  # noqa: E402
 
@@ -85,6 +88,23 @@ def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> list:
     return rows
 
 
+def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
+    """Photographie le budget PLANIFIÉ du canal. Best-effort, JAMAIS bloquant.
+
+    Un budget manquant coûte une case vide sur la page Coûts ; un budget qui
+    fait échouer la récolte coûte une semaine entière d'insights. C'est pour ça
+    que tout est attrapé ici plutôt que remonté à l'appelant.
+    """
+    try:
+        rows, err = recolte()
+        if rows:
+            upsert_platform_budgets(sb, uid, canal, rows, jour.isoformat())
+        elif err:
+            print(f"    budgets {canal} ignorés : {err}")
+    except Exception as e:
+        print(f"    budgets {canal} KO : {e}")
+
+
 def _fetch_meta(sb, uid, token) -> str:
     r = requests.get(f"{_GRAPH}/me/adaccounts", params={"fields": "id", "access_token": token}, timeout=30)
     accts = r.json().get("data", [])
@@ -92,6 +112,10 @@ def _fetch_meta(sb, uid, token) -> str:
         return "meta: aucun compte pub"
     ad_account_id = accts[0]["id"]
     today = date.today()
+    # Avant tout test de fraîcheur : la photo du budget doit être prise même
+    # quand les insights sont déjà à jour. Sinon un compte qui ne dépense plus
+    # n'aurait plus aucun relevé, et la page Coûts le lirait « rien de prévu ».
+    _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
     latest = fetch_meta_ads_latest_date(sb, uid)
     since = date.fromisoformat(latest) + timedelta(days=1) if latest else date(today.year, 1, 1)
     if since > today:
@@ -142,6 +166,8 @@ def _fetch_google(sb, uid, refresh, customer_id) -> str:
     if not access:
         return "google: token invalide"
     today = date.today()
+    _photo_budget(sb, uid, "google",
+                  lambda: google_budgets(access, customer_id), today)
     latest = fetch_google_ads_latest_date(sb, uid)
     since = date.fromisoformat(latest) + timedelta(days=1) if latest else date(today.year, 1, 1)
     if since > today:

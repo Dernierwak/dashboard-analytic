@@ -46,21 +46,25 @@ export const TON_ZONE: Record<string, string> = {
   pos: "#1a7a4a",
 };
 
-// Combien d'étiquettes on écrit sur la courbe, et lesquelles.
+// LA PASTILLE PERMANENTE EST DEVENUE UN POINT QU'ON SURVOLE.
 //
-// Un compte actif applique une action par semaine : dix repères écrits
-// transforment le graphe en peigne et plus rien ne se lit. La règle est donc
-// stricte — au-delà de deux repères, AUCUNE étiquette ; les traits restent, et
-// le module écrit dessous combien il y en a. Et deux repères collés (moins de
-// deux colonnes d'écart) ne peuvent pas porter deux étiquettes côte à côte :
-// seule la plus récente parle.
-export function garderEtiquettes(ms?: Marqueur[]): Marqueur[] {
-  if (!ms || ms.length === 0 || ms.length > 2) return [];
-  const tri = [...ms].sort((a, b) => b.i - a.i);
-  const out = [tri[0]];
-  if (tri[1] && Math.abs(tri[0].i - tri[1].i) >= 2) out.push(tri[1]);
-  return out;
-}
+// Elle écrivait le nom de l'action à même le haut du graphe. Deux d'entre elles
+// se chevauchaient et se coupaient — « Tes conversions te coûtent 28… » posée
+// sur « Budget +20 % » — et le module devenait illisible là où il devait être
+// le plus clair. La parade d'alors était un plafond : au-delà de deux repères,
+// plus aucune étiquette, et un pied qui écrivait « 5 actions » sans dire
+// lesquelles ni quand. On payait la lisibilité en information.
+//
+// Le repère est maintenant un POINT de 7 px sur la ligne du haut, et son nom
+// n'apparaît qu'au survol, dans la même bulle que les colonnes. Deux points
+// côte à côte ne se coupent pas — ils se touchent au pire. Le plafond de deux
+// tombe donc, et avec lui le comptage en pied : dix repères s'affichent, tous
+// nommés, chacun à son tour.
+//
+// Au doigt, où le survol n'existe pas : le point est un vrai `<button>`, et la
+// bulle s'ouvre aussi sur `focus-within`. Un `tap` donne le focus, la bulle
+// vient, un `tap` ailleurs la ferme. Aucun JavaScript, donc utilisable dans un
+// composant serveur.
 
 // Où poser un texte dont l'ancre est à `pct` % de la largeur, sans qu'il sorte
 // du cadre. Aux bords on cale le texte contre le bord au lieu de le centrer.
@@ -111,18 +115,20 @@ export function LineChart({
   const n = labels.length;
   if (n < 2 || series.length === 0) return null;
 
-  const reperes = marqueurs?.length
-    ? marqueurs.map((m) => m.i)
-    : (markers ?? []);
-  const etiquettes = garderEtiquettes(marqueurs);
+  // Un repère, avec son nom quand on l'a. `markers` (payloads d'avant août
+  // 2026) ne porte que l'index : le point s'affiche, muet — il ne perd rien,
+  // il ne gagne simplement pas le nom.
+  const reperes: { i: number; label?: string }[] = marqueurs?.length
+    ? marqueurs.filter((m) => m.i >= 0 && m.i < n).map((m) => ({ i: m.i, label: m.label }))
+    : (markers ?? []).filter((i) => i >= 0 && i < n).map((i) => ({ i }));
 
   const W = 720;
   const H = height;
   const PAD_L = 6, PAD_R = 6, PAD_B = 22;
-  // Les étiquettes d'action tiennent sur une ligne de base unique, collée au
-  // haut du cadre : elles ne croisent donc jamais la courbe, et leurs
-  // collisions redeviennent un problème purement horizontal.
-  const PAD_T = etiquettes.length > 0 ? 28 : 10;
+  // Plus de bandeau réservé en haut : les repères ne sont plus des pastilles
+  // de texte qui poussaient la courbe de 18 px vers le bas, mais des points de
+  // 7 px posés sur la ligne du cadre.
+  const PAD_T = 10;
   const plotH = H - PAD_T - PAD_B;
 
   const all = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
@@ -249,22 +255,20 @@ export function LineChart({
             />
           )}
 
-          {reperes.map((mi) =>
-            mi >= 0 && mi < n ? (
-              <line
-                key={`mk-${mi}`}
-                x1={x(mi)}
-                y1={PAD_T}
-                x2={x(mi)}
-                y2={PAD_T + plotH}
-                stroke="#0e0f12"
-                strokeOpacity="0.4"
-                strokeWidth="1"
-                strokeDasharray="3 3"
-                vectorEffect="non-scaling-stroke"
-              />
-            ) : null
-          )}
+          {reperes.map((m) => (
+            <line
+              key={`mk-${m.i}`}
+              x1={x(m.i)}
+              y1={PAD_T}
+              x2={x(m.i)}
+              y2={PAD_T + plotH}
+              stroke="#0e0f12"
+              strokeOpacity="0.4"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
 
           {series.map((s, si) => {
             const pts = s.values
@@ -347,35 +351,6 @@ export function LineChart({
           </span>
         )}
 
-        {/* Les repères d'action, nommés. En encre : un repère est un fait daté,
-            pas un jugement — c'est le libellé qui dit ce que ça a donné, pas
-            la couleur (docs/03-grammaire-des-modules.md, lexique des signes). */}
-        {/* Une seule étiquette sur téléphone. L'écart en colonnes ne suffit pas
-            à éviter la collision : « action · sem. du 22 jul » fait ~130 px, et
-            deux de ces pastilles ne tiennent pas côte à côte dans les 335 px
-            d'un iPhone, même à trois semaines d'écart. La plus récente parle,
-            la seconde reprend sa place dès qu'il y a la largeur pour elle. */}
-        {etiquettes.map((m, rang) => (
-          <span
-            key={`et-${m.i}`}
-            className={`absolute top-0 rounded-full bg-ink text-white text-[10px] font-bold px-2 py-[3px] whitespace-nowrap pointer-events-none ${ancrage(
-              px(m.i)
-            )} ${rang > 0 ? "hidden sm:inline-block" : ""}`}
-            style={{ left: `${px(m.i)}%` }}
-          >
-            {m.label}
-          </span>
-        ))}
-        {reperes.map((mi) =>
-          mi >= 0 && mi < n ? (
-            <span
-              key={`pt-${mi}`}
-              className="absolute h-[5px] w-[5px] rounded-full bg-ink -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ left: `${px(mi)}%`, top: `${(PAD_T / H) * 100}%` }}
-            />
-          ) : null
-        )}
-
         {/* L'axe des dates. */}
         {labels.map((l, i) =>
           i % step === 0 ? (
@@ -409,6 +384,43 @@ export function LineChart({
                 .join(" · ")}
             </span>
           </div>
+        ))}
+
+        {/* LES REPÈRES D'ACTION — un point, et son nom au survol.
+            Rendus APRÈS les colonnes et au-dessus d'elles : c'est ce qui fait
+            que survoler le point ouvre SA bulle et non celle de la colonne. Les
+            deux ne sont pas frères par hasard — la colonne dit la valeur du
+            jour, le repère dit ce qu'on a fait ce jour-là, et les afficher
+            ensemble donnerait deux bulles superposées.
+            En encre : un repère est un fait daté, pas un jugement — c'est le
+            libellé qui dit ce qu'on a fait, pas la couleur
+            (docs/03-grammaire-des-modules.md, lexique des signes). */}
+        {reperes.map((m) => (
+          <span
+            key={`rp-${m.i}`}
+            className="group absolute z-20 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${px(m.i)}%`, top: `${(PAD_T / H) * 100}%` }}
+          >
+            <button
+              type="button"
+              // Cible tactile de 22 px autour d'un point de 7 px : viser 7 px
+              // au doigt est impossible, et grossir le point le rendrait aussi
+              // voyant que la courbe qu'il commente.
+              className="block h-[22px] w-[22px] -m-[7.5px] grid place-items-center outline-none cursor-help"
+              aria-label={m.label ? `Action : ${m.label}` : "Une action a été lancée ici"}
+            >
+              <span className="block h-[7px] w-[7px] rounded-full bg-ink ring-2 ring-white group-hover:h-[9px] group-hover:w-[9px] group-focus-within:h-[9px] group-focus-within:w-[9px] transition-all" />
+            </button>
+            {m.label && (
+              <span
+                className={`pointer-events-none absolute top-[14px] left-1/2 z-30 hidden group-hover:block group-focus-within:block rounded-lg bg-ink text-white text-[10.5px] font-semibold px-2 py-1 whitespace-nowrap shadow-card ${ancrage(
+                  px(m.i)
+                )}`}
+              >
+                {m.label}
+              </span>
+            )}
+          </span>
         ))}
       </div>
 

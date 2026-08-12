@@ -48,7 +48,12 @@ class PaidMeta():
     def get_campaigns(self):
         url = f"https://graph.facebook.com/v24.0/{self.ad_account_id}/campaigns"
         params = {
-            "fields": "id,name,status,objective",
+            # Les cinq derniers champs portent le budget PLANIFIÉ et les dates
+            # déclarées. Ils ne se déduisent d'aucun insight : une campagne à
+            # 200 CHF/jour qui n'en consomme que 60 laisse exactement la même
+            # trace qu'une campagne réglée à 60.
+            "fields": "id,name,status,objective,daily_budget,lifetime_budget,"
+                      "budget_remaining,start_time,stop_time",
             "access_token": self.token
         }
         response = requests.get(url=url, params=params)
@@ -105,11 +110,151 @@ class PaidMeta():
 
 
 
-        
-## ==== Debug    
-token = st.text_input("add Token")
-st.session_state["token"] = token
-paidmeta = PaidMeta(token)
 
-if st.session_state["token"]:
-    paidmeta._get_ad_accounts()
+# ── Récolte headless — appelée par le worker et par le chemin Streamlit ───────
+# Rien de ce qui suit ne touche à `st` : ces fonctions tournent dans le cron,
+# sans personne connecté.
+
+_GRAPH = "https://graph.facebook.com/v24.0"
+
+
+def _centimes(v) -> float | None:
+    """Meta renvoie ses montants en CENTIMES, et sous forme de CHAÎNE.
+
+    « 5000 » vaut 50,00 CHF. Sans cette division on affiche cent fois le budget
+    réel — l'erreur est silencieuse et passe pour un compte très dépensier.
+    On rend None quand le champ est absent : « pas de budget ici » et « budget
+    à zéro » ne veulent pas dire la même chose (voir `_budget_des_adsets`).
+
+    Hypothèse : la devise du compte a deux décimales. Les devises sans sous-unité
+    (JPY, KRW) seraient divisées à tort — aucun compte Pulse n'en utilise
+    aujourd'hui, et Meta n'expose pas le facteur dans cette réponse.
+    """
+    if v in (None, "", 0, "0"):
+        return None
+    try:
+        return float(v) / 100.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _pages(url: str, params: dict, timeout: int = 30) -> list[dict]:
+    """Suit `paging.next` jusqu'au bout. Un compte de 40 campagnes tient sur une
+    page, un compte d'agence non — et la page manquante ne lève aucune erreur."""
+    out: list[dict] = []
+    try:
+        data = requests.get(url, params=params, timeout=timeout).json()
+    except Exception:
+        return out
+    out += data.get("data", []) or []
+    nxt = (data.get("paging") or {}).get("next")
+    while nxt:
+        try:
+            data = requests.get(nxt, timeout=timeout).json()
+        except Exception:
+            break
+        out += data.get("data", []) or []
+        nxt = (data.get("paging") or {}).get("next")
+    return out
+
+
+def _budget_des_adsets(token: str, campaign_id: str) -> tuple[float | None, float | None]:
+    """Somme des budgets des ad sets d'une campagne.
+
+    POURQUOI C'EST OBLIGATOIRE : quand le CBO (budget au niveau campagne) est
+    désactivé — c'est le réglage par DÉFAUT sur beaucoup de comptes — la
+    campagne ne porte aucun budget, il vit sur chaque ad set. Sans cette
+    remontée, un compte entier affiche « 0 CHF planifié » alors qu'il dépense
+    tous les jours, et la page Coûts conclut qu'il n'y a rien de prévu.
+
+    Returns: (journalier, total) en CHF, None quand aucun ad set n'en porte.
+    """
+    rows = _pages(
+        f"{_GRAPH}/{campaign_id}/adsets",
+        {"access_token": token, "fields": "daily_budget,lifetime_budget", "limit": 200},
+    )
+    jour = 0.0
+    total = 0.0
+    for a in rows:
+        jour += _centimes(a.get("daily_budget")) or 0.0
+        total += _centimes(a.get("lifetime_budget")) or 0.0
+    return (jour or None), (total or None)
+
+
+def _jour(v) -> str | None:
+    """`start_time` de Meta est un horodatage ISO avec fuseau ; on ne garde que
+    le jour, seule granularité que la frise et le prorata savent lire."""
+    return str(v)[:10] if v else None
+
+
+def fetch_campaign_budgets(token: str, ad_account_id: str) -> tuple[list[dict], str | None]:
+    """Le budget PLANIFIÉ de chaque campagne Meta, à l'instant du relevé.
+
+    Returns: (rows, error|None) — chaque row : campaign_id, campaign_name,
+    status, start_date, end_date, daily_budget, total_budget.
+    `end_date` None = campagne déclarée sans fin (pas de `stop_time`).
+    """
+    if not (token and ad_account_id):
+        return [], "token ou ad_account_id manquant"
+    try:
+        resp = requests.get(
+            f"{_GRAPH}/{ad_account_id}/campaigns",
+            params={
+                "access_token": token,
+                "fields": "id,name,status,objective,daily_budget,lifetime_budget,"
+                          "budget_remaining,start_time,stop_time",
+                "limit": 200,
+            },
+            timeout=30,
+        ).json()
+    except Exception as e:
+        return [], f"Erreur API: {e}"
+    if isinstance(resp, dict) and resp.get("error"):
+        return [], resp["error"].get("message", str(resp["error"]))
+
+    camps = resp.get("data", []) or []
+    nxt = (resp.get("paging") or {}).get("next")
+    while nxt:
+        try:
+            page = requests.get(nxt, timeout=30).json()
+        except Exception:
+            break
+        camps += page.get("data", []) or []
+        nxt = (page.get("paging") or {}).get("next")
+
+    rows: list[dict] = []
+    for c in camps:
+        cid = str(c.get("id") or "")
+        if not cid:
+            continue
+        jour = _centimes(c.get("daily_budget"))
+        total = _centimes(c.get("lifetime_budget"))
+        if jour is None and total is None:
+            # Budget par ad set (CBO désactivé) — un appel de plus par campagne,
+            # et c'est le seul moyen de connaître la promesse.
+            jour, total = _budget_des_adsets(token, cid)
+        rows.append({
+            "campaign_id":   cid,
+            "campaign_name": c.get("name", ""),
+            "status":        c.get("status") or c.get("effective_status") or "",
+            "start_date":    _jour(c.get("start_time")),
+            # stop_time absent = campagne sans fin programmée, pas « fin inconnue ».
+            "end_date":      _jour(c.get("stop_time")),
+            # Exclusifs : un lifetime_budget prime, sinon le prorata compterait
+            # la même promesse deux fois.
+            "daily_budget":  None if total else jour,
+            "total_budget":  total,
+        })
+    return rows, None
+
+
+# ==== Debug — sous __main__ pour que le worker puisse importer ce module.
+# Sans ce garde, `import meta_script.fetch_meta_ads` dessinait un champ de
+# saisie Streamlit puis plantait sur PaidMeta(token) au moment de l'import.
+if __name__ == "__main__":
+    token = st.text_input("add Token")
+    st.session_state["token"] = token
+    paidmeta = PaidMeta(token, None, None)
+
+    if st.session_state["token"]:
+        paidmeta._get_ad_accounts()

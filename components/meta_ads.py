@@ -25,7 +25,9 @@ from scripts.insert_data import (
     upsert_campaign_statuses,
     rename_campaign_label,
     clear_campaign_label,
+    upsert_platform_budgets,
 )
+from meta_script.fetch_meta_ads import fetch_campaign_budgets as fetch_meta_campaign_budgets
 from scripts.fetch_data import (
     fetch_meta_ads,
     fetch_meta_ads_latest_date,
@@ -501,6 +503,18 @@ def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=
         ad_account_id = accounts[0]["id"]
 
     today = date.today()
+
+    # Photo du budget PLANIFIÉ — prise AVANT le test de fraîcheur, sinon un
+    # compte déjà à jour repartirait sans relevé et la page Coûts le lirait
+    # « rien de prévu ». Best-effort : jamais au prix des insights.
+    if supabase and user_id:
+        try:
+            _buds, _berr = fetch_meta_campaign_budgets(token, ad_account_id)
+            if _buds:
+                upsert_platform_budgets(supabase, user_id, "meta", _buds, today.isoformat())
+        except Exception:
+            pass
+
     latest = fetch_meta_ads_latest_date(supabase, user_id) if (supabase and user_id and not force_full) else None
     # Fetch limité à l'année courante (depuis le 1er janvier)
     if latest:

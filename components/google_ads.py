@@ -31,6 +31,7 @@ from scripts.insert_data import (
     rename_google_campaign_label,
     clear_google_campaign_label,
     update_google_refresh_token,
+    upsert_platform_budgets,
 )
 from components.meta_ads import (
     render_period_selector, _NO_LABEL, PULSE_CSS,
@@ -48,6 +49,7 @@ from google_script.fetch_google_ads import (
     fetch_campaign_insights,
     fetch_ad_insights,
     fetch_campaign_statuses,
+    fetch_campaign_budgets,
 )
 
 
@@ -107,6 +109,16 @@ def run_google_ads_fetch(
 
     # 2. Date range
     today = date.today()
+
+    # Photo du budget PLANIFIÉ — prise AVANT tout test de fraîcheur, sinon un
+    # compte déjà à jour repartirait sans relevé. Best-effort : une erreur ici
+    # ne doit jamais coûter les insights.
+    try:
+        _buds, _berr = fetch_campaign_budgets(access_token, customer_id)
+        if _buds:
+            upsert_platform_budgets(supabase, user_id, "google", _buds, today.isoformat())
+    except Exception:
+        pass
     latest = fetch_google_ads_latest_date(supabase, user_id) if not force_full else None
     if latest:
         since = date.fromisoformat(latest) + timedelta(days=1)

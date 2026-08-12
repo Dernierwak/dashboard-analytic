@@ -166,6 +166,73 @@ def upsert_campaign_statuses(
         ).execute()
 
 
+# ── Budget PLANIFIÉ (photos) — platform_budgets ───────────────────────────────
+
+def _table_absente(err: Exception, table: str) -> bool:
+    """PostgREST répond 42P01 / « does not exist » quand la migration manque.
+
+    On distingue ce cas d'une vraie panne : le premier se règle en lançant un
+    fichier SQL, le second doit remonter tel quel.
+    """
+    msg = str(err).lower()
+    return table in msg and ("does not exist" in msg or "42p01" in msg or "not find the table" in msg)
+
+
+def upsert_platform_budgets(
+    supabase: Client,
+    user_id: str,
+    channel: str,
+    rows: list[dict],
+    captured_on: str,
+) -> None:
+    """Écrit UNE PHOTO du budget planifié — une ligne par campagne, datée du relevé.
+
+    On n'écrase jamais un relevé précédent : la clé porte `captured_on`, donc
+    deux récoltes le même jour se remplacent (c'est voulu, la seconde est plus
+    fraîche) mais deux jours différents s'empilent. C'est tout l'historique dont
+    on disposera jamais — aucune API ne sait dire ce que valait un budget hier.
+
+    `rows` : la sortie de google_script.fetch_google_ads.fetch_campaign_budgets
+    ou de meta_script.fetch_meta_ads.fetch_campaign_budgets.
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        cid = str(r.get("campaign_id") or "")
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        jour = r.get("daily_budget")
+        total = r.get("total_budget")
+        records.append({
+            "user_id":       user_id,
+            "channel":       channel,
+            "campaign_id":   cid,
+            "campaign_name": r.get("campaign_name") or None,
+            "captured_on":   captured_on,
+            "daily_budget":  float(jour) if jour is not None else None,
+            "total_budget":  float(total) if total is not None else None,
+            "start_date":    r.get("start_date") or None,
+            "end_date":      r.get("end_date") or None,
+            "status":        r.get("status") or None,
+        })
+    if not records:
+        return
+    try:
+        supabase.table("platform_budgets").upsert(
+            records, on_conflict="user_id,channel,campaign_id,captured_on"
+        ).execute()
+    except Exception as e:
+        if _table_absente(e, "platform_budgets"):
+            raise RuntimeError(
+                "table platform_budgets absente — lance "
+                "supabase/migrations/platform_budgets.sql"
+            ) from e
+        raise
+
+
 def rename_campaign_label(supabase: Client, user_id: str, old_label: str, new_label: str) -> None:
     """Renomme un label dans toutes les lignes meta_campaign_config de l'utilisateur."""
     supabase.table("meta_campaign_config").update({"label": new_label}).eq("user_id", user_id).eq("label", old_label).execute()

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LineChart, garderEtiquettes } from "@/components/line-chart";
+import { LineChart } from "@/components/line-chart";
 import { marqueursCourbe } from "@/components/etat-action";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
@@ -177,7 +177,6 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
     k.labels.length,
     (i) => k.labels[i]
   );
-  const etiquettes = garderEtiquettes(marqueurs);
 
   // Les groupes réellement présents, dans l'ordre.
   const groupes = ORDRE_GROUPES.map((g) => ({
@@ -240,12 +239,9 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           marqueurs={marqueurs}
           bandes={bandes.length > 0 ? bandes : undefined}
         />
-        {marqueurs.length > etiquettes.length && (
-          <p className="text-[10px] text-faint pt-1">
-            <span className="text-ink font-bold">┄</span> {marqueurs.length} semaines où tu as
-            appliqué une action — le détail dans « Ton historique d&apos;actions ».
-          </p>
-        )}
+        {/* Le comptage « N semaines où tu as appliqué une action » a disparu :
+            il renvoyait à une section supprimée depuis, et chaque repère porte
+            désormais son nom au survol de son point. */}
       </div>
 
       {/* Comment lire cet indicateur. Ce texte existait déjà, mais dans un

@@ -43,4 +43,34 @@ body { background: theme(colors.canvas); color: theme(colors.ink); }
   .defile::-webkit-scrollbar-track { background: transparent; }
   .defile::-webkit-scrollbar-thumb { background: rgba(14, 15, 18, 0.18); border-radius: 4px; }
   .defile::-webkit-scrollbar-thumb:hover { background: rgba(14, 15, 18, 0.30); }
+
+  /* LE MÊME PRINCIPE SUR L'AXE X, et il est encore plus nécessaire.
+     Une colonne coupée en bas se devine — on sait qu'une page descend. Une
+     RANGÉE coupée à droite ne se devine pas : trois cartes alignées dont la
+     troisième est tronquée de 40 px se lisent comme une mise en page ratée,
+     pas comme une invitation à faire glisser.
+
+     Mêmes deux couches qu'en vertical, tournées d'un quart de tour : les
+     couvercles solidaires du contenu (`local`) recouvrent les ombres
+     solidaires du cadre (`scroll`) tant qu'on est en bout de course. Rien à
+     éteindre à la main, rien en JavaScript. */
+  .defile-x {
+    --fond-defile: #fff;
+    --fond-defile-0: rgba(255, 255, 255, 0);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(14, 15, 18, 0.18) transparent;
+    background:
+      linear-gradient(to right, var(--fond-defile) 30%, var(--fond-defile-0)) left / 26px 100% no-repeat local,
+      linear-gradient(to left, var(--fond-defile) 30%, var(--fond-defile-0)) right / 26px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(14, 15, 18, 0.16), rgba(14, 15, 18, 0)) left / 14px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(14, 15, 18, 0.16), rgba(14, 15, 18, 0)) right / 14px 100% no-repeat scroll;
+    background-color: var(--fond-defile);
+  }
+  .defile-x::-webkit-scrollbar { height: 8px; }
+  .defile-x::-webkit-scrollbar-track { background: transparent; }
+  .defile-x::-webkit-scrollbar-thumb { background: rgba(14, 15, 18, 0.18); border-radius: 4px; }
+  .defile-x::-webkit-scrollbar-thumb:hover { background: rgba(14, 15, 18, 0.30); }
 }

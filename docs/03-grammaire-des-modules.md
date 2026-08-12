@@ -226,7 +226,7 @@ trois sens. Attribution arrêtée, elle ne se renégocie pas module par module :
 | ce qu'on a décidé, et qui sera jugé | pastille **ronde** de 7 px | creuse = ça court · pleine = c'est jugé · barrée = abandonné. Elle ne se clique pas ; les gestes sont des boutons SOUS l'entrée |
 | ce qui s'est produit sur une plateforme | le **glyphe du canal** (▣ Meta, ◆ Google) | un fait daté, pas une décision : ni verdict, ni bouton |
 | ce que tu as noté toi-même | `✎` | ni indicateur ni échéance — rien à juger. Le seul geste qu'une note accepte, c'est disparaître |
-| un repère d'action sur un graphe | trait vertical pointillé + point plein, en encre, **≤ 2 étiquettes nommées** | au-delà de deux repères, plus aucune étiquette : les traits restent et le pied écrit combien il y en a. Une seule étiquette sur téléphone — l'écart en colonnes ne suffit pas, une pastille fait ~130 px et deux ne tiennent pas dans 335 px |
+| un repère d'action sur un graphe | trait vertical pointillé + **point de 7 px** en encre, nommé **au survol** | plus de plafond : tous les repères s'affichent. Deux points côte à côte se touchent, deux pastilles de texte se coupaient. La bulle s'ouvre aussi sur `focus-within` — au doigt, un `tap` la révèle |
 | verdict « pas d'effet » | la flèche du **delta réel**, en `text-neg` | ce n'est plus un sens à part, c'est le premier correctement employé |
 
 Le triangle est **dessiné** (`components/pente.tsx`), pas tapé : le caractère se
@@ -285,6 +285,9 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `tracking-section` | le lexique des états vivait dans le module | extrait en `components/etat-action.tsx`, partagé avec la carte de thème |
 | `action-top` + `tracking-section` | deux sections pour un objet qui appartient au thème ; le conseil et son résultat à 900 px | **supprimés (615 lignes)** — le cycle de vie entier passe dans la colonne droite de `theme-card` (`rail-actions` + `action-vivante`), avec un filet « hors thème » pour les actions qu'aucune carte ne prend |
 | toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
+| toute rangée en `overflow-x-auto` | une rangée coupée à droite ne se devine pas — elle se lit comme une mise en page ratée, pas comme une invitation à glisser | `.defile-x`, le même mécanisme tourné d'un quart de tour |
+| `theme-card` (les conseils) | `sm:grid-cols-2` : trois conseils faisaient deux lignes dont la seconde à moitié vide, et le troisième passait sous la ligne de flottaison de la carte | une rangée unique en `.defile-x`, largeur fixe et hauteur commune, `scroll-snap` par carte — trois conseils s'alignent donc se comparent |
+| `line-chart` (repères) | deux étiquettes de texte se chevauchaient et se coupaient en haut du graphe ; le plafond de deux repères payait la lisibilité en information | le repère devient un point de 7 px, nommé au survol (bulle immédiate, `focus-within` pour le doigt) — plafond et comptage en pied supprimés |
 | page Coûts (les modules) | tous écrits dans `app/couts/page.tsx`, donc invisibles hors session connectée et invérifiables autrement qu'en production | extraits en `components/couts-modules.tsx` ; la page compose, elle ne dessine plus rien |
 | `Repartition` | une barre empilée de budgets PRÉVUS, là où la question posée est « combien a été dépensé par thème » | **supprimée** — l'anneau prend sa place pour le réel, et le prévu redescend dans la liste des thèmes (une enveloppe par thème) plus une ligne de réconciliation dans le module de l'année |
 | `theme-donut` | typé sur `ThemeRow`, donc réservé au rapport hebdomadaire | prend `{label, spend}[]` — `ThemeRow` le satisfait sans rien changer, et la page Coûts s'en sert sans fabriquer de faux revenu à zéro. Sur téléphone la légende passe SOUS l'anneau : à côté, il lui restait 150 px et « Audio Tour » s'écrivait « Aud… » |
@@ -374,6 +377,36 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**12 août 2026 (5)** — **L'étiquette permanente devient un point qu'on survole.**
+
+Sur les captures de David, deux repères d'action se chevauchaient et se
+coupaient en haut de la courbe : « Tes conversions te coûtent 28… » posée sur
+la suivante. La parade en vigueur était un plafond — au-delà de deux repères,
+plus aucune étiquette, et un pied qui écrivait « 5 actions » sans dire
+lesquelles ni quand. **On payait la lisibilité en information.**
+
+Le repère est maintenant un point de 7 px sur la ligne du haut, en encre, et son
+nom n'apparaît qu'au survol dans la même bulle que les colonnes. Deux points
+côte à côte se touchent au pire ; deux pastilles de texte se coupaient. Le
+plafond tombe, le comptage en pied disparaît de `theme-card` et de `kpi-focus`,
+et dix repères s'affichent tous nommés.
+
+La règle générale qui en sort : **quand une forme ne tient pas à plusieurs, on
+change la forme, pas le nombre d'éléments affichés.** Réduire ce qu'on montre
+pour sauver une mise en page, c'est laisser la mise en page décider de ce que
+l'utilisateur a le droit de savoir.
+
+Corollaire technique, valable pour toute bulle de survol dans un composant
+serveur : `group-hover` seul n'existe pas au doigt. Le déclencheur est un vrai
+`<button>` et la bulle s'ouvre aussi sur `group-focus-within` — un `tap` donne
+le focus, un `tap` ailleurs le retire. Toujours aucun JavaScript.
+
+Deuxième sortie de la même passe, sur l'axe X : `.defile-x`. Une colonne coupée
+en bas se devine, une **rangée** coupée à droite ne se devine pas. Les trois
+conseils d'une carte de thème passent en rangée unique, largeur fixe et hauteur
+commune — ils s'alignent, donc ils se comparent, ce qui est la seule chose qu'on
+fait avec trois conseils.
 
 **12 août 2026 (4)** — **Le pari s'en va, parce que la machine sait répondre.**
 

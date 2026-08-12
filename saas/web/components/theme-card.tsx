@@ -4,7 +4,7 @@ import {
   type ThemeFocus,
   type TrackedAction,
 } from "@/lib/report";
-import { LineChart, garderEtiquettes } from "@/components/line-chart";
+import { LineChart } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
 import { dateCourte, marqueursCourbe } from "@/components/etat-action";
 import { RailActions } from "@/components/rail-actions";
@@ -189,7 +189,6 @@ export function ThemeCard({
   const marqueurs = s
     ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
     : [];
-  const etiquettes = garderEtiquettes(marqueurs);
 
   return (
     <section
@@ -293,12 +292,10 @@ export function ThemeCard({
               ariaLabel={`${s.metric_label} du thème ${theme.label} sur ${s.points.length} semaines`}
               marqueurs={marqueurs}
             />
-            {marqueurs.length > etiquettes.length && (
-              <p className="text-[10px] text-faint px-1 pt-1">
-                <span className="text-ink font-bold">┄</span> {marqueurs.length} semaines où tu as
-                lancé une action sur ce thème.
-              </p>
-            )}
+            {/* Le comptage « N semaines où tu as lancé une action » a disparu
+                avec le plafond de deux étiquettes qui le rendait nécessaire :
+                chaque repère porte maintenant son nom au survol du point. Un
+                nombre qui ne dit ni quoi ni quand n'était qu'un pis-aller. */}
             {s.note && (
               <p className="text-[11px] text-warn leading-relaxed bg-warn/[0.06] border border-warn/20 rounded-lg px-2.5 py-1.5 mt-2 mx-1">
                 {s.note}
@@ -316,30 +313,41 @@ export function ThemeCard({
               Comment l&apos;améliorer cette semaine
             </h4>
             {theme.recos.length > 0 ? (
-              /* Les conseils remplissent réellement leurs deux tiers : avec un
-                 nombre impair, le dernier prend toute la largeur au lieu de
-                 laisser un trou de fin de ligne. Un conseil seul occupait une
-                 demi-colonne et la moitié de la carte restait blanche. */
-              <div
-                className={`grid gap-3 sm:grid-cols-2 ${
-                  theme.recos.length % 2 === 1 ? "sm:[&>*:last-child]:col-span-2" : ""
-                }`}
-              >
-                {[...theme.recos]
-                  .sort(
-                    (a, b) => (suivis[b.key] ? 1 : 0) - (suivis[a.key] ? 1 : 0)
-                  )
-                  .map((r) => (
-                    <RecoCard
-                      key={r.key}
-                      r={r}
-                      current={feedback[r.key] ?? null}
-                      comment={comments[r.key] ?? null}
-                      theme={theme.label}
-                      action={suivis[r.key] ?? null}
-                      capReached={capReached}
-                    />
-                  ))}
+              /* UNE SEULE RANGÉE QUI GLISSE, plus une grille qui empile.
+                 En `sm:grid-cols-2`, trois conseils donnaient deux lignes dont
+                 la seconde était à moitié vide, et le troisième conseil passait
+                 sous la ligne de flottaison de la carte : on ne savait pas
+                 qu'il existait. Alignés, ils se comparent — c'est la seule
+                 chose qu'on fait avec trois conseils.
+
+                 Largeur FIXE et hauteur commune : une rangée dont les cartes
+                 respirent chacune à sa taille se lit comme un empilement raté.
+                 `grid` sur l'enveloppe plutôt que `flex` — c'est ce qui étire
+                 la carte aux deux dimensions sans toucher à `RecoCard`.
+                 `scroll-snap` sur chaque carte : le glissement s'arrête sur une
+                 carte entière, jamais sur un tiers de carte. */
+              <div className="defile-x -mx-1 px-1 pb-1.5 snap-x snap-mandatory">
+                <div className="flex gap-3 items-stretch w-max">
+                  {[...theme.recos]
+                    .sort(
+                      (a, b) => (suivis[b.key] ? 1 : 0) - (suivis[a.key] ? 1 : 0)
+                    )
+                    .map((r) => (
+                      <div
+                        key={r.key}
+                        className="grid w-[268px] sm:w-[300px] shrink-0 snap-start"
+                      >
+                        <RecoCard
+                          r={r}
+                          current={feedback[r.key] ?? null}
+                          comment={comments[r.key] ?? null}
+                          theme={theme.label}
+                          action={suivis[r.key] ?? null}
+                          capReached={capReached}
+                        />
+                      </div>
+                    ))}
+                </div>
               </div>
             ) : (
               <p className="text-[12.5px] text-faint">
