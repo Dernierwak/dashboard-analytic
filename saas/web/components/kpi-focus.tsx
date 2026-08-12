@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LineChart } from "@/components/line-chart";
-import { marqueursCourbe } from "@/components/etat-action";
+import { marqueursCourbe, SOURCE } from "@/components/etat-action";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
 
@@ -38,17 +38,25 @@ import type { KpiFocus, KpiOption } from "@/lib/report";
 // (roas, ctr, cpc, spend, clics) sont calculés sur Meta ET Google confondus —
 // coller une pastille « Google Ads » sur le CTR ferait couper Google à qui
 // croit lire Google. On regroupe donc par TERRAIN, qui est la seule clé vraie
-// pour les neuf, et chaque terrain dit sa provenance sous le chiffre.
-const TERRAIN: Record<string, { groupe: string; court: string }> = {
-  roas: { groupe: "Ta pub", court: "ROAS" },
-  ctr: { groupe: "Ta pub", court: "CTR" },
-  cpc: { groupe: "Ta pub", court: "Coût / clic" },
-  spend: { groupe: "Ta pub", court: "Dépense" },
-  clics: { groupe: "Ta pub", court: "Clics" },
-  eng: { groupe: "Ton Instagram", court: "Engagement" },
-  reach: { groupe: "Ton Instagram", court: "Portée / post" },
-  vues: { groupe: "Ton Instagram", court: "Vues" },
-  trafic: { groupe: "Ton site", court: "Sessions" },
+// pour les neuf.
+//
+// ET CHAQUE CELLULE PORTE MAINTENANT SES SOURCES, EN COULEUR. Le regroupement
+// par terrain répond à « de quoi ça parle » ; il ne répond pas à « qu'est-ce
+// que je casse si je coupe Google ce soir ». Cette réponse-là existait, elle
+// était enfermée dans un `PROVENANCE` qui ne servait qu'à une ligne grise sous
+// le chiffre du haut, et à rien du tout dans la grille des neuf. Les cinq
+// cellules qui additionnent deux régies portent donc deux glyphes : c'est la
+// seule information qui manquait pour lire la grille sans l'avoir apprise.
+const TERRAIN: Record<string, { groupe: string; court: string; sources: string[] }> = {
+  roas: { groupe: "Ta pub", court: "ROAS", sources: ["meta", "google"] },
+  ctr: { groupe: "Ta pub", court: "CTR", sources: ["meta", "google"] },
+  cpc: { groupe: "Ta pub", court: "Coût / clic", sources: ["meta", "google"] },
+  spend: { groupe: "Ta pub", court: "Dépense", sources: ["meta", "google"] },
+  clics: { groupe: "Ta pub", court: "Clics", sources: ["meta", "google"] },
+  eng: { groupe: "Ton Instagram", court: "Engagement", sources: ["instagram"] },
+  reach: { groupe: "Ton Instagram", court: "Portée / post", sources: ["instagram"] },
+  vues: { groupe: "Ton Instagram", court: "Vues", sources: ["instagram"] },
+  trafic: { groupe: "Ton site", court: "Sessions", sources: ["site"] },
 };
 const ORDRE_GROUPES = ["Ta pub", "Ton Instagram", "Ton site"];
 const PROVENANCE: Record<string, string> = {
@@ -56,6 +64,37 @@ const PROVENANCE: Record<string, string> = {
   "Ton Instagram": "Instagram",
   "Ton site": "Google Analytics",
 };
+/** Les sources d'un groupe — l'union de celles de ses indicateurs, sans doublon. */
+function sourcesGroupe(cles: string[]): string[] {
+  const out: string[] = [];
+  for (const c of cles)
+    for (const s of TERRAIN[c]?.sources ?? [])
+      if (!out.includes(s)) out.push(s);
+  return out;
+}
+
+/** Les glyphes de provenance, dans leur couleur. Le seul endroit qui les pose. */
+function Glyphes({ sources, actif = false }: { sources: string[]; actif?: boolean }) {
+  if (sources.length === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-[3px] leading-none shrink-0">
+      {sources.map((s) => {
+        const src = SOURCE[s];
+        if (!src) return null;
+        return (
+          <span
+            key={s}
+            className="text-[10px] leading-none"
+            style={{ color: actif ? src.surSombre : src.couleur }}
+            title={src.nom}
+          >
+            {src.glyphe}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 // Ce que le chiffre mesure vraiment. « 8 990 » n'est pas la même chose selon
 // qu'il s'agit d'un total de semaine ou d'une moyenne par publication.
 const PORTEE: Record<string, string> = {
@@ -83,10 +122,14 @@ function ecartPct(o: KpiOption): number | null {
     : null;
 }
 
-// Une cellule du sélecteur : le nom, la valeur, la pente. Trois informations,
-// pas quatre — la pastille de couleur par cellule que portait la maquette
-// répéterait neuf fois ce que l'en-tête de groupe dit trois fois, et c'est
-// justement les 20 px horizontaux qui font tenir la cellule sur un téléphone.
+// Une cellule du sélecteur : le nom, ses SOURCES, la valeur, la pente.
+//
+// La maquette d'origine proposait une pastille de couleur par cellule, refusée
+// alors parce qu'elle aurait répété neuf fois ce que l'en-tête de groupe disait
+// trois fois. Le glyphe n'est pas cette pastille : il ne redit pas le groupe, il
+// dit CE QU'ON CASSE en coupant une régie — et cinq cellules sur neuf en portent
+// deux, ce qu'aucun en-tête de groupe ne pouvait exprimer. Il coûte 14 px, pas
+// les 20 px d'une pastille, et il se pose contre le nom.
 function Cellule({
   o,
   actif,
@@ -98,7 +141,8 @@ function Cellule({
 }) {
   const d = ecartPct(o);
   const s = sensPente(d, o.direction === "down", 0.5);
-  const court = TERRAIN[o.key]?.court ?? o.titre;
+  const t = TERRAIN[o.key];
+  const court = t?.court ?? o.titre;
   return (
     <button
       onClick={onClick}
@@ -107,14 +151,21 @@ function Cellule({
           ? "bg-ink text-white border-ink"
           : "bg-white border-line hover:bg-black/[0.03]"
       }`}
-      title={o.titre}
+      title={
+        t ? `${o.titre} — ${PROVENANCE[t.groupe] ?? ""}`.trim().replace(/ —\s*$/, "") : o.titre
+      }
     >
-      <span
-        className={`block text-[9.5px] uppercase tracking-wide font-bold truncate ${
-          actif ? "text-white/60" : "text-faint"
-        }`}
-      >
-        {court}
+      <span className="flex items-center gap-1.5">
+        <span
+          className={`block text-[9.5px] uppercase tracking-wide font-bold truncate ${
+            actif ? "text-white/60" : "text-faint"
+          }`}
+        >
+          {court}
+        </span>
+        <span className="ml-auto">
+          <Glyphes sources={t?.sources ?? []} actif={actif} />
+        </span>
       </span>
       <span className="flex items-baseline gap-1.5 mt-0.5">
         <span className={`font-mono text-[15px] leading-none font-medium ${actif ? "" : "text-ink"}`}>
@@ -210,9 +261,15 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         {/* Ce que le chiffre mesure, et d'où il vient. Sans cette ligne, rien ne
             dit que le CTR mélange deux régies — et on coupe Google en croyant
             lire Google. */}
-        <p className="text-[10.5px] text-faint mt-1.5">
-          {PORTEE[o.key] ?? "sur la semaine"}
-          {groupe && <> · {PROVENANCE[groupe]}</>}
+        <p className="text-[10.5px] text-faint mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span>{PORTEE[o.key] ?? "sur la semaine"}</span>
+          {groupe && (
+            <>
+              <span>·</span>
+              <Glyphes sources={TERRAIN[o.key]?.sources ?? []} />
+              <span>{PROVENANCE[groupe]}</span>
+            </>
+          )}
         </p>
         <Pente
           delta={delta}
@@ -258,30 +315,49 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         </details>
       )}
 
-      {/* Changer d'indicateur — chaque pastille porte sa valeur et sa pente :
-          le choix se fait en lisant, pas en cliquant neuf fois. */}
-      <div className="border-t border-line bg-black/[0.012] px-3 py-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
-          {groupes.map((g) => (
-            <div key={g.nom} className="contents">
-              <div className="col-span-full text-[9.5px] uppercase tracking-widest text-faint font-bold pt-1.5 first:pt-0">
-                {g.nom}
+      {/* Changer d'indicateur — chaque cellule porte sa valeur, sa pente et ses
+          sources : le choix se fait en lisant, pas en cliquant neuf fois.
+
+          LES GROUPES SONT DES BLOCS, plus trois titres posés dans une grille
+          continue. En `contents`, la seule chose qui séparait « Ta pub » de
+          « Ton Instagram » était six pixels de marge sous un mot gris : les
+          neuf cellules se lisaient comme une seule liste, et le groupement —
+          qui est justement ce que David a décidé de garder — ne se voyait pas.
+          Chaque groupe a maintenant son cadre, son en-tête, et sa PROVENANCE
+          écrite en toutes lettres à côté de ses glyphes. */}
+      <div className="border-t border-line bg-black/[0.012] px-3 py-3 space-y-2">
+        {groupes.map((g) => {
+          const sources = sourcesGroupe(g.options.map((op) => op.key));
+          return (
+            <div key={g.nom} className="rounded-xl border border-line bg-white/60 p-2">
+              <div className="flex items-baseline gap-2 px-0.5 pb-1.5">
+                <span className="text-[9.5px] uppercase tracking-widest text-ink font-bold">
+                  {g.nom}
+                </span>
+                <Glyphes sources={sources} />
+                <span className="text-[10px] text-faint truncate">
+                  {PROVENANCE[g.nom]}
+                </span>
               </div>
-              {g.options.map((op) => (
-                <Cellule
-                  key={op.key}
-                  o={op}
-                  actif={op.key === cle}
-                  onClick={() => setCle(op.key)}
-                />
-              ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
+                {g.options.map((op) => (
+                  <Cellule
+                    key={op.key}
+                    o={op}
+                    actif={op.key === cle}
+                    onClick={() => setCle(op.key)}
+                  />
+                ))}
+              </div>
             </div>
-          ))}
-          {orphelines.length > 0 && (
-            <div className="contents">
-              <div className="col-span-full text-[9.5px] uppercase tracking-widest text-faint font-bold pt-1.5">
-                Autres
-              </div>
+          );
+        })}
+        {orphelines.length > 0 && (
+          <div className="rounded-xl border border-line bg-white/60 p-2">
+            <div className="text-[9.5px] uppercase tracking-widest text-ink font-bold px-0.5 pb-1.5">
+              Autres
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
               {orphelines.map((op) => (
                 <Cellule
                   key={op.key}
@@ -291,8 +367,8 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
                 />
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
