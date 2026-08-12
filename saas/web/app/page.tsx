@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { getWeeklyData, type ReportPayload, type TrackedAction } from "@/lib/report";
-import { ObjectifSelect } from "@/components/objectif-select";
+import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { KpiFocusCard } from "@/components/kpi-focus";
@@ -19,12 +19,6 @@ import { Triangle } from "@/components/pente";
 
 
 export const dynamic = "force-dynamic";
-
-const ONB_OBJ: Record<string, string> = {
-  ventes: "Plus de ventes",
-  notoriete: "Être plus connu",
-  engagement: "Une communauté qui réagit",
-};
 
 // Deux niveaux de titre, pas un seul. « Fort » est réservé à ce sur quoi on
 // AGIT ; « discret » habille le détail qu'on consulte. Quand tous les titres
@@ -268,62 +262,10 @@ export default async function Page() {
           )}
         </div>
         {report?.brief && <ResumeSemaine brief={report.brief} />}
-      {/* L'objectif est un RÉGLAGE, pas du contenu : il se range sous le
-          résumé, replié, à portée mais sans peser sur la lecture. */}
-        <details className="group mt-4 rounded-xl border border-line bg-white max-w-[68ch]">
-          <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none flex-wrap">
-            <span className="text-[14px] font-semibold text-ink">
-              Objectif :{" "}
-              <span className="text-brand">
-                {ONB_OBJ[data.objectif ?? ""] ?? "à définir"}
-              </span>
-            </span>
-            {priorities.length > 0 ? (
-              <span className="text-[13px] font-semibold text-warn">
-                · ★ {priorities.join(" · ")}
-              </span>
-            ) : (
-              <span className="text-[12.5px] text-faint">· 3 plus gros thèmes</span>
-            )}
-            <span className="ml-auto text-[11px] text-faint group-open:hidden">modifier ▾</span>
-            <span className="ml-auto text-[11px] text-faint hidden group-open:inline">replier ▴</span>
-          </summary>
-          <div className="px-4 pb-4 pt-1 border-t border-line grid gap-4 sm:grid-cols-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-                Ce qu&apos;on cherche
-              </div>
-              <ObjectifSelect current={data.objectif} />
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-                On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
-              </div>
-              {priorities.length > 0 ? (
-                <div className="flex flex-wrap gap-2 items-center">
-                  {priorities.map((p) => (
-                    <span
-                      key={p}
-                      className="text-[13px] font-semibold text-warn bg-warn/[0.08] border border-warn/25 rounded-full px-3 py-1.5"
-                    >
-                      ★ {p}
-                    </span>
-                  ))}
-                  <Link href="/labels" className="text-[12px] font-semibold text-brand hover:underline ml-1">
-                    Changer →
-                  </Link>
-                </div>
-              ) : (
-                <p className="text-[12.5px] text-muted leading-relaxed">
-                  Aucune priorité — le rapport prend tes 3 plus gros thèmes.{" "}
-                  <Link href="/labels" className="text-brand font-semibold hover:underline">
-                    Choisis les tiens →
-                  </Link>
-                </p>
-              )}
-            </div>
-          </div>
-        </details>
+        {/* L'OBJECTIF N'EST PLUS ICI. Il flottait sous le résumé, à 600 px des
+            cartes qu'il pondère : on le lisait comme un réglage de compte, pas
+            comme la cause de ce qu'on allait voir. Il est descendu au-dessus de
+            la première carte de thème (section 2), avec le thème en props. */}
       </div>
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
@@ -371,12 +313,12 @@ export default async function Page() {
             </SectionTitle>
             <ReloadRecosButton />
           </div>
+          {/* L'objectif et les thèmes suivis étaient écrits ici ET dans le
+              widget juste dessous : la même phrase à 40 px d'écart. Le texte
+              d'introduction se borne à ce qu'il est seul à dire — ce que la
+              section contient. */}
           <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 max-w-[68ch]">
-            Objectif <span className="font-semibold text-ink">{ONB_OBJ[data.objectif ?? ""] ?? "à définir"}</span>
-            {priorities.length > 0 && (
-              <> · thèmes suivis <span className="font-semibold text-warn">{priorities.join(" · ")}</span></>
-            )}{" "}
-            — pour chacun : où il en est, ce qui peut le faire bouger, et ce que tes
+            Pour chaque thème : où il en est, ce qui peut le faire bouger, et ce que tes
             actions passées ont donné.
           </p>
           {report?.themes_intro && (
@@ -411,25 +353,71 @@ export default async function Page() {
             </div>
           )}
 
+          {/* L'OBJECTIF, JUSTE AU-DESSUS DE LA CARTE QU'IL COMMANDE.
+              Il prend son thème en props et ne lit aucun état global : c'est
+              ce qui le rend transposable tel quel le jour où chaque thème
+              portera le sien.
+
+              CE QUI RESTE À FAIRE POUR LE DÉFILEMENT HORIZONTAL DES THÈMES.
+              Le conteneur ci-dessous est prêt à devenir un rail qui glisse
+              (`.defile-x snap-x snap-mandatory`, chaque enveloppe en
+              `snap-start w-[92vw] max-w-[880px] shrink-0`), mais il ne l'est
+              PAS aujourd'hui, et volontairement : une carte de thème fait 900 à
+              1 400 px de haut, et une bande de cette taille qui glisse
+              latéralement enferme le défilement vertical de la page — sur
+              téléphone on ne sort plus de la carte. Trois choses manquent avant
+              de l'activer :
+                1. un objectif PAR THÈME en base (`profiles.objectif` est unique
+                   par compte) — alors `ObjectifTheme` entre dans l'enveloppe de
+                   chaque carte au lieu d'être rendu une fois ;
+                2. un repère de position — sans pastilles « 2 / 6 », un rail
+                   horizontal cache cinq thèmes sans le dire ;
+                3. une carte repliable, pour que la hauteur du rail soit celle
+                   d'un écran et non celle de la plus haute carte.
+              Le passage se fera ici et dans `ObjectifTheme`, nulle part
+              ailleurs : chaque enveloppe porte déjà sa `key` et son ancre. */}
           <div className="space-y-3">
-            {cartes.map((t) => (
-              <ThemeCard
-                key={t.label}
-                theme={t}
-                actions={data.actions}
-                archived={data.actionsArchived}
-                changements={chgParTheme(t.label)}
-                fenetre={report?.vision?.period_label || null}
-                decroche={pire?.label === t.label}
-                labels={data.labels}
-                feedback={data.feedback}
-                comments={data.comments}
-                suivis={data.suivis}
-                capReached={capReached}
-              />
+            {cartes.map((t, i) => (
+              <div key={t.label}>
+                {i === 0 && (
+                  <ObjectifTheme
+                    theme={{ label: t.label, is_priority: t.is_priority }}
+                    objectif={data.objectif}
+                    priorities={priorities}
+                    nbThemes={cartes.length}
+                  />
+                )}
+                <ThemeCard
+                  theme={t}
+                  actions={data.actions}
+                  archived={data.actionsArchived}
+                  changements={chgParTheme(t.label)}
+                  fenetre={report?.vision?.period_label || null}
+                  decroche={pire?.label === t.label}
+                  labels={data.labels}
+                  feedback={data.feedback}
+                  comments={data.comments}
+                  suivis={data.suivis}
+                  capReached={capReached}
+                />
+              </div>
             ))}
           </div>
         </section>
+      )}
+
+      {/* Aucun thème classé : l'objectif reste réglable quand même. Le laisser
+          dans la seule section 2 le ferait disparaître pour le compte qui en a
+          justement le plus besoin — celui qui n'a encore rien classé. */}
+      {cartes.length === 0 && (
+        <div className="mb-8 max-w-[68ch]">
+          <ObjectifTheme
+            theme={null}
+            objectif={data.objectif}
+            priorities={priorities}
+            nbThemes={0}
+          />
+        </div>
       )}
 
       {/* LE FILET — les actions qu'aucune carte ne prend.
