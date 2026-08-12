@@ -7,22 +7,30 @@
 // — puis on passe l'année à vérifier qu'on la tient. Le mois n'est pas une
 // saisie de plus, c'est une lecture de l'année ; le jour non plus.
 //
-// Ce que ça change concrètement : quand aucun budget mensuel n'a été posé, le
-// mois se DÉDUIT de l'annuel (÷ 12) au lieu de valoir zéro. Un seul nombre à
-// taper — l'enveloppe de l'année — fait vivre le mois, le jour, les alertes et
-// toutes les barres de la page.
+// Ce que ça change concrètement : le mois se DÉDUIT de l'annuel (÷ 12), et
+// c'est sa SEULE source depuis la suppression du dépliant de réglages. Un seul
+// nombre à taper — l'enveloppe de l'année — fait vivre le mois, le jour, les
+// alertes et toutes les barres de la page.
 //
 // Trois lectures, dans cet ordre, et pas une de plus :
-//   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis la barre de l'année.
-//   2 · OÙ ÇA PART — filtrable par période et par thèmes : l'anneau dit la
-//       répartition, la courbe dit le rythme.
-//   3 · PAR THÈME — la seule décision de la page, à l'année elle aussi.
+//   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis la barre de l'année :
+//       dépensé, budget FIXÉ (le second terme de la question, il a donc la
+//       taille d'un terme), et ce qui est POSÉ sur les campagnes.
+//   2 · OÙ ÇA PART — filtrable par période et par thèmes : deux anneaux (par
+//       plateforme, par thème) disent la répartition, la courbe dit le rythme.
+//   3 · PAR THÈME — la seule décision de la page, à l'année elle aussi, en
+//       grille de trois colonnes et toujours défilante.
 //
-// Tout ce qui se saisit une fois et ne se relit pas descend dans « Réglages ».
-// Les modules eux-mêmes vivent dans `components/couts-modules.tsx` : cette page
-// les compose, elle n'en dessine aucun.
+// IL N'Y A PLUS DE SECTION « RÉGLAGES ». Ce qui s'y saisissait — l'enveloppe du
+// mois, les budgets mensuels par thème, la table mois par mois — demandait douze
+// nombres pour en produire un seul, et le premier de ces nombres primait
+// silencieusement sur l'enveloppe d'année. Tout se règle maintenant à l'endroit
+// où le chiffre se lit. Les modules vivent dans
+// `components/couts-modules.tsx` : cette page les compose, elle n'en dessine
+// aucun.
 
 import { getCoutsData, type ThemeSpend } from "@/lib/couts";
+import { getBudgetPlanifie } from "@/lib/budgets";
 import { fmtCHF } from "@/lib/report";
 import {
   AlerteDepassement,
@@ -30,13 +38,11 @@ import {
   EnveloppeAnnee,
   LigneTheme,
 } from "@/components/couts-modules";
-import { BudgetEditor } from "@/components/budget-editor";
-import { BudgetYearTable } from "@/components/budget-year-table";
 import { FiltreCouts } from "@/components/filtre-couts";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
 import { Chiffre } from "@/components/chiffre";
-import { teinteLabel } from "@/lib/palette";
+import { teinteLabel, type Teinte } from "@/lib/palette";
 
 export const dynamic = "force-dynamic";
 
@@ -54,11 +60,21 @@ function Titre({ children, sur }: { children: React.ReactNode; sur?: string }) {
   );
 }
 
+// Le mois n'a plus qu'une provenance possible, et il continue de l'écrire là
+// où le nombre s'affiche : c'est la règle qui a fait naître cette page, un
+// client lisait « enveloppe : 3 000 CHF » sans l'avoir jamais tapée.
 const SOURCE_MOIS: Record<string, string> = {
-  saisi: "enveloppe du mois, fixée à la main",
-  plateformes: "hérité de tes budgets par plateforme",
-  annuel: "déduit de ton enveloppe d'année (÷ 12)",
-  aucun: "à fixer dans les réglages, ou déduit de l'année",
+  annuel: "ton enveloppe d'année ÷ 12",
+  aucun: "fixe ton enveloppe d'année, le mois en découle",
+};
+
+// Les couleurs de canal, forcées sur l'anneau par plateforme. `teinteLabel`
+// indexe sur la liste des THÈMES : Meta et Google y prendraient deux teintes
+// arbitraires, et Google pourrait sortir en bleu — la couleur de Meta dans
+// dix-huit autres endroits de l'application.
+const TEINTE_CANAL: Record<string, Teinte> = {
+  Meta: { nom: "meta", trait: "#1a56ff", aplat: "rgba(26, 86, 255, 0.14)" },
+  Google: { nom: "google", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
 };
 
 function unSeul(v: string | string[] | undefined): string | undefined {
@@ -83,6 +99,11 @@ export default async function CoutsPage({
   });
 
   const annee = data.annee;
+  // Le budget POSÉ sur les campagnes, sur l'année entière — pas sur la période
+  // filtrée : c'est l'enveloppe de l'année qu'il vient compléter, et un budget
+  // planifié restreint à « 30 derniers jours » ne voudrait rien dire (une photo
+  // hebdomadaire n'a pas de fenêtre).
+  const planifie = await getBudgetPlanifie(`${annee}-01-01`, `${annee}-12-31`);
   const ratioMois = data.totalBudget > 0 ? data.totalSpent / data.totalBudget : null;
   const ratioAn = data.budgetAnnuel > 0 ? data.spentYear / data.budgetAnnuel : null;
   const attribue = data.byTheme.reduce((a, t) => a + t.budgetYear, 0);
@@ -113,7 +134,10 @@ export default async function CoutsPage({
     : data.budgetJour * (data.periode.pas === "semaine" ? 7 : 1);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    /* max-w-6xl et non 5xl : deux anneaux côte à côte et une liste de thèmes en
+       trois colonnes n'ont pas la place dans 1 024 px — à 5xl, la troisième
+       colonne descendait sous la deuxième et la grille ne servait plus à rien. */
+    <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           {data.monthLabel}
@@ -153,6 +177,8 @@ export default async function CoutsPage({
                 ? `${SOURCE_MOIS[data.sourceBudgetMois]} · ${Math.round(ratioMois * 100)} % consommé ce mois`
                 : SOURCE_MOIS.aucun
             }
+            // Un mois ne se saisit plus : il n'y a plus qu'une source, et c'est
+            // pour ça que la phrase ci-dessus a cessé de varier.
             ton={ratioMois !== null && ratioMois > 1 ? "neg" : "ink"}
             serie={data.daily.map((j) => j.meta + j.google)}
           />
@@ -181,6 +207,7 @@ export default async function CoutsPage({
           elapsedAn={data.elapsedAn}
           channels={data.channels}
           attribue={attribue}
+          planifie={planifie}
         />
       </section>
 
@@ -188,9 +215,9 @@ export default async function CoutsPage({
       <section className="mb-9">
         <Titre sur="Regarder de près">Où ça part</Titre>
         <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
-          Choisis une période et les thèmes qui t&apos;intéressent : l&apos;anneau dit la
-          répartition, la courbe dit le rythme. La liste des thèmes, plus bas, reste sur
-          l&apos;année entière.
+          Choisis une période et les thèmes qui t&apos;intéressent : les deux anneaux
+          disent la répartition — par plateforme, puis par thème — et la courbe dit le
+          rythme. La liste des thèmes, plus bas, reste sur l&apos;année entière.
         </p>
 
         <FiltreCouts
@@ -203,7 +230,34 @@ export default async function CoutsPage({
         />
 
         {data.totalPeriode > 0 ? (
-          <div className="mb-4">
+          /* DEUX ANNEAUX, PAS UN. « Où ça part » a deux réponses qui ne se
+             déduisent pas l'une de l'autre : sur quelle RÉGIE, et sur quel
+             THÈME. Un compte à 80 % sur Google et un compte partagé ne se
+             pilotent pas pareil, et cette question-là n'avait aucune réponse
+             sur la page — il fallait aller sur les pages canal les lire une par
+             une. Les deux obéissent au même filtre de période et de thèmes, et
+             affichent donc exactement le même total au centre : c'est ce qui
+             fait qu'on les lit comme deux découpes d'un seul gâteau.
+             La plateforme est à GAUCHE parce que c'est la découpe la plus
+             grossière — deux parts contre dix. */
+          <div className="grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3 mb-4 items-stretch">
+            <ThemeDonut
+              rows={[
+                { label: "Meta", spend: data.parCanalPeriode.meta },
+                { label: "Google", spend: data.parCanalPeriode.google },
+              ]}
+              teintes={TEINTE_CANAL}
+              titre="Dépensé par plateforme"
+              sousTitre={data.periode.titre}
+              unite="plateforme"
+              montants
+              etroit
+              note={
+                data.filtreActif
+                  ? "Sur les thèmes que tu as choisis uniquement — les campagnes sans thème sont exclues, comme dans l'anneau voisin."
+                  : "Tout le compte sur la période. Un déséquilibre n'est pas un défaut en soi : c'est une question à se poser quand il n'a jamais été décidé."
+              }
+            />
             <ThemeDonut
               rows={vus.map((t) => ({ label: t.label, spend: t.spendPeriode }))}
               orphan={Math.max(0, data.totalPeriode - vus.reduce((a, t) => a + t.spendPeriode, 0))}
@@ -211,6 +265,7 @@ export default async function CoutsPage({
               titre="Dépensé par thème"
               sousTitre={data.periode.titre}
               montants
+              etroit
               note="La part grise « autres » est ce qui n'est rattaché à aucun thème — des campagnes qu'il reste à étiqueter."
             />
           </div>
@@ -240,81 +295,52 @@ export default async function CoutsPage({
             l&apos;enveloppe de l&apos;année, et lequel en consomme sans la rendre.
           </p>
 
-          <ScrollList title={`Par thème · l'année ${annee}`} count={vus.length} maxH="max-h-[60vh]">
-            {vus.map((t) => (
-              <LigneTheme
-                key={t.label}
-                t={t}
-                part={data.spentYear > 0 ? (t.spendYear / data.spentYear) * 100 : 0}
-                elapsedAn={data.elapsedAn}
-                annee={annee}
-                univers={data.labels}
-              />
-            ))}
+          {/* TROIS COLONNES, ET TOUJOURS DÉFILANTE. Une ligne par thème sur
+              toute la largeur donnait 35 lignes de 90 px pour un contenu qui en
+              occupe 300 : on faisait défiler pendant dix secondes pour comparer
+              deux thèmes qui auraient tenu côte à côte. Le `divise` tombe — des
+              filets horizontaux à travers trois colonnes couperaient des cartes
+              qui n'ont rien à voir entre elles. */}
+          <ScrollList
+            title={`Par thème · l'année ${annee}`}
+            count={vus.length}
+            maxH="max-h-[70vh]"
+            divise={false}
+          >
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-px bg-line">
+              {vus.map((t) => (
+                <div key={t.label} className="bg-white">
+                  <LigneTheme
+                    t={t}
+                    part={data.spentYear > 0 ? (t.spendYear / data.spentYear) * 100 : 0}
+                    elapsedAn={data.elapsedAn}
+                    annee={annee}
+                    univers={data.labels}
+                    budgetTotal={data.budgetAnnuel}
+                    resteARepartir={data.budgetAnnuel - attribue}
+                    planifie={planifie}
+                  />
+                </div>
+              ))}
+            </div>
           </ScrollList>
         </section>
       )}
 
-      {/* ══ RÉGLAGES ════════════════════════════════════════════════════════
-          Tout ce qui se saisit une fois et ne se relit pas. Rien n'est perdu :
-          les budgets mensuels déjà posés restent actifs, modifiables, et
-          continuent de primer sur la déduction depuis l'annuel. */}
-      <details className="mb-6">
-        <summary className="text-[13px] font-semibold text-ink cursor-pointer select-none">
-          ⚙ Réglages du budget — enveloppe du mois, détail mois par mois
-        </summary>
+      {/* LE DÉPLIANT « ⚙ RÉGLAGES DU BUDGET » A DISPARU, sur demande de David,
+          et deux choses en découlent qu'il faut savoir en relisant ce fichier :
 
-        <div className="mt-4 bg-white border border-line rounded-xl shadow-card p-5 mb-4">
-          <BudgetEditor
-            channel="global"
-            current={data.budgetGlobalSaisi}
-            periode="mois"
-            libelle="Enveloppe du mois"
-          />
-          <p className="text-[11px] text-faint mt-2 leading-relaxed">
-            À laisser vide dans la plupart des cas : sans montant ici, le budget du mois est
-            déduit de ton enveloppe d&apos;année (÷ 12), et c&apos;est ce qui permet de ne
-            rien taper d&apos;autre. Un montant posé ici prend le pas sur cette déduction et
-            se reporte sur les mois suivants tant que tu ne le changes pas.
-          </p>
-        </div>
-
-        {data.byTheme.some((t) => t.budget > 0) && (
-          <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
-            <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-3">
-              Budgets mensuels déjà fixés par thème
-            </div>
-            <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
-              {data.byTheme
-                .filter((t) => t.budget > 0)
-                .map((t) => (
-                  <div key={t.label} className="border-l-2 border-line pl-3">
-                    <div className="text-[12px] font-semibold text-ink">{t.label}</div>
-                    <BudgetEditor
-                      channel={`label:${t.label}`}
-                      current={t.budget}
-                      periode="mois"
-                      libelle="Budget du mois"
-                    />
-                  </div>
-                ))}
-            </div>
-            <p className="text-[11px] text-faint mt-3 leading-relaxed">
-              Ces montants restent actifs et modifiables ici. Ils ne s&apos;affichent plus
-              dans la liste des thèmes : le pilotage se fait à l&apos;année. Tant
-              qu&apos;aucune enveloppe d&apos;année n&apos;est posée sur un thème, on
-              additionne ses douze mois.
-            </p>
-          </div>
-        )}
-
-        <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-            Le détail mois par mois
-          </div>
-          <BudgetYearTable months={data.months} />
-        </div>
-      </details>
+          · l'éditeur de l'enveloppe du MOIS n'existe plus. Le budget du mois
+            vient donc TOUJOURS de l'annuel ÷ 12 — c'est écrit sous la tuile.
+            La règle de préséance a été nettoyée dans `lib/couts.ts` : laisser un
+            mensuel saisi primer sur l'annuel aurait figé un montant que plus
+            aucun écran ne permettait de corriger. Les mensuels déjà en base ne
+            sont pas perdus pour autant : faute d'enveloppe d'année, leur somme
+            devient l'annuel ;
+          · la table « détail mois par mois » et `components/budget-year-table.tsx`
+            n'étaient rendues que là — le composant a été supprimé, ainsi que
+            `months` / `MonthRow` dans `lib/couts.ts`. Douze lignes de saisie pour
+            un nombre qu'on tape une fois. */}
     </main>
   );
 }

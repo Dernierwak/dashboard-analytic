@@ -1,7 +1,9 @@
 import { fmtCHF } from "@/lib/report";
 import type { AlerteJour, ChannelCout, PointSerie, ThemeSpend } from "@/lib/couts";
+import type { BudgetPlanifie } from "@/lib/budgets";
 import { BudgetEditor } from "@/components/budget-editor";
 import { LineChart } from "@/components/line-chart";
+import { CANAL } from "@/components/etat-action";
 import { teinteLabel } from "@/lib/palette";
 
 // LES MODULES DE LA PAGE COÛTS.
@@ -105,6 +107,39 @@ const SOURCE_AN: Record<string, string> = {
   aucun: "",
 };
 
+// TROIS NATURES DE NOMBRE, ET IL FAUT LES TENIR SÉPARÉES.
+//
+//   · DÉPENSÉ   — constaté, il ne bougera plus ;
+//   · FIXÉ      — l'enveloppe que tu as décidée, une promesse que tu te fais ;
+//   · PLANIFIÉ  — ce qui est réellement POSÉ sur tes campagnes en ce moment,
+//                 relevé chez Meta et Google.
+//
+// Les deux dernières se confondent facilement et ne disent pas la même chose :
+// une enveloppe de 72 000 avec 18 000 posés sur les campagnes, c'est un compte
+// qui ne dépensera pas son budget, et aucune barre de « dépensé / fixé » ne le
+// montre — au contraire, elle rassure. D'où le troisième chiffre.
+//
+// Et le planifié n'est pas un historique : ni Meta ni Google ne rendent le
+// budget tel qu'il était il y a trois mois. C'est une suite de photos. Quand
+// aucune n'a encore été prise, on écrit que le relevé n'a pas eu lieu — jamais
+// « 0 CHF planifié », qui se lirait « rien de prévu » et serait un chiffre non
+// mesuré présenté comme mesuré.
+function Planifie({ p, montant }: { p: BudgetPlanifie; montant: number }) {
+  if (p.vide) {
+    return (
+      <span className="text-[12.5px] text-faint">
+        pas encore relevé
+      </span>
+    );
+  }
+  return (
+    <span className="font-mono text-[19px] leading-none font-medium text-ink">
+      {fmtCHF(montant)}
+      <span className="text-[11.5px] text-faint"> CHF</span>
+    </span>
+  );
+}
+
 export function EnveloppeAnnee({
   annee,
   spentYear,
@@ -114,6 +149,7 @@ export function EnveloppeAnnee({
   elapsedAn,
   channels,
   attribue,
+  planifie,
 }: {
   annee: number;
   spentYear: number;
@@ -123,11 +159,14 @@ export function EnveloppeAnnee({
   elapsedAn: number;
   channels: ChannelCout[];
   attribue: number;
+  /** Ce qui est POSÉ sur les campagnes — l'autre promesse, celle des plateformes. */
+  planifie: BudgetPlanifie;
 }) {
   const ratio = budgetAnnuel > 0 ? spentYear / budgetAnnuel : null;
   const enAvance = ratio !== null && ratio > elapsedAn + 0.05;
   const depasse = ratio !== null && ratio > 1;
   const reste = budgetAnnuel - attribue;
+  const resteEnveloppe = budgetAnnuel - spentYear;
 
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-4">
@@ -140,14 +179,26 @@ export function EnveloppeAnnee({
           « 62 158 / 72 000 CHF » en 30 px ne tient pas dans les 303 px utiles
           d'un iPhone, et le texte se coupait où il pouvait — l'unité finissait
           seule sur sa ligne. En deux morceaux, le retour à la ligne se fait
-          entre le dépensé et sa référence, jamais au milieu d'un nombre. */}
-      <div className="flex items-baseline gap-x-2 gap-y-1 flex-wrap">
+          entre le dépensé et sa référence, jamais au milieu d'un nombre.
+
+          LE BUDGET FIXÉ REMONTE. Il était en 15 px gris, à peine plus lisible
+          qu'une unité : la question de la page — « est-ce que je tiens mon
+          budget ? » — a besoin de ses DEUX termes. Il passe en 20 px encre et
+          porte son mot (« fixé »), parce qu'un nombre à côté d'un autre sans
+          rien qui les distingue se lit comme une seule mesure. */}
+      <div className="flex items-baseline gap-x-2.5 gap-y-1 flex-wrap">
         <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
           {fmtCHF(spentYear)}
         </span>
-        <span className="font-mono text-[15px] text-faint whitespace-nowrap">
-          {budgetAnnuel > 0 ? `/ ${fmtCHF(budgetAnnuel)} CHF` : "CHF"}
-        </span>
+        {budgetAnnuel > 0 ? (
+          <span className="font-mono text-[19px] sm:text-[20px] leading-none text-ink whitespace-nowrap">
+            <span className="text-faint">/ </span>
+            {fmtCHF(budgetAnnuel)}
+            <span className="text-[12px] text-faint"> CHF fixés pour {annee}</span>
+          </span>
+        ) : (
+          <span className="font-mono text-[15px] text-faint">CHF</span>
+        )}
         {ratio !== null && (
           <span
             className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
@@ -184,9 +235,51 @@ export function EnveloppeAnnee({
         </p>
       )}
 
-      {/* Rang 7 — le détail. Chaque plateforme avec ce qu'elle a consommé et ce
-          qui lui a été promis. Aucune barre ici : une seule forme par module,
-          et c'est celle du dessus. */}
+      {/* Le bilan sous le chiffre de tête : trois nombres, 20 px contre 34, UN
+          seul fond. La grammaire l'autorise à cette condition — c'est la
+          concurrence entre deux chiffres de même taille qu'elle interdit, pas
+          la densité. Aucun des trois ne se déduit des autres. */}
+      {budgetAnnuel > 0 && (
+        <div className="mt-4 rounded-xl bg-black/[0.025] px-4 py-3 flex gap-x-8 gap-y-3 flex-wrap">
+          <div>
+            <div className="font-mono text-[19px] leading-none font-medium text-ink">
+              {resteEnveloppe >= 0 ? fmtCHF(resteEnveloppe) : `−${fmtCHF(-resteEnveloppe)}`}
+              <span className="text-[11.5px] text-faint"> CHF</span>
+            </div>
+            <div className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-1">
+              {resteEnveloppe >= 0 ? "Reste de l'enveloppe" : "Au-delà de l'enveloppe"}
+            </div>
+          </div>
+          <div>
+            <Planifie p={planifie} montant={planifie.total} />
+            <div className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-1">
+              Posé sur tes campagnes
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[19px] leading-none font-medium text-ink">
+              {fmtCHF(attribue)}
+              <span className="text-[11.5px] text-faint"> CHF</span>
+            </div>
+            <div
+              className={`text-[9.5px] uppercase tracking-wide font-semibold mt-1 ${
+                reste < 0 ? "text-neg" : reste > 0 ? "text-warn" : "text-pos"
+              }`}
+            >
+              Réparti par thème
+              {reste < 0
+                ? ` · ${fmtCHF(-reste)} de trop`
+                : reste > 0
+                  ? ` · ${fmtCHF(reste)} à placer`
+                  : " · tout est placé"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rang 7 — le détail. Chaque plateforme avec ce qu'elle a consommé, ce
+          qui lui a été promis et ce qui est posé sur ses campagnes. Aucune
+          barre ici : une seule forme par module, et c'est celle du dessus. */}
       <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 mt-4 pt-4 border-t border-line">
         {channels.map((ch) => (
           <div key={ch.key}>
@@ -202,6 +295,14 @@ export function EnveloppeAnnee({
                 )}
               </span>
             </div>
+            {!planifie.vide && (
+              <div className="text-[11px] text-faint mt-0.5">
+                posé sur les campagnes :{" "}
+                <span className="font-mono text-muted">
+                  {fmtCHF(planifie.parCanal[ch.key as "meta" | "google"] ?? 0)} CHF
+                </span>
+              </div>
+            )}
             <BudgetEditor
               channel={ch.key}
               current={ch.budgetAnSaisi}
@@ -223,32 +324,14 @@ export function EnveloppeAnnee({
           annee={annee}
           libelle={`Enveloppe unique ${annee}`}
         />
-        {budgetAnnuel > 0 && attribue > 0 && (
-          <p className="text-[11.5px] text-muted mt-2.5 leading-relaxed">
-            Réparti par thème : <span className="font-mono text-ink">{fmtCHF(attribue)}</span>
-            <span className="font-mono text-faint"> / {fmtCHF(budgetAnnuel)} CHF</span> —{" "}
-            <span
-              className={
-                reste < 0
-                  ? "text-neg font-semibold"
-                  : reste > 0
-                    ? "text-warn font-semibold"
-                    : "text-pos font-semibold"
-              }
-            >
-              {reste < 0
-                ? `${fmtCHF(-reste)} CHF de trop répartis`
-                : reste > 0
-                  ? `${fmtCHF(reste)} CHF encore à répartir`
-                  : "tout est réparti"}
-            </span>
-            .
-          </p>
-        )}
-        {/* Rang 9 — le pied, un seul. D'où sort le nombre affiché. */}
-        {SOURCE_AN[source] && (
-          <p className="text-[11px] text-faint mt-2 leading-relaxed">{SOURCE_AN[source]}</p>
-        )}
+        <p className="text-[11px] text-faint mt-2 leading-relaxed">
+          {/* Rang 9 — le pied, un seul. D'où sortent les nombres affichés. */}
+          {SOURCE_AN[source]}
+          {SOURCE_AN[source] && " "}
+          {planifie.vide
+            ? "Le budget posé sur tes campagnes n'a pas encore été relevé : Meta et Google ne rendent que sa valeur du jour, jamais son historique, et aucune photo n'a encore été prise. C'est pour ça qu'on n'écrit pas 0 CHF."
+            : `Le budget posé sur tes campagnes vient du relevé du ${planifie.releveLe ?? "—"} : c'est une photo, pas un historique.`}
+        </p>
       </div>
     </div>
   );
@@ -358,24 +441,57 @@ export function CourbeDepense({
 }
 
 // ── UNE LIGNE DE LA LISTE PAR THÈME, à l'année ────────────────────────────
+//
 // C'est ici que se prend la seule décision de la page. Un seul éditeur par
 // thème, celui de l'année : le mensuel par thème demandait douze nombres pour
 // en obtenir un qui vaut le mensuel × 12 dans presque tous les cas.
+//
+// TROIS AJOUTS, ET LE MÊME MOTIF DERRIÈRE LES TROIS — on posait un budget sans
+// rien savoir de ce qu'on était en train de faire :
+//
+//  · l'ENVELOPPE TOTALE et CE QUI RESTE À RÉPARTIR, sous le champ. Taper 8 000
+//    sur un thème quand il reste 2 000 à placer sur 72 000 est une décision
+//    qu'on ne prend pas si on le sait — et la seule ligne qui le disait était
+//    600 px plus haut, dans un autre module ;
+//  · SUR QUELLE PLATEFORME l'argent de ce thème est parti. Un thème à 100 % sur
+//    Google et un thème partagé ne se pilotent pas de la même façon, et rien ne
+//    permettait de le voir sans changer de page ;
+//  · CE QUI EST POSÉ sur ses campagnes en ce moment, quand le relevé existe.
+//
+// Ce qu'on n'affiche PAS, et il faut le dire : le posé n'est pas ventilé par
+// plateforme AU SEIN d'un thème. `BudgetPlanifie` donne `parCanal` (tout le
+// compte) et `parTheme` (tous canaux confondus), pas le croisement des deux.
+// Le croiser au prorata de la dépense fabriquerait un nombre que personne n'a
+// mesuré — c'est exactement ce que la page s'interdit.
 export function LigneTheme({
   t,
   part,
   elapsedAn,
   annee,
   univers,
+  budgetTotal,
+  resteARepartir,
+  planifie,
 }: {
   t: ThemeSpend;
   part: number;
   elapsedAn: number;
   annee: number;
   univers: string[];
+  /** L'enveloppe de l'année, tous thèmes confondus — le cadre de la décision. */
+  budgetTotal: number;
+  /** Ce qui n'est encore posé sur aucun thème. Peut être négatif. */
+  resteARepartir: number;
+  planifie: BudgetPlanifie;
 }) {
   const r = t.budgetYear > 0 ? t.spendYear / t.budgetYear : null;
   const teinte = teinteLabel(t.label, univers);
+  const pose = planifie.parTheme[t.label] ?? 0;
+  const canaux = ([
+    ["meta", t.parCanalAn.meta],
+    ["google", t.parCanalAn.google],
+  ] as const).filter(([, v]) => v > 0);
+
   return (
     <div className="px-5 py-4">
       <div className="flex items-center gap-3 flex-wrap mb-1.5">
@@ -417,6 +533,44 @@ export function LigneTheme({
         </div>
       )}
 
+      {/* Rang 7 — le détail : où c'est parti, et ce qui est posé. */}
+      <div className="mt-2.5 pt-2.5 border-t border-line space-y-1">
+        {canaux.length > 0 ? (
+          canaux.map(([cle, montant]) => {
+            const ca = CANAL[cle];
+            return (
+              <div key={cle} className="flex items-baseline gap-1.5 text-[11.5px]">
+                <span style={{ color: ca.couleur }}>{ca.glyphe}</span>
+                <span className="text-muted">{ca.nom}</span>
+                <span className="ml-auto font-mono text-ink">
+                  {fmtCHF(montant)}
+                  <span className="text-faint">
+                    {" "}
+                    · {Math.round((montant / Math.max(1, t.spendYear)) * 100)} %
+                  </span>
+                </span>
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-[11.5px] text-faint">
+            rien de dépensé sur ce thème {annee}
+          </div>
+        )}
+        <div className="flex items-baseline gap-1.5 text-[11.5px] pt-0.5">
+          <span className="text-faint">Posé sur ses campagnes</span>
+          <span className="ml-auto font-mono">
+            {planifie.vide ? (
+              <span className="text-faint font-sans">pas encore relevé</span>
+            ) : (
+              <span className="text-ink">{fmtCHF(pose)} CHF</span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Rang 8 — le pilotage, en bas, avec le cadre de la décision juste
+          au-dessus du champ : combien il y a en tout, et combien il en reste. */}
       <BudgetEditor
         channel={`label:${t.label}`}
         current={t.budgetYearSaisi}
@@ -424,6 +578,34 @@ export function LigneTheme({
         annee={annee}
         libelle={`Enveloppe ${annee}`}
       />
+      {budgetTotal > 0 ? (
+        <p className="text-[10.5px] mt-1 leading-relaxed">
+          <span className="text-faint">
+            Sur {fmtCHF(budgetTotal)} CHF fixés pour {annee} —{" "}
+          </span>
+          <span
+            className={
+              resteARepartir < 0
+                ? "text-neg font-semibold"
+                : resteARepartir > 0
+                  ? "text-warn font-semibold"
+                  : "text-pos font-semibold"
+            }
+          >
+            {resteARepartir < 0
+              ? `${fmtCHF(-resteARepartir)} CHF de trop répartis`
+              : resteARepartir > 0
+                ? `${fmtCHF(resteARepartir)} CHF encore à répartir`
+                : "tout est réparti"}
+          </span>
+          .
+        </p>
+      ) : (
+        <p className="text-[10.5px] text-faint mt-1 leading-relaxed">
+          Aucune enveloppe d&apos;année fixée pour l&apos;instant : rien ne borne encore
+          ce que tu poses ici.
+        </p>
+      )}
       {t.budgetYearSaisi === 0 && t.budgetYear > 0 && (
         <p className="text-[10.5px] text-faint mt-1 leading-relaxed">
           Enveloppe déduite de tes budgets mensuels sur ce thème.

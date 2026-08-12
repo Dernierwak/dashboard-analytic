@@ -298,6 +298,10 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
 | toute rangée en `overflow-x-auto` | une rangée coupée à droite ne se devine pas — elle se lit comme une mise en page ratée, pas comme une invitation à glisser | `.defile-x`, le même mécanisme tourné d'un quart de tour |
 | `theme-card` (les conseils) | `sm:grid-cols-2` : trois conseils faisaient deux lignes dont la seconde à moitié vide, et le troisième passait sous la ligne de flottaison de la carte | une rangée unique en `.defile-x`, largeur fixe et hauteur commune, `scroll-snap` par carte — trois conseils s'alignent donc se comparent |
+| `EnveloppeAnnee` | le budget FIXÉ en 15 px gris, à peine plus lisible qu'une unité, alors que c'est le second terme de la question posée par la page | 20 px encre et son mot (« 72 000 CHF fixés pour 2026ˮ) ; bilan de trois chiffres en 19 px sur un seul fond : reste de l'enveloppe, posé sur les campagnes, réparti par thème |
+| page Coûts (« où ça part ») | un seul anneau, par thème — la répartition par RÉGIE n'avait aucune réponse sur la page | deux anneaux, même filtre et même total : plateforme à gauche (la découpe la plus grossière), thème à droite. `ThemeDonut` gagne `teintes` (forcer les couleurs de canal) et `etroit`, pas un second composant |
+| page Coûts (réglages) | un dépliant qui demandait douze nombres pour en produire un, dont le premier primait silencieusement sur l'enveloppe d'année | supprimé ; `budget-year-table` supprimé avec lui ; le mois n'a plus qu'une source (annuel ÷ 12) — un montant qui gouverne une page et qu'aucun écran ne peut plus atteindre est pire qu'un montant faux |
+| `LigneTheme` | on posait un budget par thème sans voir l'enveloppe totale, ce qu'il en reste, ni sur quelle plateforme le thème dépense | l'enveloppe et le reste à répartir sous le champ ; la ventilation Meta / Google du thème ; ce qui est posé sur ses campagnes. Liste en trois colonnes, toujours défilante |
 | `theme-card` (la note du ROAS) | « 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas, « le ROAS de ce thème n'est pas mesurable » | `noteSerie(serie, revenu)` — la note ne s'affiche que si le thème n'a AUCUN revenu. Le juge est le revenu, pas la présence d'un ROAS calculé |
 | `objectif-select` → `objectif-theme` | un `<details>` écrit à même la page, flottant sous le résumé, à 600 px des cartes qu'il pondère | module à part, posé au-dessus de la première carte de thème ; il prend son thème et son objectif en PROPS, jamais un état global — un objectif par thème se branchera sans le toucher |
 | `line-chart` (repères) | deux étiquettes de texte se chevauchaient et se coupaient en haut du graphe ; le plafond de deux repères payait la lisibilité en information | le repère devient un point de 7 px, nommé au survol (bulle immédiate, `focus-within` pour le doigt) — plafond et comptage en pied supprimés |
@@ -390,6 +394,38 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**12 août 2026 (6)** — **La page Coûts : trois natures de nombre, et un
+réglage qu'on ne peut plus atteindre.**
+
+Le budget FIXÉ s'écrivait en 15 px gris derrière une barre oblique. C'est le
+second terme de la seule question que pose la page — « est-ce que je tiens mon
+budget ? » — et il avait la taille d'une unité. Il passe en 20 px encre avec son
+mot. **Un nombre qui répond à la question du module ne peut pas être plus petit
+que sa décoration.**
+
+Un troisième nombre entre : ce qui est **POSÉ** sur les campagnes, relevé chez
+Meta et Google. Il ne se déduit ni du dépensé ni du fixé, et il répond à ce
+qu'aucune barre ne montre : une enveloppe de 72 000 avec 18 000 posés, c'est un
+compte qui ne dépensera pas son budget — et la barre « dépensé / fixé » rassure
+au lieu d'alerter. Quand aucun relevé n'existe, on écrit que le relevé n'a pas
+eu lieu ; **jamais « 0 CHF planifié », qui se lit « rien de prévu »**.
+
+Deux anneaux plutôt qu'un : par plateforme (à gauche, la découpe la plus
+grossière) et par thème. Même filtre, même total au centre — c'est ce qui les
+fait lire comme deux découpes d'un seul gâteau. `ThemeDonut` gagne deux props
+(`teintes`, `etroit`) au lieu d'un second composant : `teinteLabel` indexe sur
+la liste des thèmes et aurait pu sortir Google en bleu, la couleur de Meta dans
+dix-huit autres endroits.
+
+Le dépliant « ⚙ Réglages du budget » est supprimé, et il en sort une règle qui
+vaut au-delà de cette page : **un montant qui gouverne un écran et qu'aucun
+écran ne permet plus de corriger est pire qu'un montant faux.** L'éditeur du
+mois disparaissait ; laisser un mensuel déjà saisi continuer de primer sur
+l'enveloppe d'année aurait figé, chez les comptes anciens, un nombre
+intouchable. Le mois n'a donc plus qu'une source — l'annuel ÷ 12 — et il
+continue de l'écrire là où il s'affiche. Rien n'est perdu : faute d'enveloppe
+d'année, la somme des douze mensuels devient l'annuel.
 
 **12 août 2026 (5)** — **L'étiquette permanente devient un point qu'on survole.**
 

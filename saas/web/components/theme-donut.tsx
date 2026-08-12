@@ -1,5 +1,5 @@
 import { fmtCHF } from "@/lib/report";
-import { teinteLabel, NEUTRE } from "@/lib/palette";
+import { teinteLabel, NEUTRE, type Teinte } from "@/lib/palette";
 
 // « Où part ton argent » — l'anneau de répartition par thème.
 //
@@ -17,10 +17,13 @@ export function ThemeDonut({
   rows,
   orphan = 0,
   univers,
+  teintes,
   titre = "Où part ton argent",
   sousTitre,
   note,
   montants = false,
+  unite = "thème",
+  etroit = false,
 }: {
   rows: { label: string; spend: number }[];
   /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». */
@@ -28,20 +31,37 @@ export function ThemeDonut({
   // La liste maîtresse des thèmes : elle fixe la couleur de chacun, pour qu'un
   // thème garde la sienne d'un module à l'autre et d'une semaine à l'autre.
   univers?: string[];
+  /**
+   * FORCER LA COULEUR D'UNE PART, par nom.
+   *
+   * `teinteLabel` indexe sur la liste des THÈMES : sur un anneau par
+   * PLATEFORME, Meta et Google y prendraient deux teintes arbitraires — et
+   * Google pourrait très bien sortir en bleu, la couleur de Meta partout
+   * ailleurs dans l'application. Le canal a des couleurs de convention (▣ bleu,
+   * ◆ vert) qui valent dans dix-huit endroits : c'est elles qui doivent gagner.
+   * Une prop plutôt qu'un second composant — la géométrie, le total au centre
+   * et la légende sont exactement les mêmes.
+   */
+  teintes?: Record<string, Teinte>;
   titre?: string;
   /** La fenêtre de lecture, quand elle n'est pas évidente (page Coûts). */
   sousTitre?: string;
   note?: string;
   /** Écrire le montant à côté du pourcentage, et pas seulement la part. */
   montants?: boolean;
+  /** Ce que compte le sous-titre du centre — « thème », « plateforme ». */
+  unite?: string;
+  /** Deux anneaux côte à côte : la légende n'a plus la place de ses colonnes. */
+  etroit?: boolean;
 }) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
   if (tries.length === 0) return null;
 
+  const couleur = (label: string) => teintes?.[label] ?? teinteLabel(label, univers);
   const top = tries.slice(0, 5);
   const reste = tries.slice(5).reduce((a, r) => a + r.spend, 0) + (orphan > 0 ? orphan : 0);
   const parts = [
-    ...top.map((r) => ({ label: r.label, spend: r.spend, t: teinteLabel(r.label, univers) })),
+    ...top.map((r) => ({ label: r.label, spend: r.spend, t: couleur(r.label) })),
     ...(reste > 0 ? [{ label: "autres", spend: reste, t: NEUTRE }] : []),
   ];
   const total = parts.reduce((a, p) => a + p.spend, 0);
@@ -58,18 +78,22 @@ export function ThemeDonut({
   });
 
   return (
-    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6">
+    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6 h-full">
       <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
         {titre}
         {sousTitre && <span className="text-faint/70 normal-case tracking-normal"> · {sousTitre}</span>}
       </div>
 
-      <div className="flex items-center gap-5 sm:gap-7 flex-wrap sm:flex-nowrap justify-center sm:justify-start">
+      <div
+        className={`flex items-center gap-5 flex-wrap justify-center ${
+          etroit ? "" : "sm:gap-7 sm:flex-nowrap sm:justify-start"
+        }`}
+      >
         {/* Le total au CENTRE de l'anneau, pas en sous-titre gris. Un anneau
             sans son total est une forme sans sa valeur. */}
         <div className="relative shrink-0">
-          <svg viewBox="0 0 100 100" className="w-[150px] h-[150px] sm:w-[190px] sm:h-[190px] -rotate-90" role="img"
-            aria-label="Répartition de la dépense par thème">
+          <svg viewBox="0 0 100 100" className={`-rotate-90 ${etroit ? "w-[150px] h-[150px]" : "w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]"}`} role="img"
+            aria-label={`Répartition de la dépense par ${unite}`}>
             <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="16" />
             {arcs.map((a) => (
               <circle
@@ -93,7 +117,8 @@ export function ThemeDonut({
               {fmtCHF(total)}
             </span>
             <span className="text-[10.5px] text-faint mt-1">
-              CHF · {parts.length} thème{parts.length > 1 ? "s" : ""}
+              CHF · {parts.length} {unite}
+              {parts.length > 1 ? "s" : ""}
             </span>
           </div>
         </div>
@@ -101,8 +126,15 @@ export function ThemeDonut({
         {/* Sur téléphone, la légende passe SOUS l'anneau (`basis-full`). À côté,
             il lui restait 150 px : « Audio Tour » s'y écrivait « Aud… », et un
             nom de thème tronqué ne nomme plus rien. Sur grand écran elle
-            reprend sa place à droite et s'étale en colonnes. */}
-        <div className="min-w-0 basis-full sm:basis-auto sm:flex-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+            reprend sa place à droite et s'étale en colonnes.
+            En mode étroit — deux anneaux côte à côte — elle reste sous
+            l'anneau et sur une seule colonne : la moitié d'une page de 1 024 px
+            ne laisse pas 280 px à droite d'un disque de 150. */}
+        <div
+          className={`min-w-0 basis-full grid gap-x-6 gap-y-1.5 ${
+            etroit ? "" : "sm:basis-auto sm:flex-1 sm:grid-cols-2 xl:grid-cols-3"
+          }`}
+        >
           {arcs.map((a) => (
             <div key={a.label} className="flex items-baseline gap-2">
               <span

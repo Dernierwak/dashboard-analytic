@@ -10,15 +10,25 @@ import { getCompteActif } from "@/lib/account";
 // que je tiens l'année ? ». Le mois devient donc une LECTURE de l'année, pas une
 // saisie de plus.
 //
-// Conséquence directe, et c'est ce qui supprime la moitié des champs : quand
-// aucun budget mensuel n'a été posé, le mensuel se DÉDUIT de l'annuel (÷ 12) au
-// lieu de valoir zéro. Fixer une seule fois 72 000 CHF suffit à faire vivre le
-// mois, le jour, les alertes et toutes les barres de la page.
+// Conséquence directe, et c'est ce qui supprime la moitié des champs : le
+// mensuel se DÉDUIT de l'annuel (÷ 12). Fixer une seule fois 72 000 CHF suffit à
+// faire vivre le mois, le jour, les alertes et toutes les barres de la page.
 //
-// Toute règle de préséance est exposée (`sourceBudgetAnnuel`, `sourceBudgetMois`)
-// plutôt que muette : le défaut historique de cette page était qu'un client qui
-// avait réglé 2 000 Meta et 1 000 Google lisait une enveloppe de 3 000 CHF qu'il
-// n'avait jamais tapée, sans que rien ne le dise.
+// LE MOIS N'A PLUS DE RÈGLE DE PRÉSÉANCE, ET C'EST VOLONTAIRE. Il en avait
+// trois — mensuel global saisi, somme des mensuels par plateforme, annuel ÷ 12 —
+// et l'éditeur qui permettait de poser les deux premières a été supprimé avec le
+// dépliant « Réglages du budget ». Les laisser vivre aurait produit le pire des
+// cas : un compte qui avait tapé 4 000 CHF pour un mois de 2025 aurait continué
+// de voir ce montant primer sur son enveloppe d'année, SANS AUCUN MOYEN DE LE
+// CHANGER. Un montant qui gouverne une page et qu'aucun écran ne peut plus
+// atteindre est pire qu'un montant faux. Il ne reste donc qu'une source, et
+// `sourceBudgetMois` continue de l'écrire à l'endroit où le nombre s'affiche.
+//
+// La préséance de l'ANNÉE, elle, reste exposée (`sourceBudgetAnnuel`) : ses
+// trois branches ont toutes leur éditeur à l'écran. Le défaut historique de
+// cette page était qu'un client qui avait réglé 2 000 Meta et 1 000 Google
+// lisait une enveloppe de 3 000 CHF qu'il n'avait jamais tapée, sans que rien
+// ne le dise.
 
 const MOIS_FULL = [
   "janvier", "février", "mars", "avril", "mai", "juin",
@@ -71,28 +81,22 @@ export type CoutDay = { date: string; label: string; meta: number; google: numbe
 /** Un point de la courbe filtrée — un jour, ou une semaine sur les longues périodes. */
 export type PointSerie = { cle: string; label: string; meta: number; google: number };
 
-export type MonthRow = {
-  monthIso: string;   // YYYY-MM-01
-  name: string;       // « jul 2026 »
-  isCurrent: boolean;
-  isFuture: boolean;
-  metaBudget: number;
-  metaSpent: number;
-  googleBudget: number;
-  googleSpent: number;
-};
+/** Ce qui a été dépensé par plateforme — la même forme partout sur cette page. */
+export type ParCanal = { meta: number; google: number };
 
 // Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
 // pour le mensuel et "an:label:<nom>" pour l'annuel (même carry-forward que
 // les canaux, zéro migration).
 export type ThemeSpend = {
   label: string;
-  spend: number;        // dépense du mois en cours
-  budget: number;       // budget mensuel du thème (conservé, réglé en bas de page)
   spendYear: number;    // dépense cumulée depuis janvier
   budgetYear: number;   // budget annuel EFFECTIF (saisi, sinon somme des 12 mois)
   budgetYearSaisi: number; // ce qui a été saisi explicitement (0 = rien)
   spendPeriode: number; // dépense sur la période filtrée — ce que montre l'anneau
+  /** Sur QUELLE plateforme l'argent de ce thème est parti, depuis janvier.
+   *  Un thème qui pèse 4 000 CHF ne se pilote pas pareil selon qu'il est à
+   *  100 % sur Google ou partagé — et rien ne le disait. */
+  parCanalAn: ParCanal;
 };
 
 // Un jour dont la dépense dépasse le budget quotidien. C'est le garde-fou que
@@ -141,11 +145,10 @@ export type CoutsData = {
   budgetAnnuelSaisi: number; // saisi en tant qu'enveloppe unique (0 = déduit)
   sourceBudgetAnnuel: "saisi" | "plateformes" | "mensuels" | "aucun";
 
-  // ── Le mois : une lecture de l'année ──────────────────────────────────────
+  // ── Le mois : une lecture de l'année, et rien d'autre ─────────────────────
   totalSpent: number;
-  totalBudget: number;       // effectif
-  budgetGlobalSaisi: number;
-  sourceBudgetMois: "saisi" | "plateformes" | "annuel" | "aucun";
+  totalBudget: number;       // toujours l'annuel ÷ 12
+  sourceBudgetMois: "annuel" | "aucun";
 
   joursMois: number;
   budgetJour: number;    // budget mensuel ÷ jours du mois
@@ -162,9 +165,10 @@ export type CoutsData = {
   /** Le dernier point est une semaine incomplète — il faut le dire. */
   dernierePartielle: boolean;
   totalPeriode: number;
+  /** La même dépense de période, ventilée par plateforme — le second anneau. */
+  parCanalPeriode: ParCanal;
   filtreActif: boolean;      // au moins un thème sélectionné
 
-  months: MonthRow[];
   byTheme: ThemeSpend[];
 };
 
@@ -296,13 +300,14 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
 
   const parJourMois = new Map<string, { meta: number; google: number }>();
   const parJourPeriode = new Map<string, { meta: number; google: number }>();
-  const themeMois = new Map<string, number>();
   const themeAn = new Map<string, number>();
+  const themeCanalAn = new Map<string, ParCanal>();
   const themePeriode = new Map<string, number>();
   const parMoisCanal = new Map<string, { meta: number; google: number }>();
   let metaSpent = 0, googleSpent = 0;        // mois en cours
   let metaYear = 0, googleYear = 0;          // depuis janvier
   let totalPeriode = 0;
+  const parCanalPeriode: ParCanal = { meta: 0, google: 0 };
 
   for (const l of lignes) {
     const dansMois = l.date >= monthStart && l.date <= aujourdhui;
@@ -316,7 +321,12 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       const v = parMoisCanal.get(mo) ?? { meta: 0, google: 0 };
       v[l.canal] += l.chf;
       parMoisCanal.set(mo, v);
-      if (l.theme) themeAn.set(l.theme, (themeAn.get(l.theme) ?? 0) + l.chf);
+      if (l.theme) {
+        themeAn.set(l.theme, (themeAn.get(l.theme) ?? 0) + l.chf);
+        const c = themeCanalAn.get(l.theme) ?? { meta: 0, google: 0 };
+        c[l.canal] += l.chf;
+        themeCanalAn.set(l.theme, c);
+      }
     }
     if (dansMois) {
       if (l.canal === "meta") metaSpent += l.chf;
@@ -324,7 +334,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       const v = parJourMois.get(l.date) ?? { meta: 0, google: 0 };
       v[l.canal] += l.chf;
       parJourMois.set(l.date, v);
-      if (l.theme) themeMois.set(l.theme, (themeMois.get(l.theme) ?? 0) + l.chf);
     }
     // La période, elle, obéit au filtre par thèmes. Une ligne sans thème sort
     // dès qu'un filtre est posé : la garder ferait mentir le total de l'anneau.
@@ -334,6 +343,7 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       v[l.canal] += l.chf;
       parJourPeriode.set(cle, v);
       totalPeriode += l.chf;
+      parCanalPeriode[l.canal] += l.chf;
       if (l.theme) themePeriode.set(l.theme, (themePeriode.get(l.theme) ?? 0) + l.chf);
     }
   }
@@ -401,33 +411,23 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       const saisi = budgetFor(`an:label:${label}`, anneeIso);
       return {
         label,
-        spend: themeMois.get(label) ?? 0,
-        budget: budgetFor(`label:${label}`, monthStart),
         spendYear,
         budgetYear: saisi > 0 ? saisi : sommeDouze(`label:${label}`),
         budgetYearSaisi: saisi,
         spendPeriode: themePeriode.get(label) ?? 0,
+        parCanalAn: themeCanalAn.get(label) ?? { meta: 0, google: 0 },
       };
     })
     .sort((a, b) => b.spendYear - a.spendYear);
 
-  // ── Table des budgets de l'année ─────────────────────────────────────────
-  const months: MonthRow[] = [];
+  // La forme de l'année, mois par mois — la sparkline de la tuile « Budget
+  // annuel ». La table « détail mois par mois » a disparu avec le dépliant des
+  // réglages : c'était douze lignes de saisie pour un nombre qu'on tape une
+  // fois, et elle n'était rendue nulle part ailleurs.
   const parMois: number[] = [];
-  for (let i = 0; i < 12; i++) {
-    const iso = `${y}-${String(i + 1).padStart(2, "0")}-01`;
-    const spent = parMoisCanal.get(iso.slice(0, 7)) ?? { meta: 0, google: 0 };
-    months.push({
-      monthIso: iso,
-      name: `${MOIS_ABR[i]} ${y}`,
-      isCurrent: i === m,
-      isFuture: i > m,
-      metaBudget: budgetFor("meta", iso),
-      metaSpent: spent.meta,
-      googleBudget: budgetFor("google", iso),
-      googleSpent: spent.google,
-    });
-    if (i <= m) parMois.push(spent.meta + spent.google);
+  for (let i = 0; i <= m; i++) {
+    const spent = parMoisCanal.get(`${y}-${String(i + 1).padStart(2, "0")}`) ?? { meta: 0, google: 0 };
+    parMois.push(spent.meta + spent.google);
   }
 
   // ── L'ANNÉE, d'abord : c'est elle qui commande tout le reste ─────────────
@@ -450,21 +450,15 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     sourceBudgetAnnuel = "mensuels";
   }
 
-  // ── Le mois : déduit de l'année quand rien n'a été posé ──────────────────
-  const budgetGlobalSaisi = budgetFor("global", monthStart);
-  const canauxMois = budgetFor("meta", monthStart) + budgetFor("google", monthStart);
-  let totalBudget = 0;
-  let sourceBudgetMois: CoutsData["sourceBudgetMois"] = "aucun";
-  if (budgetGlobalSaisi > 0) {
-    totalBudget = budgetGlobalSaisi;
-    sourceBudgetMois = "saisi";
-  } else if (canauxMois > 0) {
-    totalBudget = canauxMois;
-    sourceBudgetMois = "plateformes";
-  } else if (budgetAnnuel > 0) {
-    totalBudget = budgetAnnuel / 12;
-    sourceBudgetMois = "annuel";
-  }
+  // ── Le mois : UNE seule règle, l'année ÷ 12 ──────────────────────────────
+  // Les mensuels déjà en base (`global`, `meta`, `google` sur un mois) ne sont
+  // plus lus ici. Ils ne sont pas perdus pour autant : quand aucune enveloppe
+  // d'année n'a été fixée, `sommeDouze` les additionne et c'est cette somme qui
+  // devient l'annuel, donc le mois. Ce qui disparaît, c'est leur PRÉSÉANCE —
+  // celle d'un montant que plus aucun écran ne permettait de corriger.
+  const totalBudget = budgetAnnuel > 0 ? budgetAnnuel / 12 : 0;
+  const sourceBudgetMois: CoutsData["sourceBudgetMois"] =
+    budgetAnnuel > 0 ? "annuel" : "aucun";
 
   const channels: ChannelCout[] = [
     {
@@ -532,7 +526,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     sourceBudgetAnnuel,
     totalSpent,
     totalBudget,
-    budgetGlobalSaisi,
     sourceBudgetMois,
     joursMois,
     budgetJour,
@@ -546,8 +539,8 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     serie,
     dernierePartielle,
     totalPeriode,
+    parCanalPeriode,
     filtreActif,
-    months,
     byTheme,
   };
 }
