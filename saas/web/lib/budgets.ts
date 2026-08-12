@@ -65,18 +65,28 @@ function dJours(from: string, to: string): number {
 // PostgREST plafonne chaque requête à 1000 lignes. Un compte d'agence à 400
 // campagnes × deux canaux dépasse ce plafond en trois relevés — et la troncature
 // est SILENCIEUSE : le budget planifié se mettrait à baisser sans raison.
+//
+// L'erreur est LEVÉE, pas ignorée : le client PostgREST ne jette jamais, il
+// renvoie `{data, error}`. Un `try/catch` posé autour ne rattraperait donc
+// rien, et une table absente passerait pour une table vide.
 async function fetchAllRows<T>(
-  build: () => { range: (a: number, b: number) => PromiseLike<{ data: T[] | null }> }
+  build: () => {
+    range: (a: number, b: number) => PromiseLike<{ data: T[] | null; error: unknown }>;
+  }
 ): Promise<T[]> {
   const page = 1000;
   const out: T[] = [];
   for (let from = 0; ; from += page) {
-    const { data } = await build().range(from, from + page - 1);
+    const { data, error } = await build().range(from, from + page - 1);
+    if (error) throw error;
     const chunk = (data ?? []) as T[];
     out.push(...chunk);
     if (chunk.length < page) return out;
   }
 }
+
+const CANAUX = ["meta", "google"] as const;
+type Canal = (typeof CANAUX)[number];
 
 type LigneBudget = {
   channel: string | null;
@@ -96,11 +106,14 @@ const MORTES = new Set(["REMOVED", "DELETED", "ARCHIVED"]);
 
 /** Ce qu'une campagne pèse sur la fenêtre, en CHF. 0 si elle n'y est pas. */
 function montantSurFenetre(l: LigneBudget, from: string, to: string): number {
+  const debutDeclare = l.start_date ? String(l.start_date).slice(0, 10) : null;
+  const finDeclaree = l.end_date ? String(l.end_date).slice(0, 10) : null;
+
   // Une campagne sans date de début est réputée courir depuis le début de la
   // fenêtre, et une campagne sans date de fin jusqu'à sa borne droite —
   // « sans fin déclarée » ne veut pas dire « jamais diffusée ».
-  const debut = l.start_date ? String(l.start_date).slice(0, 10) : from;
-  const fin = l.end_date ? String(l.end_date).slice(0, 10) : to;
+  const debut = debutDeclare ?? from;
+  const fin = finDeclaree ?? to;
   if (fin < from || debut > to) return 0;
 
   const dedansDebut = debut > from ? debut : from;
@@ -110,10 +123,15 @@ function montantSurFenetre(l: LigneBudget, from: string, to: string): number {
 
   const total = l.total_budget === null ? null : Number(l.total_budget);
   if (total !== null && Number.isFinite(total) && total > 0) {
-    // Enveloppe pour toute la durée → on n'en prend que la part des jours qui
-    // tombent dans la fenêtre. Sans ce prorata, une campagne de 12 000 CHF sur
-    // six mois pèserait 12 000 CHF sur une fenêtre de sept jours.
-    const duree = Math.max(1, dJours(debut, fin));
+    // UN BUDGET TOTAL SANS SES DEUX DATES N'EST PAS PRORATISABLE. Les bornes
+    // par défaut ci-dessus sont celles de la FENÊTRE : les appliquer ici
+    // donnerait `duree === jours`, donc l'enveloppe entière — une campagne de
+    // 12 000 CHF s'afficherait en entier sur une semaine, exactement ce que le
+    // prorata existe pour éviter. En pratique les deux plateformes imposent
+    // les dates avec un budget total ; si l'une manque, on préfère ne rien
+    // compter plutôt qu'inventer une durée.
+    if (!debutDeclare || !finDeclaree) return 0;
+    const duree = Math.max(1, dJours(debutDeclare, finDeclaree));
     return (total * jours) / duree;
   }
 
@@ -138,43 +156,67 @@ export async function getBudgetPlanifie(
   const compte = await getCompteActif();
   const uid = compte.uid;
 
-  // Le relevé RETENU est le plus récent qui précède la fin de la fenêtre. Un
-  // relevé postérieur décrirait un budget que l'utilisateur n'avait pas encore
-  // posé sur la période qu'il regarde.
-  let releveLe: string | null = null;
+  // LE RELEVÉ EST CHOISI PAR CANAL, et c'est tout sauf un détail. Un relevé
+  // unique pour les deux ferait OSCILLER le budget planifié : le jour où le
+  // jeton Google expire, seul Meta est photographié, et la date du jour ne
+  // contient que Meta — la page annoncerait un budget effondré, puis doublé la
+  // semaine suivante, sans que rien n'ait bougé chez le client.
+  const releves: Partial<Record<Canal, string>> = {};
   try {
-    const { data } = await supabase
-      .from("platform_budgets")
-      .select("captured_on")
-      .eq("user_id", uid)
-      .lte("captured_on", to)
-      .order("captured_on", { ascending: false })
-      .limit(1);
-    releveLe = (data?.[0]?.captured_on as string | undefined)?.slice(0, 10) ?? null;
+    const res = await Promise.all(
+      CANAUX.map((c) =>
+        supabase
+          .from("platform_budgets")
+          .select("captured_on")
+          .eq("user_id", uid)
+          .eq("channel", c)
+          .lte("captured_on", to)
+          .order("captured_on", { ascending: false })
+          .limit(1)
+      )
+    );
+    res.forEach(({ data, error }, i) => {
+      if (error) throw error;
+      const d = (data?.[0]?.captured_on as string | undefined)?.slice(0, 10);
+      if (d) releves[CANAUX[i]] = d;
+    });
   } catch {
     return BUDGET_PLANIFIE_VIDE; // table absente (migration pas passée)
   }
-  if (!releveLe) return BUDGET_PLANIFIE_VIDE;
-  const jourReleve: string = releveLe;
+
+  const retenus = CANAUX.filter((c) => releves[c]);
+  if (retenus.length === 0) return BUDGET_PLANIFIE_VIDE;
+
+  // La date affichée est la PLUS ANCIENNE des deux : c'est à partir d'elle que
+  // l'ensemble du chiffre est vrai. Un canal peut manquer — un budget partiel
+  // vaut mieux que rien, à condition d'être daté honnêtement.
+  const releveLe = retenus.map((c) => releves[c]!).sort()[0];
 
   let lignes: LigneBudget[] = [];
   let metaCfg: { campaign_name: string | null; label: string | null }[] = [];
   let googCfg: { campaign_id: string | number | null; label: string | null }[] = [];
   try {
-    const [l, m, g] = await Promise.all([
-      fetchAllRows<LigneBudget>(() =>
-        supabase
-          .from("platform_budgets")
-          .select(
-            "channel, campaign_id, campaign_name, daily_budget, total_budget, start_date, end_date, status"
+    const [parCanalLignes, m, g] = await Promise.all([
+      Promise.all(
+        retenus.map((c) =>
+          fetchAllRows<LigneBudget>(() =>
+            supabase
+              .from("platform_budgets")
+              .select(
+                "channel, campaign_id, campaign_name, daily_budget, total_budget, start_date, end_date, status"
+              )
+              .eq("user_id", uid)
+              .eq("channel", c)
+              .eq("captured_on", releves[c]!)
           )
-          .eq("user_id", uid)
-          .eq("captured_on", jourReleve)
+        )
       ),
       supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
       supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
     ]);
-    lignes = l;
+    if (m.error) throw m.error;
+    if (g.error) throw g.error;
+    lignes = parCanalLignes.flat();
     metaCfg = m.data ?? [];
     googCfg = g.data ?? [];
   } catch {
@@ -187,7 +229,7 @@ export async function getBudgetPlanifie(
   const metaLbl = new Map(metaCfg.map((c) => [String(c.campaign_name), c.label]));
   const googLbl = new Map(googCfg.map((c) => [String(c.campaign_id), c.label]));
 
-  const parCanal: Record<"meta" | "google", number> = { meta: 0, google: 0 };
+  const parCanal: Record<Canal, number> = { meta: 0, google: 0 };
   const parTheme: Record<string, number> = {};
   let horsTheme = 0;
   let total = 0;

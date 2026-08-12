@@ -312,7 +312,10 @@ def _extra(brut) -> dict:
 
 def _cle_meta(quand: str, *parts) -> str:
     """Hachage stable de (canal, horodatage, ressource, champ) — même rôle que
-    côté Google : deux récoltes sur la même semaine ne doivent rien dupliquer."""
+    côté Google : deux récoltes sur la même semaine ne doivent rien dupliquer.
+
+    La phrase n'entre pas dans le hachage : une reformulation ferait réinsérer
+    en double tout l'historique au lieu de le mettre à jour."""
     import hashlib
     brut = "|".join(["meta", str(quand)] + [str(p or "") for p in parts])
     return hashlib.sha1(brut.encode("utf-8")).hexdigest()[:24]
@@ -410,7 +413,7 @@ def fetch_activities(
             continue
         categorie, resume = traduit
         est_campagne = str(a.get("event_type") or "") in _NIVEAU_CAMPAGNE
-        cle = _cle_meta(quand, a.get("event_type"), a.get("object_id"), resume)
+        cle = _cle_meta(quand, a.get("event_type"), a.get("object_id"))
         if cle in vus:
             continue
         vus.add(cle)

@@ -1,3 +1,4 @@
+import type { ChangementApi } from "@/lib/changements-api";
 import {
   fmtCHF,
   noteSerie,
@@ -119,6 +120,7 @@ export function ThemeCard({
   actions,
   archived,
   changements = [],
+  changementsApi = [],
   rows,
   fenetre,
   decroche = false,
@@ -131,8 +133,10 @@ export function ThemeCard({
   theme: ThemeFocus;
   actions: TrackedAction[];
   archived: TrackedAction[];
-  /** Ce qui a bougé sur les plateformes pour CE thème. */
+  /** Ce qu'on a DÉDUIT de la dépense, pour CE thème. */
   changements?: ChangementPlateforme[];
+  /** Ce que les plateformes DÉCLARENT sur ce thème — prime sur le déduit. */
+  changementsApi?: ChangementApi[];
   /** La ventilation par thème du rapport — l'autre endroit qui connaît le
    *  revenu du thème, et le seul à le connaître sur les anciens payloads. */
   rows?: ThemeRow[] | null;
@@ -407,10 +411,11 @@ export function ThemeCard({
               </p>
             )}
 
-            {miennes.length + changements.length > 0 ? (
+            {miennes.length + changements.length + changementsApi.length > 0 ? (
               <RailActions
                 actions={miennes}
                 changements={changements}
+                changementsApi={changementsApi}
                 themeCourant={theme.label}
               />
             ) : (

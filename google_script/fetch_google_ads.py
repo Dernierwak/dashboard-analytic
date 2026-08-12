@@ -468,18 +468,60 @@ _ETATS_M = {   # même chose, accord au masculin
 }
 
 
+# Les critères qui ne sont PAS des mots-clés. Quand l'un de ces champs est
+# présent, on sait qu'on n'a pas affaire à un mot-clé et on se tait plutôt que
+# d'écrire « un mot-clé a été mis en pause » à propos d'une tranche d'âge.
+_CRITERES_NON_MOTCLE = (
+    "ageRange", "age_range", "gender", "userList", "user_list", "placement",
+    "topic", "listingGroup", "listing_group", "webpage", "incomeRange",
+    "income_range", "parentalStatus", "parental_status", "device",
+    "youtubeVideo", "youtube_video", "youtubeChannel", "youtube_channel",
+    "mobileApplication", "mobile_application", "location", "audience",
+)
+
+
+def _nom_ressource(ev: dict, *blocs: dict) -> str | None:
+    """Le nom de ressource qui a changé.
+
+    `change_event.change_resource_name` le donne directement ; on retombe sur
+    celui porté par l'ancienne/nouvelle valeur quand il manque.
+    """
+    rn = ev.get("changeResourceName") or ev.get("change_resource_name")
+    if rn:
+        return str(rn)
+    for b in blocs:
+        crit = _ressource(b, "adGroupCriterion", "ad_group_criterion")
+        rn = crit.get("resourceName") or crit.get("resource_name")
+        if rn:
+            return str(rn)
+    return None
+
+
+def _est_non_motcle(bloc: dict) -> bool:
+    crit = _ressource(bloc, "adGroupCriterion", "ad_group_criterion")
+    return any(k in crit for k in _CRITERES_NON_MOTCLE)
+
+
 def _mot_cle(bloc: dict) -> str | None:
     crit = _ressource(bloc, "adGroupCriterion", "ad_group_criterion")
     kw = crit.get("keyword") or {}
     return (kw.get("text") or "").strip() or None
 
 
-def _traduire_google(ev: dict, nom_campagne: str | None) -> tuple[str, str] | None:
+def _traduire_google(
+    ev: dict,
+    nom_campagne: str | None,
+    textes: dict[str, str] | None = None,
+) -> tuple[str, str] | None:
     """(categorie, resume) — ou None quand on ne sait pas nommer le fait.
 
     La règle vaut plus que la couverture : on n'écrit RIEN qu'on ne sache dire
     en français. Un fil rempli de « AD_GROUP_AD updated » chasse les lignes
     utiles et fait perdre confiance dans celles qui restent.
+
+    `textes` : {nom_de_ressource: texte du mot-clé}, résolu par une requête
+    séparée — `change_event` ne renvoie que les VALEURS MODIFIÉES, donc un
+    simple changement de statut arrive sans le texte du mot-clé.
     """
     typ = str(ev.get("changeResourceType") or ev.get("change_resource_type") or "").upper()
     op = str(ev.get("resourceChangeOperation") or ev.get("resource_change_operation") or "").upper()
@@ -487,6 +529,10 @@ def _traduire_google(ev: dict, nom_campagne: str | None) -> tuple[str, str] | No
     old = ev.get("oldResource") or ev.get("old_resource") or {}
     new = ev.get("newResource") or ev.get("new_resource") or {}
     de_la_campagne = f' de la campagne "{nom_campagne}"' if nom_campagne else ""
+    rn = _nom_ressource(ev, new, old)
+
+    def _texte_motcle() -> str | None:
+        return _mot_cle(new) or _mot_cle(old) or (textes or {}).get(rn or "")
 
     # ── L'enchère, quel que soit le niveau où elle a bougé ────────────────────
     if any(c.startswith("biddingstrategy") for c in champs):
@@ -494,7 +540,7 @@ def _traduire_google(ev: dict, nom_campagne: str | None) -> tuple[str, str] | No
     if "cpcbidmicros" in champs:
         a = _micros(_ressource(old, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
         b = _micros(_ressource(new, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
-        mot = _mot_cle(new) or _mot_cle(old)
+        mot = _texte_motcle()
         quoi = f'l\'enchère au clic du mot-clé "{mot}"' if mot else f"l'enchère au clic{de_la_campagne}"
         if a is not None and b is not None:
             return ("enchere", f"{quoi} est passée de {_chf(a)} à {_chf(b)} CHF")
@@ -529,19 +575,28 @@ def _traduire_google(ev: dict, nom_campagne: str | None) -> tuple[str, str] | No
 
     # ── Le mot-clé ───────────────────────────────────────────────────────────
     if typ == "AD_GROUP_CRITERION":
-        mot = _mot_cle(new) or _mot_cle(old)
-        # Un critère sans texte n'est pas un mot-clé (audience, tranche d'âge,
-        # emplacement…) et on ne saurait pas le nommer : on ne l'écrit pas.
-        if not mot:
+        # Un critère qui se DÉCLARE autre chose (tranche d'âge, audience,
+        # emplacement…) n'est pas un mot-clé : on se tait, plutôt que d'écrire
+        # « un mot-clé a été mis en pause » à propos d'un ciblage par âge.
+        if _est_non_motcle(new) or _est_non_motcle(old):
             return None
+        # Sans texte, on écrit la phrase SANS lui. `change_event` ne renvoie que
+        # les valeurs modifiées : sur un changement de statut, `keyword.text`
+        # peut manquer, et jeter la ligne ferait disparaître toute la catégorie
+        # « mot-clé » sans le moindre signe. Une phrase un peu vague vaut mieux.
+        mot = _texte_motcle()
+        sujet = f'le mot-clé "{mot}"' if mot else "un mot-clé"
         if op == "CREATE":
-            return ("motcle", f'le mot-clé "{mot}" a été ajouté')
+            return ("motcle", f"{sujet} a été ajouté"
+                    + (f' à la campagne "{nom_campagne}"' if nom_campagne and not mot else ""))
         if op == "REMOVE":
-            return ("motcle", f'le mot-clé "{mot}" a été supprimé')
+            return ("motcle", f"{sujet} a été supprimé"
+                    + (de_la_campagne if nom_campagne and not mot else ""))
         if "status" in champs:
             etat = str(_ressource(new, "adGroupCriterion", "ad_group_criterion").get("status") or "").upper()
             if etat in _ETATS_M:
-                return ("motcle", f'le mot-clé "{mot}" {_ETATS_M[etat]}')
+                suffixe = de_la_campagne if (nom_campagne and not mot) else ""
+                return ("motcle", f"{sujet}{suffixe} {_ETATS_M[etat]}")
         return None
 
     # ── Le statut d'une campagne ou d'un groupe d'annonces ────────────────────
@@ -580,13 +635,67 @@ def _cle_changement(canal: str, quand: str, *parts) -> str:
     """Hachage stable de (canal, horodatage, ressource, champ).
 
     Stable veut dire : recalculable à l'identique à chaque récolte, pour qu'un
-    second passage sur la même semaine ne duplique rien. L'identifiant de la
-    ressource entre dans le hachage — sans lui, deux mots-clés modifiés dans la
-    même seconde s'écraseraient l'un l'autre.
+    second passage sur la même semaine ne duplique rien. Le nom de la ressource
+    entre dans le hachage — sans lui, deux mots-clés modifiés dans la même
+    seconde s'écraseraient l'un l'autre.
+
+    La PHRASE, elle, n'y entre jamais : elle peut changer d'une récolte à
+    l'autre (un texte de mot-clé résolu la fois suivante, une reformulation) et
+    la ligne serait alors réinsérée en double au lieu d'être mise à jour.
     """
     import hashlib
     brut = "|".join([canal, str(quand)] + [str(p or "") for p in parts])
     return hashlib.sha1(brut.encode("utf-8")).hexdigest()[:24]
+
+
+def _textes_mots_cles(
+    access_token: str,
+    customer_id: str,
+    noms_ressources: list[str],
+    login_customer_id: str | None = None,
+) -> dict[str, str]:
+    """{nom_de_ressource: texte du mot-clé} — au mieux, jamais bloquant.
+
+    `change_event` ne renvoie que les valeurs MODIFIÉES : sur un changement de
+    statut, le texte du mot-clé n'est pas là. On va donc le chercher.
+
+    Les critères SUPPRIMÉS ne reviendront pas de cette requête, et c'est
+    attendu : ils n'existent plus. Ces lignes-là gardent la phrase dégradée
+    (« un mot-clé a été supprimé de la campagne … »), qui reste vraie.
+    """
+    out: dict[str, str] = {}
+    noms = [n for n in dict.fromkeys(noms_ressources) if n]
+    if not noms:
+        return out
+    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
+    # Par paquets : une clause IN de plusieurs milliers d'entrées fait rejeter
+    # la requête, et on perdrait alors TOUS les textes d'un coup.
+    for i in range(0, len(noms), 400):
+        lot = noms[i:i + 400]
+        liste = ", ".join("'" + n.replace("'", "") + "'" for n in lot)
+        query = f"""
+            SELECT ad_group_criterion.resource_name, ad_group_criterion.keyword.text
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.resource_name IN ({liste})
+        """
+        try:
+            r = requests.post(url, headers=_headers(access_token, login_customer_id),
+                              json={"query": query}, timeout=45)
+            data = r.json()
+        except Exception:
+            continue
+        if isinstance(data, dict) and "error" in data:
+            continue
+        for batch in (data if isinstance(data, list) else [data]):
+            if not isinstance(batch, dict):
+                continue
+            for row in batch.get("results", []):
+                crit = row.get("adGroupCriterion", row.get("ad_group_criterion", {})) or {}
+                rn = crit.get("resourceName") or crit.get("resource_name")
+                txt = ((crit.get("keyword") or {}).get("text") or "").strip()
+                if rn and txt:
+                    out[str(rn)] = txt
+    return out
 
 
 def fetch_campaign_changes(
@@ -616,6 +725,7 @@ def fetch_campaign_changes(
 
     query = f"""
         SELECT change_event.change_date_time, change_event.change_resource_type,
+               change_event.change_resource_name,
                change_event.changed_fields, change_event.resource_change_operation,
                change_event.old_resource, change_event.new_resource,
                change_event.campaign, change_event.client_type
@@ -635,8 +745,12 @@ def fetch_campaign_changes(
     if isinstance(data, dict) and "error" in data:
         return [], data["error"].get("message", str(data["error"]))
 
-    rows: list[dict] = []
-    vus: set[str] = set()
+    # ── Premier passage : on collecte, sans encore rédiger ────────────────────
+    # `change_event` ne rend que les valeurs modifiées ; le texte des mots-clés
+    # manque donc sur un simple changement de statut. On rassemble les critères
+    # touchés pour les résoudre en UNE requête, avant de rédiger quoi que ce soit.
+    evenements: list[tuple[dict, str, str | None, str | None]] = []
+    a_resoudre: list[str] = []
     batches = data if isinstance(data, list) else [data]
     for batch in batches:
         if isinstance(batch, dict) and "error" in batch:
@@ -647,19 +761,40 @@ def fetch_campaign_changes(
             if not quand:
                 continue
             cid = _dernier_segment(ev.get("campaign"))
-            nom = noms.get(str(cid)) if cid else None
-            traduit = _traduire_google(ev, nom)
-            if not traduit:
-                continue
-            categorie, resume = traduit
-            cle = _cle_changement(
-                "google", quand,
-                ev.get("changeResourceType") or ev.get("change_resource_type"),
-                sorted(_champs(ev.get("changedFields") or ev.get("changed_fields"))),
-                cid, resume,
+            rn = _nom_ressource(
+                ev,
+                ev.get("newResource") or ev.get("new_resource") or {},
+                ev.get("oldResource") or ev.get("old_resource") or {},
             )
-            if cle in vus:
-                continue
+            typ = str(ev.get("changeResourceType") or ev.get("change_resource_type") or "").upper()
+            if typ == "AD_GROUP_CRITERION" and rn and not (
+                _mot_cle(ev.get("newResource") or ev.get("new_resource") or {})
+                or _mot_cle(ev.get("oldResource") or ev.get("old_resource") or {})
+            ):
+                a_resoudre.append(rn)
+            evenements.append((ev, str(quand), cid, rn))
+
+    textes = _textes_mots_cles(access_token, customer_id, a_resoudre, login_customer_id)
+
+    # ── Second passage : la rédaction ────────────────────────────────────────
+    rows: list[dict] = []
+    vus: set[str] = set()
+    for ev, quand, cid, rn in evenements:
+        nom = noms.get(str(cid)) if cid else None
+        traduit = _traduire_google(ev, nom, textes)
+        if not traduit:
+            continue
+        categorie, resume = traduit
+        cle = _cle_changement(
+            "google", quand,
+            ev.get("changeResourceType") or ev.get("change_resource_type"),
+            sorted(_champs(ev.get("changedFields") or ev.get("changed_fields"))),
+            cid,
+            # Le nom de ressource identifie la ligne ; à défaut seulement, la
+            # phrase — moins stable, mais mieux que deux gestes confondus.
+            rn or resume,
+        )
+        if cle not in vus:
             vus.add(cle)
             rows.append({
                 "change_id":     cle,

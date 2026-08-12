@@ -50,13 +50,20 @@ const CATEGORIES: CategorieChangement[] = [
 // facilement plus de 1000 changements sur trente jours (Google journalise
 // chaque mot-clé). La troncature serait silencieuse : le fil perdrait ses
 // lignes les plus anciennes sans rien dire.
+//
+// L'erreur est LEVÉE, pas ignorée : le client PostgREST ne jette jamais, il
+// renvoie `{data, error}`. Un `try/catch` seul ne rattraperait donc rien, et
+// une table absente se lirait comme une table vide.
 async function fetchAllRows<T>(
-  build: () => { range: (a: number, b: number) => PromiseLike<{ data: T[] | null }> }
+  build: () => {
+    range: (a: number, b: number) => PromiseLike<{ data: T[] | null; error: unknown }>;
+  }
 ): Promise<T[]> {
   const page = 1000;
   const out: T[] = [];
   for (let from = 0; ; from += page) {
-    const { data } = await build().range(from, from + page - 1);
+    const { data, error } = await build().range(from, from + page - 1);
+    if (error) throw error;
     const chunk = (data ?? []) as T[];
     out.push(...chunk);
     if (chunk.length < page) return out;
@@ -103,6 +110,8 @@ export async function getChangementsApi(
       supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
       supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
     ]);
+    if (m.error) throw m.error;
+    if (g.error) throw g.error;
     lignes = l;
     metaCfg = m.data ?? [];
     googCfg = g.data ?? [];

@@ -299,6 +299,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | toute boîte en `overflow-y-auto` | aucun signal de défilement ; sur macOS la barre est invisible au repos, un contenu coupé se lit comme un contenu fini | `.defile` dans `globals.css` — ombres de défilement en CSS pur (elles s'éteignent seules quand rien ne déborde) + barre rendue permanente |
 | toute rangée en `overflow-x-auto` | une rangée coupée à droite ne se devine pas — elle se lit comme une mise en page ratée, pas comme une invitation à glisser | `.defile-x`, le même mécanisme tourné d'un quart de tour |
 | `theme-card` (les conseils) | `sm:grid-cols-2` : trois conseils faisaient deux lignes dont la seconde à moitié vide, et le troisième passait sous la ligne de flottaison de la carte | une rangée unique en `.defile-x`, largeur fixe et hauteur commune, `scroll-snap` par carte — trois conseils s'alignent donc se comparent |
+| filet « hors de tes thèmes » → `HorsTheme` | bande pleine largeur en bas de page, sans rang 3, saturée de vingt lignes « est programmée — aucune dépense encore » | module en colonne à GAUCHE de « Ta boussole » : la courbe qui bouge et l'explication de pourquoi elle bouge dans le même écran. Rang 3 = ce qui S'EST PASSÉ ; les « programmée » sont un ÉTAT, pas un événement — repliées en une ligne sous le rail |
+| `rail-actions` | une seule voix de plateforme, celle qu'on DÉDUIT de la dépense — aveugle à tout ce qui ne bouge pas le budget du jour | les changements DÉCLARÉS par les API le rejoignent, et priment : même jour + même canal + même campagne, le déclaré efface le déduit. Il nomme la cause, le déduit ne constate que la conséquence |
 | `kpi-focus` (la grille des neuf) | `PROVENANCE` n'existait qu'en infobulle ; les trois groupes n'étaient séparés que par six pixels sous un mot gris, donc les neuf cellules se lisaient comme une seule liste | chaque cellule porte les glyphes de ses sources en couleur (cinq sur neuf en portent deux), et chaque groupe devient un bloc encadré avec sa provenance écrite en toutes lettres |
 | `EnveloppeAnnee` | le budget FIXÉ en 15 px gris, à peine plus lisible qu'une unité, alors que c'est le second terme de la question posée par la page | 20 px encre et son mot (« 72 000 CHF fixés pour 2026ˮ) ; bilan de trois chiffres en 19 px sur un seul fond : reste de l'enveloppe, posé sur les campagnes, réparti par thème |
 | page Coûts (« où ça part ») | un seul anneau, par thème — la répartition par RÉGIE n'avait aucune réponse sur la page | deux anneaux, même filtre et même total : plateforme à gauche (la découpe la plus grossière), thème à droite. `ThemeDonut` gagne `teintes` (forcer les couleurs de canal) et `etroit`, pas un second composant |
@@ -396,6 +398,34 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**12 août 2026 (7)** — **Le déclaré prime sur le déduit, et un état n'est pas un
+événement.**
+
+Deux règles sorties du même bloc, « hors de tes thèmes », qui sur le rapport de
+David affichait vingt lignes identiques : « est programmée — aucune dépense
+encore ».
+
+**Une campagne programmée est un ÉTAT, pas un événement.** Elle n'a pas de date
+à laquelle quelque chose s'est produit ; elle décrit une situation qui dure. La
+poser vingt fois dans une chronologie enterre les trois faits qui, eux, se sont
+produits. Elle ne vaut qu'en nombre : une ligne repliable sous le rail, et le
+rang 3 du module ne la compte pas.
+
+**Le déclaré prime sur le déduit.** Nos cinq faits de plateforme sont déduits de
+la dépense quotidienne : robustes, mais aveugles — ils constatent une
+conséquence sans jamais nommer la cause. Les API tiennent le vrai journal.
+Quand les deux racontent le même fait le même jour sur la même campagne, on
+garde celui qui nomme. La clé de rapprochement est volontairement grossière —
+jour + canal + campagne, **sans** la catégorie : un budget déclaré et une
+dépense qui bouge le même jour SONT le même événement vu de deux côtés, et
+exiger que les catégories concordent ferait réapparaître le doublon qu'on veut
+supprimer.
+
+Le bloc lui-même monte à gauche de « Ta boussole ». Il était en bas de page,
+après tout le reste, alors qu'il contient des actions qui bloquent le plafond
+des trois chantiers. Contre la courbe du compte, il cesse d'être un repêchage :
+c'est le registre de ce qui a bougé pendant que la courbe bougeait.
 
 **12 août 2026 (6)** — **La page Coûts : trois natures de nombre, et un
 réglage qu'on ne peut plus atteindre.**

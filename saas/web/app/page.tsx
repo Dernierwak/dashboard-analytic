@@ -3,7 +3,13 @@
 // bientôt par le worker cron) : même contenu partout.
 
 import Link from "next/link";
-import { getWeeklyData, type ReportPayload, type TrackedAction } from "@/lib/report";
+import {
+  getWeeklyData,
+  type ChangementPlateforme,
+  type ReportPayload,
+  type TrackedAction,
+} from "@/lib/report";
+import { getChangementsApi, type ChangementApi } from "@/lib/changements-api";
 import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
@@ -20,23 +26,11 @@ import { Triangle } from "@/components/pente";
 
 export const dynamic = "force-dynamic";
 
-// Deux niveaux de titre, pas un seul. « Fort » est réservé à ce sur quoi on
-// AGIT ; « discret » habille le détail qu'on consulte. Quand tous les titres
-// ont la même force, l'œil n'a plus de classement et tout se vaut.
-function SectionTitle({
-  children,
-  tone = "fort",
-}: {
-  children: React.ReactNode;
-  tone?: "fort" | "discret";
-}) {
-  if (tone === "discret") {
-    return (
-      <h2 className="text-[11px] uppercase tracking-widest text-faint font-bold mb-2.5">
-        {children}
-      </h2>
-    );
-  }
+// Le titre d'une section numérotée. Le second niveau (`tone="discret"`) a été
+// retiré : son seul porteur était le bloc « hors de tes thèmes », qui est
+// devenu un module à part entière avec son propre surtitre. Un habillage sans
+// utilisateur n'est pas un niveau de hiérarchie, c'est du code mort.
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink mb-3.5 flex items-center gap-2.5">
       <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
@@ -144,6 +138,74 @@ function VersLaction({
   );
 }
 
+// LE FILET — ce qu'aucune carte de thème ne prend.
+//
+// Il était une bande pleine largeur en bas de page ; il est maintenant une
+// colonne à gauche de « Ta boussole », et le déplacement change ce qu'il doit
+// dire. Contre la courbe du compte, il n'est plus un repêchage : c'est le
+// registre de ce qui a bougé pendant que la courbe bougeait.
+//
+// D'où son rang 3 — il n'en avait aucun, il ouvrait sur un titre puis une
+// liste. Le chiffre compte ce qui S'EST PASSÉ, pas ce qui attend : les
+// campagnes « programmée — aucune dépense encore » sont un état, pas un
+// événement, elles ne valent qu'en nombre et se replient sous le rail.
+function HorsTheme({
+  actions,
+  changements,
+  changementsApi,
+  survenus,
+  programmees,
+}: {
+  actions: TrackedAction[];
+  changements: ChangementPlateforme[];
+  changementsApi: ChangementApi[];
+  survenus: number;
+  programmees: number;
+}) {
+  return (
+    <section
+      id="actions-hors-theme"
+      className="bg-white border border-line rounded-2xl shadow-card px-4 py-4 scroll-mt-4"
+    >
+      <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-2">
+        Hors de tes thèmes
+      </div>
+
+      {survenus > 0 ? (
+        <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
+          <span className="font-mono text-[26px] leading-none font-medium text-ink">
+            {survenus}
+          </span>
+          <span className="text-[11.5px] text-muted leading-snug">
+            {survenus > 1 ? "faits et actions" : "fait ou action"} qu&apos;aucun thème ne
+            prend
+          </span>
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-muted leading-relaxed mb-2.5">
+          Rien hors de tes thèmes
+          {programmees > 0 ? " — à part ce qui attend de démarrer." : "."}
+        </p>
+      )}
+
+      <RailActions
+        actions={actions}
+        changements={changements}
+        changementsApi={changementsApi}
+        themeCourant={null}
+        maxH="max-h-[420px] lg:max-h-[58vh]"
+      />
+      <NoteAjout theme={null} />
+
+      {/* Rang 9 — le pied, un seul : pourquoi ces lignes sont là. */}
+      <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
+        Prises depuis les réglages de base, posées sur un thème sorti de tes priorités,
+        ou faites sur une campagne que tu n&apos;as pas encore étiquetée.
+      </p>
+    </section>
+  );
+}
+
 export default async function Page() {
   const data = await getWeeklyData();
   const report = data.report;
@@ -210,17 +272,35 @@ export default async function Page() {
   const chgOrphelins = tousChangements.filter(
     (c) => !c.theme || !themesRendus.has(c.theme)
   );
+  // CE QUE LES PLATEFORMES DÉCLARENT ELLES-MÊMES. Nos cinq faits déduits de la
+  // dépense sont aveugles à tout ce qui ne fait pas bouger le budget du jour —
+  // un mot-clé en pause, un CPC cible relevé, une audience élargie. Quatre-vingt
+  // -dix jours parce que Google Ads ne garde `change_event` que trente jours et
+  // Meta un peu plus : demander plus large ne coûte rien, la couche de données
+  // rend ce qu'elle a.
+  const depuisChg = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  const changementsApi = await getChangementsApi(depuisChg);
+  const apiParTheme = (label: string) => changementsApi.filter((c) => c.theme === label);
+  const apiOrphelins = changementsApi.filter(
+    (c) => !c.theme || !themesRendus.has(c.theme)
+  );
+
   const orphelines = [...data.actions, ...data.actionsArchived].filter(
     (a) => !a.theme || !themesRendus.has(a.theme)
   );
-  const orphelinesVivantes = orphelines.some(
-    (a) => a.status === "running" || a.status === "done"
-  );
+  // Ce qui s'est RÉELLEMENT passé hors thème, par opposition à ce qui attend.
+  // Vingt lignes « est programmée — aucune dépense encore » remplissaient le
+  // bloc et noyaient les trois faits qui comptaient : elles ne comptent donc
+  // pas dans le chiffre du module, elles se replient sous lui.
+  const progOrphelines = chgOrphelins.filter((c) => c.type === "planifiee");
+  const survenusOrphelins =
+    orphelines.length + (chgOrphelins.length - progOrphelines.length) + apiOrphelins.length;
   // Le filet s'affiche aussi quand il est VIDE et qu'aucun thème n'a de carte :
   // sans lui, un compte qui n'a rien classé n'a aucun endroit où écrire une
   // note — et une note sans thème ne pourrait jamais naître, faute d'un bloc
   // pour l'accueillir.
-  const filetPlein = orphelines.length + chgOrphelins.length > 0 || cartes.length === 0;
+  const filetPlein =
+    orphelines.length + chgOrphelins.length + apiOrphelins.length > 0 || cartes.length === 0;
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
@@ -270,7 +350,7 @@ export default async function Page() {
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
              indicateur en grand, et où part l'argent. Rien de filtré ici. */}
-      {(report?.kpi_focus || (report?.themes && report.themes.rows.length > 0)) && (
+      {(report?.kpi_focus || (report?.themes && report.themes.rows.length > 0) || filetPlein) && (
         <section className="mb-9">
           <SectionTitle>
             <span className="text-faint font-mono mr-1.5">{nSemaine}</span> Ta semaine, tous
@@ -280,16 +360,40 @@ export default async function Page() {
             La vue d&apos;ensemble du compte : tout ce que tu publies et achètes, sans
             filtre. Choisis l&apos;indicateur que tu veux suivre.
           </p>
-          {/* Tout sur toute la largeur, empilé. La boussole partageait sa
-              ligne avec l'anneau : à deux, aucun des deux n'avait la place de
-              son chiffre, et la courbe de trajectoire — qui est l'intérêt du
-              module — était écrasée sur un tiers de page. */}
-          <div className="space-y-3">
-            {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
-            {report?.themes && report.themes.rows.length > 0 && (
-              <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} univers={data.labels} />
+          {/* LA BOUSSOLE ET LE FILET SUR UNE MÊME LIGNE.
+              Le bloc « hors de tes thèmes » était une bande pleine largeur en
+              bas de page : on y arrivait après tout le reste, alors qu'il
+              contient des actions qui bloquent le plafond des trois chantiers.
+              Il passe à GAUCHE de la boussole — même section, même fenêtre, même
+              périmètre (tout le compte, rien de filtré), et surtout : la courbe
+              qui bouge et l'explication de pourquoi elle bouge dans le même
+              écran.
+              La boussole garde deux tiers, parce que sa courbe est l'intérêt du
+              module et qu'un tiers l'écraserait. Sur téléphone la boussole passe
+              en premier — c'est elle qu'on vient lire. */}
+          <div className="grid gap-3 lg:grid-cols-3 items-start">
+            {report?.kpi_focus && (
+              <div className="lg:col-span-2 lg:order-2 min-w-0">
+                <KpiFocusCard k={report.kpi_focus} />
+              </div>
+            )}
+            {filetPlein && (
+              <div className={`lg:order-1 min-w-0 ${report?.kpi_focus ? "" : "lg:col-span-3"}`}>
+                <HorsTheme
+                  actions={orphelines}
+                  changements={chgOrphelins}
+                  changementsApi={apiOrphelins}
+                  survenus={survenusOrphelins}
+                  programmees={progOrphelines.length}
+                />
+              </div>
             )}
           </div>
+          {report?.themes && report.themes.rows.length > 0 && (
+            <div className="mt-3">
+              <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} univers={data.labels} />
+            </div>
+          )}
           {/* Le temps, sous les chiffres : ce qui était en l'air pour les
               obtenir. Les couleurs sont celles de l'anneau juste au-dessus. */}
           {report?.frise && (
@@ -392,6 +496,7 @@ export default async function Page() {
                   actions={data.actions}
                   archived={data.actionsArchived}
                   changements={chgParTheme(t.label)}
+                  changementsApi={apiParTheme(t.label)}
                   rows={report?.themes?.rows ?? null}
                   fenetre={report?.vision?.period_label || null}
                   decroche={pire?.label === t.label}
@@ -421,49 +526,10 @@ export default async function Page() {
         </div>
       )}
 
-      {/* LE FILET — les actions qu'aucune carte ne prend.
-             Pas de numéro de section : c'est un repêchage, pas un chapitre. Et
-             rendu ICI, pas en bas de page : une action qu'on ne voit pas est
-             une action qui bloque le plafond sans qu'on sache pourquoi.
-             Rendu HORS de la branche « pas encore de données » : un compte sans
-             thème classé n'a aucune carte, ce bloc est sa seule liste. */}
-      {filetPlein &&
-        (orphelinesVivantes ? (
-          <section id="actions-hors-theme" className="mb-8 scroll-mt-4">
-            <SectionTitle tone="discret">Tes actions hors de tes thèmes</SectionTitle>
-            <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3">
-              <RailActions
-                actions={orphelines}
-                changements={chgOrphelins}
-                themeCourant={null}
-              />
-              <NoteAjout theme={null} />
-              <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
-                Ces actions ne sont rattachées à aucun de tes thèmes suivis : prises depuis
-                les réglages de base, ou sur un thème sorti de tes priorités.
-              </p>
-            </div>
-          </section>
-        ) : (
-          <details id="actions-hors-theme" className="mb-8 scroll-mt-4 group">
-            <summary className="text-[11px] uppercase tracking-widest text-faint font-bold cursor-pointer select-none">
-              Hors de tes thèmes ({orphelines.length + chgOrphelins.length}){" "}
-              <span className="text-brand normal-case tracking-normal group-open:hidden">
-                voir ▾
-              </span>
-              <span className="text-brand normal-case tracking-normal hidden group-open:inline">
-                replier ▴
-              </span>
-            </summary>
-            <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3 mt-2.5">
-              <RailActions
-                actions={orphelines}
-                changements={chgOrphelins}
-                themeCourant={null}
-              />
-            </div>
-          </details>
-        ))}
+      {/* LE FILET N'EST PLUS ICI — il est monté à gauche de « Ta boussole »,
+          dans la section 1. Il occupait une bande pleine largeur en bas de
+          page, après tout le reste, alors qu'il contient des actions qui
+          bloquent le plafond des trois chantiers sans qu'on sache pourquoi. */}
 
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
