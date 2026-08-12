@@ -110,15 +110,36 @@ export function RailActions({
       .filter((c) => c.campagne)
       .map((c) => `${c.date}|${c.canal}|${c.campagne}`)
   );
-  const deduits = changements.filter(
-    (c) => !couverts.has(`${c.date}|${c.canal}|${c.campagne}`)
-  );
+  // RATTRAPAGE DES ANCIENS RAPPORTS.
+  //
+  // Jusqu'au 12 août 2026 le worker écrivait « planifiée » pour toute campagne
+  // déclarée qui n'avait jamais dépensé, sans regarder ni sa date ni la fenêtre
+  // de 60 jours des autres types. Un compte réel affichait donc vingt lignes
+  // « est programmée », dont une campagne de Noël 2025 — quinze mois plus tôt.
+  //
+  // Le worker est corrigé, mais un rapport ne se régénère qu'à la demande : les
+  // payloads déjà publiés porteraient l'erreur pendant des semaines. On la
+  // rattrape donc à l'affichage, avec exactement la même règle, et on la retire
+  // le jour où plus aucun payload ancien ne circule.
+  const auj = new Date().toISOString().slice(0, 10);
+  const borne = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+  const deduits = changements
+    .filter((c) => !couverts.has(`${c.date}|${c.canal}|${c.campagne}`))
+    .filter((c) => c.type !== "planifiee" || c.date >= borne)
+    .map((c) =>
+      c.type === "planifiee" && c.date <= auj
+        ? { ...c, type: "jamais_lancee" as const }
+        : c
+    );
 
-  // LES « PROGRAMMÉE » SORTENT DU FIL. Vingt lignes « est programmée — aucune
-  // dépense encore » remplissaient le bloc hors thème et noyaient les trois
-  // faits qui comptaient : ce n'est pas un événement, c'est un ÉTAT, et il ne
-  // vaut qu'en nombre. Elles se replient en une ligne, dépliable pour qui veut
-  // les noms.
+  // LES « PROGRAMMÉE » SORTENT DU FIL. Elles remplissaient le bloc hors thème
+  // et noyaient les faits qui comptaient : ce n'est pas un événement, c'est un
+  // ÉTAT, et il ne vaut qu'en nombre. Elles se replient en une ligne, dépliable
+  // pour qui veut les noms.
+  //
+  // « Devait démarrer et n'a rien dépensé » ne se replie PAS avec elles : c'est
+  // un fait daté, et c'est un problème — une campagne qu'on croyait lancée ne
+  // tourne pas. Le repli est réservé à ce qui n'appelle aucune décision.
   const programmees = deduits.filter((c) => c.type === "planifiee");
   const survenus = deduits.filter((c) => c.type !== "planifiee");
 

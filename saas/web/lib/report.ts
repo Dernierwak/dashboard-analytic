@@ -303,7 +303,12 @@ export type ChangementPlateforme = {
   canal: string;
   campagne: string;
   theme: string | null;
-  type: "lancee" | "arretee" | "reprise" | "planifiee" | "depense";
+  /**
+   * `planifiee` = son début est À VENIR. `jamais_lancee` = son début est passé
+   * et elle n'a jamais rien dépensé — deux faits opposés que le worker écrivait
+   * tous les deux « est programmée » jusqu'au 12 août 2026.
+   */
+  type: "lancee" | "arretee" | "reprise" | "planifiee" | "jamais_lancee" | "depense";
   detail?: string | null;
 };
 

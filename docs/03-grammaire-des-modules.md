@@ -399,6 +399,55 @@ disponibilité du gérant.
 
 ## Journal
 
+**12 août 2026 (7)** — **Un mot qui promet le futur ne se pose pas sur le passé.**
+
+Le fil affichait vingt lignes « est programmée — aucune dépense encore », dont
+une campagne de Noël 2025 lue en août 2026. David a dit « il me semble que ce
+n'est pas juste », et il avait raison sur les deux plans : ce type de changement
+était le **seul à échapper à la fenêtre de 60 jours** qui borne tous les autres,
+et son test ne regardait pas la date — seulement « déclarée, et n'a jamais
+dépensé ».
+
+Trois cas là où il n'y en avait qu'un : début **à venir** → « est programmée » ;
+début **passé, moins de 60 jours** → « devait démarrer, et n'a rien dépensé » ;
+au-delà → **rien**. Le deuxième n'est pas une variante de politesse du premier :
+une campagne qu'on croyait lancée et qui ne tourne pas est un problème, pas une
+annonce. Elle ne se replie donc pas avec les programmées.
+
+**La règle : un état ne se raconte pas, un fait daté se raconte.** Et quand un
+type de fait échappe à la fenêtre commune, c'est presque toujours qu'il n'a
+jamais été relu depuis qu'on l'a écrit.
+
+Corollaire de fabrication, vérifié ici : le worker corrigé ne suffit pas, parce
+qu'un rapport ne se régénère qu'à la demande. Pulse **rattrape à l'affichage**
+avec exactement la même règle, et le rattrapage porte la date à laquelle on
+pourra le retirer.
+
+**12 août 2026 (6 bis)** — **On ne renonce pas à séparer : on cesse d'agréger.**
+
+La boussole groupait ses neuf indicateurs par TERRAIN — « Ta pub », « Ton
+Instagram », « Ton site » — au motif que quatre d'entre eux additionnaient Meta
+ET Google, et qu'une pastille « Google Ads » sur un CTR mélangé ferait couper
+Google à qui croit lire Google. L'argument était juste. La conclusion était
+fausse.
+
+Sur un compte réel : CTR **2,1 % chez Meta, 15,4 % chez Google**. Le chiffre
+groupé affichait 9,8 % — une moyenne qui ne décrit aucune des deux et qui cache
+exactement ce qu'on vient chercher : laquelle des deux régies il faut aller
+regarder. La bonne réponse n'était pas de renoncer au groupement par plateforme,
+c'était de **ne plus additionner** : les deux régies vivent dans deux tables
+distinctes, séparer ne demandait aucune donnée de plus.
+
+**Le ROAS reste commun, et c'est écrit à l'écran.** Son revenu vient de GA4, qui
+le donne pour tout le compte sans dire quelle régie l'a produit : un « ROAS
+Meta » diviserait le revenu total par la seule dépense Meta. Faux, et flatteur.
+Un groupe « Tes deux régies » existe donc uniquement pour lui, avec la raison en
+toutes lettres à côté de son nom.
+
+La clé porte sa régie (`ctr:meta`), jamais le titre : un rapport publié avant
+cette date n'a que des clés nues, il retombe dans « Tes deux régies » et
+s'affiche entièrement. **Une taxonomie qui change doit pouvoir lire l'ancienne.**
+
 **12 août 2026 (7)** — **Le déclaré prime sur le déduit, et un état n'est pas un
 événement.**
 

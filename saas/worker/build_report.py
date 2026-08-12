@@ -633,7 +633,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         n = (d - _serie_start).days
         return n // 7 if 0 <= n < 7 * _WK else None
 
-    def _theme_series(lbl):
+    def _theme_series(lbl, revenu=None):
+        """La courbe d'un theme. `revenu` = ce que le bilan du theme a constate.
+
+        Il n'est PAS decoratif : sans lui, la note « le ROAS de ce theme n'est
+        pas mesurable » s'ecrivait sous un bilan qui affichait « 820 CHF de
+        revenu · ROAS 0,2 ». Les deux ne peuvent pas etre vrais en meme temps.
+        """
         nlbl = _nrm(lbl)
         spend_w = [0.0] * _WK
         reach_w = [[] for _ in range(_WK)]
@@ -681,7 +687,16 @@ def build_payload(sb, user_id: str) -> dict | None:
         elif has_spend:
             pts = [round(v, 2) for v in spend_w]
             metric_label = "Dépense (CHF)"
-            if objectif == "ventes":
+            # LA NOTE NE S'ECRIT QUE SI ELLE EST VRAIE. Un theme qui a du revenu
+            # a un ROAS : dire « pas mesurable » au-dessus d'un « 0,2 ROAS »
+            # affiche a l'ecran deux affirmations contradictoires, et c'est la
+            # note qui a tort. Ce qui manque dans ce cas n'est pas la mesure,
+            # c'est la VENTILATION PAR SEMAINE : `by_campaign` de GA4 donne un
+            # revenu total par campagne, sans dates. La courbe reste donc sur la
+            # depense — mais en silence, parce qu'il n'y a rien a corriger cote
+            # GA4 et qu'envoyer l'utilisateur y regler ses evenements cles
+            # serait l'envoyer chercher un probleme qu'il n'a pas.
+            if objectif == "ventes" and not (revenu and float(revenu) > 0):
                 note = ("Le ROAS de ce thème n'est pas mesurable : Google Analytics "
                         "remonte tes conversions sans leur valeur en CHF. On suit la "
                         "dépense en attendant — configure la valeur de tes événements "
@@ -787,7 +802,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             "n_campaigns": len(t_camps),
         }
         try:
-            _series = _theme_series(lbl)
+            _series = _theme_series(lbl, summary.get("revenue"))
         except Exception:
             _series = None
         themes_focus.append({
@@ -1409,13 +1424,22 @@ def build_payload(sb, user_id: str) -> dict | None:
             out.append((fin - timedelta(days=6), fin))
         return out
 
-    def _pub_semaine(d1, d2):
+    def _pub_semaine(d1, d2, canal=None):
+        """Depense, clics et impressions d'une semaine. `canal` restreint a une
+        regie — sans lui, les deux sont additionnees comme avant.
+
+        Les deux regies vivent dans deux dataframes distincts : separer par
+        plateforme ne demande donc aucune donnee de plus, seulement de ne pas
+        additionner. C'est ce qui rend possible « ▣ Meta » et « ◆ Google » en
+        deux rangees dans la boussole.
+        """
         sp = cl = im = 0.0
-        if df_meta_raw is not None and not df_meta_raw.empty:
+        if canal in (None, "meta") and df_meta_raw is not None and not df_meta_raw.empty:
             m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
             sp += float(m["spend"].sum()); cl += float(m["clicks"].sum()); im += float(m["impressions"].sum())
-        if df_google is not None and not df_google.empty and "date_start" in df_google.columns:
+        if (canal in (None, "google") and df_google is not None
+                and not df_google.empty and "date_start" in df_google.columns):
             g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
                           & (df_google["date_start"] <= pd.Timestamp(d2))]
             sp += float(g["cost_micros"].sum()) / 1_000_000.0
@@ -1526,10 +1550,6 @@ def build_payload(sb, user_id: str) -> dict | None:
             sp, cl, _ = _pub_semaine(d1, d2)
             return round(sp / cl, 2) if cl > 0 else None
 
-        def _f_spend(d1, d2):
-            sp, _, _ = _pub_semaine(d1, d2)
-            return round(sp, 2) if sp > 0 else None
-
         def _f_eng(d1, d2):
             e, _, _ = _insta_semaine(d1, d2)
             return round(e, 2) if e is not None else None
@@ -1538,40 +1558,90 @@ def build_payload(sb, user_id: str) -> dict | None:
             _, r, _ = _insta_semaine(d1, d2)
             return round(r) if r is not None else None
 
-        _CANDIDATS = [
-            ("roas", "ROAS", "", "up", _f_roas,
-             "Ce que chaque franc de pub te rapporte. Sous 1 tu perds de l'argent ; "
-             "au-dessus de 3 tu peux augmenter les budgets."),
-            ("ctr", "CTR publicitaire", " %", "up", _f_ctr,
+        # LES QUATRE INDICATEURS DE REGIE SE DEDOUBLENT PAR PLATEFORME.
+        #
+        # « Meta + Google confondus » cachait exactement ce qu'on cherche : un
+        # CTR global de 9,8 % peut etre 2 % chez l'un et 15 % chez l'autre, et
+        # la moyenne ne dit pas laquelle des deux il faut aller regarder.
+        #
+        # LE ROAS, LUI, RESTE COMMUN, ET CE N'EST PAS UN OUBLI. Le revenu vient
+        # de GA4 (`_revenu_semaine`), qui le donne par JOUR pour tout le compte
+        # — sans dimension de regie. Un « ROAS Meta » se calculerait donc en
+        # divisant le revenu de TOUT le compte par la seule depense Meta : un
+        # chiffre faux, et flatteur. On ne le fabrique pas.
+        def _par_canal(f, canal):
+            return lambda d1, d2: f(d1, d2, canal)
+
+        def _f_ctr_c(d1, d2, canal=None):
+            _, cl, im = _pub_semaine(d1, d2, canal)
+            return round(cl / im * 100, 2) if im > 0 else None
+
+        def _f_cpc_c(d1, d2, canal=None):
+            sp, cl, _ = _pub_semaine(d1, d2, canal)
+            return round(sp / cl, 2) if cl > 0 else None
+
+        def _f_spend_c(d1, d2, canal=None):
+            sp, _, _ = _pub_semaine(d1, d2, canal)
+            return round(sp, 2) if sp > 0 else None
+
+        def _f_clics_c(d1, d2, canal=None):
+            _, cl, _ = _pub_semaine(d1, d2, canal)
+            return int(cl) if cl > 0 else None
+
+        _PAR_REGIE = [
+            ("ctr", "CTR", " %", "up", _f_ctr_c,
              "Part des gens qui cliquent apres avoir vu ta pub. Sous 1 % le message "
              "ne parle pas a l'audience visee."),
-            ("cpc", "Coût par clic", " CHF", "down", _f_cpc,
+            ("cpc", "Coût par clic", " CHF", "down", _f_cpc_c,
              "Ce que te coûte une visite. Plus il baisse a volume egal, mieux ton "
              "ciblage et ta creation travaillent."),
+            ("spend", "Dépense", " CHF", "up", _f_spend_c,
+             "Ce que tu investis chaque semaine sur cette regie."),
+            ("clics", "Clics", "", "up", _f_clics_c,
+             "Clics sur tes publicites de cette regie."),
+        ]
+        _REGIES = [("meta", "Meta"), ("google", "Google")]
+
+        _CANDIDATS = [
+            ("roas", "ROAS", "", "up", _f_roas,
+             "Ce que chaque franc de pub te rapporte, toutes régies confondues. "
+             "Sous 1 tu perds de l'argent ; au-dessus de 3 tu peux augmenter les budgets."),
             ("eng", "Engagement moyen", " %", "up", _f_eng,
              "Part de ton audience touchee qui reagit. Sous 1 % le contenu glisse ; "
              "au-dessus de 3 % il accroche vraiment."),
             ("reach", "Portée moyenne par post", "", "up", _f_reach,
              "Nombre de comptes touches par publication. Ce qui compte n'est pas le "
              "niveau absolu mais sa pente sur plusieurs semaines."),
-            ("spend", "Dépense publicitaire", " CHF", "up", _f_spend,
-             "Ce que tu investis chaque semaine, tous canaux confondus."),
         ]
 
-        _options = []
-        for (ck, ct, cu, cd, cf, cr) in _CANDIDATS:
+        def _ajoute_option(dest, ck, ct, cu, cd, cf, cr, bandes_de=None):
             pts = _serie(cf)
             reels = [v for v in pts if v is not None]
             if len(reels) < 2:
-                continue
+                return
             val = pts[-1] if pts[-1] is not None else reels[-1]
             prev = next((v for v in reversed(pts[:-1]) if v is not None), None)
-            _options.append({
+            dest.append({
                 "key": ck, "titre": ct, "unite": cu, "direction": cd,
                 "valeur": val, "precedent": prev, "repere": cr,
                 "points": pts,
-                "bandes": [{"max": m, "label": l, "tone": t} for (m, l, t) in _BANDES.get(ck, [])],
+                "bandes": [{"max": m, "label": l, "tone": t}
+                           for (m, l, t) in _BANDES.get(bandes_de or ck, [])],
             })
+
+        _options = []
+        for (ck, ct, cu, cd, cf, cr) in _CANDIDATS:
+            _ajoute_option(_options, ck, ct, cu, cd, cf, cr)
+
+        # Une regie sans donnees ne produit aucune option : un compte qui n'a
+        # que Meta n'aura donc jamais de rangee Google vide. C'est
+        # `_ajoute_option` qui s'en charge — moins de deux points, on n'ecrit
+        # rien. La cle porte la regie (`ctr:meta`) pour que l'affichage puisse
+        # regrouper sans avoir a deviner.
+        for _cid, _cnom in _REGIES:
+            for (ck, ct, cu, cd, cf, cr) in _PAR_REGIE:
+                _ajoute_option(_options, f"{ck}:{_cid}", f"{ct} {_cnom}", cu, cd,
+                               _par_canal(cf, _cid), cr, bandes_de=ck)
 
         if _options:
             _def = next((o for o in _options if o["key"] == _cle), _options[0])
@@ -1648,8 +1718,9 @@ def build_payload(sb, user_id: str) -> dict | None:
                  "Visites sur ton site, tous canaux confondus (GA4)."),
                 ("vues", "Vues Instagram", "", metrics_series["vues"],
                  "Vues de tes posts Instagram, semaine par semaine."),
-                ("clics", "Clics publicitaires", "", metrics_series["clics"],
-                 "Clics sur tes publicites Meta + Google."),
+                # `clics` global ne rejoint plus la boussole : il y vit
+                # maintenant dedouble par regie (`clics:meta`, `clics:google`).
+                # Il reste dans `metrics_series`, que d'autres modules lisent.
             ]
             for ck, ct, cu, pts, cr in _EXTRAS:
                 reels = [v for v in pts if v is not None]
@@ -1964,7 +2035,25 @@ def build_payload(sb, user_id: str) -> dict | None:
             _base = {"canal": _canal, "campagne": _nom, "theme": _c["theme"]}
 
             if _c.get("planifiee"):
-                _chg.append(dict(_base, date=_c["debut"].isoformat(), type="planifiee"))
+                # « PROGRAMMÉE » PROMET UN ÉVÉNEMENT À VENIR. Le test ne portait
+                # que sur « déclarée et n'a jamais dépensé », et ce type-là
+                # échappait en plus à la fenêtre de 60 jours qui borne tous les
+                # autres. Résultat vu chez un client en août 2026 : vingt lignes
+                # « est programmée — aucune dépense encore », dont une campagne
+                # de Noël 2025 et une campagne saisonnière 2025. Elles ne sont
+                # pas programmées, elles n'ont jamais tourné — et elles
+                # noyaient les trois faits de la semaine.
+                #
+                # Deux cas, deux phrases, et le troisième ne s'écrit pas :
+                #   · début À VENIR              → elle arrive, c'est une nouvelle ;
+                #   · début passé, moins de 60 j → elle devait démarrer et n'a
+                #     rien dépensé : ça, c'est un problème, pas une annonce ;
+                #   · début passé de plus de 60 j → rien. Ce n'est plus une
+                #     nouvelle, c'est un état, et un état ne se raconte pas.
+                if _c["debut"] > last_full_day:
+                    _chg.append(dict(_base, date=_c["debut"].isoformat(), type="planifiee"))
+                elif _c["debut"] >= _borne:
+                    _chg.append(dict(_base, date=_c["debut"].isoformat(), type="jamais_lancee"))
                 continue
 
             _jours = sorted(_c["jours"])

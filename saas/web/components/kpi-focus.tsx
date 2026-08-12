@@ -34,41 +34,81 @@ import type { KpiFocus, KpiOption } from "@/lib/report";
 // objectif, mais tu bascules sur n'importe quel autre d'un doigt — on ne sait
 // jamais mieux que toi ce que tu as envie de regarder ce jour-là.
 
-// Le regroupement des indicateurs. PAS « par source connectée » : cinq des neuf
-// (roas, ctr, cpc, spend, clics) sont calculés sur Meta ET Google confondus —
-// coller une pastille « Google Ads » sur le CTR ferait couper Google à qui
-// croit lire Google. On regroupe donc par TERRAIN, qui est la seule clé vraie
-// pour les neuf.
+// LE REGROUPEMENT EST PAR RÉGIE, et il a mis trois passes à le devenir.
 //
-// ET CHAQUE CELLULE PORTE MAINTENANT SES SOURCES, EN COULEUR. Le regroupement
-// par terrain répond à « de quoi ça parle » ; il ne répond pas à « qu'est-ce
-// que je casse si je coupe Google ce soir ». Cette réponse-là existait, elle
-// était enfermée dans un `PROVENANCE` qui ne servait qu'à une ligne grise sous
-// le chiffre du haut, et à rien du tout dans la grille des neuf. Les cinq
-// cellules qui additionnent deux régies portent donc deux glyphes : c'est la
-// seule information qui manquait pour lire la grille sans l'avoir apprise.
-const TERRAIN: Record<string, { groupe: string; court: string; sources: string[] }> = {
-  roas: { groupe: "Ta pub", court: "ROAS", sources: ["meta", "google"] },
-  ctr: { groupe: "Ta pub", court: "CTR", sources: ["meta", "google"] },
-  cpc: { groupe: "Ta pub", court: "Coût / clic", sources: ["meta", "google"] },
-  spend: { groupe: "Ta pub", court: "Dépense", sources: ["meta", "google"] },
-  clics: { groupe: "Ta pub", court: "Clics", sources: ["meta", "google"] },
-  eng: { groupe: "Ton Instagram", court: "Engagement", sources: ["instagram"] },
-  reach: { groupe: "Ton Instagram", court: "Portée / post", sources: ["instagram"] },
-  vues: { groupe: "Ton Instagram", court: "Vues", sources: ["instagram"] },
-  trafic: { groupe: "Ton site", court: "Sessions", sources: ["site"] },
+// D'abord par TERRAIN (« Ta pub » / « Ton Instagram » / « Ton site »), au motif
+// que quatre indicateurs additionnaient Meta ET Google : coller une pastille
+// « Google Ads » sur un CTR mélangé aurait fait couper Google à qui croyait
+// lire Google. L'argument était juste, et la conclusion était fausse — la bonne
+// réponse n'était pas de renoncer à séparer, c'était de ne plus additionner.
+//
+// Un CTR global de 9,8 % peut être 2 % chez l'un et 15 % chez l'autre. La
+// moyenne cache précisément ce qu'on vient chercher : LAQUELLE des deux régies
+// il faut aller regarder. Le worker calcule donc quatre indicateurs par régie
+// (`ctr:meta`, `cpc:google`…), et ce module les range sous leur plateforme.
+//
+// Le ROAS fait exception, et c'est écrit à l'écran plutôt que caché : son revenu
+// vient de Google Analytics, qui ne dit pas quelle régie l'a produit.
+//
+// LA CLÉ PORTE SA RÉGIE : `ctr:meta`, `cpc:google`. Une clé nue reste possible
+// et le restera — c'est la forme de tous les rapports publiés avant le 12 août
+// 2026, et un rapport ancien doit continuer de s'afficher entièrement.
+const BASE: Record<string, { court: string; famille: "pub" | "instagram" | "site" }> = {
+  roas: { court: "ROAS", famille: "pub" },
+  ctr: { court: "CTR", famille: "pub" },
+  cpc: { court: "Coût / clic", famille: "pub" },
+  spend: { court: "Dépense", famille: "pub" },
+  clics: { court: "Clics", famille: "pub" },
+  eng: { court: "Engagement", famille: "instagram" },
+  reach: { court: "Portée / post", famille: "instagram" },
+  vues: { court: "Vues", famille: "instagram" },
+  trafic: { court: "Sessions", famille: "site" },
 };
-const ORDRE_GROUPES = ["Ta pub", "Ton Instagram", "Ton site"];
+
+/** `ctr:meta` → `["ctr", "meta"]` ; `roas` → `["roas", null]`. */
+function decoupe(cle: string): [string, string | null] {
+  const i = cle.indexOf(":");
+  return i < 0 ? [cle, null] : [cle.slice(0, i), cle.slice(i + 1)];
+}
+
+const G_META = "Meta Ads";
+const G_GOOGLE = "Google Ads";
+const G_DEUX = "Tes deux régies";
+const G_INSTA = "Ton Instagram";
+const G_SITE = "Ton site";
+const ORDRE_GROUPES = [G_META, G_GOOGLE, G_DEUX, G_INSTA, G_SITE];
+
+/** Le groupe d'un indicateur, et les sources qui l'alimentent. */
+function terrain(cle: string): { groupe: string; court: string; sources: string[] } | null {
+  const [base, regie] = decoupe(cle);
+  const b = BASE[base];
+  if (!b) return null;
+  if (regie === "meta") return { groupe: G_META, court: b.court, sources: ["meta"] };
+  if (regie === "google") return { groupe: G_GOOGLE, court: b.court, sources: ["google"] };
+  if (b.famille === "instagram")
+    return { groupe: G_INSTA, court: b.court, sources: ["instagram"] };
+  if (b.famille === "site") return { groupe: G_SITE, court: b.court, sources: ["site"] };
+  return { groupe: G_DEUX, court: b.court, sources: ["meta", "google"] };
+}
+
+// Pourquoi un groupe « les deux régies » subsiste alors qu'on sépare tout le
+// reste : le ROAS ne se sépare PAS. Son revenu vient de Google Analytics, qui
+// le donne pour tout le compte sans dire quelle régie l'a produit. Un « ROAS
+// Meta » diviserait le revenu de TOUT le compte par la seule dépense Meta —
+// un chiffre faux, et flatteur. On préfère l'écrire.
 const PROVENANCE: Record<string, string> = {
-  "Ta pub": "Meta + Google confondus",
-  "Ton Instagram": "Instagram",
-  "Ton site": "Google Analytics",
+  [G_META]: "Meta seul",
+  [G_GOOGLE]: "Google seul",
+  [G_DEUX]: "le revenu vient de Google Analytics, qui ne dit pas quelle régie l'a produit",
+  [G_INSTA]: "Instagram",
+  [G_SITE]: "Google Analytics",
 };
+
 /** Les sources d'un groupe — l'union de celles de ses indicateurs, sans doublon. */
 function sourcesGroupe(cles: string[]): string[] {
   const out: string[] = [];
   for (const c of cles)
-    for (const s of TERRAIN[c]?.sources ?? [])
+    for (const s of terrain(c)?.sources ?? [])
       if (!out.includes(s)) out.push(s);
   return out;
 }
@@ -109,11 +149,14 @@ const PORTEE: Record<string, string> = {
   trafic: "total de la semaine",
 };
 
+// Le formatage suit la clé de BASE : `spend:meta` est une dépense, et se lit
+// comme une dépense. Tester `o.key` en entier rendait « 1 667 » en « 1667.0 »
+// dès que la clé portait sa régie.
 function fmtVal(o: KpiOption, v: number): string {
-  if (o.key === "reach" || o.key === "clics") return Math.round(v).toLocaleString("fr-CH");
-  if (o.key === "spend" || o.key === "vues" || o.key === "trafic")
+  const base = decoupe(o.key)[0];
+  if (base === "reach" || base === "clics" || base === "spend" || base === "vues" || base === "trafic")
     return Math.round(v).toLocaleString("fr-CH");
-  return v.toFixed(o.key === "cpc" ? 2 : 1);
+  return v.toFixed(base === "cpc" ? 2 : 1);
 }
 
 function ecartPct(o: KpiOption): number | null {
@@ -141,7 +184,7 @@ function Cellule({
 }) {
   const d = ecartPct(o);
   const s = sensPente(d, o.direction === "down", 0.5);
-  const t = TERRAIN[o.key];
+  const t = terrain(o.key);
   const court = t?.court ?? o.titre;
   return (
     <button
@@ -215,7 +258,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
     zone?.tone === "pos" ? "#1a7a4a" : zone?.tone === "neg" ? "#c0392b" : "#b86b00";
 
   const delta = ecartPct(o);
-  const groupe = TERRAIN[o.key]?.groupe;
+  const groupe = terrain(o.key)?.groupe;
 
   // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
   // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
@@ -232,9 +275,9 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
   // Les groupes réellement présents, dans l'ordre.
   const groupes = ORDRE_GROUPES.map((g) => ({
     nom: g,
-    options: k.options.filter((op) => TERRAIN[op.key]?.groupe === g),
+    options: k.options.filter((op) => terrain(op.key)?.groupe === g),
   })).filter((g) => g.options.length > 0);
-  const orphelines = k.options.filter((op) => !TERRAIN[op.key]);
+  const orphelines = k.options.filter((op) => !terrain(op.key));
 
   return (
     <div className="bg-white border border-line rounded-2xl shadow-card overflow-hidden">
@@ -262,11 +305,11 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
             dit que le CTR mélange deux régies — et on coupe Google en croyant
             lire Google. */}
         <p className="text-[10.5px] text-faint mt-1.5 flex items-center gap-1.5 flex-wrap">
-          <span>{PORTEE[o.key] ?? "sur la semaine"}</span>
+          <span>{PORTEE[decoupe(o.key)[0]] ?? "sur la semaine"}</span>
           {groupe && (
             <>
               <span>·</span>
-              <Glyphes sources={TERRAIN[o.key]?.sources ?? []} />
+              <Glyphes sources={terrain(o.key)?.sources ?? []} />
               <span>{PROVENANCE[groupe]}</span>
             </>
           )}
@@ -324,8 +367,15 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           neuf cellules se lisaient comme une seule liste, et le groupement —
           qui est justement ce que David a décidé de garder — ne se voyait pas.
           Chaque groupe a maintenant son cadre, son en-tête, et sa PROVENANCE
-          écrite en toutes lettres à côté de ses glyphes. */}
-      <div className="border-t border-line bg-black/[0.012] px-3 py-3 space-y-2">
+          écrite en toutes lettres à côté de ses glyphes.
+
+          ET LA LISTE DÉFILE. Séparer les régies fait passer la grille de trois
+          groupes à cinq : sur un portable, les deux derniers tombaient sous la
+          ligne de flottaison et le module ne montrait plus qu'un tiers de ce
+          qu'on peut suivre. La boîte est bornée et porte `.defile` — les ombres
+          s'éteignent seules quand tout tient, donc rien ne change pour un compte
+          qui n'a qu'une régie. */}
+      <div className="border-t border-line bg-black/[0.012] px-3 py-3 space-y-2 defile max-h-[340px] sm:max-h-[420px] [--fond-defile:#fbfbfc]">
         {groupes.map((g) => {
           const sources = sourcesGroupe(g.options.map((op) => op.key));
           return (

@@ -199,7 +199,12 @@ export function phraseChangement(c: ChangementPlateforme): string {
     case "reprise":
       return "a repris";
     case "planifiee":
-      return "est programmée — aucune dépense encore";
+      return "est programmée — elle n'a pas encore commencé";
+    // Une campagne dont la date de départ est PASSÉE et qui n'a jamais rien
+    // dépensé n'est pas « programmée » : elle n'a pas démarré. La nuance n'est
+    // pas de langue, c'est la différence entre une annonce et un problème.
+    case "jamais_lancee":
+      return "devait démarrer, et n'a rien dépensé";
     case "depense":
       return "sa dépense quotidienne a changé";
     default:
