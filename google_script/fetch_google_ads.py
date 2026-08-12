@@ -431,8 +431,14 @@ def _champs(brut) -> set[str]:
     out = set()
     for p in parts:
         p = str(p).strip()
-        if p:
-            out.add(p.replace("_", "").replace(".", "").lower())
+        if not p:
+            continue
+        plat = p.replace("_", "").lower()
+        out.add(plat.replace(".", ""))
+        # Le dernier segment aussi : selon les versions, le masque arrive nu
+        # (« status ») ou préfixé (« campaign.status »). Sans ça, un simple
+        # préfixe ferait rater tous les changements de statut, en silence.
+        out.add(plat.rsplit(".", 1)[-1])
     return out
 
 
@@ -562,11 +568,11 @@ def _traduire_google(ev: dict, nom_campagne: str | None) -> tuple[str, str] | No
     if typ == "CAMPAIGN" and op == "CREATE":
         nom = nom_campagne or _ressource(new, "campaign", "campaign").get("name")
         return ("autre", f'la campagne "{nom}" a été créée') if nom else None
-    if typ == "AD_GROUP_AD" and de_la_campagne:
+    if typ == "AD_GROUP_AD" and nom_campagne:
         if op == "CREATE":
-            return ("creatif", f"une nouvelle annonce a été ajoutée{de_la_campagne}")
+            return ("creatif", f'une nouvelle annonce a été ajoutée à la campagne "{nom_campagne}"')
         if op == "REMOVE":
-            return ("creatif", f"une annonce a été retirée{de_la_campagne}")
+            return ("creatif", f'une annonce a été retirée de la campagne "{nom_campagne}"')
     return None
 
 

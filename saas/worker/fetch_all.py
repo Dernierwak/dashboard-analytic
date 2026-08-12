@@ -33,13 +33,24 @@ from scripts.fetch_data import fetch_meta_ads_latest_date, fetch_google_ads_late
 from scripts.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
     upsert_google_ads, upsert_google_campaign_statuses,
-    insert_instagram_org, upsert_platform_budgets,
+    insert_instagram_org, upsert_platform_budgets, upsert_platform_changes,
 )
 from google_script.fetch_token import get_access_token_from_refresh        # noqa: E402
 from google_script.fetch_google_ads import (                               # noqa: E402
-    fetch_campaign_insights, fetch_campaign_statuses, fetch_campaign_budgets as google_budgets,
+    fetch_campaign_insights, fetch_campaign_statuses,
+    fetch_campaign_budgets as google_budgets,
+    fetch_campaign_changes as google_changes,
 )
-from meta_script.fetch_meta_ads import fetch_campaign_budgets as meta_budgets  # noqa: E402
+from meta_script.fetch_meta_ads import (                                   # noqa: E402
+    fetch_campaign_budgets as meta_budgets,
+    fetch_activities as meta_changes,
+)
+
+# Google ne garde ses `change_event` que 30 jours ; on redemande la fenêtre
+# entière à chaque passage plutôt que de repartir du dernier connu. Un worker
+# qui saute deux semaines rattraperait sinon un trou définitif — l'API ne sait
+# rien redonner au-delà.
+_CHANGES_JOURS = 30
 from components.ga4 import run_ga4_fetch                                   # noqa: E402
 from meta_script.fetch_instagram import OrganicInstagramm                  # noqa: E402
 
@@ -105,6 +116,20 @@ def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
         print(f"    budgets {canal} KO : {e}")
 
 
+def _journal_changements(sb, uid, canal: str, recolte) -> None:
+    """Le journal des changements déclarés. Best-effort, JAMAIS bloquant —
+    même raison que `_photo_budget` : le fil se passe d'une ligne, pas la
+    récolte d'une semaine d'insights."""
+    try:
+        rows, err = recolte()
+        if rows:
+            upsert_platform_changes(sb, uid, canal, rows)
+        elif err:
+            print(f"    changements {canal} ignorés : {err}")
+    except Exception as e:
+        print(f"    changements {canal} KO : {e}")
+
+
 def _fetch_meta(sb, uid, token) -> str:
     r = requests.get(f"{_GRAPH}/me/adaccounts", params={"fields": "id", "access_token": token}, timeout=30)
     accts = r.json().get("data", [])
@@ -116,6 +141,9 @@ def _fetch_meta(sb, uid, token) -> str:
     # quand les insights sont déjà à jour. Sinon un compte qui ne dépense plus
     # n'aurait plus aucun relevé, et la page Coûts le lirait « rien de prévu ».
     _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
+    _journal_changements(sb, uid, "meta", lambda: meta_changes(
+        token, ad_account_id,
+        (today - timedelta(days=_CHANGES_JOURS)).isoformat(), today.isoformat()))
     latest = fetch_meta_ads_latest_date(sb, uid)
     since = date.fromisoformat(latest) + timedelta(days=1) if latest else date(today.year, 1, 1)
     if since > today:
@@ -168,9 +196,21 @@ def _fetch_google(sb, uid, refresh, customer_id) -> str:
     today = date.today()
     _photo_budget(sb, uid, "google",
                   lambda: google_budgets(access, customer_id), today)
+
+    # Les statuts remontent AVANT le test de fraîcheur : ils portent les noms de
+    # campagnes, et sans eux `change_event` ne rendrait que des noms de
+    # ressources — « customers/…/campaigns/456 » n'est pas une phrase.
+    smap, _ = fetch_campaign_statuses(access, customer_id)
+    noms = {cid: v[0] for cid, v in (smap or {}).items()}
+    _journal_changements(sb, uid, "google", lambda: google_changes(
+        access, customer_id, today - timedelta(days=_CHANGES_JOURS),
+        noms_campagnes=noms))
+
     latest = fetch_google_ads_latest_date(sb, uid)
     since = date.fromisoformat(latest) + timedelta(days=1) if latest else date(today.year, 1, 1)
     if since > today:
+        if smap:
+            upsert_google_campaign_statuses(sb, uid, smap)
         return "google: à jour"
     rows, cur = [], since
     while cur <= today:
@@ -181,7 +221,6 @@ def _fetch_google(sb, uid, refresh, customer_id) -> str:
         cur = end + timedelta(days=1)
     if rows:
         upsert_google_ads(sb, uid, rows)
-    smap, _ = fetch_campaign_statuses(access, customer_id)
     if smap:
         upsert_google_campaign_statuses(sb, uid, smap)
     return f"google: {len(rows)} lignes"

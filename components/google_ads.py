@@ -28,6 +28,7 @@ from scripts.insert_data import (
     update_google_budget_global,
     upsert_google_campaign_config,
     upsert_google_campaign_statuses,
+    upsert_platform_changes,
     rename_google_campaign_label,
     clear_google_campaign_label,
     update_google_refresh_token,
@@ -50,6 +51,7 @@ from google_script.fetch_google_ads import (
     fetch_ad_insights,
     fetch_campaign_statuses,
     fetch_campaign_budgets,
+    fetch_campaign_changes,
 )
 
 
@@ -119,6 +121,20 @@ def run_google_ads_fetch(
             upsert_platform_budgets(supabase, user_id, "google", _buds, today.isoformat())
     except Exception:
         pass
+
+    # Journal des changements déclarés — fenêtre de 30 jours, c'est tout ce que
+    # `change_event` conserve. Best-effort, comme le budget.
+    try:
+        _smap, _ = fetch_campaign_statuses(access_token, customer_id)
+        _chg, _ = fetch_campaign_changes(
+            access_token, customer_id, today - timedelta(days=30),
+            noms_campagnes={cid: v[0] for cid, v in (_smap or {}).items()},
+        )
+        if _chg:
+            upsert_platform_changes(supabase, user_id, "google", _chg)
+    except Exception:
+        pass
+
     latest = fetch_google_ads_latest_date(supabase, user_id) if not force_full else None
     if latest:
         since = date.fromisoformat(latest) + timedelta(days=1)

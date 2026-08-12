@@ -258,3 +258,168 @@ if __name__ == "__main__":
 
     if st.session_state["token"]:
         paidmeta._get_ad_accounts()
+
+# ── Le journal des changements DÉCLARÉS (/activities) ────────────────────────
+#
+# Meta tient le journal de ce qui a été touché dans le compte publicitaire.
+# C'est le pendant de `change_event` chez Google, et il comble le même angle
+# mort : changer une audience ou remplacer un visuel ne bouge pas forcément la
+# dépense du jour, donc rien ne le trahissait dans nos courbes.
+
+_ACTIVITES = {
+    "update_campaign_budget":     "budget",
+    "update_ad_set_budget":       "budget",
+    "update_campaign_run_status": "statut",
+    "update_ad_set_run_status":   "statut",
+    "update_ad_set_target_spec":  "audience",
+    "update_ad_creative":         "creatif",
+}
+
+# Les événements portés par la campagne elle-même. Pour les autres, on laisse
+# `campaign_id` vide plutôt que d'y ranger l'identifiant d'un ad set : le
+# rattachement au thème se ferait sur une clé fausse, en silence.
+_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status"}
+
+_ETATS_META = {
+    "PAUSED":   "a été mise en pause",
+    "ACTIVE":   "a été réactivée",
+    "ARCHIVED": "a été archivée",
+    "DELETED":  "a été supprimée",
+}
+
+
+def _chf_fr(v: float) -> str:
+    return f"{v:,.2f}".replace(",", " ").replace(".", ",")
+
+
+def _extra(brut) -> dict:
+    """`extra_data` arrive en CHAÎNE JSON, pas en objet — un json.loads de plus.
+
+    Hypothèse sur sa forme : Meta ne la documente pas, on observe
+    {"old_value": …, "new_value": …}. Quand elle n'est pas là ou pas lisible, on
+    écrit la phrase sans les valeurs plutôt que d'inventer des chiffres.
+    """
+    if isinstance(brut, dict):
+        return brut
+    if not brut:
+        return {}
+    try:
+        d = json.loads(brut)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _cle_meta(quand: str, *parts) -> str:
+    """Hachage stable de (canal, horodatage, ressource, champ) — même rôle que
+    côté Google : deux récoltes sur la même semaine ne doivent rien dupliquer."""
+    import hashlib
+    brut = "|".join(["meta", str(quand)] + [str(p or "") for p in parts])
+    return hashlib.sha1(brut.encode("utf-8")).hexdigest()[:24]
+
+
+def _traduire_meta(act: dict) -> tuple[str, str] | None:
+    """(categorie, resume) — ou None quand on ne sait pas nommer le fait."""
+    typ = str(act.get("event_type") or "")
+    categorie = _ACTIVITES.get(typ)
+    if not categorie:
+        return None
+    nom = (act.get("object_name") or "").strip()
+    # Sans le nom de l'objet touché, la phrase se réduirait à « une campagne a
+    # changé » — un bruit qui chasse les lignes utiles du fil.
+    if not nom:
+        return None
+    extra = _extra(act.get("extra_data"))
+    avant, apres = extra.get("old_value"), extra.get("new_value")
+    est_campagne = typ in _NIVEAU_CAMPAGNE
+    objet = f'la campagne "{nom}"' if est_campagne else f'l\'ensemble "{nom}"'
+
+    if categorie == "budget":
+        a, b = _centimes(avant), _centimes(apres)
+        if a is not None and b is not None and a != b:
+            return ("budget", f"le budget de {objet} est passé de {_chf_fr(a)} à {_chf_fr(b)} CHF")
+        if b is not None:
+            return ("budget", f"le budget de {objet} a été réglé à {_chf_fr(b)} CHF")
+        return ("budget", f"le budget de {objet} a été modifié")
+
+    if categorie == "statut":
+        etat = str(apres or "").upper()
+        if etat in _ETATS_META:
+            quoi = "la campagne" if est_campagne else "l'ensemble"
+            return ("statut", f'{quoi} "{nom}" {_ETATS_META[etat]}')
+        return None
+
+    if categorie == "audience":
+        return ("audience", f"le ciblage de l'ensemble \"{nom}\" a été modifié")
+
+    if categorie == "creatif":
+        return ("creatif", f"le visuel de l'annonce \"{nom}\" a été remplacé")
+
+    return None
+
+
+def fetch_activities(
+    token: str,
+    ad_account_id: str,
+    since: str,
+    until: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """Les changements DÉCLARÉS par Meta entre `since` et `until` (YYYY-MM-DD).
+
+    Returns: (rows, error|None) — chaque row : change_id, occurred_at,
+    categorie, campaign_id, campaign_name, resume.
+    Seuls les événements qu'on sait dire en français ressortent : le reste est
+    écarté ici, pas filtré à l'affichage.
+    """
+    if not (token and ad_account_id):
+        return [], "token ou ad_account_id manquant"
+    params = {
+        "access_token": token,
+        "fields": "event_type,event_time,object_id,object_name,extra_data",
+        "since": since,
+        "limit": 500,
+    }
+    if until:
+        params["until"] = until
+    try:
+        resp = requests.get(f"{_GRAPH}/{ad_account_id}/activities",
+                            params=params, timeout=45).json()
+    except Exception as e:
+        return [], f"Erreur API: {e}"
+    if isinstance(resp, dict) and resp.get("error"):
+        return [], resp["error"].get("message", str(resp["error"]))
+
+    actes = resp.get("data", []) or []
+    nxt = (resp.get("paging") or {}).get("next")
+    while nxt:
+        try:
+            page = requests.get(nxt, timeout=45).json()
+        except Exception:
+            break
+        actes += page.get("data", []) or []
+        nxt = (page.get("paging") or {}).get("next")
+
+    rows: list[dict] = []
+    vus: set[str] = set()
+    for a in actes:
+        quand = a.get("event_time")
+        if not quand:
+            continue
+        traduit = _traduire_meta(a)
+        if not traduit:
+            continue
+        categorie, resume = traduit
+        est_campagne = str(a.get("event_type") or "") in _NIVEAU_CAMPAGNE
+        cle = _cle_meta(quand, a.get("event_type"), a.get("object_id"), resume)
+        if cle in vus:
+            continue
+        vus.add(cle)
+        rows.append({
+            "change_id":     cle,
+            "occurred_at":   str(quand),
+            "categorie":     categorie,
+            "campaign_id":   str(a.get("object_id")) if (est_campagne and a.get("object_id")) else None,
+            "campaign_name": (a.get("object_name") or None) if est_campagne else None,
+            "resume":        resume,
+        })
+    return rows, None

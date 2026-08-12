@@ -233,6 +233,59 @@ def upsert_platform_budgets(
         raise
 
 
+# ── Changements DÉCLARÉS par les plateformes — platform_changes ───────────────
+
+def upsert_platform_changes(
+    supabase: Client,
+    user_id: str,
+    channel: str,
+    rows: list[dict],
+) -> None:
+    """Écrit le journal des changements déclarés par la plateforme.
+
+    Idempotent par construction : `change_id` est un hachage stable de
+    (canal, horodatage, ressource, champ), donc deux récoltes qui se recouvrent
+    — et elles se recouvrent toujours, la fenêtre de Google fait trente jours —
+    réécrivent les mêmes lignes au lieu d'en empiler des copies.
+
+    Rien n'est inséré qui n'ait déjà un `resume` en français : le tri se fait à
+    la récolte, jamais ici et jamais à l'affichage.
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        cle = str(r.get("change_id") or "")
+        resume = (r.get("resume") or "").strip()
+        if not cle or not resume or cle in seen:
+            continue
+        seen.add(cle)
+        records.append({
+            "user_id":       user_id,
+            "channel":       channel,
+            "change_id":     cle,
+            "occurred_at":   r.get("occurred_at"),
+            "categorie":     r.get("categorie") or "autre",
+            "campaign_id":   str(r["campaign_id"]) if r.get("campaign_id") else None,
+            "campaign_name": r.get("campaign_name") or None,
+            "resume":        resume,
+        })
+    if not records:
+        return
+    try:
+        supabase.table("platform_changes").upsert(
+            records, on_conflict="user_id,channel,change_id"
+        ).execute()
+    except Exception as e:
+        if _table_absente(e, "platform_changes"):
+            raise RuntimeError(
+                "table platform_changes absente — lance "
+                "supabase/migrations/platform_changes.sql"
+            ) from e
+        raise
+
+
 def rename_campaign_label(supabase: Client, user_id: str, old_label: str, new_label: str) -> None:
     """Renomme un label dans toutes les lignes meta_campaign_config de l'utilisateur."""
     supabase.table("meta_campaign_config").update({"label": new_label}).eq("user_id", user_id).eq("label", old_label).execute()

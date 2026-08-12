@@ -26,8 +26,12 @@ from scripts.insert_data import (
     rename_campaign_label,
     clear_campaign_label,
     upsert_platform_budgets,
+    upsert_platform_changes,
 )
-from meta_script.fetch_meta_ads import fetch_campaign_budgets as fetch_meta_campaign_budgets
+from meta_script.fetch_meta_ads import (
+    fetch_campaign_budgets as fetch_meta_campaign_budgets,
+    fetch_activities as fetch_meta_activities,
+)
 from scripts.fetch_data import (
     fetch_meta_ads,
     fetch_meta_ads_latest_date,
@@ -512,6 +516,15 @@ def run_meta_ads_fetch(token, supabase, user_id, ad_account_id=None, force_full=
             _buds, _berr = fetch_meta_campaign_budgets(token, ad_account_id)
             if _buds:
                 upsert_platform_budgets(supabase, user_id, "meta", _buds, today.isoformat())
+        except Exception:
+            pass
+        # Journal des changements déclarés par Meta (/activities). Best-effort.
+        try:
+            _chg, _ = fetch_meta_activities(
+                token, ad_account_id,
+                (today - timedelta(days=30)).isoformat(), today.isoformat())
+            if _chg:
+                upsert_platform_changes(supabase, user_id, "meta", _chg)
         except Exception:
             pass
 
