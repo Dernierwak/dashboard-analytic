@@ -78,7 +78,12 @@ export function ThemeDonut({
   });
 
   return (
-    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6 h-full">
+    // `min-w-0` n'est pas cosmétique : cette carte est un ÉLÉMENT DE GRILLE
+    // (deux anneaux côte à côte sur la page Coûts), et un élément de grille a
+    // `min-width: auto` — il refuse donc de descendre sous la largeur
+    // min-content de son contenu. Sur un iPhone la carte débordait de 28 px et
+    // c'est TOUTE LA PAGE qui se mettait à défiler horizontalement.
+    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6 h-full min-w-0">
       <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
         {titre}
         {sousTitre && <span className="text-faint/70 normal-case tracking-normal"> · {sousTitre}</span>}
