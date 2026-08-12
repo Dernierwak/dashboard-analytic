@@ -333,6 +333,30 @@ disponibilité du gérant.
 
 ## Journal
 
+**12 août 2026 (2)** — **Une action est enfin mesurée là où elle a eu lieu.**
+
+Depuis le premier jour du suivi, le verdict comparait la baseline d'une action
+au chiffre du COMPTE ENTIER. Une action prise sur « Audio Tour » était donc
+jugée sur le ROAS de tous les thèmes confondus — c'est-à-dire sur le bruit des
+autres. `_kpis_window` accepte maintenant un thème : les campagnes filtrées par
+leur étiquette, les posts par leurs labels, le revenu GA4 par les campagnes du
+thème. Quand rien n'est rattachable au thème, on ne sait pas et **on se tait**,
+plutôt que d'attribuer au thème le revenu du compte.
+
+Une règle en sort, qui vaut pour tout changement de mesure : **une action
+finit comme elle a commencé.** Les actions décidées avant la bascule gardent la
+mesure sur laquelle leur baseline a été photographiée ; les mesurer aujourd'hui
+sur leur thème comparerait deux échelles et rendrait un verdict faux — qui
+repondèrerait ensuite les conseils sur ce faux.
+
+**Le point d'étape à sept jours.** Attendre quatorze jours pour découvrir qu'on
+part dans le mur, c'est deux semaines de budget perdues. À mi-parcours, on dit
+ce qu'on voit — sous trois conditions strictes, parce qu'un signal précoce qui
+contredit le verdict final ruine le verdict : l'action est faite depuis 7 jours
+pleins, le mouvement dépasse **10 %** (sous ce seuil, sept jours ne distinguent
+pas un effet d'un lundi calme), et **on ne prononce jamais « ça a marché »** —
+seulement « ça penche dans le bon sens », suivi de la date du vrai verdict.
+
 **12 août 2026** — **Le fil devient le registre de tout.** Il ne montrait que ce
 qu'on décide DANS Pulse ; il racontait donc un tiers de l'histoire, et quand la
 courbe bougeait, rien n'expliquait pourquoi. Deux voix le rejoignent.

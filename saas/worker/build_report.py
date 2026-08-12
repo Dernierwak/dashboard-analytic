@@ -1066,6 +1066,10 @@ def build_payload(sb, user_id: str) -> dict | None:
             themes = {"rows": t_rows, "orphan": round(orphan, 2)}
 
     # ── Boucle de la preuve : les « Fait » des semaines passées, re-mesurés ───
+    # Le jour où la mesure est passée du compte au thème. Voir plus bas : une
+    # action antérieure garde la mesure sur laquelle elle a été photographiée.
+    _BASCULE_THEME = "2026-08-12"
+
     PROOF_KPI = {
         "gaspillage":     ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
         "roas":           ("roas", "ROAS", "", "up", "{:.1f}"),
@@ -1077,17 +1081,32 @@ def build_payload(sb, user_id: str) -> dict | None:
         "page_endormie":  ("reach", "portée moyenne", "", "up", "{:,.0f}"),
     }
 
-    def _kpis_window(w_since, w_until):
+    # MESURER UNE ACTION LÀ OÙ ELLE A EU LIEU.
+    #
+    # Sans le parametre `theme`, cette fonction rend les chiffres du COMPTE
+    # ENTIER — et c'est ainsi que les verdicts etaient rendus jusqu'ici : une
+    # action prise sur « Audio Tour » etait jugee sur le ROAS de tout le compte.
+    # Autant dire qu'elle etait jugee sur le bruit des autres themes.
+    #
+    # Avec `theme`, chaque source est filtree sur ce theme : les campagnes par
+    # leur etiquette, les posts par leurs labels, le revenu GA4 par les
+    # campagnes du theme. Le verdict devient enfin une mesure de l'action.
+    def _kpis_window(w_since, w_until, theme=None):
         k = {}
         if df_meta_raw is not None and not df_meta_raw.empty:
             m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(w_since))
                             & (df_meta_raw["date_start"] <= pd.Timestamp(w_until))]
+            if theme:
+                m = m[m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == theme)]
             sp, cl = float(m["spend"].sum()), int(m["clicks"].sum())
             k["spend"] = sp
             k["cpc"] = (sp / cl) if cl > 0 else None
         if not df_insta.empty and "date" in df_insta.columns and "eng" in df_insta.columns:
             dtp = pd.to_datetime(df_insta["date"], errors="coerce")
             p = df_insta[(dtp.dt.date >= w_since) & (dtp.dt.date <= w_until)]
+            if theme and "labels" in p.columns:
+                p = p[p["labels"].map(
+                    lambda l, _t=theme: isinstance(l, (list, tuple)) and _t in l)]
             k["posts"] = float(len(p))
             k["eng"] = float(p["eng"].mean()) if len(p) else None
             k["reach"] = float(p["reach"].mean()) if len(p) and "reach" in p.columns else None
@@ -1096,9 +1115,19 @@ def build_payload(sb, user_id: str) -> dict | None:
             g = _bgc(sb, user_id, w_since, w_until)
         except Exception:
             g = None
-        if g and g.get("paid_revenue") is not None and k.get("spend", 0) > 0:
-            k["roas"] = float(g["paid_revenue"]) / k["spend"]
+        _rev = (g or {}).get("paid_revenue")
+        if theme and g:
+            # Seules les conversions rattachables aux campagnes DE CE THEME.
+            # Rien de rattachable : on ne sait pas, et on se tait — plutot que
+            # d'attribuer au theme le revenu du compte.
+            _sub = {n: d for n, d in (g.get("by_campaign") or {}).items()
+                    if name2label.get(_nrm(n)) == theme}
+            _rev = sum(float((d or {}).get("revenue") or 0) for d in _sub.values()) if _sub else None
+        if _rev is not None and k.get("spend", 0) > 0:
+            k["roas"] = float(_rev) / k["spend"]
         pu = (g or {}).get("funnel", {}).get("purchase")
+        # `purchases` reste un chiffre de compte : GA4 ne rattache pas un achat
+        # a un theme quand l'UTM ne porte pas le nom de campagne.
         k["purchases"] = float(pu) if pu is not None else None
         return k
 
@@ -1151,12 +1180,25 @@ def build_payload(sb, user_id: str) -> dict | None:
     if cur_kpis is None:
         cur_kpis = _kpis_window(cur_since, last_full_day)
 
-    def _attach_metric(r):
+    # La baseline d'un conseil se prend sur SON terrain. Un conseil « le CPC de
+    # Audio Tour est trop haut » dont la baseline serait le CPC du compte
+    # entier serait jugé, deux semaines plus tard, sur un chiffre qui ne parle
+    # pas de lui. Le cache évite de recalculer une fenêtre par conseil.
+    _kpis_theme = {}
+
+    def _kpis_du_theme(theme):
+        if theme is None:
+            return cur_kpis
+        if theme not in _kpis_theme:
+            _kpis_theme[theme] = _kpis_window(cur_since, last_full_day, theme=theme)
+        return _kpis_theme[theme]
+
+    def _attach_metric(r, theme=None):
         spec = PROOF_KPI.get(r.get("key"))
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
-        base = cur_kpis.get(kpi)
+        base = _kpis_du_theme(theme).get(kpi)
         r["metric"], r["metric_label"], r["direction"] = kpi, lbl_k, direction
         r["baseline"] = round(base, 4) if base is not None else None
 
@@ -1166,9 +1208,11 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     for _tf in themes_focus:
         for _r in _tf["recos"]:
-            _attach_metric(_r)
+            _attach_metric(_r, _tf["label"])
             _attach_effort(_r)
     for _r in reglages:
+        # Les réglages de base (GA4, funnel) ne portent pas de thème : ce sont
+        # des prérequis du compte, leur mesure l'est aussi.
         _attach_metric(_r)
         _attach_effort(_r)
 
@@ -1207,7 +1251,17 @@ def build_payload(sb, user_id: str) -> dict | None:
         for a in _sa:
             metric = a.get("metric")
             base = a.get("baseline")
-            now = cur_kpis.get(metric) if metric else None
+            # LE VERDICT SE MESURE SUR LE MÊME TERRAIN QUE LA BASELINE.
+            #
+            # Les actions décidées AVANT la bascule ont leur baseline prise sur
+            # le compte entier : les mesurer aujourd'hui sur leur thème
+            # comparerait deux échelles différentes et rendrait un verdict faux
+            # — puis repondérerait les conseils sur ce faux. Elles finissent
+            # donc comme elles ont commencé.
+            _dec = str(a.get("decided_at"))[:10]
+            _sur_theme = bool(a.get("theme")) and _dec >= _BASCULE_THEME
+            _k = _kpis_du_theme(a.get("theme")) if _sur_theme else cur_kpis
+            now = _k.get(metric) if metric else None
             try:
                 chk = date.fromisoformat(str(a.get("check_at"))[:10])
             except Exception:
@@ -1239,6 +1293,38 @@ def build_payload(sb, user_id: str) -> dict | None:
                 verified.append(entry)
             else:
                 entry["due"] = due  # échéance atteinte mais pas de chiffre auto → à juger soi-même
+                # LE POINT D'ÉTAPE À SEPT JOURS.
+                #
+                # Le verdict tombe à quatorze jours. Attendre deux semaines pour
+                # savoir qu'on part dans le mur, c'est deux semaines de budget
+                # perdues : à mi-parcours, on dit ce qu'on voit — et seulement
+                # ce qu'on voit.
+                #
+                # Trois conditions, et elles sont strictes, parce qu'un signal
+                # précoce qui contredit le verdict final ruine le verdict :
+                #   · l'action est FAITE depuis au moins 7 jours pleins ;
+                #   · le mouvement dépasse 10 % — sous ce seuil, sept jours de
+                #     données ne distinguent pas un effet d'un lundi calme ;
+                #   · on ne prononce jamais « ça a marché », seulement un sens.
+                if (
+                    status == "done" and not due and done_at
+                    and metric and base is not None and now is not None
+                ):
+                    try:
+                        _fait = date.fromisoformat(done_at)
+                    except ValueError:
+                        _fait = None
+                    if _fait and (today - _fait).days >= 7 and abs(float(base)) > 1e-9:
+                        _d7 = (now - float(base)) / float(base) * 100
+                        if abs(_d7) >= 10:
+                            _dir = a.get("direction") or "up"
+                            entry["etape"] = {
+                                "jours": (today - _fait).days,
+                                "delta": round(_d7, 1),
+                                # « ça penche vers » — pas « ça a marché ». Le
+                                # verdict reste le seul à trancher.
+                                "sens": "bon" if ((_d7 <= 0) if _dir == "down" else (_d7 >= 0)) else "mauvais",
+                            }
                 running.append(entry)
         tracking = {"running": running, "verified": verified}
 

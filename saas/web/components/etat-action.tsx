@@ -219,3 +219,28 @@ export function phraseChangement(c: ChangementPlateforme): string {
       return "a changé";
   }
 }
+
+// LE POINT D'ÉTAPE À SEPT JOURS — à mi-parcours, pas un verdict.
+//
+// Attendre quatorze jours pour découvrir qu'on part dans le mur, c'est deux
+// semaines de budget perdues. Mais un signal précoce qui contredit le verdict
+// final ruine le verdict : celui-ci ne s'affiche que si le mouvement dépasse
+// 10 %, et il ne dit JAMAIS « ça a marché » — seulement vers où ça penche.
+// C'est le worker qui tranche, quatorze jours plus tard, et lui seul.
+export function Etape({ a }: { a: TrackedAction }) {
+  const e = a.etape;
+  if (!e || !a.metric_label) return null;
+  const bon = e.sens === "bon";
+  return (
+    <div className={`text-[11.5px] mt-1 ${bon ? "text-pos" : "text-warn"}`}>
+      <span className="font-semibold">
+        À {e.jours} jours, ça penche {bon ? "dans le bon sens" : "dans le mauvais sens"}
+      </span>
+      <span className="text-faint font-normal">
+        {" "}— {a.metric_label} {e.delta > 0 ? "+" : ""}
+        {e.delta.toFixed(0)} %. Rien n&apos;est joué : le verdict tombe le{" "}
+        {dateCourte(a.check_at)}.
+      </span>
+    </div>
+  );
+}

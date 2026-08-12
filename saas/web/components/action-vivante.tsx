@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { resolveAction } from "@/app/actions";
 import type { TrackedAction } from "@/lib/report";
-import { Effet, VuJuste, dateCourte, etat } from "@/components/etat-action";
+import { Effet, Etape, VuJuste, dateCourte, etat } from "@/components/etat-action";
 import { Erreur } from "@/components/erreur";
 import { Pari } from "@/components/pari";
 
@@ -92,6 +92,7 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
       </div>
 
       {aJuger && <VuJuste a={a} />}
+      {enObservation && <Etape a={a} />}
 
       {/* Le conseil aura disparu du rapport dans deux jours : sans son détail
           sous la main, l'action redevient un titre énigmatique. */}

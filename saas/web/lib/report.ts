@@ -138,6 +138,13 @@ export type TrackedAction = {
     /** Ce que l'utilisateur pariait AVANT de savoir — voir saveParier. */
     pari?: "hausse" | "stable" | "baisse";
   } | null;
+  /**
+   * LE POINT D'ÉTAPE À SEPT JOURS — à mi-parcours, pas un verdict.
+   * Écrit par le worker seulement si l'action est faite depuis 7 jours pleins
+   * ET que le mouvement dépasse 10 % : sous ce seuil, sept jours de données ne
+   * distinguent pas un effet d'un lundi calme.
+   */
+  etape?: { jours: number; delta: number; sens: "bon" | "mauvais" } | null;
 };
 
 export type ThemeRow = { label: string; spend: number; rev: number };
@@ -454,6 +461,11 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const todayIso = iso(new Date());
   const measured = new Map<string, TrackedAction>();
   for (const v of report?.tracking?.verified ?? []) measured.set(String(v.id), v);
+  // Le point d'étape vit sur les actions ENCORE en cours : il n'est pas dans
+  // `verified`, qui ne contient que ce dont le verdict est tombé.
+  const etapes = new Map<string, TrackedAction["etape"]>();
+  for (const v of report?.tracking?.running ?? [])
+    if (v.etape) etapes.set(String(v.id), v.etape);
 
   // Les actions prises AVANT que la photo du conseil existe n'ont pas de
   // detail : on le retrouve dans le rapport courant tant que le conseil y est
@@ -493,6 +505,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
         (r.detail as TrackedAction["detail"]) ??
         recoDetail.get(String(r.reco_key ?? "")) ??
         null,
+      etape: etapes.get(String(r.id)) ?? null,
       then: m?.then,
       now: m?.now,
       delta: m?.delta ?? null,
