@@ -1669,6 +1669,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # deja en base, et ils donnent son debut et sa fin de diffusion reels —
     # mieux que des dates declarees, qui ne disent pas si elle a tourne.
     frise = None
+    changements = []
     try:
         # De janvier de l'annee PRECEDENTE a fin decembre de l'annee EN COURS —
         # deux ans, et les deux bornes viennent des donnees reelles : des
@@ -1697,11 +1698,16 @@ def build_payload(sb, user_id: str) -> dict | None:
             c = _camps.setdefault((canal, str(nom)), {
                 "nom": str(nom)[:60], "canal": canal, "theme": _f_theme(nom),
                 "debut": jour, "fin": jour, "jours": set(), "depense": 0.0,
+                # Le montant JOUR PAR JOUR. La frise n'en a pas besoin, le
+                # registre des changements si : un budget doublé ne se voit
+                # nulle part ailleurs — aucune API ne nous donne le budget.
+                "parjour": {},
             })
             c["debut"] = min(c["debut"], jour)
             c["fin"] = max(c["fin"], jour)
             c["jours"].add(jour)
             c["depense"] += float(montant or 0)
+            c["parjour"][jour] = c["parjour"].get(jour, 0.0) + float(montant or 0)
 
         if df_meta_raw is not None and not df_meta_raw.empty:
             _m = df_meta_raw.copy()
@@ -1762,7 +1768,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             _camps[(_canal, _nom)] = {
                 "nom": str(_nom)[:60], "canal": _canal, "theme": _f_theme(_nom),
                 "debut": _dep, "fin": _dep, "jours": set(), "depense": 0.0,
-                "planifiee": True,
+                "parjour": {}, "planifiee": True,
             }
 
         _campagnes = sorted(_camps.values(), key=lambda c: -c["depense"])
@@ -1841,6 +1847,81 @@ def build_payload(sb, user_id: str) -> dict | None:
         if _premiers:
             _f_debut = max(_f_debut, min(min(_premiers), cur_since))
 
+        # ── CE QUI A BOUGÉ SUR TES PLATEFORMES ────────────────────────────
+        #
+        # Le fil d'actions ne voyait que ce qu'on décide DANS Pulse. Or
+        # l'essentiel se fait ailleurs : une campagne lancée un mardi soir dans
+        # le gestionnaire Meta, une autre coupée, un budget doublé. Sans ça, le
+        # fil raconte un tiers de l'histoire — et quand la courbe bouge, rien
+        # n'explique pourquoi.
+        #
+        # Tout ce qui suit est DÉDUIT de la dépense quotidienne, jamais d'un
+        # champ d'API : aucune plateforme ne nous dit « le budget a changé le
+        # 2 août ». On écrit donc ce qu'on observe (« la dépense est passée de
+        # 30 à 75 CHF par jour »), pas ce qu'on suppose (« tu as doublé le
+        # budget »). C'est plus prudent et c'est plus utile : c'est la dépense
+        # qui compte, pas le réglage.
+        _FENETRE_CHG = 60      # jours d'historique — au-delà, ce n'est plus une nouvelle
+        _SAUT = 0.6            # ±60 % de dépense quotidienne pour parler d'un saut
+        _chg = []
+        _borne = last_full_day - timedelta(days=_FENETRE_CHG)
+
+        def _couv_canal(canal):
+            _c = _couverture.get(canal)
+            try:
+                return date.fromisoformat(_c) if _c else last_full_day
+            except Exception:
+                return last_full_day
+
+        for _c in _camps.values():
+            _canal, _nom = _c["canal"], _c["nom"]
+            _base = {"canal": _canal, "campagne": _nom, "theme": _c["theme"]}
+
+            if _c.get("planifiee"):
+                _chg.append(dict(_base, date=_c["debut"].isoformat(), type="planifiee"))
+                continue
+
+            _jours = sorted(_c["jours"])
+            if not _jours:
+                continue
+
+            if _jours[0] >= _borne:
+                _chg.append(dict(_base, date=_jours[0].isoformat(), type="lancee"))
+
+            # ARRÊTÉE : plus de dépense depuis 3 jours pleins alors que le canal,
+            # lui, a des données plus récentes. Sans cette seconde condition on
+            # annoncerait un arrêt à chaque fois qu'un canal prend du retard.
+            _fin, _couv = _jours[-1], _couv_canal(_canal)
+            if _fin >= _borne and (_couv - _fin).days >= 3:
+                _chg.append(dict(_base, date=_fin.isoformat(), type="arretee"))
+
+            # REPRISE : un trou d'au moins 3 jours refermé. On ne signale que la
+            # dernière — une campagne en pointillé produirait sinon dix lignes.
+            _reprise = None
+            for _a, _b in zip(_jours, _jours[1:]):
+                if (_b - _a).days >= 4 and _b >= _borne:
+                    _reprise = (_b, (_b - _a).days - 1)
+            if _reprise:
+                _chg.append(dict(_base, date=_reprise[0].isoformat(), type="reprise",
+                                 detail=f"après {_reprise[1]} jours d'arrêt"))
+
+            # SAUT DE DÉPENSE : la moyenne des 7 derniers jours actifs contre les
+            # 7 précédents. Sept jours de chaque côté, parce qu'un seul jour se
+            # laisse emporter par un week-end.
+            if len(_jours) >= 10:
+                _av = [_c["parjour"].get(j, 0.0) for j in _jours[-14:-7]]
+                _ap = [_c["parjour"].get(j, 0.0) for j in _jours[-7:]]
+                _ma = sum(_av) / len(_av) if _av else 0.0
+                _mb = sum(_ap) / len(_ap) if _ap else 0.0
+                if _ma > 1 and _jours[-1] >= _borne and abs(_mb - _ma) / _ma >= _SAUT:
+                    _chg.append(dict(
+                        _base, date=_jours[-7].isoformat(), type="depense",
+                        detail=f"{_ma:.0f} → {_mb:.0f} CHF par jour",
+                    ))
+
+        _chg.sort(key=lambda x: x["date"], reverse=True)
+        changements = _chg[:40]
+
         if _campagnes or _pubs:
             frise = {
                 "debut": _f_debut.isoformat(),
@@ -1852,9 +1933,11 @@ def build_payload(sb, user_id: str) -> dict | None:
             }
     except Exception:
         frise = None
+        changements = []
 
     return {
         "version": 2,
+        "changements": changements,
         "vision": vision,
         "matrice": matrice,
         "metrics_read": metrics_read,

@@ -1,5 +1,12 @@
-import type { TrackedAction } from "@/lib/report";
-import { Effet, Pastille, dateCourte, etat } from "@/components/etat-action";
+import type { ChangementPlateforme, TrackedAction } from "@/lib/report";
+import {
+  CANAL,
+  Effet,
+  Pastille,
+  dateCourte,
+  etat,
+  phraseChangement,
+} from "@/components/etat-action";
 import { ActionVivante } from "@/components/action-vivante";
 
 // LE FIL D'ACTIONS — un rail vertical, une pastille par action, du plus urgent
@@ -14,6 +21,15 @@ import { ActionVivante } from "@/components/action-vivante";
 //
 // Les entrées closes sont rendues côté serveur : seules les vivantes ont besoin
 // de JavaScript. C'est ce qui justifie que ce composant-ci reste serveur.
+//
+// LE FIL VOIT AUSSI CE QU'ON N'A PAS FAIT DEPUIS PULSE. Une campagne lancée un
+// mardi soir dans le gestionnaire Meta, une autre coupée, une dépense qui
+// double : sans elles, le fil raconte un tiers de l'histoire, et quand la
+// courbe bouge rien n'explique pourquoi.
+//
+// Elles ne portent NI pastille NI verdict, et c'est une règle, pas un oubli :
+// une pastille ronde désigne ce qu'on a décidé et qui sera jugé, un glyphe de
+// canal désigne ce qui s'est simplement produit. On ne juge pas un fait.
 
 const ORDRE: Record<string, number> = { juger: 0, running: 1, observation: 2 };
 
@@ -25,10 +41,13 @@ function rang(a: TrackedAction): number {
 
 export function RailActions({
   actions,
+  changements = [],
   themeCourant = null,
   maxH = "max-h-[420px] lg:max-h-[46vh]",
 }: {
   actions: TrackedAction[];
+  /** Ce qui a bougé sur les plateformes, sans passer par Pulse. */
+  changements?: ChangementPlateforme[];
   /** Quand le thème d'une action est celui de la carte, on ne le réécrit pas :
    *  il est déjà en titre 400 px plus haut. Dans le bloc « hors thème », il
    *  varie d'une ligne à l'autre — c'est là qu'il est utile. */
@@ -40,9 +59,22 @@ export function RailActions({
     // L'urgence en haut : « à juger » est la seule chose du rail qui réclame un
     // geste, un tri purement chronologique l'enterrerait sous cinq entrées.
     .sort((a, b) => rang(a) - rang(b) || (a.decided_at < b.decided_at ? 1 : -1));
-  const closes = actions
-    .filter((a) => a.status === "archived" || a.status === "dropped")
-    .sort((a, b) => (a.decided_at < b.decided_at ? 1 : -1));
+  // Les actions closes et les changements de plateforme se mêlent, triés par
+  // date : ce sont deux sortes de faits révolus, et les séparer obligerait à
+  // lire deux chronologies pour reconstituer une semaine.
+  type Ligne =
+    | { cle: string; date: string; action: TrackedAction }
+    | { cle: string; date: string; chg: ChangementPlateforme };
+  const closes: Ligne[] = [
+    ...actions
+      .filter((a) => a.status === "archived" || a.status === "dropped")
+      .map((a) => ({ cle: `a-${a.id}`, date: a.decided_at, action: a })),
+    ...changements.map((c, i) => ({
+      cle: `c-${c.canal}-${c.campagne}-${c.type}-${i}`,
+      date: c.date,
+      chg: c,
+    })),
+  ].sort((a, b) => (a.date < b.date ? 1 : -1));
   if (vivantes.length + closes.length === 0) return null;
 
   const Entree = ({ a, vivante }: { a: TrackedAction; vivante: boolean }) => {
@@ -74,6 +106,34 @@ export function RailActions({
     );
   };
 
+  // UN FAIT, PAS UNE DÉCISION. Le glyphe du canal à la place de la pastille :
+  // on voit d'un coup d'œil que ça vient de Meta ou de Google et pas de toi.
+  const Fait = ({ c }: { c: ChangementPlateforme }) => {
+    const ca = CANAL[c.canal] ?? CANAL.meta;
+    return (
+      <div className="relative pl-6 py-2.5">
+        <span
+          className="absolute left-[-2px] top-[11px] text-[11px] leading-none"
+          style={{ color: ca.couleur }}
+          aria-hidden
+        >
+          {ca.glyphe}
+        </span>
+        <div className="text-[10px] uppercase tracking-widest text-faint font-semibold">
+          {dateCourte(c.date)}
+          <span className="text-muted normal-case tracking-normal">
+            {" "}· sur {ca.nom}
+            {c.theme && c.theme !== themeCourant && <> · {c.theme}</>}
+          </span>
+        </div>
+        <div className="text-[13px] text-muted leading-snug mt-0.5">
+          <b className="text-ink font-semibold">{c.campagne}</b> {phraseChangement(c)}
+          {c.detail && <span className="text-faint"> — {c.detail}</span>}
+        </div>
+      </div>
+    );
+  };
+
   const Titre = ({ children }: { children: React.ReactNode }) => (
     <div className="text-[10px] uppercase tracking-widest text-faint/80 font-bold pl-6 pt-2 pb-0.5">
       {children}
@@ -90,10 +150,14 @@ export function RailActions({
         {vivantes.map((a) => (
           <Entree key={a.id} a={a} vivante />
         ))}
-        {closes.length > 0 && vivantes.length > 0 && <Titre>Déjà jugé</Titre>}
-        {closes.map((a) => (
-          <Entree key={a.id} a={a} vivante={false} />
-        ))}
+        {closes.length > 0 && vivantes.length > 0 && <Titre>Ce qui s&apos;est passé</Titre>}
+        {closes.map((l) =>
+          "action" in l ? (
+            <Entree key={l.cle} a={l.action} vivante={false} />
+          ) : (
+            <Fait key={l.cle} c={l.chg} />
+          )
+        )}
       </div>
     </div>
   );

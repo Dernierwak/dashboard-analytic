@@ -1,4 +1,9 @@
-import { fmtCHF, type ThemeFocus, type TrackedAction } from "@/lib/report";
+import {
+  fmtCHF,
+  type ChangementPlateforme,
+  type ThemeFocus,
+  type TrackedAction,
+} from "@/lib/report";
 import { LineChart, garderEtiquettes } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
 import { dateCourte, marqueursCourbe } from "@/components/etat-action";
@@ -109,6 +114,7 @@ export function ThemeCard({
   theme,
   actions,
   archived,
+  changements = [],
   fenetre,
   decroche = false,
   labels,
@@ -120,6 +126,8 @@ export function ThemeCard({
   theme: ThemeFocus;
   actions: TrackedAction[];
   archived: TrackedAction[];
+  /** Ce qui a bougé sur les plateformes pour CE thème. */
+  changements?: ChangementPlateforme[];
   /** « depuis le 1 jan » — la fenêtre du bilan, qui n'est PAS celle de la courbe. */
   fenetre: string | null;
   decroche?: boolean;
@@ -374,8 +382,12 @@ export function ThemeCard({
               </p>
             )}
 
-            {miennes.length > 0 ? (
-              <RailActions actions={miennes} themeCourant={theme.label} />
+            {miennes.length + changements.length > 0 ? (
+              <RailActions
+                actions={miennes}
+                changements={changements}
+                themeCourant={theme.label}
+              />
             ) : (
               <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
                 Rien n&apos;a encore été tenté sur ce thème

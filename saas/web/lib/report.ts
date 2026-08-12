@@ -230,8 +230,26 @@ export type ThemeFocus = {
   recos: PayloadReco[];
 };
 
+/**
+ * CE QUI A BOUGÉ SUR TES PLATEFORMES, sans passer par Pulse.
+ *
+ * Déduit de la dépense quotidienne, jamais d'un champ d'API : aucune
+ * plateforme ne nous dit « le budget a changé le 2 août ». On écrit donc ce
+ * qu'on observe — « la dépense est passée de 30 à 75 CHF par jour » — pas ce
+ * qu'on suppose. Absent des payloads publiés avant août 2026.
+ */
+export type ChangementPlateforme = {
+  date: string;
+  canal: string;
+  campagne: string;
+  theme: string | null;
+  type: "lancee" | "arretee" | "reprise" | "planifiee" | "depense";
+  detail?: string | null;
+};
+
 export type ReportPayload = {
   version: number;
+  changements?: ChangementPlateforme[] | null;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
   vision?: VisionBlock | null;
   matrice?: { coverage?: MatriceCoverage } | null;

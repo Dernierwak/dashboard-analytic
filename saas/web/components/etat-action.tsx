@@ -1,4 +1,4 @@
-import type { RepereAction, TrackedAction } from "@/lib/report";
+import type { ChangementPlateforme, RepereAction, TrackedAction } from "@/lib/report";
 import type { Marqueur } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
 
@@ -176,4 +176,35 @@ export function VuJuste({ a }: { a: TrackedAction }) {
       )}
     </div>
   );
+}
+
+// LE CANAL, EN UN SIGNE. Convention maison, déjà en place dans la frise, la
+// nav et l'anneau : ▣ Meta en bleu, ◆ Google en vert. Elle était recopiée dans
+// quatre fichiers ; elle se tient ici, avec le reste du lexique.
+export const CANAL: Record<string, { glyphe: string; couleur: string; nom: string }> = {
+  meta: { glyphe: "▣", couleur: "#1a56ff", nom: "Meta" },
+  google: { glyphe: "◆", couleur: "#1a7a4a", nom: "Google" },
+};
+
+// CE QU'ON ÉCRIT D'UN CHANGEMENT DE PLATEFORME.
+//
+// Il n'a ni indicateur ni verdict : ce n'est pas une décision qu'on peut
+// juger, c'est un FAIT daté. D'où la règle de forme qui l'accompagne — une
+// pastille ronde pour ce qu'on a décidé et qui sera jugé, un glyphe pour ce
+// qui s'est simplement produit.
+export function phraseChangement(c: ChangementPlateforme): string {
+  switch (c.type) {
+    case "lancee":
+      return "lancée";
+    case "arretee":
+      return "s'est arrêtée";
+    case "reprise":
+      return "a repris";
+    case "planifiee":
+      return "est programmée — aucune dépense encore";
+    case "depense":
+      return "sa dépense quotidienne a changé";
+    default:
+      return "a changé";
+  }
 }

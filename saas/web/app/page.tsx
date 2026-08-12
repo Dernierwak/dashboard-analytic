@@ -206,12 +206,22 @@ export default async function Page() {
   // continuant de compter dans le plafond des trois chantiers : trois actions
   // de réglage et toute la page se bloque, sans aucun moyen de débloquer.
   const themesRendus = new Set(cartes.map((t) => t.label));
+  // Les changements de plateforme suivent EXACTEMENT la même répartition que
+  // les actions : au thème quand il a une carte, au filet sinon. Une campagne
+  // non étiquetée n'a pas de thème — elle atterrit donc dans le filet, et
+  // c'est bien là qu'on veut la voir : c'est le signe qu'il faut la classer.
+  const tousChangements = report?.changements ?? [];
+  const chgParTheme = (label: string) => tousChangements.filter((c) => c.theme === label);
+  const chgOrphelins = tousChangements.filter(
+    (c) => !c.theme || !themesRendus.has(c.theme)
+  );
   const orphelines = [...data.actions, ...data.actionsArchived].filter(
     (a) => !a.theme || !themesRendus.has(a.theme)
   );
   const orphelinesVivantes = orphelines.some(
     (a) => a.status === "running" || a.status === "done"
   );
+  const filetPlein = orphelines.length + chgOrphelins.length > 0;
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
@@ -403,6 +413,7 @@ export default async function Page() {
                 theme={t}
                 actions={data.actions}
                 archived={data.actionsArchived}
+                changements={chgParTheme(t.label)}
                 fenetre={report?.vision?.period_label || null}
                 decroche={pire?.label === t.label}
                 labels={data.labels}
@@ -422,12 +433,16 @@ export default async function Page() {
              une action qui bloque le plafond sans qu'on sache pourquoi.
              Rendu HORS de la branche « pas encore de données » : un compte sans
              thème classé n'a aucune carte, ce bloc est sa seule liste. */}
-      {orphelines.length > 0 &&
+      {filetPlein &&
         (orphelinesVivantes ? (
           <section id="actions-hors-theme" className="mb-8 scroll-mt-4">
             <SectionTitle tone="discret">Tes actions hors de tes thèmes</SectionTitle>
             <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3">
-              <RailActions actions={orphelines} themeCourant={null} />
+              <RailActions
+                actions={orphelines}
+                changements={chgOrphelins}
+                themeCourant={null}
+              />
               <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
                 Ces actions ne sont rattachées à aucun de tes thèmes suivis : prises depuis
                 les réglages de base, ou sur un thème sorti de tes priorités.
@@ -437,7 +452,7 @@ export default async function Page() {
         ) : (
           <details id="actions-hors-theme" className="mb-8 scroll-mt-4 group">
             <summary className="text-[11px] uppercase tracking-widest text-faint font-bold cursor-pointer select-none">
-              Tes actions hors de tes thèmes ({orphelines.length}){" "}
+              Hors de tes thèmes ({orphelines.length + chgOrphelins.length}){" "}
               <span className="text-brand normal-case tracking-normal group-open:hidden">
                 voir ▾
               </span>
@@ -446,7 +461,11 @@ export default async function Page() {
               </span>
             </summary>
             <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3 mt-2.5">
-              <RailActions actions={orphelines} themeCourant={null} />
+              <RailActions
+                actions={orphelines}
+                changements={chgOrphelins}
+                themeCourant={null}
+              />
             </div>
           </details>
         ))}
