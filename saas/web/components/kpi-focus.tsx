@@ -53,6 +53,23 @@ import type { KpiFocus, KpiOption } from "@/lib/report";
 // LA CLÉ PORTE SA RÉGIE : `ctr:meta`, `cpc:google`. Une clé nue reste possible
 // et le restera — c'est la forme de tous les rapports publiés avant le 12 août
 // 2026, et un rapport ancien doit continuer de s'afficher entièrement.
+//
+// Mais s'afficher ne suffit pas : IL DOIT DIRE CE QU'IL EST. Une clé nue
+// retombait dans « Tes deux régies » sous la phrase du ROAS — « le revenu vient
+// de Google Analytics, qui ne dit pas quelle régie l'a produit » — qui n'est
+// vraie que du ROAS, et qui laisse croire que la séparation n'existe pas.
+// Un ancien rapport ne ment plus sur sa provenance : il se date, et il nomme
+// le bouton qui le remplace.
+//
+// ET C'EST UN GROUPE À PART, pas un drapeau posé sur « Tes deux régies ».
+// La première correction basculait l'en-tête du groupe entier dès qu'UNE de ses
+// cellules portait une clé nue : sur un vieux rapport qui contient aussi le
+// ROAS, le ROAS se retrouvait sous « Meta et Google confondus · ↻ Recharger mes
+// conseils les sépare » — une promesse fausse, puisque aucun rechargement ne
+// séparera jamais un revenu que Google Analytics donne pour tout le compte.
+// Deux populations qui n'ont pas la même cause ne partagent pas un en-tête :
+// le ROAS est confondu PAR NATURE, une clé nue l'est PAR ANCIENNETÉ. Elles se
+// rangent donc dans deux groupes, et chacun n'écrit que sa propre raison.
 const BASE: Record<string, { court: string; famille: "pub" | "instagram" | "site" }> = {
   roas: { court: "ROAS", famille: "pub" },
   ctr: { court: "CTR", famille: "pub" },
@@ -74,11 +91,40 @@ function decoupe(cle: string): [string, string | null] {
 const G_META = "Meta Ads";
 const G_GOOGLE = "Google Ads";
 const G_DEUX = "Tes deux régies";
+// Le groupe des clés nues. Ces chiffres-là ne sont pas « les deux régies faute
+// de mieux », ils en sont la SOMME — un CTR de 9,8 % qui vaut 2 % chez l'un et
+// 15 % chez l'autre ne décrit ni l'un ni l'autre. D'où un nom qui dit
+// l'addition, là où « Tes deux régies » dit l'indivisibilité.
+const G_DEUX_ANCIEN = "Meta et Google confondus";
 const G_INSTA = "Ton Instagram";
 const G_SITE = "Ton site";
-const ORDRE_GROUPES = [G_META, G_GOOGLE, G_DEUX, G_INSTA, G_SITE];
+// L'ordre descend du plus séparé au moins séparé : les deux régies nommées,
+// puis ce qui ne se sépare pas (le ROAS), puis ce qui n'est PAS ENCORE séparé
+// et porte donc un geste à faire, puis les terrains qui n'ont jamais eu deux
+// régies. Le lecteur voit ainsi la séparation se dégrader ligne à ligne, et
+// l'invite à recharger tombe juste après la seule limite qui, elle, est
+// définitive.
+const ORDRE_GROUPES = [G_META, G_GOOGLE, G_DEUX, G_DEUX_ANCIEN, G_INSTA, G_SITE];
 
-/** Le groupe d'un indicateur, et les sources qui l'alimentent. */
+// LES QUATRE INDICATEURS QUE LE WORKER PUBLIE MAINTENANT PAR RÉGIE
+// (`_PAR_REGIE`, `saas/worker/build_report.py`). Trouvés en clé NUE, ils ne
+// disent pas « inséparables » : ils disent « ce rapport date d'avant le 12 août
+// 2026 ». Deux situations que rien ne distinguait, alors qu'elles appellent
+// deux phrases opposées — l'une explique une limite définitive, l'autre indique
+// un geste à faire.
+const SEPARABLES = new Set(["ctr", "cpc", "spend", "clics"]);
+
+/** Vrai quand la clé aurait dû porter sa régie et ne la porte pas. */
+function avantSeparation(cle: string): boolean {
+  const [base, regie] = decoupe(cle);
+  return regie === null && SEPARABLES.has(base);
+}
+
+/** Le groupe d'un indicateur, et les sources qui l'alimentent.
+ *
+ *  C'est ICI que se fait la séparation des deux « confondus », et nulle part
+ *  ailleurs : un indicateur appartient à un groupe, il ne porte pas un drapeau
+ *  que le groupe hériterait de son voisin le plus ancien. */
 function terrain(cle: string): { groupe: string; court: string; sources: string[] } | null {
   const [base, regie] = decoupe(cle);
   const b = BASE[base];
@@ -88,21 +134,55 @@ function terrain(cle: string): { groupe: string; court: string; sources: string[
   if (b.famille === "instagram")
     return { groupe: G_INSTA, court: b.court, sources: ["instagram"] };
   if (b.famille === "site") return { groupe: G_SITE, court: b.court, sources: ["site"] };
+  if (avantSeparation(cle))
+    return { groupe: G_DEUX_ANCIEN, court: b.court, sources: ["meta", "google"] };
   return { groupe: G_DEUX, court: b.court, sources: ["meta", "google"] };
 }
+
+// CE QU'UN RAPPORT ANCIEN DOIT DIRE DE LUI-MÊME.
+//
+// La phrase du ROAS n'est vraie que du ROAS. Collée au-dessus d'un CTR, d'un
+// coût par clic, d'une dépense et de clics, elle explique un fait qui n'est pas
+// le leur — et surtout elle tait le seul fait utile : la séparation existe,
+// c'est ce rapport-ci qui est antérieur. David a conclu de cet écran « c'est
+// toujours pas séparé par plateforme », alors que le code l'était.
+//
+// Et la réciproque est vraie, ce qui est le tort de la première correction :
+// collée au-dessus du ROAS, cette phrase-ci promet une séparation qui n'aura
+// jamais lieu.
+//
+// Le bouton est nommé EXACTEMENT comme il l'est en haut du rapport
+// (`components/reload-recos-button.tsx`) : une invite qui paraphrase un bouton
+// oblige à le chercher.
+const AVANT_SEPARATION_COURT =
+  "Meta et Google additionnés — « ↻ Recharger mes conseils » les sépare";
+const AVANT_SEPARATION_LONG =
+  "Rapport publié avant la séparation par régie : ces chiffres additionnent " +
+  "Meta et Google. « ↻ Recharger mes conseils », en haut, les sépare.";
 
 // Pourquoi un groupe « les deux régies » subsiste alors qu'on sépare tout le
 // reste : le ROAS ne se sépare PAS. Son revenu vient de Google Analytics, qui
 // le donne pour tout le compte sans dire quelle régie l'a produit. Un « ROAS
 // Meta » diviserait le revenu de TOUT le compte par la seule dépense Meta —
 // un chiffre faux, et flatteur. On préfère l'écrire.
+//
+// Chaque groupe a sa phrase, et une seule : c'est ce qui permet à la ligne sous
+// le GRAND chiffre et à l'en-tête du sélecteur de dire la même chose sans que
+// personne n'ait à tester une exception au moment de l'affichage.
 const PROVENANCE: Record<string, string> = {
   [G_META]: "Meta seul",
   [G_GOOGLE]: "Google seul",
   [G_DEUX]: "le revenu vient de Google Analytics, qui ne dit pas quelle régie l'a produit",
+  [G_DEUX_ANCIEN]: AVANT_SEPARATION_COURT,
   [G_INSTA]: "Instagram",
   [G_SITE]: "Google Analytics",
 };
+
+/** La phrase de provenance d'un indicateur : celle de son groupe, toujours. */
+function provenance(cle: string): string {
+  const g = terrain(cle)?.groupe;
+  return (g && PROVENANCE[g]) || "";
+}
 
 /** Les sources d'un groupe — l'union de celles de ses indicateurs, sans doublon. */
 function sourcesGroupe(cles: string[]): string[] {
@@ -194,9 +274,7 @@ function Cellule({
           ? "bg-ink text-white border-ink"
           : "bg-white border-line hover:bg-black/[0.03]"
       }`}
-      title={
-        t ? `${o.titre} — ${PROVENANCE[t.groupe] ?? ""}`.trim().replace(/ —\s*$/, "") : o.titre
-      }
+      title={t ? `${o.titre} — ${provenance(o.key)}`.trim().replace(/ —\s*$/, "") : o.titre}
     >
       <span className="flex items-center gap-1.5">
         <span
@@ -272,7 +350,11 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
     (i) => k.labels[i]
   );
 
-  // Les groupes réellement présents, dans l'ordre.
+  // Les groupes réellement présents, dans l'ordre. Un rapport ancien qui porte
+  // un ROAS en fait apparaître DEUX côte à côte — « Tes deux régies » pour le
+  // seul ROAS, « Meta et Google confondus » pour ses quatre clés nues — et
+  // c'est exactement ce qu'on veut voir : deux vides de nature différente ne se
+  // rangent pas sous le même en-tête.
   const groupes = ORDRE_GROUPES.map((g) => ({
     nom: g,
     options: k.options.filter((op) => terrain(op.key)?.groupe === g),
@@ -303,14 +385,15 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         </div>
         {/* Ce que le chiffre mesure, et d'où il vient. Sans cette ligne, rien ne
             dit que le CTR mélange deux régies — et on coupe Google en croyant
-            lire Google. */}
+            lire Google. C'est ici que la phrase du ROAS mentait le plus fort :
+            elle se lit comme la ligne honnête du module. */}
         <p className="text-[10.5px] text-faint mt-1.5 flex items-center gap-1.5 flex-wrap">
           <span>{PORTEE[decoupe(o.key)[0]] ?? "sur la semaine"}</span>
           {groupe && (
             <>
               <span>·</span>
               <Glyphes sources={terrain(o.key)?.sources ?? []} />
-              <span>{PROVENANCE[groupe]}</span>
+              <span>{provenance(o.key)}</span>
             </>
           )}
         </p>
@@ -378,6 +461,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
       <div className="border-t border-line bg-black/[0.012] px-3 py-3 space-y-2 defile max-h-[340px] sm:max-h-[420px] [--fond-defile:#fbfbfc]">
         {groupes.map((g) => {
           const sources = sourcesGroupe(g.options.map((op) => op.key));
+          const ancien = g.nom === G_DEUX_ANCIEN;
           return (
             <div key={g.nom} className="rounded-xl border border-line bg-white/60 p-2">
               <div className="flex items-baseline gap-2 px-0.5 pb-1.5">
@@ -385,10 +469,21 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
                   {g.nom}
                 </span>
                 <Glyphes sources={sources} />
-                <span className="text-[10px] text-faint truncate">
-                  {PROVENANCE[g.nom]}
-                </span>
+                {/* La provenance est courte et se tronque sans dommage ; la
+                    phrase du rapport ancien porte un GESTE, elle passe donc à
+                    la ligne au lieu de finir en « … » — d'où sa version longue
+                    juste dessous, et rien ici. */}
+                {!ancien && (
+                  <span className="text-[10px] text-faint truncate">
+                    {PROVENANCE[g.nom]}
+                  </span>
+                )}
               </div>
+              {ancien && (
+                <p className="text-[10px] text-muted leading-snug px-0.5 pb-1.5 max-w-[62ch]">
+                  {AVANT_SEPARATION_LONG}
+                </p>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
                 {g.options.map((op) => (
                   <Cellule
