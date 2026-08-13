@@ -39,13 +39,35 @@ import { NoteAjout } from "@/components/note-ajout";
 // chiffre, une courbe de 210 px, un sélecteur de neuf indicateurs). Tant que la
 // grille était en `items-start`, les deux cartes finissaient où elles voulaient
 // et un vide s'ouvrait sous la plus courte. La carte s'étire donc sur la
-// hauteur de la rangée, et c'est la zone défilante qui absorbe ce qui reste
-// (`flex-1 min-h-0`) : une `max-h` en dur laisserait soit un trou sous la liste
-// quand la boussole est haute, soit un débordement quand elle est courte.
+// hauteur de la rangée — et il faut assumer que SON CONTENU NE LA REMPLIT PAS.
+// Trois lignes hors thème sous une boussole de 700 px, c'est le cas courant.
+//
+// LE VIDE VA SOUS LE PIED, JAMAIS AU MILIEU. C'est tout l'objet du réglage
+// ci-dessous, et il tenait à un seul mot.
+//
+// La zone défilante portait `flex-1`, c'est-à-dire `flex: 1 1 0%` : « prends
+// TOUTE la place qui reste ». Elle la prenait même vide. Trois entrées en haut,
+// 800 px de blanc, puis le pied plaqué contre le bas de la carte : un trou au
+// MILIEU d'un module se lit comme un contenu qui manque ou une mise en page
+// cassée. Le même blanc rejeté SOUS le pied se lit comme de la respiration.
+//
+// Elle vaut donc `flex-initial` — `flex: 0 1 auto`, « ne grandis pas, mais
+// accepte de rétrécir ». Sa taille de base est celle de son contenu, et c'est
+// l'algorithme flex qui tranche, dans les deux sens et sans qu'on ait à mesurer
+// quoi que ce soit :
+//   • liste courte — en-tête + liste + pied tiennent dans la hauteur reçue,
+//     personne ne grandit (`grow: 0`), l'alignement par défaut est `flex-start`
+//     donc tout se tasse en haut, le pied suit la liste, le reste est du blanc
+//     en bas de carte ;
+//   • liste longue — le total dépasse, le déficit est retiré au SEUL élément
+//     qui peut rétrécir (l'en-tête et le pied portent `shrink-0`), la zone
+//     défilante tombe exactement à la place restante et se met à défiler.
+// Une `max-h` en dur ne saurait faire ni l'un ni l'autre : trop haute elle
+// rouvre le trou, trop basse elle fait défiler une liste qui tenait.
 //
 // `min-h-0` n'est pas décoratif : un enfant flex vaut `min-height: auto`, il
-// refuse de descendre sous la hauteur de son contenu, et sans lui la carte
-// s'allonge au lieu de faire défiler.
+// refuse de descendre sous la hauteur de son contenu, et sans lui le déficit ne
+// serait pas absorbé — la carte s'allongerait au lieu de faire défiler.
 //
 // Reste le piège qui casse d'habitude, et il est en amont de tout ça : une
 // carte qui contient vingt-cinq lignes DIT à sa rangée qu'elle a besoin de
@@ -117,14 +139,19 @@ export function HorsTheme({
 
       {/* LA SEULE ZONE QUI DÉFILE. `maxH` de `RailActions` est un emplacement de
           classes, pas une valeur : c'est par lui qu'on remplace le plafond en
-          dur par « prends ce qui reste » sans écrire un second mécanisme de
-          défilement à côté de `.defile`. */}
+          dur par « prends AU PLUS ce qui reste » sans écrire un second mécanisme
+          de défilement à côté de `.defile`.
+          `flex-initial min-h-0` = ne grandis pas, rétrécis autant qu'il faut :
+          c'est ce couple qui met le blanc sous le pied et non entre la liste et
+          lui. Le plafond de 420 px ne sert qu'en pile (téléphone, ou module
+          seul), là où aucune rangée ne donne de hauteur — d'où sa levée à `lg`
+          quand la boussole en fournit une. */}
       <RailActions
         actions={actions}
         changements={changements}
         changementsApi={changementsApi}
         themeCourant={null}
-        maxH={`flex-1 min-h-0 max-h-[420px] ${rangee ? "lg:max-h-none" : "lg:max-h-[58vh]"}`}
+        maxH={`flex-initial min-h-0 max-h-[420px] ${rangee ? "lg:max-h-none" : "lg:max-h-[58vh]"}`}
       />
 
       <div className="shrink-0">
