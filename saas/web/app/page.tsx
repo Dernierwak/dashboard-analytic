@@ -5,20 +5,18 @@
 import Link from "next/link";
 import {
   getWeeklyData,
-  type ChangementPlateforme,
   type ReportPayload,
   type TrackedAction,
 } from "@/lib/report";
-import { getChangementsApi, type ChangementApi } from "@/lib/changements-api";
+import { getChangementsApi } from "@/lib/changements-api";
 import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { KpiFocusCard } from "@/components/kpi-focus";
+import { HorsTheme } from "@/components/hors-theme";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
-import { RailActions } from "@/components/rail-actions";
-import { NoteAjout } from "@/components/note-ajout";
 import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 import { Triangle } from "@/components/pente";
@@ -138,73 +136,12 @@ function VersLaction({
   );
 }
 
-// LE FILET — ce qu'aucune carte de thème ne prend.
-//
-// Il était une bande pleine largeur en bas de page ; il est maintenant une
-// colonne à gauche de « Ta boussole », et le déplacement change ce qu'il doit
-// dire. Contre la courbe du compte, il n'est plus un repêchage : c'est le
-// registre de ce qui a bougé pendant que la courbe bougeait.
-//
-// D'où son rang 3 — il n'en avait aucun, il ouvrait sur un titre puis une
-// liste. Le chiffre compte ce qui S'EST PASSÉ, pas ce qui attend : les
-// campagnes « programmée — aucune dépense encore » sont un état, pas un
-// événement, elles ne valent qu'en nombre et se replient sous le rail.
-function HorsTheme({
-  actions,
-  changements,
-  changementsApi,
-  survenus,
-  programmees,
-}: {
-  actions: TrackedAction[];
-  changements: ChangementPlateforme[];
-  changementsApi: ChangementApi[];
-  survenus: number;
-  programmees: number;
-}) {
-  return (
-    <section
-      id="actions-hors-theme"
-      className="bg-white border border-line rounded-2xl shadow-card px-4 py-4 scroll-mt-4"
-    >
-      <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-2">
-        Hors de tes thèmes
-      </div>
-
-      {survenus > 0 ? (
-        <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
-          <span className="font-mono text-[26px] leading-none font-medium text-ink">
-            {survenus}
-          </span>
-          <span className="text-[11.5px] text-muted leading-snug">
-            {survenus > 1 ? "faits et actions" : "fait ou action"} qu&apos;aucun thème ne
-            prend
-          </span>
-        </div>
-      ) : (
-        <p className="text-[12.5px] text-muted leading-relaxed mb-2.5">
-          Rien hors de tes thèmes
-          {programmees > 0 ? " — à part ce qui attend de démarrer." : "."}
-        </p>
-      )}
-
-      <RailActions
-        actions={actions}
-        changements={changements}
-        changementsApi={changementsApi}
-        themeCourant={null}
-        maxH="max-h-[420px] lg:max-h-[58vh]"
-      />
-      <NoteAjout theme={null} />
-
-      {/* Rang 9 — le pied, un seul : pourquoi ces lignes sont là. */}
-      <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
-        Prises depuis les réglages de base, posées sur un thème sorti de tes priorités,
-        ou faites sur une campagne que tu n&apos;as pas encore étiquetée.
-      </p>
-    </section>
-  );
-}
+// LE FILET — « Hors de tes thèmes » — a quitté cette page pour
+// `components/hors-theme.tsx`. Il y était écrit en dur, donc invisible à tout
+// écran de contrôle : la page entière est derrière `middleware.ts` et lit un
+// vrai compte, on ne pouvait ni lui donner vingt-cinq lignes ni zéro pour voir
+// ce que ça fait. C'est la règle du projet depuis `components/couts-modules.tsx`
+// — une page compose, elle ne dessine pas.
 
 export default async function Page() {
   const data = await getWeeklyData();
@@ -370,21 +307,39 @@ export default async function Page() {
               écran.
               La boussole garde deux tiers, parce que sa courbe est l'intérêt du
               module et qu'un tiers l'écraserait. Sur téléphone la boussole passe
-              en premier — c'est elle qu'on vient lire. */}
-          <div className="grid gap-3 lg:grid-cols-3 items-start">
+              en premier — c'est elle qu'on vient lire.
+
+              LES DEUX CARTES FONT LA MÊME HAUTEUR. La grille était en
+              `items-start` : chacune finissait où elle voulait et un vide de
+              200 px s'ouvrait sous la plus courte. `items-stretch` étire les
+              deux cellules sur la hauteur de la rangée, et c'est la BOUSSOLE
+              qui la fixe — la cellule du filet porte `lg:relative` pour que sa
+              carte s'y pose en `absolute` et cesse de peser dans le calcul.
+              Sans quoi vingt-cinq lignes hors thème tireraient la rangée à
+              2 000 px et la boussole flotterait dans le vide : l'inverse exact
+              de ce qu'on corrige. Le détail est écrit dans `hors-theme.tsx`,
+              qui en dépend ; ici on ne pose que la cellule.
+              Sans boussole, le filet reste seul et pleine largeur — donc en
+              flux normal, avec sa hauteur à lui (`rangee={false}`). */}
+          <div className="grid gap-3 lg:grid-cols-3 items-stretch">
             {report?.kpi_focus && (
               <div className="lg:col-span-2 lg:order-2 min-w-0">
                 <KpiFocusCard k={report.kpi_focus} />
               </div>
             )}
             {filetPlein && (
-              <div className={`lg:order-1 min-w-0 ${report?.kpi_focus ? "" : "lg:col-span-3"}`}>
+              <div
+                className={`lg:order-1 min-w-0 ${
+                  report?.kpi_focus ? "lg:relative" : "lg:col-span-3"
+                }`}
+              >
                 <HorsTheme
                   actions={orphelines}
                   changements={chgOrphelins}
                   changementsApi={apiOrphelins}
                   survenus={survenusOrphelins}
                   programmees={progOrphelines.length}
+                  rangee={!!report?.kpi_focus}
                 />
               </div>
             )}
