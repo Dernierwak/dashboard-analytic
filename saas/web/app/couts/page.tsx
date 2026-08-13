@@ -13,9 +13,11 @@
 // alertes et toutes les barres de la page.
 //
 // Trois lectures, dans cet ordre, et pas une de plus :
-//   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis la barre de l'année :
-//       dépensé, budget FIXÉ (le second terme de la question, il a donc la
-//       taille d'un terme), et ce qui est POSÉ sur les campagnes.
+//   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis DEUX modules côte à
+//       côte : l'enveloppe fixée et sa répartition à gauche (1/3, aucune
+//       forme), la dépense avec sa barre et le trait du calendrier à droite
+//       (2/3). Décider une enveloppe et surveiller une dépense ne se font ni au
+//       même rythme ni dans le même état d'esprit.
 //   2 · OÙ ÇA PART — filtrable par période et par thèmes : deux anneaux (par
 //       plateforme, par thème) disent la répartition, la courbe dit le rythme.
 //   3 · PAR THÈME — la seule décision de la page, à l'année elle aussi, en
@@ -35,10 +37,12 @@ import { fmtCHF } from "@/lib/report";
 import {
   AlerteDepassement,
   CourbeDepense,
+  DepenseAnnee,
   EnveloppeAnnee,
   LigneTheme,
 } from "@/components/couts-modules";
 import { FiltreCouts } from "@/components/filtre-couts";
+import { dateCourte } from "@/components/etat-action";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
 import { Chiffre } from "@/components/chiffre";
@@ -198,17 +202,36 @@ export default async function CoutsPage({
           />
         </div>
 
-        <EnveloppeAnnee
-          annee={annee}
-          spentYear={data.spentYear}
-          budgetAnnuel={data.budgetAnnuel}
-          budgetAnnuelSaisi={data.budgetAnnuelSaisi}
-          source={data.sourceBudgetAnnuel}
-          elapsedAn={data.elapsedAn}
-          channels={data.channels}
-          attribue={attribue}
-          planifie={planifie}
-        />
+        {/* L'ENVELOPPE À GAUCHE SUR 1/3, LA DÉPENSE À DROITE SUR 2/3.
+            Un seul module pleine largeur portait les deux, et il mélangeait
+            deux gestes de fréquence opposée : décider l'enveloppe (une fois par
+            an) et surveiller la dépense (chaque semaine). Le champ de saisie
+            finissait sous une barre, trois chiffres de bilan et deux
+            plateformes — soit tout en bas de ce qu'il commande.
+
+            `minmax(0, …)` sur les deux colonnes, et `min-w-0` sur chaque
+            module : un élément de grille vaut `min-width: auto` par défaut, un
+            nombre en mono qui ne se coupe pas l'empêche alors de rétrécir, et
+            c'est la PAGE ENTIÈRE qui se met à défiler horizontalement.
+            Sur téléphone ils s'empilent dans l'ordre du DOM — l'enveloppe
+            d'abord, parce qu'on ne surveille pas un budget avant de l'avoir
+            fixé. */}
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3 mb-4 items-stretch">
+          <EnveloppeAnnee
+            annee={annee}
+            budgetAnnuel={data.budgetAnnuel}
+            budgetAnnuelHerite={data.budgetAnnuelHerite}
+            attribue={attribue}
+          />
+          <DepenseAnnee
+            annee={annee}
+            spentYear={data.spentYear}
+            budgetAnnuel={data.budgetAnnuel}
+            elapsedAn={data.elapsedAn}
+            channels={data.channels}
+            planifie={planifie}
+          />
+        </div>
       </section>
 
       {/* ══ 2 · OÙ ÇA PART ══════════════════════════════════════════════════ */}
@@ -292,32 +315,68 @@ export default async function CoutsPage({
           <Titre sur="La vraie question">Dans quels thèmes ça part</Titre>
           <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
             C&apos;est ici que se prend la seule décision de la page : quel thème mérite
-            l&apos;enveloppe de l&apos;année, et lequel en consomme sans la rendre.
+            l&apos;enveloppe de l&apos;année, et lequel en consomme sans la rendre. Un thème
+            sans enveloppe affiche sa dépense et rien d&apos;autre — aucun pourcentage
+            n&apos;est estimé à partir d&apos;anciens réglages.
+          </p>
+          {/* Le PIED DE SECTION, monté d'un cran : il serait identique sous les
+              trente-cinq cartes, et la grammaire dit qu'un pied qui se répète
+              appartient à la section. « Réglé dans Meta et Google » était écrit
+              « Posé sur ses campagnes », que personne ne reliait à un réglage de
+              régie ; et son état vide ne disait pas que le chiffre finit par
+              arriver tout seul.
+
+              RESSERRÉ, parce que le pied de `DepenseAnnee` définit déjà ce
+              nombre mot pour mot, huit cents pixels plus haut, et que le
+              lecteur passe par là avant d'arriver ici. Ce qui restait à dire
+              n'est pas la définition mais le LIEN : c'est le même relevé,
+              découpé par thème. On garde quand même de quoi comprendre sans
+              remonter — « pas ce qui en est parti » est la confusion que ce
+              libellé existe pour éviter, elle ne se sous-entend pas.
+
+              La date passe par `dateCourte` : `releveLe` sort de la base en ISO
+              (`2026-08-10`), illisible au milieu d'une phrase française. Le
+              repli tient la valeur `null`, que `vide === false` n'exclut pas
+              formellement. */}
+          <p className="text-[11.5px] text-faint leading-relaxed mb-3 max-w-[68ch]">
+            « Budget réglé dans Meta et Google » est le même relevé qu&apos;en haut de
+            page, découpé thème par thème : ce que tu prévois d&apos;y mettre, pas ce qui
+            en est parti.
+            {planifie.vide
+              ? " Le premier passage hebdomadaire n'a pas encore eu lieu — le chiffre apparaîtra tout seul."
+              : ` Relevé le ${planifie.releveLe ? dateCourte(planifie.releveLe) : "—"}.`}
           </p>
 
           {/* TROIS COLONNES, ET TOUJOURS DÉFILANTE. Une ligne par thème sur
               toute la largeur donnait 35 lignes de 90 px pour un contenu qui en
               occupe 300 : on faisait défiler pendant dix secondes pour comparer
-              deux thèmes qui auraient tenu côte à côte. Le `divise` tombe — des
-              filets horizontaux à travers trois colonnes couperaient des cartes
-              qui n'ont rien à voir entre elles. */}
+              deux thèmes qui auraient tenu côte à côte.
+
+              LES CARTES SE DÉTACHENT. Elles étaient collées, séparées par un
+              seul filet partagé (`gap-px bg-line`) qui ne courait pas sur les
+              quatre côtés : deux cartes voisines se lisaient comme une seule
+              zone, et la troisième colonne se confondait avec le bord du cadre.
+              Chacune a maintenant sa bordure complète, son arrondi et son air
+              autour. Le fond du contenu reste TRANSPARENT — `.defile` peint ses
+              ombres de défilement derrière lui, un fond opaque les éteindrait. */}
           <ScrollList
             title={`Par thème · l'année ${annee}`}
             count={vus.length}
             maxH="max-h-[70vh]"
             divise={false}
           >
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-px bg-line">
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 p-3">
               {vus.map((t) => (
-                <div key={t.label} className="bg-white">
+                <div
+                  key={t.label}
+                  className="min-w-0 rounded-xl border border-line bg-white shadow-card"
+                >
                   <LigneTheme
                     t={t}
                     part={data.spentYear > 0 ? (t.spendYear / data.spentYear) * 100 : 0}
                     elapsedAn={data.elapsedAn}
                     annee={annee}
                     univers={data.labels}
-                    budgetTotal={data.budgetAnnuel}
-                    resteARepartir={data.budgetAnnuel - attribue}
                     planifie={planifie}
                   />
                 </div>
@@ -327,20 +386,29 @@ export default async function CoutsPage({
         </section>
       )}
 
-      {/* LE DÉPLIANT « ⚙ RÉGLAGES DU BUDGET » A DISPARU, sur demande de David,
-          et deux choses en découlent qu'il faut savoir en relisant ce fichier :
+      {/* IL N'Y A PLUS QU'UN SEUL CHAMP D'ENVELOPPE SUR CETTE PAGE, ET C'EST LE
+          FIL À PLOMB DE TOUT LE RESTE. Trois suppressions successives y mènent,
+          et elles obéissent toutes à la même règle : un montant qui gouverne un
+          écran et qu'aucun écran ne permet plus de corriger est pire qu'un
+          montant faux.
 
-          · l'éditeur de l'enveloppe du MOIS n'existe plus. Le budget du mois
-            vient donc TOUJOURS de l'annuel ÷ 12 — c'est écrit sous la tuile.
-            La règle de préséance a été nettoyée dans `lib/couts.ts` : laisser un
-            mensuel saisi primer sur l'annuel aurait figé un montant que plus
-            aucun écran ne permettait de corriger. Les mensuels déjà en base ne
-            sont pas perdus pour autant : faute d'enveloppe d'année, leur somme
-            devient l'annuel ;
-          · la table « détail mois par mois » et `components/budget-year-table.tsx`
-            n'étaient rendues que là — le composant a été supprimé, ainsi que
-            `months` / `MonthRow` dans `lib/couts.ts`. Douze lignes de saisie pour
-            un nombre qu'on tape une fois. */}
+          · le dépliant « ⚙ Réglages du budget » (enveloppe du mois, budgets
+            mensuels par thème, table mois par mois) — douze nombres pour en
+            produire un. Le mois vient depuis TOUJOURS de l'annuel ÷ 12 ;
+          · les deux enveloppes par PLATEFORME dans le module de l'année. Leur
+            somme primait sur l'annuel quand il était vide ; l'éditeur parti, la
+            branche de préséance part avec lui. `lib/couts.ts` n'a donc plus
+            aucune règle de préséance sur l'année : `budgetAnnuel` vaut ce qui a
+            été tapé, ou zéro ;
+          · l'estimation d'enveloppe PAR THÈME, qui retombait sur la somme des
+            douze mensuels du thème. Elle ne touchait que les thèmes ayant un
+            vieux mensuel : la page semblait juger certains thèmes et pas
+            d'autres, sur un dénominateur que personne n'avait tapé.
+
+          Ce qui est en base n'est pas détruit et l'écran le DIT :
+          `budgetAnnuelHerite` et `ThemeSpend.budgetYearHerite` ne servent qu'à
+          écrire « ces montants ne comptent plus », là où le nombre a disparu. Un
+          réglage qu'on abandonne se raconte, il ne s'efface pas en silence. */}
     </main>
   );
 }

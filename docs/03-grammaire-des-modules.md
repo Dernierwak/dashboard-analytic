@@ -312,8 +312,16 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | page Coûts (les modules) | tous écrits dans `app/couts/page.tsx`, donc invisibles hors session connectée et invérifiables autrement qu'en production | extraits en `components/couts-modules.tsx` ; la page compose, elle ne dessine plus rien |
 | `Repartition` | une barre empilée de budgets PRÉVUS, là où la question posée est « combien a été dépensé par thème » | **supprimée** — l'anneau prend sa place pour le réel, et le prévu redescend dans la liste des thèmes (une enveloppe par thème) plus une ligne de réconciliation dans le module de l'année |
 | `theme-donut` | typé sur `ThemeRow`, donc réservé au rapport hebdomadaire | prend `{label, spend}[]` — `ThemeRow` le satisfait sans rien changer, et la page Coûts s'en sert sans fabriquer de faux revenu à zéro. Sur téléphone la légende passe SOUS l'anneau : à côté, il lui restait 150 px et « Audio Tour » s'écrivait « Aud… » |
-| `EnveloppeAnnee` (page Coûts) | le total annuel s'affichait sans dire d'où il venait | provenance écrite en pied, et le texte change avec la branche empruntée |
+| `EnveloppeAnnee` (page Coûts) | le total annuel s'affichait sans dire d'où il venait | provenance écrite en pied, et le texte change avec la branche empruntée — *entrée périmée le 13 août 2026 : il n'y a plus de branche à nommer, voir ci-dessous* |
 | `Tuile` « Dépensé / Enveloppe / Reste » | trois lectures du même mois, dont deux dérivées l'une de l'autre | trois cadrages qui ne se déduisent pas : budget annuel, budget mensuel, moyenne quotidienne réelle — deux promesses et un fait |
+| `EnveloppeAnnee` (scindé) | un module pleine largeur portait DEUX gestes de fréquence opposée : décider l'enveloppe (une fois l'an) et surveiller la dépense (chaque semaine). Le champ qui commande toute la page finissait sous une barre, trois bilans et deux plateformes | scindé en deux. `EnveloppeAnnee` prend 1/3 à gauche : rang 3 = l'enveloppe fixée en 34 px, le seul nombre dont le mois, le jour, les alertes et toutes les barres descendent. **Aucune forme** — la rangée n'en porte qu'une, et elle appartient au voisin. Le champ passe au rang 8, collé en bas par `mt-auto` pour que les deux cartes finissent à la même ligne |
+| `DepenseAnnee` | *(nouveau, issu du même découpage)* | 2/3 à droite. Rang 3 = le dépensé depuis janvier en 34 px, **sans dénominateur collé** : l'enveloppe est déjà en 34 px à gauche, la répéter donnerait deux fois le même nombre sur une rangée. Une seule forme, la barre + son trait de calendrier, encadrée de ses deux bornes écrites — le pourcentage à gauche, `sur X CHF` à droite |
+| `lib/couts` (la préséance) | l'annuel avait trois branches — saisi, somme des deux plateformes, somme des douze mensuels — et les éditeurs des deux dernières ont été supprimés de l'écran | **plus aucune préséance** : `budgetAnnuel` vaut ce qui a été tapé, ou zéro. Même règle par thème. Ce qui reste en base n'est pas détruit et l'écran le DIT (`budgetAnnuelHerite`, `budgetYearHerite`) — un réglage qu'on abandonne se raconte, il ne s'efface pas en silence |
+| `LigneTheme` (le dénominateur) | un thème dont le champ Enveloppe affichait 0 se voyait quand même reprocher « 61 % de l'enveloppe » : le budget d'année retombait sur la somme de ses douze mensuels. Seuls les thèmes ayant un vieux mensuel étaient touchés — la page semblait juger certains thèmes et pas d'autres, sur un nombre que personne n'avait tapé | **aucune enveloppe estimée**. Une enveloppe est saisie ou absente ; sans elle, un thème affiche sa dépense et se tait — ni barre, ni pourcentage, ni dénominateur. Soit on juge tout le monde, soit personne |
+| `LigneTheme` (les cartes) | trois colonnes séparées par un seul filet partagé (`gap-px bg-line`) qui ne courait pas sur les quatre côtés : deux cartes voisines se lisaient comme une seule zone | bordure complète, arrondi et air autour de chaque carte. Le fond du contenu reste TRANSPARENT — `.defile` peint ses ombres derrière lui, un fond opaque les éteindrait |
+| `LigneTheme` (le pied) | « Tes budgets mensuels ne font plus une enveloppe » posé au rang 9, SOUS le champ : les deux cartes qui le portaient voyaient leur champ remonter de 114 px, dans un module dont le rang 8 dit que des champs à trois hauteurs différentes se cherchent | la phrase est un fait sur la DONNÉE du thème, pas une convention de lecture : elle fond dans celle du rang 7. Le module n'a plus de rang 9. **Règle générale : `mt-auto` ne tient sa promesse que s'il pousse un élément SEUL** |
+| page Coûts (le zéro) | « 0 CHF » écrit là où rien n'avait été relevé, et là où rien n'est réglé — le même signe pour une ignorance et pour un constat | un vide se dit en toutes lettres, et les deux vides n'ont pas le même mot : « au prochain relevé » quand la mesure n'a pas eu lieu, « rien de réglé en ce moment » quand elle a eu lieu et vaut zéro. Un zéro non mesuré présenté comme mesuré est un chiffre faux |
+| `kpi-focus` (les deux « confondus ») | l'en-tête « Meta et Google confondus » basculait dès qu'UNE cellule du groupe portait une clé nue — sur un rapport ancien qui porte aussi le ROAS, le ROAS se retrouvait sous « ↻ Recharger mes conseils les sépare », une promesse fausse : aucun rechargement ne séparera un revenu que GA4 donne pour tout le compte | deux groupes au lieu d'un drapeau. Le ROAS est confondu PAR NATURE, une clé nue l'est PAR ANCIENNETÉ : `G_DEUX_ANCIEN` devient un vrai groupe rendu par `terrain()`, prend sa place dans `ORDRE_GROUPES` (du plus séparé au moins séparé) et sa phrase dans `PROVENANCE` — `provenance()` perd son exception |
 
 **Reste à traiter :**
 
@@ -398,6 +406,68 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**13 août 2026 (2)** — **Un nombre qu'on abandonne se raconte, il ne s'efface
+pas en silence.**
+
+Trois montants estimés gouvernaient la page Coûts sans que personne les ait
+jamais tapés : l'enveloppe de l'année, déduite de la somme des deux plateformes
+ou des douze mensuels ; l'enveloppe d'un thème, déduite de ses douze mensuels ;
+et le budget du mois. Tous trois étaient nés d'une bonne intention — remplir un
+écran plutôt que le laisser vide. David a tranché : **« soit tu fais partout,
+soit pas du tout »**. Comme aucune estimation n'était possible partout, aucune
+ne reste.
+
+La conséquence dépassait la phrase qui l'annonçait, et il fallait le lui dire :
+retirer la mention retirait aussi le **dénominateur**. Un thème comme e-bike
+lisait « 61 % de l'enveloppe » sur un champ Enveloppe à zéro, et seuls les
+thèmes ayant un vieux mensuel étaient jugés — la page avait l'air de choisir ses
+victimes. Un thème sans enveloppe saisie affiche maintenant sa dépense et se
+tait.
+
+Reste ce qui est en base. On ne le détruit pas, et on ne le fait pas disparaître
+sans un mot : `budgetAnnuelHerite` et `budgetYearHerite` ne servent qu'à écrire
+« ces montants ne comptent plus ». **La règle : la préséance d'un montant meurt
+avec le champ qui permettait de le corriger.** Un montant qui gouverne une page
+et qu'aucun écran ne peut plus atteindre est pire qu'un montant faux — trois
+suppressions successives sur cette page obéissent toutes à cette seule phrase.
+
+Deux corollaires de forme, trouvés à l'écran et pas dans le code. Un module qui
+mélange **décider** (une fois l'an) et **surveiller** (chaque semaine) enterre
+son champ de saisie sous le bilan qu'il commande : d'où le découpage en 1/3 –
+2/3. Et `mt-auto` ne tient sa promesse d'alignement que s'il pousse un élément
+**seul** — un pied glissé sous le champ faisait remonter celui-ci de 114 px sur
+les deux seules cartes qui le portaient, dans un module dont le commentaire dit
+mot pour mot que des champs à trois hauteurs différentes se cherchent.
+
+**13 août 2026** — **Confondu par nature, confondu par ancienneté : deux vides
+qui ne portent pas le même mot.**
+
+La boussole sépare Meta et Google depuis le 12 août. Un rapport publié avant
+porte des clés nues (`ctr` au lieu de `ctr:meta`), et l'écran basculait alors
+tout le groupe en « Meta et Google confondus · recharge tes conseils ». Sauf que
+ce groupe contient aussi le **ROAS**, qui est confondu *par nature* — son revenu
+vient de GA4, qui ne dit jamais quelle régie l'a produit. On lui promettait une
+séparation qui n'arrivera jamais.
+
+Un drapeau posé sur un groupe mixte est presque toujours le signe qu'il manque
+un groupe. Deux groupes distincts, et `provenance()` perd son exception :
+chaque indicateur hérite de la phrase de son groupe, sans cas particulier.
+
+**La même règle a produit la même correction ailleurs le même jour** : « 0 CHF »
+servait à la fois pour « on n'a pas encore relevé » et pour « on a relevé, il
+n'y a rien ». Deux vides de nature opposée sous un seul signe. L'un est une
+ignorance, l'autre un constat — « au prochain relevé » et « rien de réglé en ce
+moment ». **Un zéro non mesuré présenté comme mesuré est un chiffre faux**, et
+c'est le nombre le plus facile à confondre avec une mesure.
+
+Côté récolte, la même erreur de symétrie : une constante de 30 jours bornait
+Meta *et* Google. Les 30 jours sont une limite **écrite** de `change_event`
+(et une fenêtre plus large fait rejeter la requête entière, pas la tronquer) ;
+Meta n'a jamais rien demandé de tel. Les deux fenêtres sont découplées, et
+l'élargissement a révélé une pagination Meta sans borne — un curseur `next` sur
+une page vide pouvait faire tourner la boucle indéfiniment et manger le passage
+hebdomadaire de tous les autres comptes.
 
 **12 août 2026 (7)** — **Un mot qui promet le futur ne se pose pas sur le passé.**
 

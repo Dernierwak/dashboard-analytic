@@ -34,18 +34,29 @@ export function BudgetEditor({
   const y = annee ?? new Date().getFullYear();
   const cle = periode === "an" ? `an:${channel}` : channel;
   const mois = periode === "an" ? `${y}-01-01` : undefined;
+  const titre = libelle ?? (periode === "an" ? `Budget ${y}` : "Budget mensuel");
 
   return (
     <div className="flex items-center gap-2 mt-2.5 flex-wrap">
       <label className="text-[10.5px] text-faint font-semibold uppercase tracking-wide">
-        {libelle ?? (periode === "an" ? `Budget ${y}` : "Budget mensuel")}
+        {titre}
       </label>
+      {/* UNE VALEUR ABSENTE NE S'ÉCRIT PAS « 0 ».
+          Le champ reste vide quand rien n'est saisi (`value` ci-dessus), mais son
+          placeholder affichait `0` — le nombre le plus facile à confondre avec une
+          mesure, à deux lignes d'une carte qui écrit « Pas d'enveloppe pour ce
+          thème ». Le tiret cadratin est le signe que le reste de la page emploie
+          déjà pour « aucun montant » ; il ne se lit pas comme un montant et ne
+          peut pas être pris pour une saisie.
+          Il portait aussi, faute de `<label for>`, le NOM ACCESSIBLE du champ : un
+          lecteur d'écran annonçait « 0 ». D'où l'`aria-label` explicite. */}
       <input
         type="number"
         min={0}
         step={periode === "an" ? 500 : 50}
         value={value}
-        placeholder="0"
+        placeholder="—"
+        aria-label={`${titre}, en CHF`}
         onChange={(e) => {
           setValue(e.target.value);
           setSaved(false);

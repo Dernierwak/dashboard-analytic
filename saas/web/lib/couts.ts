@@ -24,11 +24,21 @@ import { getCompteActif } from "@/lib/account";
 // atteindre est pire qu'un montant faux. Il ne reste donc qu'une source, et
 // `sourceBudgetMois` continue de l'écrire à l'endroit où le nombre s'affiche.
 //
-// La préséance de l'ANNÉE, elle, reste exposée (`sourceBudgetAnnuel`) : ses
-// trois branches ont toutes leur éditeur à l'écran. Le défaut historique de
-// cette page était qu'un client qui avait réglé 2 000 Meta et 1 000 Google
-// lisait une enveloppe de 3 000 CHF qu'il n'avait jamais tapée, sans que rien
-// ne le dise.
+// L'ANNÉE SUIT LA MÊME RÈGLE DEPUIS QUE LES ENVELOPPES PAR PLATEFORME ONT QUITTÉ
+// L'ÉCRAN. Elle avait trois branches — montant saisi, somme des deux plateformes,
+// somme des douze mensuels — dont une seule a encore un champ de saisie. Les deux
+// autres produisaient exactement le défaut fondateur de cette page : un client
+// qui avait réglé 2 000 Meta et 1 000 Google lisait « enveloppe : 3 000 CHF »
+// qu'il n'avait jamais tapée. Tant que les deux éditeurs par plateforme
+// existaient, il pouvait au moins la corriger ; ils ont disparu, donc la branche
+// aussi. IL N'Y A PLUS DE PRÉSÉANCE : `budgetAnnuel` vaut ce qui a été tapé, ou
+// zéro.
+//
+// Rien n'est détruit en base pour autant, et ce qui existait doit être DIT :
+// `budgetAnnuelHerite` porte ce que l'ancienne règle aurait calculé, uniquement
+// pour que l'écran puisse écrire « ces montants ne fabriquent plus d'enveloppe ».
+// Il ne gouverne plus rien — un nombre qu'on abandonne se raconte, il ne
+// s'efface pas en silence.
 
 const MOIS_FULL = [
   "janvier", "février", "mars", "avril", "mai", "juin",
@@ -64,16 +74,20 @@ function dCourt(s: string): string {
   return `${String(d.getDate()).padStart(2, "0")} ${MOIS_ABR[d.getMonth()]}`;
 }
 
+// CE QU'UNE PLATEFORME A DÉPENSÉ, ET RIEN D'AUTRE.
+//
+// Elle portait aussi son budget annuel (`budgetAn`, `budgetAnSaisi`) : une
+// ENVELOPPE par régie, éditable dans le module de l'année. Les deux éditeurs
+// sont partis — l'enveloppe est unique — et les deux champs avec eux. Garder le
+// nombre sans le champ, c'était afficher une promesse que plus personne ne
+// pouvait modifier.
 export type ChannelCout = {
   key: string;
   name: string;
   icon: string;
   color: string;
   spent: number;      // ce mois-ci
-  budget: number;     // budget MENSUEL du canal
   spentYear: number;  // depuis janvier
-  budgetAn: number;       // budget ANNUEL effectif du canal
-  budgetAnSaisi: number;  // ce qui a été saisi explicitement (0 = déduit des 12 mois)
 };
 
 export type CoutDay = { date: string; label: string; meta: number; google: number };
@@ -87,11 +101,21 @@ export type ParCanal = { meta: number; google: number };
 // Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
 // pour le mensuel et "an:label:<nom>" pour l'annuel (même carry-forward que
 // les canaux, zéro migration).
+//
+// AUCUNE ESTIMATION D'ENVELOPPE. `budgetYear` retombait sur la somme des douze
+// budgets mensuels du thème quand rien n'était saisi. Effet à l'écran : un thème
+// dont le champ ENVELOPPE affichait 0 se voyait quand même reprocher « 61 % de
+// l'enveloppe », pendant que douze autres thèmes n'avaient ni barre ni
+// pourcentage — la page semblait juger certains thèmes et pas d'autres, sur un
+// dénominateur que personne n'avait tapé. Une enveloppe est maintenant SAISIE ou
+// absente ; sans elle, un thème affiche sa dépense et se tait.
 export type ThemeSpend = {
   label: string;
   spendYear: number;    // dépense cumulée depuis janvier
-  budgetYear: number;   // budget annuel EFFECTIF (saisi, sinon somme des 12 mois)
-  budgetYearSaisi: number; // ce qui a été saisi explicitement (0 = rien)
+  budgetYear: number;   // enveloppe d'année SAISIE (0 = aucune, et rien ne la remplace)
+  /** Ce que l'ancienne estimation aurait produit — affiché pour dire qu'il ne
+   *  compte plus, jamais pour fabriquer un dénominateur. */
+  budgetYearHerite: number;
   spendPeriode: number; // dépense sur la période filtrée — ce que montre l'anneau
   /** Sur QUELLE plateforme l'argent de ce thème est parti, depuis janvier.
    *  Un thème qui pèse 4 000 CHF ne se pilote pas pareil selon qu'il est à
@@ -141,9 +165,12 @@ export type CoutsData = {
 
   // ── L'année : ce qui se pilote ────────────────────────────────────────────
   spentYear: number;
-  budgetAnnuel: number;      // effectif
-  budgetAnnuelSaisi: number; // saisi en tant qu'enveloppe unique (0 = déduit)
-  sourceBudgetAnnuel: "saisi" | "plateformes" | "mensuels" | "aucun";
+  /** L'enveloppe unique, telle qu'elle a été TAPÉE. Aucune règle de préséance,
+   *  aucune estimation : 0 tant que rien n'est saisi. */
+  budgetAnnuel: number;
+  /** Ce que les anciens réglages (par plateforme, par mois) auraient donné.
+   *  Sert uniquement à écrire qu'ils ne comptent plus. */
+  budgetAnnuelHerite: number;
 
   // ── Le mois : une lecture de l'année, et rien d'autre ─────────────────────
   totalSpent: number;
@@ -409,11 +436,15 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const byTheme: ThemeSpend[] = [...themeAn.entries()]
     .map(([label, spendYear]) => {
       const saisi = budgetFor(`an:label:${label}`, anneeIso);
+      const mensuels = sommeDouze(`label:${label}`);
       return {
         label,
         spendYear,
-        budgetYear: saisi > 0 ? saisi : sommeDouze(`label:${label}`),
-        budgetYearSaisi: saisi,
+        // `saisi`, jamais `saisi || mensuels` : douze mensuels ne font pas une
+        // enveloppe d'année, ils font une moyenne qu'on présenterait comme une
+        // décision.
+        budgetYear: saisi,
+        budgetYearHerite: saisi > 0 ? 0 : mensuels,
         spendPeriode: themePeriode.get(label) ?? 0,
         parCanalAn: themeCanalAn.get(label) ?? { meta: 0, google: 0 },
       };
@@ -431,31 +462,19 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   }
 
   // ── L'ANNÉE, d'abord : c'est elle qui commande tout le reste ─────────────
-  const budgetAnnuelSaisi = budgetFor("an:global", anneeIso);
-  const budgetAnMeta = budgetFor("an:meta", anneeIso) || sommeDouze("meta");
-  const budgetAnGoogle = budgetFor("an:google", anneeIso) || sommeDouze("google");
+  // UNE SEULE SOURCE, celle qui a un champ à l'écran.
+  const budgetAnnuel = budgetFor("an:global", anneeIso);
   const anPlateformesSaisi = budgetFor("an:meta", anneeIso) + budgetFor("an:google", anneeIso);
   const anMensuels = sommeDouze("global") > 0 ? sommeDouze("global") : sommeDouze("meta") + sommeDouze("google");
-
-  let budgetAnnuel = 0;
-  let sourceBudgetAnnuel: CoutsData["sourceBudgetAnnuel"] = "aucun";
-  if (budgetAnnuelSaisi > 0) {
-    budgetAnnuel = budgetAnnuelSaisi;
-    sourceBudgetAnnuel = "saisi";
-  } else if (anPlateformesSaisi > 0) {
-    budgetAnnuel = anPlateformesSaisi;
-    sourceBudgetAnnuel = "plateformes";
-  } else if (anMensuels > 0) {
-    budgetAnnuel = anMensuels;
-    sourceBudgetAnnuel = "mensuels";
-  }
+  // Ce que l'ancienne préséance aurait servi. Il ne pilote plus rien — il donne
+  // seulement à l'écran de quoi expliquer une enveloppe qui a « disparu ».
+  const budgetAnnuelHerite = anPlateformesSaisi > 0 ? anPlateformesSaisi : anMensuels;
 
   // ── Le mois : UNE seule règle, l'année ÷ 12 ──────────────────────────────
   // Les mensuels déjà en base (`global`, `meta`, `google` sur un mois) ne sont
-  // plus lus ici. Ils ne sont pas perdus pour autant : quand aucune enveloppe
-  // d'année n'a été fixée, `sommeDouze` les additionne et c'est cette somme qui
-  // devient l'annuel, donc le mois. Ce qui disparaît, c'est leur PRÉSÉANCE —
-  // celle d'un montant que plus aucun écran ne permettait de corriger.
+  // plus lus nulle part : ils ne pilotent ni le mois ni l'année. Ils restent
+  // écrits en base et l'écran dit qu'ils ne comptent plus — c'est la seule
+  // manière honnête d'abandonner un réglage dont on a supprimé le champ.
   const totalBudget = budgetAnnuel > 0 ? budgetAnnuel / 12 : 0;
   const sourceBudgetMois: CoutsData["sourceBudgetMois"] =
     budgetAnnuel > 0 ? "annuel" : "aucun";
@@ -463,13 +482,11 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const channels: ChannelCout[] = [
     {
       key: "meta", name: "Meta Ads", icon: "▣", color: "#1a56ff",
-      spent: metaSpent, budget: budgetFor("meta", monthStart),
-      spentYear: metaYear, budgetAn: budgetAnMeta, budgetAnSaisi: budgetFor("an:meta", anneeIso),
+      spent: metaSpent, spentYear: metaYear,
     },
     {
       key: "google", name: "Google Ads", icon: "◆", color: "#1a7a4a",
-      spent: googleSpent, budget: budgetFor("google", monthStart),
-      spentYear: googleYear, budgetAn: budgetAnGoogle, budgetAnSaisi: budgetFor("an:google", anneeIso),
+      spent: googleSpent, spentYear: googleYear,
     },
   ];
 
@@ -522,8 +539,7 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     channels,
     spentYear,
     budgetAnnuel,
-    budgetAnnuelSaisi,
-    sourceBudgetAnnuel,
+    budgetAnnuelHerite,
     totalSpent,
     totalBudget,
     sourceBudgetMois,
