@@ -46,11 +46,44 @@ from meta_script.fetch_meta_ads import (                                   # noq
     fetch_activities as meta_changes,
 )
 
-# Google ne garde ses `change_event` que 30 jours ; on redemande la fenêtre
-# entière à chaque passage plutôt que de repartir du dernier connu. Un worker
-# qui saute deux semaines rattraperait sinon un trou définitif — l'API ne sait
-# rien redonner au-delà.
-_CHANGES_JOURS = 30
+# LES DEUX RÉGIES N'OUBLIENT PAS À LA MÊME VITESSE, ET UNE SEULE CONSTANTE POUR
+# LES DEUX FAISAIT PERDRE À META CE QUE GOOGLE NE PEUT PAS DONNER.
+#
+# Google — 30 jours, et c'est écrit noir sur blanc. La doc de `change_event`
+# pose trois contraintes : « The date range must be within the past 30 days »,
+# la liste DOIT être filtrée par date, et la requête DOIT porter un `LIMIT` d'au
+# plus 10 000 lignes. Les trois sont tenues dans `fetch_campaign_changes`. Une
+# fenêtre plus large ne rogne pas le résultat : elle fait rejeter la requête
+# ENTIÈRE — zéro changement au lieu de trente jours. Et ce qui sort par le fond
+# ne revient jamais, donc plus une première récolte tarde, plus l'historique est
+# définitivement perdu.
+# https://developers.google.com/google-ads/api/docs/change-event
+#
+# Meta — 180 jours, et c'est un PARI ASSUMÉ, pas une garantie lue quelque part.
+# Ce que la doc dit vraiment de l'edge `activities` : `since` = « The start time
+# to query account history. Default is 7 days prior », `until` = « Default is
+# now » ; la page de l'edge au niveau COMPTE, elle, ne documente aucun paramètre
+# et aucune rétention. Donc : aucune limite de fenêtre et aucun plafond de
+# pagination ne sont écrits nulle part — mais un silence de la doc n'est pas une
+# promesse, et personne n'a encore appelé l'edge avec un `since` à six mois (pas
+# de token dans cet environnement). Ce qui EST certain, c'est que les 30 jours
+# qu'on infligeait ici étaient une symétrie avec Google que Meta n'a jamais
+# demandée. Si Meta refusait la fenêtre, la récolte le dirait sans rien casser :
+# `_journal_changements` est best-effort et imprime l'erreur.
+# https://developers.facebook.com/docs/marketing-api/reference/ad-campaign/activities/
+# https://developers.facebook.com/docs/marketing-api/reference/ad-activity/
+#
+# Six mois plutôt qu'un an, parce que c'est le premier chiffre qui rend le
+# worker RATTRAPABLE sans rendre la pagination folle : le fil n'affiche que
+# 60 jours, une récolte arrêtée quatre mois se rattrape donc entièrement au
+# redémarrage, et `fetch_activities` borne désormais son nombre de pages
+# (`_ACTIVITES_PAGES_MAX`), ce qui plafonne le coût d'un compte très actif.
+#
+# Les deux fenêtres sont redemandées EN ENTIER à chaque passage, jamais depuis
+# le dernier connu : c'est ce qui rattrape un worker à l'arrêt. L'écriture est
+# idempotente — `platform_changes` est upserté sur `change_id`.
+_CHANGES_JOURS_GOOGLE = 30
+_CHANGES_JOURS_META = 180
 from components.ga4 import run_ga4_fetch                                   # noqa: E402
 from meta_script.fetch_instagram import OrganicInstagramm                  # noqa: E402
 
@@ -143,7 +176,7 @@ def _fetch_meta(sb, uid, token) -> str:
     _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
     _journal_changements(sb, uid, "meta", lambda: meta_changes(
         token, ad_account_id,
-        (today - timedelta(days=_CHANGES_JOURS)).isoformat(), today.isoformat()))
+        (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat()))
     latest = fetch_meta_ads_latest_date(sb, uid)
     since = date.fromisoformat(latest) + timedelta(days=1) if latest else date(today.year, 1, 1)
     if since > today:
@@ -203,7 +236,7 @@ def _fetch_google(sb, uid, refresh, customer_id) -> str:
     smap, _ = fetch_campaign_statuses(access, customer_id)
     noms = {cid: v[0] for cid, v in (smap or {}).items()}
     _journal_changements(sb, uid, "google", lambda: google_changes(
-        access, customer_id, today - timedelta(days=_CHANGES_JOURS),
+        access, customer_id, today - timedelta(days=_CHANGES_JOURS_GOOGLE),
         noms_campagnes=noms))
 
     latest = fetch_google_ads_latest_date(sb, uid)

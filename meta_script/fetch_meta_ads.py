@@ -361,6 +361,19 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
     return None
 
 
+# Le worker demande six mois d'activités à chaque passage hebdomadaire, à 500
+# par page. La boucle de pagination ne s'arrêtait que quand Meta cessait de
+# rendre un `paging.next` — or le Graph API sait rendre un curseur `next` sur
+# une page VIDE, et rien ici n'empêchait alors la boucle de tourner sans fin sur
+# un seul compte, en mangeant le passage de tous les autres.
+#
+# 40 pages = 20 000 activités, soit ~110 changements par jour, tous les jours,
+# pendant six mois. Au-delà on n'apprend plus rien d'utile : le fil n'affiche
+# que 60 jours et l'écriture est idempotente. Le chiffre borne aussi le pire cas
+# en temps — 40 requêtes à 45 s de timeout, pas une boucle infinie.
+_ACTIVITES_PAGES_MAX = 40
+
+
 def fetch_activities(
     token: str,
     ad_account_id: str,
@@ -394,13 +407,25 @@ def fetch_activities(
 
     actes = resp.get("data", []) or []
     nxt = (resp.get("paging") or {}).get("next")
-    while nxt:
+    pages = 1
+    while nxt and pages < _ACTIVITES_PAGES_MAX:
         try:
             page = requests.get(nxt, timeout=45).json()
         except Exception:
             break
-        actes += page.get("data", []) or []
+        lot = page.get("data", []) or []
+        # Page vide alors qu'un `next` est encore là = curseur épuisé qui tourne
+        # à vide. On s'arrête plutôt que de suivre un lien qui ne rend plus rien.
+        if not lot:
+            break
+        actes += lot
+        pages += 1
         nxt = (page.get("paging") or {}).get("next")
+    if nxt and pages >= _ACTIVITES_PAGES_MAX:
+        # Pas une erreur : ce qui a été lu est bon et sera écrit. Mais ça se
+        # dit, sinon la troncature est parfaitement invisible.
+        print(f"    activités Meta : arrêt à {_ACTIVITES_PAGES_MAX} pages "
+              f"({len(actes)} activités lues), la suite est ignorée.")
 
     rows: list[dict] = []
     vus: set[str] = set()
