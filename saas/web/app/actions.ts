@@ -573,13 +573,22 @@ export async function setCampaignLabel(
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
-  // (repli sans la colonne si la migration n'est pas encore passée)
+  //
+  // MAIS RETIRER UN THÈME N'EST PAS UN CHOIX HUMAIN À PROTÉGER.
+  // Poser 'user' sur une ligne qu'on vient de VIDER la rendait invisible à
+  // l'IA pour toujours : le worker saute tout ce qui porte 'user', y compris
+  // sans label. On corrigeait une étiquette fausse en la supprimant, et on
+  // condamnait la campagne à ne plus jamais en recevoir — exactement l'inverse
+  // du geste. Un thème retiré rend la ligne au vide, et l'IA ne remplit que le
+  // vide. La source repart donc à NULL avec lui.
+  const source = label ? "user" : null;
   if (channel === "meta") {
     const r = await supabase.from("meta_campaign_config").upsert(
-      { user_id: user.id, campaign_name: key, label, label_source: "user" },
+      { user_id: user.id, campaign_name: key, label, label_source: source },
       { onConflict: "user_id,campaign_name" }
     );
     if (r.error) {
+      // repli sans la colonne si la migration n'est pas encore passée
       await supabase.from("meta_campaign_config").upsert(
         { user_id: user.id, campaign_name: key, label },
         { onConflict: "user_id,campaign_name" }
@@ -588,7 +597,7 @@ export async function setCampaignLabel(
     revalidatePath("/meta");
   } else {
     const r = await supabase.from("google_campaign_config").upsert(
-      { user_id: user.id, campaign_id: key, campaign_name: campaignName, label, label_source: "user" },
+      { user_id: user.id, campaign_id: key, campaign_name: campaignName, label, label_source: source },
       { onConflict: "user_id,campaign_id" }
     );
     if (r.error) {
@@ -611,14 +620,15 @@ export async function setPostLabel(postId: string, label: string | null) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  // label_source='user' : un choix humain n'est jamais réécrit par l'IA.
-  // (repli sans la colonne si la migration n'est pas encore passée)
+  // Même règle que pour les campagnes : 'user' protège un CHOIX, pas un vide.
+  // Un thème retiré rend le post à l'IA (voir setCampaignLabel).
   const r = await supabase
     .from("instagram_organic_posts")
-    .update({ labels: label ? [label] : [], label_source: "user" })
+    .update({ labels: label ? [label] : [], label_source: label ? "user" : null })
     .eq("id", postId)
     .eq("user_id", user.id);
   if (r.error) {
+    // repli sans la colonne si la migration n'est pas encore passée
     await supabase
       .from("instagram_organic_posts")
       .update({ labels: label ? [label] : [] })
@@ -628,6 +638,169 @@ export async function setPostLabel(postId: string, label: string | null) {
   revalidatePath("/instagram");
   revalidatePath("/labels");
   return { ok: true };
+}
+
+// ── La page d'arrivée d'une campagne ────────────────────────────────────────
+//
+// CE QU'ELLE SERVIRA : comprendre ce que la campagne VEND. Le nom d'une
+// campagne ne le dit pas, et c'est ce qui plafonne les conseils aujourd'hui —
+// on sait dire « ton CPC monte », pas « ta page d'arrivée demande cinq champs
+// pour un produit à 39 CHF ».
+//
+// ON LA STOCKE, ON NE LA VISITE PAS. Aucun `fetch` serveur ne part vers cette
+// adresse, ni ici ni ailleurs. Un champ libre que le serveur irait chercher
+// tout seul, c'est une SSRF offerte : il suffirait d'y coller une adresse
+// interne pour lui faire lire ce qu'il est le seul à pouvoir atteindre. Le jour
+// où une reco devra vraiment lire la page, ce sera par un chemin explicite avec
+// sa propre liste d'hôtes autorisés — pas en réutilisant ce champ en silence.
+function urlPropre(brut: string): { ok: true; url: string } | { ok: false; message: string } {
+  const t = (brut ?? "").trim();
+  if (!t) return { ok: true, url: "" }; // vide = on efface l'adresse
+  if (t.length > 2048) return { ok: false, message: "Cette adresse est trop longue." };
+  // « boutique.ch/velos » sans schéma est ce que les gens tapent : on complète
+  // en https plutôt que de leur renvoyer une erreur de syntaxe.
+  const complet = /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`;
+  let u: URL;
+  try {
+    u = new URL(complet);
+  } catch {
+    return { ok: false, message: "Cette adresse n'a pas l'air d'une URL." };
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:")
+    return { ok: false, message: "Seules les adresses http:// et https:// sont acceptées." };
+  if (u.username || u.password)
+    return { ok: false, message: "Retire l'identifiant et le mot de passe de l'adresse." };
+  // Un hôte sans point n'est pas un domaine public : c'est « localhost », un
+  // nom de machine interne, ou une faute de frappe. Aucun des trois n'est la
+  // page d'arrivée d'une campagne publicitaire.
+  if (!u.hostname.includes(".") || u.hostname.endsWith("."))
+    return { ok: false, message: "Il manque le nom de domaine (ex. boutique.ch)." };
+  return { ok: true, url: u.toString() };
+}
+
+export async function setCampaignLanding(
+  channel: "meta" | "google",
+  key: string,          // meta : campaign_name · google : campaign_id
+  campaignName: string, // pour créer la ligne google si absente
+  url: string
+): Promise<{ ok: boolean; message?: string; valeur?: string | null }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const v = urlPropre(url);
+  if (!v.ok) return { ok: false, message: v.message };
+  const landing_url = v.url || null;
+
+  const r =
+    channel === "meta"
+      ? await supabase.from("meta_campaign_config").upsert(
+          { user_id: compte.uid, campaign_name: key, landing_url },
+          { onConflict: "user_id,campaign_name" }
+        )
+      : await supabase.from("google_campaign_config").upsert(
+          { user_id: compte.uid, campaign_id: key, campaign_name: campaignName, landing_url },
+          { onConflict: "user_id,campaign_id" }
+        );
+  if (r.error)
+    return {
+      ok: false,
+      message: "Enregistrement impossible — rejoue le SQL campagne_landing.sql.",
+    };
+
+  revalidatePath("/labels");
+  revalidatePath(channel === "meta" ? "/meta" : "/google");
+  return { ok: true, valeur: landing_url };
+}
+
+// ── Annuler en bloc ce que l'IA vient d'étiqueter ───────────────────────────
+//
+// Le bouton « Étiqueter tout via l'IA » applique DIRECTEMENT, sans validation
+// préalable — c'est la décision de David, et elle tient à une condition : le
+// retour en arrière existe. Une action de masse sans retour en arrière est un
+// piège, quelle que soit la qualité du classement.
+//
+// LE PÉRIMÈTRE EST UNE DATE, PAS UNE SOURCE. « Tout ce qui porte 'ai' » aurait
+// emporté les étiquettes posées par l'IA il y a trois semaines et gardées
+// depuis. C'est `label_at` (migration labels_origine.sql) qui découpe le
+// passage courant — et les lignes antérieures à la migration ont `label_at`
+// NULL, donc aucun `>=` ne les attrape jamais.
+//
+// `depuis` vient du SERVEUR (`triggerClassify`), jamais du navigateur : deux
+// horloges d'accord à la minute près, ce n'est pas quelque chose qu'on peut
+// supposer d'un poste client.
+async function _compterIA(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  depuis: string
+): Promise<{ ok: boolean; n: number }> {
+  const [m, g, p] = await Promise.all([
+    supabase.from("meta_campaign_config").select("campaign_name", { count: "exact", head: true })
+      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
+    supabase.from("google_campaign_config").select("campaign_id", { count: "exact", head: true })
+      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
+    supabase.from("instagram_organic_posts").select("id", { count: "exact", head: true })
+      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
+  ]);
+  // Une seule erreur suffit à rendre le compte faux : on préfère dire qu'on ne
+  // sait pas plutôt qu'annoncer « 12 » quand il y en a 40.
+  if (m.error || g.error || p.error) return { ok: false, n: 0 };
+  return { ok: true, n: (m.count ?? 0) + (g.count ?? 0) + (p.count ?? 0) };
+}
+
+export async function compterEtiquettesIA(
+  depuis: string
+): Promise<{ ok: boolean; n: number; message?: string }> {
+  if (!depuis) return { ok: true, n: 0 };
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const r = await _compterIA(supabase, compte.uid, depuis);
+  if (!r.ok)
+    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (labels_origine.sql)." };
+  return { ok: true, n: r.n };
+}
+
+export async function annulerEtiquettesIA(
+  depuis: string
+): Promise<{ ok: boolean; n: number; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, n: 0, message: "Tu es en lecture seule sur ce compte." };
+  if (!depuis) return { ok: true, n: 0 };
+
+  const avant = await _compterIA(supabase, compte.uid, depuis);
+  if (!avant.ok)
+    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (labels_origine.sql)." };
+  if (avant.n === 0) return { ok: true, n: 0 };
+
+  // On remet la ligne au VIDE, pas à un état intermédiaire : label absent,
+  // source absente. Le trigger `stamp_label_at` efface la date avec la source,
+  // donc une seconde annulation ne repassera pas sur ces lignes.
+  // `eq('label_source','ai')` est répété sur chaque écriture : c'est le
+  // garde-fou write-time qui garantit qu'aucun choix humain n'est touché,
+  // même si la ligne a changé entre le comptage et l'écriture.
+  const res = await Promise.all([
+    supabase.from("meta_campaign_config")
+      .update({ label: null, label_source: null })
+      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
+    supabase.from("google_campaign_config")
+      .update({ label: null, label_source: null })
+      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
+    supabase.from("instagram_organic_posts")
+      .update({ labels: [], label_source: null })
+      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
+  ]);
+  if (res.some((r) => r.error))
+    return { ok: false, n: 0, message: "Annulation incomplète — recharge la page et réessaie." };
+
+  revalidatePath("/labels");
+  revalidatePath("/meta");
+  revalidatePath("/google");
+  revalidatePath("/instagram");
+  revalidatePath("/");
+  return { ok: true, n: avant.n };
 }
 
 // « Récupérer mes données » : déclenche le workflow GitHub Actions pour CET
@@ -674,7 +847,25 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
 // « ✨ Classer mes contenus » : labellisation IA de tous les posts/campagnes
 // sans thème + republication du rapport — via le même workflow GitHub Actions,
 // en mode label_only (pas de re-fetch réseau, ~1 min).
-export async function triggerClassify(): Promise<{ ok: boolean; message: string }> {
+//
+// C'EST LA SEULE CLASSIFICATION IA DU PRODUIT, et le bouton « Étiqueter tout »
+// de la page Thèmes appelle celle-ci. Elle vit dans `saas/worker/labeling.py`,
+// tourne dans GitHub Actions et respecte déjà la règle d'or : elle saute tout
+// ce qui porte `label_source='user'`, donc elle ne remplit que le vide. En
+// écrire une seconde côté web aurait donné deux classements divergents sur les
+// mêmes contenus.
+//
+// `depuis` EST LE BORNAGE DE L'ANNULATION. Il est pris ici, sur le serveur,
+// AVANT que le workflow ne parte : tout ce que la base horodatera après cette
+// seconde-là appartient à ce passage. Les trente secondes de marge absorbent
+// l'écart d'horloge entre Vercel et Supabase — largement au-delà du réel (les
+// deux sont sur NTP), et sans risque d'attraper autre chose : rien d'autre
+// n'écrit d'étiquette IA pendant que l'utilisateur clique.
+export async function triggerClassify(): Promise<{
+  ok: boolean;
+  message: string;
+  depuis?: string;
+}> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
@@ -690,6 +881,8 @@ export async function triggerClassify(): Promise<{ ok: boolean; message: string 
         "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
     };
   }
+
+  const depuis = new Date(Date.now() - 30_000).toISOString();
 
   const r = await fetch(
     `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
@@ -707,6 +900,7 @@ export async function triggerClassify(): Promise<{ ok: boolean; message: string 
     return {
       ok: true,
       message: "Classement lancé — l'IA labellise tes contenus, ~1 minute.",
+      depuis,
     };
   }
   return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
