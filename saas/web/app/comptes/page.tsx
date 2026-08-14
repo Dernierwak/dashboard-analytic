@@ -21,6 +21,7 @@ import {
 import { ChoixCompte } from "@/components/choix-compte";
 import { DeconnecterBouton } from "@/components/deconnecter-bouton";
 import { FetchButton } from "@/components/fetch-button";
+import { JourRecolte } from "@/components/jour-recolte";
 import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +140,22 @@ export default async function ComptesPage({
 
   const cx = await getConnexions(compte.moi);
   const erreur = searchParams.erreur ? ERREURS[searchParams.erreur] ?? null : null;
+
+  // Le jour de récolte vit sur le PROFIL (`profiles.fetch_schedule`) : c'est la
+  // colonne que lit `_due_today` dans le worker. Une lecture ratée ne doit pas
+  // emporter la page — on retombe sur le même défaut que lui, lundi, plutôt que
+  // de faire disparaître le réglage.
+  let jourRecolte = "Monday";
+  try {
+    const r = await createClient()
+      .from("profiles")
+      .select("fetch_schedule")
+      .eq("id", compte.moi)
+      .limit(1);
+    jourRecolte = (r.data?.[0]?.fetch_schedule as string | null) || "Monday";
+  } catch {
+    jourRecolte = "Monday";
+  }
 
   // ── Les étapes en attente ────────────────────────────────────────────────
   // On les déduit de l'état réel, pas seulement du paramètre d'URL : quelqu'un
@@ -337,9 +354,21 @@ export default async function ComptesPage({
         </div>
       </div>
 
+      {/* ── Quand on va les lire ──────────────────────────────────────────── */}
+      {/* Placé ICI, entre « branche tes sources » et « lance une récolte » :
+          l'ordre de lecture de la page devient brancher → décider quand on lit
+          → lire tout de suite si on ne veut pas attendre. La `key` force le
+          remontage après `revalidatePath` : sans elle, l'état local du
+          composant survivrait à la réécriture et les deux divergeraient. */}
+      <JourRecolte
+        key={jourRecolte}
+        jour={jourRecolte}
+        maintenantIso={new Date().toISOString()}
+      />
+
       {/* ── La suite ──────────────────────────────────────────────────────── */}
 
-      <div className="rounded-xl border border-line bg-black/[0.015] p-4">
+      <div id="recolter" className="scroll-mt-16 rounded-xl border border-line bg-black/[0.015] p-4">
         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">
           {restants === 0 ? "Et maintenant" : "Une fois tout branché"}
         </div>
