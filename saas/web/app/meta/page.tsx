@@ -9,6 +9,7 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
+  MoyenneMensuelleAds,
   ByLabelTable,
 } from "@/components/channel-dash";
 
@@ -50,14 +51,18 @@ export default async function MetaPage({
       />
 
       <AdsKpis d={d} />
+      {/* Le rythme d'un mois AVANT la forme du jour : ce qu'un mois coûte et
+          rapporte se compare d'un mois à l'autre, la courbe ne dit que la
+          silhouette de la fenêtre affichée. */}
+      <MoyenneMensuelleAds d={d} path="/meta" />
       <MetricChart d={d} path="/meta" />
       <ByLabelTable d={d} />
 
+      {/* Ce que la table permet est écrit DANS son pied, où c'est calculé :
+          promettre ici un dépliage que la donnée ne permet pas fait chercher
+          une panne. */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Par campagne{" "}
-        <span className="text-faint font-normal">
-          · triées par dépense · déplie pour voir adsets et annonces
-        </span>
+        Par campagne <span className="text-faint font-normal">· triées par dépense</span>
       </h2>
       <CampaignTable d={d} channel="meta" />
       <p className="text-[11.5px] text-faint mt-3 leading-relaxed">

@@ -321,6 +321,16 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `LigneTheme` (les cartes) | trois colonnes séparées par un seul filet partagé (`gap-px bg-line`) qui ne courait pas sur les quatre côtés : deux cartes voisines se lisaient comme une seule zone | bordure complète, arrondi et air autour de chaque carte. Le fond du contenu reste TRANSPARENT — `.defile` peint ses ombres derrière lui, un fond opaque les éteindrait |
 | `LigneTheme` (le pied) | « Tes budgets mensuels ne font plus une enveloppe » posé au rang 9, SOUS le champ : les deux cartes qui le portaient voyaient leur champ remonter de 114 px, dans un module dont le rang 8 dit que des champs à trois hauteurs différentes se cherchent | la phrase est un fait sur la DONNÉE du thème, pas une convention de lecture : elle fond dans celle du rang 7. Le module n'a plus de rang 9. **Règle générale : `mt-auto` ne tient sa promesse que s'il pousse un élément SEUL** |
 | page Coûts (le zéro) | « 0 CHF » écrit là où rien n'avait été relevé, et là où rien n'est réglé — le même signe pour une ignorance et pour un constat | un vide se dit en toutes lettres, et les deux vides n'ont pas le même mot : « au prochain relevé » quand la mesure n'a pas eu lieu, « rien de réglé en ce moment » quand elle a eu lieu et vaut zéro. Un zéro non mesuré présenté comme mesuré est un chiffre faux |
+| page `/labels` | aucun module, aucun rang 3 : une liste de thèmes et un compteur d'usage, rien qui montre ce qui n'a PAS de thème | trois modules extraits en `components/labels-*.tsx` — la page compose. Rang 3 = **le budget qui échappe aux thèmes**, jamais le compte de lignes : douze campagnes peuvent être douze essais à 4 CHF, un montant fait ouvrir la liste. Le comptage descend au rang 7 |
+| `labels-couverture` (Instagram, et le vide) | une publication organique ne coûte rien : l'additionner au montant, c'est ajouter zéro en prétendant mesurer ; et un compte sans dépense relevée aurait lu « 0 CHF ne sont rattachés à aucun thème », vrai et parfaitement trompeur | l'organique est une troisième colonne en NOMBRE et le pied écrit l'asymétrie ; `mesurable: false` bascule le rang 3 sur un comptage et la barre disparaît — une barre sur un dénominateur nul est du décor |
+| geste de masse IA | le bouton étiquetait sans validation ET sans retour en arrière | l'annulation est bornée par une DATE (posée par un trigger Postgres, pas par l'application — trois programmes écrivent ces labels) et non par la source : « tout ce qui porte IA » aurait emporté ce qui était gardé depuis trois semaines. **Règle : une action de masse se borne par le moment où on l'a lancée, jamais par sa signature** |
+| `setCampaignLabel` / `setPostLabel` | retirer un thème posait la marque « choix humain » sur une ligne VIDE — la campagne devenait invisible à l'IA pour toujours | la marque protège un CHOIX, pas un vide : elle repart à `null` avec le label |
+| `side-nav` | huit entrées à plat : le rapport hebdomadaire, la page du lundi matin, ouvrait une liste où « Équipe » pesait autant que lui ; le repli vivait dans `localStorage`, donc la colonne se peignait à 240 px puis sautait à 64 px à CHAQUE navigation | le rapport sort de la liste, seul en tête et sans en-tête — ce qui est seul n'a pas besoin d'être nommé ; trois groupes qui répondent chacun à une question (`Où va l'argent`, `Tes canaux`, `Réglages`), rangés par fréquence d'usage. « Où on en est » disparaît : ses informations descendent SOUS l'entrée qu'elles qualifient. Sur téléphone un tiroir remplace la frise — une frise n'a pas de sections |
+| `jour-recolte` | *(nouveau)* le jour de récolte n'avait aucun écran dans Pulse | rang 3 = le jour SERVI, en français avec sa date (« lundi 17 août »), pas la valeur stockée (`Monday`) ; aucune forme — les sept jours cliquables sont le rang 8. Le pied dit la limite qui rend le réglage honnête : la récolte tourne à heure fixe, on choisit un jour, pas une minute |
+| `MoyenneMensuelle` (pages canal) | *(nouveau)* | la moyenne d'un mois posée AVANT la courbe, sur les trois canaux. Deux natures de chiffre : le mois d'un total est une SOMME, celui d'un taux un RAPPORT calculé sur les totaux du mois — moyenner trente taux quotidiens donnerait au dimanche à 12 impressions le poids du mardi à 4 000. Un mois sans dénominateur vaut `null`, jamais 0 |
+| `line-chart` (le socle) | l'axe partait toujours de zéro — juste pour un flux, faux pour un CUMUL : 4 120 → 4 244 abonnés est un trait plat | `socle="bas"` : axe tronqué, **les deux bornes écrites aux coins**, et l'aplat supprimé (une aire sur un socle arbitraire exagère ce qu'elle remplit). Verrouillé dès qu'il y a une bande ou un seuil — ceux-là portent déjà l'échelle |
+| `frise-semaine` (les publications) | UNE bande d'un seul rang : deux publications le même jour se fondaient en « ×2 », le module montrait un NOMBRE là où on vient chercher des objets datés | quatre à six rangs, les publications s'empilent, le compteur ne sert plus que de débordement, et la bande porte son titre à l'intérieur |
+| `CampaignTable` (Google) | une campagne sans détail restait dépliable : curseur de main, fond au survol, clic, ouverture SUR RIEN — et un pied qui promettait le geste | sans détail, la ligne redevient une ligne, et le pied dit pourquoi. **Un geste promis qui ne peut pas aboutir se lit comme une panne, pas comme une absence de donnée** |
 | `HorsTheme` | module dessiné à l'intérieur de `app/page.tsx` — donc invérifiable autrement qu'en production, la page étant derrière `middleware.ts` et lisant un vrai compte | extrait en `components/hors-theme.tsx` ; une page compose, elle ne dessine pas (même raison que `couts-modules`) |
 | `HorsTheme` (la liste) | liste rendue en entier : la colonne s'allongeait sans limite | `.defile` posé sur le SEUL rail — l'en-tête (surtitre, chiffre, phrase) et le pied restent fixes. Un module dont l'en-tête défile perd ce qui nomme son nombre |
 | rangée « boussole + hors-thème » | `items-start` : chaque carte finissait où elle voulait, un vide sous la plus courte | `items-stretch`, et la carte du filet SORT DU FLUX de sa cellule (`lg:absolute lg:inset-0`) — sans quoi c'est son contenu, non son voisin, qui fixe la hauteur de la rangée : 27 lignes réclamaient 2 000 px et la boussole flottait dedans. Sous `lg` il n'y a plus de rangée dont hériter : flux normal et plafond en `vh` |
@@ -410,6 +420,70 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**14 août 2026 (3)** — **Une constante exportée depuis un module « use client »
+n'est pas une constante côté serveur.**
+
+Le repli de la barre latérale passe de `localStorage` à un cookie, pour une
+raison mécanique : le serveur ne lit pas `localStorage`, donc la colonne se
+rendait dépliée puis sautait à sa vraie largeur après hydratation — à chaque
+navigation, pas seulement au premier chargement.
+
+Le piège était ailleurs. `COOKIE_NAV` était d'abord exporté par `side-nav.tsx`,
+qui porte « use client ». Côté serveur, TOUS les exports d'un tel module — y
+compris une simple chaîne — sont remplacés par une référence client :
+`cookies().get(COOKIE_NAV)` recevait un proxy, jamais « pulse_nav ». Le cookie
+était bien écrit, bien envoyé, bien reçu, et la barre se rendait quand même
+toujours dépliée. **Rien ne plantait, TypeScript passait, et le seul témoin
+était le HTML servi, qui écrivait `$8` là où on attendait le nom.** Une valeur
+partagée entre serveur et client vit dans un module SANS directive.
+
+Le corollaire de vérification compte autant que la règle : ce défaut ne se
+voyait ni à l'écran ni au type. Il s'est vu en comparant le HTML servi pour deux
+cookies différents.
+
+**14 août 2026 (2)** — **Une moyenne sans sa fenêtre n'est pas un chiffre, et le
+mois en cours n'est pas un mois.**
+
+Treize jours d'août pesés comme un mois plein tirent toute une moyenne annuelle
+vers le bas, et rien à l'écran ne le dit. C'est la règle des deltas — « toute
+comparaison exclut le jour en cours » — appliquée d'un cran plus haut, et le
+test n'a pas besoin de connaître « aujourd'hui » : **un mois compte s'il est
+entièrement couvert par la fenêtre affichée.** Le mois en cours y échoue
+mécaniquement, et le premier mois tronqué aussi — un mois observé à partir du 12
+est incomplet par l'autre bout.
+
+La décision est ÉCRITE, pas commentée : le titre porte le compte et les bornes,
+le pied nomme le mois écarté et dit ce qu'il aurait faussé. Quand aucun mois
+n'est complet, on écrit le vide et où aller — zéro serait un chiffre faux.
+
+Sortie de la même passe : **un axe à zéro est juste pour un flux et faux pour un
+cumul.** 40 CHF contre 20 la veille, c'est le double, et la hauteur doit le
+dire ; 4 120 → 4 244 abonnés sur le même axe est un trait plat. L'axe tronqué
+est permis à condition d'écrire ses deux bornes et de perdre son aplat — même
+exigence que « une jauge sans sa cible écrite est du décor ».
+
+**14 août 2026** — **Le bon chiffre d'un module de couverture est un montant,
+pas un compte.**
+
+« 12 campagnes sans thème » ne fait rien faire à personne : douze campagnes,
+c'est peut-être douze essais à 4 CHF arrêtés en mars. Ce qu'on perd quand une
+campagne n'a pas de thème, ce n'est pas une ligne dans un tableau, c'est de
+l'argent sorti du compte qu'aucun bilan ne sait rattacher à quoi que ce soit. Le
+compte de lignes descend au rang 7, où il dit la répartition du montant.
+
+Corollaire trouvé en écrivant l'annulation du geste de masse : **une action
+qu'on applique sans validation doit se borner par le MOMENT où on l'a lancée,
+pas par sa signature.** Annuler « tout ce que l'IA a posé » aurait emporté les
+étiquettes acceptées depuis trois semaines. C'est une date qui découpe le
+passage, et elle est posée par un trigger Postgres, non par l'application —
+trois programmes écrivent ces labels, en tenir trois d'accord garantit l'oubli.
+
+Et un défaut voisin, trouvé en tirant le fil : retirer un thème posait la marque
+« choix humain » sur une ligne VIDE. Le worker saute tout ce qui la porte — donc
+corriger une étiquette fausse en la supprimant condamnait la campagne à ne plus
+jamais en recevoir. Silencieusement. **La marque protège un choix, pas un
+vide.**
 
 **13 août 2026 (2)** — **Un nombre qu'on abandonne se raconte, il ne s'efface
 pas en silence.**

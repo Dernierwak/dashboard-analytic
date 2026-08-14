@@ -85,6 +85,7 @@ export function LineChart({
   markers,
   marqueurs,
   bandes,
+  socle = "zero",
 }: {
   labels: string[];
   series: Serie[];
@@ -111,6 +112,21 @@ export function LineChart({
   // Absentes pour les indicateurs sans seuil de référence, et on ne leur en
   // invente pas : un CPC de 0,42 CHF est excellent ici et ruineux ailleurs.
   bandes?: BandeZone[];
+  // OÙ COMMENCE L'AXE. Par défaut à ZÉRO, et c'est la seule valeur juste pour
+  // un FLUX : une dépense de 40 CHF/jour contre 20 la veille, c'est le double,
+  // et l'œil doit pouvoir le lire dans la hauteur du trait.
+  //
+  // `"bas"` est réservé aux CUMULS — le nombre d'abonnés, par exemple. Un stock
+  // qui passe de 4 120 à 4 244 est une vraie croissance, mais sur un axe partant
+  // de zéro c'est un trait plat : les 124 abonnés gagnés valent 3 % de la
+  // hauteur. L'axe part alors du plus bas point, ET DEUX CHOSES SUIVENT, sans
+  // quoi l'axe tronqué mentirait : les deux bornes sont ÉCRITES aux coins, et
+  // l'aplat sous la courbe disparaît (une aire posée sur un socle arbitraire
+  // exagère ce qu'elle remplit).
+  //
+  // La valeur par défaut vaut « rien ne change » : les dix-sept autres courbes
+  // de l'app n'ont pas à être touchées.
+  socle?: "zero" | "bas";
 }) {
   const n = labels.length;
   if (n < 2 || series.length === 0) return null;
@@ -148,8 +164,24 @@ export function LineChart({
     1
   );
 
+  // Le socle « bas » n'a de sens que sur une courbe nue : dès qu'il y a des
+  // zones nommées ou un seuil, ceux-ci portent l'échelle et la tronquer les
+  // déplacerait sous les valeurs qu'ils commentent.
+  const tronque = socle === "bas" && !bandes?.length && !repere && all.length > 0;
+  const minReel = all.length ? Math.min(...all) : 0;
+  // Une marge, sinon le plus bas point se colle à l'axe et le plus haut au bord.
+  // Le plancher de 0,5 sert la série plate : sans lui, haut − bas vaudrait zéro.
+  const marge = Math.max((max - minReel) * 0.08, 0.5);
+  const bas = tronque ? minReel - marge : 0;
+  const haut = tronque ? max + marge : max;
+  const etendue = Math.max(haut - bas, 1e-9);
+
   const x = (i: number) => PAD_L + (i * (W - PAD_L - PAD_R)) / (n - 1);
-  const y = (v: number) => PAD_T + (1 - Math.min(v, max) / max) * plotH;
+  // Hors socle tronqué, c'est mot pour mot l'ancienne formule — `bas` vaut 0 et
+  // `etendue` vaut `max`. Une courbe existante ne bouge pas d'un pixel.
+  const y = (v: number) =>
+    PAD_T +
+    (1 - ((tronque ? Math.min(Math.max(v, bas), haut) : Math.min(v, max)) - bas) / etendue) * plotH;
   // Les deux couches se repèrent en pourcentage de la même boîte.
   const px = (i: number) => (x(i) / W) * 100;
   const py = (v: number) => (y(v) / H) * 100;
@@ -279,10 +311,14 @@ export function LineChart({
             const last = s.values.length - 1 - [...s.values].reverse().findIndex((v) => v !== null);
             return (
               <g key={s.name}>
-                <path
-                  d={`M${x(first).toFixed(1)},${(PAD_T + plotH).toFixed(1)} L${pts.join(" L")} L${x(last).toFixed(1)},${(PAD_T + plotH).toFixed(1)} Z`}
-                  fill={`url(#lc-${uid}-${si})`}
-                />
+                {/* Pas d'aplat quand l'axe est tronqué : l'aire mesurerait la
+                    distance à un socle arbitraire, pas à zéro. */}
+                {!tronque && (
+                  <path
+                    d={`M${x(first).toFixed(1)},${(PAD_T + plotH).toFixed(1)} L${pts.join(" L")} L${x(last).toFixed(1)},${(PAD_T + plotH).toFixed(1)} Z`}
+                    fill={`url(#lc-${uid}-${si})`}
+                  />
+                )}
                 <polyline
                   points={pts.join(" ")}
                   fill="none"
@@ -329,6 +365,20 @@ export function LineChart({
             style={{ top: `${(PAD_T / H) * 100}%` }}
           >
             {fmt(max)}
+            {unit}
+          </span>
+        )}
+
+        {/* LE BAS DE L'ÉCHELLE, écrit — et il n'est écrit QUE là où il ne vaut
+            pas zéro. Un axe tronqué dont on ne lit pas le plancher fait passer
+            +3 % pour un décollage : c'est le même défaut qu'une jauge sans sa
+            cible, et il se corrige de la même façon. */}
+        {tronque && (
+          <span
+            className="absolute left-0 text-[9.5px] text-faint pointer-events-none"
+            style={{ top: `${((PAD_T + plotH) / H) * 100}%`, transform: "translateY(-100%)" }}
+          >
+            {fmt(minReel)}
             {unit}
           </span>
         )}

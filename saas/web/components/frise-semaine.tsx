@@ -285,10 +285,6 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   // un badge, et le badge porte alors leur nombre. Au zoom « jour », un badge
   // par jour, comme avant.
   const pasGroupe = Math.max(1, Math.ceil(17 / PX));
-  // La bande des publications gagne de la hauteur quand l'échelle le permet :
-  // à 16 px/jour les badges ne se touchent plus, on peut donc empiler la
-  // plateforme et le format l'un sous l'autre.
-  const hautePub = PX >= 14 ? 46 : 34;
   const paquets = new Map<number, typeof f.posts>();
   for (const p of f.posts) {
     const i = idx(p.date);
@@ -298,6 +294,38 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
     l.push(p);
     paquets.set(cle, l);
   }
+
+  // LA BANDE DES PUBLICATIONS RESPIRE — deux à quatre fois sa hauteur d'avant.
+  //
+  // Elle faisait 34 px (46 au zoom « jour ») : UN seul rang de badges. Deux
+  // publications tombant le même jour — ou dans le même paquet aux échelles
+  // larges — se fondaient donc en un badge portant « ×2 », et la bande montrait
+  // un NOMBRE là où on venait chercher des objets datés. C'est le défaut que
+  // David désigne quand il demande « plus de place pour les postes ».
+  //
+  // Avec plusieurs rangs, chaque publication retrouve son badge, empilé sous le
+  // précédent ; le compteur ne sert plus que de débordement, au-delà du dernier
+  // rang. Quatre rangs au minimum même quand rien ne s'empile : une bande qui
+  // ne grandit que sur les comptes chargés ne « fait pas de place », elle
+  // récompense l'encombrement.
+  //
+  // AUCUN SECOND DÉFILEMENT ICI, et ce n'est pas une préférence : ce cadre-ci
+  // défile déjà dans les deux sens (voir l'en-tête du fichier), et CSS convertit
+  // en `auto` l'axe laissé à `visible` dès que l'autre ne l'est pas — une boîte
+  // `overflow-y` imbriquée se doterait de SON propre défilement horizontal et
+  // les badges se désaligneraient de l'axe des dates. La hauteur s'adapte donc
+  // au plus gros paquet, plafonnée, et ce qui dépasse se lit dans l'info-bulle.
+  const RANGS_MIN = 4;
+  const RANGS_MAX = 6;
+  // Un rang = le badge de plateforme (14 px) + le glyphe de format quand
+  // l'échelle le porte (8 px + 2 de marge) + 3 px entre deux rangs.
+  const hauteurRang = parJour ? 27 : 17;
+  const plusGrosPaquet = Math.max(1, ...[...paquets.values()].map((l) => l.length));
+  const rangs = Math.min(RANGS_MAX, Math.max(RANGS_MIN, plusGrosPaquet));
+  const hautePub = 6 + rangs * hauteurRang + 4;
+  // Y a-t-il au moins un paquet plus grand que ce qu'on peut empiler ? C'est la
+  // seule condition qui justifie d'expliquer le « +N » en légende.
+  const paquetDeborde = [...paquets.values()].some((l) => l.length > rangs);
 
   // Tant qu'une seule plateforme alimente la frise, c'est le FORMAT qui
   // distingue les publications. Dès qu'il y en a deux, c'est la plateforme.
@@ -368,7 +396,10 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
 
       {/* Un seul cadre, deux axes. Tout ce qui est dedans partage la même
           largeur, donc la même échelle de temps. */}
-      <div ref={cadre} className="overflow-auto max-h-[62vh] overscroll-x-contain">
+      {/* 62 → 72 vh : la bande des publications a triplé, et elle est collée en
+          bas du cadre. Sans ce rattrapage, la place qu'elle gagne serait prise
+          aux campagnes — or on n'a pas demandé d'en voir moins. */}
+      <div ref={cadre} className="overflow-auto max-h-[72vh] overscroll-x-contain">
         <div style={{ width: largeur }}>
           {/* L'échelle, collée en haut pendant qu'on parcourt les campagnes */}
           <div className="sticky top-0 z-10 bg-white border-b border-line">
@@ -558,36 +589,40 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
           {/* Les publications, même échelle : c'est le rapprochement qui compte
               — un pic qui suit un post ou le lancement d'une campagne.
 
-              LA BANDE RESPIRE, et elle porte deux informations au lieu d'une :
-              la PLATEFORME dans le badge, le FORMAT juste dessous. Sur 28 px on
-              ne pouvait en montrer qu'une seule — c'est ce qui obligeait à
-              choisir entre les deux selon le nombre de sources. */}
+              Chaque badge porte deux informations : la PLATEFORME dans le carré,
+              le FORMAT juste dessous. Et il y a maintenant plusieurs rangs, donc
+              plusieurs publications d'un même jour côte à côte verticalement au
+              lieu d'un compteur. */}
           <div className="sticky bottom-0 z-10 bg-white border-t border-line pt-1.5">
+            {/* LE TITRE DE LA ZONE — il manquait, et « publications » en 9,5 px
+                posé au milieu des badges ne le remplaçait pas : ça se lisait
+                comme une étiquette d'axe, pas comme le nom de ce qu'on regarde.
+                Sur sa propre ligne, il ne recouvre plus aucun badge ; sticky à
+                gauche, il reste lisible pendant qu'on fait glisser deux ans. */}
+            <div className="relative h-[17px]">
+              <span className="sticky left-0 z-20 float-left flex items-baseline gap-1.5 bg-white pl-2 pr-3 whitespace-nowrap">
+                <span className="text-[9.5px] uppercase tracking-widest text-faint font-bold">
+                  Ce que tu as publié
+                </span>
+                <span className="text-[9.5px] text-faint/80 font-normal">
+                  · un carré = une publication, empilées quand elles tombent le même jour
+                </span>
+              </span>
+            </div>
             <div className="relative" style={{ height: hautePub }}>
               <Fond r={rep} />
-              <div
-                className="absolute inset-x-0 border-t border-dashed border-line"
-                style={{ top: 17 }}
-              />
-              <span
-                className="sticky left-2 z-20 float-left text-[9.5px] uppercase tracking-wide text-faint font-semibold bg-white/90 px-1 rounded"
-                style={{ lineHeight: "34px" }}
-              >
-                publications
-              </span>
               {[...paquets.entries()].map(([i, liste]) => {
-                const t = couleur(liste[0].theme);
-                const seul = liste.length === 1;
-                const pf = plateforme(liste[0].plateforme);
-                const fm = format(liste[0].type);
-                // Toutes du même format dans le paquet ? alors on peut encore
-                // le nommer. Sinon on ne prétend pas.
-                const memeFormat = liste.every((q) => format(q.type).nom === fm.nom);
-                const memePf = liste.every((q) => plateforme(q.plateforme).nom === pf.nom);
+                // Ce qu'on peut empiler, et ce qui déborde. Le dernier rang est
+                // sacrifié au compteur seulement s'il y a vraiment un reste.
+                const visibles = liste.length <= rangs ? liste : liste.slice(0, rangs - 1);
+                const reste = liste.length - visibles.length;
                 const periode =
-                  pasGroupe === 1 || seul
+                  pasGroupe === 1 || liste.length === 1
                     ? libelle(liste[0].date)
                     : `${libelle(grille[i])} → ${libelle(grille[Math.min(n - 1, i + pasGroupe - 1)])}`;
+                // L'info-bulle liste TOUT, y compris ce que le débordement cache
+                // — c'est elle qui empêche le « +N » d'être une information
+                // perdue.
                 const bulle = `${periode} · ${liste
                   .map(
                     (q) =>
@@ -599,35 +634,52 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                 return (
                   <span
                     key={i}
-                    className="absolute flex flex-col items-center"
-                    style={{ left: x(i) + (pasGroupe * PX) / 2 - 8, top: 6, width: 16 }}
+                    className="absolute flex flex-col items-center gap-[3px]"
+                    style={{ left: x(i) + (pasGroupe * PX) / 2 - 8, top: 5, width: 16 }}
                     title={bulle}
                   >
-                    {/* La plateforme — toujours, même quand il n'y en a qu'une :
-                        c'est ce qui rend la frise lisible le jour où TikTok ou
-                        LinkedIn arrivent, et ça se lit dès aujourd'hui. */}
-                    <span
-                      className="rounded-[4px] border flex items-center justify-center font-bold"
-                      style={{
-                        height: 14,
-                        width: 14,
-                        fontSize: 9,
-                        lineHeight: 1,
-                        background: t?.aplat ?? "rgba(0,0,0,0.06)",
-                        borderColor: t?.trait ?? "#8a8a94",
-                        color: t?.trait ?? "#5a5d66",
-                      }}
-                    >
-                      {seul || memePf ? pf.glyphe : liste.length}
-                    </span>
-                    {/* Le format, dessous, en petit. Il ne s'affiche que si la
-                        bande est assez haute — sinon il chevaucherait l'axe. */}
-                    {hautePub >= 40 && (
+                    {visibles.map((q, k) => {
+                      const t = couleur(q.theme);
+                      const pf = plateforme(q.plateforme);
+                      const fm = format(q.type);
+                      return (
+                        <span key={k} className="flex flex-col items-center">
+                          {/* La plateforme — toujours, même quand il n'y en a
+                              qu'une : c'est ce qui rend la frise lisible le jour
+                              où TikTok ou LinkedIn arrivent. */}
+                          <span
+                            className="rounded-[4px] border flex items-center justify-center font-bold"
+                            style={{
+                              height: 14,
+                              width: 14,
+                              fontSize: 9,
+                              lineHeight: 1,
+                              background: t?.aplat ?? "rgba(0,0,0,0.06)",
+                              borderColor: t?.trait ?? "#8a8a94",
+                              color: t?.trait ?? "#5a5d66",
+                            }}
+                          >
+                            {pf.glyphe}
+                          </span>
+                          {/* Le format, dessous. Seulement à l'échelle « jour » :
+                              à 2 px/jour, un second glyphe est du bruit. */}
+                          {parJour && (
+                            <span
+                              className="font-bold leading-none mt-[2px]"
+                              style={{ fontSize: 8, color: t?.trait ?? "#8b8e98", opacity: 0.85 }}
+                            >
+                              {fm.glyphe}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                    {reste > 0 && (
                       <span
-                        className="font-bold leading-none mt-[3px]"
-                        style={{ fontSize: 8, color: t?.trait ?? "#8b8e98", opacity: 0.85 }}
+                        className="rounded-[4px] border border-line bg-white flex items-center justify-center font-bold text-faint"
+                        style={{ height: 14, width: 14, fontSize: 8, lineHeight: 1 }}
                       >
-                        {seul || memeFormat ? fm.glyphe : `×${liste.length}`}
+                        +{reste}
                       </span>
                     )}
                   </span>
@@ -651,7 +703,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
             </span>
           );
         })}
-        {hautePub >= 40 && formatsPresents.length > 1 && (
+        {parJour && formatsPresents.length > 1 && (
           <>
             <span className="text-faint/80 font-normal ml-2">Format</span>
             {formatsPresents.map((nom) => {
@@ -667,7 +719,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
         )}
         <span className="text-faint/70 font-normal">
           la couleur porte le thème
-          {pasGroupe > 1 && " · un chiffre = plusieurs publications regroupées"}
+          {paquetDeborde && " · +N = d'autres publications sur la même colonne, survole pour les lire"}
         </span>
       </div>
 

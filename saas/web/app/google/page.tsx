@@ -9,6 +9,7 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
+  MoyenneMensuelleAds,
   ByLabelTable,
 } from "@/components/channel-dash";
 
@@ -50,14 +51,16 @@ export default async function GooglePage({
       />
 
       <AdsKpis d={d} channel="google" />
+      {/* Même module, même place que sur Meta : deux pages canal qui posent la
+          même question doivent la poser dans le même ordre. */}
+      <MoyenneMensuelleAds d={d} path="/google" />
       <MetricChart d={d} path="/google" />
       <ByLabelTable d={d} />
 
+      {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
+          sur Google le détail par groupe d'annonces n'est pas toujours là. */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Par campagne{" "}
-        <span className="text-faint font-normal">
-          · triées par dépense · déplie pour voir groupes et annonces
-        </span>
+        Par campagne <span className="text-faint font-normal">· triées par dépense</span>
       </h2>
       <CampaignTable d={d} channel="google" />
       <p className="text-[11.5px] text-faint mt-3 leading-relaxed">

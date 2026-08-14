@@ -14,6 +14,12 @@ import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
+import {
+  CourbeAbonnes,
+  MoyenneMensuelle,
+  moisDeLaPeriode,
+  type ChiffreMensuel,
+} from "@/components/channel-dash";
 
 import { getCompteActif } from "@/lib/account";
 import { Triangle, sensPente } from "@/components/pente";
@@ -69,41 +75,6 @@ function PeriodPillsInsta({
           {o.label}
         </a>
       ))}
-    </div>
-  );
-}
-
-function FollowersChart({ series }: { series: { date: string; followers: number }[] }) {
-  if (series.length < 2) return null;
-  const W = 640, H = 110, PAD = 6;
-  const vals = series.map((p) => p.followers);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = Math.max(max - min, 1);
-  const x = (i: number) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
-  const y = (v: number) => 8 + (1 - (v - min) / span) * (H - 16);
-  const path = series
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.followers).toFixed(1)}`)
-    .join(" ");
-  return (
-    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-      <div className="flex items-baseline justify-between mb-2">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-          Croissance des abonnés
-        </div>
-        <div className="text-[10.5px] text-faint">
-          {fmtDate(series[0].date)} → {fmtDate(series[series.length - 1].date)}
-        </div>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Évolution des abonnés">
-        <path d={path} fill="none" stroke="#7b4fff" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx={x(series.length - 1)} cy={y(series[series.length - 1].followers)} r="4" fill="#7b4fff" />
-      </svg>
-      <div className="flex justify-between text-[10.5px] text-faint font-mono mt-1">
-        <span>{fmtCHF(series[0].followers)}</span>
-        <span className="text-ink font-semibold">
-          {fmtCHF(series[series.length - 1].followers)}
-        </span>
-      </div>
     </div>
   );
 }
@@ -343,6 +314,64 @@ function PostsTable({
   );
 }
 
+// LA MOYENNE MENSUELLE D'INSTAGRAM.
+//
+// Même module, même règle et même composant que Meta et Google — c'est le but :
+// trois pages canal qui posent la même question doivent la poser de la même
+// façon. Ce qui change, c'est l'unité observée : là-bas des jours de dépense,
+// ici des publications.
+//
+// Elle ne remplace pas « Tes moyennes par post », qui répond à autre chose : ce
+// que vaut UNE publication. Celle-ci répond au RYTHME — ce qu'un mois produit.
+// Deux dénominateurs, deux questions, et chacun porte le sien à l'écran.
+//
+// La fenêtre court du premier post relevé au dernier jour PLEIN (hier). Le mois
+// du premier post est donc écarté comme le mois en cours : on ne l'observe que
+// depuis le 12, et un mois vu aux deux tiers pèserait comme un mois entier.
+function moyenneMensuelleInsta(posts: InstaPost[]) {
+  if (posts.length === 0) return null;
+  const dates = posts.map((p) => String(p.date).slice(0, 10)).sort();
+  const hier = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+  const mois = moisDeLaPeriode(
+    posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) })),
+    { debut: dates[0], fin: hier }
+  );
+  const complets = mois.filter((m) => m.complet);
+  const som = (ps: InstaPost[], f: (p: InstaPost) => number) => ps.reduce((a, p) => a + f(p), 0);
+
+  const chiffres: ChiffreMensuel[] = [
+    {
+      titre: "Publications", nature: "somme", fmt: (v) => v.toFixed(1),
+      parMois: complets.map((m) => m.pts.length),
+    },
+    {
+      titre: "Portée", nature: "somme", fmt: fmtCHF,
+      parMois: complets.map((m) => som(m.pts, (p) => p.reach)),
+    },
+    {
+      titre: "J'aime", nature: "somme", fmt: fmtCHF,
+      parMois: complets.map((m) => som(m.pts, (p) => p.likes)),
+    },
+    {
+      titre: "Enregistrements", nature: "somme", fmt: fmtCHF,
+      parMois: complets.map((m) => som(m.pts, (p) => p.saved)),
+    },
+    {
+      titre: "Engagement", unite: "%", nature: "taux", fmt: (v) => v.toFixed(1),
+      // Le taux du mois se calcule sur les totaux du mois : moyenner les
+      // engagements de chaque post donnerait le même poids à un post vu par
+      // 40 personnes et à un reel vu par 12 000.
+      parMois: complets.map((m) => {
+        const r = som(m.pts, (p) => p.reach);
+        return r > 0
+          ? (som(m.pts, (p) => p.likes + p.comments + p.saved) / r) * 100
+          : null;
+      }),
+    },
+  ];
+  return { mois, chiffres };
+}
+
 // Le libellé de la métrique qui pilote la page — évite d'écrire « portée » en
 // dur alors que l'utilisateur a filtré sur les vues.
 function metricLabel(key: string): string {
@@ -378,6 +407,10 @@ export default async function InstagramPage({
   const baseQs = qsParts.join("&");
   const sortedPosts = sortPosts(d.posts, sort);
   const sortedAll = sortPosts(d.allPosts, sort);
+
+  // Le rythme mensuel se lit sur TOUT l'historique, pas sur la période filtrée :
+  // une moyenne mensuelle calculée sur sept jours n'aurait aucun mois complet.
+  const mensuel = moyenneMensuelleInsta(d.allPosts);
 
   const engDiff =
     d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
@@ -441,7 +474,7 @@ export default async function InstagramPage({
           </div>
         </div>
       </div>
-      <FollowersChart series={d.followersSeries} />
+      <CourbeAbonnes series={d.followersSeries} />
 
       {/* ── TES MOYENNES PAR POST ── */}
       <div className="mb-8">
@@ -467,6 +500,15 @@ export default async function InstagramPage({
           ))}
         </div>
       </div>
+
+      {/* ── TES MOYENNES PAR MOIS — le rythme, avant la forme ── */}
+      {mensuel && (
+        <MoyenneMensuelle
+          titre="Tes moyennes par mois"
+          chiffres={mensuel.chiffres}
+          mois={mensuel.mois}
+        />
+      )}
 
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
       <PostsMetricChart posts={chartPosts} metric={metric} days={d.days} />
