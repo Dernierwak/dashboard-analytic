@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,7 +13,17 @@ import { createClient } from "@/lib/supabase/server";
 
 export type Role = "owner" | "editor" | "viewer";
 
-export type Compte = { id: string; label: string; role: Role };
+export type Compte = {
+  id: string;
+  label: string;
+  role: Role;
+  /**
+   * Vrai uniquement pour MON compte, quand je n'ai jamais rien branché : il
+   * existe, il est à moi, et il n'a rien à montrer. Le sélecteur le dit avec
+   * des mots plutôt que de laisser croire à un dashboard cassé.
+   */
+  vide?: boolean;
+};
 
 export type CompteActif = {
   uid: string; // le compte regardé
@@ -24,6 +35,52 @@ export type CompteActif = {
 };
 
 export const COOKIE_COMPTE = "pulse_compte";
+
+// « Est-ce que MON compte a quelque chose à montrer ? »
+//
+// La question ne se pose que pour quelqu'un qui a reçu une invitation — lui
+// seul risque d'ouvrir Pulse sur un dashboard à zéro et de croire que c'est
+// cassé. Deux traces valent réponse, on prend la première qui dit oui :
+//
+//  · une ligne dans connected_accounts — j'ai branché une régie un jour.
+//    Cette ligne survit à une déconnexion faite depuis Pulse (les jetons
+//    passent à NULL, la ligne reste : app/comptes/actions.ts → deconnecter).
+//    Elle dit donc « j'ai été propriétaire », pas « je le suis à l'instant » —
+//    et c'est bien ce qu'on veut : un propriétaire entre deux régies doit
+//    continuer d'atterrir chez lui.
+//  · un weekly_reports à mon nom — un rapport a déjà été produit pour moi.
+//    Filet pour les comptes de l'époque Streamlit, où se déconnecter
+//    SUPPRIMAIT la ligne connected_accounts (components/account_tab.py) :
+//    sans ce second signal, un ancien propriétaire serait renvoyé chez
+//    quelqu'un d'autre alors que son historique est intact.
+//
+// Deux comptages sans corps de réponse (head), lancés ensemble, et seulement
+// quand une invitation existe. `cache` les rend uniques par requête :
+// getCompteActif est appelée une bonne dizaine de fois par page.
+//
+// connected_accounts n'est JAMAIS lue ici pour quelqu'un d'autre — uniquement
+// pour `moi`, et on ne demande que `id`, jamais un jeton.
+const aQuelqueChoseAMoi = cache(async (moi: string): Promise<boolean> => {
+  const supabase = createClient();
+  try {
+    const signaux = await Promise.all([
+      supabase
+        .from("connected_accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", moi),
+      supabase
+        .from("weekly_reports")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", moi),
+    ]);
+    const lisibles = signaux.filter((s) => !s.error);
+    // Aucun des deux signaux n'a répondu : on ne déplace personne sur un doute.
+    if (lisibles.length === 0) return true;
+    return lisibles.some((s) => (s.count ?? 0) > 0);
+  } catch {
+    return true;
+  }
+});
 
 export async function getCompteActif(): Promise<CompteActif> {
   const supabase = createClient();
@@ -53,17 +110,35 @@ export async function getCompteActif(): Promise<CompteActif> {
     membres = []; // table absente → on reste sur son propre compte
   }
 
-  const comptes: Compte[] = [
-    { id: moi, label: "Mon compte", role: "owner" },
-    ...membres.map((m) => ({
-      id: m.owner_id,
-      label: m.owner_email || "Compte partagé",
-      role: (m.role === "viewer" ? "viewer" : "editor") as Role,
-    })),
-  ];
+  const partages: Compte[] = membres.map((m) => ({
+    id: m.owner_id,
+    label: m.owner_email || "Compte partagé",
+    role: (m.role === "viewer" ? "viewer" : "editor") as Role,
+  }));
+
+  // Sans invitation, la question ne se pose pas : mon compte est le seul, plein
+  // ou vide. On s'épargne ainsi les deux comptages sur l'immense majorité des
+  // visites — celles où personne n'a rien partagé avec moi.
+  const vide = partages.length > 0 && !(await aQuelqueChoseAMoi(moi));
+
+  const mien: Compte = { id: moi, label: "Mon compte", role: "owner", vide };
+  const comptes: Compte[] = [mien, ...partages];
+
+  // Le compte par défaut n'est plus « le mien quoi qu'il arrive ».
+  //
+  // Quelqu'un qu'on invite arrive sans cookie. Le tomber sur son propre compte
+  // — techniquement le sien, factuellement vide — lui montrait un dashboard à
+  // zéro sur toutes les pages, sans rien lui dire de la bascule à faire. Il
+  // n'avait aucune raison de deviner que les chiffres étaient à un menu de là.
+  //
+  // Donc : si mon compte n'a rien et qu'on m'a invité quelque part, la première
+  // visite ouvre sur ce à quoi on m'a invité. Le cookie prime toujours dès
+  // qu'un choix a été fait — y compris pour revenir sur mon compte vide, par
+  // exemple pour y brancher enfin mes propres régies.
+  const parDefaut = vide ? partages[0] : mien;
 
   const choisi = cookies().get(COOKIE_COMPTE)?.value;
-  const actif = comptes.find((c) => c.id === choisi) ?? comptes[0];
+  const actif = comptes.find((c) => c.id === choisi) ?? parDefaut;
 
   return {
     uid: actif.id,
