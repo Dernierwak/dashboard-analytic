@@ -7,9 +7,9 @@ import { ClassifyButton } from "@/components/classify-button";
 import { togglePriorityLabel } from "@/app/actions";
 
 // Parcours de démarrage — 3 étapes, quittable et reprenable :
-//   1. Ton profil (questions au clic — OnboardingCard)
+//   1. Ton profil (questions au clic, puis ton site — OnboardingCard)
 //   2. « On classe tes contenus ? » — l'IA labellise selon le profil (ou Plus tard)
-//   3. Choisis jusqu'à 3 thèmes prioritaires — on travaille dessus
+//   3. Étoile tes thèmes — on travaille dessus, et l'IA rédige les 3 premiers
 // L'état vient des DONNÉES (profil rempli ? contenus classés ? priorités posées ?)
 // → quitter et revenir reprend exactement où on en était. « Plus tard » se
 // mémorise en local et laisse un rappel discret.
@@ -120,10 +120,14 @@ export function SetupWizard({
     );
   }
 
-  // Étape 3 — priorités (max 3)
+  // Étape 3 — les priorités. TROIS N'EST PLUS UN PLAFOND : c'est le nombre de
+  // thèmes que l'IA rédige. On peut en choisir plus — les suivants reçoivent
+  // leur carte entière, avec les conseils calculés par les règles, sans pistes
+  // rédigées. Le bouton n'est donc plus désactivé au quatrième clic ; l'ordre
+  // des clics devient en revanche porteur de sens, et c'est ce que le rang
+  // affiché sur chaque pastille rend visible.
   const toggle = (name: string) => {
     const active = picked.includes(name);
-    if (!active && picked.length >= 3) return;
     setPicked(active ? picked.filter((p) => p !== name) : [...picked, name]);
     startTransition(async () => {
       await togglePriorityLabel(name, active);
@@ -133,38 +137,52 @@ export function SetupWizard({
   return (
     <StepShell step={3} title="Sur quoi veux-tu qu'on travaille ?">
       <p className="text-[13px] text-muted leading-relaxed mb-4">
-        On ne peut pas tout améliorer à la fois. Choisis <span className="font-semibold text-ink">
-        jusqu&apos;à 3 thèmes prioritaires</span> — les constats et les conseils se
-        concentreront dessus. Tu pourras en changer quand tu veux sur la page{" "}
+        On ne peut pas tout améliorer à la fois. Choisis d&apos;abord{" "}
+        <span className="font-semibold text-ink">tes 3 thèmes principaux</span> — ce sont
+        eux que l&apos;IA rédige. Tu peux en cocher d&apos;autres : ils auront leur bilan
+        et leurs conseils calculés, sans les pistes de l&apos;IA. Tu pourras en changer
+        quand tu veux sur la page{" "}
         <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>.
       </p>
       <div className="flex flex-wrap gap-2.5 mb-5">
         {themes.map((t) => {
-          const active = picked.includes(t);
-          const full = !active && picked.length >= 3;
+          const rang = picked.indexOf(t);
+          const active = rang >= 0;
+          // Au-delà du troisième, la pastille reste cochable mais s'affiche en
+          // creux : c'est le seul endroit où l'ordre des clics se voit.
+          const horsIa = rang >= 3;
           return (
             <button
               key={t}
-              disabled={pending || full}
+              disabled={pending}
               onClick={() => toggle(t)}
               className={`text-[13.5px] font-semibold rounded-full border px-4 py-2.5 transition-colors disabled:opacity-40 ${
-                active
-                  ? "bg-brand text-white border-brand"
-                  : "border-line text-ink bg-white hover:border-brand/50"
+                horsIa
+                  ? "bg-white text-brand border-brand"
+                  : active
+                    ? "bg-brand text-white border-brand"
+                    : "border-line text-ink bg-white hover:border-brand/50"
               }`}
             >
-              {active ? "★ " : ""}{t}
+              {active ? `★${rang + 1} ` : ""}{t}
             </button>
           );
         })}
       </div>
+      {picked.length > 3 && (
+        <p className="text-[11.5px] text-muted leading-relaxed mb-4 max-w-[62ch]">
+          Les {picked.length - 3} derniers cochés auront leur carte et leurs conseils
+          calculés, mais pas de pistes rédigées par l&apos;IA — elle travaille les
+          3 premiers.
+        </p>
+      )}
       <div className="flex items-center gap-3 flex-wrap">
         <button
           disabled={picked.length === 0 || pending}
           onClick={() => setDone(true)}
           className="text-[12.5px] font-semibold text-white bg-brand rounded-full px-5 py-2.5 hover:bg-brand/90 disabled:opacity-40"
         >
-          C&apos;est parti ({picked.length}/3)
+          C&apos;est parti ({picked.length} thème{picked.length > 1 ? "s" : ""})
         </button>
         <button onClick={snooze} className="text-[12px] text-faint hover:text-muted px-2 py-2">
           Plus tard

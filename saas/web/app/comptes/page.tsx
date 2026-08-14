@@ -22,6 +22,7 @@ import { ChoixCompte } from "@/components/choix-compte";
 import { DeconnecterBouton } from "@/components/deconnecter-bouton";
 import { FetchButton } from "@/components/fetch-button";
 import { JourRecolte } from "@/components/jour-recolte";
+import { SiteClient } from "@/components/site-client";
 import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -155,6 +156,24 @@ export default async function ComptesPage({
     jourRecolte = (r.data?.[0]?.fetch_schedule as string | null) || "Monday";
   } catch {
     jourRecolte = "Monday";
+  }
+
+  // Le site vit sur le même profil, mais se lit À PART — et pas par confort.
+  // `site_url` est une colonne récente (migration site_client.sql) : la
+  // demander dans le SELECT ci-dessus ferait échouer la requête ENTIÈRE sur une
+  // base où la migration n'est pas passée, et le jour de récolte retomberait
+  // silencieusement sur lundi. Deux réglages indépendants ne tombent pas
+  // ensemble.
+  let siteClient: string | null = null;
+  try {
+    const r = await createClient()
+      .from("profiles")
+      .select("site_url")
+      .eq("id", compte.moi)
+      .limit(1);
+    siteClient = (r.data?.[0]?.site_url as string | null) || null;
+  } catch {
+    siteClient = null;
   }
 
   // ── Les étapes en attente ────────────────────────────────────────────────
@@ -353,6 +372,17 @@ export default async function ComptesPage({
           </a>
         </div>
       </div>
+
+      {/* ── Ce que tu vends ───────────────────────────────────────────────── */}
+      {/* Placé ICI, après les quatre sources et avant « quand on les lit » : la
+          chaîne brancher → quand on lit → lire maintenant reste intacte (c'est
+          elle que sert l'ancre #recolter), et le site se range avec ce qui
+          l'entoure — les autres choses que Pulse sait de toi. C'était jusqu'ici
+          la dernière étape de l'onboarding et RIEN D'AUTRE : personne ne pouvait
+          le corriger après coup. Même `key` que le voisin, et pour la même
+          raison — sans elle l'état local survivrait au `revalidatePath` de
+          `saveSiteClient` et les deux divergeraient. */}
+      <SiteClient key={siteClient ?? "sans-site"} url={siteClient} />
 
       {/* ── Quand on va les lire ──────────────────────────────────────────── */}
       {/* Placé ICI, entre « branche tes sources » et « lance une récolte » :
