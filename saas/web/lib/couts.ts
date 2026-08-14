@@ -74,21 +74,24 @@ function dCourt(s: string): string {
   return `${String(d.getDate()).padStart(2, "0")} ${MOIS_ABR[d.getMonth()]}`;
 }
 
-// CE QU'UNE PLATEFORME A DÉPENSÉ, ET RIEN D'AUTRE.
+// `ChannelCout` A DISPARU, et avec lui le tableau `channels`.
 //
-// Elle portait aussi son budget annuel (`budgetAn`, `budgetAnSaisi`) : une
-// ENVELOPPE par régie, éditable dans le module de l'année. Les deux éditeurs
-// sont partis — l'enveloppe est unique — et les deux champs avec eux. Garder le
-// nombre sans le champ, c'était afficher une promesse que plus personne ne
-// pouvait modifier.
-export type ChannelCout = {
-  key: string;
-  name: string;
-  icon: string;
-  color: string;
-  spent: number;      // ce mois-ci
-  spentYear: number;  // depuis janvier
-};
+// Il ne restait de ce type qu'une dépense par plateforme (`spent` le mois,
+// `spentYear` l'année) : son budget annuel — une ENVELOPPE par régie — était
+// déjà parti avec les deux éditeurs qui le réglaient, l'enveloppe étant
+// désormais unique.
+//
+// Ce qu'il en restait alimentait deux lignes en bas de `DepenseAnnee`,
+// « Meta 29 % / Google 71 % », que l'anneau « Dépensé par plateforme » de la
+// section « Où ça part » dessine déjà — en mieux, et en obéissant au filtre de
+// période que ces lignes ignoraient. Les lignes parties, plus personne ne lit
+// ce tableau : l'anneau se sert de `parCanalPeriode`, qui suit le filtre.
+// On ne garde pas un calcul pour le cas où — il se serait remis à diverger de
+// l'anneau en silence.
+//
+// Les quatre sommes qui le remplissaient (`metaSpent`, `googleSpent`,
+// `metaYear`, `googleYear`) restent : `totalSpent` et `spentYear` en
+// descendent, et toute la page en dépend.
 
 export type CoutDay = { date: string; label: string; meta: number; google: number };
 
@@ -161,7 +164,6 @@ export type CoutsData = {
   monthLabel: string;
   elapsed: number;    // fraction du MOIS écoulée (repère), 0..1
   elapsedAn: number;  // fraction de l'ANNÉE écoulée, en jours et non en mois
-  channels: ChannelCout[];
 
   // ── L'année : ce qui se pilote ────────────────────────────────────────────
   spentYear: number;
@@ -479,17 +481,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const sourceBudgetMois: CoutsData["sourceBudgetMois"] =
     budgetAnnuel > 0 ? "annuel" : "aucun";
 
-  const channels: ChannelCout[] = [
-    {
-      key: "meta", name: "Meta Ads", icon: "▣", color: "#1a56ff",
-      spent: metaSpent, spentYear: metaYear,
-    },
-    {
-      key: "google", name: "Google Ads", icon: "◆", color: "#1a7a4a",
-      spent: googleSpent, spentYear: googleYear,
-    },
-  ];
-
   const totalSpent = metaSpent + googleSpent;
   const spentYear = metaYear + googleYear;
 
@@ -536,7 +527,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     monthLabel: `${MOIS_FULL[m]} ${y}`,
     elapsed,
     elapsedAn,
-    channels,
     spentYear,
     budgetAnnuel,
     budgetAnnuelHerite,

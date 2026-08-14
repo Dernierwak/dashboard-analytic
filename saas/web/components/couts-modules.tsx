@@ -1,5 +1,5 @@
 import { fmtCHF } from "@/lib/report";
-import type { AlerteJour, ChannelCout, PointSerie, ThemeSpend } from "@/lib/couts";
+import type { AlerteJour, PointSerie, ThemeSpend } from "@/lib/couts";
 import type { BudgetPlanifie } from "@/lib/budgets";
 import { BudgetEditor } from "@/components/budget-editor";
 import { LineChart } from "@/components/line-chart";
@@ -277,20 +277,36 @@ export function EnveloppeAnnee({
 /**
  * LA DÉPENSE DE L'ANNÉE — ce qui est parti, contre l'enveloppe et contre le
  * calendrier. C'est le module qui porte la FORME de la rangée.
+ *
+ * LA VENTILATION PAR PLATEFORME EST PARTIE, et ce n'est pas un arbitrage de
+ * place : c'est la règle qui veut qu'une même information ne se dessine pas
+ * deux fois sur une page. Deux lignes fermaient ce module — « ▣ Meta Ads
+ * 18 166 · 29 % », « ◆ Google Ads 44 051 · 71 % » — pendant que la section
+ * « Où ça part », plus bas, porte un ANNEAU par plateforme qui répond
+ * exactement à la même question. Entre les deux, c'est l'anneau qui gagne :
+ * il MONTRE la proportion, là où deux lignes obligent à la calculer, et une
+ * répartition est d'abord une affaire de surfaces.
+ *
+ * Il y avait pire que la redite. Ces lignes lisaient `spentYear` — l'année
+ * entière, toujours — quand l'anneau obéit au filtre de période et de thèmes.
+ * Dès qu'on filtrait sur 30 jours, la même page affichait deux partages Meta /
+ * Google différents sans dire lequel répondait à quoi.
+ *
+ * Donc : si l'envie revient de savoir ce que chaque plateforme a coûté, c'est
+ * l'anneau qu'il faut aller regarder ou corriger. Le manque est là-bas, pas
+ * ici — le remettre ici, c'est refabriquer la contradiction.
  */
 export function DepenseAnnee({
   annee,
   spentYear,
   budgetAnnuel,
   elapsedAn,
-  channels,
   planifie,
 }: {
   annee: number;
   spentYear: number;
   budgetAnnuel: number;
   elapsedAn: number;
-  channels: ChannelCout[];
   /** Ce qui est RÉGLÉ sur les campagnes — l'autre promesse, celle des plateformes. */
   planifie: BudgetPlanifie;
 }) {
@@ -300,7 +316,19 @@ export function DepenseAnnee({
   const resteEnveloppe = budgetAnnuel - spentYear;
 
   return (
-    <div className="bg-white border border-line rounded-xl shadow-card p-5 min-w-0">
+    /* `flex flex-col`, et ce n'est pas décoratif : ce module est le plus COURT
+       des deux de la rangée, alors que c'est le plus LARGE. La rangée est en
+       `items-stretch`, donc les deux cartes ont toujours la même hauteur — celle
+       de l'enveloppe, à gauche, qui porte un champ de saisie et deux
+       paragraphes. Tout le mou tombait ici, en bloc, APRÈS la dernière ligne :
+       161 px de blanc au bas de la plus grande carte de la page dans le cas
+       nominal. La ventilation par plateforme en bouchait 53, ce qui en faisait
+       un décor utile — mais c'est un mauvais motif pour garder un bloc, et le
+       trou était déjà là avant elle.
+       Le mou passe donc AU-DESSUS du pied (`mt-auto` sur le rang 9), et les
+       deux cartes finissent leur dernière ligne à la même hauteur. C'est
+       exactement ce que le rang 8 d'`EnveloppeAnnee` promet en face. */
+    <div className="bg-white border border-line rounded-xl shadow-card p-5 min-w-0 flex flex-col">
       <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
         Dépense de l&apos;année · {annee}
       </div>
@@ -391,29 +419,6 @@ export function DepenseAnnee({
         </div>
       </div>
 
-      {/* Rang 7 (suite) — le détail. Chaque plateforme avec ce qu'elle a
-          consommé et sa part, RIEN QUE DU DÉPENSÉ : les enveloppes par
-          plateforme ont quitté cette page, il n'y a plus qu'une enveloppe.
-          Aucune barre ici — une seule forme par module, et c'est celle du
-          dessus. */}
-      <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 mt-4 pt-4 border-t border-line">
-        {channels.map((ch) => (
-          <div key={ch.key} className="flex items-baseline gap-2 min-w-0">
-            <span className="text-[13px]" style={{ color: ch.color }}>
-              {ch.icon}
-            </span>
-            <span className="text-[12.5px] font-semibold text-ink truncate">{ch.name}</span>
-            <span className="ml-auto font-mono text-[12.5px] text-ink whitespace-nowrap">
-              {fmtCHF(ch.spentYear)}
-              <span className="text-faint text-[11.5px]">
-                {" "}
-                · {spentYear > 0 ? Math.round((ch.spentYear / spentYear) * 100) : 0} %
-              </span>
-            </span>
-          </div>
-        ))}
-      </div>
-
       {/* Rang 9 — le pied, un seul. Ce que « réglé dans Meta et Google » veut
           dire, et pourquoi il peut être vide.
 
@@ -422,8 +427,14 @@ export function DepenseAnnee({
           partout ne peut pas laisser une date de machine au milieu d'une
           phrase française. Le repli « — » reste : `releveLe` vaut `null` tant
           qu'aucun relevé n'existe, et `vide` n'est pas la seule porte qui y
-          mène. */}
-      <p className="text-[11px] text-faint mt-3 leading-relaxed">
+          mène.
+
+          `mt-auto` : le pied est poussé au bas de la carte, et c'est lui qui
+          encaisse la hauteur que la carte de gauche impose. `mt-3` reste en
+          plancher via `pt-3` — sur téléphone, où les cartes s'empilent et où
+          plus rien ne les étire, `mt-auto` ne vaut rien et il faut quand même
+          de l'air au-dessus de cette phrase. */}
+      <p className="text-[11px] text-faint mt-auto pt-3 leading-relaxed">
         {planifie.vide
           ? "« Réglé dans Meta et Google » est le budget posé sur tes campagnes dans les régies — ce que tu as prévu d'y mettre, pas ce qui en est parti. Il est relevé une fois par semaine et le premier passage n'a pas encore eu lieu : le chiffre apparaîtra tout seul. On n'écrit pas 0 CHF entre-temps, ça se lirait « rien de prévu »."
           : `« Réglé dans Meta et Google » est le budget posé sur tes campagnes dans les régies, relevé le ${planifie.releveLe ? dateCourte(planifie.releveLe) : "—"} : une photo hebdomadaire, pas un historique. Les régies ne rendent jamais la valeur d'il y a trois mois.`}

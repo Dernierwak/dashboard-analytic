@@ -228,7 +228,6 @@ export default async function CoutsPage({
             spentYear={data.spentYear}
             budgetAnnuel={data.budgetAnnuel}
             elapsedAn={data.elapsedAn}
-            channels={data.channels}
             planifie={planifie}
           />
         </div>
