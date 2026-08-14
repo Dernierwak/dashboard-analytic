@@ -734,7 +734,19 @@ export type LabelRowData = { name: string; meta: number; google: number; instagr
 export async function getLabelsData(): Promise<{
   email: string;
   rows: LabelRowData[];
-  priorities: string[]; // ≤ 3 thèmes prioritaires (insight_feedback priority_label:*)
+  /**
+   * TOUS les thèmes étoilés (insight_feedback priority_label:*), DU PLUS ANCIEN
+   * ÉTOILAGE AU PLUS RÉCENT. Il y avait un `.slice(0, 3)` ici : il coupait la
+   * liste à l'affichage pendant que le worker en coupait une autre de son côté,
+   * si bien qu'une quatrième étoile était posée en base, invisible sur la page
+   * qui l'avait posée, et absente du rapport.
+   *
+   * L'ORDRE EST CHARGÉ DE SENS et ne doit pas être retrié : les trois premiers
+   * de cette liste sont exactement les thèmes dont l'IA rédige les pistes (voir
+   * `_THEMES_IA` dans `saas/worker/build_report.py`). Un `sort()` ailleurs
+   * ferait mentir les rangs affichés sur la page Thèmes.
+   */
+  priorities: string[];
 }> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -745,13 +757,13 @@ export async function getLabelsData(): Promise<{
     supabase.from("meta_campaign_config").select("label").eq("user_id", uid),
     supabase.from("google_campaign_config").select("label").eq("user_id", uid),
     supabase.from("instagram_organic_posts").select("labels").eq("user_id", uid),
-    supabase.from("insight_feedback").select("insight_key")
-      .eq("user_id", uid).like("insight_key", "priority_label:%"),
+    supabase.from("insight_feedback").select("insight_key, created_at")
+      .eq("user_id", uid).like("insight_key", "priority_label:%")
+      .order("created_at", { ascending: true }),
   ]);
   const priorities = (prioRes.data ?? [])
     .map((r) => String(r.insight_key).split(":").slice(1).join(":"))
-    .filter(Boolean)
-    .slice(0, 3);
+    .filter(Boolean);
   const master = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
   const counts = new Map<string, LabelRowData>();
   const bump = (name: string | null, ch: "meta" | "google" | "instagram") => {

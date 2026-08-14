@@ -81,8 +81,20 @@ export function ObjectifTheme({
           </p>
         </div>
         <div>
+          {/* « 3/3 » disait un plafond qui n'existe plus. Trois reste un
+              nombre du produit, mais ce n'est plus le nombre de thèmes qu'on a
+              le droit d'étoiler : c'est le nombre que l'IA rédige. On compte
+              donc les étoiles, sans dénominateur.
+
+              ET ON NE LES NUMÉROTE PAS ICI. Le rang vient de l'ordre où les
+              étoiles ont été posées ; `priorities` arrive dans cette page par
+              `Object.keys(insightFeedback)`, dont l'ordre n'est pas garanti.
+              Afficher « ★1 ★2 ★3 » à partir d'une liste non triée serait un
+              rang inventé — la page ◫ Thèmes, elle, lit l'ordre daté et peut
+              le montrer. */}
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-            On se concentre sur {priorities.length > 0 && `(${priorities.length}/3)`}
+            On se concentre sur{" "}
+            {priorities.length > 0 && `(${priorities.length} thème${priorities.length > 1 ? "s" : ""})`}
           </div>
           {priorities.length > 0 ? (
             <div className="flex flex-wrap gap-2 items-center">
@@ -100,6 +112,12 @@ export function ObjectifTheme({
               >
                 Changer →
               </Link>
+              {priorities.length > 3 && (
+                <p className="text-[11px] text-faint leading-relaxed w-full mt-1">
+                  Tous ont leur carte et leurs conseils calculés ; l&apos;IA en rédige
+                  3 — les 3 étoiles posées en premier, visibles sur ◫ Thèmes.
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-[12.5px] text-muted leading-relaxed">

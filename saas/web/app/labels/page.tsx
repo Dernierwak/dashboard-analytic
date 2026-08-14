@@ -24,223 +24,24 @@
 // compte Supabase, donc il n'est vérifiable qu'en production. On ne peut lui
 // donner ni quarante lignes ni zéro pour voir ce que ça fait.
 //
-// LA LECTURE DES DONNÉES RESTE ICI, en revanche, et pas dans `lib/channels.ts` :
-// c'est une lecture propre à cette page (l'univers COMPLET des campagnes, y
-// compris celles qui n'ont pas dépensé un franc sur la fenêtre), là où
-// `getMetaDash` ne connaît que ce qui a bougé sur la période demandée.
-import { createClient } from "@/lib/supabase/server";
-import { getCompteActif } from "@/lib/account";
+// LA LECTURE DES DONNÉES A QUITTÉ CETTE PAGE, et c'est le seul point où l'en-tête
+// ci-dessus a changé d'avis. `getEtiquetage` vivait ici, au motif que c'était une
+// lecture propre à cette page — l'univers COMPLET des campagnes, y compris celles
+// qui n'ont pas dépensé un franc sur la fenêtre, là où `getMetaDash` ne connaît
+// que ce qui a bougé. Le motif tenait tant qu'une seule page en avait besoin ;
+// le rapport hebdomadaire alerte maintenant avec le même montant, et deux
+// arithmétiques pour un seul chiffre finissent toujours par diverger. La
+// fonction est donc dans `lib/couverture.ts`, à l'identique, et cette page
+// l'importe. Voir l'en-tête de ce fichier-là pour le raisonnement complet.
+import { getEtiquetage } from "@/lib/couverture";
 import { getLabelsData } from "@/lib/channels";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
-import type { Couverture, ElementLabel } from "@/components/labels-modele";
 
 export const dynamic = "force-dynamic";
-
-const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-const JOURS_FENETRE = 90;
-
-function iso(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-function ajoute(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setUTCDate(r.getUTCDate() + n);
-  return r;
-}
-function jourCourt(d: Date): string {
-  return `${d.getUTCDate()} ${MOIS_FR[d.getUTCMonth()]}`;
-}
-
-type Ligne = ElementLabel & { tri: number };
-
-// LA FENÊTRE : 90 jours PLEINS, ancrés sur le dernier jour de données, jamais
-// sur aujourd'hui — même convention que tout le reste du produit (« toute
-// comparaison exclut le jour en cours »). Quatre-vingt-dix jours parce que
-// c'est l'horizon des conseils : assez long pour qu'un montant soit parlant,
-// assez court pour qu'il soit encore réparable.
-async function getEtiquetage(): Promise<{
-  couverture: Couverture;
-  sansTheme: ElementLabel[];
-  deja: ElementLabel[];
-  labels: string[];
-}> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const uid = compte.uid;
-
-  const [profRes, metaCfgRes, gooCfgRes, metaInsRes, gooInsRes, postsRes] = await Promise.all([
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
-    // "*" : tolérant au schéma — `label_source`, `label_at` et `landing_url`
-    // peuvent ne pas encore exister en base (migrations pas jouées).
-    supabase.from("meta_campaign_config").select("*").eq("user_id", uid),
-    supabase.from("google_campaign_config").select("*").eq("user_id", uid),
-    supabase.from("meta_ads_insights")
-      .select("date_start, campaign_name, spend")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    supabase.from("google_ads_insights")
-      .select("date_start, campaign_id, campaign_name, cost_micros")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    supabase.from("instagram_organic_posts").select("*")
-      .eq("user_id", uid).order("date", { ascending: false }).limit(5000),
-  ]);
-
-  const labels = ((profRes.data?.[0]?.labels as string[] | null) ?? []);
-  const metaIns = metaInsRes.data ?? [];
-  const gooIns = gooInsRes.data ?? [];
-  const posts = postsRes.data ?? [];
-
-  const hier = ajoute(new Date(), -1);
-  let ancre = hier;
-  const dernier = [
-    String(metaIns[0]?.date_start ?? "").slice(0, 10),
-    String(gooIns[0]?.date_start ?? "").slice(0, 10),
-  ].filter(Boolean).sort().pop();
-  if (dernier) {
-    const d = new Date(dernier + "T00:00:00Z");
-    if (!isNaN(d.getTime()) && d < hier) ancre = d;
-  }
-  const debut = ajoute(ancre, -(JOURS_FENETRE - 1));
-  const dansFenetre = (v: unknown) => {
-    const j = String(v ?? "").slice(0, 10);
-    return j >= iso(debut) && j <= iso(ancre);
-  };
-
-  // ── Dépense par campagne, sur la fenêtre ──────────────────────────────────
-  const depMeta = new Map<string, number>();
-  for (const r of metaIns) {
-    const k = String(r.campaign_name ?? "");
-    if (!k || !dansFenetre(r.date_start)) continue;
-    depMeta.set(k, (depMeta.get(k) ?? 0) + (Number(r.spend) || 0));
-  }
-  const depGoo = new Map<string, number>();
-  const nomGoo = new Map<string, string>();
-  for (const r of gooIns) {
-    const k = String(r.campaign_id ?? "");
-    if (!k) continue;
-    if (r.campaign_name && !nomGoo.has(k)) nomGoo.set(k, String(r.campaign_name));
-    if (!dansFenetre(r.date_start)) continue;
-    depGoo.set(k, (depGoo.get(k) ?? 0) + (Number(r.cost_micros) || 0) / 1_000_000);
-  }
-
-  // ── L'univers des campagnes ───────────────────────────────────────────────
-  // Insights ∪ configs : une campagne arrêtée l'an dernier n'apparaît plus
-  // dans les insights récents mais garde sa ligne de config — la sortir de la
-  // liste ferait disparaître son thème sans que personne puisse le corriger.
-  type Cfg = Record<string, unknown>;
-  const metaCfg = new Map<string, Cfg>(
-    (metaCfgRes.data ?? []).map((c) => [String(c.campaign_name), c as Cfg])
-  );
-  const gooCfg = new Map<string, Cfg>(
-    (gooCfgRes.data ?? []).map((c) => [String(c.campaign_id), c as Cfg])
-  );
-
-  const lignes: Ligne[] = [];
-
-  const clesMeta = new Set<string>([
-    ...metaIns.map((r) => String(r.campaign_name ?? "")).filter(Boolean),
-    ...metaCfg.keys(),
-  ]);
-  for (const nom of clesMeta) {
-    const c = metaCfg.get(nom) ?? {};
-    const label = (c.label as string | null) || null;
-    lignes.push({
-      cle: nom,
-      canal: "meta",
-      nom,
-      sous: (c.effective_status as string | null) || null,
-      depense: depMeta.get(nom) ?? 0,
-      label,
-      source: (c.label_source as string | null) ?? null,
-      landing: (c.landing_url as string | null) ?? null,
-      tri: depMeta.get(nom) ?? 0,
-    });
-  }
-
-  const clesGoo = new Set<string>([
-    ...gooIns.map((r) => String(r.campaign_id ?? "")).filter(Boolean),
-    ...gooCfg.keys(),
-  ]);
-  for (const id of clesGoo) {
-    const c = gooCfg.get(id) ?? {};
-    const nom = (c.campaign_name as string) || nomGoo.get(id) || `Campagne ${id}`;
-    lignes.push({
-      cle: id,
-      canal: "google",
-      nom,
-      sous: (c.effective_status as string | null) || null,
-      depense: depGoo.get(id) ?? 0,
-      label: (c.label as string | null) || null,
-      source: (c.label_source as string | null) ?? null,
-      landing: (c.landing_url as string | null) ?? null,
-      tri: depGoo.get(id) ?? 0,
-    });
-  }
-
-  let postsSansTheme = 0;
-  for (const p of posts) {
-    const ls = ((p.labels as string[] | null) ?? []).filter(Boolean);
-    const d = new Date(String(p.date ?? ""));
-    const legende = String(p.caption ?? "").replace(/\s+/g, " ").trim();
-    if (ls.length === 0 && dansFenetre(p.date)) postsSansTheme += 1;
-    lignes.push({
-      cle: String(p.id ?? ""),
-      canal: "instagram",
-      nom: legende ? legende.slice(0, 120) : "(publication sans légende)",
-      sous: isNaN(d.getTime())
-        ? String(p.type ?? "publication")
-        : `${jourCourt(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())))} · ${p.type ?? "publication"}`,
-      depense: 0,
-      label: ls[0] ?? null,
-      source: (p.label_source as string | null) ?? null,
-      landing: null,
-      tri: isNaN(d.getTime()) ? 0 : d.getTime() / 1e10, // toujours sous un montant
-    });
-  }
-
-  // On étiquette dans l'ordre de ce que ça coûte : le tri met les campagnes
-  // chères en tête, puis ce qui n'a pas de montant, du plus récent au plus vieux.
-  const parPoids = (a: Ligne, b: Ligne) => b.tri - a.tri || a.nom.localeCompare(b.nom);
-  const nu = ({ tri: _tri, ...reste }: Ligne): ElementLabel => reste;
-
-  const sansTheme = lignes.filter((l) => !l.label).sort(parPoids).map(nu);
-  const deja = lignes
-    .filter((l) => l.label)
-    .sort((a, b) => (a.label ?? "").localeCompare(b.label ?? "") || parPoids(a, b))
-    .map(nu);
-
-  let depenseTotale = 0;
-  let metaSansTheme = 0;
-  let googleSansTheme = 0;
-  for (const l of lignes) {
-    if (l.canal === "instagram") continue;
-    depenseTotale += l.depense;
-    if (l.label) continue;
-    if (l.canal === "meta") metaSansTheme += l.depense;
-    else googleSansTheme += l.depense;
-  }
-
-  return {
-    labels,
-    sansTheme,
-    deja,
-    couverture: {
-      fenetreCourte: `${JOURS_FENETRE} derniers jours pleins`,
-      fenetreLongue: `du ${jourCourt(debut)} au ${jourCourt(ancre)} ${ancre.getUTCFullYear()}`,
-      depenseSansTheme: metaSansTheme + googleSansTheme,
-      depenseTotale,
-      metaSansTheme,
-      googleSansTheme,
-      postsSansTheme,
-      sansTheme: sansTheme.length,
-      total: lignes.length,
-      mesurable: depenseTotale > 0,
-    },
-  };
-}
 
 export default async function LabelsPage() {
   const [data, etiquetage] = await Promise.all([getLabelsData(), getEtiquetage()]);
@@ -287,14 +88,27 @@ export default async function LabelsPage() {
       {/* 4 — LA VÉRIFICATION. */}
       <ListeDeja elements={etiquetage.deja} labels={etiquetage.labels} />
 
-      {/* 5 — LE VOCABULAIRE. */}
+      {/* 5 — LE VOCABULAIRE, ET L'ORDRE DES ÉTOILES.
+          « Marque jusqu'à 3 thèmes prioritaires » annonçait un plafond qui
+          n'en était pas un : trois n'a jamais été le nombre de thèmes qu'on
+          peut travailler, c'était le nombre que le worker envoie à Gemini. On
+          dit donc ce que trois veut dire, et on montre le rang de chaque
+          étoile — sans lui, « les 3 premières » désigne un trio que le client
+          ne peut pas voir, donc une règle qu'il ne peut pas jouer. */}
       <div className="border-t border-line pt-5">
-        <p className="text-[11.5px] text-faint mb-3 leading-relaxed">
-          ★ Marque jusqu&apos;à <span className="font-semibold text-ink">3 thèmes
-          prioritaires</span> — on ne peut pas tout travailler : les constats et les
-          conseils se concentrent dessus. Tu peux en changer quand tu veux.
+        <p className="text-[11.5px] text-faint mb-3 leading-relaxed max-w-3xl">
+          ★ Étoile les thèmes sur lesquels tu veux qu&apos;on travaille — les constats
+          et les conseils se concentrent dessus. Tu peux en marquer autant que tu
+          veux : chacun aura sa carte, ses chiffres et ses conseils calculés.{" "}
+          <span className="font-semibold text-ink">L&apos;IA, elle, en rédige 3</span> —
+          les 3 premières étoiles posées, numérotées ci-dessous. Pour faire monter un
+          thème, retire une étoile plus ancienne.
           {data.priorities.length > 0 && (
-            <span className="text-warn font-semibold"> Priorités : {data.priorities.join(" · ")}</span>
+            <span className="text-warn font-semibold">
+              {" "}
+              Priorités :{" "}
+              {data.priorities.map((p, i) => `★${i + 1} ${p}`).join(" · ")}
+            </span>
           )}
         </p>
 
@@ -310,9 +124,20 @@ export default async function LabelsPage() {
           </div>
         ) : (
           <ScrollList title="Tes thèmes" count={data.rows.length} maxH="max-h-[52vh]">
-            {data.rows.map((row) => (
-              <LabelRow key={row.name} row={row} priority={data.priorities.includes(row.name)} />
-            ))}
+            {data.rows.map((row) => {
+              // `priorities` arrive de `getLabelsData` dans l'ordre d'étoilage
+              // (created_at croissant) : l'index EST le rang, il ne se recalcule
+              // pas ici.
+              const i = data.priorities.indexOf(row.name);
+              return (
+                <LabelRow
+                  key={row.name}
+                  row={row}
+                  priority={i >= 0}
+                  rang={i >= 0 ? i + 1 : null}
+                />
+              );
+            })}
           </ScrollList>
         )}
       </div>

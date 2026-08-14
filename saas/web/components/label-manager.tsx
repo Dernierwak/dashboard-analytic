@@ -48,31 +48,69 @@ export function CreateLabel() {
 
 // Ligne de thème — pensée pouce d'abord : étoile et boutons ≥ 40 px de zone
 // tactile, nom bien lisible, actions qui passent à la ligne sur petit écran.
-export function LabelRow({ row, priority }: { row: LabelRowData; priority: boolean }) {
+export function LabelRow({
+  row,
+  priority,
+  rang = null,
+}: {
+  row: LabelRowData;
+  priority: boolean;
+  /**
+   * Le rang de l'étoile, 1 = posée en premier. `null` quand le thème n'est pas
+   * étoilé. C'est LE nombre qui rend visible une règle autrement invisible :
+   * l'IA ne rédige que les trois premières étoiles, et rien à l'écran ne disait
+   * dans quel ordre elles avaient été posées. Une étoile de rang 4 se voit donc
+   * comme telle, sur la ligne même où on la retire.
+   */
+  rang?: number | null;
+}) {
   const [mode, setMode] = useState<"view" | "rename" | "confirm-delete">("view");
   const [newName, setNewName] = useState(row.name);
   const [message, setMessage] = useState<string | null>(null);
+  const [echec, setEchec] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const total = row.meta + row.google + row.instagram;
+  // Étoilé, mais après les trois premières : la carte du thème existera, ses
+  // conseils calculés aussi, ses pistes IA non.
+  const horsIa = priority && rang !== null && rang > 3;
 
   return (
     <div className="flex items-center gap-2 px-3 sm:px-5 py-2.5 flex-wrap">
-      {/* ★ Prioritaire (max 3) — le moteur concentre ses conseils dessus */}
+      {/* ★ Prioritaire — le moteur concentre ses conseils dessus, et l'IA
+          n'en rédige que pour les trois premières. Le message rendu par
+          `togglePriorityLabel` s'affiche que l'action ait réussi ou non : ce
+          n'est plus un refus, c'est un avertissement. */}
       <button
         disabled={pending}
-        title={priority ? "Retirer des priorités" : "Marquer prioritaire (3 max)"}
+        title={
+          priority
+            ? `Retirer des priorités${rang !== null ? ` (★${rang})` : ""}`
+            : "Marquer prioritaire — l'IA rédige les 3 premières"
+        }
         onClick={() =>
           startTransition(async () => {
             const r = await togglePriorityLabel(row.name, priority);
-            setMessage(r.ok ? null : r.message ?? null);
+            setMessage(r.message ?? null);
+            setEchec(!r.ok);
           })
         }
-        className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full text-[22px] leading-none transition-colors disabled:opacity-50 ${
-          priority ? "text-warn" : "text-line hover:text-warn/60 active:text-warn/60"
+        className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full leading-none transition-colors disabled:opacity-50 ${
+          horsIa
+            ? "text-warn/45"
+            : priority
+              ? "text-warn"
+              : "text-line hover:text-warn/60 active:text-warn/60"
         }`}
       >
-        {priority ? "★" : "☆"}
+        {priority ? (
+          <span className="flex items-baseline">
+            <span className="text-[22px]">★</span>
+            {rang !== null && <span className="text-[10px] font-bold ml-px">{rang}</span>}
+          </span>
+        ) : (
+          <span className="text-[22px]">☆</span>
+        )}
       </button>
 
       <div className="min-w-0 flex-1">
@@ -121,6 +159,7 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
                 startTransition(async () => {
                   const r = await renameLabel(row.name, newName);
                   setMessage(r.ok ? null : r.message);
+                  setEchec(!r.ok);
                   if (r.ok) setMode("view");
                 })
               }
@@ -163,7 +202,21 @@ export function LabelRow({ row, priority }: { row: LabelRowData; priority: boole
           </>
         )}
       </div>
-      {message && <p className="w-full text-[11.5px] text-neg pl-12">{message}</p>}
+      {/* UN MESSAGE N'EST PLUS FORCÉMENT UN ÉCHEC. Tout ce qui passait ici
+          était rouge, parce que tout ce qui passait ici était un refus. Le
+          quatrième étoilage réussit et rend quand même une phrase — la peindre
+          en rouge dirait « ça n'a pas marché » d'une action qui a marché. On
+          garde donc le rouge pour ce qui a échoué, et le gris pour ce qui
+          prévient. */}
+      {message && (
+        <p
+          className={`w-full text-[11.5px] pl-12 leading-relaxed ${
+            echec ? "text-neg" : "text-muted"
+          }`}
+        >
+          {message}
+        </p>
+      )}
     </div>
   );
 }

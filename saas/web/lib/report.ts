@@ -212,7 +212,9 @@ export type VisionConstat = {
 export type VisionBlock = {
   generated_at: string;
   period_label: string; // « depuis le 1 jan »
-  priorities?: string[]; // ≤ 3 thèmes prioritaires choisis page Thèmes
+  // Thèmes étoilés page Thèmes, dans l'ORDRE D'ÉTOILAGE — plus de plafond
+  // depuis le 14 août 2026. Les trois premiers seuls reçoivent des pistes IA.
+  priorities?: string[];
   constats: VisionConstat[];
 };
 

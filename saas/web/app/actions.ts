@@ -304,10 +304,25 @@ export async function saveInsightFeedback(
   return { ok: true };
 }
 
-// Thème prioritaire (max 3) — « on ne peut pas travailler sur tout » : le
-// moteur concentre constats et conseils sur ces thèmes, modifiables à tout
-// moment. Stocké dans insight_feedback (clé priority_label:<nom>) : zéro
-// migration, permanent, RLS own-rows.
+// Thème prioritaire — « on ne peut pas travailler sur tout » : le moteur
+// concentre constats et conseils sur ces thèmes, modifiables à tout moment.
+// Stocké dans insight_feedback (clé priority_label:<nom>) : zéro migration,
+// permanent, RLS own-rows.
+//
+// LE PLAFOND DE TROIS ÉTAIT UN REFUS ; C'EST MAINTENANT UN AVERTISSEMENT.
+//
+// On rendait `{ ok: false, "3 priorités max" }` à partir de la quatrième, et
+// l'étoile ne se posait pas. Le nombre trois n'était pourtant pas une limite de
+// lecture : il tenait à ce qu'un thème coûte jusqu'à deux appels Gemini dans le
+// worker. On a séparé les deux (voir `_THEMES_IA` dans
+// `saas/worker/build_report.py`) : toutes les étoiles produisent leur carte
+// complète — chiffres, courbe, campagnes, conseils calculés — et seules les
+// trois premières POSÉES reçoivent en plus des pistes rédigées par l'IA.
+//
+// L'action réussit donc toujours, et rend un message quand même : c'est le seul
+// endroit où le client apprend ce que sa quatrième étoile aura de moins, au
+// moment où il la pose. `message` ne signifie donc plus « échec » — les
+// appelants l'affichent que `ok` soit vrai ou faux.
 export async function togglePriorityLabel(
   name: string,
   active: boolean
@@ -319,6 +334,7 @@ export async function togglePriorityLabel(
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
   const key = `priority_label:${name}`;
+  let message: string | undefined;
   if (active) {
     await supabase
       .from("insight_feedback")
@@ -331,8 +347,12 @@ export async function togglePriorityLabel(
       .select("insight_key")
       .eq("user_id", user.id)
       .like("insight_key", "priority_label:%");
-    if ((existing.data ?? []).length >= 3) {
-      return { ok: false, message: "3 priorités max — retire d'abord un thème." };
+    const rang = (existing.data ?? []).length + 1;
+    if (rang > 3) {
+      message =
+        `${rang}ᵉ étoile : ce thème aura sa carte, ses chiffres et ses conseils ` +
+        `calculés, mais pas de pistes rédigées par l'IA — elles vont aux ` +
+        `3 étoiles posées en premier. Retires-en une pour lui faire de la place.`;
     }
     const r = await supabase.from("insight_feedback").upsert(
       { user_id: user.id, insight_key: key, verdict: "agree" },
@@ -342,7 +362,7 @@ export async function togglePriorityLabel(
   }
   revalidatePath("/labels");
   revalidatePath("/");
-  return { ok: true };
+  return { ok: true, message };
 }
 
 // Objectif principal du compte ('ventes' | 'notoriete' | 'engagement' | null).
@@ -435,19 +455,36 @@ const ONB_FR: Record<string, Record<string, string>> = {
   },
 };
 
+// MÊME FILET QUE `saveSiteClient`, ET C'EST ICI QU'IL COMPTE LE PLUS.
+//
+// Cette action est appelée depuis le TOUT PREMIER écran du produit, à la fin
+// d'un parcours de six étapes. `getCompteActif` suppose un utilisateur
+// (`user!.id`) : si la session a expiré pendant les trente secondes de
+// l'onboarding, elle jetait — la frontière d'erreur démontait la carte, l'écran
+// devenait blanc, et les six réponses déjà données partaient avec, sans un mot.
+// Une action qui jette ne peut rien dire ; une action qui REND un refus laisse
+// la carte debout, ses réponses dedans, et la personne réessaie.
+//
+// L'écriture est vérifiée pour la même raison : un refus de la base passait en
+// silence et la personne croyait son profil enregistré.
 export async function saveOnboarding(answers: {
   objectif: string;
   business_type: string;
   budget_range: string;
   time_budget: string;
   frustration: string;
-}) {
+}): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
-  const compte = await getCompteActif();
+  let compte;
+  try {
+    compte = await getCompteActif();
+  } catch {
+    return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
+  }
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  await supabase
+  const ecrit = await supabase
     .from("profiles")
     .update({
       objectif: answers.objectif || null,
@@ -457,6 +494,8 @@ export async function saveOnboarding(answers: {
       frustration: answers.frustration || null,
     })
     .eq("id", user.id);
+  if (ecrit.error)
+    return { ok: false, message: "Enregistrement impossible — réessaie dans un instant." };
 
   // Persona seed : l'IA du brief démarre calibrée dès la semaine 1
   // (écrasé plus tard par le persona appris des commentaires — jamais l'inverse).
@@ -712,6 +751,73 @@ export async function setCampaignLanding(
   revalidatePath("/labels");
   revalidatePath(channel === "meta" ? "/meta" : "/google");
   return { ok: true, valeur: landing_url };
+}
+
+// ── Le site du client ───────────────────────────────────────────────────────
+//
+// MÊME BESOIN QUE CI-DESSUS, UN CRAN AU-DESSUS. `setCampaignLanding` dit où une
+// campagne ATTERRIT ; ici on dit où le client HABITE. L'onboarding demande déjà
+// le secteur, mais « commerce local » est une case, pas une entreprise : le
+// domaine, lui, porte la gamme, le prix, la langue, le pays et le ton d'un seul
+// coup. C'est ce qui sépare un conseil générique d'un conseil qui parle de ce
+// que la personne vend.
+//
+// FACULTATIF, ET ÇA SE VOIT DANS LA SIGNATURE. Une adresse vide est un succès
+// (`urlPropre` renvoie ok sur le vide), pas une erreur : elle efface le site.
+// L'appelant doit pouvoir terminer son parcours SANS jamais appeler cette
+// action — un onboarding qui se referme sur un champ facultatif ne perd pas un
+// champ, il perd le client.
+//
+// ON LE STOCKE, ON NE LE VISITE PAS. Aucun `fetch` serveur ne part vers cette
+// adresse, ni ici ni ailleurs. C'est la même règle que pour la page d'arrivée
+// d'une campagne, et pour la même raison : un champ libre que le serveur irait
+// chercher tout seul est une SSRF offerte — il suffirait d'y coller une adresse
+// interne (169.254.169.254, un service du réseau privé) pour lui faire lire ce
+// qu'il est le seul à pouvoir atteindre. Le jour où une reco devra vraiment
+// lire cette page, ce sera par un chemin explicite avec sa propre liste d'hôtes
+// autorisés — pas en réutilisant ce champ en silence.
+//
+// LA VALIDATION EST CELLE DE `urlPropre` ci-dessus, pas une copie : un seul
+// contrat d'URL dans l'application, sinon les deux divergent au premier
+// correctif.
+export async function saveSiteClient(
+  url: string
+): Promise<{ ok: boolean; message?: string; valeur?: string | null }> {
+  // L'adresse est jugée AVANT le compte, à l'inverse des autres actions : c'est
+  // un test pur, sans base ni réseau, et une saisie malformée n'a aucune raison
+  // de coûter un aller-retour. L'écriture, elle, reste derrière l'autorisation.
+  const v = urlPropre(url);
+  if (!v.ok) return { ok: false, message: v.message };
+  const site_url = v.url || null; // vide = le client retire son site
+
+  // Une session peut expirer pendant les trente secondes de l'onboarding.
+  // `getCompteActif` suppose un utilisateur : sans ce filet, elle jette et la
+  // personne reçoit une page cassée au lieu d'une phrase.
+  let compte;
+  try {
+    compte = await getCompteActif();
+  } catch {
+    return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
+  }
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const r = await supabaseUpdateSite(compte.uid, site_url);
+  if (r) return { ok: false, message: r };
+
+  revalidatePath("/");
+  revalidatePath("/comptes");
+  return { ok: true, valeur: site_url };
+}
+
+// Séparée pour que l'action reste lisible : renvoie un message d'erreur, ou
+// null si l'écriture est passée.
+async function supabaseUpdateSite(uid: string, site_url: string | null): Promise<string | null> {
+  const supabase = createClient();
+  const r = await supabase.from("profiles").update({ site_url }).eq("id", uid);
+  return r.error
+    ? "Enregistrement impossible — rejoue le SQL site_client.sql."
+    : null;
 }
 
 // ── Annuler en bloc ce que l'IA vient d'étiqueter ───────────────────────────

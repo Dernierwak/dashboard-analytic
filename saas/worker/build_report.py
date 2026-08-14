@@ -520,6 +520,86 @@ def _orga_recos(theme, posts_theme, posts_compte, jusqu_au) -> list[dict]:
 # bouton « Je le teste » — une veille n'a pas de verdict à mériter.
 _VEILLE_JOURS = 14
 
+# ── COMBIEN DE THÈMES L'IA RÉDIGE ────────────────────────────────────────────
+#
+# Ce n'est PAS le nombre de thèmes du rapport. Le rapport en porte autant que le
+# client en a étoilés ; celui-ci ne compte que ceux qui passent par Gemini.
+#
+# Les deux nombres étaient confondus, et c'est ce qui plafonnait le produit à
+# trois thèmes. Un thème coûte tout le moteur de règles (gratuit, déterministe,
+# quelques millisecondes) PUIS jusqu'à deux appels `_theme_ai_recos` — plus un
+# `_themes_tips` commun. Quinze thèmes étoilés, c'étaient trente appels par
+# rapport et par compte, chaque semaine : le plafond protégeait la facture, pas
+# la lecture.
+#
+# On sépare donc ce qui coûte de ce qui ne coûte pas. Tous les thèmes étoilés
+# reçoivent leur carte entière — chiffres, courbe, campagnes, conseils calculés
+# par les règles. Seuls les `_THEMES_IA` premiers reçoivent en plus des pistes
+# rédigées. Le nombre d'appels Gemini ne dépend plus du nombre d'étoiles.
+#
+# TROIS, ET « LES PREMIERS » AU SENS DE L'ÉTOILAGE — voir `_labels_prioritaires`
+# juste dessous pour le pourquoi de cet ordre-là plutôt qu'un autre.
+#
+# Ce plafond est passé de 4 à 3. Avant, un thème pouvait entrer par la porte des
+# nouveautés (une campagne lancée cette semaine) et recevoir lui aussi ses
+# pistes IA : quatre thèmes rédigés au maximum. On y renonce pour que la règle
+# tienne en une phrase — « l'IA rédige tes trois premières étoiles » — parce
+# qu'une carte doit pouvoir DIRE au lecteur pourquoi elle n'a pas de pistes, et
+# qu'une règle à deux portes ne s'écrit pas sur une carte. Le coût ne monte donc
+# jamais, et baisse d'un appel dans le cas sans priorités.
+_THEMES_IA = 3
+
+
+def _labels_prioritaires(sb, user_id: str, ins_fb: dict) -> list:
+    """Les thèmes étoilés par le client, DU PLUS ANCIEN ÉTOILAGE AU PLUS RÉCENT.
+
+    L'ordre n'est pas décoratif : c'est lui qui décide des `_THEMES_IA` thèmes
+    que Gemini rédige. Trois candidats se présentaient, et deux ont été écartés.
+
+    L'ALPHABÉTIQUE — ce qu'on faisait — ne veut rien dire, et le fichier le dit
+    déjà ailleurs (`_rang_theme` : « les thèmes prioritaires arrivent triés par
+    ordre alphabétique, ce qui ne veut rien dire »). Tant que le tri ne servait
+    qu'à couper à trois une liste de trois, c'était sans conséquence ; il
+    tranche maintenant entre six thèmes.
+
+    LE POIDS (dépense + publications, `_poids_theme`) est le critère que le
+    produit utilise partout ailleurs pour classer, et il serait défendable —
+    sauf sur le seul point qui compte ici : le client ne peut pas AGIR dessus.
+    La carte d'un thème sans pistes IA doit dire ce qu'il faut faire pour en
+    avoir ; sous le poids, la réponse serait « dépense plus sur ce thème », ce
+    qui est un conseil absurde et, pire, un conseil qui nous arrange.
+
+    L'ORDRE DE L'ÉTOILAGE est le seul qui soit à la fois stable, déjà en base
+    (`insight_feedback.created_at`) et RÉVERSIBLE PAR LE CLIENT : pour faire
+    monter un thème, il retire une étoile posée avant. C'est aussi celui qui
+    respecte le premier critère d'`_importance` — « ce que le client a désigné,
+    on ne le corrige pas ».
+
+    Le repli alphabétique n'est pas un choix, c'est un filet : si la relecture
+    datée échoue (table absente, colonne absente), on préfère un ordre arbitraire
+    à un thème perdu. Aucun thème étoilé ne disparaît de cette liste.
+    """
+    noms = {k.split(":", 1)[1] for k, v in (ins_fb or {}).items()
+            if k.startswith("priority_label:") and v == "agree" and ":" in k}
+    if not noms:
+        return []
+    ordre: list = []
+    try:
+        rows = (sb.table("insight_feedback")
+                .select("insight_key, created_at")
+                .eq("user_id", user_id)
+                .like("insight_key", "priority_label:%")
+                .order("created_at")
+                .execute().data) or []
+        for r in rows:
+            nom = str(r.get("insight_key") or "").split(":", 1)[-1]
+            if nom in noms and nom not in ordre:
+                ordre.append(nom)
+    except Exception:
+        ordre = []
+    ordre += sorted(n for n in noms if n not in ordre)
+    return ordre
+
 
 def _reco_veille(camp, jusqu_au) -> dict | None:
     """Le mini-conseil d'une campagne trop jeune pour être jugée."""
@@ -972,13 +1052,14 @@ def build_payload(sb, user_id: str) -> dict | None:
                               df_insta if not df_insta.empty else None,
                               meta_cfg, goog_cfg, ga4_full, last_full_day)
         ins_fb = fetch_insight_feedback(sb, user_id)
-        # Thèmes prioritaires (max 3, choisis page Thèmes) — stockés dans
-        # insight_feedback sous la clé priority_label:<nom> : le client ne peut
-        # pas tout travailler, l'analyse se concentre sur ses priorités.
-        priority_labels = sorted({
-            k.split(":", 1)[1] for k, v in ins_fb.items()
-            if k.startswith("priority_label:") and v == "agree" and ":" in k
-        })[:3]
+        # TOUS les thèmes étoilés (page Thèmes), dans l'ordre où ils ont été
+        # étoilés — stockés dans insight_feedback sous la clé
+        # priority_label:<nom>. Le `[:3]` qui coupait ici jetait la quatrième
+        # étoile en silence : elle s'affichait sur la page Thèmes et le rapport
+        # l'ignorait. Le plafond n'était pas un plafond de lecture, c'était un
+        # plafond de coût — il vit maintenant dans `_THEMES_IA`, et il ne
+        # concerne plus que les pistes rédigées par Gemini.
+        priority_labels = _labels_prioritaires(sb, user_id, ins_fb)
         constats = build_constats(matrix, ins_fb, priority_labels)
     except Exception:
         matrix, constats = None, []
@@ -996,8 +1077,10 @@ def build_payload(sb, user_id: str) -> dict | None:
     )
 
     # ── Recos PAR THÈME : le client travaille label par label, cross-canal ────
-    # Chaque thème prioritaire (≤3 ; sinon les 3 plus gros) reçoit ses propres
+    # Chaque thème étoilé (tous ; sinon les 3 plus gros) reçoit ses propres
     # conseils, calculés sur SES campagnes (Meta+Google) et SES posts seulement.
+    # Ces conseils-là sont GRATUITS : ce sont les règles du moteur. Seuls les
+    # `_THEMES_IA` premiers thèmes y ajoutent des pistes rédigées par Gemini.
     # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part.
     SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
     _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
@@ -1038,6 +1121,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         # donc aucun conseil : tout le rapport tenait dans son verdict. On
         # classe désormais par le poids ci-dessus, qui compte les publications
         # comme il compte les francs.
+        #
+        # Ce `[:3]`-ci RESTE. Ce n'est pas le plafond qu'on vient de lever : le
+        # précédent jetait un choix explicite du client, celui-ci est un défaut
+        # pour un compte qui n'a rien choisi. Personne n'a demandé quinze cartes
+        # sans avoir posé une seule étoile.
         theme_list = [t["label"] for t in
                       sorted(_themes_matrice, key=_poids_theme, reverse=True)
                       if _poids_theme(t) > 0][:3]
@@ -1145,11 +1233,18 @@ def build_payload(sb, user_id: str) -> dict | None:
     # s'il n'est pas dans les trois plus gros : c'est la seule chose du rapport
     # qui ne sera plus vraie dans quinze jours. Un thème de plus au maximum —
     # le rapport ne se laisse pas remplir par les nouveautés.
+    #
+    # La limite se compte maintenant sur les AJOUTS et non sur la longueur de la
+    # liste : `len(theme_list) >= 4` voulait dire « un de plus que les trois »
+    # tant que la liste faisait trois : avec six étoiles, elle aurait voulu dire
+    # « aucun ». La règle n'a pas changé, sa formulation devient littérale.
+    _neuf_ajoute = False
     for _c in _camp_recentes:
-        if len(theme_list) >= 4:
+        if _neuf_ajoute:
             break
         if _c.get("theme") and _c["theme"] not in theme_list:
             theme_list.append(_c["theme"])
+            _neuf_ajoute = True
 
     # Le rang d'enjeu de chaque thème retenu — l'argument n° 2 de `_importance`.
     # Il se calcule sur le POIDS et pas sur l'ordre de `theme_list` : les thèmes
@@ -1322,6 +1417,14 @@ def build_payload(sb, user_id: str) -> dict | None:
             ctx["paid_revenue"] = None
         return ctx
 
+    # LES THÈMES QUE GEMINI RÉDIGE — la seule ligne qui coûte de l'argent.
+    #
+    # `theme_list` peut porter quinze thèmes ; ce jeu-ci en porte trois au
+    # maximum, toujours les mêmes trois dans un rapport donné, et c'est lui qui
+    # fixe la facture. Les douze autres traversent exactement le même code, à
+    # deux appels réseau près.
+    _themes_ia = {_nrm(_l) for _l in theme_list[:_THEMES_IA]}
+
     themes_focus = []
     for lbl in theme_list:
         nlbl = _nrm(lbl)
@@ -1377,15 +1480,25 @@ def build_payload(sb, user_id: str) -> dict | None:
         # baissé depuis que l'organique et la veille produisent leurs propres
         # règles — c'est voulu : un constat mesuré vaut mieux qu'une piste, et
         # un appel Gemini de moins est une source d'erreur de moins.
-        _need = max(0, 3 - len(t_recos))
-        try:
-            _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
-            # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
-            # on retente une fois avant d'abandonner.
-            if _need and not _ai:
+        #
+        # AU-DELÀ DES `_THEMES_IA` PREMIERS, on ne complète pas. Le thème garde
+        # ses conseils-règles et sa carte entière ; il n'a simplement pas de
+        # pistes rédigées, et sa carte le DIT (voir `ia_redigee` plus bas, lu
+        # par `components/theme-card.tsx`). Le `want=0` de `_theme_ai_recos`
+        # suffirait à ne rien appeler, mais on préfère ne pas entrer dans la
+        # fonction du tout : c'est ici que se lit la garantie de coût.
+        _ia_redigee = nlbl in _themes_ia
+        _need = max(0, 3 - len(t_recos)) if _ia_redigee else 0
+        _ai = []
+        if _ia_redigee:
+            try:
                 _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
-        except Exception:
-            _ai = []
+                # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
+                # on retente une fois avant d'abandonner.
+                if _need and not _ai:
+                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+            except Exception:
+                _ai = []
         # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
         # (le client n'en veut pas — filtre à la génération, pas qu'à l'affichage).
         # Et on ne garde QUE LES TROIS PLUS IMPORTANTS : la coupe se faisait
@@ -1410,6 +1523,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         themes_focus.append({
             "label": lbl,
             "is_priority": lbl in priority_labels,
+            # Ce thème a-t-il été soumis à Gemini ? Le front en a besoin pour
+            # écrire, à l'endroit exact où les pistes rédigées auraient été,
+            # pourquoi elles n'y sont pas — un vide non expliqué se lit comme
+            # une panne. Absent des payloads publiés avant août 2026 : le front
+            # traite l'absence comme un « oui », pour ne pas coller
+            # rétroactivement une explication sur d'anciens rapports.
+            "ia_redigee": _ia_redigee,
             "summary": summary,
             "series": _series,
             "campaigns": [
@@ -2363,6 +2483,14 @@ def build_payload(sb, user_id: str) -> dict | None:
         _noms = [t["label"] for t in themes_focus[:3]]
         _sur = (_noms[0] if len(_noms) == 1
                 else " et ".join([", ".join(_noms[:-1]), _noms[-1]]))
+        # Au-delà de trois, on ne les nomme pas tous — une phrase de passage qui
+        # énumère huit thèmes n'est plus une phrase de passage. Mais on dit
+        # COMBIEN il y en a : trois noms suivis d'un point laisseraient croire
+        # que le rapport s'arrête là, et cinq cartes plus bas passeraient pour
+        # un bonus, pas pour la suite.
+        _reste = len(themes_focus) - len(_noms)
+        if _reste > 0:
+            _sur += f" — et {_reste} autre{'s' if _reste > 1 else ''} plus bas"
         # Le verdict peut compter plusieurs phrases : on ne reprend que la
         # premiere, sinon la phrase de passage devient un pave.
         _tete = (verdict or "").split(".")[0].strip()
@@ -2420,7 +2548,15 @@ def build_payload(sb, user_id: str) -> dict | None:
     except Exception:
         _bloques = []
     try:
-        themes_tips = _themes_tips([t["label"] for t in themes_focus[:3]], _obj_txt0,
+        # LES MÊMES TROIS QUE LES PISTES, jamais un autre découpage. C'était
+        # `themes_focus[:3]`, ce qui donnait le même résultat tant que la liste
+        # faisait trois ; avec six thèmes, deux coupes indépendantes finiraient
+        # par désigner deux trios différents, et la carte d'un thème dirait
+        # « pas de conseils IA ici » pendant qu'un savoir-faire IA sur ce même
+        # thème s'afficherait deux blocs plus bas. Un seul appel Gemini, quel
+        # que soit le nombre de thèmes.
+        themes_tips = _themes_tips([t["label"] for t in themes_focus if t["ia_redigee"]],
+                                   _obj_txt0,
                                    bloques=_bloques + [r["titre"] for r in _recurrents])
     except Exception:
         themes_tips = []

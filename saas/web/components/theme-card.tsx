@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ChangementApi } from "@/lib/changements-api";
 import {
   fmtCHF,
@@ -115,6 +116,22 @@ export function ecartTheme(vals: number[]): number | null {
   return avant > 0 ? ((recent - avant) / avant) * 100 : null;
 }
 
+/**
+ * L'IA A-T-ELLE RÉDIGÉ POUR CE THÈME ?
+ *
+ * Le champ est écrit par le worker (`ia_redigee`, voir `_THEMES_IA` dans
+ * `saas/worker/build_report.py`) et n'existe pas dans `ThemeFocus` : ce type
+ * décrit ce qu'un payload est GARANTI de porter, or les rapports publiés avant
+ * août 2026 ne le portent pas. On le lit donc ici, en local et en optionnel.
+ *
+ * ABSENT VAUT « OUI », et c'est le point important : traiter l'absence comme un
+ * « non » collerait rétroactivement, sur des dizaines d'anciens rapports, une
+ * explication qui n'a rien à y faire — ces thèmes-là ONT été rédigés par l'IA.
+ */
+function iaARedige(theme: ThemeFocus): boolean {
+  return (theme as ThemeFocus & { ia_redigee?: boolean }).ia_redigee !== false;
+}
+
 export function ThemeCard({
   theme,
   actions,
@@ -129,6 +146,7 @@ export function ThemeCard({
   comments,
   suivis,
   capReached = false,
+  replie = false,
 }: {
   theme: ThemeFocus;
   actions: TrackedAction[];
@@ -149,6 +167,12 @@ export function ThemeCard({
   /** L'action produite par un conseil, par clé de conseil. */
   suivis: Record<string, TrackedAction>;
   capReached?: boolean;
+  /**
+   * La carte ARRIVE fermée — elle n'est pas amputée. C'est le seul réglage qui
+   * permet à un rapport de porter dix thèmes sans devenir un couloir de dix
+   * mille pixels : voir le commentaire du pli, plus bas.
+   */
+  replie?: boolean;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
   const vals = s ? s.points.map((p) => p.value) : [];
@@ -207,13 +231,55 @@ export function ThemeCard({
     ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
     : [];
 
+  // ── LE PLI ────────────────────────────────────────────────────────────────
+  //
+  // Une carte de thème fait 900 à 1 400 px de haut. Trois cartes font un
+  // rapport ; quinze font un couloir de dix-huit mille pixels dans lequel on ne
+  // retrouve rien, et le lundi matin personne ne descend au douzième thème.
+  //
+  // La parade N'EST PAS d'en afficher moins — la grammaire le dit en toutes
+  // lettres : « quand une forme ne tient pas à plusieurs, on change la forme,
+  // pas le nombre d'éléments affichés ». Réduire ce qu'on montre pour sauver
+  // une mise en page, c'est laisser la mise en page décider de ce que
+  // l'utilisateur a le droit de savoir.
+  //
+  // On change donc la forme, et d'un cran seulement : la carte repliée garde
+  // son EN-TÊTE ENTIER — le nom, l'étoile, le chiffre de tête, sa pente, le
+  // bilan et sa fenêtre. Ce qui se replie, c'est la courbe et les deux
+  // colonnes. Autrement dit : les rangs 1 à 5 restent, les rangs 6 et 7
+  // attendent un clic. Une carte repliée reste lisible comme une tuile ; elle
+  // n'est jamais réduite à son titre, ce qui aurait caché son rang 3.
+  //
+  // POURQUOI DEUX BALISES VARIABLES plutôt qu'un second rendu. `Boite` et
+  // `Tete` valent `<details>`/`<summary>` quand la carte arrive fermée,
+  // `<div>`/`<div>` sinon. Les enfants ne bougent pas d'une ligne : il n'y a
+  // pas deux versions de la carte à maintenir en parallèle, il y a une carte et
+  // deux enveloppes. C'est ce qui rend vraie la phrase « exactement le même
+  // module » — le composant, les props et le rendu sont les mêmes, seul l'état
+  // d'ouverture initial change. Et aucun JavaScript : `<details>` suffit, comme
+  // pour « Ses campagnes » plus bas.
+  //
+  // Le groupe est NOMMÉ (`group/carte`). Un `group` anonyme ici serait un
+  // ancêtre de plus pour le `group-open:` de « Ses campagnes », qui est un
+  // `<details>` imbriqué : ouvrir la carte ferait basculer le « déplier ▾ » du
+  // pied, qui n'a rien demandé.
+  const Boite: React.ElementType = replie ? "details" : "div";
+  const Tete: React.ElementType = replie ? "summary" : "div";
+
   return (
     <section
       id={ancreTheme(theme.label)}
       className="bg-white border border-line rounded-xl shadow-card overflow-hidden scroll-mt-4"
     >
       <div className="border-l-[3px]" style={{ borderColor: filet }}>
-        <div className="px-5 py-4 border-b border-line bg-black/[0.015]">
+       <Boite className={replie ? "group/carte block" : undefined}>
+        <Tete
+          className={`px-5 py-4 border-b border-line bg-black/[0.015] ${
+            replie
+              ? "cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden"
+              : ""
+          }`}
+        >
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h3 className="font-serif text-[17px] text-ink">
               {theme.is_priority && <span className="text-warn">★ </span>}
@@ -227,6 +293,16 @@ export function ThemeCard({
             {som.spend_week > 0 && (
               <span className="text-[11.5px] text-faint">
                 {fmtCHF(som.spend_week)} CHF cette semaine
+              </span>
+            )}
+            {/* La seule chose que le pli AJOUTE à l'en-tête. Sans elle, un
+                en-tête cliquable se lit comme un en-tête : le corps de la carte
+                ne serait pas caché, il serait invisible — et un geste qu'on ne
+                soupçonne pas n'existe pas. */}
+            {replie && (
+              <span className="ml-auto shrink-0 text-[11px] font-semibold text-brand">
+                <span className="group-open/carte:hidden">déplier ▾</span>
+                <span className="hidden group-open/carte:inline">replier ▴</span>
               </span>
             )}
           </div>
@@ -299,7 +375,7 @@ export function ThemeCard({
               )}
             </>
           )}
-        </div>
+        </Tete>
 
         {s && (
           <div className="px-3 pt-3 pb-2">
@@ -373,6 +449,67 @@ export function ThemeCard({
               <p className="text-[12.5px] text-faint">
                 Rien d&apos;urgent sur ce thème cette semaine — il tourne dans ses normes.
               </p>
+            )}
+
+            {/* ── LE THÈME QUE L'IA N'A PAS TRAVAILLÉ ─────────────────────────
+                Ce bloc occupe EXACTEMENT la place où les pistes rédigées
+                auraient été : sous les conseils-règles, dans la colonne des
+                conseils. C'est la seule position qui réponde à la question au
+                moment où elle se pose — un lecteur qui compare deux cartes voit
+                d'abord qu'il y a moins de choses ici, et il le voit ICI.
+
+                POURQUOI IL EXISTE. Une carte plus courte que sa voisine, sans
+                un mot, se lit de deux façons et les deux sont fausses : « Pulse
+                est cassé sur ce thème », ou « ce thème n'a aucun problème ». Le
+                vide non expliqué est une règle connue de ce projet ; c'est
+                pourquoi la phrase dit à la fois POURQUOI et QUOI FAIRE.
+
+                ET IL N'EST PAS UNE ALERTE. Pas de rouge, pas d'orange : rien
+                n'a échoué, un budget a été tenu. Cadre gris, texte `muted`,
+                sous les conseils — le poids visuel d'une note de bas de bloc.
+                Le seul mot en gras est le fait lui-même. */}
+            {!iaARedige(theme) && (
+              <div className="mt-3 rounded-lg border border-line bg-black/[0.02] px-3 py-2.5 max-w-[68ch]">
+                <p className="text-[11.5px] text-muted leading-relaxed">
+                  <span className="font-semibold text-ink">
+                    Pas de pistes rédigées par l&apos;IA sur ce thème.
+                  </span>{" "}
+                  Elle n&apos;en écrit que pour tes <span className="font-semibold">3
+                  premières étoiles</span>, et celui-ci vient après.
+                  {theme.recos.length > 0 ? (
+                    <>
+                      {" "}Les conseils ci-dessus sortent des règles, calculées sur tes
+                      propres chiffres : plus sûrs qu&apos;une piste, mais moins nombreux.
+                    </>
+                  ) : (
+                    /* La ligne au-dessus dit déjà « rien d'urgent » ; la répéter
+                       ici serait la même explication deux fois. Ce qu'elle ne dit
+                       pas, en revanche, c'est QUI a conclu ça — et c'est
+                       justement ce qu'un lecteur pourrait mettre sur le dos de
+                       l'IA absente. */
+                    <> Ce &laquo;&nbsp;rien d&apos;urgent&nbsp;&raquo; est donc le
+                      verdict des règles, pas un silence de l&apos;IA.
+                    </>
+                  )}{" "}
+                  {theme.is_priority ? (
+                    <>
+                      Pour qu&apos;elle le travaille aussi, retire sur{" "}
+                      <Link href="/labels" className="text-brand font-semibold hover:underline">
+                        ◫ Thèmes
+                      </Link>{" "}
+                      une des trois étoiles posées avant lui.
+                    </>
+                  ) : (
+                    <>
+                      Pour qu&apos;elle le travaille aussi, étoile-le sur{" "}
+                      <Link href="/labels" className="text-brand font-semibold hover:underline">
+                        ◫ Thèmes
+                      </Link>{" "}
+                      et retire une des trois étoiles les plus anciennes.
+                    </>
+                  )}
+                </p>
+              </div>
             )}
           </div>
 
@@ -498,6 +635,7 @@ export function ThemeCard({
             </div>
           </details>
         )}
+       </Boite>
       </div>
     </section>
   );

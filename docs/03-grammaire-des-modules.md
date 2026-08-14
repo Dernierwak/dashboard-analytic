@@ -321,6 +321,12 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `LigneTheme` (les cartes) | trois colonnes séparées par un seul filet partagé (`gap-px bg-line`) qui ne courait pas sur les quatre côtés : deux cartes voisines se lisaient comme une seule zone | bordure complète, arrondi et air autour de chaque carte. Le fond du contenu reste TRANSPARENT — `.defile` peint ses ombres derrière lui, un fond opaque les éteindrait |
 | `LigneTheme` (le pied) | « Tes budgets mensuels ne font plus une enveloppe » posé au rang 9, SOUS le champ : les deux cartes qui le portaient voyaient leur champ remonter de 114 px, dans un module dont le rang 8 dit que des champs à trois hauteurs différentes se cherchent | la phrase est un fait sur la DONNÉE du thème, pas une convention de lecture : elle fond dans celle du rang 7. Le module n'a plus de rang 9. **Règle générale : `mt-auto` ne tient sa promesse que s'il pousse un élément SEUL** |
 | page Coûts (le zéro) | « 0 CHF » écrit là où rien n'avait été relevé, et là où rien n'est réglé — le même signe pour une ignorance et pour un constat | un vide se dit en toutes lettres, et les deux vides n'ont pas le même mot : « au prochain relevé » quand la mesure n'a pas eu lieu, « rien de réglé en ce moment » quand elle a eu lieu et vaut zéro. Un zéro non mesuré présenté comme mesuré est un chiffre faux |
+| `alerte-themes` | *(nouveau)* le rapport ne disait nulle part qu'une partie de l'argent n'entre dans aucun bilan par thème — les cartes de thème sont muettes sur ce qu'elles ne voient pas | version courte de `labels-couverture`, posée ENTRE la section 1 et la section 2 : la section 1 ne filtre rien, la section 2 filtre tout par thème, et c'est exactement là que le trou apparaît. Le chiffre vient de `getCouverture()`, la fonction de la page Thèmes — pas d'un second calcul « à peu près pareil ». Aucune forme : un module dont la vertu est d'être court n'ajoute pas une barre. **Il disparaît quand rien n'échappe** — un bloc qui dit « tout va bien » chaque lundi s'apprend par cœur en trois semaines |
+| `theme-card` (le pli) | trois cartes font un rapport, quinze font un couloir de 14 000 px où le douzième thème n'est jamais lu | au-delà de trois cartes, les suivantes ARRIVENT fermées — jamais supprimées : quand une forme ne tient pas à plusieurs, on change la forme, pas le nombre d'éléments. **Une carte repliée garde ses rangs 1 à 5** (nom, chiffre de tête, pente, bilan) ; seuls la forme et le détail attendent un clic. Exception : un thème qui porte une action vivante ne se replie jamais, sinon le raccourci du hero atterrit sur un bloc fermé et se lit comme un lien cassé |
+| `theme-card` (sans pistes IA) | un thème au-delà de la troisième étoile n'a pas de conseil rédigé par l'IA — un vide non expliqué se lit comme une panne, ou pire comme « rien à signaler » | à la place exacte où les pistes auraient été, une phrase grise (jamais rouge : rien n'a échoué) qui dit POURQUOI et QUOI FAIRE — retirer une étoile posée avant. Le payload porte `ia_redigee`, et son ABSENCE vaut « oui » : un rapport publié avant ne se voit pas coller une explication qui n'a rien à y faire |
+| `site-client` | *(nouveau)* le site du client n'était saisissable qu'à l'onboarding — un réglage qu'on ne pose qu'une fois devient faux le jour où le client change de domaine | module sur `/comptes`. Rang 3 = **le domaine lui-même**, et le vide s'y écrit en toutes lettres. Rang 7 = à quoi il sert, APRÈS le chiffre — sans cette phrase, un champ « ton site » sur une page de connexions ressemble à un réglage sans objet. Rang 9 = la limite : on stocke l'adresse, on ne la visite pas. **Le rang 3 n'affiche que ce que le serveur a renvoyé** — « boutique.ch » se stocke « https://boutique.ch/ », afficher la saisie montrerait une valeur que la base ne contient pas |
+| `OnboardingCard` (l'échec) | l'action jetait sans session : la frontière d'erreur démontait le TOUT PREMIER écran du produit, et les réponses partaient avec — sans un mot | l'action REND `{ok, message}` au lieu de jeter. **Règle : une action appelée depuis un écran qui porte de la saisie non enregistrée ne jette jamais** — jeter, c'est effacer sans le dire. Deux natures d'erreur, deux traitements : un refus d'ADRESSE colore le champ, un échec de SESSION ne le colore pas (accuser le champ envoie corriger ce qui est juste) et commence par ce qui rassure — les réponses sont toujours là |
+| `DepenseAnnee` (le détail) | deux lignes fermaient le module (« ▣ Meta 29 % », « ◆ Google 71 % ») pendant qu'un anneau de la même page disait la même chose — et elles lisaient l'ANNÉE quand l'anneau obéit au filtre : sur une période filtrée, la page affichait deux partages contradictoires | supprimées, et le calcul avec (`ChannelCout` n'existe plus) — un calcul qu'on garde sans l'afficher se remet à diverger en silence. **Règle : une même information ne se dessine pas deux fois sur une page ; entre une liste et une forme, c'est la forme qui reste** |
 | page `/labels` | aucun module, aucun rang 3 : une liste de thèmes et un compteur d'usage, rien qui montre ce qui n'a PAS de thème | trois modules extraits en `components/labels-*.tsx` — la page compose. Rang 3 = **le budget qui échappe aux thèmes**, jamais le compte de lignes : douze campagnes peuvent être douze essais à 4 CHF, un montant fait ouvrir la liste. Le comptage descend au rang 7 |
 | `labels-couverture` (Instagram, et le vide) | une publication organique ne coûte rien : l'additionner au montant, c'est ajouter zéro en prétendant mesurer ; et un compte sans dépense relevée aurait lu « 0 CHF ne sont rattachés à aucun thème », vrai et parfaitement trompeur | l'organique est une troisième colonne en NOMBRE et le pied écrit l'asymétrie ; `mesurable: false` bascule le rang 3 sur un comptage et la barre disparaît — une barre sur un dénominateur nul est du décor |
 | geste de masse IA | le bouton étiquetait sans validation ET sans retour en arrière | l'annulation est bornée par une DATE (posée par un trigger Postgres, pas par l'application — trois programmes écrivent ces labels) et non par la source : « tout ce qui porte IA » aurait emporté ce qui était gardé depuis trois semaines. **Règle : une action de masse se borne par le moment où on l'a lancée, jamais par sa signature** |
@@ -420,6 +426,55 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**14 août 2026 (5)** — **Réduire ce qu'on montre n'est pas une mise en page,
+c'est une censure ; replier en est une.**
+
+Un rapport à quinze thèmes ne tient pas. La tentation est de n'en afficher que
+trois — et la grammaire l'interdit depuis le 12 août : quand une forme ne tient
+pas à plusieurs, on change la forme, pas le nombre d'éléments affichés.
+
+Le pli est le bon changement de forme parce qu'il ne coupe rien au-dessus du
+rang 5. Une carte fermée garde son nom, son chiffre de tête, sa pente et son
+bilan : elle se lit comme une tuile, jamais comme un titre nu.
+
+Mais le plafond de trois n'était pas une affaire de mise en page, et c'est la
+vraie découverte : **chaque thème coûte jusqu'à deux appels d'IA par rapport.**
+Quinze thèmes, ce sont trente appels par compte et par semaine. Le plafond
+payait un coût réel — et il confondait deux choses : combien on peut TRAVAILLER,
+et combien on veut VOIR. Étoiler un quatrième thème, c'est demander à le voir.
+
+D'où la règle retenue : tous les thèmes étoilés ont leur carte, les trois
+premiers seuls ont des pistes rédigées. Et « les trois premiers » se lit dans
+l'ORDRE D'ÉTOILAGE, pas dans le poids en dépense — **parce que la carte doit
+dire quoi faire pour en avoir.** Sous le poids, la réponse serait « dépense plus
+sur ce thème » : un conseil absurde, et qui nous arrange.
+
+Corollaire trouvé à l'écran : **un marqueur d'état ne se met jamais dans la
+partie tronquée.** Le `▾` du sommaire, posé après le nom du thème, se faisait
+effacer par l'`overflow-hidden` sur un nom de soixante-dix caractères. La seule
+pastille dont il fallait savoir qu'elle est repliée était la seule qui ne le
+disait plus. Le nom se coupe, les signes qui l'encadrent jamais.
+
+**14 août 2026 (4)** — **Une action appelée depuis un écran qui porte de la
+saisie non enregistrée ne jette jamais.**
+
+`saveOnboarding` appelait `getCompteActif()`, qui déréférence l'utilisateur sans
+filet. Sans session elle jetait, la frontière d'erreur démontait le TOUT PREMIER
+écran du produit, et les six réponses partaient avec — sans un mot. Jeter, sur
+un écran pareil, c'est effacer sans le dire.
+
+Deux natures d'erreur ne se traitent pas au même endroit : un refus d'ADRESSE
+colore le champ ; un échec de SESSION ne le colore pas — accuser le champ envoie
+corriger la seule chose qui est juste — et s'affiche à part, en commençant par
+ce qui rassure : les réponses sont toujours là.
+
+Deux dettes découvertes en passant, non corrigées et donc écrites ici : vingt-
+deux autres actions du même fichier ont le même défaut, et la pire fait tomber
+une page entière parce qu'elle est appelée depuis un composant serveur. Et sous
+Supabase, **un refus de droits sur un `update` ne remonte aucune erreur** — il
+touche zéro ligne. Une action peut donc répondre « enregistré » sans avoir rien
+écrit.
 
 **14 août 2026 (3)** — **Une constante exportée depuis un module « use client »
 n'est pas une constante côté serveur.**

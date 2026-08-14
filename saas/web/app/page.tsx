@@ -6,9 +6,12 @@ import Link from "next/link";
 import {
   getWeeklyData,
   type ReportPayload,
+  type ThemeFocus,
   type TrackedAction,
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
+import { getCouverture } from "@/lib/couverture";
+import { AlerteThemes } from "@/components/alerte-themes";
 import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
@@ -144,10 +147,32 @@ function VersLaction({
 // — une page compose, elle ne dessine pas.
 
 export default async function Page() {
-  const data = await getWeeklyData();
+  // CE QUE LES PLATEFORMES DÉCLARENT ELLES-MÊMES. Nos cinq faits déduits de la
+  // dépense sont aveugles à tout ce qui ne fait pas bouger le budget du jour —
+  // un mot-clé en pause, un CPC cible relevé, une audience élargie. Quatre-vingt
+  // -dix jours parce que Google Ads ne garde `change_event` que trente jours et
+  // Meta un peu plus : demander plus large ne coûte rien, la couche de données
+  // rend ce qu'elle a.
+  const depuisChg = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  // TROIS LECTURES QUI NE S'ATTENDENT PAS.
+  //
+  // Elles étaient en série — le rapport, puis les changements déclarés — et la
+  // couverture des thèmes en aurait fait une troisième à la queue leu leu.
+  // Aucune des trois n'a besoin du résultat des deux autres, donc les enchaîner
+  // revient à additionner trois allers-retours Supabase sur la page la plus lue
+  // du produit. La couverture est la plus chère des trois (elle lit l'univers
+  // complet des campagnes) : c'est justement celle qu'il ne faut pas mettre au
+  // bout d'une file.
+  const [data, changementsApi, couverture] = await Promise.all([
+    getWeeklyData(),
+    getChangementsApi(depuisChg),
+    getCouverture(),
+  ]);
   const report = data.report;
 
-  // Thèmes prioritaires (≤ 3) — le fil qui relie la vision aux conseils.
+  // Thèmes prioritaires — le fil qui relie la vision aux conseils. Plus de
+  // plafond depuis le 14 août 2026 ; seules les trois premières étoiles ont des
+  // pistes IA, et l'ordre est celui de l'étoilage.
   const priorities = Object.keys(data.insightFeedback)
     .filter((k) => k.startsWith("priority_label:"))
     .map((k) => k.split(":").slice(1).join(":"));
@@ -209,14 +234,6 @@ export default async function Page() {
   const chgOrphelins = tousChangements.filter(
     (c) => !c.theme || !themesRendus.has(c.theme)
   );
-  // CE QUE LES PLATEFORMES DÉCLARENT ELLES-MÊMES. Nos cinq faits déduits de la
-  // dépense sont aveugles à tout ce qui ne fait pas bouger le budget du jour —
-  // un mot-clé en pause, un CPC cible relevé, une audience élargie. Quatre-vingt
-  // -dix jours parce que Google Ads ne garde `change_event` que trente jours et
-  // Meta un peu plus : demander plus large ne coûte rien, la couche de données
-  // rend ce qu'elle a.
-  const depuisChg = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-  const changementsApi = await getChangementsApi(depuisChg);
   const apiParTheme = (label: string) => changementsApi.filter((c) => c.theme === label);
   const apiOrphelins = changementsApi.filter(
     (c) => !c.theme || !themesRendus.has(c.theme)
@@ -246,6 +263,63 @@ export default async function Page() {
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
   const nThemes = cartes.length > 0 ? ++_n : undefined;
   const nApprendre = report?.apprentissage ? ++_n : undefined;
+
+  // ── L'ORDRE ET LE PLI DES CARTES DE THÈME ────────────────────────────────
+  //
+  // LE PLAFOND DE TROIS EST TOMBÉ le 14 août 2026, et il n'a jamais été écrit
+  // ici : cette page rend TOUT ce que `report.themes_focus` contient, sans en
+  // couper un seul, et c'était déjà vrai quand le plafond tenait. Ce qui a
+  // changé est en amont, et ce n'est pas une levée pure et simple —
+  // `togglePriorityLabel` AVERTIT au lieu de refuser la quatrième étoile, et le
+  // worker construit la carte de tous les thèmes étoilés.
+  //
+  // MAIS SEULES LES TROIS PREMIÈRES ÉTOILES REÇOIVENT DES PISTES RÉDIGÉES PAR
+  // L'IA (`_THEMES_IA`, `build_report.py`). La raison n'est pas graphique : un
+  // thème coûte jusqu'à deux appels Gemini par rapport, et quinze thèmes
+  // feraient trente appels par compte et par semaine. « Les trois premières »
+  // se lit dans l'ORDRE D'ÉTOILAGE — le seul critère sur lequel le client peut
+  // agir : sous le poids en dépense, la carte devrait conseiller « dépense plus
+  // sur ce thème » pour mériter des pistes, ce qui est absurde et nous arrange.
+  //
+  // Une carte sans pistes IA porte `ia_redigee: false` et l'explique elle-même
+  // (`theme-card.tsx`) : un vide non expliqué se lit comme une panne.
+  //
+  // L'ORDRE. Les étoilés d'abord — ce sont eux qu'on a désignés comme le
+  // travail du moment. Puis ceux qui portent une action en cours : un thème
+  // qu'on ne suit plus mais sur lequel un verdict va tomber n'est pas un thème
+  // de fond de liste. Le reste garde l'ordre du worker, qui les classe par
+  // poids (part de dépense ou part de publications, la plus grande des deux).
+  //
+  // LE PLI. Au-delà de trois cartes ouvertes, les suivantes ARRIVENT fermées.
+  // Trois, parce que c'est le nombre que le produit défend déjà partout
+  // ailleurs : trois chantiers de front (`capReached`), trois conseils par
+  // thème, trois priorités. Ce n'est donc pas un plafond de plus, c'est le même
+  // nombre appliqué à la lecture.
+  //
+  // Et une carte fermée n'est pas une carte absente : son en-tête entier reste
+  // à l'écran — nom, étoile, chiffre de tête, pente, bilan. On ne cache que la
+  // courbe et les deux colonnes, à un clic.
+  //
+  // L'EXCEPTION QUI COMPTE : un thème qui porte une action vivante ne se replie
+  // JAMAIS, quel que soit son rang. C'est ce qui garde honnête le raccourci du
+  // hero (« 2 actions en cours — y aller ↓ ») : il vise l'ancre de la carte du
+  // thème le plus urgent, et atterrir sur un bloc fermé ferait passer un lien
+  // qui marche pour un lien cassé.
+  const themesVivants = new Set(
+    data.actions.map((a) => a.theme).filter((t): t is string => !!t)
+  );
+  const OUVERTES = 3;
+  const cartesOrdonnees = cartes
+    .map((t, rangWorker) => ({ t, rangWorker }))
+    .sort(
+      (a, b) =>
+        Number(b.t.is_priority) - Number(a.t.is_priority) ||
+        Number(themesVivants.has(b.t.label)) - Number(themesVivants.has(a.t.label)) ||
+        a.rangWorker - b.rangWorker
+    )
+    .map((x) => x.t);
+  const estReplie = (t: ThemeFocus, rang: number) =>
+    cartesOrdonnees.length > OUVERTES && rang >= OUVERTES && !themesVivants.has(t.label);
 
   return (
     <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -359,6 +433,36 @@ export default async function Page() {
         </section>
       )}
 
+      {/* « IL TE MANQUE DES THÈMES » — POSÉ EXACTEMENT ICI, ET PAS AILLEURS.
+          C'est la charnière entre la section 1 et la section 2, et c'est le
+          seul endroit de la page où l'alerte change une lecture au lieu de
+          l'interrompre.
+
+          En amont, la section 1 dit « tous thèmes confondus » : rien de filtré,
+          donc rien qui manque — l'argent non étiqueté EST dans ces chiffres-là,
+          l'alerte n'y aurait rien à corriger. Elle y aurait même nui : la
+          section 1 porte déjà `HorsTheme`, dont le surtitre dit « Hors de tes
+          thèmes ». Deux modules voisins avec le même mot pour deux objets
+          différents — celui-ci compte des FRANCS non rattachés, l'autre des
+          FAITS que personne ne prend — et on ne saurait plus lequel répond à
+          quoi.
+
+          En aval commence la section 2, où tous les chiffres sont filtrés PAR
+          THÈME. C'est là, et seulement là, que ce qui n'a pas de thème devient
+          un trou : les bilans, les courbes et les conseils qui suivent portent
+          sur la part étiquetée du compte, et rien dans une carte de thème ne
+          peut dire ce qu'elle ne voit pas. L'alerte est la seule phrase qui
+          rende honnête tout ce qui vient après elle — d'où sa place juste
+          avant, comme une convention de lecture.
+
+          Elle est HORS de la section 2, volontairement : un compte qui n'a
+          encore rien étiqueté n'a aucune carte, donc pas de section 2 — et
+          c'est précisément le compte qui a le plus besoin de lire ça.
+
+          Elle ne s'affiche pas quand rien n'échappe : voir `alerte-themes.tsx`.
+          Le module se vide de lui-même, il ne félicite personne. */}
+      <AlerteThemes c={couverture} />
+
       {/* 2 · TES THÈMES PRIORITAIRES — LA section du thème. Elle porte tout ce
              qui le concerne : son bilan, sa courbe, ses conseils, et ce qu'on a
              déjà tenté dessus. Il y avait deux sections pour ça, à 900 px
@@ -384,6 +488,43 @@ export default async function Page() {
             <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1.5">
               {report.themes_intro}
             </p>
+          )}
+
+          {/* LE SOMMAIRE — le repère de position qui manquait, et qui devient
+              indispensable dès que la section dépasse trois cartes.
+              Une carte fait 900 à 1 400 px : à partir de la quatrième, plus
+              rien ne dit combien il y en a ni ce qu'elles couvrent, et une
+              carte repliée quatre écrans plus bas est une carte qu'on ne
+              trouvera jamais. Ce sont des LIENS, pas des cartes — la même
+              exception que « Si tu ne fais que trois choses » juste dessous :
+              rendre deux fois le même module sur une page est ce que la
+              grammaire interdit, y renvoyer ne l'est pas.
+              Le `▾` dit quelles cartes arrivent fermées : on ne cache rien sans
+              le nommer. */}
+          {cartesOrdonnees.length > OUVERTES && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="text-[10px] uppercase tracking-widest text-faint font-bold mr-1">
+                {cartesOrdonnees.length} thèmes
+              </span>
+              {cartesOrdonnees.map((t, i) => (
+                /* C'est le NOM qui se coupe, jamais les deux signes qui
+                   l'encadrent. Un thème de soixante-dix caractères poussait le
+                   `▾` hors du cadre, où l'`overflow-hidden` de la pastille
+                   l'effaçait : la seule pastille dont on avait besoin de savoir
+                   qu'elle est repliée était justement celle qui ne le disait
+                   plus. `shrink-0` sur les signes, `min-w-0 truncate` sur le
+                   nom — le nom est la seule chose qu'on peut deviner. */
+                <a
+                  key={t.label}
+                  href={`#${ancreTheme(t.label)}`}
+                  className="inline-flex items-center gap-1 max-w-full min-w-0 text-[11.5px] text-muted hover:text-ink border border-line rounded-full px-2.5 py-1 transition-colors"
+                >
+                  {t.is_priority && <span className="text-warn shrink-0">★</span>}
+                  <span className="truncate min-w-0">{t.label}</span>
+                  {estReplie(t, i) && <span className="text-faint shrink-0">▾</span>}
+                </a>
+              ))}
+            </div>
           )}
 
           {/* « Si tu ne fais que trois choses » — la sélection cross-thème.
@@ -436,7 +577,7 @@ export default async function Page() {
               Le passage se fera ici et dans `ObjectifTheme`, nulle part
               ailleurs : chaque enveloppe porte déjà sa `key` et son ancre. */}
           <div className="space-y-3">
-            {cartes.map((t, i) => (
+            {cartesOrdonnees.map((t, i) => (
               <div key={t.label}>
                 {i === 0 && (
                   <ObjectifTheme
@@ -448,6 +589,7 @@ export default async function Page() {
                 )}
                 <ThemeCard
                   theme={t}
+                  replie={estReplie(t, i)}
                   actions={data.actions}
                   archived={data.actionsArchived}
                   changements={chgParTheme(t.label)}
