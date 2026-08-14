@@ -7,6 +7,30 @@ const CONF: Record<string, { symbol: string; label: string }> = {
   piste: { symbol: "○", label: "Piste" },
 };
 
+// UNE VEILLE N'EST PAS UN CONSEIL — c'est une chose qu'on regarde.
+//
+// Le worker en produit pour les campagnes lancées depuis moins de quatorze
+// jours : trop jeunes pour être jugées, trop récentes pour être passées sous
+// silence. Elles portent une clé `veille_…`, et c'est le seul signal dont la
+// carte a besoin — aucun champ n'a été ajouté au payload pour ça.
+//
+// Trois choses changent, et toutes disent la même : il n'y a rien à faire.
+//   · le badge dit « Veille » plutôt que « Règle » ;
+//   · « Avant d'agir » devient « Ce qu'on surveille » ;
+//   · le bouton « ▶ Je le teste » DISPARAÎT. Le prendre créerait une action
+//     dont le verdict tomberait dans quatorze jours sur une décision que
+//     personne n'a prise — un verdict se mérite, celui-là serait fabriqué.
+// Les retours (utile / pas pour moi / commenter) restent : on a le droit de
+// dire qu'une veille ne sert à rien.
+//
+// Deux veilles, deux badges, parce qu'elles ne demandent pas la même chose. La
+// veille ORDINAIRE dit « attends le 24 ». La veille d'une campagne déclarée qui
+// ne dépense rien (`…_muette`) demande d'aller regarder le gestionnaire tout de
+// suite : lui écrire « rien à faire » serait faux, et sur la seule carte du
+// rapport où chaque jour perdu ne se rattrape pas.
+const estVeille = (key: string) => key.startsWith("veille_");
+const veilleUrgente = (key: string) => key.endsWith("_muette");
+
 // Carte de reco ALLÉGÉE : par défaut on ne voit que l'essentiel (badge, titre,
 // le fait, feedback). Le détail (pourquoi / comment tester / angle mort) est
 // replié derrière « ▸ Pourquoi & comment tester » — <details> natif, zéro JS.
@@ -28,11 +52,16 @@ export function RecoCard({
   capReached?: boolean;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
+  const veille = estVeille(r.key);
   const hasDetail = Boolean(r.pourquoi || r.verifier || r.repere || r.angle_mort);
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-4 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5">
-        {r.source === "ai" ? (
+        {veille ? (
+          <span className="text-[9.5px] font-semibold text-warn bg-warn/10 rounded-full px-2 py-0.5">
+            {veilleUrgente(r.key) ? "◷ Veille · à vérifier" : "◷ Veille · rien à faire"}
+          </span>
+        ) : r.source === "ai" ? (
           <span className="text-[9.5px] font-semibold text-ig bg-ig/10 rounded-full px-2 py-0.5">
             IA · à tester
           </span>
@@ -69,7 +98,9 @@ export function RecoCard({
       {hasDetail && (
         <details className="mt-2 group">
           <summary className="text-[11.5px] font-semibold text-brand cursor-pointer select-none list-none">
-            <span className="group-open:hidden">▸ Pourquoi &amp; comment tester</span>
+            <span className="group-open:hidden">
+              {veille ? "▸ Pourquoi & ce qu'on surveille" : "▸ Pourquoi & comment tester"}
+            </span>
             <span className="hidden group-open:inline">▾ Replier</span>
           </summary>
           <div className="mt-1.5 space-y-1.5">
@@ -81,7 +112,9 @@ export function RecoCard({
             )}
             {r.verifier && (
               <p className="text-[12px] text-muted leading-relaxed">
-                <span className="font-semibold text-ink">Avant d&apos;agir — </span>
+                <span className="font-semibold text-ink">
+                  {veille ? "Ce qu'on surveille — " : "Avant d'agir — "}
+                </span>
                 {r.verifier}
               </p>
             )}
@@ -110,20 +143,27 @@ export function RecoCard({
         comment={comment}
         action={action}
         capReached={capReached}
-        track={{
-          title: r.title,
-          theme,
-          metric: r.metric ?? null,
-          metricLabel: r.metric_label ?? null,
-          direction: r.direction ?? null,
-          baseline: r.baseline ?? null,
-          detail: {
-            observation: r.observation,
-            pourquoi: r.pourquoi,
-            verifier: r.verifier,
-            effort: r.effort ?? null,
-          },
-        }}
+        // Pas de `track` sur une veille : sans lui, `RecoActions` n'affiche ni
+        // « ▶ Je le teste » ni l'état d'une action. Il ne reste que les retours,
+        // et c'est exactement ce qu'on veut pouvoir donner sur une veille.
+        track={
+          veille
+            ? undefined
+            : {
+                title: r.title,
+                theme,
+                metric: r.metric ?? null,
+                metricLabel: r.metric_label ?? null,
+                direction: r.direction ?? null,
+                baseline: r.baseline ?? null,
+                detail: {
+                  observation: r.observation,
+                  pourquoi: r.pourquoi,
+                  verifier: r.verifier,
+                  effort: r.effort ?? null,
+                },
+              }
+        }
       />
     </div>
   );

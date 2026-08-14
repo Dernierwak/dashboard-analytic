@@ -36,7 +36,9 @@ from scripts.fetch_data import (  # noqa: E402
     fetch_insight_feedback,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
-from components.reco_engine import build_recos, KEY_LABELS, OBJECTIFS  # noqa: E402
+from components.reco_engine import (  # noqa: E402
+    build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
+)
 from saas.worker.insights import build_matrix, build_constats  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
@@ -79,7 +81,37 @@ EFFORT_BY_KEY = {
     "silence": "1 h",
     "format_gagnant": "1 h",
     "page_endormie": "1 h",
+    "orga_rythme": "30 min",
+    "orga_essoufflement": "1 h",
+    "orga_format": "1 h",
+    "orga_reaction": "1 h",
 }
+
+
+def _effort_de(reco: dict) -> str:
+    """L'effort d'un conseil, même avant que `_attach_effort` ne l'ait posé.
+
+    Le tri d'importance tourne AVANT l'attachement des pastilles : sans ce
+    repli sur la table, tous les conseils-règles se seraient valus sur l'axe
+    de l'effort, et l'axe n'aurait servi à rien.
+    """
+    return reco.get("effort") or EFFORT_BY_KEY.get(reco.get("key"), "30 min")
+
+
+def _est_veille(reco: dict) -> bool:
+    """Un conseil de VEILLE : on regarde, on n'agit pas encore."""
+    return str(reco.get("key") or "").startswith("veille_")
+
+
+def _veille_urgente(reco: dict) -> bool:
+    """La seule veille qui COÛTE quelque chose maintenant.
+
+    Une campagne déclarée qui ne dépense pas perd un jour par jour, et elle
+    n'apparaît dans aucun chiffre du rapport — c'est précisément pour ça que
+    personne ne la voit. Les autres veilles disent l'inverse : il n'y a rien à
+    faire, attends. Les deux ne peuvent pas se classer pareil.
+    """
+    return str(reco.get("key") or "").endswith("_muette")
 
 
 # Le LEVIER d'un conseil : sur quoi il demande d'agir.
@@ -108,6 +140,13 @@ _LEVIER_REGLE = {
     "funnel": "socle",
     "connecter_ga4": "socle",
     "ga4_muet": "socle",
+    "orga_rythme": "tempo",
+    "orga_essoufflement": "contenu",
+    "orga_format": "contenu",
+    # « Ce theme fait reagir mais il est peu vu » ne demande pas de refaire le
+    # contenu — il demande de le mettre devant plus de monde. C'est le seul
+    # conseil-regle qui tienne l'axe `audience`, qui n'etait servi que par l'IA.
+    "orga_reaction": "audience",
 }
 # Les conseils IA n'ont pas de cle stable (`ai_<theme>_<n>`) : leur levier se lit
 # dans ce qu'ils demandent de faire. Ordre volontaire — « budget » l'emporte sur
@@ -128,6 +167,12 @@ _LEVIER_MOTS = (
 
 def _levier(reco: dict) -> str:
     cle = reco.get("key") or ""
+    if cle.startswith("veille_"):
+        # Deux campagnes neuves ne font pas deux conseils : elles font un seul
+        # geste, regarder. Sans ce levier commun, un compte qui lance trois
+        # campagnes le meme lundi remplissait les trois places du haut de page
+        # avec trois fois « attends une semaine ».
+        return "veille"
     if cle in _LEVIER_REGLE:
         return _LEVIER_REGLE[cle]
     txt = f"{reco.get('title', '')} {reco.get('observation', '')}".lower()
@@ -172,6 +217,396 @@ def _diversifier(pool: list, n: int = 3) -> list:
         if len(choisis) >= n:
             break
     return choisis
+
+
+# ── L'IMPORTANCE D'UN CONSEIL ────────────────────────────────────────────────
+#
+# Le tri qui existait classait par (theme prioritaire, confiance, facilite).
+# Deux de ces trois criteres ne parlent pas d'importance :
+#
+#   · la CONFIANCE dit si j'ai raison, pas si ca compte. Un constat solide sur
+#     un theme a 40 CHF passait devant une alerte sur un theme a 4 000 CHF ;
+#   · la FACILITE dit ce que ca coute a faire. Trier dessus fabrique une liste
+#     de petites taches, et une liste de petites taches n'est pas une liste des
+#     choses importantes — c'est l'inverse.
+#
+# Les trois criteres retenus, dans l'ordre, et pourquoi cet ordre :
+#
+#   1. CE QUE LE CLIENT A DESIGNE. Il choisit jusqu'a trois themes prioritaires
+#      sur la page Themes. On ne le corrige pas.
+#   2. CE QUI PESE LE PLUS. `rang` est le rang du theme du conseil dans le
+#      compte — voir `_poids_theme` dans build_payload. C'est le seul critere
+#      qui parle d'enjeu, il passe donc avant tous les autres.
+#   3. CE QUI SE PERD PENDANT QU'ON LIT. Une campagne déclarée qui ne dépense
+#      rien perd un jour par jour, et elle n'est dans aucun chiffre du rapport.
+#      C'est le seul conseil dont le coût augmente tant qu'on ne l'a pas lu.
+#   4. CE QUI EST LE PLUS SÛR. La confiance, une fois l'enjeu tranché. Elle
+#      tient aussi les pistes IA derrière les constats mesurés sans qu'on ait
+#      besoin d'un critère pour ça : `_theme_ai_recos` les sort toutes en
+#      « piste ».
+#   5. Puis seulement la facilité, et la priorité du moteur, pour départager.
+#
+# Et une veille ordinaire FERME LA MARCHE de son thème. Elle dit « il n'y a
+# rien à faire, attends le 24 » : c'est utile à lire, ça n'a rien à faire en
+# tête d'une liste de choses à faire.
+#
+# Ce tuple est INTERNE. Il ne devient jamais un score affiché : ce serait un
+# chiffre non mesuré présenté comme mesuré.
+_CONF_W = {"solide": 0, "creuser": 1, "piste": 2}
+_EFF_W = {"10 min": 0, "30 min": 1, "1 h": 2, "2 h+": 3}
+
+
+def _importance(reco: dict, rang: int = 0) -> tuple:
+    """La clé de tri d'un conseil. Plus petit = plus important.
+
+    `rang` : le rang du thème porteur dans le compte (0 = celui qui pèse le
+    plus). À l'intérieur d'un seul thème il est constant, et le tuple se lit
+    alors comme un classement de ce qu'il y a à faire sur ce thème-là.
+    """
+    veille, urgente = _est_veille(reco), _veille_urgente(reco)
+    return (
+        0 if reco.get("is_priority") else 1,
+        rang,
+        0 if urgente else 1,
+        1 if (veille and not urgente) else 0,
+        _CONF_W.get(reco.get("confidence"), 3),
+        _EFF_W.get(_effort_de(reco), 2),
+        reco.get("priority", 99),
+    )
+
+
+# ── L'ORGANIQUE A DROIT À SES PROPRES CONSEILS ───────────────────────────────
+#
+# `components/reco_engine.py` porte bien quatre règles Instagram, mais elles
+# sont taillées pour le COMPTE ENTIER : `_rule_creneau` demande 20 posts,
+# `_rule_page_endormie` en demande 5 plus 100 abonnés, `_rule_silence` ne parle
+# que d'une semaine restée vide. Depuis le passage au rapport par thème, elles
+# tournent sur les posts D'UN SEUL THÈME — et à cette échelle elles ne se
+# déclenchent presque jamais. Les trois places du thème partaient donc à l'IA,
+# nourrie d'un prompt qui ne parle que de campagnes : l'organique n'avait pas
+# de conseils, il avait des suppositions.
+#
+# Les quatre règles ci-dessous raisonnent à l'échelle d'un thème et ne lisent
+# que ce qui est déjà en base (`instagram_organic_posts`) : la date, le format,
+# la portée et les interactions de chaque publication. Aucune ne demande une
+# donnée qu'on n'a pas. Même grammaire que les autres : ce que je vois,
+# pourquoi ça peut arriver, comment vérifier avant d'agir, ce que je ne vois
+# pas, et un niveau de confiance.
+_ORGA_RECENT = 28   # « en ce moment » — quatre semaines pleines
+_ORGA_REF = 84      # les trois mois d'avant, le point de comparaison
+
+
+def _orga_prep(posts, jusqu_au):
+    """Les colonnes dont les règles organiques ont besoin, calculées une fois."""
+    if posts is None or len(posts) == 0 or "date" not in posts.columns:
+        return None
+    d = posts.copy()
+    d["_j"] = pd.to_datetime(d["date"], errors="coerce", utc=True)
+    d = d.dropna(subset=["_j"])
+    if d.empty:
+        return None
+    d["_jour"] = d["_j"].dt.date
+    for col in ("reach", "likes", "comments", "saved"):
+        d[col] = (pd.to_numeric(d[col], errors="coerce").fillna(0)
+                  if col in d.columns else 0.0)
+    d["_inter"] = d["likes"] + d["comments"] + d["saved"]
+    # La règle maison : aucune fenêtre ne mord sur le jour en cours.
+    d = d[d["_jour"] <= jusqu_au]
+    return d if not d.empty else None
+
+
+def _orga_rythme(theme, dt, jusqu_au):
+    """Le tempo du thème : ce qu'on publie maintenant contre ce qu'on publiait.
+
+    Deux sorties possibles, et elles ne disent pas la même chose :
+      · `orga_rythme`        — le thème a ralenti ;
+      · `orga_essoufflement` — on publie plus et l'audience totale ne suit pas.
+    Le troisième cas — publier plus et être plus vu — ne rend rien : c'est une
+    félicitation, et une félicitation n'est pas un conseil.
+    """
+    bord = jusqu_au - timedelta(days=_ORGA_RECENT - 1)
+    recent = dt[dt["_jour"] >= bord]
+    ref = dt[(dt["_jour"] < bord) & (dt["_jour"] >= bord - timedelta(days=_ORGA_REF))]
+    if len(ref) < 4:
+        return []   # pas de passé, donc pas de tempo à comparer
+    n_rec = len(recent)
+    # Les deux cadences ramenées au même dénominateur : posts par 4 semaines.
+    n_ref = len(ref) * _ORGA_RECENT / _ORGA_REF
+    if n_ref <= 0:
+        return []
+    ecart = (n_rec - n_ref) / n_ref
+
+    if ecart <= -0.4:
+        r_ref = float(ref["reach"].mean())
+        solide = len(ref) >= 10 and n_rec >= 1
+        return [_reco_dict(
+            "orga_rythme", "instagram",
+            f"« {theme} » est passé de {n_ref:.0f} à {n_rec} publication"
+            f"{'s' if n_rec > 1 else ''} par mois",
+            f"Sur les 4 dernières semaines, {n_rec} publication"
+            f"{'s' if n_rec > 1 else ''} sur ce thème. Sur les 3 mois d'avant, tu en "
+            f"faisais {n_ref:.0f} par période de 4 semaines.",
+            "Un thème qu'on nourrit moins sort moins : Instagram montre surtout ce "
+            "qui est récent, et une thématique qui disparaît quelques semaines perd "
+            "l'audience qu'elle s'était faite.",
+            "Regarde d'abord si c'est voulu — une saison qui se termine, une offre "
+            "retirée. Si ça ne l'est pas, remets une publication sur ce thème cette "
+            f"semaine et compare sa portée aux {r_ref:,.0f} que ce thème faisait "
+            "avant : c'est ce chiffre-là qui dira si l'audience est encore là.",
+            "Je compte des publications, pas ce qu'elles t'ont rapporté. Publier "
+            "moins mais mieux est une stratégie valable — ce chiffre ne la distingue "
+            "pas d'un abandon.",
+            "solide" if solide else "creuser", 3,
+            repere="Le repère : un thème se tient à partir d'une publication toutes "
+                   "les deux semaines. En dessous, il redevient un sujet parmi d'autres.",
+        )]
+
+    if ecart >= 0.4:
+        # On publie plus. La question n'est pas la moyenne par post — elle
+        # baisse mécaniquement quand on publie plus — mais la portée TOTALE :
+        # est-ce que ce travail en plus va chercher du monde en plus ?
+        tot_rec = float(recent["reach"].sum())
+        tot_ref = float(ref["reach"].sum()) * _ORGA_RECENT / _ORGA_REF
+        if tot_ref <= 0 or tot_rec > tot_ref * 1.05:
+            return []
+        return [_reco_dict(
+            "orga_essoufflement", "instagram",
+            f"Tu publies plus sur « {theme} », et tu ne touches pas plus de monde",
+            f"{n_rec} publications sur les 4 dernières semaines contre {n_ref:.0f} "
+            f"avant, pour une portée cumulée de {tot_rec:,.0f} contre {tot_ref:,.0f}. "
+            "Le travail a augmenté, l'audience non.",
+            "Deux publications la même semaine se prennent une partie de l'audience "
+            "l'une à l'autre. Ça peut aussi être que la cadence a été tenue en "
+            "baissant l'exigence sur ce qu'on publie.",
+            "Prends les 3 publications les moins vues du mois et demande-toi si tu "
+            "les aurais publiées seules. Si la réponse est non, reviens à ta cadence "
+            "d'avant pendant 4 semaines et regarde si la portée cumulée tient.",
+            "Je mesure la portée, pas la fatigue : une cadence intenable qui ne se "
+            "voit pas encore dans les chiffres se voit quand même dans ton agenda.",
+            "solide" if (n_rec >= 8 and len(ref) >= 12) else "creuser", 3,
+            repere="Le repère : si doubler le nombre de posts ne fait pas monter la "
+                   "portée cumulée d'au moins un tiers, la cadence te coûte plus "
+                   "qu'elle ne te rapporte.",
+        )]
+    return []
+
+
+def _art(fmt: str) -> str:
+    """« le Reel », « l'Image » — l'article qui va avec un nom de format.
+
+    Les noms viennent de `FORMAT_LABELS`, qui les capitalise pour les tableaux.
+    En pleine phrase il leur faut leur article, et « le Image » se voit.
+    """
+    return ("l'" if str(fmt)[:1].upper() in "AEIOU" else "le ") + str(fmt)
+
+
+def _orga_format(theme, dt):
+    """Quel format porte CE thème — pas quel format porte le compte."""
+    if "type" not in dt.columns:
+        return []
+    d = dt.copy()
+    d["_fmt"] = d["type"].map(lambda t: FORMAT_LABELS.get(str(t).upper(), str(t)))
+    g = d.groupby("_fmt")["reach"].agg(["count", "mean"])
+    g = g[g["count"] >= 3]
+    if len(g) < 2:
+        return []
+    g = g.sort_values("mean", ascending=False)
+    haut, bas = g.index[0], g.index[-1]
+    r_haut, r_bas = float(g.iloc[0]["mean"]), float(g.iloc[-1]["mean"])
+    n_haut, n_bas = int(g.iloc[0]["count"]), int(g.iloc[-1]["count"])
+    if r_bas <= 0 or r_haut / r_bas < 1.4:
+        return []
+    ratio = r_haut / r_bas
+    return [_reco_dict(
+        "orga_format", "instagram",
+        f"Sur « {theme} », {_art(haut)} porte {ratio:.1f}× plus que {_art(bas)}",
+        f"{n_haut} publication{'s' if n_haut > 1 else ''} en {haut} : "
+        f"{r_haut:,.0f} de portée moyenne. {n_bas} en {bas} : {r_bas:,.0f}.",
+        "Un format ne vaut pas mieux qu'un autre dans l'absolu, mais sur un sujet "
+        "donné l'un raconte mieux que l'autre. Instagram pousse aussi les Reels "
+        "au-delà de tes abonnés, ce que ne font ni l'image ni le carrousel.",
+        f"Reprends un sujet que tu as déjà traité en {bas} et refais-le en {haut}. "
+        "Deux versions du même sujet, c'est la seule comparaison où le format est la "
+        "seule chose qui change.",
+        f"Je compare des formats, pas des sujets : si tes {haut}s traitent tes "
+        "meilleurs sujets, c'est le sujet que je mesure et pas le format.",
+        "solide" if (n_haut >= 5 and ratio >= 1.8) else "creuser", 3,
+        repere="Le repère : un écart de format se confirme sur 5 publications de "
+               "chaque côté. En dessous, deux bons posts suffisent à créer l'illusion.",
+    )]
+
+
+def _orga_reaction(theme, dt, compte):
+    """Le thème qui fait réagir ceux qui le voient, mais qui est peu vu.
+
+    Le cas inverse — vu mais sans réaction — n'est pas écrit : il ne se termine
+    par aucun geste précis (« fais du meilleur contenu » n'est pas un conseil),
+    et il rate donc le test de la décision.
+    """
+    if len(dt) < 4 or len(compte) < 10:
+        return []
+    r_t, r_c = float(dt["reach"].mean()), float(compte["reach"].mean())
+    i_t, i_c = float(dt["_inter"].mean()), float(compte["_inter"].mean())
+    if r_c <= 0 or i_c <= 0:
+        return []
+    if not (r_t <= r_c * 0.75 and i_t >= i_c * 1.25):
+        return []
+    return [_reco_dict(
+        "orga_reaction", "instagram",
+        f"« {theme} » fait réagir, mais il est peu vu",
+        f"Un post de ce thème récolte {i_t:.0f} interactions en moyenne, contre "
+        f"{i_c:.0f} sur l'ensemble de ton compte — pour une portée de {r_t:,.0f} "
+        f"contre {r_c:,.0f}.",
+        "Quand un contenu fait réagir ceux qui le voient mais touche peu de monde, "
+        "ce n'est pas le contenu qui coince, c'est sa diffusion : le moment de "
+        "publication, le format, ou le fait qu'il ne sorte pas de tes abonnés.",
+        "Republie un sujet de ce thème en Reel, sur ton meilleur créneau, et regarde "
+        f"si la portée rejoint tes {r_c:,.0f} habituels. Si oui, tu tenais un "
+        "problème de diffusion. Si non, le sujet parle à une partie seulement de ton "
+        "audience — et c'est une information, pas un échec.",
+        "Un thème très commenté peut l'être par les mêmes cinq personnes. Je compte "
+        "les interactions, je ne sais pas qui les fait.",
+        "solide" if len(dt) >= 8 else "creuser", 2,
+        repere="Le repère : un contenu qui dépasse ta moyenne d'interactions tout en "
+               "restant sous ta portée moyenne est un contenu à pousser, pas à corriger.",
+    )]
+
+
+def _orga_recos(theme, posts_theme, posts_compte, jusqu_au) -> list[dict]:
+    """Les conseils organiques d'un thème. [] si le thème ne publie pas assez.
+
+    Chaque règle est isolée : une qui plante n'emporte pas les autres, comme
+    dans `build_recos`. Le rapport ne casse jamais pour un conseil.
+    """
+    dt = _orga_prep(posts_theme, jusqu_au)
+    if dt is None:
+        return []
+    compte = _orga_prep(posts_compte, jusqu_au)
+    out: list[dict] = []
+    for regle in (lambda: _orga_rythme(theme, dt, jusqu_au),
+                  lambda: _orga_format(theme, dt),
+                  lambda: _orga_reaction(theme, dt, compte) if compte is not None else []):
+        try:
+            out += regle() or []
+        except Exception:
+            pass
+    return out
+
+
+# ── LA CAMPAGNE LANCÉE DEPUIS PEU ────────────────────────────────────────────
+#
+# Quatorze jours. La borne n'est pas ronde par confort :
+#
+#   · en dessous d'une semaine, rien n'est à elle. Meta comme Google passent
+#     les premiers jours à chercher qui répond ; le coût par clic de ces
+#     jours-là est celui de cette recherche, pas celui de la campagne. Le
+#     comparer à la médiane du compte — ce que fait `_rule_gaspillage` — rend
+#     un verdict sur du bruit, et un verdict faux coûte plus cher que pas de
+#     verdict du tout ;
+#   · au-delà de deux semaines, elle a normalement franchi les planchers à
+#     partir desquels les règles du compte ont le droit de parler : 50 CHF
+#     dépensés (`SEUILS["cpc_spend_min"]`), 1 000 impressions
+#     (`SEUILS["ctr_impressions_min"]`), les ~50 clics dont parle le repère de
+#     la règle gaspillage. Elle n'est plus une nouveauté, c'est une campagne
+#     comme les autres, et elle se juge comme les autres.
+#
+# Quatorze jours, c'est enfin l'horloge de Pulse : le verdict d'une action se
+# rend quatorze jours après qu'elle a été faite. Une campagne neuve et une
+# action prise deviennent lisibles le même jour — le produit n'a qu'un tempo.
+#
+# Ce conseil-là ne demande RIEN à faire, et c'est le sujet : il dit ce qu'on
+# surveille, à partir de quand ce sera lisible, et ce qui déclencherait une
+# alerte. Sa clé commence par `veille_`, ce que le front lit pour retirer le
+# bouton « Je le teste » — une veille n'a pas de verdict à mériter.
+_VEILLE_JOURS = 14
+
+
+def _reco_veille(camp, jusqu_au) -> dict | None:
+    """Le mini-conseil d'une campagne trop jeune pour être jugée."""
+    debut = camp.get("debut")
+    if debut is None:
+        return None
+    age = (jusqu_au - debut).days + 1
+    if not (1 <= age <= _VEILLE_JOURS):
+        return None
+    nom = str(camp.get("nom") or "")[:40]
+    canal = camp.get("canal") or "meta"
+    cle = f"veille_{canal}_{nom}"
+    lisible = debut + timedelta(days=_VEILLE_JOURS)
+    lisible_txt = f"{lisible.day} {MONTHS_FR[lisible.month]}"
+
+    if camp.get("muette"):
+        # DÉCLARÉE ET MUETTE. Ce n'est pas une veille tiède, c'est le seul cas
+        # où une campagne perd 100 % de ce qu'elle devait faire — et où
+        # personne ne s'en aperçoit, puisqu'elle n'apparaît dans aucun chiffre.
+        return _reco_dict(
+            cle + "_muette", canal,
+            f"« {nom} » devait démarrer le {debut.day} {MONTHS_FR[debut.month]} "
+            "et n'a rien dépensé",
+            f"La plateforme la déclare démarrée depuis {age} jour"
+            f"{'s' if age > 1 else ''}. Aucune dépense n'est remontée sur cette "
+            "période : elle n'existe dans aucun chiffre de ce rapport.",
+            "Trois causes classiques, et toutes rapides à écarter : la campagne est "
+            "encore en revue, le moyen de paiement du compte a été refusé, ou le "
+            "budget quotidien est resté à zéro.",
+            "Ouvre-la dans le gestionnaire : le statut y est écrit noir sur blanc. "
+            "L'alerte, c'est un jour de plus de silence — une campagne déclarée qui "
+            "ne dépense pas ne perd pas d'argent, elle perd des jours, et les jours "
+            "ne se rattrapent pas.",
+            "Je lis ta dépense, pas le statut de la campagne. Une récolte en retard "
+            "donne exactement la même image qu'une campagne bloquée — le gestionnaire "
+            "tranche en trente secondes, moi non.",
+            "creuser", 1,
+            repere="Le repère : une campagne validée dépense dans les 24 heures. "
+                   "Passé 48 heures sans un franc, ce n'est plus un délai, c'est un "
+                   "blocage.",
+        )
+
+    jours = len(camp.get("jours") or ())
+    depense = float(camp.get("depense") or 0)
+    clics = int(camp.get("clics") or 0)
+    impr = int(camp.get("impressions") or 0)
+    seuil_impr = int(SEUILS["ctr_impressions_min"])
+    seuil_chf = int(SEUILS["cpc_spend_min"])
+    return _reco_dict(
+        cle, canal,
+        f"« {nom} » tourne depuis {age} jour{'s' if age > 1 else ''} — trop tôt "
+        "pour la juger",
+        f"{jours} jour{'s' if jours > 1 else ''} de diffusion, {depense:,.0f} CHF "
+        f"dépensés, {impr:,} impressions, {clics} clic{'s' if clics > 1 else ''}. "
+        "Les autres campagnes de ce rapport sont jugées sur des semaines pleines ; "
+        "celle-ci n'en a pas encore une.",
+        "Meta et Google passent les premiers jours à chercher qui répond. Le coût "
+        "par clic de cette période est celui de cette recherche, pas celui de la "
+        "campagne — c'est pour ça qu'elle est tenue à l'écart des comparaisons de "
+        "coût du rapport plutôt que d'y figurer avec un chiffre trompeur.",
+        "Deux choses, et deux seulement. Qu'elle dépense tous les jours : une "
+        "campagne neuve qui saute un jour est refusée ou plafonnée, pas lente. Et "
+        "que les impressions montent. L'alerte : deux jours d'affilée sans une "
+        f"dépense, ou {seuil_impr:,} impressions sans un seul clic — dans ce cas "
+        "c'est l'annonce qu'il faut reprendre, jamais le budget.",
+        "Je lis ta dépense, pas ce qu'elle rapporte : GA4 n'attribue rien de fiable "
+        "à une campagne aussi jeune. Et si elle a démarré en milieu de semaine, ses "
+        "chiffres se comparent à des semaines pleines — ils paraîtront petits même "
+        "si elle va bien.",
+        "piste", 2,
+        repere=f"Elle devient lisible le {lisible_txt} : elle aura sa semaine "
+               f"pleine, et les {seuil_chf} CHF et ~50 clics à partir desquels un "
+               "écart de coût veut dire quelque chose. D'ici là, ce rapport la "
+               "laisse tranquille.",
+    )
+
+
+def _reco_dict(key, platform, title, observation, pourquoi, verifier, angle_mort,
+               confidence, priority, repere=""):
+    """Même forme que `_reco()` du moteur — les conseils fabriqués ici entrent
+    dans le même payload, la même carte et le même feedback que les autres."""
+    return {
+        "key": key, "platform": platform, "title": title,
+        "observation": observation, "pourquoi": pourquoi, "verifier": verifier,
+        "repere": repere, "angle_mort": angle_mort,
+        "confidence": confidence, "source": "rule", "priority": priority,
+    }
 
 
 def _strip_reco(r: dict) -> dict:
@@ -578,12 +1013,152 @@ def build_payload(sb, user_id: str) -> dict | None:
         if (_c or {}).get("label") and (_c or {}).get("campaign_name"):
             name2label[_nrm(_c["campaign_name"])] = _c["label"]
 
+    # ── LE POIDS D'UN THÈME — ce qui passe par lui, en part du compte ────────
+    #
+    # Sert deux fois : à choisir les thèmes du rapport, et à classer les
+    # conseils entre eux (`_importance`). On ne convertit RIEN : une part de
+    # dépense et une part de publications restent deux grandeurs différentes,
+    # on prend simplement la plus grande des deux. C'est un ordre d'attention,
+    # jamais une mesure — il ne sort pas d'ici et ne s'affiche nulle part.
+    _themes_matrice = (matrix or {}).get("themes", [])
+    _tot_spend = sum(float(t.get("spend") or 0) for t in _themes_matrice)
+    _tot_posts = sum(int(t.get("posts") or 0) for t in _themes_matrice)
+
+    def _poids_theme(t):
+        part_argent = (float(t.get("spend") or 0) / _tot_spend) if _tot_spend > 0 else 0.0
+        part_contenu = (int(t.get("posts") or 0) / _tot_posts) if _tot_posts > 0 else 0.0
+        return max(part_argent, part_contenu)
+
     theme_list = list(priority_labels)
-    if not theme_list and matrix and matrix.get("themes"):
-        theme_list = [t["label"] for t in matrix["themes"][:3] if (t.get("spend") or 0) > 0]
+    if not theme_list and _themes_matrice:
+        # `spend > 0` EXCLUAIT L'ORGANIQUE, deux fois plutôt qu'une :
+        # `matrix["themes"]` est trié par dépense décroissante, donc un thème
+        # qui ne fait que publier arrivait dernier — puis le filtre le retirait.
+        # Un compte sans publicité n'avait alors AUCUN thème, donc aucune carte,
+        # donc aucun conseil : tout le rapport tenait dans son verdict. On
+        # classe désormais par le poids ci-dessus, qui compte les publications
+        # comme il compte les francs.
+        theme_list = [t["label"] for t in
+                      sorted(_themes_matrice, key=_poids_theme, reverse=True)
+                      if _poids_theme(t) > 0][:3]
 
     matrix_campaigns = (matrix or {}).get("campaigns", [])
     matrix_themes_by = {_nrm(t["label"]): t for t in (matrix or {}).get("themes", [])}
+
+    # ── Les dates DÉCLARÉES par les plateformes ──────────────────────────────
+    # Lues UNE fois, ici, parce que deux blocs en ont besoin : la veille des
+    # campagnes neuves juste en dessous, et la frise tout en bas. Elles ne se
+    # déduisent pas de la dépense — c'est justement leur intérêt : la dépense
+    # dit qu'une campagne TOURNE, la date déclarée dit qu'elle DEVAIT tourner.
+    # Voir supabase/migrations/campagnes_dates_declarees.sql.
+    def _dates_declarees():
+        out = {}
+        for _table, _canal in (("meta_campaign_config", "meta"),
+                               ("google_campaign_config", "google")):
+            try:
+                _rows = (sb.table(_table)
+                         .select("campaign_name, start_date, end_date")
+                         .eq("user_id", user_id).execute().data) or []
+            except Exception:
+                _rows = []   # migration pas encore passée — on reste muet
+            for _row in _rows:
+                _nom = (_row.get("campaign_name") or "").strip()
+                if _nom:
+                    # Même troncature que partout ailleurs : les deux côtés
+                    # doivent porter la même forme du nom, sinon une campagne au
+                    # nom long perd sa date déclarée sans que rien ne le dise.
+                    out[(_canal, str(_nom)[:60])] = {"start": _row.get("start_date"),
+                                                     "end": _row.get("end_date")}
+        return out
+
+    _declare_camp = _dates_declarees()
+
+    # ── Les campagnes lancées DEPUIS PEU (≤ 14 jours) ────────────────────────
+    # Rien de nouveau n'est demandé à personne : le premier jour où une campagne
+    # a dépensé est déjà en base. Deux populations, et la seconde est la plus
+    # intéressante — une campagne déclarée qui n'a jamais dépensé n'apparaît
+    # dans aucun chiffre du rapport, et c'est exactement pour ça qu'on ne la
+    # voit jamais.
+    def _campagnes_par_nom():
+        agg = {}
+
+        def _ajoute(nom, canal, jour, depense, clics, impr):
+            if not nom or jour is None:
+                return
+            c = agg.setdefault((canal, str(nom)[:60]), {
+                "nom": str(nom)[:60], "canal": canal, "debut": jour,
+                "jours": set(), "depense": 0.0, "clics": 0, "impressions": 0})
+            c["debut"] = min(c["debut"], jour)
+            c["jours"].add(jour)
+            c["depense"] += float(depense or 0)
+            c["clics"] += int(clics or 0)
+            c["impressions"] += int(impr or 0)
+
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            _m = df_meta_raw.copy()
+            _m["jourdt"] = pd.to_datetime(_m["date_start"], errors="coerce")
+            for _r in _m.itertuples():
+                if pd.isna(_r.jourdt) or float(getattr(_r, "spend", 0) or 0) <= 0:
+                    continue
+                _ajoute(getattr(_r, "campaign_name", None), "meta", _r.jourdt.date(),
+                        getattr(_r, "spend", 0), getattr(_r, "clicks", 0),
+                        getattr(_r, "impressions", 0))
+        if not df_google.empty and "campaign_name" in df_google.columns:
+            _g = df_google.copy()
+            _g["jourdt"] = pd.to_datetime(_g["date_start"], errors="coerce")
+            for _r in _g.itertuples():
+                _cout = float(getattr(_r, "cost_micros", 0) or 0) / 1_000_000.0
+                if pd.isna(_r.jourdt) or _cout <= 0:
+                    continue
+                _ajoute(getattr(_r, "campaign_name", None), "google", _r.jourdt.date(),
+                        _cout, getattr(_r, "clicks", 0), getattr(_r, "impressions", 0))
+        return agg
+
+    _camp_recentes = []
+    try:
+        _borne_veille = last_full_day - timedelta(days=_VEILLE_JOURS - 1)
+        _toutes = _campagnes_par_nom()
+        for _c in _toutes.values():
+            if _c["debut"] >= _borne_veille:
+                _c["theme"] = name2label.get(_nrm(_c["nom"]))
+                _c["muette"] = False
+                _camp_recentes.append(_c)
+        for (_canal, _nom), _d in _declare_camp.items():
+            if (_canal, _nom) in _toutes or not _d.get("start"):
+                continue
+            try:
+                _dep = date.fromisoformat(str(_d["start"])[:10])
+            except (ValueError, TypeError):
+                continue
+            if not (_borne_veille <= _dep <= last_full_day):
+                continue
+            _camp_recentes.append({
+                "nom": _nom, "canal": _canal, "debut": _dep, "jours": set(),
+                "depense": 0.0, "clics": 0, "impressions": 0,
+                "theme": name2label.get(_nrm(_nom)), "muette": True,
+            })
+        _camp_recentes.sort(key=lambda c: (-c["debut"].toordinal(), c["nom"]))
+    except Exception:
+        _camp_recentes = []
+
+    # Une campagne lancée cette semaine met SON thème à l'ordre du jour, même
+    # s'il n'est pas dans les trois plus gros : c'est la seule chose du rapport
+    # qui ne sera plus vraie dans quinze jours. Un thème de plus au maximum —
+    # le rapport ne se laisse pas remplir par les nouveautés.
+    for _c in _camp_recentes:
+        if len(theme_list) >= 4:
+            break
+        if _c.get("theme") and _c["theme"] not in theme_list:
+            theme_list.append(_c["theme"])
+
+    # Le rang d'enjeu de chaque thème retenu — l'argument n° 2 de `_importance`.
+    # Il se calcule sur le POIDS et pas sur l'ordre de `theme_list` : les thèmes
+    # prioritaires arrivent triés par ordre alphabétique, ce qui ne veut rien
+    # dire.
+    _poids_par_theme = {_nrm(t["label"]): _poids_theme(t) for t in _themes_matrice}
+    _rang_theme = {n: i for i, n in enumerate(sorted(
+        (_nrm(_l) for _l in theme_list),
+        key=lambda n: -_poids_par_theme.get(n, 0.0)))}
 
     # ── Frise (Phase 2) : série hebdo de la métrique du thème + repères d'actions
     _markers = {}
@@ -774,11 +1349,34 @@ def build_payload(sb, user_id: str) -> dict | None:
             df_week_posts=tw, followers_current=followers_current,
             ga4=_theme_ga4(lbl), objectif=objectif, feedback=feedback, vision=constats,
         )
-        t_recos = sorted((r for r in t_recos if r.get("key") not in SETUP_KEYS),
-                         key=lambda r: r["priority"])
+        t_recos = [r for r in t_recos if r.get("key") not in SETUP_KEYS]
+
+        # L'ORGANIQUE DU THÈME, puis la VEILLE de ses campagnes neuves.
+        #
+        # Les deux sont calculés ici et pas dans `components/reco_engine.py` :
+        # le moteur est partagé avec le Streamlit, qui ne connaît ni les thèmes
+        # ni les dates déclarées. Ce sont pourtant des conseils-règles comme les
+        # autres — même dict, même carte, même feedback.
+        try:
+            t_recos += _orga_recos(lbl, ti, df_insta, last_full_day)
+        except Exception:
+            pass
+        try:
+            for _c in _camp_recentes:
+                if _nrm(_c.get("theme")) != nlbl:
+                    continue
+                _v = _reco_veille(_c, last_full_day)
+                if _v:
+                    t_recos.append(_v)
+        except Exception:
+            pass
+
+        t_recos = sorted(t_recos, key=_importance)
         # On vise 3 conseils par thème : les règles d'abord, puis on COMPLÈTE avec
-        # autant de pistes IA distinctes que nécessaire (souvent 3, car les règles
-        # se déclenchent rarement sur un seul thème).
+        # autant de pistes IA distinctes que nécessaire. Ce nombre a beaucoup
+        # baissé depuis que l'organique et la veille produisent leurs propres
+        # règles — c'est voulu : un constat mesuré vaut mieux qu'une piste, et
+        # un appel Gemini de moins est une source d'erreur de moins.
         _need = max(0, 3 - len(t_recos))
         try:
             _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
@@ -790,7 +1388,11 @@ def build_payload(sb, user_id: str) -> dict | None:
             _ai = []
         # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
         # (le client n'en veut pas — filtre à la génération, pas qu'à l'affichage).
-        t_recos = [r for r in (t_recos + _ai) if not _compares_channels(r)][:3]
+        # Et on ne garde QUE LES TROIS PLUS IMPORTANTS : la coupe se faisait
+        # avant sur la seule priorité du moteur, c'est-à-dire sur l'ordre dans
+        # lequel les règles sont écrites.
+        t_recos = sorted([r for r in (t_recos + _ai) if not _compares_channels(r)],
+                         key=_importance)[:3]
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {
@@ -1094,6 +1696,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         "creneau":        ("eng", "engagement moyen", "%", "up", "{:.1f}"),
         "format_gagnant": ("eng", "engagement moyen", "%", "up", "{:.1f}"),
         "page_endormie":  ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+        # L'organique. Chaque conseil vise l'indicateur QU'IL fait bouger : le
+        # nombre de posts pour un rythme retombé, la portée pour tout le reste.
+        "orga_rythme":        ("posts", "posts publiés", "", "up", "{:.0f}"),
+        "orga_essoufflement": ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+        "orga_format":        ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+        "orga_reaction":      ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+        # Rien pour les `veille_*`, et c'est délibéré : une veille n'a pas de
+        # verdict à mériter. Lui donner une baseline reviendrait à promettre
+        # une mesure dans quatorze jours sur une décision qu'on n'a pas prise.
     }
 
     # MESURER UNE ACTION LÀ OÙ ELLE A EU LIEU.
@@ -1218,6 +1829,10 @@ def build_payload(sb, user_id: str) -> dict | None:
         r["baseline"] = round(base, 4) if base is not None else None
 
     def _attach_effort(r):
+        # Une veille ne se « fait » pas : lui coller une pastille « ⏱ 30 min »
+        # la ferait passer pour une tâche alors qu'elle demande d'attendre.
+        if _est_veille(r):
+            return
         if not r.get("effort"):
             r["effort"] = EFFORT_BY_KEY.get(r.get("key"), "30 min")
 
@@ -1232,23 +1847,25 @@ def build_payload(sb, user_id: str) -> dict | None:
         _attach_effort(_r)
 
     # ── Les 3 du moment ──────────────────────────────────────────────────────
-    # Jusqu'a 9 conseils repartis en 3 themes, personne ne choisit dans 9. Une
-    # seule selection en tete, tous themes confondus, classee par
-    # (theme prioritaire, confiance, facilite) : de quoi decider en 5 secondes.
-    _CONF_W = {"solide": 0, "creuser": 1, "piste": 2}
-    _EFF_W = {"10 min": 0, "30 min": 1, "1 h": 2, "2 h+": 3}
+    # Jusqu'a 12 conseils repartis en 4 themes, personne ne choisit dans 12. Une
+    # seule selection en tete, tous themes confondus, classee par IMPORTANCE
+    # (voir `_importance` : ce que le client a designe, ce qui pese le plus, ce
+    # qui bouge le plus vite, ce qui est le plus sur) puis diversifiee.
+    #
+    # Une veille ordinaire n'entre PAS dans cette liste-là. « Si tu ne fais que
+    # trois choses » est une liste de choses à faire, et son contenu est
+    # « attends le 24 » : elle reste lisible sur sa carte de thème, à sa place.
+    # La veille d'une campagne déclarée et muette, elle, y a toute sa place —
+    # c'est la seule qui demande un geste, et tout de suite.
     _pool = []
     for _tf in themes_focus:
         for _r in _tf["recos"]:
+            if _est_veille(_r) and not _veille_urgente(_r):
+                continue
             _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
     top_recos = _diversifier(
-        sorted(
-            _pool,
-            key=lambda r: (0 if r.get("is_priority") else 1,
-                           _CONF_W.get(r.get("confidence"), 3),
-                           _EFF_W.get(r.get("effort"), 2),
-                           r.get("priority", 99)),
-        ),
+        sorted(_pool,
+               key=lambda r: _importance(r, _rang_theme.get(_nrm(r.get("theme")), 9))),
         3,
     )
 
@@ -1889,25 +2506,12 @@ def build_payload(sb, user_id: str) -> dict | None:
         # distinction qui compte : une ligne SANS end_date veut dire « declaree
         # sans date de fin » ; PAS de ligne du tout veut dire « on ne sait
         # pas ». Le premier cas s'affiche, le second reste muet.
-        _declare = {}
-        for _table, _canal in (("meta_campaign_config", "meta"),
-                               ("google_campaign_config", "google")):
-            try:
-                _r = (sb.table(_table)
-                      .select("campaign_name, start_date, end_date")
-                      .eq("user_id", user_id).execute().data) or []
-            except Exception:
-                _r = []   # migration pas encore passee — la frise reste muette
-            for _row in _r:
-                _nom = (_row.get("campaign_name") or "").strip()
-                if _nom:
-                    # Meme troncature que `_ajoute` : les deux cotes doivent
-                    # porter la meme forme du nom, sinon une campagne au nom
-                    # long perd sa date declaree sans que rien ne le signale.
-                    _declare[(_canal, str(_nom)[:60])] = {
-                        "start": _row.get("start_date"),
-                        "end": _row.get("end_date"),
-                    }
+        #
+        # Lues une seule fois pour tout le rapport (voir `_dates_declarees`,
+        # plus haut) : la veille des campagnes neuves s'appuie sur exactement
+        # les memes lignes, et deux lectures de la meme table pouvaient rendre
+        # deux verites differentes si une recolte passait entre les deux.
+        _declare = _declare_camp
 
         # Une campagne DECLAREE mais qui n'a rien depense n'existe nulle part
         # dans les insights : elle n'aurait aucune barre. C'est pourtant celle
