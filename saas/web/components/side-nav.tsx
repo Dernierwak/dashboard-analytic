@@ -245,7 +245,12 @@ function Contenu({
         ) : (
           <div className="flex flex-col gap-2.5 border-t border-line pt-4">
             <CompteSwitch comptes={compte.comptes} actif={compte.uid} />
-            {compte.peutEditer && <FetchButton />}
+            {/* `ancrage="colonne"` : ici le panneau de suivi prend la largeur de
+                la colonne et s'ouvre VERS LE HAUT. Ancré à droite et vers le
+                bas comme ailleurs, il sortait de 29 px à gauche de l'écran et de
+                34 px sous la fenêtre — deux coupes qu'aucun défilement ne
+                rattrapait. Le détail est dans `fetch-button.tsx`. */}
+            {compte.peutEditer && <FetchButton ancrage="colonne" />}
             <span className="text-[10.5px] text-faint truncate" title={compte.email}>
               {compte.email}
             </span>
@@ -342,7 +347,13 @@ export function SideNav({
           aria-hidden
         />
         <div
-          className={`absolute inset-y-0 left-0 w-[268px] max-w-[85vw] bg-white border-r border-line shadow-xl overflow-y-auto transition-transform duration-200 ${
+          // 280 px comme la colonne d'écran, et pour la même mesure : en
+          // dessous, l'étape « Classement des contenus par l'IA » passe sur deux
+          // lignes dans le panneau de récolte. `max-w-[85vw]` garde la main sur
+          // les téléphones étroits — à 320 px de large le tiroir retombe à
+          // 272 px et l'étape se replie, ce qui est le comportement voulu :
+          // couper, jamais ; passer à la ligne, s'il le faut vraiment.
+          className={`absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-white border-r border-line shadow-xl overflow-y-auto transition-transform duration-200 ${
             ouvert ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -357,18 +368,47 @@ export function SideNav({
       </div>
 
       {/* ── Écran : la colonne ─────────────────────────────────────────────── */}
-      {/* 240 px dépliée. Ce n'est pas un héritage : c'est la largeur à laquelle
-          le bloc du bas cesse d'être compressé — le sélecteur de compte va
-          jusqu'à 190 px et l'e-mail complet tient sur une ligne — tout en
-          laissant 1 040 px au contenu sur un portable de 1 280, soit plus que
-          les 1 024 px sous lesquels la rangée « boussole + hors-thème » du
-          rapport se replie. En dessous de 220 px on comprime le bas de la
-          colonne, au-dessus de 260 px on prend au rapport sans rien y gagner.
+      {/* 280 px dépliée. Elle en faisait 240, choisis pour que « le bloc du bas
+          cesse d'être compressé » et pour rester au-dessus des « 1 024 px sous
+          lesquels la rangée boussole + hors-thème se replie ». LES DEUX MOITIÉS
+          DE CE RAISONNEMENT ÉTAIENT FAUSSES, mesures à l'appui :
+
+          · le bloc du bas était DÉJÀ compressé à 240. Sur un compte invité, la
+            rangée « pastille lecture seule + sélecteur » réclame 95,4 + 8 +
+            173,5 = 276,9 px et n'en recevait que 215 : le sélecteur était
+            écrasé à 111,6 px, soit 62 px de moins que son libellé ;
+          · le seuil de 1 024 px n'est pas une largeur de CONTENU mais le point
+            de rupture `lg` de Tailwind, donc une largeur de FENÊTRE. Comme
+            cette colonne est elle-même `hidden lg:flex`, elle disparaît avant
+            de pouvoir replier quoi que ce soit. Aucune largeur de barre ne peut
+            déclencher ce repli — il n'y a pas de falaise à 1 024, seulement une
+            pente.
+
+          280 vient d'une mesure, pas d'un arrondi : la rangée la plus large du
+          panneau de récolte (l'étape « Classement des contenus par l'IA »,
+          184,4 px, + 8 px de gouttière + le chrono « 16:04 », 31,5 px, + 26 px
+          de cadre) demande 249,9 px. Plus les 24 px de marge de la colonne et
+          son filet de 1 px : 274,9 px. Arrondi à 280 pour absorber l'arrondi
+          sous-pixel et la police de repli. C'est la largeur à laquelle AUCUNE
+          des sept étapes ne passe à la ligne.
+
+          CE QUE ÇA COÛTE, EN CLAIR : sur un portable de 1 280, le contenu passe
+          de 1 040 à 1 000 px — 936 px utiles dans le `max-w-7xl px-8` du
+          rapport, contre 976 avant. Les trois colonnes de la rangée du haut
+          perdent 12 px chacune. Si un jour ces 40 px manquent au rapport, le
+          repli de secours est 256 px : on n'y perd qu'une chose, la plus longue
+          des sept étapes passe sur deux lignes.
+
           64 px repliée : 40 px de cible cliquable et 12 px de marge de chaque
           côté — c'est le minimum sous lequel un rail cesse d'être un rail. */}
       <aside
-        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200 ${
-          replie ? "lg:w-[64px]" : "lg:w-[240px]"
+        // `overflow-y-auto` : le panneau de récolte ajoute ~110 px au bloc du
+        // bas quand il s'ouvre. Sur une fenêtre courte (un portable de 13" avec
+        // la barre d'onglets et le dock), la colonne n'a plus la hauteur — et
+        // sans cette ligne le débordement était simplement invisible, comme il
+        // l'était déjà sans le panneau sous 480 px de haut.
+        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200 ${
+          replie ? "lg:w-[64px]" : "lg:w-[280px]"
         }`}
       >
         <Contenu

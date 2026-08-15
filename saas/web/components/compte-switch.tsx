@@ -51,9 +51,13 @@ export function CompteSwitch({
             })
           }
           aria-label="Compte affiché"
-          // La colonne fait 232 px : un libellé long est tronqué une fois le
-          // menu refermé. Le titre le redonne en entier au survol, et la ligne
-          // ci-dessous le dit en clair au seul moment où ça compte.
+          // La colonne offre 255 px de contenu, et sur un compte invité la
+          // rangée « pastille + sélecteur » en réclame 276,9 : un libellé long
+          // reste tronqué une fois le menu refermé, et le restera — élargir la
+          // barre jusqu'à combler ces 22 px coûterait au rapport plus que ça ne
+          // rapporte ici, parce qu'un `truncate` + `title` se dégrade
+          // proprement. Le titre redonne le libellé entier au survol, et la
+          // ligne ci-dessous le dit en clair au seul moment où ça compte.
           title={courant ? nommer(courant) : undefined}
           // `min-w-0` : sans lui, la pastille « lecture seule » et le sélecteur
           // additionnaient leurs largeurs et débordaient de la colonne — ce que

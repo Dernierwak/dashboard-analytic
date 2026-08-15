@@ -909,45 +909,100 @@ export async function annulerEtiquettesIA(
   return { ok: true, n: avant.n };
 }
 
+// ── GITHUB ACTIONS : UN CODE HTTP N'EST PAS UN MESSAGE ──────────────────────
+//
+// Quatre fonctions tapent la même API avec le même jeton pour lancer ou suivre
+// le même workflow, et elles ratent toutes pour les mêmes raisons. Elles
+// répétaient donc quatre fois « GitHub a répondu 401 — vérifie le token », une
+// phrase qui ne dit à personne quoi faire : on ne « vérifie » pas un jeton
+// révoqué, on en refait un. Et 401, 403 et 404 demandent trois gestes
+// différents, dans trois endroits différents.
+//
+// LA TRADUCTION VIT ICI, ET NULLE PART AILLEURS. Ajouter un cinquième appel
+// n'ajoute pas un cinquième dialecte.
+//
+// ON NOMME LA VARIABLE, JAMAIS SA VALEUR. Ces messages partent vers le
+// navigateur, finissent dans une capture d'écran ou un ticket de support :
+// `GITHUB_TOKEN` est un nom public, ce qu'il contient ne l'est pas. Aucun
+// fragment de jeton — pas même les premiers caractères, pas même une longueur —
+// ne doit apparaître dans un message, une trace ou un commentaire. Il n'y a pas
+// non plus de repli : sans jeton valide, on ne lance rien, on le dit.
+const NOM_JETON = "GITHUB_TOKEN";
+const NOM_DEPOT = "GITHUB_REPO";
+const DEPOT_DEFAUT = "Dernierwak/dashboard-analytic";
+const WORKFLOW = "weekly-fetch.yml";
+
+const depotGitHub = () => process.env[NOM_DEPOT] ?? DEPOT_DEFAUT;
+
+/** Le jeton manque : ce n'est pas une panne, c'est une installation inachevée. */
+const JETON_ABSENT = `Pas encore configuré : ajoute la variable ${NOM_JETON} sur Vercel (token GitHub avec accès Actions).`;
+
+/** Chaque cause, son geste — et le geste dit OÙ il se fait. */
+function messageGitHub(status: number, repo: string): string {
+  switch (status) {
+    case 401:
+      return `GitHub refuse le jeton (401) : ${NOM_JETON} a expiré ou a été révoqué. Génère-en un nouveau sur GitHub, remplace la valeur de ${NOM_JETON} dans les variables d'environnement Vercel, puis redéploie.`;
+    case 403:
+      return `Jeton reconnu, mais interdit (403) : ${NOM_JETON} n'a pas le droit de lancer les Actions de ${repo}. Donne-lui la permission « Actions » en écriture sur ce dépôt, puis réessaie.`;
+    // GitHub répond aussi 404 pour un dépôt PRIVÉ hors de portée du jeton :
+    // il ne confirme pas l'existence de ce qu'on n'a pas le droit de voir. On
+    // ne le dit pas à l'écran — trois causes dans un encart de 255 px, plus
+    // personne ne lit — mais c'est la troisième piste si les deux premières
+    // sont bonnes.
+    case 404:
+      return `Introuvable (404) : ni le dépôt ${repo}, ni le workflow ${WORKFLOW}. Vérifie ${NOM_DEPOT}, et que .github/workflows/${WORKFLOW} existe bien sur la branche par défaut.`;
+    default:
+      return `GitHub a répondu ${status} — l'erreur vient de son côté, pas de ta configuration. Réessaie dans quelques minutes.`;
+  }
+}
+
+/** Lance le workflow avec les entrées données. Le seul chemin vers GitHub. */
+async function lancerWorkflow(
+  inputs: Record<string, string | boolean>,
+  succes: string
+): Promise<{ ok: boolean; message: string }> {
+  const token = process.env[NOM_JETON];
+  if (!token) return { ok: false, message: JETON_ABSENT };
+  const repo = depotGitHub();
+
+  let r: Response;
+  try {
+    r = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ref: "main", inputs }),
+      }
+    );
+  } catch {
+    // Sans ce filet, une coupure réseau remonte en erreur d'action serveur :
+    // l'écran affiche un plantage là où il n'y a qu'un réseau qui tousse.
+    return {
+      ok: false,
+      message: "Impossible de joindre GitHub (réseau). Réessaie dans un instant.",
+    };
+  }
+  if (r.status === 204) return { ok: true, message: succes };
+  return { ok: false, message: messageGitHub(r.status, repo) };
+}
+
 // « Récupérer mes données » : déclenche le workflow GitHub Actions pour CET
 // utilisateur (fetch + republication du rapport). Fire-and-forget : les
 // données arrivent en base ~2-3 minutes plus tard.
 export async function triggerFetch(): Promise<{ ok: boolean; message: string }> {
-  const supabase = createClient();
   const compte = await getCompteActif();
-  const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
-  if (!token) {
-    return {
-      ok: false,
-      message:
-        "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
-    };
-  }
-
-  const r = await fetch(
-    `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ref: "main", inputs: { user_id: user.id } }),
-    }
+  return lancerWorkflow(
+    { user_id: compte.uid },
+    "Mise à jour lancée — je te préviens ici dès que c'est prêt."
   );
-  if (r.status === 204) {
-    return {
-      ok: true,
-      message: "Mise à jour lancée — je te préviens ici dès que c'est prêt.",
-    };
-  }
-  return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
 }
 
 // « ✨ Classer mes contenus » : labellisation IA de tous les posts/campagnes
@@ -972,81 +1027,31 @@ export async function triggerClassify(): Promise<{
   message: string;
   depuis?: string;
 }> {
-  const supabase = createClient();
   const compte = await getCompteActif();
-  const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
-  if (!token) {
-    return {
-      ok: false,
-      message:
-        "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
-    };
-  }
-
   const depuis = new Date(Date.now() - 30_000).toISOString();
 
-  const r = await fetch(
-    `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ref: "main", inputs: { user_id: user.id, label_only: true } }),
-    }
+  const res = await lancerWorkflow(
+    { user_id: compte.uid, label_only: true },
+    "Classement lancé — l'IA labellise tes contenus, ~1 minute."
   );
-  if (r.status === 204) {
-    return {
-      ok: true,
-      message: "Classement lancé — l'IA labellise tes contenus, ~1 minute.",
-      depuis,
-    };
-  }
-  return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
+  // `depuis` ne borne l'annulation que si le classement est effectivement parti.
+  return res.ok ? { ...res, depuis } : res;
 }
 
 // « ↻ Recharger mes conseils » : republie le rapport depuis les données déjà
 // en base (recalcul des conseils, sans re-fetch ni relabel) — ~30 s.
 export async function triggerReport(): Promise<{ ok: boolean; message: string }> {
-  const supabase = createClient();
   const compte = await getCompteActif();
-  const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
-  if (!token) {
-    return {
-      ok: false,
-      message:
-        "Pas encore configuré : ajoute la variable GITHUB_TOKEN sur Vercel (token GitHub avec accès Actions).",
-    };
-  }
-
-  const r = await fetch(
-    `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ref: "main", inputs: { user_id: user.id, report_only: true } }),
-    }
+  return lancerWorkflow(
+    { user_id: compte.uid, report_only: true },
+    "Conseils en cours de recalcul — ~30 secondes."
   );
-  if (r.status === 204) {
-    return { ok: true, message: "Conseils en cours de recalcul — ~30 secondes." };
-  }
-  return { ok: false, message: `GitHub a répondu ${r.status} — vérifie le token.` };
 }
 
 // État du dernier run du workflow (pour le suivi du bouton « Mes données »).
@@ -1056,18 +1061,25 @@ export async function checkFetchStatus(): Promise<{
    *  Sans ça, la barre repartait de zéro à chaque changement de page. */
   debut?: string;
   url?: string;
+  /** Renseigné UNIQUEMENT pour 401/403/404 — les trois refus qui ne se
+   *  répareront pas tout seuls. Un 5xx ou un réseau qui tousse reste
+   *  « unknown » sans message : le sondage a le droit de rater un tour, il n'a
+   *  pas le droit d'annoncer une panne à chaque hoquet. */
+  message?: string;
 }> {
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO ?? "Dernierwak/dashboard-analytic";
+  const token = process.env[NOM_JETON];
+  const repo = depotGitHub();
   if (!token) return { state: "unknown" };
   try {
     const r = await fetch(
-      `https://api.github.com/repos/${repo}/actions/workflows/weekly-fetch.yml/runs?per_page=1`,
+      `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=1`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
         cache: "no-store",
       }
     );
+    if (r.status === 401 || r.status === 403 || r.status === 404)
+      return { state: "unknown", message: messageGitHub(r.status, repo) };
     if (!r.ok) return { state: "unknown" };
     const run = (await r.json())?.workflow_runs?.[0];
     if (!run) return { state: "unknown" };

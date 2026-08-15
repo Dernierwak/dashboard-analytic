@@ -8,6 +8,19 @@ type Phase = "idle" | "running" | "ready" | "failed" | "error";
 // « ↻ Recharger mes conseils » : recalcule le rapport (conseils par thème) à
 // partir des données déjà en base, sans re-fetch réseau (~30 s), puis propose
 // de recharger la page. Même mécanique de suivi que le bouton Mes données.
+//
+// LA BOÎTE NE BOUGE PLUS. « ↻ Recharger mes conseils » fait 163,2 px, « ◌
+// recalcul… » 85,1 px : cliquer faisait rétrécir le bouton de moitié et tirer à
+// lui le titre de section qui partage sa ligne. Un plancher de 164 px — la
+// largeur du plus long des trois libellés — et le titre reste où il est.
+//
+// LE PANNEAU PASSE À 288 px. Il vit dans le contenu, pas dans la colonne : il a
+// la place, et les messages d'erreur GitHub disent maintenant quel geste faire
+// (regénérer un jeton, ouvrir un droit, corriger un nom de dépôt) — trois
+// lignes de plus qu'un code HTTP nu.
+const BOITE =
+  "text-[11px] font-semibold rounded-full px-3 py-1 inline-flex items-center justify-center min-w-[164px] shrink-0";
+
 export function ReloadRecosButton() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -30,6 +43,14 @@ export function ReloadRecosButton() {
         return;
       }
       const res = await checkFetchStatus();
+      // 401/403/404 : le sondage restera aveugle, autant le dire tout de suite
+      // avec le geste qui va avec plutôt que d'attendre cinq minutes pour rien.
+      if (res.message) {
+        clearInterval(pollRef.current!);
+        setPhase("error");
+        setMessage(res.message);
+        return;
+      }
       if (res.state === "pending" || (res.state === "success" && checks <= 1)) {
         setPhase("running");
         return;
@@ -63,7 +84,7 @@ export function ReloadRecosButton() {
     return (
       <button
         onClick={() => window.location.reload()}
-        className="text-[11px] font-semibold text-white bg-pos rounded-full px-3 py-1 hover:opacity-90 transition-opacity animate-pulse shrink-0"
+        className={`${BOITE} text-white bg-pos border border-transparent hover:opacity-90 transition-opacity animate-pulse`}
       >
         ✓ Conseils prêts — recharger
       </button>
@@ -75,17 +96,17 @@ export function ReloadRecosButton() {
       <button
         disabled={pending || phase === "running"}
         onClick={launch}
-        className={`text-[11px] font-semibold rounded-full px-3 py-1 border transition-colors disabled:opacity-70 ${
+        className={`${BOITE} border transition-colors disabled:opacity-70 ${
           phase === "running"
             ? "text-warn border-warn/30 bg-warn/[0.06]"
             : "text-brand border-brand/30 hover:bg-brand/[0.06]"
         }`}
       >
-        {pending ? "…" : phase === "running" ? "◌ recalcul…" : "↻ Recharger mes conseils"}
+        {pending ? "◌ lancement" : phase === "running" ? "◌ recalcul…" : "↻ Recharger mes conseils"}
       </button>
       {message && (
         <div
-          className={`absolute right-0 top-full mt-2 w-64 z-20 text-[11.5px] leading-relaxed rounded-lg border px-3 py-2 shadow-card bg-white ${
+          className={`absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] z-20 text-[11.5px] leading-relaxed rounded-lg border px-3 py-2 shadow-card bg-white ${
             phase === "failed" || phase === "error" ? "text-neg border-neg/25" : "text-ink border-line"
           }`}
         >
