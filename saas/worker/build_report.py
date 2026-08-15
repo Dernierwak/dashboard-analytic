@@ -1229,22 +1229,34 @@ def build_payload(sb, user_id: str) -> dict | None:
     except Exception:
         _camp_recentes = []
 
-    # Une campagne lancée cette semaine met SON thème à l'ordre du jour, même
-    # s'il n'est pas dans les trois plus gros : c'est la seule chose du rapport
-    # qui ne sera plus vraie dans quinze jours. Un thème de plus au maximum —
-    # le rapport ne se laisse pas remplir par les nouveautés.
+    # ── UNE CAMPAGNE NEUVE N'AJOUTE PLUS SON THÈME ───────────────────────────
     #
-    # La limite se compte maintenant sur les AJOUTS et non sur la longueur de la
-    # liste : `len(theme_list) >= 4` voulait dire « un de plus que les trois »
-    # tant que la liste faisait trois : avec six étoiles, elle aurait voulu dire
-    # « aucun ». La règle n'a pas changé, sa formulation devient littérale.
-    _neuf_ajoute = False
-    for _c in _camp_recentes:
-        if _neuf_ajoute:
-            break
-        if _c.get("theme") and _c["theme"] not in theme_list:
-            theme_list.append(_c["theme"])
-            _neuf_ajoute = True
+    # Ce bloc ajoutait ici UN thème non étoilé quand une campagne y avait
+    # démarré depuis moins de `_VEILLE_JOURS`. L'intention était juste — c'est
+    # la seule chose du rapport qui ne sera plus vraie dans quinze jours — mais
+    # elle sortait au mauvais endroit : deux étoiles posées, trois cartes à
+    # l'écran, sous un titre qui dit « Tes thèmes prioritaires ». Le rapport
+    # affirmait une priorité que le client n'a pas choisie. Retiré le 15 août
+    # 2026, sur signalement de David.
+    #
+    # LE SIGNAL, LUI, NE DISPARAÎT PAS — ET IL N'A JAMAIS EU BESOIN DE CE BLOC.
+    # `changements` (plus bas) parcourt TOUTES les campagnes, pas celles de
+    # `theme_list`, et écrit un fait daté par campagne neuve — `lancee`, ou
+    # `jamais_lancee` quand elle est déclarée et muette — en portant son thème.
+    # Côté web, un fait dont le thème n'a pas de carte tombe PAR CONSTRUCTION
+    # dans le filet « Ce qu'aucun thème ne prend » (`chgOrphelins`,
+    # `app/page.tsx`), qui est le complément exact des cartes. C'est-à-dire
+    # exactement là où on veut le lire : quelque chose s'est produit là où aucun
+    # thème ne regarde. Le bloc retiré DOUBLAIT donc ce signal, et le doublon
+    # sortait sous le mauvais titre.
+    #
+    # CE QU'ON PERD, ET IL FAUT L'ÉCRIRE : la carte de ce thème portait aussi le
+    # mini-conseil de veille (`_reco_veille`, « attends le 24 avant de juger »).
+    # Une consigne sur un thème que le client ne suit pas est exactement
+    # l'invité déguisé qu'on retire ; le FAIT reste, la consigne part.
+    #
+    # `_camp_recentes` sert encore juste en dessous : la veille reste calculée,
+    # mais seulement pour les thèmes que le client a désignés.
 
     # Le rang d'enjeu de chaque thème retenu — l'argument n° 2 de `_importance`.
     # Il se calcule sur le POIDS et pas sur l'ordre de `theme_list` : les thèmes

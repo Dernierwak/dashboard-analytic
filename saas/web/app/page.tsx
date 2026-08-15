@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   getWeeklyData,
   type ReportPayload,
-  type ThemeFocus,
   type TrackedAction,
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
@@ -15,6 +14,7 @@ import { AlerteThemes } from "@/components/alerte-themes";
 import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
+import { ThemesCarrousel } from "@/components/themes-carrousel";
 import { KpiFocusCard } from "@/components/kpi-focus";
 import { HorsTheme } from "@/components/hors-theme";
 import { ThemeDonut } from "@/components/theme-donut";
@@ -179,9 +179,6 @@ export default async function Page() {
 
   const themesFocus = report?.themes_focus ?? [];
   const reglages = report?.reglages ?? [];
-  // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
-  // elle désignerait le seul thème de la page.
-  const topRecos = themesFocus.length > 1 ? report?.top_recos ?? [] : [];
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
@@ -190,7 +187,50 @@ export default async function Page() {
   // c'est la carte qui décide de montrer sa courbe. Deux cartes pour le même
   // thème — une pour le bilan, une pour les conseils — obligeaient le lecteur
   // à faire lui-même le lien entre « voilà la courbe » et « voilà quoi faire ».
-  const cartes = themesFocus;
+  //
+  // ── SOUS CE TITRE, IL N'Y A QUE CE QUE LE CLIENT A ÉTOILÉ ────────────────
+  //
+  // Deux étoiles posées, trois cartes à l'écran. La cause était dans le worker :
+  // une campagne lancée depuis moins de quatorze jours ajoutait SON thème à
+  // `theme_list`, même non étoilé (bloc `_neuf_ajoute`, `build_report.py`). Le
+  // signal était réel, sa place ne l'était pas — il s'affichait sous un titre
+  // qui affirme une priorité que le client n'a pas choisie. Corrigé à la source ;
+  // le fait, lui, continue d'arriver par `report.changements` et tombe dans le
+  // filet « Ce qu'aucun thème ne prend » (`chgOrphelins`, plus bas), par
+  // construction, puisque ce filet est le complément exact des cartes.
+  //
+  // MAIS UN RAPPORT NE SE RÉGÉNÈRE QU'À LA DEMANDE : le payload déjà publié
+  // porte le thème surnuméraire jusqu'au prochain « ↻ Recharger mes conseils ».
+  // On rattrape donc à l'affichage, avec la même règle — le procédé exact des
+  // « est programmée » de `rail-actions.tsx`, et il se retire le jour où plus
+  // aucun payload ancien ne circule.
+  //
+  // C'EST LA LISTE VIVANTE DES ÉTOILES QUI FAIT FOI, pas le `is_priority` figé
+  // dans le payload, et la raison se voit à l'écran : `ObjectifTheme` affiche
+  // `priorities` — relu dans `insight_feedback` à chaque rendu — quarante pixels
+  // au-dessus des cartes. Les deux doivent dire la même chose. Ce choix couvre
+  // du même coup l'autre cas possible : un thème étoilé le jour de la
+  // publication et désétoilé depuis.
+  //
+  // ET IL NE VIDE JAMAIS LA SECTION. Aucune étoile → le worker retient les trois
+  // plus gros thèmes, c'est un défaut assumé et on les garde tous. Des étoiles
+  // qui ne désignent aucune carte (thème renommé, rapport plus vieux que
+  // l'étoilage) → on ne cache rien plutôt que de rendre une section vide.
+  const etoiles = new Set(priorities);
+  const etoilees = themesFocus.filter((t) => etoiles.has(t.label));
+  const cartes = etoiles.size > 0 && etoilees.length > 0 ? etoilees : themesFocus;
+  const gardeAJoue = cartes.length < themesFocus.length;
+  const themesRendus = new Set(cartes.map((t) => t.label));
+
+  // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
+  // elle désignerait le seul thème de la page. Et elle ne renvoie qu'à des
+  // cartes qui EXISTENT : un conseil du thème que le garde-fou vient de retirer
+  // pointerait vers une ancre absente du document.
+  const topRecos =
+    cartes.length > 1
+      ? (report?.top_recos ?? []).filter((r) => !r.theme || themesRendus.has(r.theme))
+      : [];
+
   const avecCourbe = cartes.filter((t) => t.series && t.series.points.length > 1);
   // Le classement entre thèmes n'a de sens que s'ils suivent LE MÊME
   // indicateur : comparer une portée à une dépense ne veut rien dire.
@@ -224,7 +264,11 @@ export default async function Page() {
   // Sans ce filet, ces actions seraient invisibles ET inatteignables tout en
   // continuant de compter dans le plafond des trois chantiers : trois actions
   // de réglage et toute la page se bloque, sans aucun moyen de débloquer.
-  const themesRendus = new Set(cartes.map((t) => t.label));
+  //
+  // `themesRendus` est calculé plus haut, avec `cartes` : c'est le même
+  // ensemble, et c'est ce qui garantit que retirer une carte DÉPLACE ce qui la
+  // concernait ici au lieu de le perdre.
+  //
   // Les changements de plateforme suivent EXACTEMENT la même répartition que
   // les actions : au thème quand il a une carte, au filet sinon. Une campagne
   // non étiquetée n'a pas de thème — elle atterrit donc dans le filet, et
@@ -264,14 +308,13 @@ export default async function Page() {
   const nThemes = cartes.length > 0 ? ++_n : undefined;
   const nApprendre = report?.apprentissage ? ++_n : undefined;
 
-  // ── L'ORDRE ET LE PLI DES CARTES DE THÈME ────────────────────────────────
+  // ── L'ORDRE DES CARTES DE THÈME ──────────────────────────────────────────
   //
   // LE PLAFOND DE TROIS EST TOMBÉ le 14 août 2026, et il n'a jamais été écrit
-  // ici : cette page rend TOUT ce que `report.themes_focus` contient, sans en
-  // couper un seul, et c'était déjà vrai quand le plafond tenait. Ce qui a
-  // changé est en amont, et ce n'est pas une levée pure et simple —
-  // `togglePriorityLabel` AVERTIT au lieu de refuser la quatrième étoile, et le
-  // worker construit la carte de tous les thèmes étoilés.
+  // ici : cette page rend TOUT ce que le worker a retenu, sans en couper un
+  // seul, et c'était déjà vrai quand le plafond tenait. Ce qui a changé est en
+  // amont — `togglePriorityLabel` AVERTIT au lieu de refuser la quatrième
+  // étoile, et le worker construit la carte de tous les thèmes étoilés.
   //
   // MAIS SEULES LES TROIS PREMIÈRES ÉTOILES REÇOIVENT DES PISTES RÉDIGÉES PAR
   // L'IA (`_THEMES_IA`, `build_report.py`). La raison n'est pas graphique : un
@@ -284,31 +327,22 @@ export default async function Page() {
   // Une carte sans pistes IA porte `ia_redigee: false` et l'explique elle-même
   // (`theme-card.tsx`) : un vide non expliqué se lit comme une panne.
   //
-  // L'ORDRE. Les étoilés d'abord — ce sont eux qu'on a désignés comme le
-  // travail du moment. Puis ceux qui portent une action en cours : un thème
-  // qu'on ne suit plus mais sur lequel un verdict va tomber n'est pas un thème
-  // de fond de liste. Le reste garde l'ordre du worker, qui les classe par
-  // poids (part de dépense ou part de publications, la plus grande des deux).
+  // L'ORDRE, ET IL PÈSE PLUS QU'AVANT. Les étoilés d'abord — ce sont eux qu'on
+  // a désignés comme le travail du moment. Puis ceux qui portent une action en
+  // cours : un thème sur lequel un verdict va tomber n'est pas un thème de fond
+  // de liste. Le reste garde l'ordre du worker, qui les classe par poids (part
+  // de dépense ou part de publications, la plus grande des deux). Depuis qu'une
+  // seule carte est visible à la fois, ce classement ne décide plus seulement
+  // de qui est en haut : il décide de la carte qu'on OUVRE en arrivant.
   //
-  // LE PLI. Au-delà de trois cartes ouvertes, les suivantes ARRIVENT fermées.
-  // Trois, parce que c'est le nombre que le produit défend déjà partout
-  // ailleurs : trois chantiers de front (`capReached`), trois conseils par
-  // thème, trois priorités. Ce n'est donc pas un plafond de plus, c'est le même
-  // nombre appliqué à la lecture.
-  //
-  // Et une carte fermée n'est pas une carte absente : son en-tête entier reste
-  // à l'écran — nom, étoile, chiffre de tête, pente, bilan. On ne cache que la
-  // courbe et les deux colonnes, à un clic.
-  //
-  // L'EXCEPTION QUI COMPTE : un thème qui porte une action vivante ne se replie
-  // JAMAIS, quel que soit son rang. C'est ce qui garde honnête le raccourci du
-  // hero (« 2 actions en cours — y aller ↓ ») : il vise l'ancre de la carte du
-  // thème le plus urgent, et atterrir sur un bloc fermé ferait passer un lien
-  // qui marche pour un lien cassé.
+  // LE PLI A DISPARU AVEC L'EMPILEMENT. Au-delà de trois cartes, les suivantes
+  // arrivaient fermées (`OUVERTES`, `estReplie`, `replie` sur `ThemeCard`, et
+  // le `▾` du sommaire) : c'était la parade à un couloir de six mille pixels.
+  // Il n'y a plus de couloir — `ThemesCarrousel` n'en montre qu'une — et un
+  // repli qui ne replie rien est un geste de plus à comprendre pour rien.
   const themesVivants = new Set(
     data.actions.map((a) => a.theme).filter((t): t is string => !!t)
   );
-  const OUVERTES = 3;
   const cartesOrdonnees = cartes
     .map((t, rangWorker) => ({ t, rangWorker }))
     .sort(
@@ -318,8 +352,6 @@ export default async function Page() {
         a.rangWorker - b.rangWorker
     )
     .map((x) => x.t);
-  const estReplie = (t: ThemeFocus, rang: number) =>
-    cartesOrdonnees.length > OUVERTES && rang >= OUVERTES && !themesVivants.has(t.label);
 
   return (
     <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -484,48 +516,23 @@ export default async function Page() {
             Pour chaque thème : où il en est, ce qui peut le faire bouger, et ce que tes
             actions passées ont donné.
           </p>
-          {report?.themes_intro && (
+          {/* LA PHRASE DE PASSAGE, ET SEULEMENT QUAND ELLE EST ENCORE VRAIE.
+              Elle est écrite par le worker et NOMME les premiers thèmes du
+              rapport (« voilà les leviers sur A, B et C »). Si le garde-fou
+              vient d'en retirer un, elle annonce une carte qui n'est plus là :
+              une phrase de liaison qui ment sur ce qu'elle relie vaut moins que
+              pas de phrase. Elle revient exacte au prochain rechargement — et
+              cette condition disparaît avec le garde-fou. */}
+          {!gardeAJoue && report?.themes_intro && (
             <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1.5">
               {report.themes_intro}
             </p>
           )}
 
-          {/* LE SOMMAIRE — le repère de position qui manquait, et qui devient
-              indispensable dès que la section dépasse trois cartes.
-              Une carte fait 900 à 1 400 px : à partir de la quatrième, plus
-              rien ne dit combien il y en a ni ce qu'elles couvrent, et une
-              carte repliée quatre écrans plus bas est une carte qu'on ne
-              trouvera jamais. Ce sont des LIENS, pas des cartes — la même
-              exception que « Si tu ne fais que trois choses » juste dessous :
-              rendre deux fois le même module sur une page est ce que la
-              grammaire interdit, y renvoyer ne l'est pas.
-              Le `▾` dit quelles cartes arrivent fermées : on ne cache rien sans
-              le nommer. */}
-          {cartesOrdonnees.length > OUVERTES && (
-            <div className="mb-4 flex flex-wrap items-center gap-1.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-widest text-faint font-bold mr-1">
-                {cartesOrdonnees.length} thèmes
-              </span>
-              {cartesOrdonnees.map((t, i) => (
-                /* C'est le NOM qui se coupe, jamais les deux signes qui
-                   l'encadrent. Un thème de soixante-dix caractères poussait le
-                   `▾` hors du cadre, où l'`overflow-hidden` de la pastille
-                   l'effaçait : la seule pastille dont on avait besoin de savoir
-                   qu'elle est repliée était justement celle qui ne le disait
-                   plus. `shrink-0` sur les signes, `min-w-0 truncate` sur le
-                   nom — le nom est la seule chose qu'on peut deviner. */
-                <a
-                  key={t.label}
-                  href={`#${ancreTheme(t.label)}`}
-                  className="inline-flex items-center gap-1 max-w-full min-w-0 text-[11.5px] text-muted hover:text-ink border border-line rounded-full px-2.5 py-1 transition-colors"
-                >
-                  {t.is_priority && <span className="text-warn shrink-0">★</span>}
-                  <span className="truncate min-w-0">{t.label}</span>
-                  {estReplie(t, i) && <span className="text-faint shrink-0">▾</span>}
-                </a>
-              ))}
-            </div>
-          )}
+          {/* LE SOMMAIRE EST DEVENU LA BARRE D'ONGLETS — il vit maintenant dans
+              `ThemesCarrousel`, plus bas, avec les flèches et le « 2 / 5 ».
+              C'était déjà la liste des noms de tous les thèmes : en faire la
+              navigation évitait d'ajouter un troisième dispositif à côté. */}
 
           {/* « Si tu ne fais que trois choses » — la sélection cross-thème.
               Des LIENS, pas des cartes : les mêmes conseils sont rendus en
@@ -553,59 +560,62 @@ export default async function Page() {
             </div>
           )}
 
-          {/* L'OBJECTIF, JUSTE AU-DESSUS DE LA CARTE QU'IL COMMANDE.
+          {/* L'OBJECTIF, JUSTE AU-DESSUS DES CARTES QU'IL COMMANDE.
               Il prend son thème en props et ne lit aucun état global : c'est
               ce qui le rend transposable tel quel le jour où chaque thème
               portera le sien.
 
-              CE QUI RESTE À FAIRE POUR LE DÉFILEMENT HORIZONTAL DES THÈMES.
-              Le conteneur ci-dessous est prêt à devenir un rail qui glisse
-              (`.defile-x snap-x snap-mandatory`, chaque enveloppe en
-              `snap-start w-[92vw] max-w-[880px] shrink-0`), mais il ne l'est
-              PAS aujourd'hui, et volontairement : une carte de thème fait 900 à
-              1 400 px de haut, et une bande de cette taille qui glisse
-              latéralement enferme le défilement vertical de la page — sur
-              téléphone on ne sort plus de la carte. Trois choses manquent avant
-              de l'activer :
-                1. un objectif PAR THÈME en base (`profiles.objectif` est unique
-                   par compte) — alors `ObjectifTheme` entre dans l'enveloppe de
-                   chaque carte au lieu d'être rendu une fois ;
-                2. un repère de position — sans pastilles « 2 / 6 », un rail
-                   horizontal cache cinq thèmes sans le dire ;
-                3. une carte repliable, pour que la hauteur du rail soit celle
-                   d'un écran et non celle de la plus haute carte.
-              Le passage se fera ici et dans `ObjectifTheme`, nulle part
-              ailleurs : chaque enveloppe porte déjà sa `key` et son ancre. */}
-          <div className="space-y-3">
-            {cartesOrdonnees.map((t, i) => (
-              <div key={t.label}>
-                {i === 0 && (
-                  <ObjectifTheme
-                    theme={{ label: t.label, is_priority: t.is_priority }}
-                    objectif={data.objectif}
-                    priorities={priorities}
-                    nbThemes={cartes.length}
-                  />
-                )}
-                <ThemeCard
-                  theme={t}
-                  replie={estReplie(t, i)}
-                  actions={data.actions}
-                  archived={data.actionsArchived}
-                  changements={chgParTheme(t.label)}
-                  changementsApi={apiParTheme(t.label)}
-                  rows={report?.themes?.rows ?? null}
-                  fenetre={report?.vision?.period_label || null}
-                  decroche={pire?.label === t.label}
-                  labels={data.labels}
-                  feedback={data.feedback}
-                  comments={data.comments}
-                  suivis={data.suivis}
-                  capReached={capReached}
-                />
-              </div>
+              IL EST SORTI DE LA BOUCLE. Il était rendu dans l'enveloppe de la
+              PREMIÈRE carte (`i === 0`) : avec une seule carte visible à la
+              fois, il aurait disparu dès le premier changement d'onglet, alors
+              qu'un seul objectif commande les cinq thèmes. Le rendre dans
+              chaque panneau serait pire — un même module rendu N fois sur une
+              page est exactement ce que la grammaire interdit. Il est donc posé
+              une fois, au-dessus de la navigation ; il nomme le premier thème
+              quand il n'y en a qu'un, et dit « commun à tes N thèmes » sinon.
+              Le jour où l'objectif sera PAR THÈME (`profiles.objectif` est
+              unique par compte aujourd'hui), il redescendra dans le panneau. */}
+          <ObjectifTheme
+            theme={{
+              label: cartesOrdonnees[0].label,
+              is_priority: cartesOrdonnees[0].is_priority,
+            }}
+            objectif={data.objectif}
+            priorities={priorities}
+            nbThemes={cartes.length}
+          />
+
+          {/* UNE CARTE À LA FOIS. Le module porte sa barre d'onglets, ses
+              flèches, le repère « 2 / 5 » et le clavier ; il se retire de
+              lui-même quand il n'y a qu'un thème. Les cartes lui sont passées
+              DÉJÀ RENDUES : elles restent des composants serveur, il n'en
+              fabrique aucune. */}
+          <ThemesCarrousel
+            themes={cartesOrdonnees.map((t) => ({
+              label: t.label,
+              ancre: ancreTheme(t.label),
+              etoile: t.is_priority,
+            }))}
+          >
+            {cartesOrdonnees.map((t) => (
+              <ThemeCard
+                key={t.label}
+                theme={t}
+                actions={data.actions}
+                archived={data.actionsArchived}
+                changements={chgParTheme(t.label)}
+                changementsApi={apiParTheme(t.label)}
+                rows={report?.themes?.rows ?? null}
+                fenetre={report?.vision?.period_label || null}
+                decroche={pire?.label === t.label}
+                labels={data.labels}
+                feedback={data.feedback}
+                comments={data.comments}
+                suivis={data.suivis}
+                capReached={capReached}
+              />
             ))}
-          </div>
+          </ThemesCarrousel>
         </section>
       )}
 

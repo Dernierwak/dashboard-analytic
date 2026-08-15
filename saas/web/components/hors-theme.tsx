@@ -157,10 +157,17 @@ export function HorsTheme({
       <div className="shrink-0">
         <NoteAjout theme={null} />
 
-        {/* Rang 9 — le pied, un seul : pourquoi ces lignes sont là. */}
+        {/* Rang 9 — le pied, un seul : pourquoi ces lignes sont là.
+            « Sorti de tes priorités » ne suffisait plus depuis le 15 août 2026.
+            Le worker ajoutait aux thèmes prioritaires celui d'une campagne
+            lancée dans les quatorze jours, même JAMAIS étoilé ; il ne le fait
+            plus, et le fait atterrit ici. Un thème qu'on n'a jamais suivi n'est
+            pas un thème « sorti » de quoi que ce soit — le pied nommerait alors
+            une cause que le lecteur ne reconnaîtrait pas dans son compte. */}
         <p className="text-[10.5px] text-faint/80 mt-2 leading-relaxed">
-          Prises depuis les réglages de base, posées sur un thème sorti de tes priorités,
-          ou faites sur une campagne que tu n&apos;as pas encore étiquetée.
+          Prises depuis les réglages de base, faites sur une campagne que tu n&apos;as pas
+          encore étiquetée, ou survenues sur un thème que tu ne suis pas — jamais étoilé,
+          ou sorti de tes priorités.
         </p>
       </div>
     </section>

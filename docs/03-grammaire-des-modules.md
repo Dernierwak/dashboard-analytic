@@ -322,7 +322,7 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `LigneTheme` (le pied) | « Tes budgets mensuels ne font plus une enveloppe » posé au rang 9, SOUS le champ : les deux cartes qui le portaient voyaient leur champ remonter de 114 px, dans un module dont le rang 8 dit que des champs à trois hauteurs différentes se cherchent | la phrase est un fait sur la DONNÉE du thème, pas une convention de lecture : elle fond dans celle du rang 7. Le module n'a plus de rang 9. **Règle générale : `mt-auto` ne tient sa promesse que s'il pousse un élément SEUL** |
 | page Coûts (le zéro) | « 0 CHF » écrit là où rien n'avait été relevé, et là où rien n'est réglé — le même signe pour une ignorance et pour un constat | un vide se dit en toutes lettres, et les deux vides n'ont pas le même mot : « au prochain relevé » quand la mesure n'a pas eu lieu, « rien de réglé en ce moment » quand elle a eu lieu et vaut zéro. Un zéro non mesuré présenté comme mesuré est un chiffre faux |
 | `alerte-themes` | *(nouveau)* le rapport ne disait nulle part qu'une partie de l'argent n'entre dans aucun bilan par thème — les cartes de thème sont muettes sur ce qu'elles ne voient pas | version courte de `labels-couverture`, posée ENTRE la section 1 et la section 2 : la section 1 ne filtre rien, la section 2 filtre tout par thème, et c'est exactement là que le trou apparaît. Le chiffre vient de `getCouverture()`, la fonction de la page Thèmes — pas d'un second calcul « à peu près pareil ». Aucune forme : un module dont la vertu est d'être court n'ajoute pas une barre. **Il disparaît quand rien n'échappe** — un bloc qui dit « tout va bien » chaque lundi s'apprend par cœur en trois semaines |
-| `theme-card` (le pli) | trois cartes font un rapport, quinze font un couloir de 14 000 px où le douzième thème n'est jamais lu | au-delà de trois cartes, les suivantes ARRIVENT fermées — jamais supprimées : quand une forme ne tient pas à plusieurs, on change la forme, pas le nombre d'éléments. **Une carte repliée garde ses rangs 1 à 5** (nom, chiffre de tête, pente, bilan) ; seuls la forme et le détail attendent un clic. Exception : un thème qui porte une action vivante ne se replie jamais, sinon le raccourci du hero atterrit sur un bloc fermé et se lit comme un lien cassé |
+| `theme-card` (le pli) | trois cartes font un rapport, quinze font un couloir de 14 000 px où le douzième thème n'est jamais lu | au-delà de trois cartes, les suivantes ARRIVENT fermées — jamais supprimées : quand une forme ne tient pas à plusieurs, on change la forme, pas le nombre d'éléments. **Une carte repliée garde ses rangs 1 à 5** (nom, chiffre de tête, pente, bilan) ; seuls la forme et le détail attendent un clic. Exception : un thème qui porte une action vivante ne se replie jamais, sinon le raccourci du hero atterrit sur un bloc fermé et se lit comme un lien cassé — *entrée périmée le 15 août 2026 : le pli est supprimé avec l'empilement, voir `themes-carrousel` plus bas* |
 | `theme-card` (sans pistes IA) | un thème au-delà de la troisième étoile n'a pas de conseil rédigé par l'IA — un vide non expliqué se lit comme une panne, ou pire comme « rien à signaler » | à la place exacte où les pistes auraient été, une phrase grise (jamais rouge : rien n'a échoué) qui dit POURQUOI et QUOI FAIRE — retirer une étoile posée avant. Le payload porte `ia_redigee`, et son ABSENCE vaut « oui » : un rapport publié avant ne se voit pas coller une explication qui n'a rien à y faire |
 | `site-client` | *(nouveau)* le site du client n'était saisissable qu'à l'onboarding — un réglage qu'on ne pose qu'une fois devient faux le jour où le client change de domaine | module sur `/comptes`. Rang 3 = **le domaine lui-même**, et le vide s'y écrit en toutes lettres. Rang 7 = à quoi il sert, APRÈS le chiffre — sans cette phrase, un champ « ton site » sur une page de connexions ressemble à un réglage sans objet. Rang 9 = la limite : on stocke l'adresse, on ne la visite pas. **Le rang 3 n'affiche que ce que le serveur a renvoyé** — « boutique.ch » se stocke « https://boutique.ch/ », afficher la saisie montrerait une valeur que la base ne contient pas |
 | `OnboardingCard` (l'échec) | l'action jetait sans session : la frontière d'erreur démontait le TOUT PREMIER écran du produit, et les réponses partaient avec — sans un mot | l'action REND `{ok, message}` au lieu de jeter. **Règle : une action appelée depuis un écran qui porte de la saisie non enregistrée ne jette jamais** — jeter, c'est effacer sans le dire. Deux natures d'erreur, deux traitements : un refus d'ADRESSE colore le champ, un échec de SESSION ne le colore pas (accuser le champ envoie corriger ce qui est juste) et commence par ce qui rassure — les réponses sont toujours là |
@@ -346,6 +346,8 @@ est posé à même la page. Un cadre donnerait au second l'autorité du premier.
 | `fetch-button` (le bouton) | quatre libellés, quatre largeurs — 108,3 px au repos, 33,2 px pendant l'envoi, 95,2 puis 101,4 px quand le pourcentage passait à deux chiffres, 189,2 px à l'arrivée. Le bouton fondait et regonflait pendant la récolte, et tirait à lui tout ce qui l'entourait | une seule boîte pour toutes les phases (`w-full` en colonne, plancher de 112 px ailleurs) et **le chiffre quitte le bouton pour rejoindre la forme qu'il décrit** : le pourcentage se pose au bout de la barre de progression, où la barre `flex-1` absorbe seule l'écart entre 4 % et 92 %. Le bouton se contente de « ◌ récolte ». **Règle : un chiffre se pose contre la forme qui le représente, pas dans le déclencheur ; et un libellé qui change ne doit jamais changer la boîte** |
 | `side-nav` (la largeur) | 240 px justifiés par deux raisonnements faux : « le bloc du bas cesse d'être compressé » (il l'était déjà — la rangée pastille + sélecteur réclame 276,9 px et n'en recevait que 215) et « au-dessus de 1 024 px de contenu la rangée boussole + hors-thème se replie » (1 024 px est le point de rupture `lg` de Tailwind, donc une largeur de FENÊTRE ; la colonne étant elle-même `hidden lg:flex`, aucune largeur de barre ne peut le déclencher) | 280 px sur écran ET dans le tiroir, un seul nombre issu de la mesure ci-dessus. Le coût est écrit dans le code : 1 040 → 1 000 px de contenu à 1 280. **Règle : une largeur se justifie par une mesure et s'accompagne de ce qu'elle coûte — un seuil invoqué de mémoire se vérifie avant d'être invoqué** |
 | `triggerFetch` / `triggerClassify` / `triggerReport` / `checkFetchStatus` | quatre copies du même bloc, et un seul message pour tout ce qui n'est pas 204 : « GitHub a répondu 401 — vérifie le token ». Un code HTTP n'est pas un message : on ne « vérifie » pas un jeton révoqué, on en refait un, et 401, 403 et 404 demandent trois gestes dans trois endroits différents | un `lancerWorkflow()` unique et un `messageGitHub()` qui traduit chaque code en son geste. **Règle : un message d'erreur nomme la VARIABLE, jamais sa valeur** — il part vers le navigateur et finit dans une capture d'écran |
+| `themes-carrousel` | *(nouveau)* les cartes de thème étaient empilées, et une carte mesure 894 px pleine contre 296 px vide (mesuré à 1 280 × 800) : cinq thèmes faisaient un couloir de plusieurs milliers de pixels. Le PLI — les cartes au-delà de la troisième arrivant fermées — ne répondait pas à la question : replier ne dit pas qu'on lit le thème 2 sur 5, et une carte fermée quatre écrans plus bas reste une carte qu'on ne va pas chercher | **une carte à la fois.** Le SOMMAIRE qui existait déjà devient la barre d'onglets (`role="tablist"` / `role="tab"` / `role="tabpanel"`, `tabindex` glissant, ← → Home End) plutôt qu'un troisième dispositif à côté ; flèches précédent/suivant avec `aria-label` nommant le thème visé, et « 2 / 5 » entre elles. **Pas de bouclage** — sur une liste courte et ORDONNÉE, la seule question est « ai-je tout vu », et un anneau est justement la réponse qu'on ne veut pas ; le clavier suit la même règle, le motif ARIA laissant le bouclage optionnel. **La hauteur suit chaque carte** : l'écart de 598 px entre deux voisines est entièrement sous la ligne de flottaison d'une fenêtre de 800 px, verrouiller n'achèterait aucune stabilité visible et ouvrirait autant de blanc en pied. Les panneaux restent dans le DOM (`hidden`, pas démontés) — une note à moitié tapée survit au changement d'onglet et les ancres `#theme-…` restent résolvables. `OUVERTES`, `estReplie`, la prop `replie` et le `▾` du sommaire disparaissent avec le pli |
+| section « Tes thèmes prioritaires » | deux étoiles posées, **trois cartes à l'écran** : le worker ajoutait à `theme_list` le thème d'une campagne lancée depuis moins de 14 jours, même jamais étoilé. Le rapport affirmait une priorité que le client n'avait pas choisie | le bloc est retiré du worker. **Règle : sous un titre qui dit ce que le client a choisi, il n'y a que ce que le client a choisi.** Le signal n'est pas perdu et n'avait jamais eu besoin de ce bloc : `changements` parcourt TOUTES les campagnes et un fait dont le thème n'a pas de carte tombe par construction dans le filet « Ce qu'aucun thème ne prend » — le doublon sortait simplement sous le mauvais titre. Un garde-fou d'affichage rattrape les payloads déjà publiés (même procédé que les « est programmée » de `rail-actions`), en se réglant sur la liste VIVANTE des étoiles : `ObjectifTheme` l'affiche 40 px au-dessus des cartes, les deux doivent dire la même chose |
 
 **Reste à traiter :**
 
@@ -430,6 +432,64 @@ disponibilité du gérant.
 ---
 
 ## Journal
+
+**15 août 2026 (2)** — **Une navigation ne s'ajoute pas à côté de celle qui
+existe : c'est la même qui change de nature.**
+
+Les cartes de thème passent d'un empilement à une carte à la fois. Le réflexe
+était d'ajouter des flèches et un « 2 / 5 » au-dessus de la pile — donc un
+troisième dispositif à côté du SOMMAIRE, qui listait déjà tous les noms avec
+leur étoile. C'était le sommaire l'onglet ; il ne lui manquait que de changer de
+carte au lieu de faire défiler.
+
+Trois arbitrages, tous tranchés par une mesure ou par une règle déjà écrite.
+
+**La hauteur suit chaque carte.** 894 px pleine contre 296 px vide à
+1 280 × 800 : 598 px d'écart, entièrement sous la ligne de flottaison d'une
+fenêtre de 800 px. La raison habituelle de verrouiller une hauteur — que les
+commandes ne bougent pas sous le curseur — ne s'applique pas ici, les commandes
+étant AU-DESSUS du panneau. Et verrouiller demanderait de mesurer des cartes en
+`display: none`, donc de les rendre toutes visibles : le couloir qu'on retire.
+
+**Pas de bouclage.** La liste est courte et ORDONNÉE (les étoilés d'abord, dans
+l'ordre où ils ont été posés). Sur une liste pareille, la seule question est
+« est-ce que j'ai tout vu » — un anneau est exactement la réponse qu'on ne veut
+pas. Le clavier suit la même règle : le motif ARIA laisse le bouclage optionnel,
+et deux règles opposées dans un même dispositif seraient un piège.
+
+**Rien n'est démonté.** Les panneaux inactifs portent `hidden` : une note à
+moitié tapée survit au changement d'onglet, et les ancres `#theme-…` restent
+résolvables — le raccourci du hero, « Si tu ne fais que trois choses » et les
+liens du rapport hebdomadaire par e-mail en dépendent tous.
+
+Corollaire trouvé au clavier : **une commande qui se désactive sous le doigt
+emporte le focus avec elle.** La flèche « suivant » disparaît en bout de liste
+et le focus retombe sur le `<body>` : la touche d'après ne fait plus rien. Il est
+donc passé à l'onglet du thème qu'on vient d'ouvrir, d'où ← et → repartent.
+
+**15 août 2026** — **Sous un titre qui dit ce que le client a choisi, il n'y a
+que ce que le client a choisi.**
+
+Deux thèmes étoilés, trois cartes sous « Tes thèmes prioritaires ». Le worker
+ajoutait le thème d'une campagne lancée dans les quatorze jours, même jamais
+étoilé, au motif — juste — que c'est la seule chose du rapport qui ne sera plus
+vraie dans quinze jours. L'intention était bonne, la sortie était fausse : un
+titre qui affirme une priorité que personne n'a posée.
+
+Ce qui rend la correction facile, c'est que le signal N'AVAIT JAMAIS BESOIN de ce
+bloc. `changements` parcourt toutes les campagnes, pas celles des thèmes
+retenus, et le filet « Ce qu'aucun thème ne prend » est le complément EXACT des
+cartes : retirer une carte y déplace mécaniquement ce qui la concernait. Le bloc
+retiré doublait donc un signal déjà émis, et le doublon sortait sous le mauvais
+titre. **Quand un signal apparaît au mauvais endroit, chercher d'abord s'il
+n'est pas déjà émis au bon.**
+
+Le garde-fou d'affichage se règle sur la liste VIVANTE des étoiles, pas sur le
+`is_priority` figé dans le payload, et la raison est visuelle : `ObjectifTheme`
+affiche cette liste quarante pixels au-dessus des cartes. Deux comptes d'étoiles
+qui se contredisent à quarante pixels d'écart ne se lisent pas comme deux
+mesures, ils se lisent comme une erreur. Il ne vide jamais la section : sans
+étoile, ou avec des étoiles qui ne désignent aucune carte, on ne cache rien.
 
 **14 août 2026 (5)** — **Réduire ce qu'on montre n'est pas une mise en page,
 c'est une censure ; replier en est une.**

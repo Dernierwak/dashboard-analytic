@@ -146,7 +146,6 @@ export function ThemeCard({
   comments,
   suivis,
   capReached = false,
-  replie = false,
 }: {
   theme: ThemeFocus;
   actions: TrackedAction[];
@@ -167,12 +166,6 @@ export function ThemeCard({
   /** L'action produite par un conseil, par clé de conseil. */
   suivis: Record<string, TrackedAction>;
   capReached?: boolean;
-  /**
-   * La carte ARRIVE fermée — elle n'est pas amputée. C'est le seul réglage qui
-   * permet à un rapport de porter dix thèmes sans devenir un couloir de dix
-   * mille pixels : voir le commentaire du pli, plus bas.
-   */
-  replie?: boolean;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
   const vals = s ? s.points.map((p) => p.value) : [];
@@ -231,40 +224,25 @@ export function ThemeCard({
     ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
     : [];
 
-  // ── LE PLI ────────────────────────────────────────────────────────────────
+  // ── LE PLI A DISPARU ──────────────────────────────────────────────────────
   //
-  // Une carte de thème fait 900 à 1 400 px de haut. Trois cartes font un
-  // rapport ; quinze font un couloir de dix-huit mille pixels dans lequel on ne
-  // retrouve rien, et le lundi matin personne ne descend au douzième thème.
+  // Une carte de thème fait 900 à 1 400 px de haut. Empilées, quinze cartes
+  // faisaient un couloir de dix-huit mille pixels : la parade était d'ouvrir
+  // les trois premières et de laisser arriver les suivantes FERMÉES — un
+  // `<details>`/`<summary>` monté à la place du `<div>` de l'en-tête, piloté
+  // par une prop `replie`.
   //
-  // La parade N'EST PAS d'en afficher moins — la grammaire le dit en toutes
-  // lettres : « quand une forme ne tient pas à plusieurs, on change la forme,
-  // pas le nombre d'éléments affichés ». Réduire ce qu'on montre pour sauver
-  // une mise en page, c'est laisser la mise en page décider de ce que
-  // l'utilisateur a le droit de savoir.
+  // Il n'y a plus de couloir : `components/themes-carrousel.tsx` ne montre
+  // qu'une carte à la fois, avec sa barre d'onglets, ses flèches et son
+  // « 2 / 5 ». Un repli qui ne replie rien n'est pas une sécurité, c'est un
+  // geste de plus à comprendre pour rien — et un `▾` qui ne cache plus rien est
+  // un signe qui ment. La prop, les deux balises variables et le
+  // « déplier ▾ / replier ▴ » de l'en-tête sont partis avec lui.
   //
-  // On change donc la forme, et d'un cran seulement : la carte repliée garde
-  // son EN-TÊTE ENTIER — le nom, l'étoile, le chiffre de tête, sa pente, le
-  // bilan et sa fenêtre. Ce qui se replie, c'est la courbe et les deux
-  // colonnes. Autrement dit : les rangs 1 à 5 restent, les rangs 6 et 7
-  // attendent un clic. Une carte repliée reste lisible comme une tuile ; elle
-  // n'est jamais réduite à son titre, ce qui aurait caché son rang 3.
-  //
-  // POURQUOI DEUX BALISES VARIABLES plutôt qu'un second rendu. `Boite` et
-  // `Tete` valent `<details>`/`<summary>` quand la carte arrive fermée,
-  // `<div>`/`<div>` sinon. Les enfants ne bougent pas d'une ligne : il n'y a
-  // pas deux versions de la carte à maintenir en parallèle, il y a une carte et
-  // deux enveloppes. C'est ce qui rend vraie la phrase « exactement le même
-  // module » — le composant, les props et le rendu sont les mêmes, seul l'état
-  // d'ouverture initial change. Et aucun JavaScript : `<details>` suffit, comme
-  // pour « Ses campagnes » plus bas.
-  //
-  // Le groupe est NOMMÉ (`group/carte`). Un `group` anonyme ici serait un
-  // ancêtre de plus pour le `group-open:` de « Ses campagnes », qui est un
-  // `<details>` imbriqué : ouvrir la carte ferait basculer le « déplier ▾ » du
-  // pied, qui n'a rien demandé.
-  const Boite: React.ElementType = replie ? "details" : "div";
-  const Tete: React.ElementType = replie ? "summary" : "div";
+  // Ce que le pli protégeait reste protégé, autrement : la carte n'est toujours
+  // jamais amputée — « quand une forme ne tient pas à plusieurs, on change la
+  // forme, pas le nombre d'éléments affichés ». Le carrousel est ce changement
+  // de forme, d'un cran de plus.
 
   return (
     <section
@@ -272,14 +250,7 @@ export function ThemeCard({
       className="bg-white border border-line rounded-xl shadow-card overflow-hidden scroll-mt-4"
     >
       <div className="border-l-[3px]" style={{ borderColor: filet }}>
-       <Boite className={replie ? "group/carte block" : undefined}>
-        <Tete
-          className={`px-5 py-4 border-b border-line bg-black/[0.015] ${
-            replie
-              ? "cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden"
-              : ""
-          }`}
-        >
+        <div className="px-5 py-4 border-b border-line bg-black/[0.015]">
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h3 className="font-serif text-[17px] text-ink">
               {theme.is_priority && <span className="text-warn">★ </span>}
@@ -293,16 +264,6 @@ export function ThemeCard({
             {som.spend_week > 0 && (
               <span className="text-[11.5px] text-faint">
                 {fmtCHF(som.spend_week)} CHF cette semaine
-              </span>
-            )}
-            {/* La seule chose que le pli AJOUTE à l'en-tête. Sans elle, un
-                en-tête cliquable se lit comme un en-tête : le corps de la carte
-                ne serait pas caché, il serait invisible — et un geste qu'on ne
-                soupçonne pas n'existe pas. */}
-            {replie && (
-              <span className="ml-auto shrink-0 text-[11px] font-semibold text-brand">
-                <span className="group-open/carte:hidden">déplier ▾</span>
-                <span className="hidden group-open/carte:inline">replier ▴</span>
               </span>
             )}
           </div>
@@ -375,7 +336,7 @@ export function ThemeCard({
               )}
             </>
           )}
-        </Tete>
+        </div>
 
         {s && (
           <div className="px-3 pt-3 pb-2">
@@ -635,7 +596,6 @@ export function ThemeCard({
             </div>
           </details>
         )}
-       </Boite>
       </div>
     </section>
   );
