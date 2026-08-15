@@ -1,6 +1,12 @@
 # Secrets - NE PAS COMMIT
 .env
 .streamlit/secrets.toml
+# Google et GitHub font ATTERRIR ces fichiers dans le dossier sans rien
+# demander : le JSON d'identifiants OAuth garde son nom de client, les codes de
+# secours arrivent en .txt. Les deux traînaient à la racine sans être ignorés —
+# un seul `git add -A` les publiait. On les nomme avant que ça arrive.
+client_secret*.json
+recovery-codes*.txt
 
 # SSL certificates
 *.pem
