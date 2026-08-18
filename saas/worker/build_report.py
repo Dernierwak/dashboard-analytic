@@ -677,6 +677,334 @@ def _reco_veille(camp, jusqu_au) -> dict | None:
     )
 
 
+# ── LE THÈME QUI NE DÉCLENCHE RIEN ───────────────────────────────────────────
+#
+# CE QUE DISAIT LA CARTE, ET POURQUOI C'ÉTAIT FAUX. Quand `recos` sortait vide,
+# `theme-card.tsx` écrivait « Rien d'urgent sur ce thème cette semaine — il
+# tourne dans ses normes », sous un titre qui promet « comment l'améliorer
+# cette semaine ». Un module qui s'annule lui-même, et une affirmation que les
+# chiffres contredisent une fois sur deux.
+#
+# CE QUE ÇA REPRÉSENTE, MESURÉ. Sur les dix rapports déjà publiés en base :
+# 3 cartes vides sur 18 (17 %), et surtout 12 cartes sur 18 sans AUCUN
+# conseil-règle — les trois quarts de ce qui s'affiche vient de Gemini. Rejeu
+# des règles sur 12 semaines et 2 comptes réels, en ne gardant que les thèmes
+# assez lourds pour mériter une carte : 17 cartes vides sur 120, soit 14 %.
+# Ce n'est donc ni un cas rare (une carte sur sept) ni une majorité.
+#
+# CE QUE CES 17 CARTES SONT VRAIMENT — et c'est là que la phrase ment :
+#   · 11 sur 17 sont UN thème mort depuis dix semaines (0 CHF, 0 publication) ;
+#   · 6 sur 17 sont UN thème à 300–1 100 CHF par semaine et 5 000 à 14 000
+#     clics, sur un compte SANS Google Analytics : on voit tout ce qu'il coûte
+#     et rien de ce qu'il rapporte.
+# Aucun des deux ne « tourne dans ses normes ». Le premier ne tourne plus, le
+# second tourne sans qu'on sache vers quoi.
+#
+# LA RÉPONSE, ET CE QU'ELLE N'EST PAS. Fabriquer un conseil pour remplir le
+# vide apprendrait au lecteur à sauter la section — c'est le contraire du but.
+# Deux objets seulement, et ce sont des VEILLES, pas des conseils : une veille
+# dit ce qu'on surveille, elle ne demande pas d'agir, elle ne porte pas
+# « ▶ Je le teste » et elle n'a donc aucun verdict à mériter (clé `veille_…`,
+# lue par `reco-card.tsx` comme par `_est_veille`).
+_ARRET_REF_CHF = SEUILS["cpc_spend_min"]        # 50 CHF sur les 4 semaines d'avant
+_ARRET_SEM_CHF = SEUILS["cpc_spend_min"] / 2    # 25 CHF la semaine juste avant
+_CALME_REF = 28                                 # la « norme » d'un thème : 4 semaines
+_CALME_PILOTE = 4                               # au-delà, la régularité devient le sujet
+_CALME_CLICS_MIN = 50                           # même plancher que le repère de la veille
+
+
+def _reco_theme_arret(theme, sem, prec, ref, posts_sem, frais) -> dict | None:
+    """Un thème qui dépensait, et qui vient de s'arrêter net.
+
+    LE TROU QU'ELLE BOUCHE. `_rule_silence` dit déjà « aucun post cette semaine
+    alors que tu as une cadence ». Rien ne le disait côté publicité : toutes les
+    règles pub comparent des campagnes ENTRE elles pendant la semaine, donc une
+    semaine sans campagne ne leur donne rien à comparer et elles se taisent —
+    c'est exactement le cas où il faudrait parler. Mesuré sur 12 semaines et
+    2 comptes : 7 déclenchements, dont 5 sur des cartes où rien d'autre ne
+    sortait. Environ un par compte et par trimestre.
+    (Le pendant organique n'est PAS écrit : sur les 11 arrêts relevés, 3 des 4
+    arrêts organiques tombaient sur une carte où `_rule_silence` parlait déjà.
+    Une règle en plus qui répète une règle existante n'est pas une règle.)
+
+    LES DEUX PLANCHERS, ET D'OÙ ILS VIENNENT. 50 CHF sur les 4 semaines d'avant,
+    c'est `SEUILS["cpc_spend_min"]` — le montant à partir duquel ce produit
+    s'autorise déjà à juger une dépense. 25 CHF la semaine juste avant, sa
+    moitié : sans lui, un thème qui s'éteignait doucement sur six semaines
+    déclenchait une « rupture » au moment où il ne restait plus rien à rompre.
+
+    `frais` EST LA CONDITION QUI REND LE CONSTAT SOLIDE. Une récolte en retard
+    donne exactement la même image qu'une campagne coupée. La règle ne parle
+    donc que si la régie qui portait ce thème a des données jusqu'au dernier
+    jour du rapport — sinon elle se tait, plutôt que d'annoncer un arrêt qui
+    n'est qu'un retard de fetch.
+
+    La clé finit par `_muette` : c'est le signal que `reco-card.tsx` et
+    `_veille_urgente` lisent tous les deux pour la traiter comme la veille d'une
+    campagne déclarée qui ne dépense pas — même nature (de l'argent qui devait
+    couler et ne coule pas), même place en tête.
+    """
+    if not frais:
+        return None
+    if sem["spend"] > 0 or posts_sem > 0:
+        return None
+    if prec["spend"] < _ARRET_SEM_CHF or ref["spend"] < _ARRET_REF_CHF:
+        return None
+    return _reco_dict(
+        f"veille_theme_{theme}_muette", "pub",
+        f"« {theme} » n'a plus rien dépensé cette semaine",
+        f"0 CHF sur les 7 jours du rapport, contre {prec['spend']:,.0f} CHF la "
+        f"semaine d'avant et {ref['spend']:,.0f} CHF sur les 4 semaines "
+        "précédentes. Ce thème n'apparaît plus dans aucun chiffre de ce rapport.",
+        "Quatre causes, et elles donnent toutes la même image : la campagne est "
+        "arrivée à sa date de fin, le budget de la période est épuisé, le moyen "
+        "de paiement du compte a été refusé, ou quelqu'un a mis en pause sans "
+        "prévoir la suite.",
+        "Ouvre tes campagnes de ce thème dans le gestionnaire : le statut y est "
+        "écrit noir sur blanc, et c'est trente secondes. Si l'arrêt est voulu, "
+        "retire l'étoile de ce thème sur la page Thèmes — sa carte reviendra "
+        "chaque lundi tant qu'elle y sera. S'il ne l'est pas, chaque jour de "
+        "plus est un jour perdu, pas un franc perdu, et les jours ne se "
+        "rattrapent pas.",
+        "Je lis ta dépense, pas ton intention : un arrêt planifié et un blocage "
+        "de paiement s'écrivent tous les deux « 0 CHF ». Et je ne vois que la "
+        "publicité — un thème que tu continues en boutique ou par e-mail est "
+        "invisible ici.",
+        "solide", 1,
+        repere=f"Le repère : ce thème tournait à {ref['spend'] / 4:,.0f} CHF par "
+               "semaine. Une semaine à zéro est une information ; deux semaines "
+               "à zéro sans décision, c'est la décision qui a été prise à ta place.",
+    )
+
+
+def _reco_theme_calme(theme, sem, hebdo, calmes, aveugle, silence_sem) -> dict:
+    """LE FILET. Ce qu'on écrit quand aucune règle ne s'est déclenchée.
+
+    Il ne se déclenche QU'APRÈS les règles et les pistes IA (voir `build_payload`)
+    : il ne prend jamais une place, il occupe celle qui restait vide. Et il ne
+    peut pas ne rien rendre — c'est tout son intérêt.
+
+    DEUX BRANCHES, PARCE QUE « RIEN À DIRE » RECOUVRE DEUX ÉTATS OPPOSÉS :
+      · le thème ne produit plus rien. Le sujet n'est pas le thème, c'est sa
+        carte : elle occupe la place d'un thème vivant. La décision est sur la
+        page Thèmes, pas dans le gestionnaire ;
+      · le thème tourne, et rien n'en sort de sa fourchette habituelle. Là, la
+        seule chose honnête est de NOMMER cette fourchette et le seuil au-delà
+        duquel j'alerterai — un lecteur qui sait à partir de quand s'inquiéter
+        n'a plus besoin qu'on l'inquiète.
+
+    CE QUI L'EMPÊCHE D'ÊTRE LA MÊME PHRASE TROIS LUNDIS DE SUITE. Ses chiffres
+    changent chaque semaine, mais ça ne suffirait pas. `calmes` compte les
+    rapports consécutifs où ce thème n'a rien eu d'autre à dire (lu dans les
+    payloads déjà publiés) : passé `_CALME_PILOTE` semaines, la répétition
+    DEVIENT le sujet et la carte le dit — un thème en pilote automatique n'a pas
+    besoin d'une étoile. La quatrième semaine ne ressemble donc pas à la
+    première, et la carte pousse vers la sortie plutôt que vers l'habitude.
+
+    `aveugle` PORTE LA VRAIE RAISON DU SILENCE dans le cas le plus fréquent
+    relevé en base : un thème à 300–1 100 CHF par semaine sur un compte sans
+    Google Analytics. Il ne manque pas de données sur ce thème — il manque la
+    moitié de l'histoire pour TOUT le compte, et le dire ici, chiffres du thème
+    à l'appui, vaut mieux que de le répéter dans les réglages de base.
+    """
+    cle = f"veille_theme_{theme}"
+
+    # ── Branche 1 : plus rien ne passe par ce thème ──────────────────────────
+    if sem["spend"] <= 0 and sem["posts"] == 0:
+        _actives = [h for h in hebdo if h["spend"] > 0 or h["posts"] > 0]
+        # `hebdo` ne remonte qu'à 8 semaines : au-delà, on écrit « plus de »
+        # plutôt qu'un nombre qu'on ne sait pas. Sous-estimer un silence est
+        # une prudence ; l'inventer précis serait un chiffre fabriqué.
+        _duree = ("depuis plus de 8 semaines" if not _actives
+                  else f"depuis {silence_sem} semaines" if silence_sem >= 2
+                  else "cette semaine")
+        if _actives:
+            _quoi = " et ".join(
+                x for x in (
+                    (f"{_actives[0]['spend']:,.0f} CHF" if _actives[0]["spend"] > 0 else ""),
+                    (f"{_actives[0]['posts']} publication"
+                     f"{'s' if _actives[0]['posts'] > 1 else ''}"
+                     if _actives[0]["posts"] > 0 else ""),
+                ) if x)
+            _passe = (f"Sa dernière semaine active remonte à {silence_sem} "
+                      f"semaines, avec {_quoi}.")
+        else:
+            _passe = ("Je ne trouve aucune semaine active sur ce thème dans les "
+                      "deux mois que je regarde.")
+        return _reco_dict(
+            cle, "pub",
+            f"« {theme} » ne produit plus rien {_duree}",
+            f"Ni dépense publicitaire ni publication sur ce thème sur les 7 jours "
+            f"du rapport. {_passe}",
+            "Un thème s'éteint pour trois raisons qui n'appellent pas la même "
+            "suite : la saison est passée, une campagne s'est terminée sans que "
+            "rien ne prenne le relais, ou tu as changé d'avis sans le dire à "
+            "Pulse.",
+            ("La décision n'est pas dans ton gestionnaire, elle est sur la page "
+             "Thèmes : tant que ce thème garde son étoile, il consomme une carte "
+             "chaque lundi pour ne rien dire. Si tu comptes le relancer, une "
+             "campagne ou une publication suffit à le remettre dans ce rapport "
+             "dès la semaine prochaine ; sinon, retire l'étoile et donne sa "
+             "place à un thème sur lequel il se passe quelque chose.")
+            + (" Et je te le redis sans détour : ça fait "
+               f"{silence_sem} semaines que je t'écris la même chose. Je "
+               "continuerai tant que l'étoile sera là — c'est la seule chose "
+               "que cette carte sait faire."
+               if silence_sem >= _CALME_PILOTE else ""),
+            "Je ne vois que ce qui passe par tes comptes publicitaires et ton "
+            "Instagram. Un thème travaillé en boutique, en salon ou par e-mail "
+            "est invisible ici — et ce silence-là ne veut rien dire.",
+            "solide", 8,
+            repere="Le repère : quatre semaines sans dépense ni publication, ce "
+                   "n'est plus une pause, c'est un arrêt.",
+        )
+
+    # ── Branche 2 : ça tourne, et rien n'en sort ─────────────────────────────
+    faits = []
+    if sem["spend"] > 0:
+        faits.append(f"{sem['spend']:,.0f} CHF et {sem['clics']:,} clic"
+                     f"{'s' if sem['clics'] > 1 else ''}")
+    if sem["posts"] > 0:
+        faits.append(f"{sem['posts']} publication{'s' if sem['posts'] > 1 else ''}")
+    obs = f"Cette semaine sur ce thème : {' et '.join(faits)}."
+
+    # LA FOURCHETTE DU THÈME, PRISE SUR SES PROPRES SEMAINES.
+    #
+    # C'est le MIN et le MAX observés, pas une moyenne ± deux écarts-types. La
+    # version statistique a été écrite puis retirée après l'avoir vue tourner
+    # sur un compte réel : sur « Offre saisonnière », moyenne 0,07 CHF et
+    # écart-type 0,05 donnaient une borne basse négative, ramenée à 0,00 —
+    # « une semaine normale tient entre 0,00 et 0,17 CHF le clic » ne dit rien
+    # à personne et suppose en plus une distribution qu'on n'a pas vérifiée.
+    # Le min et le max sont des semaines qui ont VRAIMENT existé.
+    cpcs = [h["spend"] / h["clics"] for h in hebdo
+            if h["clics"] >= _CALME_CLICS_MIN and h["spend"] > 0]
+    repere = ""
+    hors = None      # la semaine sort-elle de la fourchette du thème ?
+    if len(cpcs) >= 3 and sem["clics"] >= _CALME_CLICS_MIN:
+        cpc = sem["spend"] / sem["clics"]
+        bas, haut = min(cpcs), max(cpcs)
+        # LE TITRE NE PEUT PAS CONTREDIRE L'OBSERVATION QUI EST DESSOUS.
+        # Vu au premier essai sur un compte réel : « tient sa ligne » écrit
+        # au-dessus de « 0,03 CHF le clic, contre 0,07 à 0,09 d'habitude ».
+        # Les deux ne peuvent pas être vrais ensemble, et c'est le titre qui a
+        # tort. Une semaine hors fourchette n'est pas pour autant une tendance
+        # — d'où une veille qui la SIGNALE, et non un conseil qui la tranche.
+        if cpc < bas or cpc > haut:
+            hors = "sous" if cpc < bas else "au-dessus"
+        obs += (f" Le clic t'a coûté {cpc:.2f} CHF, contre {bas:.2f} à "
+                f"{haut:.2f} CHF sur tes {len(cpcs)} dernières semaines "
+                "comparables.")
+        repere = (f"Le repère : sur ce thème, tes semaines tiennent entre "
+                  f"{bas:.2f} et {haut:.2f} CHF le clic. Une semaine "
+                  "qui sort de cette fourchette, c'est le moment de regarder — "
+                  "et ce jour-là tu auras un vrai conseil ici, pas cette carte.")
+    elif sem["posts"] > 0:
+        reach = sem.get("reach")
+        moy = [h["reach"] for h in hebdo if h.get("reach")]
+        if reach and moy:
+            obs += (f" Elles ont porté à {reach:,.0f} en moyenne, contre "
+                    f"{min(moy):,.0f} à {max(moy):,.0f} sur tes semaines "
+                    "précédentes.")
+            repere = (f"Le repère : sur ce thème, une publication porte entre "
+                      f"{min(moy):,.0f} et {max(moy):,.0f}. C'est en sortant de "
+                      "là — dans un sens ou dans l'autre — qu'il y a quelque "
+                      "chose à comprendre.")
+
+    # TROIS TEXTES, PAS UN. La contrainte qui a décidé de cette forme : cette
+    # carte ne doit pas pouvoir resservir trois lundis de suite. Les chiffres
+    # changent chaque semaine, mais des chiffres qui changent sous une phrase
+    # identique se lisent comme une phrase identique — le lecteur apprend à
+    # sauter la carte, et c'est exactement ce qu'on cherche à éviter.
+    #
+    # `calmes` compte les rapports consécutifs où ce thème n'a rien eu d'autre à
+    # dire (lu dans les payloads déjà publiés). Trois paliers, et le troisième
+    # ne parle plus du thème mais de sa carte : au bout d'un mois sans écart, la
+    # RÉPÉTITION devient l'information, et la seule sortie honnête est de rendre
+    # la place. Une carte qui pousse vers sa propre suppression ne peut pas
+    # devenir du décor.
+    pourquoi = (
+        "« Dans ses normes » est un constat sur la RÉGULARITÉ, pas sur le "
+        "niveau. Mes règles cherchent des écarts — entre tes campagnes, entre "
+        "tes formats, entre cette semaine et les précédentes. Un thème qui a "
+        "toujours coûté trop cher n'a aucun écart à montrer, et il passera donc "
+        "toujours par cette carte-ci."
+    )
+
+    if hors:
+        # Ce cas passe AVANT les paliers de répétition : quand la semaine sort
+        # de la fourchette, ce n'est plus une carte sur la régularité.
+        titre = (f"« {theme} » sort de sa fourchette — le clic "
+                 f"{'baisse' if hors == 'sous' else 'monte'} cette semaine")
+        pourquoi = (
+            "Aucune de mes règles n'a de quoi trancher : elles comparent tes "
+            "campagnes entre elles pendant la semaine, et là c'est le thème "
+            "ENTIER qui a bougé par rapport à ses propres semaines. Une "
+            "enchère qui se tend, une audience qui s'épuise, une campagne qui "
+            "s'arrête et laisse les autres porter le volume : les trois "
+            "donnent ce mouvement."
+        )
+        verifier = (
+            "Une semaine hors fourchette n'est pas encore une tendance — c'est "
+            "la deuxième qui le dira. D'ici là, une seule chose à regarder, et "
+            "elle prend deux minutes : ton taux de clic sur ce thème. S'il a "
+            "bougé dans le même mouvement, c'est ton annonce qui a changé de "
+            "rendement ; s'il n'a pas bougé, c'est l'enchère, et tu n'y peux "
+            + ("pas grand-chose. " if hors == "au-dessus" else "rien — profites-en. ")
+            + "Ne touche à aucun budget avant de savoir laquelle des deux."
+        )
+    elif calmes >= _CALME_PILOTE:
+        titre = f"« {theme} » tourne sans toi depuis {calmes + 1} semaines"
+        verifier = (
+            f"{calmes + 1} semaines d'affilée sans un écart à te montrer : ce "
+            "n'est pas un reproche, c'est un constat sur ce que ce thème "
+            "demande — rien. Deux sorties, et aucune n'est de continuer à lire "
+            "cette carte. Soit tu lui fixes un cap chiffré pour le mois (une "
+            "dépense par semaine, une cadence de publication) : il y aura enfin "
+            "un écart à mesurer, donc un vrai conseil ici. Soit tu rends son "
+            "étoile à un thème sur lequel tu as encore des décisions à prendre."
+        )
+    elif calmes >= 2:
+        titre = f"« {theme} » n'a rien changé — {calmes + 1}e semaine de suite"
+        verifier = (
+            "Trois semaines que ce thème reste dans sa fourchette. À ce "
+            "stade-là, ce n'est plus une semaine calme, c'est son régime "
+            "normal : arrête de le surveiller chaque lundi et fixe-toi un "
+            "rendez-vous mensuel dessus. Ce que tu regarderas ce jour-là, c'est "
+            "le repère ci-dessous — c'est le seul chiffre de cette carte qui "
+            "vaille un aller-retour."
+        )
+    else:
+        titre = f"« {theme} » tient sa ligne — rien n'en sort cette semaine"
+        verifier = (
+            "Aucune de mes règles ne s'est déclenchée ici : pas d'écart de coût "
+            "entre tes campagnes, pas de format qui décroche, pas de semaine "
+            "vide. Le geste de la semaine, c'est de ne pas y toucher et de "
+            "mettre ton temps sur un thème qui bouge — les trois conseils du "
+            "haut de ce rapport te disent lequel."
+        )
+
+    if aveugle:
+        verifier += (
+            f" Et la chose que je ne peux pas te dire : ce que ces "
+            f"{sem['clics']:,} clics t'ont rapporté. Google Analytics n'est pas "
+            "branché sur ce compte, donc je vois le prix de ce thème et jamais "
+            "son retour — c'est le seul réglage qui ferait passer cette carte de "
+            "« régulier » à « rentable ou pas ». Il est dans les réglages de "
+            "base, plus bas dans ce rapport."
+        )
+
+    return _reco_dict(
+        cle, "pub", titre, obs, pourquoi, verifier,
+        "Je compare ce thème à lui-même. S'il est mauvais depuis six mois, sa "
+        "régularité ne le dira jamais — c'est un chiffre de marge, ou une "
+        "comparaison avec ce que tu attendais, qui trancherait, et ni l'un ni "
+        "l'autre n'est dans mes données.",
+        "creuser" if aveugle else "solide", 8,
+        repere=repere,
+    )
+
+
 def _reco_dict(key, platform, title, observation, pourquoi, verifier, angle_mort,
                confidence, priority, repere=""):
     """Même forme que `_reco()` du moteur — les conseils fabriqués ici entrent
@@ -1161,6 +1489,33 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     _declare_camp = _dates_declarees()
 
+    # ── LES RAPPORTS DÉJÀ PUBLIÉS, LUS UNE SEULE FOIS ────────────────────────
+    #
+    # Deux blocs les lisaient — le savoir-faire de fond (« conseils proposés
+    # semaine après semaine sans jamais être appliqués ») et, maintenant, le
+    # filet des thèmes calmes, qui a besoin de savoir depuis combien de semaines
+    # un thème n'a rien à dire. Deux requêtes sur la même table pouvaient rendre
+    # deux vérités différentes si une publication passait entre les deux.
+    #
+    # LA SEMAINE EN COURS EST EXCLUE, et ce n'est pas un détail : le Streamlit
+    # publie à l'ouverture du rapport et « ↻ Recharger mes conseils » republie
+    # par-dessus. Sans ce filtre, un thème calme le matin se serait compté
+    # lui-même l'après-midi, et la carte aurait changé de texte à chaque
+    # rechargement sans qu'aucune donnée n'ait bougé.
+    week_start_monday = today - timedelta(days=today.weekday())
+    _rapports_publies = []
+    try:
+        _rapports_publies = [
+            (_h.get("payload") or {})
+            for _h in ((sb.table("weekly_reports").select("week_start, payload")
+                        .eq("user_id", user_id)
+                        .lt("week_start", week_start_monday.isoformat())
+                        .order("week_start", desc=True)
+                        .limit(8).execute().data) or [])
+        ]
+    except Exception:
+        _rapports_publies = []
+
     # ── Les campagnes lancées DEPUIS PEU (≤ 14 jours) ────────────────────────
     # Rien de nouveau n'est demandé à personne : le premier jour où une campagne
     # a dépensé est déjà en base. Deux populations, et la seconde est la plus
@@ -1429,6 +1784,109 @@ def build_payload(sb, user_id: str) -> dict | None:
             ctx["paid_revenue"] = None
         return ctx
 
+    # ── CE QUI PASSE PAR UN THÈME, SEMAINE PAR SEMAINE ───────────────────────
+    #
+    # Les règles du moteur regardent la semaine du rapport et rien d'autre : un
+    # thème ne se compare qu'aux campagnes qui tournent en même temps que lui.
+    # Les deux lecteurs ci-dessous ouvrent la seule autre comparaison honnête —
+    # le thème contre LUI-MÊME, les semaines d'avant. Aucune donnée nouvelle :
+    # ce sont les mêmes lignes que la frise, lues sur une autre fenêtre.
+    #
+    # ADDITIONNER META ET GOOGLE EST PERMIS ICI, et seulement parce qu'on
+    # additionne des dépenses et des clics — deux grandeurs que chaque régie
+    # mesure elle-même, comme le fait déjà `_rule_roas`. C'est le REVENU qu'on
+    # ne saurait pas ventiler entre les deux, jamais le coût.
+    def _pub_theme(lbl, d1, d2):
+        sp = im = 0.0
+        cl = 0
+        canaux = set()
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+            _m = _m[_m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
+            if not _m.empty:
+                sp += float(_m["spend"].sum())
+                cl += int(_m["clicks"].sum())
+                im += float(_m["impressions"].sum())
+                canaux.add("meta")
+        if (df_google is not None and not df_google.empty
+                and "date_start" in df_google.columns):
+            _g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
+                           & (df_google["date_start"] <= pd.Timestamp(d2))]
+            # L'identifiant de campagne prime sur le nom : c'est lui que porte
+            # `google_campaign_config`, et deux campagnes Google peuvent
+            # partager un nom.
+            if "campaign_id" in _g.columns:
+                _g = _g[_g["campaign_id"].astype(str).map(
+                    lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
+            elif "campaign_name" in _g.columns:
+                _g = _g[_g["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
+            else:
+                _g = _g.iloc[0:0]
+            if not _g.empty:
+                sp += float(_g["cost_micros"].sum()) / 1e6
+                cl += int(_g["clicks"].sum())
+                im += float(_g["impressions"].sum())
+                canaux.add("google")
+        return {"spend": sp, "clics": cl, "impressions": im, "canaux": canaux}
+
+    def _posts_theme(lbl, d1, d2):
+        """Nombre de publications du thème sur la fenêtre, et leur portée."""
+        if df_insta is None or df_insta.empty or "labels" not in df_insta.columns:
+            return {"posts": 0, "reach": None}
+        _j = pd.to_datetime(df_insta["date"], errors="coerce").dt.date
+        _sel = df_insta[(_j >= d1) & (_j <= d2)
+                        & df_insta["labels"].map(
+                            lambda L: isinstance(L, (list, tuple)) and lbl in L)]
+        return {
+            "posts": int(len(_sel)),
+            "reach": (float(_sel["reach"].mean())
+                      if len(_sel) and "reach" in _sel.columns else None),
+        }
+
+    def _semaine_theme(lbl, d1, d2):
+        _p = _pub_theme(lbl, d1, d2)
+        _p.update(_posts_theme(lbl, d1, d2))
+        return _p
+
+    # JUSQU'OÙ CHAQUE RÉGIE EST À JOUR. Une récolte en retard et une campagne
+    # coupée produisent le même zéro ; sans cette borne, « ce thème s'est
+    # arrêté » se déclencherait sur un fetch en panne. Même raisonnement que
+    # `_couverture` dans la frise, calculé plus tôt parce qu'un conseil en
+    # dépend.
+    def _derniere_donnee(df, col):
+        try:
+            if df is None or df.empty or col not in df.columns:
+                return None
+            _d = pd.to_datetime(df[col], errors="coerce").max()
+            return _d.date() if pd.notna(_d) else None
+        except Exception:
+            return None
+
+    _couv_regie = {"meta": _derniere_donnee(df_meta_raw, "date_start"),
+                   "google": _derniere_donnee(df_google, "date_start")}
+
+    def _semaines_sans_conseil(nlbl):
+        """Depuis combien de rapports d'affilée ce thème n'a-t-il rien à dire ?
+
+        On remonte du plus récent au plus ancien et on s'arrête au premier
+        rapport où ce thème portait un VRAI conseil — une veille ne compte pas,
+        c'est justement ce qu'on est en train de compter. Un rapport où le thème
+        n'avait pas de carte arrête aussi la série : on ne sait pas ce qu'il
+        aurait dit.
+        """
+        n = 0
+        for _pl in _rapports_publies:
+            _tf = next((t for t in (_pl.get("themes_focus") or [])
+                        if _nrm(t.get("label")) == nlbl), None)
+            if _tf is None:
+                break
+            if any(not str(r.get("key") or "").startswith("veille_")
+                   for r in (_tf.get("recos") or [])):
+                break
+            n += 1
+        return n
+
     # LES THÈMES QUE GEMINI RÉDIGE — la seule ligne qui coûte de l'argent.
     #
     # `theme_list` peut porter quinze thèmes ; ce jeu-ci en porte trois au
@@ -1486,6 +1944,27 @@ def build_payload(sb, user_id: str) -> dict | None:
         except Exception:
             pass
 
+        # LE THÈME CONTRE LUI-MÊME. Quatre fenêtres, calculées une fois : elles
+        # servent la règle de l'arrêt ci-dessous et le filet tout en bas.
+        _sem_theme = _semaine_theme(lbl, cur_since, last_full_day)
+        _hebdo_theme = [
+            _semaine_theme(lbl, last_full_day - timedelta(days=7 * _k + 6),
+                           last_full_day - timedelta(days=7 * _k))
+            for _k in range(1, 9)
+        ]
+        try:
+            _prec = _hebdo_theme[0]
+            _ref = _pub_theme(lbl, cur_since - timedelta(days=_CALME_REF),
+                              cur_since - timedelta(days=1))
+            _frais = all((_couv_regie.get(_c) or date.min) >= last_full_day
+                         for _c in (_ref["canaux"] or ()))
+            _a = _reco_theme_arret(lbl, _sem_theme, _prec, _ref,
+                                   _sem_theme["posts"], _frais)
+            if _a:
+                t_recos.append(_a)
+        except Exception:
+            pass
+
         t_recos = sorted(t_recos, key=_importance)
         # On vise 3 conseils par thème : les règles d'abord, puis on COMPLÈTE avec
         # autant de pistes IA distinctes que nécessaire. Ce nombre a beaucoup
@@ -1518,6 +1997,33 @@ def build_payload(sb, user_id: str) -> dict | None:
         # lequel les règles sont écrites.
         t_recos = sorted([r for r in (t_recos + _ai) if not _compares_channels(r)],
                          key=_importance)[:3]
+
+        # ── LE FILET : AUCUNE CARTE NE SORT MUETTE ───────────────────────────
+        #
+        # Il passe EN DERNIER, après les règles, après l'IA, après la coupe à
+        # trois. Écrit plus haut, il aurait fait baisser `_need` d'une unité et
+        # poussé dehors une piste rédigée : un filet qui prend une place n'est
+        # plus un filet. Écrit ici, il ne s'exécute que si la carte serait
+        # partie vide — 14 % des cartes sur le rejeu de 12 semaines.
+        #
+        # Il ne fabrique aucun chiffre : tout ce qu'il écrit vient de
+        # `_sem_theme` et `_hebdo_theme`, c'est-à-dire des mêmes lignes que la
+        # courbe juste au-dessus de lui sur la carte.
+        if not t_recos:
+            try:
+                _g4t = _theme_ga4(lbl)
+                _aveugle = (_sem_theme["spend"] > 0
+                            and not (_g4t or {}).get("paid_revenue"))
+                _sil = 1
+                for _h in _hebdo_theme:
+                    if _h["spend"] > 0 or _h["posts"] > 0:
+                        break
+                    _sil += 1
+                t_recos = [_reco_theme_calme(
+                    lbl, _sem_theme, _hebdo_theme,
+                    _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+            except Exception:
+                t_recos = []
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {
@@ -1837,6 +2343,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         # Rien pour les `veille_*`, et c'est délibéré : une veille n'a pas de
         # verdict à mériter. Lui donner une baseline reviendrait à promettre
         # une mesure dans quatorze jours sur une décision qu'on n'a pas prise.
+        #
+        # C'est ce qui a décidé de la FORME des deux objets ajoutés en août 2026
+        # pour les thèmes muets (`veille_theme_…`). Le thème qui s'arrête
+        # demanderait `spend`, celui qui tient demanderait `cpc` — or les deux
+        # sont ici calculés sur Meta SEUL (voir `_kpis_window`), alors que ces
+        # deux objets lisent Meta + Google. Une baseline et un verdict pris sur
+        # deux périmètres différents, c'est un verdict faux, et un verdict faux
+        # repondère ensuite les conseils. On les a donc écrits en veille, sans
+        # promesse de mesure, plutôt que de leur inventer un indicateur.
     }
 
     # MESURER UNE ACTION LÀ OÙ ELLE A EU LIEU.
@@ -1889,7 +2404,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         k["purchases"] = float(pu) if pu is not None else None
         return k
 
-    week_start_monday = today - timedelta(days=today.weekday())
     try:
         decisions = fetch_reco_decisions(sb, user_id)
     except Exception:
@@ -2515,19 +3029,22 @@ def build_payload(sb, user_id: str) -> dict | None:
     # signal le plus honnête qu'il manque un savoir-faire, pas de la volonté.
     _recurrents = []
     try:
-        _hist = (sb.table("weekly_reports").select("payload")
-                 .eq("user_id", user_id).order("week_start", desc=True)
-                 .limit(8).execute().data) or []
         _compte, _titre_hist = {}, {}
-        for _h in _hist:
-            _pl = _h.get("payload") or {}
+        for _pl in _rapports_publies:
             _vus_sem = set()
             for _tf in (_pl.get("themes_focus") or []):
                 for _r in (_tf.get("recos") or []):
                     _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
             for _r in (_pl.get("reglages") or []):
                 _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
+            # UNE VEILLE N'EST PAS UN CONSEIL NON APPLIQUÉ. Ce compteur nourrit
+            # « il te manque un savoir-faire sur ce sujet » ; une veille ne
+            # demande rien à personne, la voir trois lundis de suite ne prouve
+            # aucun blocage. Sans ce filtre, le filet des thèmes calmes serait
+            # devenu, en trois semaines, le sujet n°1 des conseils de fond.
             for _k in _vus_sem:
+                if str(_k or "").startswith("veille_"):
+                    continue
                 _compte[_k] = _compte.get(_k, 0) + 1
         _faits = set()
         try:
