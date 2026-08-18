@@ -9,9 +9,11 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
-  MoyenneMensuelleAds,
+  MoyennesAds,
   ByLabelTable,
 } from "@/components/channel-dash";
+
+import { Comparer } from "@/components/comparaison";
 
 import { getCompteActif } from "@/lib/account";
 
@@ -53,8 +55,12 @@ export default async function GooglePage({
       <AdsKpis d={d} channel="google" />
       {/* Même module, même place que sur Meta : deux pages canal qui posent la
           même question doivent la poser dans le même ordre. */}
-      <MoyenneMensuelleAds d={d} path="/google" />
+      <MoyennesAds d={d} path="/google" />
       <MetricChart d={d} path="/google" />
+      {/* On lit ce qui s'est passé, son rythme, sa forme — PUIS on le compare.
+          Le module arrive après la courbe et non avant : comparer deux périodes
+          suppose qu'on ait déjà en tête celle qu'on regarde. */}
+      <Comparer c={d.comparaison} sp={searchParams ?? {}} path="/google" tete={d.metric} couleur="#1a56ff" />
       <ByLabelTable d={d} />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et

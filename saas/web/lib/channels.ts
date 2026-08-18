@@ -32,6 +32,9 @@ export type DashParams = {
   from?: string;    // période custom : YYYY-MM-DD
   to?: string;
   s?: string;       // tri des tables (Instagram)
+  cmp?: string;     // à quoi comparer : prev | yoy | custom
+  cfrom?: string;   // plage de référence choisie : YYYY-MM-DD
+  cto?: string;
 };
 
 export function periodDays(sp: DashParams | undefined): Days {
@@ -78,13 +81,26 @@ function makeWindow(lastDataIso: string | null, firstDataIso: string | null, day
 
 // Période custom « du … au … » : fenêtre libre, comparée à la fenêtre de même
 // durée juste avant (même règle de delta que les presets).
+//
+// ELLE S'ARRÊTE AU DERNIER JOUR PLEIN, comme les presets. `makeWindow` ancre sur
+// `yesterday` depuis toujours ; la période sur mesure, elle, prenait la date
+// tapée telle quelle. Un client qui choisissait « du 1er au 17 août » le 17 août
+// comparait donc dix-sept jours dont un incomplet à dix-sept jours pleins — la
+// règle de la maison (« toute comparaison exclut le jour en cours ») tombait
+// exactement là où l'utilisateur avait choisi ses bornes lui-même. Le rognage
+// est ÉCRIT dans le libellé : une fenêtre qu'on raccourcit sans le dire est pire
+// qu'une fenêtre fausse.
 export function customWindow(sp: DashParams | undefined): Window | null {
   const f = sp?.from ?? "";
   const t = sp?.to ?? "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
   const since = new Date(f + "T00:00:00Z");
-  const until = new Date(t + "T00:00:00Z");
-  if (isNaN(since.getTime()) || isNaN(until.getTime()) || since > until) return null;
+  const demande = new Date(t + "T00:00:00Z");
+  if (isNaN(since.getTime()) || isNaN(demande.getTime()) || since > demande) return null;
+  const hier = addDays(new Date(), -1);
+  const rogne = iso(demande) > iso(hier);
+  const until = rogne ? new Date(iso(hier) + "T00:00:00Z") : demande;
+  if (since > until) return null;
   const len = Math.round((until.getTime() - since.getTime()) / 86400_000) + 1;
   const prevUntil = addDays(since, -1);
   const prevSince = addDays(prevUntil, -(len - 1));
@@ -93,7 +109,9 @@ export function customWindow(sp: DashParams | undefined): Window | null {
     until,
     prevSince,
     prevUntil,
-    label: `du ${fmtDay(since)} ${since.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jours`,
+    label:
+      `du ${fmtDay(since)} ${since.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jours` +
+      (rogne ? " · jour en cours exclu" : ""),
   };
 }
 
@@ -104,6 +122,248 @@ const inWin = (dateStr: string, since: Date, until: Date) => {
 
 export function pct(cur: number, prev: number): number | null {
   return prev > 0 ? ((cur - prev) / prev) * 100 : null;
+}
+
+// ── COMPARER LA PÉRIODE AFFICHÉE À UNE AUTRE ─────────────────────────────────
+//
+// Le module vit sur les trois canaux et pose partout la même question : « et
+// avant, ça donnait quoi ? ». Quatre décisions le rendent honnête, et aucune
+// n'est cosmétique — sans elles, un module de comparaison est une machine à
+// fabriquer des variations spectaculaires.
+//
+// 1 · LES DEUX FENÊTRES S'ARRÊTENT AU DERNIER JOUR PLEIN. C'est la règle déjà
+//     appliquée par `makeWindow` (ancre = hier, ou la dernière date de données
+//     si elle est antérieure) et, depuis cette passe, par `customWindow`. Une
+//     journée de fetch incomplète comptée dans la fenêtre courante fait plonger
+//     toutes les variations d'un coup, et rien à l'écran ne le dirait.
+//
+// 2 · « L'AN DERNIER » RECULE DE 364 JOURS, PAS DE 365. Cinquante-deux semaines
+//     pile : le lundi retombe sur un lundi. Sur de la publicité et du social, le
+//     jour de la semaine pèse plus que la date — comparer un samedi à un
+//     vendredi produit un écart qui ne dit rien d'autre que le décalage. Le prix
+//     à payer est d'un jour de dérive dans le calendrier, et il est écrit.
+//
+// 3 · UNE RÉFÉRENCE DOIT ÊTRE ENTIÈREMENT MESURÉE. Elle doit tenir tout entière
+//     entre la première et la dernière date relevées. Sinon on comparerait un
+//     total complet à un total amputé de ses jours non récoltés — c'est la
+//     fabrique du « −100 % » et du « +∞ % ». Quand elle déborde, on REFUSE, et
+//     on dit par quel bout.
+//
+// 4 · UNE RÉFÉRENCE À ZÉRO N'EST PAS UNE RÉFÉRENCE. `pct()` rend `null` dès que
+//     le dénominateur vaut 0 : l'affichage écrit alors le mot, jamais un
+//     pourcentage. Un compte qui n'a rien dépensé la semaine d'avant n'a pas
+//     fait « +∞ % », il n'a pas de point de comparaison.
+//
+// Ce que le module NE compare PAS, et pourquoi :
+//   · pas de comparaison PAR CAMPAGNE dans le temps — la ventilation par
+//     campagne dont on dispose côté revenu (`by_campaign`, GA4, worker) n'est
+//     pas datée ; la découper par période produirait un chiffre inventé ;
+//   · pas de ROAS ni de revenu — GA4 rend le revenu au niveau du COMPTE, pas du
+//     canal : un « revenu Meta » n'existe pas, donc sa variation non plus.
+
+export type ModeCompare = "prev" | "yoy" | "custom";
+
+export function modeCompare(sp: DashParams | undefined): ModeCompare {
+  const m = sp?.cmp ?? "";
+  return m === "yoy" ? "yoy" : m === "custom" ? "custom" : "prev";
+}
+
+export type FenetreCompare = {
+  debut: string;
+  fin: string;
+  jours: number;
+  /** « 4 aoû → 10 aoû 2026 » */
+  label: string;
+};
+
+/** Une valeur brute par fenêtre. Les sommes ne sont PAS ramenées au jour ici :
+ *  seul l'affichage sait ce qui s'additionne et ce qui est déjà un taux. */
+export type MetriqueCompare = { cle: string; courant: number; reference: number };
+
+/**
+ * Un jour de la frise : les grandeurs qui S'ADDITIONNENT, brutes. Les taux
+ * (CTR, CPC, engagement) ne sont PAS stockés — ils se dérivent des totaux du
+ * jour à l'affichage, exactement comme partout ailleurs. Un CPC stocké par jour
+ * puis re-moyenné donnerait au dimanche à trois clics le poids du mardi à
+ * quatre cents.
+ *
+ * Les clés sont celles des métriques du canal (`spend`/`clicks`/… côté pub,
+ * `reach`/`likes`/… côté Instagram) : un enregistrement plutôt qu'un type figé,
+ * parce que les deux canaux ne mesurent pas les mêmes choses et qu'un type
+ * commun forcerait chacun à porter les champs vides de l'autre.
+ */
+export type PointFrise = Record<string, number>;
+
+/** Au-delà, une frise n'a plus de colonnes lisibles — même plafond que le
+ *  graphe d'évolution, et pour la même raison. */
+export const FRISE_MAX = 120;
+
+export type Comparaison = {
+  mode: ModeCompare;
+  courant: FenetreCompare;
+  /** null quand la référence n'a pas pu être construite (dates invalides). */
+  reference: FenetreCompare | null;
+  /** Les deux fenêtres n'ont pas le même nombre de jours. */
+  inegales: boolean;
+  /** Ce qui interdit la comparaison, rédigé. `null` = on peut comparer. */
+  refus: string | null;
+  /** Combien de lignes (ou de publications) chaque fenêtre a réellement portées.
+   *  Zéro ne se lit pas comme un zéro mesuré : c'est « rien à comparer ». */
+  mesuresCourant: number;
+  mesuresReference: number;
+  metriques: MetriqueCompare[];
+  /** LA FRISE — un point par jour, du plus ancien au plus récent, dans CHAQUE
+   *  fenêtre. Les deux tableaux n'ont pas forcément la même longueur : c'est
+   *  l'affichage qui les aligne, et il les aligne PAR LA FIN (le dernier jour de
+   *  chaque fenêtre en face l'un de l'autre), jamais sur des dates réelles —
+   *  deux périodes décalées superposées sur un axe de dates ne veulent rien
+   *  dire. */
+  friseCourant: PointFrise[];
+  friseReference: PointFrise[];
+  /** Une des deux frises a été coupée à `FRISE_MAX` jours. Les chiffres, eux,
+   *  portent toujours sur la fenêtre entière — il faut donc le dire. */
+  friseTronquee: boolean;
+};
+
+const ISO_JOUR = /^\d{4}-\d{2}-\d{2}$/;
+
+function nbJours(since: Date, until: Date): number {
+  return Math.round((until.getTime() - since.getTime()) / 86400_000) + 1;
+}
+
+function fenetre(since: Date, until: Date): FenetreCompare {
+  return {
+    debut: iso(since),
+    fin: iso(until),
+    jours: nbJours(since, until),
+    label: `${fmtDay(since)} → ${fmtDay(until)} ${until.getUTCFullYear()}`,
+  };
+}
+
+/** La fenêtre de référence, selon le mode. `null` = la saisie ne tient pas. */
+function fenetreReference(
+  w: Window,
+  mode: ModeCompare,
+  sp: DashParams | undefined
+): { since: Date; until: Date } | null {
+  if (mode === "yoy") {
+    return { since: addDays(w.since, -364), until: addDays(w.until, -364) };
+  }
+  if (mode === "custom") {
+    const f = sp?.cfrom ?? "";
+    const t = sp?.cto ?? "";
+    if (!ISO_JOUR.test(f) || !ISO_JOUR.test(t)) return null;
+    const since = new Date(f + "T00:00:00Z");
+    const demande = new Date(t + "T00:00:00Z");
+    if (isNaN(since.getTime()) || isNaN(demande.getTime()) || since > demande) return null;
+    // Même rognage que partout ailleurs : la référence non plus ne mange pas le
+    // jour en cours.
+    const hier = addDays(new Date(), -1);
+    const until = iso(demande) > iso(hier) ? new Date(iso(hier) + "T00:00:00Z") : demande;
+    if (since > until) return null;
+    return { since, until };
+  }
+  // `prev` reprend EXACTEMENT la fenêtre qui sert déjà aux deltas des tuiles :
+  // deux arithmétiques pour un même écart finissent toujours par diverger.
+  return { since: w.prevSince, until: w.prevUntil };
+}
+
+/**
+ * Découpe une fenêtre en jours pleins, du plus ancien au plus récent, en
+ * appelant `jour` pour chacun. Les jours SANS ligne existent quand même : une
+ * frise qui saute les jours vides raccourcit la période sans le dire, et deux
+ * frises ainsi raccourcies ne s'alignent plus l'une sur l'autre.
+ */
+function frisePar(
+  since: Date,
+  until: Date,
+  jour: (cle: string) => PointFrise
+): { pts: PointFrise[]; tronquee: boolean } {
+  const pts: PointFrise[] = [];
+  for (let d = new Date(since); d <= until; d = addDays(d, 1)) pts.push(jour(iso(d)));
+  return { pts: pts.slice(-FRISE_MAX), tronquee: pts.length > FRISE_MAX };
+}
+
+/**
+ * Construit la comparaison. `sommes` agrège les lignes d'une fenêtre et `jour`
+ * en agrège une journée — les deux seuls morceaux qui changent d'un canal à
+ * l'autre, et ils restent chez l'appelant qui connaît ses lignes.
+ */
+function batirComparaison(
+  w: Window,
+  sp: DashParams | undefined,
+  couverture: { debut: string | null; fin: string | null },
+  sommes: (since: Date, until: Date) => { mesures: number; metriques: MetriqueCompare[] },
+  jour: (cle: string) => PointFrise
+): Comparaison {
+  const mode = modeCompare(sp);
+  const cur = sommes(w.since, w.until);
+  const courant = fenetre(w.since, w.until);
+  const ref = fenetreReference(w, mode, sp);
+
+  const vide = (refus: string): Comparaison => ({
+    mode,
+    courant,
+    reference: ref ? fenetre(ref.since, ref.until) : null,
+    inegales: false,
+    refus,
+    mesuresCourant: cur.mesures,
+    mesuresReference: 0,
+    metriques: [],
+    friseCourant: [],
+    friseReference: [],
+    friseTronquee: false,
+  });
+
+  if (!ref || ref.since > ref.until)
+    return vide("Choisis une plage de référence (une date de début et une date de fin).");
+  if (!couverture.debut || !couverture.fin)
+    return vide("Aucune donnée n'a encore été relevée sur ce canal : il n'y a rien à comparer.");
+
+  const r = fenetre(ref.since, ref.until);
+  // UNE RÉFÉRENCE NE CHEVAUCHE PAS LA PÉRIODE AFFICHÉE. Les presets ne peuvent
+  // pas produire ce cas, une plage choisie à la main si — et l'écart serait
+  // alors calculé pour partie contre les mêmes journées : un chiffre comparé à
+  // lui-même tire mécaniquement toute variation vers zéro, et personne ne
+  // pourrait le voir à l'écran.
+  if (r.debut <= courant.fin && r.fin >= courant.debut)
+    return vide(
+      `La plage de référence (${r.debut} → ${r.fin}) recouvre la période affichée ` +
+        `(${courant.debut} → ${courant.fin}) : les journées communes seraient comparées à ` +
+        `elles-mêmes, ce qui écrase l'écart sans que rien ne le montre. Choisis une plage ` +
+        `qui s'arrête avant le ${courant.debut}.`
+    );
+  if (r.debut < couverture.debut)
+    return vide(
+      `La référence commence le ${r.debut} et tes données ne remontent qu'au ${couverture.debut} : ` +
+        `une partie de cette fenêtre n'a jamais été mesurée, la comparer ferait passer un trou de récolte pour une baisse.`
+    );
+  if (r.fin > couverture.fin)
+    return vide(
+      `La référence va jusqu'au ${r.fin} et ta dernière donnée relevée date du ${couverture.fin} : ` +
+        `les jours qui manquent compteraient comme des zéros.`
+    );
+
+  const rf = sommes(ref.since, ref.until);
+  const fc = frisePar(w.since, w.until, jour);
+  const fr = frisePar(ref.since, ref.until, jour);
+  return {
+    mode,
+    courant,
+    reference: r,
+    inegales: r.jours !== courant.jours,
+    refus: null,
+    mesuresCourant: cur.mesures,
+    mesuresReference: rf.mesures,
+    metriques: cur.metriques.map((m, i) => ({
+      cle: m.cle,
+      courant: m.courant,
+      reference: rf.metriques[i]?.courant ?? 0,
+    })),
+    friseCourant: fc.pts,
+    friseReference: fr.pts,
+    friseTronquee: fc.tronquee || fr.tronquee,
+  };
 }
 
 // ── Publicité (Meta / Google) ────────────────────────────────────────────────
@@ -155,6 +415,11 @@ export type LabelAgg = {
 export type ChannelDash = {
   email: string;
   periodLabel: string;
+  /** Les bornes exactes de la fenêtre affichée, en ISO. Le libellé est fait pour
+   *  être lu, pas pour être découpé — un module qui doit dire sa fenêtre a
+   *  besoin des dates elles-mêmes. */
+  windowDebut: string;
+  windowFin: string;
   days: Days;
   metric: string;
   filters: { status: string; camp: string; label: string };
@@ -175,10 +440,16 @@ export type ChannelDash = {
   cpcDelta: number | null;
   cpm: number;
   cpmDelta: number | null;
+  /** Série journalière du graphe — PLAFONNÉE à 120 points (voir `maxPts`). */
   daily: DayPoint[];
+  /** La même série, SANS plafond. Le graphe se contente des 120 derniers points
+   *  parce qu'au-delà il ne se lit plus ; une MOYENNE, elle, ne peut pas se
+   *  contenter d'un échantillon sans mentir sur ce qu'elle a moyenné. */
+  dailyComplet: DayPoint[];
   campaigns: Campaign[];
   byLabel: LabelAgg[];
   labels: string[];
+  comparaison: Comparaison;
 };
 
 type RawAd = {
@@ -267,17 +538,19 @@ function buildDash(
     cpc: x.clicks > 0 ? x.spend / x.clicks : 0,
   });
 
-  // Série journalière complète (jours vides inclus) — bornée à 120 pts pour « Tout »
-  const daily: DayPoint[] = [];
-  let dStart = w.since;
-  const maxPts = 120;
-  const span = Math.round((w.until.getTime() - w.since.getTime()) / 86400_000) + 1;
-  if (span > maxPts) dStart = addDays(w.until, -(maxPts - 1));
-  for (let d = new Date(dStart); d <= w.until; d = addDays(d, 1)) {
+  // Série journalière complète (jours vides inclus). `daily` sert le GRAPHE et
+  // reste bornée à 120 points : au-delà, les colonnes font moins de 6 px et la
+  // courbe ne se lit plus. `dailyComplet` couvre toute la fenêtre et sert les
+  // MOYENNES — une moyenne qui n'annonce pas qu'elle a été calculée sur un
+  // échantillon est un chiffre faux.
+  const dailyComplet: DayPoint[] = [];
+  for (let d = new Date(w.since); d <= w.until; d = addDays(d, 1)) {
     const k = iso(d);
     const v = byDay.get(k) ?? { spend: 0, clicks: 0, impressions: 0 };
-    daily.push({ date: k, label: fmtDay(d), spend: v.spend, clicks: v.clicks, impressions: v.impressions });
+    dailyComplet.push({ date: k, label: fmtDay(d), spend: v.spend, clicks: v.clicks, impressions: v.impressions });
   }
+  const maxPts = 120;
+  const daily: DayPoint[] = dailyComplet.slice(-maxPts);
 
   const campaigns: Campaign[] = [...byCamp.entries()]
     .map(([key, c]) => {
@@ -333,9 +606,55 @@ function buildDash(
   const METRICS = ["spend", "clicks", "impressions", "ctr", "cpc"];
   const metric = METRICS.includes(sp?.m ?? "") ? (sp!.m as string) : "spend";
 
+  // La comparaison relit les LIGNES BRUTES, jamais `daily` : `daily` est
+  // plafonnée et déjà repliée par jour, deux raccourcis qu'une comparaison ne
+  // supporte pas. Les mêmes filtres s'appliquent (`keep`) — comparer deux
+  // périodes sur deux périmètres différents serait le pire des deux mondes.
+  const comparaison = batirComparaison(
+    w,
+    sp,
+    { debut: firstIso ? firstIso.slice(0, 10) : null, fin: lastIso ? lastIso.slice(0, 10) : null },
+    (since, until) => {
+      let s = 0, c = 0, i = 0, n = 0;
+      for (const r of rows) {
+        if (!keep(r.campaign) || !inWin(r.date, since, until)) continue;
+        s += r.spend; c += r.clicks; i += r.impressions; n += 1;
+      }
+      return {
+        mesures: n,
+        metriques: [
+          { cle: "spend", courant: s, reference: 0 },
+          { cle: "clicks", courant: c, reference: 0 },
+          { cle: "impressions", courant: i, reference: 0 },
+          { cle: "ctr", courant: i > 0 ? (c / i) * 100 : 0, reference: 0 },
+          { cle: "cpc", courant: c > 0 ? s / c : 0, reference: 0 },
+        ],
+      };
+    },
+    // La frise réutilise `byDay`… non : `byDay` ne couvre que la fenêtre
+    // AFFICHÉE, et la référence est ailleurs. Un second repli par jour, sur les
+    // mêmes lignes filtrées, est le seul moyen de tenir les deux fenêtres sur le
+    // même périmètre.
+    (() => {
+      const parJour = new Map<string, PointFrise>();
+      for (const r of rows) {
+        if (!keep(r.campaign)) continue;
+        const k = r.date.slice(0, 10);
+        const p = parJour.get(k) ?? { spend: 0, clicks: 0, impressions: 0 };
+        p.spend += r.spend; p.clicks += r.clicks; p.impressions += r.impressions;
+        parJour.set(k, p);
+      }
+      // Un jour sans campagne est un jour à ZÉRO, pas un jour absent : c'est ce
+      // qui distingue « tu dépenses peu » de « tu dépenses sur peu de jours ».
+      return (cle: string) => parJour.get(cle) ?? { spend: 0, clicks: 0, impressions: 0 };
+    })()
+  );
+
   return {
     email,
     periodLabel: w.label,
+    windowDebut: iso(w.since),
+    windowFin: iso(w.until),
     days,
     metric,
     filters: { status: fStatus, camp: fCamp, label: fLabel },
@@ -358,9 +677,11 @@ function buildDash(
     cpm,
     cpmDelta: pct(cpm, pCpm),
     daily,
+    dailyComplet,
     campaigns,
     byLabel,
     labels,
+    comparaison,
   };
 }
 
@@ -500,6 +821,9 @@ export const INSTA_SLOTS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-2
 export type InstaDash = {
   email: string;
   periodLabel: string;
+  /** Bornes exactes de la fenêtre affichée — voir `ChannelDash`. */
+  windowDebut: string;
+  windowFin: string;
   days: Days;
   labels: string[]; // liste maîtresse (assignation de thème par post)
   // Périmètre réellement utilisé pour formats / créneaux / top 3 / thèmes :
@@ -510,10 +834,13 @@ export type InstaDash = {
   growth30: number | null;
   avgEng: number;
   histReach: number;
-  avgLikes: number;
-  avgComments: number;
-  avgSaved: number;
-  avgViews: number;
+  // `avgLikes` / `avgComments` / `avgSaved` / `avgViews` vivaient ici pour le
+  // module « Tes moyennes par post · tout l'historique », supprimé de la page :
+  // il doublait « Tes moyennes ». Le calcul part avec lui — un chiffre qu'on
+  // continue de produire sans l'afficher se remet à diverger en silence, et
+  // ressort un jour dans un module qui le croit à jour. `histReach` et `avgEng`
+  // restent : ils servent le seuil « au-dessus de ton post moyen » et la tuile
+  // « Engagement du compte », deux lectures d'HISTORIQUE assumées.
   followersSeries: FollowerPoint[];
   formats: FormatStat[];
   heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — sur la période retenue
@@ -525,6 +852,7 @@ export type InstaDash = {
   allPosts: InstaPost[];
   postsEng: number | null;
   postsReach: number | null;
+  comparaison: Comparaison;
 };
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -698,9 +1026,70 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
 
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
+  // La couverture d'Instagram, ce sont les dates de PUBLICATION : avant la
+  // première, le compte n'a rien produit qu'on puisse comparer. `all` est trié
+  // du plus récent au plus ancien.
+  const dernierPost = all[0]?.date ?? null;
+  const premierPost = all.length ? all[all.length - 1].date : null;
+  const comparaison = batirComparaison(
+    w,
+    sp,
+    {
+      debut: premierPost ? String(premierPost).slice(0, 10) : null,
+      // La fenêtre courante s'arrête au dernier jour PLEIN, qui est souvent
+      // postérieur au dernier post : borner la couverture sur la dernière
+      // publication ferait refuser une comparaison parfaitement mesurée.
+      fin: iso(w.until) > (dernierPost ? String(dernierPost).slice(0, 10) : "")
+        ? iso(w.until)
+        : String(dernierPost).slice(0, 10),
+    },
+    (since, until) => {
+      const ps = all.filter((p) => inWin(p.date, since, until));
+      const som = (f: (p: InstaPost) => number) => ps.reduce((a, p) => a + f(p), 0);
+      const portee = som((p) => p.reach);
+      return {
+        mesures: ps.length,
+        metriques: [
+          { cle: "posts", courant: ps.length, reference: 0 },
+          { cle: "reach", courant: portee, reference: 0 },
+          { cle: "views", courant: som((p) => p.views), reference: 0 },
+          { cle: "likes", courant: som((p) => p.likes), reference: 0 },
+          { cle: "comments", courant: som((p) => p.comments), reference: 0 },
+          { cle: "saved", courant: som((p) => p.saved), reference: 0 },
+          // Le taux se calcule sur les TOTAUX de la fenêtre : moyenner les
+          // engagements post par post donnerait le même poids à une story vue
+          // par 40 personnes et à un reel vu par 12 000.
+          {
+            cle: "eng",
+            courant: portee > 0 ? (som((p) => p.likes + p.comments + p.saved) / portee) * 100 : 0,
+            reference: 0,
+          },
+        ],
+      };
+    },
+    (() => {
+      const parJour = new Map<string, PointFrise>();
+      for (const p of all) {
+        const k = String(p.date).slice(0, 10);
+        const x = parJour.get(k) ?? { posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0 };
+        x.posts += 1; x.reach += p.reach; x.views += p.views;
+        x.likes += p.likes; x.comments += p.comments; x.saved += p.saved;
+        parJour.set(k, x);
+      }
+      // Un jour sans publication vaut zéro sur ce qui s'additionne — on n'a rien
+      // touché ce jour-là — et RIEN sur l'engagement : un taux sans portée n'est
+      // pas 0 %, il est indéfini. La frise le montre en interrompant son trait
+      // plutôt qu'en le posant sur l'axe.
+      return (cle: string) =>
+        parJour.get(cle) ?? { posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0 };
+    })()
+  );
+
   return {
     email: compte.email,
     periodLabel: w.label,
+    windowDebut: iso(w.since),
+    windowFin: iso(w.until),
     days,
     labels: masterLabels,
     scope,
@@ -709,10 +1098,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     growth30,
     avgEng: mean(all.map((p) => p.eng)),
     histReach: mean(all.map((p) => p.reach)),
-    avgLikes: mean(all.map((p) => p.likes)),
-    avgComments: mean(all.map((p) => p.comments)),
-    avgSaved: mean(all.map((p) => p.saved)),
-    avgViews: mean(all.map((p) => p.views)),
     followersSeries,
     formats,
     heatmap,
@@ -724,6 +1109,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     allPosts: all,
     postsEng: posts.length ? mean(posts.map((p) => p.eng)) : null,
     postsReach: posts.length ? mean(posts.map((p) => p.reach)) : null,
+    comparaison,
   };
 }
 

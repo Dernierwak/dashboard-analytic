@@ -1,5 +1,6 @@
-// Dashboard Instagram organique — même base que l'onglet Streamlit :
-// Ta page (abonnés, courbe, croissance 30 j) · Tes moyennes par post ·
+// Dashboard Instagram organique :
+// Ta page (abonnés, courbe, croissance 30 j) · Tes moyennes (une seule fois, et
+// sur la période affichée) · Tes posts un par un · Comparer deux périodes ·
 // Tes formats · Quand publier ? (jour × créneau) · Top 3 posts ·
 // Posts de la période vs ton post moyen · Par label · Vue globale.
 import {
@@ -14,12 +15,8 @@ import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
-import {
-  CourbeAbonnes,
-  MoyenneMensuelle,
-  moisDeLaPeriode,
-  type ChiffreMensuel,
-} from "@/components/channel-dash";
+import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
+import { Comparer } from "@/components/comparaison";
 
 import { getCompteActif } from "@/lib/account";
 import { Triangle, sensPente } from "@/components/pente";
@@ -314,64 +311,6 @@ function PostsTable({
   );
 }
 
-// LA MOYENNE MENSUELLE D'INSTAGRAM.
-//
-// Même module, même règle et même composant que Meta et Google — c'est le but :
-// trois pages canal qui posent la même question doivent la poser de la même
-// façon. Ce qui change, c'est l'unité observée : là-bas des jours de dépense,
-// ici des publications.
-//
-// Elle ne remplace pas « Tes moyennes par post », qui répond à autre chose : ce
-// que vaut UNE publication. Celle-ci répond au RYTHME — ce qu'un mois produit.
-// Deux dénominateurs, deux questions, et chacun porte le sien à l'écran.
-//
-// La fenêtre court du premier post relevé au dernier jour PLEIN (hier). Le mois
-// du premier post est donc écarté comme le mois en cours : on ne l'observe que
-// depuis le 12, et un mois vu aux deux tiers pèserait comme un mois entier.
-function moyenneMensuelleInsta(posts: InstaPost[]) {
-  if (posts.length === 0) return null;
-  const dates = posts.map((p) => String(p.date).slice(0, 10)).sort();
-  const hier = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
-  const mois = moisDeLaPeriode(
-    posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) })),
-    { debut: dates[0], fin: hier }
-  );
-  const complets = mois.filter((m) => m.complet);
-  const som = (ps: InstaPost[], f: (p: InstaPost) => number) => ps.reduce((a, p) => a + f(p), 0);
-
-  const chiffres: ChiffreMensuel[] = [
-    {
-      titre: "Publications", nature: "somme", fmt: (v) => v.toFixed(1),
-      parMois: complets.map((m) => m.pts.length),
-    },
-    {
-      titre: "Portée", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.reach)),
-    },
-    {
-      titre: "J'aime", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.likes)),
-    },
-    {
-      titre: "Enregistrements", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.saved)),
-    },
-    {
-      titre: "Engagement", unite: "%", nature: "taux", fmt: (v) => v.toFixed(1),
-      // Le taux du mois se calcule sur les totaux du mois : moyenner les
-      // engagements de chaque post donnerait le même poids à un post vu par
-      // 40 personnes et à un reel vu par 12 000.
-      parMois: complets.map((m) => {
-        const r = som(m.pts, (p) => p.reach);
-        return r > 0
-          ? (som(m.pts, (p) => p.likes + p.comments + p.saved) / r) * 100
-          : null;
-      }),
-    },
-  ];
-  return { mois, chiffres };
-}
-
 // Le libellé de la métrique qui pilote la page — évite d'écrire « portée » en
 // dur alors que l'utilisateur a filtré sur les vues.
 function metricLabel(key: string): string {
@@ -407,10 +346,6 @@ export default async function InstagramPage({
   const baseQs = qsParts.join("&");
   const sortedPosts = sortPosts(d.posts, sort);
   const sortedAll = sortPosts(d.allPosts, sort);
-
-  // Le rythme mensuel se lit sur TOUT l'historique, pas sur la période filtrée :
-  // une moyenne mensuelle calculée sur sept jours n'aurait aucun mois complet.
-  const mensuel = moyenneMensuelleInsta(d.allPosts);
 
   const engDiff =
     d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
@@ -476,42 +411,30 @@ export default async function InstagramPage({
       </div>
       <CourbeAbonnes series={d.followersSeries} />
 
-      {/* ── TES MOYENNES PAR POST ── */}
-      <div className="mb-8">
-        <h2 className="text-[14px] font-semibold text-ink mb-3">
-          Tes moyennes par post{" "}
-          <span className="text-faint font-normal">· tout l&apos;historique ({d.allPosts.length} posts)</span>
-        </h2>
-        <div className="bg-white border border-line rounded-xl shadow-card px-5 py-4 flex items-center gap-6 overflow-x-auto sm:flex-wrap">
-          {[
-            { label: "Portée", v: fmtCHF(d.histReach) },
-            { label: "Vues", v: d.avgViews > 0 ? fmtCHF(d.avgViews) : "—" },
-            { label: "J'aime", v: fmtCHF(d.avgLikes) },
-            { label: "Commentaires", v: d.avgComments.toFixed(1) },
-            { label: "Enregistrements", v: d.avgSaved.toFixed(1) },
-            { label: "Engagement", v: `${d.avgEng.toFixed(1)} %` },
-          ].map((k) => (
-            <div key={k.label}>
-              <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-                {k.label}
-              </div>
-              <div className="font-mono text-[15px] text-ink mt-0.5">{k.v}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── TES MOYENNES PAR MOIS — le rythme, avant la forme ── */}
-      {mensuel && (
-        <MoyenneMensuelle
-          titre="Tes moyennes par mois"
-          chiffres={mensuel.chiffres}
-          mois={mensuel.mois}
-        />
-      )}
+      {/* ── TES MOYENNES — une seule fois, et sur la période affichée ──
+          Il y avait ICI un second module de moyennes, « Tes moyennes par post ·
+          tout l'historique » : six chiffres à plat, collés au-dessus de celui-ci
+          qui portait presque le même titre. Deux boîtes « Tes moyennes » l'une
+          sur l'autre ne se lisent pas comme deux questions, elles se lisent
+          comme un doublon — et c'en était un : il ne se distinguait que par son
+          DÉNOMINATEUR, jamais écrit ailleurs que dans son surtitre.
+          Le module qui reste répond aux deux, parce que son unité suit
+          maintenant la fenêtre (voir `Moyennes` dans channel-dash.tsx). */}
+      <MoyennesInsta d={d} />
 
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
       <PostsMetricChart posts={chartPosts} metric={metric} days={d.days} />
+
+      {/* Même module, même place que sur Meta et Google — après la forme, parce
+          que comparer deux périodes suppose d'avoir déjà en tête celle qu'on
+          regarde. Ce qui change est la liste des métriques, pas la règle. */}
+      <Comparer
+        c={d.comparaison}
+        sp={searchParams ?? {}}
+        path="/instagram"
+        tete={d.topMetric}
+        couleur="#7b4fff"
+      />
 
       {/* ── FORMATS ── */}
       {d.formats.length > 0 && (

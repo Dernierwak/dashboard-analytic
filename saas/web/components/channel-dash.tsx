@@ -5,7 +5,7 @@
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
-import type { ChannelDash } from "@/lib/channels";
+import type { ChannelDash, DayPoint, InstaDash, InstaPost } from "@/lib/channels";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { SummaryStop } from "@/components/summary-stop";
 import { Pente, Triangle, sensPente } from "@/components/pente";
@@ -141,21 +141,34 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
   );
 }
 
-// ── LA MOYENNE MENSUELLE ─────────────────────────────────────────────────────
+// ── LES MOYENNES, ET LEUR UNITÉ ──────────────────────────────────────────────
 //
-// Le module qui manquait au-dessus des courbes, et qui existait déjà sur
-// Instagram sous « Tes moyennes par post ». La forme est reprise telle quelle,
-// avec la règle qu'elle porte, parce que c'est elle qui la rend honnête :
+// Le module qui manquait au-dessus des courbes. La règle qu'il porte est ce qui
+// le rend honnête :
 //
 //   UNE MOYENNE POUR CE QUI EST UN TAUX, UN TOTAL POUR CE QUI S'ADDITIONNE.
 //
 // Un CTR moyen se lit ; une « dépense moyenne » entre deux dépenses n'a aucun
-// sens — ce qu'on veut de la dépense, c'est ce qu'un mois coûte. La valeur du
-// MOIS se fabrique donc différemment selon la nature du chiffre (somme des
-// jours, ou taux du mois calculé sur ses totaux), et c'est seulement ENTRE les
-// mois qu'on moyenne.
+// sens — ce qu'on veut de la dépense, c'est ce qu'une unité coûte. La valeur de
+// L'UNITÉ se fabrique donc différemment selon la nature du chiffre (somme, ou
+// taux calculé sur les totaux de l'unité), et c'est seulement ENTRE les unités
+// qu'on moyenne.
 //
-// LE MOIS EN COURS EST ÉCARTÉ, et c'est écrit à l'écran.
+// L'UNITÉ SUIT LA FENÊTRE, et c'est le changement de cette passe.
+// Le module était mensuel en toutes circonstances. Sur « 7 jours » il n'avait
+// donc aucun mois entier à moyenner et se contentait d'écrire qu'il n'avait
+// rien à dire : le filtre le vidait au lieu de le déplacer, ce qui est
+// exactement le défaut déjà corrigé sur les formats et les thèmes d'Instagram —
+// un filtre qui ne change rien à l'écran a l'air cassé, et ici il l'était.
+//
+//   ON MOYENNE CE QUI SE RÉPÈTE AU MOINS DEUX FOIS DANS LA FENÊTRE.
+//
+// Deux mois entiers ou plus → l'unité est le MOIS. Sinon → l'unité descend d'un
+// cran, au JOUR pour la publicité, à la PUBLICATION pour Instagram. Un seul mois
+// entier ne fait pas une moyenne, c'est ce mois-là ; le module ne prétend plus
+// le contraire, il change d'unité.
+//
+// UN MOIS INCOMPLET RESTE ÉCARTÉ, et c'est écrit à l'écran.
 // Treize jours d'août pesés comme un mois plein tirent toute la moyenne vers le
 // bas, et rien ne le dirait. C'est exactement la règle déjà en vigueur sur les
 // deltas — « toute comparaison exclut le jour en cours, parce qu'il est
@@ -165,7 +178,11 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
 //
 // Le test est unique et ne connaît pas « aujourd'hui » : un mois compte s'il
 // est ENTIÈREMENT couvert par la fenêtre affichée. Le mois en cours l'échoue
-// mécaniquement, sans qu'on ait à le nommer.
+// mécaniquement, sans qu'on ait à le nommer. La branche courte n'a pas ce
+// problème — un jour plein est un jour plein, la fenêtre s'arrêtant déjà hier —
+// mais elle en a un autre : **une fenêtre peut ne rien contenir du tout**, et
+// c'est là qu'un « 0 » mentirait. Zéro n'est pas la moyenne, c'est l'absence de
+// moyenne ; le module l'écrit en toutes lettres.
 
 const MOIS_LONG = [
   "janvier", "février", "mars", "avril", "mai", "juin",
@@ -226,15 +243,15 @@ export function moisDeLaPeriode<T extends { date: string }>(
   return out;
 }
 
-export type ChiffreMensuel = {
+export type ChiffreMoyen = {
   titre: string;
   unite?: string;
-  /** `somme` = la valeur du mois est un total · `taux` = c'est un rapport. */
+  /** `somme` = la valeur de l'unité est un total · `taux` = c'est un rapport. */
   nature: "somme" | "taux";
-  /** Une valeur par mois complet. `null` quand le mois n'a rien à mesurer —
+  /** Une valeur par unité moyennée. `null` quand l'unité n'a rien à mesurer —
    *  un CTR sans impression n'est pas 0 %, il est indéfini, et le compter
    *  comme un zéro ferait baisser la moyenne d'un mois sans campagne. */
-  parMois: (number | null)[];
+  parUnite: (number | null)[];
   fmt: (v: number) => string;
 };
 
@@ -244,58 +261,80 @@ function moyenne(xs: (number | null)[]): { v: number; n: number } | null {
   return { v: reels.reduce((a, b) => a + b, 0) / reels.length, n: reels.length };
 }
 
-export function MoyenneMensuelle({
-  titre,
+/** « mois » est invariable ; « jour » et « publication » prennent leur s. */
+function pluriel(unite: string, n: number): string {
+  return n > 1 && unite !== "mois" ? `${unite}s` : unite;
+}
+
+/** Un SIGLE ne se met pas en minuscules : « de ctr par mois » se lit comme une
+ *  coquille, là où « de CTR par mois » se lit comme une mesure. Le test est la
+ *  casse du titre lui-même — pas une liste de sigles à tenir à jour. */
+function enPhrase(titre: string): string {
+  return titre === titre.toUpperCase() ? titre : titre.toLowerCase();
+}
+
+/** « de engagement » — l'élision manquait. Un module qui explique un chiffre
+ *  dans une phrase fautive fait douter du chiffre. */
+function deQuoi(titre: string): string {
+  const t = enPhrase(titre);
+  return /^[aeiouyéèêàâîôûh]/i.test(t) ? `d'${t}` : `de ${t}`;
+}
+
+/** Le seul mot féminin des trois est « publication » — et l'écran écrivait
+ *  « la jour est un total ». Une faute d'accord dans la phrase qui EXPLIQUE le
+ *  chiffre décrédibilise le chiffre. */
+function article(unite: string): string {
+  return unite === "publication" ? "la" : "le";
+}
+
+export function Moyennes({
+  unite,
+  n,
+  fenetre,
   chiffres,
-  mois,
   tete = 0,
+  pied,
+  vide,
   elargir,
 }: {
-  titre: string;
-  chiffres: ChiffreMensuel[];
-  /** Tous les mois de la fenêtre, complets ou non — le module fait le tri. */
-  mois: { cle: string; nom: string; complet: boolean }[];
+  /** Le DÉNOMINATEUR, au singulier : « mois », « jour », « publication ». */
+  unite: string;
+  /** Combien d'unités sont moyennées. Zéro bascule le module sur `vide`. */
+  n: number;
+  /** La fenêtre, écrite : « 11 aoû → 17 aoû 2026 ». Elle fait partie du
+   *  chiffre — une moyenne dont la fenêtre bouge et qui ne la dit pas se lit
+   *  comme la même moyenne qu'avant. */
+  fenetre: string;
+  chiffres: ChiffreMoyen[];
   /** Lequel des chiffres porte le rang 3. Les autres forment le bilan. */
   tete?: number;
-  /** Où aller chercher plus de mois quand la fenêtre est trop courte. */
+  /** Rang 9 — ce qui rend CETTE moyenne honnête. Un seul pied, jamais deux. */
+  pied?: string;
+  /** Ce qui s'écrit à la place du chiffre quand il n'y a rien à moyenner. */
+  vide: string;
+  /** Où aller chercher plus de matière quand la fenêtre est trop courte. */
   elargir?: { href: string; texte: string };
 }) {
-  const complets = mois.filter((m) => m.complet);
-  const ecartes = mois.filter((m) => !m.complet);
-  const n = complets.length;
-  // Le nom du mois ouvre la phrase : « septembre 2026 est écarté » commençait
-  // en minuscule au milieu d'un pied par ailleurs rédigé.
-  const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const phraseEcartes =
-    ecartes.length === 0
-      ? null
-      : ecartes.length === 1
-        ? `${maj(ecartes[0].nom)} est écarté : la période ne le couvre pas en entier.`
-        : `${ecartes.length} mois sont écartés (${ecartes
-            .map((m) => m.nom)
-            .join(", ")}) : la période ne les couvre pas en entier.`;
+  const i = Math.min(tete, chiffres.length - 1);
 
   return (
     <div className="mb-8">
+      {/* Rang 1 — l'identité, et rang 2 le contexte : le dénominateur EST dans
+          le titre, la fenêtre juste après. Les deux changent avec le filtre. */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
-        {titre}{" "}
+        Tes moyennes par {unite}{" "}
         <span className="text-faint font-normal">
-          {n === 0
-            ? "· aucun mois complet dans la période"
-            : n === 1
-              ? `· un seul mois complet · ${complets[0].nom}`
-              : `· ${n} mois complets · ${complets[0].nom} → ${complets[n - 1].nom}`}
+          · {n} {pluriel(unite, n)} · {fenetre}
         </span>
       </h2>
 
       <div className="bg-white border border-line rounded-xl shadow-card p-5">
-        {n === 0 ? (
+        {n === 0 || chiffres.length === 0 ? (
           // Un vide se dit en toutes lettres, et il dit quoi faire. Zéro serait
           // un chiffre faux : ce n'est pas « la moyenne vaut 0 », c'est « il
-          // n'y a pas encore de mois à moyenner ».
+          // n'y a rien à moyenner ».
           <p className="text-[12.5px] text-muted leading-relaxed">
-            Aucun mois n&apos;est couvert du 1<sup>er</sup> au dernier jour par la période
-            affichée — il n&apos;y a donc pas de moyenne mensuelle à calculer.
+            {vide}
             {elargir && (
               <>
                 {" "}
@@ -310,8 +349,8 @@ export function MoyenneMensuelle({
           <>
             {/* Rang 3 — le chiffre, avant toute forme. */}
             {(() => {
-              const t = chiffres[Math.min(tete, chiffres.length - 1)];
-              const m = moyenne(t.parMois);
+              const t = chiffres[i];
+              const m = moyenne(t.parUnite);
               return (
                 <div className="flex items-baseline gap-2.5 flex-wrap">
                   <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
@@ -319,8 +358,8 @@ export function MoyenneMensuelle({
                     {t.unite && <span className="text-[15px] text-faint"> {t.unite}</span>}
                   </span>
                   <span className="text-[11px] text-faint">
-                    de {t.titre.toLowerCase()} par mois, en moyenne
-                    {t.nature === "somme" ? " · le mois est un total" : " · le mois est un taux"}
+                    {deQuoi(t.titre)} par {unite}, en moyenne
+                    {` · ${article(unite)} ${unite} est un ${t.nature === "somme" ? "total" : "taux"}`}
                   </span>
                 </div>
               );
@@ -332,21 +371,21 @@ export function MoyenneMensuelle({
             {chiffres.length > 1 && (
               <div className="mt-4 rounded-lg bg-black/[0.02] border border-line/70">
                 <div className="defile-x flex items-start gap-6 px-4 py-3 rounded-lg">
-                  {chiffres.map((c, i) =>
-                    i === Math.min(tete, chiffres.length - 1) ? null : (
+                  {chiffres.map((c, j) =>
+                    j === i ? null : (
                       <div key={c.titre} className="shrink-0">
                         <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
                           {c.titre}
                         </div>
                         <div className="font-mono text-[19px] leading-tight text-ink mt-0.5">
                           {(() => {
-                            const m = moyenne(c.parMois);
+                            const m = moyenne(c.parUnite);
                             return m ? c.fmt(m.v) : "—";
                           })()}
                           {c.unite && <span className="text-[11px] text-faint"> {c.unite}</span>}
                         </div>
                         <div className="text-[10px] text-faint mt-0.5">
-                          {c.nature === "somme" ? "total du mois" : "taux du mois"}
+                          {c.nature === "somme" ? "total" : "taux"} · {unite}
                         </div>
                       </div>
                     )
@@ -358,62 +397,120 @@ export function MoyenneMensuelle({
         )}
 
         {/* Rang 9 — un seul pied, et il porte la seule chose qui rend la
-            moyenne honnête : sa fenêtre, et ce qu'on en a retiré. */}
-        <p className="text-[10.5px] text-faint leading-relaxed mt-3">
-          {n === 1
-            ? `Un seul mois entier dans la période (${complets[0].nom}) : ce n'est pas encore une moyenne, c'est ce mois-là.`
-            : n > 1
-              ? `Moyenne des ${n} mois entièrement couverts par la période affichée, de ${complets[0].nom} à ${complets[n - 1].nom}.`
-              : ""}{" "}
-          {phraseEcartes}
-          {phraseEcartes && " Un mois en cours compté comme un mois plein tirerait la moyenne vers le bas sans qu'on le voie."}
-        </p>
+            moyenne honnête : sa fenêtre, et ce qu'on en a retiré.
+            IL SE TAIT QUAND IL N'Y A PAS DE MOYENNE : « Moyenne des 0
+            publication de la période » sous un bloc qui vient d'écrire qu'il
+            n'y a rien à moyenner reprend d'une main ce que le vide donnait de
+            l'autre. */}
+        {pied && n > 0 && chiffres.length > 0 && (
+          <p className="text-[10.5px] text-faint leading-relaxed mt-3">{pied}</p>
+        )}
       </div>
     </div>
   );
 }
 
-// La moyenne mensuelle des dashboards publicitaires (Meta, Google, et toute
-// régie qui suivra). Elle lit la MÊME série journalière que la courbe posée
-// juste dessous, donc la même fenêtre : c'est ce qui permet de les lire l'une
-// après l'autre sans se demander de quoi on parle.
-export function MoyenneMensuelleAds({ d, path }: { d: ChannelDash; path: string }) {
-  if (d.daily.length === 0) return null;
-  const couverture = { debut: d.daily[0].date, fin: d.daily[d.daily.length - 1].date };
-  const mois = moisDeLaPeriode(d.daily, couverture);
+// Ce que la fenêtre d'un canal donne comme unité, et ce qu'il faut en écrire.
+// Une seule fonction pour les trois pages : c'est elle qui garantit que Meta,
+// Google et Instagram basculent au même moment et le disent avec les mêmes mots.
+function uniteDeLaFenetre<T extends { date: string }>(
+  pts: T[],
+  couverture: { debut: string; fin: string },
+  courte: string
+): {
+  unite: string;
+  groupes: T[][];
+  /** La phrase du rang 9 qui vient de la BRANCHE (pas des chiffres). */
+  pied: string;
+} {
+  const mois = moisDeLaPeriode(pts, couverture);
   const complets = mois.filter((m) => m.complet);
 
-  const som = (pts: typeof d.daily, f: (p: (typeof d.daily)[0]) => number) =>
-    pts.reduce((a, p) => a + f(p), 0);
+  // Un seul mois entier ne fait pas une moyenne, c'est ce mois-là. En dessous de
+  // deux, on descend d'un cran plutôt que d'écrire « rien à afficher » : c'est
+  // le filtre de l'utilisateur, il doit produire une réponse.
+  if (complets.length < 2)
+    return { unite: courte, groupes: pts.map((p) => [p]), pied: "" };
 
-  const chiffres: ChiffreMensuel[] = [
+  const ecartes = mois.filter((m) => !m.complet);
+  const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const phrase =
+    ecartes.length === 0
+      ? ""
+      : ecartes.length === 1
+        ? ` ${maj(ecartes[0].nom)} est écarté : la période ne le couvre pas en entier — un mois en cours compté comme un mois plein tirerait la moyenne vers le bas sans qu'on le voie.`
+        : ` ${ecartes.length} mois sont écartés (${ecartes.map((m) => m.nom).join(", ")}) : la période ne les couvre pas en entier — un mois en cours compté comme un mois plein tirerait la moyenne vers le bas sans qu'on le voie.`;
+
+  return {
+    unite: "mois",
+    groupes: complets.map((m) => m.pts),
+    pied:
+      `Moyenne des ${complets.length} mois entièrement couverts par la période affichée, ` +
+      `de ${complets[0].nom} à ${complets[complets.length - 1].nom}.${phrase}`,
+  };
+}
+
+// Les bornes d'une fenêtre, écrites court : « 11 aoû → 17 aoû 2026 ».
+// Découpage de la chaîne ISO, jamais `new Date(...)` : « 2026-08-11 » se parse
+// à minuit UTC, et `getDate()` rend alors le 10 dans tout fuseau derrière
+// Greenwich. Une date affichée n'a pas à dépendre de l'heure du navigateur.
+const MOIS_COURT = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
+function jourISO(d: string): string {
+  const [a, m, j] = d.slice(0, 10).split("-");
+  const mi = Number(m) - 1;
+  return mi >= 0 && mi < 12 ? `${j} ${MOIS_COURT[mi]}` : a;
+}
+function bornes(debut: string, fin: string): string {
+  return `${jourISO(debut)} → ${jourISO(fin)} ${fin.slice(0, 4)}`;
+}
+
+// Les moyennes des dashboards publicitaires (Meta, Google, et toute régie qui
+// suivra). Elles lisent la MÊME fenêtre que la courbe posée juste dessous :
+// c'est ce qui permet de les lire l'une après l'autre sans se demander de quoi
+// on parle.
+//
+// Elles lisent `dailyComplet` et non `daily` : `daily` est plafonnée à 120
+// points pour rester lisible en graphe, et une moyenne calculée sur les 120
+// derniers jours d'un historique de deux ans, sous un titre qui dit « Tout »,
+// serait un chiffre présenté pour autre chose que ce qu'il mesure.
+export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
+  const pts = d.dailyComplet;
+  const { unite, groupes, pied } = uniteDeLaFenetre(
+    pts,
+    { debut: d.windowDebut, fin: d.windowFin },
+    "jour"
+  );
+
+  const som = (g: DayPoint[], f: (p: DayPoint) => number) => g.reduce((a, p) => a + f(p), 0);
+
+  const chiffres: ChiffreMoyen[] = [
     {
       titre: "Dépense", unite: "CHF", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.spend)),
+      parUnite: groupes.map((g) => som(g, (p) => p.spend)),
     },
     {
       titre: "Clics", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.clicks)),
+      parUnite: groupes.map((g) => som(g, (p) => p.clicks)),
     },
     {
       titre: "Impressions", nature: "somme", fmt: fmtCHF,
-      parMois: complets.map((m) => som(m.pts, (p) => p.impressions)),
+      parUnite: groupes.map((g) => som(g, (p) => p.impressions)),
     },
     {
       titre: "CTR", unite: "%", nature: "taux", fmt: (v) => v.toFixed(2),
-      // Le taux du mois se calcule sur les TOTAUX du mois, jamais en moyennant
+      // Le taux d'une unité se calcule sur SES TOTAUX, jamais en moyennant
       // trente taux quotidiens : un dimanche à 12 impressions pèserait autant
       // qu'un mardi à 4 000.
-      parMois: complets.map((m) => {
-        const i = som(m.pts, (p) => p.impressions);
-        return i > 0 ? (som(m.pts, (p) => p.clicks) / i) * 100 : null;
+      parUnite: groupes.map((g) => {
+        const i = som(g, (p) => p.impressions);
+        return i > 0 ? (som(g, (p) => p.clicks) / i) * 100 : null;
       }),
     },
     {
       titre: "CPC", unite: "CHF", nature: "taux", fmt: (v) => v.toFixed(2),
-      parMois: complets.map((m) => {
-        const c = som(m.pts, (p) => p.clicks);
-        return c > 0 ? som(m.pts, (p) => p.spend) / c : null;
+      parUnite: groupes.map((g) => {
+        const c = som(g, (p) => p.clicks);
+        return c > 0 ? som(g, (p) => p.spend) / c : null;
       }),
     },
   ];
@@ -423,16 +520,115 @@ export function MoyenneMensuelleAds({ d, path }: { d: ChannelDash; path: string 
   const ordre = ["spend", "clicks", "impressions", "ctr", "cpc"];
   const tete = Math.max(0, ordre.indexOf(d.metric));
 
+  // En branche « jour », le pied dit ce qui rend la moyenne lisible : un jour
+  // sans campagne est un jour à ZÉRO, pas un jour absent. C'est la différence
+  // entre « tu dépenses peu » et « tu dépenses sur peu de jours », et sans ce
+  // compte les deux se lisent pareil.
+  const actifs = pts.filter((p) => p.spend > 0 || p.impressions > 0 || p.clicks > 0).length;
+  const piedJour =
+    `Moyenne sur les ${pts.length} jours pleins de la période affichée. ` +
+    (actifs === 0
+      ? "Aucun n'a porté de campagne : la moyenne est un zéro MESURÉ, pas une absence de mesure."
+      : `${actifs} d'entre eux ${actifs > 1 ? "ont porté" : "a porté"} une campagne : les autres comptent comme des jours à zéro, ` +
+        "sinon « peu dépensé » et « dépensé sur peu de jours » se liraient pareil.");
+
   return (
-    <MoyenneMensuelle
-      titre="Tes moyennes par mois"
+    <Moyennes
+      unite={unite}
+      n={groupes.length}
+      fenetre={bornes(d.windowDebut, d.windowFin)}
       chiffres={chiffres}
-      mois={mois}
       tete={tete}
+      pied={unite === "mois" ? pied : piedJour}
+      vide="La période affichée ne contient aucun jour plein — il n'y a rien à moyenner."
       elargir={{
         href: `${path}${qs({ d: 0, m: d.metric, ...keepFilters(d) })}`,
         texte: "Passe la période sur « Tout »",
       }}
+    />
+  );
+}
+
+// Les moyennes d'Instagram. Même module, même règle, même composant que Meta et
+// Google — c'est le but : trois pages canal qui posent la même question doivent
+// la poser de la même façon. Ce qui change, c'est l'unité observée quand la
+// fenêtre est trop courte pour un mois : là-bas des jours de dépense, ici des
+// PUBLICATIONS. Un jour sans post n'est pas un jour à zéro sur Instagram, c'est
+// un jour où il ne s'est rien passé ; le dénominateur naturel est le post.
+//
+// C'est ce module qui a absorbé « Tes moyennes par post · tout l'historique »,
+// supprimé de la page : il en reprend exactement les chiffres, mais sur la
+// fenêtre affichée au lieu de tout l'historique.
+export function MoyennesInsta({ d }: { d: InstaDash }) {
+  const posts = d.posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) }));
+  const { unite, groupes, pied } = uniteDeLaFenetre(
+    posts,
+    { debut: d.windowDebut, fin: d.windowFin },
+    "publication"
+  );
+
+  const som = (g: InstaPost[], f: (p: InstaPost) => number) => g.reduce((a, p) => a + f(p), 0);
+  // Zéro vue sur un post publié n'existe pas : c'est une mesure absente, pas une
+  // mesure nulle. La compter comme un zéro ferait plonger la moyenne de tout
+  // compte mêlant photos et reels.
+  const vues = (g: InstaPost[]) => {
+    const v = som(g, (p) => p.views);
+    return v > 0 ? v : null;
+  };
+
+  const chiffres: ChiffreMoyen[] = [
+    { titre: "Portée", nature: "somme", fmt: fmtCHF, parUnite: groupes.map((g) => som(g, (p) => p.reach)) },
+    { titre: "Vues", nature: "somme", fmt: fmtCHF, parUnite: groupes.map(vues) },
+    { titre: "J'aime", nature: "somme", fmt: fmtCHF, parUnite: groupes.map((g) => som(g, (p) => p.likes)) },
+    { titre: "Commentaires", nature: "somme", fmt: (v) => v.toFixed(1), parUnite: groupes.map((g) => som(g, (p) => p.comments)) },
+    { titre: "Enregistrements", nature: "somme", fmt: (v) => v.toFixed(1), parUnite: groupes.map((g) => som(g, (p) => p.saved)) },
+    {
+      titre: "Engagement", unite: "%", nature: "taux", fmt: (v) => v.toFixed(1),
+      // Le taux se calcule sur les totaux de l'unité : moyenner les engagements
+      // de chaque post donnerait le même poids à un post vu par 40 personnes et
+      // à un reel vu par 12 000.
+      parUnite: groupes.map((g) => {
+        const r = som(g, (p) => p.reach);
+        return r > 0 ? (som(g, (p) => p.likes + p.comments + p.saved) / r) * 100 : null;
+      }),
+    },
+  ];
+  // Le nombre de publications n'a de sens qu'en branche mensuelle : par
+  // publication, il vaudrait 1 partout. Il vient donc en fin de bilan, après les
+  // six métriques dont l'ordre est celui du sélecteur (`tete` en dépend).
+  if (unite === "mois")
+    chiffres.push({
+      titre: "Publications", nature: "somme", fmt: (v) => v.toFixed(1),
+      parUnite: groupes.map((g) => g.length),
+    });
+
+  const ordre = ["reach", "views", "likes", "comments", "saved", "eng"];
+  const tete = Math.max(0, ordre.indexOf(d.topMetric));
+
+  // Une fenêtre qui couvre deux mois entiers SANS aucune publication donne des
+  // moyennes à zéro, et ce zéro-là est mesuré : rien n'a été publié. Il faut le
+  // dire, sinon il se lit comme une panne de récolte.
+  const piedMois =
+    posts.length === 0
+      ? `${pied} Aucune publication sur la période : ces moyennes valent zéro parce que rien n'a été publié, pas parce que rien n'a été mesuré.`
+      : pied;
+
+  return (
+    <Moyennes
+      unite={unite}
+      n={groupes.length}
+      fenetre={bornes(d.windowDebut, d.windowFin)}
+      chiffres={chiffres}
+      tete={tete}
+      pied={
+        unite === "mois"
+          ? piedMois
+          : `Moyenne des ${posts.length} publication${posts.length > 1 ? "s" : ""} de la période affichée. ` +
+            `Une publication est le dénominateur tant que la fenêtre ne couvre pas deux mois entiers : ` +
+            `sur sept jours, un « par mois » n'aurait aucun mois à moyenner.`
+      }
+      vide="Aucune publication sur la période affichée — il n'y a rien à moyenner. Ce n'est pas une moyenne à zéro, c'est une moyenne sans dénominateur."
+      elargir={{ href: `/instagram?d=0${d.topMetric === "reach" ? "" : `&m=${d.topMetric}`}`, texte: "Élargis la période" }}
     />
   );
 }

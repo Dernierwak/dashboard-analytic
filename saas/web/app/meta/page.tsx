@@ -9,9 +9,11 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
-  MoyenneMensuelleAds,
+  MoyennesAds,
   ByLabelTable,
 } from "@/components/channel-dash";
+
+import { Comparer } from "@/components/comparaison";
 
 import { getCompteActif } from "@/lib/account";
 
@@ -54,8 +56,12 @@ export default async function MetaPage({
       {/* Le rythme d'un mois AVANT la forme du jour : ce qu'un mois coûte et
           rapporte se compare d'un mois à l'autre, la courbe ne dit que la
           silhouette de la fenêtre affichée. */}
-      <MoyenneMensuelleAds d={d} path="/meta" />
+      <MoyennesAds d={d} path="/meta" />
       <MetricChart d={d} path="/meta" />
+      {/* On lit ce qui s'est passé, son rythme, sa forme — PUIS on le compare.
+          Le module arrive après la courbe et non avant : comparer deux périodes
+          suppose qu'on ait déjà en tête celle qu'on regarde. */}
+      <Comparer c={d.comparaison} sp={searchParams ?? {}} path="/meta" tete={d.metric} couleur="#1a56ff" />
       <ByLabelTable d={d} />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé :
