@@ -46,6 +46,14 @@ CREATE TRIGGER trg_meta_ads_insights_updated_at
 
 ALTER TABLE public.meta_ads_insights ENABLE ROW LEVEL SECURITY;
 
+-- Les quatre DROP ci-dessous rendent ce fichier rejouable. Sans eux, un second
+-- passage s'arrêtait sur « policy already exists » — et comme l'éditeur SQL de
+-- Supabase joue le fichier d'un bloc, tout ce qui suivait sautait avec.
+DROP POLICY IF EXISTS "meta_ads_select_own" ON public.meta_ads_insights;
+DROP POLICY IF EXISTS "meta_ads_insert_own" ON public.meta_ads_insights;
+DROP POLICY IF EXISTS "meta_ads_update_own" ON public.meta_ads_insights;
+DROP POLICY IF EXISTS "meta_ads_delete_own" ON public.meta_ads_insights;
+
 -- SELECT : l'utilisateur ne voit que ses propres données
 CREATE POLICY "meta_ads_select_own"
     ON public.meta_ads_insights

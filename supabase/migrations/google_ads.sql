@@ -33,6 +33,15 @@ CREATE TRIGGER trg_google_ads_insights_updated_at
 
 ALTER TABLE public.google_ads_insights ENABLE ROW LEVEL SECURITY;
 
+-- Les DROP ci-dessous rendent ce fichier rejouable. Sans eux, un second passage
+-- s'arrêtait sur « policy already exists » — et comme l'éditeur SQL de Supabase
+-- joue le fichier d'un bloc, google_campaign_config et les colonnes ajoutées à
+-- profiles en fin de fichier n'étaient jamais posées.
+DROP POLICY IF EXISTS "google_ads_select_own" ON public.google_ads_insights;
+DROP POLICY IF EXISTS "google_ads_insert_own" ON public.google_ads_insights;
+DROP POLICY IF EXISTS "google_ads_update_own" ON public.google_ads_insights;
+DROP POLICY IF EXISTS "google_ads_delete_own" ON public.google_ads_insights;
+
 CREATE POLICY "google_ads_select_own" ON public.google_ads_insights
     FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "google_ads_insert_own" ON public.google_ads_insights
@@ -63,6 +72,11 @@ CREATE TRIGGER trg_google_campaign_config_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 ALTER TABLE public.google_campaign_config ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "google_campaign_config_select_own" ON public.google_campaign_config;
+DROP POLICY IF EXISTS "google_campaign_config_insert_own" ON public.google_campaign_config;
+DROP POLICY IF EXISTS "google_campaign_config_update_own" ON public.google_campaign_config;
+DROP POLICY IF EXISTS "google_campaign_config_delete_own" ON public.google_campaign_config;
 
 CREATE POLICY "google_campaign_config_select_own" ON public.google_campaign_config
     FOR SELECT USING (auth.uid() = user_id);

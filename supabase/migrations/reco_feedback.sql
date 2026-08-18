@@ -26,6 +26,14 @@ CREATE TRIGGER trg_reco_feedback_updated_at
 
 ALTER TABLE public.reco_feedback ENABLE ROW LEVEL SECURITY;
 
+-- Les quatre DROP ci-dessous rendent ce fichier rejouable. Sans eux, un second
+-- passage s'arrêtait sur « policy already exists » — et profiles.objectif,
+-- ajouté en fin de fichier, n'était jamais posé.
+DROP POLICY IF EXISTS "reco_feedback_select_own" ON public.reco_feedback;
+DROP POLICY IF EXISTS "reco_feedback_insert_own" ON public.reco_feedback;
+DROP POLICY IF EXISTS "reco_feedback_update_own" ON public.reco_feedback;
+DROP POLICY IF EXISTS "reco_feedback_delete_own" ON public.reco_feedback;
+
 CREATE POLICY "reco_feedback_select_own" ON public.reco_feedback
     FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "reco_feedback_insert_own" ON public.reco_feedback

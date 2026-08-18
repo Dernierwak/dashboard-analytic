@@ -31,6 +31,14 @@ CREATE TRIGGER trg_ga4_insights_updated_at
 
 ALTER TABLE public.ga4_insights ENABLE ROW LEVEL SECURITY;
 
+-- Les quatre DROP ci-dessous rendent ce fichier rejouable. Sans eux, un second
+-- passage s'arrêtait sur « policy already exists » — et la colonne
+-- ga4_property_id ajoutée en fin de fichier n'était jamais posée.
+DROP POLICY IF EXISTS "ga4_select_own" ON public.ga4_insights;
+DROP POLICY IF EXISTS "ga4_insert_own" ON public.ga4_insights;
+DROP POLICY IF EXISTS "ga4_update_own" ON public.ga4_insights;
+DROP POLICY IF EXISTS "ga4_delete_own" ON public.ga4_insights;
+
 CREATE POLICY "ga4_select_own" ON public.ga4_insights
     FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "ga4_insert_own" ON public.ga4_insights

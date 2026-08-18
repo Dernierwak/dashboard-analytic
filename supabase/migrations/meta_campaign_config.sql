@@ -36,6 +36,14 @@ CREATE TRIGGER trg_meta_campaign_config_updated_at
 
 ALTER TABLE public.meta_campaign_config ENABLE ROW LEVEL SECURITY;
 
+-- Les quatre DROP ci-dessous rendent ce fichier rejouable. Sans eux, un second
+-- passage s'arrêtait sur « policy already exists » — et comme l'éditeur SQL de
+-- Supabase joue le fichier d'un bloc, tout ce qui suivait sautait avec.
+DROP POLICY IF EXISTS "meta_campaign_config_select_own" ON public.meta_campaign_config;
+DROP POLICY IF EXISTS "meta_campaign_config_insert_own" ON public.meta_campaign_config;
+DROP POLICY IF EXISTS "meta_campaign_config_update_own" ON public.meta_campaign_config;
+DROP POLICY IF EXISTS "meta_campaign_config_delete_own" ON public.meta_campaign_config;
+
 CREATE POLICY "meta_campaign_config_select_own"
     ON public.meta_campaign_config
     FOR SELECT
