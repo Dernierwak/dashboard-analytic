@@ -16,6 +16,7 @@ import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
+import { lienDash } from "@/lib/liens";
 import { Comparer } from "@/components/comparaison";
 
 import { getCompteActif } from "@/lib/account";
@@ -30,18 +31,12 @@ function fmtDate(isoStr: string): string {
   return `${String(d.getDate()).padStart(2, "0")} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// Changer de période ne doit pas effacer les autres réglages : la métrique
-// suivie et le tri des tables survivent au clic. Seule la période sur mesure
-// disparaît — c'est justement ce qu'on remplace.
-function PeriodPillsInsta({
-  days,
-  metric,
-  sort,
-}: {
-  days: number;
-  metric: string;
-  sort: string;
-}) {
+// Changer de période ne doit effacer AUCUN autre réglage. Cette fonction
+// listait ceux qu'elle recopiait — `m` et `s` — et perdait donc tout ce qui est
+// venu après : le réglage de comparaison. Elle repart maintenant de l'état
+// complet et ne change que `d` (voir `lib/liens.ts`). Seule la période sur
+// mesure disparaît, et c'est voulu : c'est justement ce qu'on remplace.
+function PeriodPillsInsta({ days, params }: { days: number; params: DashParams }) {
   const opts = [
     { v: 7, label: "7 j" },
     { v: 14, label: "14 j" },
@@ -49,14 +44,8 @@ function PeriodPillsInsta({
     { v: 90, label: "90 j" },
     { v: 0, label: "Tout" },
   ];
-  const lien = (v: number) => {
-    const q = new URLSearchParams();
-    if (v !== 7) q.set("d", String(v));
-    if (metric !== "reach") q.set("m", metric);
-    if (sort !== "date") q.set("s", sort);
-    const s = q.toString();
-    return s ? `/instagram?${s}` : "/instagram";
-  };
+  const lien = (v: number) =>
+    lienDash("/instagram", params, { d: v === 7 ? undefined : String(v) }, "reach");
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {opts.map((o) => (
@@ -89,11 +78,11 @@ const INSTA_METRICS: { key: string; label: string; unit: string }[] = [
 function PostsMetricChart({
   posts,
   metric,
-  days,
+  params,
 }: {
   posts: InstaPost[];
   metric: string;
-  days: number;
+  params: DashParams;
 }) {
   const pts = [...posts].reverse(); // plus ancien → plus récent
   if (pts.length < 2) return null;
@@ -108,7 +97,6 @@ function PostsMetricChart({
   const vals = pts.map(val);
   const max = Math.max(...vals, 0.001);
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
-  const dq = days === 7 ? "" : `d=${days}&`;
 
   // Ce module ouvrait sur un surtitre et une rangée de boutons, puis un graphe :
   // aucun chiffre avant sa forme, et le sélecteur au-dessus de ce qu'il pilote.
@@ -169,7 +157,7 @@ function PostsMetricChart({
         {INSTA_METRICS.map((m) => (
           <a
             key={m.key}
-            href={`/instagram?${dq}${m.key === "reach" ? "" : `m=${m.key}`}`}
+            href={lienDash("/instagram", params, { m: m.key }, "reach")}
             className={`shrink-0 text-[10.5px] font-semibold rounded-full px-2.5 py-1 border ${
               metric === m.key
                 ? "bg-ink text-white border-ink"
@@ -214,13 +202,13 @@ function PostsTable({
   posts,
   histReach,
   sort,
-  baseQs,
+  params,
   labels,
 }: {
   posts: InstaPost[];
   histReach: number;
   sort: string;
-  baseQs: string;
+  params: DashParams;
   labels: string[];
 }) {
   const th = (s: { key: string; label: string }, align: string, px: string) => (
@@ -229,7 +217,7 @@ function PostsTable({
       className={`${align} font-semibold ${px} py-3 sticky top-0 bg-white z-10 border-b border-line`}
     >
       <a
-        href={`/instagram?${baseQs}${s.key === "date" ? "" : `&s=${s.key}`}`}
+        href={lienDash("/instagram", params, { s: s.key }, "reach")}
         className={sort === s.key ? "text-ink" : "hover:text-muted"}
         title={s.key === "date" ? "Trier par date" : `Trier par ${s.label}`}
       >
@@ -338,12 +326,6 @@ export default async function InstagramPage({
   )
     ? (searchParams!.s as string)
     : "date";
-  const qsParts: string[] = [];
-  if (d.days !== 7 && !searchParams?.from) qsParts.push(`d=${d.days}`);
-  if (searchParams?.from && searchParams?.to)
-    qsParts.push(`from=${searchParams.from}`, `to=${searchParams.to}`);
-  if (metric !== "reach") qsParts.push(`m=${metric}`);
-  const baseQs = qsParts.join("&");
   const sortedPosts = sortPosts(d.posts, sort);
   const sortedAll = sortPosts(d.allPosts, sort);
 
@@ -363,7 +345,7 @@ export default async function InstagramPage({
             <span style={{ color: "#7b4fff" }}>◎</span> Instagram.
           </h1>
           <div className="flex items-center gap-3 flex-wrap">
-            <PeriodPillsInsta days={d.days} metric={metric} sort={sort} />
+            <PeriodPillsInsta days={d.days} params={d.params} />
             <DateRange from={searchParams?.from} to={searchParams?.to} />
           </div>
         </div>
@@ -423,16 +405,17 @@ export default async function InstagramPage({
       <MoyennesInsta d={d} />
 
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
-      <PostsMetricChart posts={chartPosts} metric={metric} days={d.days} />
+      <PostsMetricChart posts={chartPosts} metric={metric} params={d.params} />
 
       {/* Même module, même place que sur Meta et Google — après la forme, parce
           que comparer deux périodes suppose d'avoir déjà en tête celle qu'on
           regarde. Ce qui change est la liste des métriques, pas la règle. */}
       <Comparer
         c={d.comparaison}
-        sp={searchParams ?? {}}
+        sp={d.params}
         path="/instagram"
         tete={d.topMetric}
+        metriqueParDefaut="reach"
         couleur="#7b4fff"
       />
 
@@ -655,7 +638,7 @@ export default async function InstagramPage({
         </div>
       ) : (
         <div className="mb-4">
-          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} baseQs={baseQs} labels={d.labels} />
+          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} params={d.params} labels={d.labels} />
         </div>
       )}
 
@@ -665,7 +648,7 @@ export default async function InstagramPage({
           ▸ Vue globale — tous tes posts ({d.allPosts.length})
         </summary>
         <div className="mt-3">
-          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} baseQs={baseQs} labels={d.labels} />
+          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} params={d.params} labels={d.labels} />
         </div>
       </details>
 

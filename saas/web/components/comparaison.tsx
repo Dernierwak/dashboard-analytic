@@ -1,6 +1,7 @@
 import { fmtCHF } from "@/lib/report";
 import { Triangle, sensPente } from "@/components/pente";
 import { DateRange } from "@/components/date-range";
+import { lienDash } from "@/lib/liens";
 import { LineChart } from "@/components/line-chart";
 import {
   pct,
@@ -128,19 +129,10 @@ function deQuoi(titre: string): string {
   return /^[aeiouyéèêàâîôûh]/i.test(t) ? `d'${t}` : `de ${t}`;
 }
 
-/**
- * Un lien qui garde TOUS les réglages en cours et n'en change qu'un.
- * Générique exprès : les pages pub et la page Instagram n'ont pas la même
- * grammaire d'URL, et trois constructeurs de liens finiraient par diverger sur
- * le paramètre que l'un des trois aurait oublié de recopier.
- */
-function lien(path: string, sp: DashParams, patch: Partial<DashParams>): string {
-  const q = new URLSearchParams();
-  const base: DashParams = { ...sp, ...patch };
-  for (const [k, v] of Object.entries(base)) if (v) q.set(k, String(v));
-  const s = q.toString();
-  return s ? `${path}?${s}` : path;
-}
+// Ce module avait déjà le bon réflexe — repartir de l'état complet — mais dans
+// sa propre fonction. Elle est devenue `lib/liens.ts` et sert les six
+// constructeurs de la page : c'était le seul endroit qui ne perdait rien, il
+// n'y avait pas de raison qu'il reste seul.
 
 /**
  * Les deux frises, alignées PAR LA FIN et complétées de `null` en tête pour la
@@ -188,6 +180,7 @@ export function Comparer({
   path,
   tete,
   couleur = "#1a56ff",
+  metriqueParDefaut,
 }: {
   c: Comparaison;
   /** Les paramètres d'URL en cours — le module ne connaît pas leur grammaire. */
@@ -198,6 +191,9 @@ export function Comparer({
    *  côté de la question. */
   tete: string;
   couleur?: string;
+  /** La métrique que l'URL n'a pas besoin d'écrire — `spend` en publicité,
+   *  `reach` sur Instagram. Voir `lienDash`. */
+  metriqueParDefaut: string;
 }) {
   // Rang 8 — le pilotage change ce que le module montre, il vit donc en bas.
   const pilotage = (
@@ -206,7 +202,7 @@ export function Comparer({
         <Pastille
           key={m.v}
           actif={c.mode === m.v}
-          href={lien(path, sp, { cmp: m.v, cfrom: undefined, cto: undefined })}
+          href={lienDash(path, sp, { cmp: m.v, cfrom: undefined, cto: undefined }, metriqueParDefaut)}
         >
           {m.label}
         </Pastille>
@@ -275,6 +271,20 @@ export function Comparer({
     return cadre(
       <>
         <p className="text-[12.5px] text-muted leading-relaxed">{c.refus}</p>
+        {/* LE RÉGLAGE EST GARDÉ, ET ON LE DIT.
+            Depuis que les liens de la page conservent `cmp` / `cfrom` / `cto`,
+            un réglage posé avant peut devenir inapplicable APRÈS coup : on
+            compare « l'an dernier », on élargit la période sur « Tout », et la
+            référence sort de la couverture des données. Sans cette phrase,
+            l'utilisateur lit un refus et croit avoir perdu son choix — alors
+            que la pastille juste dessous est toujours allumée sur lui. Un
+            réglage conservé qui ne s'applique pas doit dire les deux :
+            qu'il est là, et pourquoi il ne rend rien. */}
+        <p className="text-[11px] text-faint leading-relaxed mt-2">
+          Ton choix de comparaison est conservé — il est toujours sélectionné ci-dessous. C&apos;est
+          la période affichée qui a changé sous lui&nbsp;; reprends-la, ou choisis une autre
+          référence.
+        </p>
         {pilotage}
       </>
     );

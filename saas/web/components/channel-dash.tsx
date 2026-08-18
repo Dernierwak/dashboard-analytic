@@ -5,27 +5,18 @@
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
-import type { ChannelDash, DayPoint, InstaDash, InstaPost } from "@/lib/channels";
+import type { ChannelDash, DashParams, DayPoint, InstaDash, InstaPost } from "@/lib/channels";
+import { lienDash } from "@/lib/liens";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { SummaryStop } from "@/components/summary-stop";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 
-function qs(base: Record<string, string | number | undefined>): string {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(base)) {
-    if (v !== undefined && v !== "" && !(k === "m" && v === "spend")) q.set(k, String(v));
-  }
-  const s = q.toString();
-  return s ? `?${s}` : "";
-}
-
-function keepFilters(d: ChannelDash): Record<string, string | undefined> {
-  return {
-    status: d.filters.status || undefined,
-    camp: d.filters.camp || undefined,
-    label: d.filters.label || undefined,
-  };
-}
+// Les liens de ces modules passent tous par `lienDash` : on y énumère ce qu'on
+// CHANGE, jamais ce qu'on garde. Le `qs()` / `keepFilters()` d'avant listait
+// statut, campagne et thème — donc perdait la période sur mesure et, plus tard,
+// le réglage de comparaison. Voir l'en-tête de `lib/liens.ts`.
+const lienAds = (path: string, d: ChannelDash, patch: Partial<DashParams>) =>
+  lienDash(path, d.params, patch, "spend");
 
 export function PeriodPills({ path, d }: { path: string; d: ChannelDash }) {
   const opts: { v: number; label: string }[] = [
@@ -40,7 +31,7 @@ export function PeriodPills({ path, d }: { path: string; d: ChannelDash }) {
       {opts.map((o) => (
         <a
           key={o.v}
-          href={`${path}${qs({ d: o.v === 7 ? undefined : o.v, m: d.metric, ...keepFilters(d) })}`}
+          href={lienAds(path, d, { d: o.v === 7 ? undefined : String(o.v) })}
           className={`text-[11.5px] font-semibold rounded-full px-3 py-1 border transition-colors ${
             d.days === o.v
               ? "bg-ink text-white border-ink"
@@ -542,7 +533,7 @@ export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
       pied={unite === "mois" ? pied : piedJour}
       vide="La période affichée ne contient aucun jour plein — il n'y a rien à moyenner."
       elargir={{
-        href: `${path}${qs({ d: 0, m: d.metric, ...keepFilters(d) })}`,
+        href: lienAds(path, d, { d: "0" }),
         texte: "Passe la période sur « Tout »",
       }}
     />
@@ -628,7 +619,7 @@ export function MoyennesInsta({ d }: { d: InstaDash }) {
             `sur sept jours, un « par mois » n'aurait aucun mois à moyenner.`
       }
       vide="Aucune publication sur la période affichée — il n'y a rien à moyenner. Ce n'est pas une moyenne à zéro, c'est une moyenne sans dénominateur."
-      elargir={{ href: `/instagram?d=0${d.topMetric === "reach" ? "" : `&m=${d.topMetric}`}`, texte: "Élargis la période" }}
+      elargir={{ href: lienDash("/instagram", d.params, { d: "0" }, "reach"), texte: "Élargis la période" }}
     />
   );
 }
@@ -722,7 +713,7 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
         {METRICS.map((m) => (
           <a
             key={m.key}
-            href={`${path}${qs({ d: d.days === 7 ? undefined : d.days, m: m.key, ...keepFilters(d) })}`}
+            href={lienAds(path, d, { m: m.key })}
             className={`shrink-0 text-[10.5px] font-semibold rounded-full px-2.5 py-1 border ${
               d.metric === m.key
                 ? "bg-ink text-white border-ink"

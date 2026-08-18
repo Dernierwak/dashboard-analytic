@@ -414,6 +414,11 @@ export type LabelAgg = {
 
 export type ChannelDash = {
   email: string;
+  /** LES PARAMÈTRES D'URL TELS QUELS. Ils voyagent avec le dashboard pour que
+   *  tout constructeur de lien puisse repartir de l'état COMPLET (voir
+   *  `lib/liens.ts`) : un lien bâti à partir de ce qu'il sait garder perd, en
+   *  silence, tout réglage ajouté après lui. */
+  params: DashParams;
   periodLabel: string;
   /** Les bornes exactes de la fenêtre affichée, en ISO. Le libellé est fait pour
    *  être lu, pas pour être découpé — un module qui doit dire sa fenêtre a
@@ -652,6 +657,7 @@ function buildDash(
 
   return {
     email,
+    params: sp ?? {},
     periodLabel: w.label,
     windowDebut: iso(w.since),
     windowFin: iso(w.until),
@@ -820,6 +826,11 @@ export const INSTA_SLOTS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-2
 
 export type InstaDash = {
   email: string;
+  /** LES PARAMÈTRES D'URL TELS QUELS. Ils voyagent avec le dashboard pour que
+   *  tout constructeur de lien puisse repartir de l'état COMPLET (voir
+   *  `lib/liens.ts`) : un lien bâti à partir de ce qu'il sait garder perd, en
+   *  silence, tout réglage ajouté après lui. */
+  params: DashParams;
   periodLabel: string;
   /** Bornes exactes de la fenêtre affichée — voir `ChannelDash`. */
   windowDebut: string;
@@ -1087,6 +1098,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
 
   return {
     email: compte.email,
+    params: sp ?? {},
     periodLabel: w.label,
     windowDebut: iso(w.since),
     windowFin: iso(w.until),

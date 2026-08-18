@@ -61,7 +61,8 @@ export default async function MetaPage({
       {/* On lit ce qui s'est passé, son rythme, sa forme — PUIS on le compare.
           Le module arrive après la courbe et non avant : comparer deux périodes
           suppose qu'on ait déjà en tête celle qu'on regarde. */}
-      <Comparer c={d.comparaison} sp={searchParams ?? {}} path="/meta" tete={d.metric} couleur="#1a56ff" />
+      <Comparer c={d.comparaison} sp={d.params} path="/meta" tete={d.metric}
+        metriqueParDefaut="spend" couleur="#1a56ff" />
       <ByLabelTable d={d} />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé :
