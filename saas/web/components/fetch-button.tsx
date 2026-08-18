@@ -72,7 +72,24 @@ const ETAPES: { at: number; label: string }[] = [
   { at: 540, label: "Classement des contenus par l'IA" },
   { at: 600, label: "Rédaction de ton rapport" },
 ];
-const LONGUE = 10 * 60; // au-delà, on prévient que c'est long — pas que c'est cassé
+// Au-delà, on prévient que c'est long — pas que c'est cassé.
+//
+// ── ET ON NE DIT PLUS « C'EST NORMAL LA PREMIÈRE FOIS » ─────────────────────
+//
+// Le message affiché passé ce seuil affirmait « c'est normal la première fois :
+// la récolte rapatrie tout ton historique ». Il l'affirmait à TOUT LE MONDE,
+// sans jamais vérifier que c'en était une — ce composant ne sait rien du
+// contenu du compte, il ne connaît que l'état du dernier run GitHub. Un
+// utilisateur qui récolte depuis des mois lisait donc « la première fois » à
+// chaque récolte longue, et la seule chose qu'il pouvait en conclure, c'est
+// qu'on lui racontait n'importe quoi.
+//
+// Savoir si c'en est vraiment une demanderait de compter les lignes déjà en
+// base, donc un aller-retour serveur que ce composant n'a pas. Entre inventer
+// une cause et n'en affirmer aucune, on n'en affirme aucune : le message dit ce
+// qu'il sait (dix minutes, ce n'est pas un échec) et nomme les deux causes
+// possibles sans choisir à la place de l'utilisateur.
+const LONGUE = 10 * 60;
 
 function etapeDe(sec: number): string {
   let cur = ETAPES[0].label;
@@ -276,9 +293,10 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
       <p className="text-[10.5px] text-faint mt-1.5 leading-relaxed">
         {longue ? (
           <>
-            C&apos;est plus long que d&apos;habitude, et c&apos;est normal la première
-            fois : la récolte rapatrie tout ton historique de publications. Elle va au
-            bout.
+            Plus de dix minutes : c&apos;est long, ce n&apos;est pas cassé. La
+            récolte va au bout. Les longues sont celles qui ont beaucoup à
+            rapatrier — un premier chargement, ou un compte laissé de côté un
+            moment.
           </>
         ) : (
           <>
