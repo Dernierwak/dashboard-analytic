@@ -1,619 +1,874 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>📊 Project Status — Agence Dashboard</title>
-<style>
-  :root {
-    --bg: #faf9f6;
-    --ink: #0e0f12;
-    --ink-2: #2c2e35;
-    --ink-3: #5a5d66;
-    --ink-4: #8b8e98;
-    --line: rgba(14,15,18,0.08);
-    --brand: #3b5bff;
-    --brand-soft: rgba(59,91,255,0.10);
-    --good: #1a7a4a;
-    --good-soft: #e7f3ec;
-    --warn: #b86b00;
-    --warn-soft: #fbf1de;
-    --bad: #c0392b;
-    --bad-soft: #fbe9e6;
-    --font-mono: "JetBrains Mono", ui-monospace, monospace;
-    --font-display: "Instrument Serif", Georgia, serif;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-    background: var(--bg); color: var(--ink);
-    font-size: 14px; line-height: 1.5;
-  }
-  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px 64px; }
-
-  /* Header */
-  .header { margin-bottom: 32px; }
-  .eyebrow {
-    font-family: var(--font-mono);
-    font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.1em;
-    color: var(--ink-4); margin-bottom: 8px;
-  }
-  h1 {
-    font-family: var(--font-display);
-    font-size: 2.4rem; font-weight: 400;
-    margin: 0 0 8px; line-height: 1.1;
-    color: var(--ink);
-  }
-  .sub {
-    font-size: 14px; color: var(--ink-3);
-    max-width: 600px; margin: 0;
-  }
-  .updated {
-    margin-top: 12px;
-    font-size: 11.5px; color: var(--ink-4);
-    font-family: var(--font-mono);
-  }
-
-  /* Stats row */
-  .stats-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 12px; margin: 24px 0 32px;
-  }
-  .stat {
-    background: #fff; border: 1px solid var(--line);
-    border-radius: 14px; padding: 16px 20px;
-  }
-  .stat-lbl {
-    font-size: 10.5px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--ink-4); margin-bottom: 6px;
-    font-family: var(--font-mono);
-  }
-  .stat-val {
-    font-family: var(--font-mono);
-    font-size: 1.8rem; font-weight: 500;
-    color: var(--ink); line-height: 1;
-  }
-  .stat-foot {
-    font-size: 11px; color: var(--ink-4); margin-top: 4px;
-  }
-
-  /* Section */
-  .section { margin-bottom: 36px; }
-  .section-h {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .section-title {
-    font-size: 18px; font-weight: 600; color: var(--ink);
-  }
-  .section-count {
-    font-size: 12px; color: var(--ink-4); font-weight: 400;
-  }
-
-  /* Card */
-  .card {
-    background: #fff; border: 1px solid var(--line);
-    border-radius: 14px; padding: 16px 20px;
-    margin-bottom: 8px;
-    transition: transform 0.15s, box-shadow 0.15s;
-  }
-  .card:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(14,15,18,0.06);
-  }
-  .card.blocked {
-    border-left: 3px solid var(--bad);
-    background: linear-gradient(90deg, var(--bad-soft) 0%, #fff 40%);
-  }
-  .card.wip {
-    border-left: 3px solid var(--brand);
-    background: linear-gradient(90deg, var(--brand-soft) 0%, #fff 40%);
-  }
-  .card.done {
-    opacity: 0.7;
-  }
-  .card-title {
-    font-size: 14px; font-weight: 600; color: var(--ink);
-    margin-bottom: 4px;
-  }
-  .card-meta {
-    font-size: 12px; color: var(--ink-3);
-  }
-
-  /* Chips */
-  .chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 9px; border-radius: 999px;
-    font-size: 11px; font-weight: 600;
-    background: rgba(14,15,18,0.05); color: var(--ink-3);
-    margin-left: 6px;
-  }
-  .chip.good { background: var(--good-soft); color: var(--good); }
-  .chip.warn { background: var(--warn-soft); color: var(--warn); }
-  .chip.bad { background: var(--bad-soft); color: var(--bad); }
-  .chip.brand { background: var(--brand-soft); color: var(--brand); }
-
-  /* Backlog filtres */
-  .filters {
-    display: flex; gap: 6px; margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-  .filter-btn {
-    background: rgba(14,15,18,0.06);
-    border: none; padding: 6px 14px;
-    border-radius: 6px; cursor: pointer;
-    font-size: 12.5px; font-weight: 500;
-    color: var(--ink-3);
-    transition: all 0.15s;
-  }
-  .filter-btn:hover { background: rgba(14,15,18,0.10); }
-  .filter-btn.active {
-    background: var(--brand);
-    color: #fff;
-    box-shadow: 0 2px 6px rgba(59,91,255,0.35);
-  }
-
-  /* Backlog item */
-  .backlog-item {
-    background: #fff; border: 1px solid var(--line);
-    border-radius: 10px; padding: 12px 16px;
-    margin-bottom: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .backlog-item:hover {
-    border-color: var(--brand);
-    transform: translateX(2px);
-  }
-  .backlog-item.hidden { display: none; }
-  .backlog-title {
-    font-size: 13.5px; font-weight: 600; color: var(--ink);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .backlog-desc {
-    font-size: 12px; color: var(--ink-3); margin-top: 4px;
-    display: none;
-  }
-  .backlog-item.open .backlog-desc { display: block; }
-  .backlog-item.open { padding-bottom: 16px; }
-
-  /* Timeline */
-  .timeline {
-    display: grid; grid-template-columns: 90px 1fr;
-    gap: 12px 16px;
-    margin-top: 10px;
-  }
-  .tl-date {
-    font-size: 11px; color: var(--ink-4);
-    font-family: var(--font-mono); padding-top: 4px;
-  }
-  .tl-content {
-    font-size: 13px; color: var(--ink-2);
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
-  }
-  .tl-prefix {
-    font-weight: 600; font-family: var(--font-mono);
-    padding: 2px 6px; border-radius: 4px;
-    font-size: 10px; margin-right: 4px;
-  }
-  .tl-prefix.feat { background: var(--good-soft); color: var(--good); }
-  .tl-prefix.fix { background: var(--warn-soft); color: var(--warn); }
-  .tl-prefix.refactor { background: var(--brand-soft); color: var(--brand); }
-  .tl-prefix.docs { background: rgba(14,15,18,0.06); color: var(--ink-3); }
-  .tl-prefix.style { background: rgba(14,15,18,0.06); color: var(--ink-3); }
-  .tl-prefix.revert { background: var(--bad-soft); color: var(--bad); }
-
-  /* Group heading inside section */
-  .group {
-    margin-top: 18px; padding-top: 14px;
-    border-top: 1px dashed var(--line);
-  }
-  .group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-  .group-title {
-    font-size: 12px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--ink-4); margin-bottom: 8px;
-    font-family: var(--font-mono);
-  }
-
-  /* Search */
-  .search {
-    width: 100%; padding: 10px 14px;
-    background: #fff; border: 1px solid var(--line);
-    border-radius: 10px; font-size: 13px;
-    margin-bottom: 12px;
-  }
-  .search:focus {
-    outline: none; border-color: var(--brand);
-    box-shadow: 0 0 0 3px var(--brand-soft);
-  }
-
-  /* Responsive */
-  @media (max-width: 700px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .timeline { grid-template-columns: 70px 1fr; }
-    h1 { font-size: 1.8rem; }
-  }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pulse // Guide LLM</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b0a;
+      --panel: #0d1210;
+      --panel-2: #111814;
+      --line: #243129;
+      --text: #d7e5dc;
+      --muted: #75877b;
+      --green: #62f59a;
+      --green-dim: #173924;
+      --amber: #f1c75b;
+      --red: #ff756f;
+      --cyan: #62d7f5;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(rgba(98,245,154,.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(98,245,154,.018) 1px, transparent 1px),
+        var(--bg);
+      background-size: 28px 28px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .shell { max-width: 1180px; margin: auto; padding: 28px 20px 70px; }
+    .topbar {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--line);
+    }
+    .prompt { color: var(--green); font-weight: 700; }
+    h1 { margin: 5px 0 4px; font-size: clamp(24px, 4vw, 40px); line-height: 1.08; font-weight: 650; }
+    .subtitle, .muted { color: var(--muted); }
+    .status-live { color: var(--green); white-space: nowrap; padding-top: 6px; }
+    .status-live::before { content: "●"; margin-right: 8px; animation: blink 1.7s infinite; }
+    .jump-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 7px; overflow-x: auto; padding: 9px 0; background: rgba(8,11,10,.94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+    .jump-nav button { color: var(--muted); background: transparent; border: 1px solid var(--line); padding: 5px 9px; white-space: nowrap; font-size: 11px; }
+    .jump-nav button:hover { color: var(--green); border-color: var(--green); }
+    @keyframes blink { 50% { opacity: .25; } }
+    .grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; margin-top: 18px; }
+    .panel { background: rgba(13,18,16,.95); border: 1px solid var(--line); border-radius: 5px; }
+    .panel-head { padding: 11px 14px; border-bottom: 1px solid var(--line); color: var(--muted); }
+    .panel-head strong { color: var(--text); }
+    .panel-body { padding: 16px; }
+    .progress-layout { display: grid; grid-template-columns: 190px 1fr; align-items: center; gap: 24px; }
+    .ring-wrap { position: relative; width: 170px; height: 170px; margin: auto; }
+    .ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .ring circle { fill: none; stroke-width: 9; }
+    .ring-bg { stroke: #1a241e; }
+    .ring-value { stroke: var(--green); stroke-linecap: square; transition: stroke-dashoffset .35s ease; }
+    .ring-label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .ring-label b { color: var(--green); font-size: 34px; line-height: 1; }
+    .ring-label span { color: var(--muted); font-size: 11px; margin-top: 7px; }
+    .metric-row { display: grid; grid-template-columns: 88px 1fr 36px; align-items: center; gap: 10px; margin: 12px 0; }
+    .bar { height: 7px; background: #19221d; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: var(--green); transition: width .3s ease; }
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 12px; }
+    .stat { padding: 13px; background: var(--panel-2); border: 1px solid var(--line); }
+    .stat b { display: block; font-size: 23px; color: var(--green); }
+    .stat span { color: var(--muted); font-size: 11px; }
+    .next-command { border-left: 3px solid var(--amber); background: #17150d; padding: 14px; color: #e8d79f; }
+    .project-graph { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .project-node { padding: 12px; border: 1px solid var(--line); background: var(--panel-2); }
+    .project-node-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .project-node b { color: var(--text); font-size: 12px; }
+    .project-node span { color: var(--green); font-size: 11px; }
+    .project-node small { display: block; color: var(--muted); margin-top: 7px; }
+    .agent-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 9px; }
+    .agent-scroll { max-height: 680px; overflow: auto; padding: 9px; border-top: 1px solid var(--line); }
+    .agent-card { border: 1px solid var(--line); background: var(--panel); padding: 14px; }
+    .agent-card h3 { color: var(--green); margin: 0 0 5px; font-size: 15px; }
+    .agent-rule { display: grid; grid-template-columns: 92px 1fr; gap: 8px; margin: 7px 0; font-size: 12px; }
+    .agent-rule b { color: var(--muted); font-weight: 500; }
+    .review-score { color: var(--amber); }
+    .learning { margin-top: 10px; padding: 9px; background: #0a0f0c; border-left: 2px solid var(--cyan); font-size: 11px; }
+    .llm-review { margin-top: 10px; background: #0a0f0c; }
+    .llm-review summary { padding: 9px; color: var(--amber); font-size: 11px; }
+    .llm-review-scroll { max-height: 280px; overflow-y: auto; padding: 0 9px 9px; border-top: 1px solid var(--line); }
+    .skill-line { display: grid; grid-template-columns: 92px 1fr 48px; gap: 7px; align-items: center; margin-top: 6px; font-size: 10px; color: var(--muted); }
+    .ctx-rule { margin-bottom: 6px; }
+    .ctx-rule > summary { font-size: 12px; }
+    .ctx-text { white-space: pre-wrap; overflow-wrap: anywhere; color: #abc0b1; font-size: 12px; }
+    .cost-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-bottom: 12px; }
+    .cost-card { border: 1px solid var(--line); padding: 11px; background: #0a0f0c; }
+    .cost-card-head { display: flex; justify-content: space-between; gap: 8px; }
+    .cost-card strong { color: var(--text); }
+    .cost-card em { color: var(--amber); font-style: normal; font-size: 11px; }
+    .cost-card p { color: var(--muted); font-size: 11px; margin: 7px 0; }
+    .saving { color: var(--green); font-size: 11px; }
+    .cost-status { display: inline-block; margin-top: 8px; padding: 2px 6px; border: 1px solid var(--line); font-size: 10px; }
+    .cost-status.auto { color: var(--green); border-color: #28563a; }
+    .cost-status.decision { color: var(--amber); border-color: #594a20; }
+    .token-layout { display: grid; grid-template-columns: .8fr 1.2fr; gap: 12px; }
+    .token-chart-row { display: grid; grid-template-columns: 130px 1fr 90px; gap: 9px; align-items: center; margin: 10px 0; }
+    .token-chart-row strong { color: var(--cyan); text-align: right; font-size: 11px; }
+    .token-list { margin-top: 12px; max-height: 260px; overflow: auto; }
+    .measure { color: var(--green); }
+    .estimate { color: var(--amber); }
+    .next-command small { display: block; color: var(--amber); margin-bottom: 6px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 12px; }
+    .control, .btn {
+      color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+      border-radius: 3px; padding: 8px 11px;
+    }
+    .control.active, .control:hover, .btn:hover { color: var(--green); border-color: #376447; }
+    .search { flex: 1; min-width: 210px; color: var(--text); outline: none; }
+    .search:focus { border-color: var(--green); }
+    .section-title { display: flex; align-items: center; gap: 9px; margin: 26px 0 10px; color: var(--green); }
+    .section-title::before { content: ">"; }
+    .tasks { display: grid; gap: 7px; }
+    .project-block { border: 1px solid var(--line); background: rgba(13,18,16,.72); margin-bottom: 9px; }
+    .project-summary { display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 13px 14px; cursor: pointer; }
+    .project-summary::before { content: none; }
+    .project-summary strong { color: var(--green); }
+    .project-summary small { display: block; color: var(--muted); margin-top: 3px; }
+    .project-progress { min-width: 120px; text-align: right; color: var(--muted); }
+    .project-tasks { display: grid; gap: 7px; padding: 0 9px 9px; }
+    .task {
+      display: grid; grid-template-columns: 28px 1fr auto; gap: 11px; align-items: start;
+      padding: 13px 14px; background: var(--panel); border: 1px solid var(--line);
+    }
+    .task:hover { border-color: #385345; }
+    .check {
+      width: 21px; height: 21px; padding: 0; margin-top: 1px;
+      border: 1px solid #52685a; background: transparent; color: var(--bg);
+    }
+    .task.done .check { background: var(--green); border-color: var(--green); }
+    .task.done .check::after { content: "✓"; font-weight: 900; }
+    .task.done .task-title { color: var(--muted); text-decoration: line-through; }
+    .task.in_progress { border-left: 3px solid var(--amber); }
+    .task-title { color: var(--text); font-weight: 650; }
+    .task-desc { color: var(--muted); font-size: 12px; margin-top: 3px; max-width: 760px; }
+    .task-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .tag { border: 1px solid var(--line); padding: 1px 6px; font-size: 10px; color: var(--muted); }
+    .tag.high { color: var(--red); border-color: #58302c; }
+    .tag.medium { color: var(--amber); border-color: #514622; }
+    .state-btn { min-width: 100px; color: var(--muted); background: none; border: 0; padding: 2px; text-align: right; }
+    .state-btn:hover { color: var(--amber); }
+    .task-actions { display: grid; justify-items: end; gap: 7px; }
+    .delete-btn { color: var(--muted); background: none; border: 0; padding: 2px; font-size: 11px; }
+    .delete-btn:hover { color: var(--red); }
+    .comments { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+    .comment { color: #abc0b1; font-size: 12px; padding: 6px 0; }
+    .comment time { color: var(--muted); margin-right: 8px; font-size: 10px; }
+    .comment-form { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 6px; }
+    .comment-form input { min-width: 0; }
+    .agent-review .comment-form { grid-template-columns: 112px 1fr auto; }
+    details { border: 1px solid var(--line); background: var(--panel); margin-bottom: 7px; }
+    summary { padding: 12px 14px; cursor: pointer; color: var(--text); list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "+ "; color: var(--green); }
+    details[open] summary::before { content: "− "; }
+    .history-list { border-top: 1px solid var(--line); padding: 5px 14px 12px; }
+    .event { display: grid; grid-template-columns: 145px 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #1d2922; }
+    .event:last-child { border: 0; }
+    .event time { color: var(--muted); font-size: 11px; }
+    .add-grid { display: grid; grid-template-columns: 1fr 180px 130px; gap: 8px; }
+    .field { width: 100%; color: var(--text); background: #090d0b; border: 1px solid var(--line); padding: 9px; outline: none; }
+    .field:focus { border-color: var(--green); }
+    textarea.field { resize: vertical; min-height: 74px; margin-top: 8px; }
+    .add-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 9px; }
+    .btn-primary { color: #07110b; background: var(--green); border-color: var(--green); font-weight: 800; }
+    .footer { margin-top: 30px; padding-top: 17px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    .empty { color: var(--muted); padding: 20px; border: 1px dashed var(--line); }
+    @media (max-width: 760px) {
+      .grid, .progress-layout { grid-template-columns: 1fr; }
+      .project-graph { grid-template-columns: 1fr 1fr; }
+      .agent-grid, .token-layout { grid-template-columns: 1fr; }
+      .cost-grid { grid-template-columns: 1fr; }
+      .add-grid { grid-template-columns: 1fr; }
+      .task { grid-template-columns: 28px 1fr; }
+      .task-actions { grid-column: 2; justify-items: start; }
+      .state-btn { text-align: left; }
+      .event { grid-template-columns: 1fr; gap: 1px; }
+      .topbar { flex-direction: column; gap: 8px; }
+    }
+  </style>
 </head>
 <body>
-<div class="container">
+<main class="shell">
+  <header class="topbar">
+    <div>
+      <div class="prompt">david@pulse:~/project$ status --guide</div>
+      <h1>LLM CONTROL CENTER</h1>
+      <div class="subtitle">Une source de vérité pour David, Claude, Codex et Hermes.</div>
+    </div>
+    <div class="status-live">suivi actif</div>
+  </header>
 
-  <!-- ── HEADER ───────────────────────────────────────────────── -->
-  <div class="header">
-    <div class="eyebrow">État du projet</div>
-    <h1>Agence Dashboard.</h1>
-    <p class="sub">Vue d'ensemble du développement : ce qui est fait, ce qui reste, où on en est.</p>
-    <div class="updated">Mis à jour le 25 mai 2026 · Branch : claude/tender-moore-baca4c</div>
+  <nav class="jump-nav" aria-label="Accès rapide">
+    <button data-scroll="projets">projets</button><button data-scroll="taches">tâches</button><button data-scroll="contexte">contexte</button><button data-scroll="agents">agents</button>
+    <button data-scroll="tokens">tokens</button><button data-scroll="historique">historique</button><button data-scroll="git">git</button>
+  </nav>
+
+  <section class="grid">
+    <div class="panel">
+      <div class="panel-head"><strong>progress.log</strong> — état calculé en direct</div>
+      <div class="panel-body progress-layout">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" aria-label="Progression globale">
+            <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+            <circle id="ringValue" class="ring-value" cx="60" cy="60" r="50"></circle>
+          </svg>
+          <div class="ring-label"><b id="percent">0%</b><span>TERMINÉ</span></div>
+        </div>
+        <div>
+          <div id="categoryBars"></div>
+          <div class="stats">
+            <div class="stat"><b id="doneCount">0</b><span>faites</span></div>
+            <div class="stat"><b id="doingCount">0</b><span>en cours</span></div>
+            <div class="stat"><b id="todoCount">0</b><span>à faire</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><strong>next_action.sh</strong></div>
+      <div class="panel-body">
+        <div class="next-command">
+          <small>PROCHAINE ACTION PRIORITAIRE</small>
+          <div id="nextAction">Chargement…</div>
+        </div>
+        <p class="muted">Le premier élément non terminé de priorité haute remonte ici automatiquement.</p>
+        <button class="btn" id="exportBtn">exporter le suivi (.json)</button>
+      </div>
+    </div>
+  </section>
+
+  <h2 class="section-title" id="projets">graphe des projets</h2>
+  <section class="panel"><div class="panel-body project-graph" id="projectGraph"></div></section>
+
+  <div class="controls" id="filters">
+    <input class="control search" id="search" placeholder="rechercher une tâche…">
+    <select class="control" id="projectFilter" aria-label="Filtrer par projet">
+      <option value="all">tous les projets</option>
+      <option>GA4</option><option>Agents</option><option>Recos IA</option>
+      <option>Google Ads</option><option>Onboarding</option><option>Site internet</option>
+      <option>UX</option><option>Structure projet</option><option>Meta Ads</option>
+      <option>Instagram</option><option>Général</option>
+    </select>
+    <button class="control active" data-filter="all">toutes</button>
+    <button class="control" data-filter="todo">à faire</button>
+    <button class="control" data-filter="in_progress">en cours</button>
+    <button class="control" data-filter="done">faites</button>
+    <button class="control" id="undoBtn" title="Annuler la dernière modification (Ctrl/Cmd+Z)">↶ annuler</button>
   </div>
 
-  <!-- ── STATS ────────────────────────────────────────────────── -->
-  <div class="stats-grid">
-    <div class="stat">
-      <div class="stat-lbl">Commits totaux</div>
-      <div class="stat-val">142+</div>
-      <div class="stat-foot">depuis le début</div>
+  <h2 class="section-title" id="taches">roadmap</h2>
+  <div class="tasks" id="tasks"></div>
+
+  <h2 class="section-title">ajouter une fonctionnalité</h2>
+  <section class="panel">
+    <div class="panel-head"><strong>new_task</strong> — l'ajout est enregistré dans ce navigateur</div>
+    <form class="panel-body" id="addForm">
+      <div class="add-grid">
+        <input required class="field" id="newTitle" placeholder="Nom de la fonctionnalité">
+        <select class="field" id="newCategory">
+          <option>GA4</option><option>Agents</option><option>Recos IA</option>
+          <option>Google Ads</option><option>Onboarding</option><option>Site internet</option>
+          <option>UX</option><option>Structure projet</option><option>Meta Ads</option>
+          <option>Instagram</option><option>Général</option>
+        </select>
+        <select class="field" id="newPriority">
+          <option value="high">haute</option><option value="medium">moyenne</option><option value="low">basse</option>
+        </select>
+      </div>
+      <textarea class="field" id="newDescription" placeholder="Résultat attendu, contrainte ou critère de validation"></textarea>
+      <div class="add-actions">
+        <span class="muted">Astuce : écris le résultat observable, pas seulement l'idée.</span>
+        <button class="btn btn-primary" type="submit">+ ajouter</button>
+      </div>
+    </form>
+  </section>
+
+  <h2 class="section-title" id="contexte">ce qui me dirige — règles, spécialistes, références</h2>
+  <p class="muted" style="margin: 0 0 10px">
+    Tout ce panneau est <strong>lu dans les fichiers</strong> par <code>python3.12 scripts/build_llm_context.py</code>, jamais recopié à la main.
+    Si ce que tu lis ici te surprend, c'est le fichier qu'il faut corriger — pas le panneau.
+  </p>
+
+  <details class="panel" open>
+    <summary>① les ordres permanents — appliqués à chaque conversation, sans que tu aies à les redire</summary>
+    <div class="panel-body">
+      <div class="learning">
+        <b>Le levier :</b> pour changer ce que je fais <b>à chaque fois</b>, modifie <code>CLAUDE.md</code>.
+        Chaque règle porte un identifiant <span class="tag">R/…</span> dérivé de son titre : cite-le au lieu de recopier la règle.
+        Il ne bouge pas quand une règle est déplacée ou réécrite ; il disparaît quand le titre change — un identifiant introuvable vaut mieux qu'un identifiant qui désigne discrètement autre chose.
+      </div>
+      <div id="ctxOrdres"></div>
     </div>
-    <div class="stat">
-      <div class="stat-lbl">Cette semaine</div>
-      <div class="stat-val">36</div>
-      <div class="stat-foot">19 → 25 mai</div>
+  </details>
+
+  <details class="panel" open>
+    <summary>② les spécialistes — agents et skills, chargés seulement quand leur sujet arrive</summary>
+    <div class="panel-body">
+      <div class="learning">
+        <b>Le levier :</b> pour approfondir <b>un domaine</b>, écris la règle dans l'agent ou la skill concerné plutôt que dans <code>CLAUDE.md</code>.
+        Elle arrive alors avec son contexte, au moment exact où elle sert : c'est le levier le plus rentable.
+        Le champ <em>déclenchement</em> est ce qui décide du chargement — s'il est flou, le spécialiste ne se réveille pas.
+      </div>
+      <div id="ctxSpecialistes"></div>
     </div>
-    <div class="stat">
-      <div class="stat-lbl">Backlog</div>
-      <div class="stat-val">11</div>
-      <div class="stat-foot">à faire</div>
+  </details>
+
+  <details class="panel" open>
+    <summary>③ les documents de référence — l'archive du pourquoi</summary>
+    <div class="panel-body">
+      <div class="learning">
+        <b>Le levier :</b> pour figer <b>un arbitrage déjà pris</b>, écris-le dans <code>docs/</code>.
+        On y revient pour savoir pourquoi une chose est ainsi, pas pour savoir quoi faire aujourd'hui.
+      </div>
+      <div id="ctxReferences"></div>
     </div>
-    <div class="stat">
-      <div class="stat-lbl">En cours</div>
-      <div class="stat-val">2</div>
-      <div class="stat-foot">dont 1 bloqué</div>
+  </details>
+
+  <h2 class="section-title" id="agents">agents — mission et amélioration</h2>
+  <details class="panel" open>
+    <summary>Voir les missions, méthodes et évolutions des agents</summary>
+    <div class="agent-scroll"><div class="agent-grid" id="agentGrid"></div></div>
+  </details>
+
+  <h2 class="section-title" id="tokens">coût en tokens — où part le contexte</h2>
+  <details class="panel" open>
+    <summary>Voir les alertes de coût détectées par les LLM</summary>
+    <div class="panel-body"><p class="muted">Le LLM ajoute une alerte avant un travail coûteux. Il applique seul les optimisations sûres ; les autres deviennent une tâche que tu peux autoriser.</p><div class="cost-grid" id="costDrivers"></div></div>
+  </details>
+
+  <h2 class="section-title" id="historique">historique des tâches</h2>
+  <div id="history"></div>
+
+  <h2 class="section-title" id="git">archive Git complète</h2>
+  <div id="gitHistory"></div>
+
+  <h2 class="section-title">protocole LLM</h2>
+  <details>
+    <summary>Comment un LLM doit mettre ce dashboard à jour</summary>
+    <div class="history-list">
+      <p>1. Ajouter chaque projet dans <code>PROJECTS</code>, puis ses mini-tâches dans <code>SEED_TASKS</code> avec un <code>project</code> et un identifiant unique stable.</p>
+      <p>2. Ne jamais retirer une tâche terminée : la conserver ou la déplacer dans l'historique.</p>
+      <p>3. Ne cocher « fait » qu'après vérification. Pour une validation LLM, mettre <code>status: "done"</code> et <code>verifiedBy: "llm"</code> : cette validation vérifiée prime sur l'état local.</p>
+      <p>4. Ajouter un événement dans <code>SEED_HISTORY</code> avec la date, l'action et le résultat.</p>
+      <p>5. Mettre également à jour <code>STATUS.md</code>. Le HTML guide visuellement ; le Markdown garde le contexte technique.</p>
+      <p>6. Après une série de commits, lancer <code>python3 scripts/build_project_history.py</code> pour réinjecter l'archive Git complète dans ce fichier autonome.</p>
+      <p>7. Lire les retours bruts de David dans <code>agentReviews</code>, puis ajouter une auto-revue à <code>LLM_REVIEWS</code> : signal observé, apprentissage, compétence avant/après et nouvelle règle concrète.</p>
+      <p>8. Pour économiser les tokens, ne jamais lire ce HTML en entier : cibler les marqueurs avec <code>rg</code> et reprendre le contexte courant dans <code>STATUS.md</code>.</p>
+      <p>9. Avant un travail estimé coûteux, ajouter ou actualiser une entrée dans <code>COST_DRIVERS</code>. Appliquer immédiatement une optimisation sûre ; sinon expliquer le risque et laisser David créer la tâche d'autorisation.</p>
     </div>
-  </div>
+  </details>
 
-  <!-- ── EN COURS / BLOQUÉ ────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-h">
-      <div class="section-title">🔥 Focus actuel</div>
-      <div class="section-count">2 items</div>
-    </div>
-
-    <div class="card blocked">
-      <div class="card-title">
-        Google Ads OAuth flow
-        <span class="chip bad">BLOQUÉ</span>
-      </div>
-      <div class="card-meta">
-        HTTP 401 sur <code>list_accessible_customers</code> malgré access_token valide.
-        En investigation : Developer Token mal configuré ? Scope incomplet ? À continuer en next session.
-      </div>
-    </div>
-
-    <div class="card wip">
-      <div class="card-title">
-        Validation Google OAuth Production
-        <span class="chip brand">EN PRÉPA</span>
-      </div>
-      <div class="card-meta">
-        Templates Privacy + Terms + Script vidéo créés dans <code>/legal/</code>.
-        Reste : remplir placeholders, publier les pages, filmer vidéo, soumettre demande Google (4-6 semaines).
-      </div>
-    </div>
-  </div>
-
-  <!-- ── BACKLOG ──────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-h">
-      <div class="section-title">📋 Backlog</div>
-      <div class="section-count" id="backlog-count">11 items</div>
-    </div>
-
-    <input type="text" class="search" id="search-input"
-           placeholder="Rechercher dans le backlog…" oninput="filterBacklog()">
-
-    <div class="filters">
-      <button class="filter-btn active" data-cat="all" onclick="setFilter('all')">Tout</button>
-      <button class="filter-btn" data-cat="meta-ads" onclick="setFilter('meta-ads')">📢 Meta Ads</button>
-      <button class="filter-btn" data-cat="instagram" onclick="setFilter('instagram')">📸 Instagram</button>
-      <button class="filter-btn" data-cat="general" onclick="setFilter('general')">⚙ Général</button>
-    </div>
-
-    <div class="group">
-      <div class="group-title">📢 Meta Ads</div>
-
-      <div class="backlog-item" data-cat="meta-ads" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Alertes budget
-          <span class="chip warn">P2</span>
-        </div>
-        <div class="backlog-desc">
-          Notification quand spend > 80 % du budget planifié (warning jaune).
-          Critique si > 100 % (rouge + badge sur la card campagne).
-          Via st.toast au rendu + badge persistant. Possible extension email.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="meta-ads" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Tab Insights (performance avancée)
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          Vue séparée de Performance et Coût. Pyramide des coûts : CPM → CPC → CPV → CPA.
-          Benchmarks par secteur (à définir). Évolution Quality Ranking si dispo API.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="meta-ads" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Granularité Assets (campaign → adset → ad)
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          Drill-down pour voir quelle créa performe le mieux dans une campagne.
-          Nécessite refonte du fetch (on stocke au niveau ad mais on agrège campagne).
-        </div>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="group-title">📸 Instagram</div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Filtre temporel "Ce qui marche"
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          Filtre période (30j / 90j / tout) sur "Ce qui marche pour toi"
-          pour voir l'évolution des formats qui marchent dans le temps.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Comparaison avant/après pour les labels
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          Si un label assigné à plusieurs posts → comparer la perf moyenne
-          avant/après l'introduction du label. Mesure l'impact d'une stratégie.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Heatmap "Quand publier" — filtre métrique
-          <span class="chip good">P1 — vite fait</span>
-        </div>
-        <div class="backlog-desc">
-          Permettre de choisir la métrique (likes, saves, eng) comme déjà fait
-          pour "Ce qui marche pour toi". Cohérence du filtre Performance.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Auto-labellisation IA des posts 🤖
-          <span class="chip brand">P2 — chiadé</span>
-        </div>
-        <div class="backlog-desc">
-          User définit labels + 1-2 exemples + description courte (ex. "Promo : posts qui annoncent une offre…").
-          Bouton "Labelliser auto" → LLM assigne. Stockage déjà en place.
-          UI : modal dans Labels tab + progress bar. Limit batch/jour pour cost.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Stories Instagram
-          <span class="chip warn">P2 — annoncé</span>
-        </div>
-        <div class="backlog-desc">
-          Endpoint /stories de l'API Insta Graph. Stocker dans nouvelle table
-          ou avec type=STORY dans instagram_organic_posts.
-          Métriques : reach, exits, taps_forward, replies.
-          Déjà annoncé "Bientôt" dans Paramètres → Instagram.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="instagram" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Posts Collab Instagram
-          <span class="chip bad">INDISPONIBLE</span>
-        </div>
-        <div class="backlog-desc">
-          Pas accessible via l'API Insta Graph. Limitation Meta — non réalisable.
-          Surveiller les évolutions de l'API (potentiellement débloqué un jour).
-        </div>
-      </div>
-    </div>
-
-    <div class="group">
-      <div class="group-title">⚙ Général</div>
-
-      <div class="backlog-item" data-cat="general" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Notifications dashboard
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          Centre de notifications (badge rouge en haut du nav).
-          Agrège alertes budget, baisse portée, dépassement, etc.
-          Persiste lues vs non-lues.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="general" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Export rapport hebdomadaire
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          PDF / HTML avec screenshot des KPI principaux.
-          Envoi auto par email chaque lundi.
-          Pattern existant dans pages/rapport.py à étendre.
-        </div>
-      </div>
-
-      <div class="backlog-item" data-cat="general" onclick="this.classList.toggle('open')">
-        <div class="backlog-title">
-          Mode dark
-          <span class="chip">P3</span>
-        </div>
-        <div class="backlog-desc">
-          CSS tokens déjà en place (--ink, --ink-3, etc.). Toggle dans Paramètres.
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ── TIMELINE ─────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-h">
-      <div class="section-title">📜 Timeline récente</div>
-      <div class="section-count">10 derniers jours</div>
-    </div>
-
-    <div class="timeline">
-      <div class="tl-date">25 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix fix">FIX</span> Google Ads API v17 → v21 (v17 retirée par Google)<br>
-        <span class="tl-prefix fix">FIX</span> list_accessible_customers — gestion d'erreurs propre<br>
-        <span class="tl-prefix refactor">REFACTOR</span> Cards Meta Business — design unifié + perms par contexte<br>
-        <span class="tl-prefix feat">FEAT</span> Paramètres → Instagram : "Stories bientôt" et "Collab indisponible"
-      </div>
-
-      <div class="tl-date">24 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix fix">FIX</span> Distinction callback Meta vs Google via scope/iss (au lieu d'un flag fragile)
-      </div>
-
-      <div class="tl-date">22 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix docs">DOCS</span> Templates légaux + script vidéo OAuth pour validation Google Production<br>
-        <span class="tl-prefix feat">FEAT</span> Google Ads — intégration complète (OAuth + API + UI mirror Meta Ads)<br>
-        <span class="tl-prefix fix">FIX</span> CSS radio actif :has(input:checked) pour Streamlit récent<br>
-        <span class="tl-prefix feat">FEAT</span> Instagram — section Filtres partagée + CSS radio actif<br>
-        <span class="tl-prefix feat">FEAT</span> Filtre métrique global Instagram (heatmap + top 3 + formats)
-      </div>
-
-      <div class="tl-date">21 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix feat">FEAT</span> Date range custom + pill bleu Pulse sur période active (Meta Ads + Insta)
-      </div>
-
-      <div class="tl-date">20 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix fix">FIX</span> Fetch Meta Ads limité à l'année courante (2026)<br>
-        <span class="tl-prefix fix">FIX</span> Fetch Meta Ads en chunks 90j + look-back 3 ans (force_full)<br>
-        <span class="tl-prefix fix">FIX</span> Fetch Meta Ads sans limite de période + auto-retry si df vide<br>
-        <span class="tl-prefix fix">FIX</span> Coût smart default period + filtre "Uniquement actives"
-      </div>
-
-      <div class="tl-date">18 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix feat">FEAT</span> Supprime page "Connecter Meta" + auto-fetch après OAuth<br>
-        <span class="tl-prefix fix">FIX</span> "Performance par label" au-dessus de la liste des campagnes<br>
-        <span class="tl-prefix fix">FIX</span> Persister effective_status des campagnes Meta Ads
-      </div>
-
-      <div class="tl-date">17 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix refactor">REFACTOR</span> Cards par campagne (Meta Ads Performance + Coût) — design unifié<br>
-        <span class="tl-prefix refactor">REFACTOR</span> Instagram "Tous les posts" — cards par post (style Meta Ads)<br>
-        <span class="tl-prefix feat">FEAT</span> Graph abonnés en bar+line combiné (dual y-axis)<br>
-        <span class="tl-prefix feat">FEAT</span> "Tous les posts" dans fenêtre scrollable 420px<br>
-        <span class="tl-prefix fix">FIX</span> Rename label — bouton "Enregistrer" était stuck disabled
-      </div>
-
-      <div class="tl-date">16 mai 2026</div>
-      <div class="tl-content">
-        <span class="tl-prefix feat">FEAT</span> Performance par label (Instagram + Meta Ads)<br>
-        <span class="tl-prefix refactor">REFACTOR</span> Paramètres redesign Pulse cohérent<br>
-        <span class="tl-prefix feat">FEAT</span> Feedback visuel pendant chargements (st.status / st.spinner)<br>
-        <span class="tl-prefix feat">FEAT</span> Instagram Labels — design CRUD aligné Meta Ads<br>
-        <span class="tl-prefix fix">FIX</span> Stocker l'heure des posts Instagram (timestamp complet)
-      </div>
-    </div>
-  </div>
-
-  <!-- ── FOOTER ───────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-h">
-      <div class="section-title">📍 Prochaines étapes</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Immédiat (cette semaine)</div>
-      <div class="card-meta">
-        Débloquer le HTTP 401 Google Ads → vérifier Developer Token dans secrets.toml + test avec un test account Google Ads.
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Court terme (semaine prochaine)</div>
-      <div class="card-meta">
-        Quick wins backlog : heatmap "Quand publier" filtre métrique (1h) · Mode dark toggle (1-2h)
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Moyen terme (mois prochain)</div>
-      <div class="card-meta">
-        Validation Google OAuth Production en parallèle : remplir templates Privacy/Terms, filmer vidéo demo, soumettre.
-        Délai Google : 4-6 semaines.
-      </div>
-    </div>
-  </div>
-
-</div>
+  <footer class="footer">
+    <span id="savedAt">localStorage prêt</span> · Les clics sont sauvegardés localement. Les ajouts faits dans le code sont fusionnés sans écraser tes choix.
+  </footer>
+</main>
 
 <script>
-  // ── Filter backlog ────────────────────────────────────────────
-  let currentFilter = 'all';
-  let currentSearch = '';
+  /*
+   * ZONE LLM : ajouter les tâches et événements ici.
+   * Garder les id stables. Le navigateur conserve les statuts par id.
+   */
+  const SEED_TASKS = [
+    { id: "track-01", category: "Agents", title: "Protéger le savoir Claude", description: ".claude, agents, skills, memory, docs, handoff et BACKLOG sont déclarés intouchables.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "track-02", category: "Agents", title: "Créer le suivi versionné", description: "STATUS.md, DECISIONS.md et STREAMLIT_REMOVAL.md deviennent la mémoire de reprise.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "track-03", category: "Agents", title: "Connecter Hermes à Codex", description: "Importer l'auth Codex dans Hermes puis sélectionner OpenAI Codex comme fournisseur.", priority: "medium", status: "todo" },
+    { id: "track-04", category: "Agents", title: "Activer le mode de travail économe", description: "Une checklist par demande, changements groupés, compte rendu point par point. Révisé le 19 août 2026 : les agents font le travail et Claude coordonne, contrôle et évalue — la règle « aucun sous-agent » ne s'applique plus.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "track-05", project: "Agents", category: "Suivi", title: "Documenter et évaluer les agents", description: "Mission, déclencheur, méthode, limites, note et retour d'amélioration pour chaque agent.", priority: "medium", status: "done", verifiedBy: "llm" },
+    { id: "track-06", project: "Agents", category: "Suivi", title: "Suivre la consommation des tokens", description: "Journal par session, agent et projet avec distinction entre valeurs mesurées et estimées.", priority: "medium", status: "done", verifiedBy: "llm" },
+    { id: "mig-01", category: "Migration", title: "Extraire GA4 vers la couche headless", description: "Déplacer components/ga4.py dans saas sans dépendance Streamlit.", priority: "high", status: "todo" },
+    { id: "mig-02", category: "Migration", title: "Déplacer le moteur de recommandations", description: "Faire de saas/core la source unique du moteur actuellement dans components/reco_engine.py.", priority: "high", status: "todo" },
+    { id: "mig-03", category: "Migration", title: "Extraire les accès aux données", description: "Déplacer les fonctions encore utilisées de scripts/ vers une couche serveur explicite.", priority: "high", status: "todo" },
+    { id: "mig-04", category: "Migration", title: "Séparer les collectes Meta et Instagram", description: "Retirer tous les appels Streamlit des modules chargés par le worker.", priority: "high", status: "todo" },
+    { id: "mig-05", category: "Migration", title: "Rediriger et vérifier le worker", description: "Aucun import de saas/worker ne doit charger Streamlit.", priority: "high", status: "todo" },
+    { id: "mig-06", category: "Migration", title: "Supprimer l'interface Streamlit", description: "Retirer landing.py, pages/, pages.toml et les composants UI après validation du worker.", priority: "medium", status: "todo" },
+    { id: "mig-07", category: "Migration", title: "Nettoyer dépendances et documentation", description: "Retirer les packages inutiles et réécrire les références vers Pulse/Next.js sans perdre les décisions.", priority: "medium", status: "todo" },
+    { id: "feat-01", category: "Meta Ads", title: "Alertes de budget", description: "Avertir à 80 %, alerte critique à 100 %, état persistant et option email.", priority: "medium", status: "todo" },
+    { id: "feat-02", category: "Meta Ads", title: "Granularité campagne → adset → ad", description: "Permettre d'identifier les créations réellement performantes.", priority: "low", status: "todo" },
+    { id: "feat-03", category: "Instagram", title: "Filtre temporel de performance", description: "Comparer les formats sur 30 jours, 90 jours ou tout l'historique.", priority: "medium", status: "todo" },
+    { id: "feat-04", category: "Instagram", title: "Auto-labellisation IA", description: "Classer les posts non labellisés par batch avec limites de coût et retour de progression.", priority: "medium", status: "todo" },
+    { id: "feat-05", category: "Instagram", title: "Collecter les Stories", description: "Ajouter portée, sorties, taps forward et réponses avec un stockage adapté.", priority: "low", status: "todo" },
+    { id: "feat-06", category: "Général", title: "Centre de notifications", description: "Réunir alertes budget, baisses et dépassements avec lu/non lu persistant.", priority: "low", status: "todo" },
+    { id: "feat-07", category: "Général", title: "Export et envoi du rapport hebdomadaire", description: "Produire un rapport HTML/PDF et automatiser son envoi chaque lundi.", priority: "medium", status: "in_progress" },
+    { id: "fix-01", category: "Meta Ads", title: "Recadrer les recos Meta sur la semaine en cours", description: "Rafraîchir les créas Meta, exclure les campagnes terminées des conseils et ne recommander que sur la semaine active. Cas signalés : BW_Audiotour_2026 (CTR 3,1 %) et Instagram-Beitrag: Solo in Bern? We’ve got you… (CTR 1,6 %), aucun revenu.", priority: "high", status: "todo" },
+    { id: "fix-02", category: "Produit", title: "Rétablir le dépliage Google Ads", description: "Les éléments Google Ads doivent de nouveau pouvoir être ouverts pour consulter leur détail.", priority: "high", status: "todo" },
+    { id: "fix-03", category: "Produit", title: "Supprimer le module de comparaison", description: "Retirer le module de comparaison jugé inutile de l'interface et nettoyer ses dépendances.", priority: "high", status: "todo" },
+    { id: "fix-04", category: "Produit", title: "Améliorer « Mettre en pause / Aller plus loin »", description: "Revoir une fois cette troisième action pour qu'elle soit claire et utile, puis mettre ce chantier de côté.", priority: "medium", status: "todo" },
+    { id: "ga4-01", project: "GA4", category: "Données", title: "Fiabiliser la collecte GA4", description: "Vérifier propriétés, événements, fenêtres de collecte et remontée des erreurs.", priority: "high", status: "todo" },
+    { id: "reco-01", project: "Recos IA", category: "IA", title: "Auditer la pertinence des recommandations", description: "Contrôler période, campagne active, variété, preuve et absence de chiffres inventés.", priority: "high", status: "todo" },
+    { id: "onboard-01", project: "Onboarding", category: "Produit", title: "Cartographier le parcours d'arrivée", description: "Compte créé → connexions → première collecte → premier rapport sans écran vide ni étape perdue.", priority: "medium", status: "todo" },
+    { id: "site-01", project: "Site internet", category: "Produit", title: "Aligner le site public avec Pulse", description: "Promesse, démonstration, pages légales et appels à l'action doivent refléter le produit Next.js.", priority: "low", status: "todo" },
+    { id: "ux-01", project: "UX", category: "Produit", title: "Auditer les parcours critiques sur mobile", description: "Ouverture du rapport, prise d'action, collecte et réglages avec états vide, chargement, erreur et succès.", priority: "medium", status: "todo" },
+    { id: "dem-01", project: "Pulse", category: "Demande", title: "Événements GA4 par thème", description: "Choisir, thème par thème, les événements GA4 qui comptent. Rang principal/secondaire décidé par le client — GA4 ne donne qu'un booléen « événement clé ».", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-02", project: "Pulse", category: "Demande", title: "Moyennes filtrées et comparaison avec frise", description: "Le doublon Instagram retiré, la moyenne qui change d'unité selon la période, et deux périodes superposées sur le même axe.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-03", project: "Pulse", category: "Demande", title: "Récolte incrémentale avec recouvrement", description: "La journée en cours n'est plus gravée à l'heure de lecture. Recouvrement de 7 j (Meta) et 30 j (Google), issus des fenêtres d'attribution documentées.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-04", project: "Pulse", category: "Demande", title: "Des recos chaque semaine", description: "Plus une seule carte de thème muette, sans fabriquer de conseil pour remplir le vide.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-05", project: "Pulse", category: "Demande", title: "Fichier d'installation SQL complet", description: "Douze migrations manquaient. Escalade de privilèges fermée : un invité pouvait repointer son invitation vers un compte tiers.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-06", project: "Pulse", category: "Demande", title: "Barre latérale et erreurs GitHub", description: "Largeur mesurée, panneau qui ne sort plus de l'écran, et chaque code HTTP traduit en geste à faire.", priority: "medium", status: "done", verifiedBy: "llm" },
+    { id: "dem-07", project: "Pulse", category: "Demande", title: "Thèmes prioritaires : le compte et la navigation", description: "Deux étoiles donnent deux cartes, et les cartes défilent une à la fois.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-08", project: "Agents", category: "Demande", title: "Panneau « ce qui me dirige »", description: "Généré depuis CLAUDE.md, les agents, les skills et docs/ — jamais recopié à la main.", priority: "medium", status: "done", verifiedBy: "llm" },
+    { id: "dem-09", project: "Agents", category: "Demande", title: "Réécrire CLAUDE.md", description: "Ordres permanents et carte du savoir. Dossier docs/references/ créé pour les contraintes des plateformes.", priority: "high", status: "done", verifiedBy: "llm" },
+    { id: "dem-10", project: "Pulse", category: "Anomalie", title: "GA4 porte le même défaut de récolte", description: "Même reprise au lendemain, même journée partielle gravée — et c'est GA4 qui porte le revenu, donc le ROAS de tout le rapport.", priority: "high", status: "todo" },
+    { id: "dem-11", project: "Recos IA", category: "Amélioration", title: "Réallouer les trois appels IA", description: "Ils vont aux trois étoiles les plus anciennes, pas aux thèmes où les règles se taisent. Même coût, meilleure couverture. Demande un changement worker + front ensemble.", priority: "medium", status: "todo" },
+    { id: "dem-12", project: "UX", category: "Vérification", title: "Contrôler les nouveaux modules sur mobile", description: "Moyennes, comparaison et frise n'ont été vus qu'à 1 280 px.", priority: "medium", status: "todo" },
+    { id: "dem-13", project: "Pulse", category: "Bloquant", title: "Actions côté David", description: "Jouer 000_run_me_all.sql dans Supabase, refaire le jeton GITHUB_TOKEN sur Vercel, puis relancer récolte et conseils.", priority: "high", status: "todo" }
+  ];
 
-  function setFilter(cat) {
-    currentFilter = cat;
-    document.querySelectorAll('.filter-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.cat === cat);
-    });
-    applyFilters();
+  const HISTORIC_TASKS = [
+    { id: "hist-site-01", project: "Site internet", category: "Historique", title: "Créer la landing page initiale", description: "Premier socle public du Dashboard Analytics.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-onb-01", project: "Onboarding", category: "Historique", title: "Créer l'inscription et la confirmation email", description: "Inscription directe, erreurs explicites et reprise après confirmation.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-onb-02", project: "Onboarding", category: "Historique", title: "Construire le parcours de démarrage", description: "Objectif, connexions, thèmes prioritaires et premier rapport.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-meta-01", project: "Meta Ads", category: "Historique", title: "Intégrer OAuth et la collecte Meta Ads", description: "Connexion, récupération incrémentale, statuts et persistance Supabase.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-meta-02", project: "Meta Ads", category: "Historique", title: "Construire le dashboard Meta Ads", description: "Performance, coûts, labels, filtres et cartes campagnes.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-insta-01", project: "Instagram", category: "Historique", title: "Intégrer Instagram organique", description: "Posts, métriques, abonnés, images persistantes et multi-compte.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-insta-02", project: "Instagram", category: "Historique", title: "Créer analyses, heatmap et filtres Instagram", description: "Formats, top posts, métrique au choix, périodes et labels.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-google-01", project: "Google Ads", category: "Historique", title: "Intégrer Google Ads de bout en bout", description: "OAuth, API, collecte, stockage et dashboard au niveau de Meta.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-google-02", project: "Google Ads", category: "Historique", title: "Migrer l'API Google Ads vers v21", description: "Remplacement de la version v17 retirée et gestion d'erreurs améliorée.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-ga4-01", project: "GA4", category: "Historique", title: "Brancher GA4 aux rapports", description: "Sessions, événements, revenus et contexte utilisé par les recommandations.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-reco-01", project: "Recos IA", category: "Historique", title: "Créer le moteur de recommandations", description: "Règles déterministes, confiance, pourquoi, vérification et angle mort.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-reco-02", project: "Recos IA", category: "Historique", title: "Ajouter les recommandations génératives", description: "Gemini complète les règles sans inventer de certitude.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-reco-03", project: "Recos IA", category: "Historique", title: "Créer la boucle de preuve", description: "Je le teste, suivi d'action, verdict et feedback qui repondère les conseils.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-reco-04", project: "Recos IA", category: "Historique", title: "Diversifier les conseils", description: "Plafond de chantiers, leviers variés et priorité à l'impact plutôt qu'à la facilité.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-ux-01", project: "UX", category: "Historique", title: "Créer le design system Pulse", description: "Tokens, modules, signes, palette et composants de chiffres/courbes.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-ux-02", project: "UX", category: "Historique", title: "Refondre le rapport pour le lundi matin", description: "Cinq questions, trois niveaux de lecture et actions visibles sur mobile.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-ux-03", project: "UX", category: "Historique", title: "Créer la frise et le fil d'actions", description: "Campagnes, publications, décisions, notes et changements plateforme dans le temps.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-cost-01", project: "Général", category: "Historique", title: "Construire la page Coûts", description: "Budgets et dépenses au jour, mois et année sans enveloppe estimée.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-report-01", project: "Général", category: "Historique", title: "Automatiser le rapport hebdomadaire", description: "Worker, weekly_reports et email Resend branchés sans Streamlit.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-team-01", project: "Général", category: "Historique", title: "Ajouter le partage d'accès", description: "Invitation et consultation du bon compte pour les membres d'équipe.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-struct-01", project: "Structure projet", category: "Historique", title: "Créer Pulse en Next.js", description: "Portail moderne connecté au même Supabase que l'ancienne application.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-struct-02", project: "Structure projet", category: "Historique", title: "Créer le worker autonome", description: "Collecte Meta, Google, GA4 et Instagram sans utilisateur connecté.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-agent-01", project: "Agents", category: "Historique", title: "Créer les agents produit, UX et recos", description: "Rôles spécialisés et savoir métier conservé dans .claude.", priority: "low", status: "done", verifiedBy: "git" },
+    { id: "hist-agent-02", project: "Agents", category: "Historique", title: "Créer les skills UX et rapport hebdomadaire", description: "Méthodes de revue réutilisables, ancrées dans le code réel.", priority: "low", status: "done", verifiedBy: "git" }
+  ];
+
+  const PROJECTS = [
+    { id: "GA4", description: "Collecte Analytics, événements et attribution." },
+    { id: "Agents", description: "Claude, Codex, Hermes, skills et mémoire." },
+    { id: "Recos IA", description: "Conseils, règles, preuves et apprentissage." },
+    { id: "Google Ads", description: "Collecte, campagnes et interface Google." },
+    { id: "Onboarding", description: "Du premier accès au premier rapport utile." },
+    { id: "Site internet", description: "Landing, promesse, légal et conversion." },
+    { id: "UX", description: "Parcours, hiérarchie et qualité perçue." },
+    { id: "Structure projet", description: "Architecture, migration et documentation." },
+    { id: "Meta Ads", description: "Campagnes, créas, coûts et recommandations." },
+    { id: "Instagram", description: "Organique, formats, labels et stories." },
+    { id: "Général", description: "Fonctions transverses du produit." }
+  ];
+
+  const AGENTS = [
+    { id: "orchestrateur", name: "Orchestrateur", source: "Codex / Claude principal", trigger: "Toute demande de réalisation ou de coordination.", mission: "Transformer la demande en checklist, préserver le contexte, modifier et vérifier.", method: "Inspecter → lister les points → agir par lot → vérifier → répondre point par point.", avoid: "Ne pas déléguer sans demande explicite, ni élargir le périmètre." },
+    { id: "vision-produit", name: "Vision produit", source: ".claude/agents/vision-produit.md", trigger: "Décider si une information ou fonction mérite d'exister.", mission: "Relier chaque idée à une décision réelle du client de Pulse.", method: "Clarifier l'intention, garder/jeter/conditionner, mesurer le coût.", avoid: "Ne pas faire une revue visuelle ou coder à la place de l'orchestrateur." },
+    { id: "vision-ux", name: "Vision UX", source: ".claude/agents/vision-ux.md", trigger: "Hiérarchie, cohérence des pages, mobile et effet de qualité.", mission: "Décider ce que l'utilisateur voit en premier, ensuite et jamais.", method: "Lire les vraies pages, tester les niveaux, comparer les canaux.", avoid: "Ne pas inventer des écrans sans tenir compte du produit existant." },
+    { id: "recos", name: "Recos IA", source: ".claude/agents/recos.md", trigger: "Pertinence, répétition ou vérifiabilité des conseils.", mission: "Garantir qu'un conseil change une décision et pourra être évalué.", method: "Décision → variété → preuve → confiance → règle ou suppression.", avoid: "Ne jamais fabriquer de chiffre ni comparer Meta à Google sans attribution fiable." },
+    { id: "hebdo", name: "Skill Hebdo", source: ".claude/skills/hebdo/SKILL.md", trigger: "Structure et ordre du rapport du lundi matin.", mission: "Faire répondre le rapport aux cinq questions dans le bon ordre.", method: "Cartographier les blocs, trouver le manque, proposer trois mouvements maximum.", avoid: "Ne pas transformer la revue de structure en chasse aux bugs." },
+    { id: "ux", name: "Skill UX", source: ".claude/skills/ux/SKILL.md", trigger: "Parcours, boutons, états et impression de produit professionnel.", mission: "Suivre une action de bout en bout sur téléphone.", method: "Trouvable → compréhensible → coût → retour → échec, avec quatre états.", avoid: "Ne pas réduire l'UX aux couleurs et aux arrondis." }
+  ];
+
+  const LLM_REVIEWS = [
+    { agent: "orchestrateur", date: "2026-08-19", score: 2, skill: "Mémoire des demandes", before: 2, after: 4, evidence: "David signale que certaines demandes longues perdaient la moitié des points.", learned: "Transformer chaque message multi-sujets en checklist visible avant de travailler.", action: "Répondre dans le même ordre et marquer explicitement fait / noté / non commencé." },
+    { agent: "orchestrateur", date: "2026-08-19", score: 2, skill: "Économie de contexte", before: 2, after: 4, evidence: "David signale qu'une seule demande pouvait consommer presque tous les crédits.", learned: "Limiter les lectures larges, ne jamais relire l'archive Git embarquée et grouper les recherches ciblées.", action: "Utiliser STATUS.md pour reprendre le fil et rg avec des plages courtes pour le HTML." },
+    { agent: "orchestrateur", date: "2026-08-19", score: 3, skill: "Usage des agents", before: 2, after: 5, evidence: "David demande si les sous-agents consomment trop de crédits.", learned: "Un sous-agent duplique une partie du contexte et n'est rentable que pour un travail réellement indépendant.", action: "Aucun sous-agent sans demande explicite de David." },
+    { agent: "orchestrateur", date: "2026-08-19", score: 4, skill: "Suivi durable", before: 1, after: 4, evidence: "David veut voir projets, mini-tâches, historique et progression entre les conversations.", learned: "Une information importante doit vivre dans des fichiers versionnés, pas seulement dans le chat.", action: "Maintenir STATUS.md, DECISIONS.md et ce dashboard après chaque lot." }
+  ];
+
+  const COST_DRIVERS = [
+    { id: "context", name: "Contexte de conversation", estimate: "10k–40k / tour long", weight: 90, mode: "decision", why: "Tout l'échange utile peut être renvoyé au modèle à chaque nouvelle réponse.", saving: "Ouvrir une nouvelle session avec STATUS.md quand le fil devient très long." },
+    { id: "scope", name: "Une demande avec trop de chantiers", estimate: "15k–50k et risque de blocage", weight: 88, mode: "decision", why: "Mélanger audit, développement, recherche et documentation oblige à ouvrir plusieurs zones du projet dans le même tour.", saving: "Un objectif principal par demande ; déposer les autres points dans le dashboard sans les développer immédiatement." },
+    { id: "history", name: "Historique Git embarqué", estimate: "20k–30k si lu en entier", weight: 85, mode: "auto", why: "PROJECT_STATUS.html contient 260 commits ; une lecture complète coûte cher sans aider la plupart des tâches.", saving: "Lecture ciblée obligatoire avec rg/sed ; le LLM ne charge jamais le fichier entier." },
+    { id: "tools", name: "Sorties d'outils volumineuses", estimate: "5k–25k par grosse sortie", weight: 70, mode: "auto", why: "Une recherche trop large ramène du code et des commits qui entrent dans le contexte.", saving: "Le LLM limite les résultats et ouvre seulement les lignes utiles." },
+    { id: "agents", name: "Sous-agents", estimate: "+50–100 % par agent", weight: 80, mode: "auto", why: "Chaque agent est un nouvel appel et reçoit une partie du contexte avant de produire sa réponse.", saving: "Aucun sous-agent sans demande explicite de David." },
+    { id: "files", name: "Gros fichiers applicatifs", estimate: "8k–35k par fichier complet", weight: 65, mode: "auto", why: "build_report.py et certains composants sont très longs ; les lire entièrement est rarement nécessaire.", saving: "Le LLM cherche d'abord la fonction puis lit une fenêtre courte." },
+    { id: "generation", name: "Génération et explications", estimate: "1k–8k par réponse", weight: 35, mode: "auto", why: "Le code, les commentaires et les comptes rendus trop longs utilisent des tokens de sortie.", saving: "Réponses courtes et explication des seules décisions importantes." },
+    { id: "storage", name: "Stockage local", estimate: "≈ 0 tant qu'il n'est pas lu", weight: 5, mode: "auto", why: "Stocker HTML, Git ou localStorage ne consomme pas de tokens par lui-même.", saving: "Conserver beaucoup, mais ne charger que ce qui sert à la tâche." }
+  ];
+
+  const PROJECT_BY_TASK = {
+    "track-01": "Agents", "track-02": "Agents", "track-03": "Agents", "track-04": "Agents",
+    "mig-01": "GA4", "mig-02": "Recos IA", "mig-03": "Structure projet", "mig-04": "Structure projet",
+    "mig-05": "Structure projet", "mig-06": "Structure projet", "mig-07": "Structure projet",
+    "feat-01": "Meta Ads", "feat-02": "Meta Ads", "feat-03": "Instagram", "feat-04": "Instagram",
+    "feat-05": "Instagram", "feat-06": "Général", "feat-07": "Général",
+    "fix-01": "Recos IA", "fix-02": "Google Ads", "fix-03": "UX", "fix-04": "UX"
+  };
+
+  const SEED_HISTORY = [
+    { date: "2026-08-19 00:00", group: "19 août 2026", text: "Pulse/Next.js confirmé comme interface unique à conserver." },
+    { date: "2026-08-19 00:05", group: "19 août 2026", text: "Inventaire des dépendances Streamlit encore utilisées par le worker." },
+    { date: "2026-08-19 00:10", group: "19 août 2026", text: "Protection du savoir Claude inscrite dans DECISIONS.md." },
+    { date: "2026-08-19 00:15", group: "19 août 2026", text: "Création du suivi durable et du plan de retrait Streamlit." },
+    { date: "2026-08-19 00:20", group: "19 août 2026", text: "Diagnostic Hermes : installé, mais fournisseur actif Nous/Claude et non Codex." },
+    { date: "2026-08-19 00:30", group: "19 août 2026", text: "PROJECT_STATUS.html transformé en centre de guidage LLM interactif." },
+    { date: "2026-08-19 00:40", group: "19 août 2026", text: "Ajout des commentaires par tâche, de l'annulation Ctrl/Cmd+Z et restauration des tâches terminées." },
+    { date: "2026-08-19 00:45", group: "19 août 2026", text: "Quatre retours produit enregistrés séparément : recos Meta, dépliage Google, comparateur et action Mettre en pause." },
+    { date: "2026-08-19 00:50", group: "19 août 2026", text: "Mode économe adopté : pas de sous-agent sans demande explicite et contrôle point par point." }
+  ];
+
+  /* GIT_HISTORY_START — généré par scripts/build_project_history.py */
+  const GIT_HISTORY = [{"date":"2026-08-18","month":"2026-08","hash":"68f9b23","subject":"fix(canaux): un lien énumère ce qu'il change, jamais ce qu'il garde"},{"date":"2026-08-18","month":"2026-08","hash":"4303747","subject":"feat(canaux): la moyenne suit la période, et deux périodes se regardent"},{"date":"2026-08-18","month":"2026-08","hash":"c862e63","subject":"fix(récolte): la journée en cours n'est plus gravée à l'heure où on l'a lue"},{"date":"2026-08-18","month":"2026-08","hash":"0744735","subject":"feat(conseils): plus une seule carte de thème ne sort muette"},{"date":"2026-08-18","month":"2026-08","hash":"579340b","subject":"fix(base): le fichier d'installation ne s'arrêtait plus à la section 12"},{"date":"2026-08-15","month":"2026-08","hash":"532167a","subject":"feat(thèmes): deux étoiles, deux cartes — et une seule à la fois"},{"date":"2026-08-15","month":"2026-08","hash":"176c056","subject":"chore(secrets): deux fichiers à la racine qu'un `git add -A` publiait"},{"date":"2026-08-15","month":"2026-08","hash":"900afbe","subject":"fix(récolte): un panneau qui sortait de l'écran, et un 401 qui ne disait rien"},{"date":"2026-08-14","month":"2026-08","hash":"d0f7518","subject":"feat(thèmes): le plafond de trois tombe, et l'IA reste bornée"},{"date":"2026-08-14","month":"2026-08","hash":"8937fa5","subject":"feat(onboarding): le site du client, et un premier écran qui ne se vide plus"},{"date":"2026-08-14","month":"2026-08","hash":"b884e34","subject":"fix(coûts): deux lignes qui contredisaient l'anneau juste en dessous"},{"date":"2026-08-14","month":"2026-08","hash":"ede3dcf","subject":"feat(canaux): une moyenne mensuelle partout, et un axe qui ne ment plus"},{"date":"2026-08-14","month":"2026-08","hash":"208a6df","subject":"feat(nav): la barre se range, se replie, et dit quand tu es servi"},{"date":"2026-08-14","month":"2026-08","hash":"c29e09d","subject":"feat(recos): l'organique existe enfin, et le tri cesse de récompenser la facilité"},{"date":"2026-08-14","month":"2026-08","hash":"e715a4d","subject":"feat(labels): la page devient le copilote de l'étiquetage"},{"date":"2026-08-14","month":"2026-08","hash":"8a3e012","subject":"fix(partage): un invité n'atterrit plus sur son propre compte vide"},{"date":"2026-08-13","month":"2026-08","hash":"4c96f3b","subject":"fix(hors-thème): le vide va sous le pied, jamais au milieu"},{"date":"2026-08-13","month":"2026-08","hash":"786392e","subject":"feat(hors-thème): la liste défile, et la carte prend la hauteur de sa rangée"},{"date":"2026-08-13","month":"2026-08","hash":"a27c0f4","subject":"fix(récolte): Meta n'a jamais demandé les 30 jours de Google"},{"date":"2026-08-13","month":"2026-08","hash":"e530cb2","subject":"fix(boussole): le ROAS n'est pas un vieux rapport"},{"date":"2026-08-13","month":"2026-08","hash":"941531a","subject":"feat(coûts): plus aucune enveloppe n'est estimée"},{"date":"2026-08-12","month":"2026-08","hash":"8bda1ba","subject":"feat(boussole): Meta et Google cessent d'être une moyenne"},{"date":"2026-08-12","month":"2026-08","hash":"6b0a443","subject":"fix(anneau): un élément de grille refuse de rétrécir, et la page entière défilait"},{"date":"2026-08-12","month":"2026-08","hash":"0c40f22","subject":"fix(changements): ne pas interroger l'API pour un critère qui n'est pas un mot-clé"},{"date":"2026-08-12","month":"2026-08","hash":"5b9021b","subject":"feat(fil): le registre du hors-thème monte contre la courbe qu'il explique"},{"date":"2026-08-12","month":"2026-08","hash":"b02a701","subject":"feat(boussole): d'où vient chaque chiffre, en couleur"},{"date":"2026-08-12","month":"2026-08","hash":"38ccd4e","subject":"feat(couts): le budget fixé devient un terme, et deux anneaux au lieu d'un"},{"date":"2026-08-12","month":"2026-08","hash":"02582fc","subject":"feat(fil): ce que les plateformes DÉCLARENT, et pas seulement ce qu'on en déduit"},{"date":"2026-08-12","month":"2026-08","hash":"612f63e","subject":"fix(theme): un ROAS annoncé non mesurable au-dessus d'un ROAS affiché"},{"date":"2026-08-12","month":"2026-08","hash":"128366b","subject":"feat(objectif): le réglage descend devant le thème qu'il commande"},{"date":"2026-08-12","month":"2026-08","hash":"dfbd44d","subject":"feat(defilement): une rangée coupée à droite ne se devine pas"},{"date":"2026-08-12","month":"2026-08","hash":"7aff2c5","subject":"feat(couts): la page se range sur l'année, et le pari s'en va"},{"date":"2026-08-12","month":"2026-08","hash":"503839c","subject":"feat(verdict): une action est mesurée là où elle a eu lieu, et parle à mi-parcours"},{"date":"2026-08-12","month":"2026-08","hash":"c235390","subject":"feat(fil): tes propres notes — la troisième voix du registre"},{"date":"2026-08-12","month":"2026-08","hash":"083139c","subject":"feat(fil): le fil voit aussi ce que tu fais directement dans Meta et Google"},{"date":"2026-08-11","month":"2026-08","hash":"685a3e9","subject":"feat(themes): la boucle entière dans la carte du thème, et une seule liste d'actions"},{"date":"2026-08-11","month":"2026-08","hash":"6fff764","subject":"feat(themes): une seule carte par thème — le bilan, la courbe, les conseils et ce qu'ils ont donné"},{"date":"2026-08-11","month":"2026-08","hash":"6004c1e","subject":"fix(rapport): trois doublons vus à l'écran, et une section qui n'avait rien à dire"},{"date":"2026-08-10","month":"2026-08","hash":"499c463","subject":"feat(conseils): les repères disent ce qu'ils marquent, les trois du moment cessent de se répéter"},{"date":"2026-08-10","month":"2026-08","hash":"9145f40","subject":"feat(courbes): le texte reprend sa taille, les zones passent derrière le trait"},{"date":"2026-08-10","month":"2026-08","hash":"643f7e7","subject":"feat(frise): les jours sur l'axe, et la plateforme lisible sous chaque publication"},{"date":"2026-08-10","month":"2026-08","hash":"460a00c","subject":"feat(actions): le compteur d'effet, le rendez-vous, et le pari"},{"date":"2026-08-10","month":"2026-08","hash":"5a2e329","subject":"refactor(coûts): un horizon qui se pilote, le mois — le reste s'y rattache"},{"date":"2026-08-10","month":"2026-08","hash":"a5be4d1","subject":"fix(récolte): la barre survit au changement de page, et n'annonce plus un échec avant la fin"},{"date":"2026-08-10","month":"2026-08","hash":"e7a77b0","subject":"feat(frise): les dates déclarées des campagnes, récoltées"},{"date":"2026-08-10","month":"2026-08","hash":"cc41877","subject":"feat(frise): zoomer, et savoir d'où vient chaque publication"},{"date":"2026-08-10","month":"2026-08","hash":"9bce59e","subject":"feat(agents): vision-produit — ce qu'on met en avant, et pourquoi"},{"date":"2026-08-06","month":"2026-08","hash":"ab8c275","subject":"feat(frise): la nature de chaque trait, écrite"},{"date":"2026-08-06","month":"2026-08","hash":"1cb8c4f","subject":"fix(comptes): le choix du compte Google faisait tomber la page"},{"date":"2026-08-06","month":"2026-08","hash":"37b8e6c","subject":"feat(ux): le lexique des signes, le fil d'actions, le hero en carte"},{"date":"2026-08-06","month":"2026-08","hash":"9fc82b2","subject":"feat(frise): deux ans de frise, jusqu'à fin 2026"},{"date":"2026-08-05","month":"2026-08","hash":"5336ee2","subject":"docs: le tableau de la grammaire était coupé en deux par une ligne vide"},{"date":"2026-08-05","month":"2026-08","hash":"1557c21","subject":"feat(pulse): la brique-chiffre partagée, le bilan en chiffres, un seul panneau de conseils"},{"date":"2026-08-05","month":"2026-08","hash":"17eaf0f","subject":"feat(pulse): le chiffre avant le graphe — grammaire des modules et rang 3"},{"date":"2026-08-05","month":"2026-08","hash":"0265e74","subject":"fix(pulse): la frise passe à l'année et défile enfin pour de bon"},{"date":"2026-08-05","month":"2026-08","hash":"fd76361","subject":"feat(pulse): la frise passe au trimestre et défile, la boussole prend la page"},{"date":"2026-08-05","month":"2026-08","hash":"133f44f","subject":"feat(pulse): une couleur par thème, la même partout et d'une semaine à l'autre"},{"date":"2026-08-05","month":"2026-08","hash":"157eb99","subject":"feat(pulse): « Ce qui tournait » — le temps enfin visible dans le rapport"},{"date":"2026-08-04","month":"2026-08","hash":"ea3f284","subject":"feat(pulse): le verdict passe en chiffre, la boussole remet l'écran avant la télécommande"},{"date":"2026-08-02","month":"2026-08","hash":"d5d4d19","subject":"feat(agent): vision-ux — la hiérarchie de l'information, sur toute l'application"},{"date":"2026-08-02","month":"2026-08","hash":"42fc41f","subject":"fix(sql): la migration Instagram comparait du name[] à du text[]"},{"date":"2026-08-02","month":"2026-08","hash":"b315987","subject":"fix(insta): les posts appartenaient au dernier qui récoltait, pas à leur compte"},{"date":"2026-08-02","month":"2026-08","hash":"3587246","subject":"feat(pulse): une seule enveloppe budgétaire, lue au jour / au mois / à l'année"},{"date":"2026-08-02","month":"2026-08","hash":"dff100c","subject":"feat(pulse): connecter Meta et Google depuis Pulse, sans passer par Streamlit"},{"date":"2026-08-01","month":"2026-08","hash":"128020e","subject":"feat(pulse): nouvel ordre du rapport + section « Aller plus loin » nourrie par tes blocages"},{"date":"2026-07-30","month":"2026-07","hash":"fbd247a","subject":"feat(pulse): colonnes annuelles par thème, nuancier commun, nav repliable, frise lisible"},{"date":"2026-07-30","month":"2026-07","hash":"1d4e068","subject":"feat(pulse): navigation latérale, année des coûts, table thèmes complète, « trop compliqué »"},{"date":"2026-07-30","month":"2026-07","hash":"9e577da","subject":"feat(pulse): boussole unique (plus de tuiles), survol des courbes, frise expliquée"},{"date":"2026-07-30","month":"2026-07","hash":"d03bbb5","subject":"feat(pulse): partage d'accès — inviter quelqu'un sur son dashboard"},{"date":"2026-07-29","month":"2026-07","hash":"daa0ced","subject":"feat(pulse): boussole pilotable, sparklines, anneau de répartition, détail conservé"},{"date":"2026-07-29","month":"2026-07","hash":"4ff4a76","subject":"feat(pulse): module « Ta boussole », courbes fiabilisées, retour aux largeurs d'avant"},{"date":"2026-07-29","month":"2026-07","hash":"ef33feb","subject":"feat(pulse): répartition des budgets, filtre Instagram global, courbes au lieu de barres"},{"date":"2026-07-29","month":"2026-07","hash":"dfee1c9","subject":"feat(pulse): pleine page, résumé unique en haut, frise sous les actions, tips par thème"},{"date":"2026-07-29","month":"2026-07","hash":"965149e","subject":"feat(pulse): trois niveaux de lecture dans le rapport, au lieu d'un seul"},{"date":"2026-07-27","month":"2026-07","hash":"29f9d18","subject":"fix(pulse): les trois bords non finis du parcours « prendre un conseil »"},{"date":"2026-07-27","month":"2026-07","hash":"1f6132d","subject":"feat(pulse): le rapport répond aux 5 questions du lundi + skill ux"},{"date":"2026-07-27","month":"2026-07","hash":"59af5e2","subject":"feat(skill): hebdo devient une revue de STRUCTURE, plus une chasse aux bugs"},{"date":"2026-07-27","month":"2026-07","hash":"179d347","subject":"feat(skill): hebdo — analyser le rapport de la semaine à trois voix"},{"date":"2026-07-27","month":"2026-07","hash":"8bc550e","subject":"feat(pulse): barre de progression récolte, scroll sur toutes les listes, top 3 suit le filtre"},{"date":"2026-07-27","month":"2026-07","hash":"95ff575","subject":"fix(pulse): la tuile Trafic ne pouvait jamais se remplir + filet anti-hoquet IA"},{"date":"2026-07-27","month":"2026-07","hash":"df70f82","subject":"feat(pulse): les 3 conseils du moment, pastilles effort/effet, plafond 3 chantiers"},{"date":"2026-07-25","month":"2026-07","hash":"e0edf48","subject":"feat(pulse): ta liste d'actions en haut du rapport (running → done → verdict)"},{"date":"2026-07-25","month":"2026-07","hash":"3914bd7","subject":"feat(pulse): lot UX dashboard (listes scroll, recos carrousel, objectif compact, resume, google impressions, mobile)"},{"date":"2026-07-24","month":"2026-07","hash":"ea407da","subject":"feat(pulse): rappel automatique en tete de rapport (Phase 3 du suivi)"},{"date":"2026-07-24","month":"2026-07","hash":"c9dadda","subject":"feat(pulse): frise par thème (Phase 2 du suivi) — métrique 10 semaines + repères d'actions"},{"date":"2026-07-24","month":"2026-07","hash":"216593f","subject":"fix(pulse): page Coûts tronquait Google à 1000 lignes (juillet ~10 CHF au lieu de 1606)"},{"date":"2026-07-23","month":"2026-07","hash":"f0ef334","subject":"feat(pulse): suivi des recommandations Phase 1 (Je le teste → verdict)"},{"date":"2026-07-22","month":"2026-07","hash":"0e32c37","subject":"feat(pulse): retire le bilan, scroll thème 46vh, conseils allégés et multiples"},{"date":"2026-07-22","month":"2026-07","hash":"80d9702","subject":"feat(pulse): rapport hebdo desktop en 3 sections claires"},{"date":"2026-07-22","month":"2026-07","hash":"6e92303","subject":"feat(pulse): rapport hebdo organisé PAR THÈME (cross-canal)"},{"date":"2026-07-21","month":"2026-07","hash":"be2d1be","subject":"feat(pulse): pont vision→semaine dans le rapport hebdo"},{"date":"2026-07-21","month":"2026-07","hash":"52b70fa","subject":"feat(pulse): parcours de démarrage 3 étapes + page Thèmes tactile"},{"date":"2026-07-20","month":"2026-07","hash":"79c5027","subject":"feat(pulse): 3 thèmes prioritaires + couverture labels totale + UX mobile vision"},{"date":"2026-07-20","month":"2026-07","hash":"37466e3","subject":"feat(pulse): vision globale validable + labellisation IA + matrice full-history"},{"date":"2026-07-18","month":"2026-07","hash":"9af5900","subject":"feat(pulse): reco IA générative + UX mobile en carrousels"},{"date":"2026-07-17","month":"2026-07","hash":"80ef38d","subject":"fix+feat: crash /meta /google, reco ROAS honnête, labels posts, fetch suivi, budgets par thème, KPIs mission, onboarding v2"},{"date":"2026-07-16","month":"2026-07","hash":"400a102","subject":"feat(pulse): Mission + Trajectoire + onboarding express + dates custom + tri posts"},{"date":"2026-07-16","month":"2026-07","hash":"3346ea2","subject":"feat(pulse): métrique au choix sur Instagram + accordéon campagnes + tables scrollables"},{"date":"2026-07-15","month":"2026-07","hash":"b06244a","subject":"feat(pulse): parité Streamlit complète des dashboards + version web large"},{"date":"2026-07-15","month":"2026-07","hash":"9d51c3a","subject":"feat(pulse): dashboards au niveau du Streamlit — même base de données"},{"date":"2026-07-15","month":"2026-07","hash":"77d16b3","subject":"feat: boucle de la preuve + ROAS par thème dans le payload et Pulse"},{"date":"2026-07-15","month":"2026-07","hash":"67bbb6a","subject":"feat(pulse): dashboards par canal + page Labels"},{"date":"2026-07-15","month":"2026-07","hash":"8edcf1f","subject":"feat(pulse): autonomie sans Streamlit — inscription, objectif, budgets, fetch, commentaires"},{"date":"2026-07-15","month":"2026-07","hash":"a69145d","subject":"feat: email hebdo branché sur weekly_reports (Resend)"},{"date":"2026-07-15","month":"2026-07","hash":"fc29de6","subject":"feat(pulse): page Coûts + navigation"},{"date":"2026-07-15","month":"2026-07","hash":"8aa482b","subject":"feat: worker publie le rapport hebdo précalculé (weekly_reports)"},{"date":"2026-07-15","month":"2026-07","hash":"d47b565","subject":"feat: SaaS Pulse (Next.js) + pont weekly_reports + réactions"},{"date":"2026-05-25","month":"2026-05","hash":"229b9ea","subject":"docs: PROJECT_STATUS.html — dashboard projet auto-contenu"},{"date":"2026-05-25","month":"2026-05","hash":"4898b08","subject":"fix: Google Ads API v17 → v21 (v17 a été retirée par Google)"},{"date":"2026-05-25","month":"2026-05","hash":"0259216","subject":"fix: list_accessible_customers ne mange plus les erreurs Google Ads API"},{"date":"2026-05-25","month":"2026-05","hash":"be45ee9","subject":"refactor: cards Meta Business — design unifié + perms par contexte"},{"date":"2026-05-25","month":"2026-05","hash":"c743bc7","subject":"feat: Paramètres > Instagram — mention 'Stories bientôt' et 'Collab indisponible'"},{"date":"2026-05-24","month":"2026-05","hash":"49d83e4","subject":"fix: distingue callback Meta vs Google via scope/iss (au lieu d'un flag fragile)"},{"date":"2026-05-22","month":"2026-05","hash":"c282623","subject":"docs: templates légaux + script vidéo OAuth pour validation Google Production"},{"date":"2026-05-22","month":"2026-05","hash":"d387772","subject":"feat: Google Ads — intégration complète (OAuth + API + UI mirror Meta Ads)"},{"date":"2026-05-22","month":"2026-05","hash":"4944202","subject":"fix: CSS radio actif — utilise :has(input:checked) pour matcher la nouvelle structure Streamlit"},{"date":"2026-05-22","month":"2026-05","hash":"3debbdd","subject":"feat: Instagram — section 'Filtres' partagée (Métrique+Format+Label) + CSS radio actif"},{"date":"2026-05-22","month":"2026-05","hash":"3bd5409","subject":"feat: filtre métrique global Instagram (heatmap + top 3 + formats)"},{"date":"2026-05-22","month":"2026-05","hash":"dd936e0","subject":"fix: re-applique l'auto-refresh JWT proactif (perdu dans un commit antérieur)"},{"date":"2026-05-22","month":"2026-05","hash":"73d3deb","subject":"feat: Paramètres > Instagram — section 'Sources de données' + backlog IA auto-labels"},{"date":"2026-05-21","month":"2026-05","hash":"c36dbd2","subject":"feat: date range custom + pill bleu Pulse sur période active (Meta Ads + Insta)"},{"date":"2026-05-20","month":"2026-05","hash":"1cb1591","subject":"fix: fetch Meta Ads limité à l'année courante (2026)"},{"date":"2026-05-20","month":"2026-05","hash":"328cd3d","subject":"fix: fetch Meta Ads en chunks 90j + look-back 3 ans (force_full)"},{"date":"2026-05-20","month":"2026-05","hash":"f40ff62","subject":"fix: fetch Meta Ads sans limite de période + auto-retry si df vide"},{"date":"2026-05-20","month":"2026-05","hash":"1e1baf7","subject":"fix: Coût smart default period + filtre 'Uniquement actives' dans Performance"},{"date":"2026-05-20","month":"2026-05","hash":"aa2614b","subject":"fix: Meta Ads — smart default period + message d'empty utile"},{"date":"2026-05-18","month":"2026-05","hash":"3f50ff9","subject":"feat: supprime page 'Connecter Meta' + auto-fetch après OAuth"},{"date":"2026-05-18","month":"2026-05","hash":"f82c31c","subject":"fix: 'Performance par label' au-dessus de la liste des campagnes (Performance Meta Ads)"},{"date":"2026-05-18","month":"2026-05","hash":"3f59ee5","subject":"fix: persister effective_status des campagnes Meta Ads"},{"date":"2026-05-17","month":"2026-05","hash":"0428570","subject":"feat: Meta Ads fixes (statuts, perf/coût/labels) + Instagram filtres/moyennes"},{"date":"2026-05-17","month":"2026-05","hash":"6479efd","subject":"fix: rename label — bouton 'Enregistrer' était stuck disabled"},{"date":"2026-05-17","month":"2026-05","hash":"3369ab6","subject":"feat: 'Tous les posts' dans une fenêtre scrollable (420px)"},{"date":"2026-05-17","month":"2026-05","hash":"a7d68a3","subject":"feat: pagination 'Tous les posts' (15 par batch + Voir plus / Tout afficher)"},{"date":"2026-05-17","month":"2026-05","hash":"28722cb","subject":"refactor: Meta Ads Coût 'Détail par campagne' — cards par campagne"},{"date":"2026-05-17","month":"2026-05","hash":"d6be543","subject":"refactor: Instagram 'Tous les posts' — cards par post (style Meta Ads)"},{"date":"2026-05-17","month":"2026-05","hash":"fa861c9","subject":"refactor: Meta Ads Performance — cards par campagne (design de l'image)"},{"date":"2026-05-17","month":"2026-05","hash":"465e056","subject":"refactor: Performance par label — structure type 'tab Labels' (st.columns + eyebrow)"},{"date":"2026-05-17","month":"2026-05","hash":"bb081d0","subject":"feat: graph abonnés en un seul chart combiné (bars + line, dual y-axis)"},{"date":"2026-05-17","month":"2026-05","hash":"bf0f065","subject":"feat: V2 cards 'Performance par label' (Instagram + Meta Ads)"},{"date":"2026-05-17","month":"2026-05","hash":"a076c81","subject":"feat: restore dataframe avec barre Indice portée (version 'belle')"},{"date":"2026-05-17","month":"2026-05","hash":"797a978","subject":"revert: Performance par label Instagram — retour au st.dataframe simple"},{"date":"2026-05-17","month":"2026-05","hash":"7442fa4","subject":"feat: chart abonnés en 2 subplots (line + bar) + refresh data_editor"},{"date":"2026-05-17","month":"2026-05","hash":"a527596","subject":"refactor: Performance par label Instagram — st.dataframe (style Meta Ads)"},{"date":"2026-05-17","month":"2026-05","hash":"ff9b634","subject":"feat: Performance par label Instagram — cards en grille (Pulse style)"},{"date":"2026-05-17","month":"2026-05","hash":"943146c","subject":"feat: graph abonnés en bar chart (gain/perte quotidien, interactions désactivées)"},{"date":"2026-05-16","month":"2026-05","hash":"448a285","subject":"feat: filtres Top 3 + section Croissance abonnés"},{"date":"2026-05-16","month":"2026-05","hash":"7ef16f6","subject":"feat: Tous les posts — Label à gauche + date avec heure (Europe/Zurich)"},{"date":"2026-05-16","month":"2026-05","hash":"b702e3e","subject":"feat: verrouillage UI pendant fetch Instagram"},{"date":"2026-05-16","month":"2026-05","hash":"80dad0f","subject":"style: retire les emojis des sous-tabs Paramètres (Pulse sobre)"},{"date":"2026-05-16","month":"2026-05","hash":"92c2fa0","subject":"fix: fetch Instagram depuis Paramètres (stay-in-place + emojis nettoyés)"},{"date":"2026-05-16","month":"2026-05","hash":"3188ee1","subject":"feat: feedback visuel pendant les chargements"},{"date":"2026-05-16","month":"2026-05","hash":"4900e1e","subject":"refactor: Paramètres — redesign Pulse cohérent avec les autres tabs"},{"date":"2026-05-16","month":"2026-05","hash":"2d66541","subject":"fix: stocker l'heure des posts Instagram (timestamp complet)"},{"date":"2026-05-16","month":"2026-05","hash":"b90b317","subject":"refactor: Meta Ads — harmonise avec Instagram (st.data_editor dense)"},{"date":"2026-05-16","month":"2026-05","hash":"0abff99","subject":"feat: vues 'Performance par label' (Instagram + Meta Ads)"},{"date":"2026-05-16","month":"2026-05","hash":"8fd7dee","subject":"fix: heatmap horaires + ordre colonnes Label"},{"date":"2026-05-16","month":"2026-05","hash":"c43dcd6","subject":"feat: Instagram — colonne Label (éditable) + heatmap enrichie"},{"date":"2026-05-16","month":"2026-05","hash":"5c70948","subject":"feat: Instagram Labels — même design CRUD que Meta Ads"},{"date":"2026-05-16","month":"2026-05","hash":"297cc30","subject":"feat: Instagram — 2 tabs Performance / Labels"},{"date":"2026-05-16","month":"2026-05","hash":"3935571","subject":"fix: rapport hebdo — KeyError 'date_start' dans groupby CPC"},{"date":"2026-05-16","month":"2026-05","hash":"8ac62f5","subject":"fix: Labels tab — utilise st.form(clear_on_submit) pour l'ajout"},{"date":"2026-05-16","month":"2026-05","hash":"78c63ee","subject":"fix: Labels tab — vide le champ via flag (Streamlit interdit modif après widget)"},{"date":"2026-05-16","month":"2026-05","hash":"bdebaeb","subject":"refactor: Performance — label en première colonne (inline dans la carte)"},{"date":"2026-05-16","month":"2026-05","hash":"25ccfdd","subject":"refactor: Meta Ads — 3 tabs Performance / Coût / Labels"},{"date":"2026-05-16","month":"2026-05","hash":"6f95974","subject":"feat: Meta Ads Coût — labels campagne + persistance budgets"},{"date":"2026-05-16","month":"2026-05","hash":"35e8c32","subject":"feat: Meta Ads — tabs Performance / Coût (meta_ads.py uniquement)"},{"date":"2026-05-10","month":"2026-05","hash":"2cf10a6","subject":"fix: instagram_tab — cartes format en colonnes, images top posts, table dataframe"},{"date":"2026-05-10","month":"2026-05","hash":"187b10a","subject":"fix: API Meta effective_status + images posts + navigation sidebar"},{"date":"2026-05-10","month":"2026-05","hash":"80243fb","subject":"feat: Pulse design system — sparklines, heatmap, DayBars, CSS tokens"},{"date":"2026-05-09","month":"2026-05","hash":"ab21fb6","subject":"feat: redesign Pulse — Meta Ads hero + campaign grid + Instagram FormatCards + PostCards"},{"date":"2026-05-09","month":"2026-05","hash":"cc4cc2e","subject":"feat: refonte UI Pulse Dashboard — Meta Ads, Instagram, navigation"},{"date":"2026-05-09","month":"2026-05","hash":"eae94b3","subject":"feat: Pulse Dashboard — rapport hebdo + design tokens + fix sidebar"},{"date":"2026-05-01","month":"2026-05","hash":"667302e","subject":"fix: filtre statut Meta Ads — fetch effective_status depuis API + filtre dynamique"},{"date":"2026-05-01","month":"2026-05","hash":"a31b1b6","subject":"feat: Meta Ads dashboard — 2 tabs Performance / Coûts"},{"date":"2026-04-26","month":"2026-04","hash":"1ee8ff8","subject":"feat: UX IA + multi-compte Instagram + export rapport HTML"},{"date":"2026-04-26","month":"2026-04","hash":"a995736","subject":"fix: supprime titre dupliqué reco IA + popover insights Meta Ads en haut"},{"date":"2026-04-26","month":"2026-04","hash":"474afb8","subject":"chore: supprime pages dépréciées (1_Meta, 2_Instagram, 3_Settings) + privacy à jour"},{"date":"2026-04-25","month":"2026-04","hash":"7b7ff51","subject":"fix: sidebar — supprime emojis nav, cache navigation auto Streamlit (stSidebarNav)"},{"date":"2026-04-25","month":"2026-04","hash":"2222ea7","subject":"feat: labels tabs (Analyses/Gérer), insights popover, sidebar nav (Landing/Dashboard/Privacy)"},{"date":"2026-04-25","month":"2026-04","hash":"b6f4b28","subject":"refactor: dashboard Clarity — sidebar nav pure, Instagram tab redesign, right insights panel"},{"date":"2026-04-21","month":"2026-04","hash":"3cb2443","subject":"redesign: Variation A (Clarity) d'après le handoff"},{"date":"2026-04-19","month":"2026-04","hash":"a679464","subject":"Fix Meta Ads: checkbox 'Récupérer tout l'historique' pour forcer fetch 1 an"},{"date":"2026-04-19","month":"2026-04","hash":"106f2e6","subject":"Fix upsert profiles: on_conflict=id + gestion erreur pour éviter crash app"},{"date":"2026-04-19","month":"2026-04","hash":"e141164","subject":"Fix Meta Ads: since > today → données à jour, pas d'appel API"},{"date":"2026-04-19","month":"2026-04","hash":"6722f2f","subject":"3 fixes: annuler abonnement sous plan, fetch Meta Ads 1 an + debug, Edge Function fetch-meta-ads"},{"date":"2026-04-19","month":"2026-04","hash":"dee63db","subject":"Meta Ads: insights dans le tab, fetch incrémental, insights hors sidebar"},{"date":"2026-04-19","month":"2026-04","hash":"bd97941","subject":"Fix Meta Ads: charge depuis Supabase si données existent, last_30d stable"},{"date":"2026-04-19","month":"2026-04","hash":"0c44832","subject":"Restore fetch Meta Ads complet: last_year + pagination sans limite"},{"date":"2026-04-19","month":"2026-04","hash":"7262bb1","subject":"Restore st.rerun après fetch Meta Ads + retire messages debug"},{"date":"2026-04-19","month":"2026-04","hash":"fe1ca41","subject":"TEST: change date_preset last_year → last_30d pour Meta Ads insights"},{"date":"2026-04-19","month":"2026-04","hash":"dec5160","subject":"Fix upsert_meta_ads: déduplique les lignes avant upsert (même date+ad_name)"},{"date":"2026-04-19","month":"2026-04","hash":"c12d3ce","subject":"DEBUG: supprime st.rerun pour voir messages Supabase save + check supabase/user_id"},{"date":"2026-04-19","month":"2026-04","hash":"4349a82","subject":"TEST: limite Meta Ads à 10 lignes + message visible Supabase save"},{"date":"2026-04-19","month":"2026-04","hash":"7acde47","subject":"Fix Meta Ads: reach/link_clicks dans tableau + chargement depuis Supabase au démarrage"},{"date":"2026-04-19","month":"2026-04","hash":"d309f16","subject":"feat: filtres Meta Ads cascade + LLM sur bouton avec données filtrées"},{"date":"2026-04-19","month":"2026-04","hash":"843a1d7","subject":"fix: date_preset last_year + progress bar Meta Ads"},{"date":"2026-04-19","month":"2026-04","hash":"581270d","subject":"fix: link_clicks via actions Meta API"},{"date":"2026-04-19","month":"2026-04","hash":"5b84789","subject":"fix: fetch Meta Ads historique complet + gestion erreur API"},{"date":"2026-04-19","month":"2026-04","hash":"5dc5781","subject":"fix: message aucune donnée Meta Ads + import inutile"},{"date":"2026-04-19","month":"2026-04","hash":"29310b2","subject":"feat: sidebar insights contextuelle + design cards + CSS tabs fix"},{"date":"2026-04-19","month":"2026-04","hash":"ba3a191","subject":"fix: supprime filtre date fetch Meta Ads"},{"date":"2026-04-19","month":"2026-04","hash":"08508ab","subject":"feat: sidebar insights IA + dashboard Meta Ads + persistance Supabase"},{"date":"2026-04-19","month":"2026-04","hash":"b65cb7b","subject":"feat: Meta Ads persistance Supabase + fetch enrichi"},{"date":"2026-04-18","month":"2026-04","hash":"866f2dd","subject":"feat: fragment rerun labels + tabs CSS"},{"date":"2026-04-18","month":"2026-04","hash":"2fea9ce","subject":"feat: gestion erreurs Supabase + filtre label + top post par label"},{"date":"2026-04-18","month":"2026-04","hash":"e6e181c","subject":"fix: corrige cache posts + bug RPC + améliorations labels"},{"date":"2026-04-17","month":"2026-04","hash":"bdcea55","subject":"Fix fetch Instagram: utilise instagram_business_id stocké au lieu de pages[0]"},{"date":"2026-04-17","month":"2026-04","hash":"3bd935e","subject":"Fix Meta OAuth: fallback Business Manager si me/accounts vide"},{"date":"2026-04-14","month":"2026-04","hash":"6bdc0fb","subject":"Move chart_label inside show_dashboard fragment for auto-refresh on label save"},{"date":"2026-04-14","month":"2026-04","hash":"34d8c54","subject":"Refactor main.py into modular components (488 → 99 lines)"},{"date":"2026-04-14","month":"2026-04","hash":"37444cf","subject":"Restore @st.fragment on Meta Ads source, add st.rerun after fetch"},{"date":"2026-04-14","month":"2026-04","hash":"b23026c","subject":"Fix Meta Ads df not showing: remove @st.fragment so full page reruns"},{"date":"2026-04-14","month":"2026-04","hash":"b2d5ab4","subject":"Fix bold markdown in AI recommendations — convert **text** to <b>text</b>"},{"date":"2026-04-14","month":"2026-04","hash":"1caf68d","subject":"Simplify Stripe payment check: single retrieve with detailed error logging"},{"date":"2026-04-14","month":"2026-04","hash":"abc1b90","subject":"Fix Stripe redirect: point to /main not / so payment verification runs"},{"date":"2026-04-14","month":"2026-04","hash":"505682d","subject":"Fix Stripe payment verification: fallback to direct session check"},{"date":"2026-04-14","month":"2026-04","hash":"74c72a6","subject":"Fix Stripe redirect URL: read host from request headers instead of secrets"},{"date":"2026-04-14","month":"2026-04","hash":"f78bd6f","subject":"Show page selector before connecting Meta — block render until confirmed"},{"date":"2026-04-14","month":"2026-04","hash":"c1c7705","subject":"Differentiate cancel subscription vs logout buttons in sidebar"},{"date":"2026-04-14","month":"2026-04","hash":"67740f1","subject":"Fix page crash: remove Meta API call from main render path"},{"date":"2026-04-14","month":"2026-04","hash":"db27fd5","subject":"Style logout button red in sidebar"},{"date":"2026-04-14","month":"2026-04","hash":"5fc1462","subject":"Dynamic tabs: only show Instagram/Meta Ads tabs if source is connected"},{"date":"2026-04-14","month":"2026-04","hash":"e34ed65","subject":"Allow user to select Facebook page before Instagram fetch"},{"date":"2026-04-12","month":"2026-04","hash":"f1ca319","subject":"Fix label save crash: handle NaN label and numpy post_id serialization"},{"date":"2026-04-12","month":"2026-04","hash":"f464b5b","subject":"Restructure Meta Ads: fetch in Sources tab, only df in Meta Ads tab"},{"date":"2026-04-12","month":"2026-04","hash":"ba9a0b3","subject":"Remove fetch button from sidebar — each source tab has its own"},{"date":"2026-04-12","month":"2026-04","hash":"8d5b84c","subject":"Show Meta Ads account info in sources tab with campaign count"},{"date":"2026-04-12","month":"2026-04","hash":"683a8c1","subject":"Move Meta Ads to main tab + fix button text white on secondary"},{"date":"2026-04-12","month":"2026-04","hash":"54e41f5","subject":"Style secondary buttons blue with white text to match primary"},{"date":"2026-04-12","month":"2026-04","hash":"dd43084","subject":"Add Meta Ads fetch with df display and organic fetch button in source tabs"},{"date":"2026-04-12","month":"2026-04","hash":"eab1af8","subject":"Fix stale cache after label rename causing null display"},{"date":"2026-04-12","month":"2026-04","hash":"95ba1fe","subject":"Fix label rename: read editor state from session_state instead of return value"},{"date":"2026-04-12","month":"2026-04","hash":"9834b4f","subject":"Add labelling module with inline table editing and cache dashboard fetch"},{"date":"2026-04-09","month":"2026-04","hash":"0bd5b05","subject":"Add image storage, followers chart, reset password, meta ads, privacy page"},{"date":"2026-04-09","month":"2026-04","hash":"25c4b8d","subject":"Fix privacy page: use native Streamlit markdown instead of raw HTML"},{"date":"2026-04-09","month":"2026-04","hash":"863849d","subject":"Add privacy policy page and update footer link"},{"date":"2026-04-01","month":"2026-04","hash":"23ec053","subject":"Detect existing email on signup and show clear error instead of confirmation message"},{"date":"2026-04-01","month":"2026-04","hash":"953ac58","subject":"Show followers delta at fetch time compared to last stored value"},{"date":"2026-04-01","month":"2026-04","hash":"005c524","subject":"Extract Instagram fetch into @st.fragment to avoid blocking rest of page"},{"date":"2026-04-01","month":"2026-04","hash":"7f707f6","subject":"Add @st.fragment to show_dashboard to isolate reruns from rest of page"},{"date":"2026-04-01","month":"2026-04","hash":"e9739f9","subject":"Add @st.fragment to follower_module to isolate reruns"},{"date":"2026-04-01","month":"2026-04","hash":"9dbce2e","subject":"Add missing OAuth scopes: pages_show_list, instagram_basic, instagram_manage_insights"},{"date":"2026-04-01","month":"2026-04","hash":"552af1f","subject":"Fix Meta OAuth: clear error messages when no Facebook Page or Instagram Business account"},{"date":"2026-03-30","month":"2026-03","hash":"5fa489c","subject":"Add debug output for Meta OAuth save flow"},{"date":"2026-03-30","month":"2026-03","hash":"0a6f3d1","subject":"Show Meta save error instead of silently swallowing it"},{"date":"2026-03-30","month":"2026-03","hash":"3056ac6","subject":"Fix Meta OAuth callback: pass refresh_token as state to restore session on redirect"},{"date":"2026-03-30","month":"2026-03","hash":"38d3919","subject":"url URI de redirection OAuth valides add /main"},{"date":"2026-03-30","month":"2026-03","hash":"72ddf44","subject":"Update Meta OAuth redirect_uri to Streamlit Cloud URL"},{"date":"2026-03-30","month":"2026-03","hash":"34d4f2b","subject":"Switch AI reco to Gemini 2.5 Flash, isolate with @st.fragment, fix Stripe app_url"},{"date":"2026-03-30","month":"2026-03","hash":"71cd853","subject":"landing page update"},{"date":"2026-03-29","month":"2026-03","hash":"177762b","subject":"Add AI recommendations (Apertus/HuggingFace), calendar view, Stripe cancel, scheduling UX"},{"date":"2026-03-17","month":"2026-03","hash":"3ec4cd4","subject":"Add fetch scheduling, platform tabs in Mon Compte, fix post limit free/paid"},{"date":"2026-03-16","month":"2026-03","hash":"ee0c4f1","subject":"Refactor: instagram_organic_posts, RPC free/paid limit, smart fetch, sidebar simplified"},{"date":"2026-03-07","month":"2026-03","hash":"5e2862b","subject":"Handle email confirmation flow after signup/login"},{"date":"2026-03-07","month":"2026-03","hash":"51d0b55","subject":"Fix requirements.txt trailing newline"},{"date":"2026-03-07","month":"2026-03","hash":"7e4eb5e","subject":"Restructure as multipage app: main.py -> pages/main.py"},{"date":"2026-03-07","month":"2026-03","hash":"45610a0","subject":"Direct signup flow, clean auth page, dashboard updates"},{"date":"2026-03-07","month":"2026-03","hash":"7d1134b","subject":"Direct signup flow, clean auth page, dashboard updates"},{"date":"2026-03-07","month":"2026-03","hash":"12a51bb","subject":"Added Dev Container Folder"},{"date":"2026-02-18","month":"2026-02","hash":"71519d7","subject":"Initial commit: Dashboard Analytics landing page"}];
+  /* GIT_HISTORY_END */
+
+  /* LLM_CONTEXT_START — généré par scripts/build_llm_context.py */
+  const LLM_CONTEXT = {"genere_le":"2026-08-19","ordres":{"chemin":"CLAUDE.md","present":true,"lignes":165,"poids":"8.6 ko","regles":[{"titre":"CLAUDE.md — Pulse","niveau":1,"chemin":[],"ligne":1,"texte":"Ce fichier est lu à **chaque** conversation. Il ne contient donc que des ordres\npermanents et la carte du savoir. Tout ce qui est de la documentation, de\nl'historique ou du détail technique vit ailleurs et se cherche — la section\n« Où vit le savoir » dit où.\n\nRègle de rédaction de ce fichier : une ligne n'y reste que si la réponse à\n« dois-je obéir à ça à chaque fois ? » est oui. Sinon elle part dans `docs/`.\n\n---","lignes":9,"id":"claude-md-pulse"},{"titre":"1 · Le produit","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":13,"texte":"**Pulse** est un SaaS d'analyse marketing. Il récolte les données publicitaires\net organiques d'un client, les range par **thème** (une étiquette posée sur des\ncampagnes et des publications), et publie chaque semaine un rapport qui répond à\nune seule question : **où mettre ses dix minutes cette semaine, et pourquoi.**\n\nTout le reste — courbes, KPI, frises — n'existe que pour rendre cette réponse\ncrédible.","lignes":7,"id":"1-le-produit"},{"titre":"2 · Le dépôt","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":23,"texte":"| Où | Quoi |\n|---|---|\n| `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. |\n| `saas/worker/` | La récolte et la fabrication du rapport. `fetch_all.py`, `build_report.py`, `labeling.py`, `insights.py`, `run_weekly.py`. Lancé par GitHub Actions (`weekly-fetch.yml`). |\n| `meta_script/`, `google_script/`, `components/ga4.py`, `scripts/` | Les accès aux API des plateformes. Appelés par le worker. |\n| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |\n| racine (`main.py`, `pages/`, `components/*.py` d'interface) | **Ancien Streamlit, en cours de retrait.** Voir `STREAMLIT_REMOVAL.md`. Ne rien y construire de neuf. |\n\nPython : **`python3.12`**, jamais `python3`.","lignes":9,"id":"2-le-dépôt"},{"titre":"3 · Mon rôle","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":35,"texte":"Je suis un professionnel de la création de SaaS. Je travaille sur la\n**réalisation** — pas sur des options que je décris sans les construire.\n\nJe commande les agents et je tiens les notes. Je ne perds pas de vue les\nobjectifs du produit ni la demande précise qui m'a été faite.\n\nDeux choses avancent en parallèle et comptent autant : **le produit**, et **la\nqualité des agents qui le construisent.**","lignes":8,"id":"3-mon-rôle"},{"titre":"4 · Le cycle d'une demande","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":46,"texte":"1. **David formule une demande.** Je la reformule dans `PROJECT_STATUS.html`\n   sous forme de tâche — `{ id, category, title, description, priority, status }`\n   — dans le même registre que les tâches existantes.\n2. **Je travaille sur UNE tâche à la fois**, jusqu'au bout.\n3. **Une fois réalisée et vérifiée**, je la passe à `status: \"done\"` avec\n   `verifiedBy: \"llm\"`. Jamais avant la vérification.\n4. **Ce qui n'était pas demandé et que je découvre** devient une tâche, pas un\n   détour silencieux.\n\nJe relance `python3.12 scripts/build_llm_context.py` quand `CLAUDE.md`, un agent,\nune skill ou `docs/` change — le panneau « ce qui me dirige » du tableau de bord\nest **généré**, jamais recopié à la main.","lignes":12,"id":"4-le-cycle-d-une-demande"},{"titre":"5 · Les agents","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":61,"texte":"**Les agents font le travail, je coordonne et je contrôle. Je ne les court-circuite\npas** — mais je ne signe rien que je n'ai pas vérifié moi-même.\n\n- **Un agent = une tâche précise.** Ses références vivent dans son `.md`.\n- **Trois agents en parallèle au maximum**, et jamais deux sur les mêmes fichiers.\n- **Un agent coupé se reprend par message** avec son identifiant : son contexte\n  est intact, c'est beaucoup moins cher qu'un nouveau départ à froid.\n- **Chaque brief porte une consigne de repli** : si l'agent sent qu'il va être\n  coupé, il rend ce qui est fini plutôt que trois moitiés.","lignes":9,"id":"5-les-agents"},{"titre":"Les évaluer, et les améliorer","niveau":3,"chemin":["CLAUDE.md — Pulse","5 · Les agents"],"ligne":73,"texte":"Un agent trop long, trop gourmand en tokens, ou qui fait mal sa tâche est une\n**information produit** : elle remonte dans `PROJECT_STATUS.html`, pour qu'on ait\nla vision d'ensemble.\n\nJe corrige son `.md` moi-même **quand ce n'est pas dangereux** — préciser son\ndéclencheur, resserrer son mandat, mieux sourcer ses références, retirer ce qui\nle fait divaguer. Un changement qui modifie ce qu'un agent a le droit de faire\n(outils, périmètre, autorisations) se propose, il ne se glisse pas.\n\n**Si une tâche revient et qu'aucun agent ne la couvre, je propose d'en créer un.**\nUn bon agent est court, déclenché sans ambiguïté, et pointe vers ses sources au\nlieu de les recopier.","lignes":12,"id":"les-évaluer-et-les-améliorer"},{"titre":"6 · Où vit le savoir","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":88,"texte":"Je sais où sont ces fichiers ; **ce sont surtout les agents qui doivent aller les\nchercher**, et leur `.md` doit le leur dire.\n\n| Fichier | Ce qu'il porte |\n|---|---|\n| `BACKLOG.md` | **La source de savoir et de brainstorming.** Les idées notées en chemin, à reprendre. Elle évolue — on y ajoute, on n'y efface pas sans raison. |\n| `DECISIONS.md` | Les décisions durables et **leur raison**. Ce qui a été tranché ne se re-litige pas sans y revenir. |\n| `STATUS.md` | Où en est le projet. |\n| `PROJECT_STATUS.html` | Le tableau de bord : tâches, agents, coût en tokens, historique. Les notes que je tiens pour David. |\n| `docs/03-grammaire-des-modules.md` | **La grammaire d'un module.** Neuf rangs, et le rang 3 est le chiffre — aucune forme graphique avant lui. Tout module créé ou restructuré met à jour sa section « Où on en est » dans le même commit. |\n| `docs/references/` | Les contraintes des plateformes (Meta, Google Ads, GA4, Supabase) et les références UX. C'est là que va ce qu'on a payé cher pour apprendre. |\n| `STREAMLIT_REMOVAL.md` | L'inventaire du retrait de Streamlit. |\n| `handoff/` | Les reprises de contexte. |","lignes":13,"id":"6-où-vit-le-savoir"},{"titre":"7 · Ce qui ne se négocie jamais","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":104,"texte":"**Aucun chiffre fabriqué.** Si on ne peut pas le mesurer, on le dit — on ne\nl'estime pas, on ne l'approxime pas. Une absence de donnée n'est pas un zéro. Un\n« +∞ % » n'existe pas. Ce qu'on ne peut pas comparer, on écrit pourquoi.\n\n**Toute comparaison exclut le jour en cours** — la journée du fetch est\nincomplète.\n\n**Aucun secret dans la conversation.** Ni jeton, ni clé, ni mot de passe, ni un\nfragment. Ils vont dans `.streamlit/secrets.toml` (ignoré par git) ou dans\nl'interface Vercel, par David lui-même. Un message d'erreur nomme la **variable**,\njamais sa valeur.\n\n**Les jetons OAuth de `connected_accounts` ne sont jamais partagés** avec un\nmembre invité. Une personne invitée voit les chiffres, jamais de quoi aller les\nchercher.\n\n**Rien de destructeur sans regarder d'abord.** Aucun `DROP`, `DELETE` ou\n`TRUNCATE` dans une migration sans le signaler et le faire valider. Avant\nd'effacer ou d'écraser un fichier, je l'ouvre.\n\n**Les commentaires disent POURQUOI**, avec la mesure ou la source qui a tranché —\npas ce que le code fait. Un seuil invoqué de mémoire se vérifie avant d'être\ninvoqué.\n\n**Une page de contrôle temporaire** (`app/login/controle-*/`, seul chemin que le\nmiddleware laisse passer sans session) est **supprimée avant le commit**, avec\ntout son échafaudage. `git grep` doit être propre.","lignes":27,"id":"7-ce-qui-ne-se-négocie-jamais"},{"titre":"8 · Les pièges qui ont déjà coûté cher","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":134,"texte":"- **Une constante exportée depuis un module `\"use client\"`** devient une\n  référence client côté serveur : la valeur lue est un proxy, rien ne lève, TS\n  passe. Les valeurs partagées vivent dans un module sans directive.\n- **En grille et en flex, `min-width`/`min-height` valent `auto`** : l'élément\n  refuse de rétrécir. Le remède est `min-w-0` / `min-h-0`, jamais une police plus\n  petite.\n- **Un refus RLS sur un `update` ne renvoie aucune erreur** — il touche zéro\n  ligne. Une action peut répondre « enregistré » sans avoir rien écrit : vérifier\n  l'écriture.\n- **Une politique RLS ne voit que la ligne d'arrivée.** Elle ne peut pas\n  interdire de *changer* une colonne — il faut un déclencheur qui compare `OLD`\n  et `NEW`.\n- **PostgREST plafonne à 1 000 lignes** : au-delà, il tronque en silence. Paginer.\n- **Un lien énumère ce qu'il CHANGE, jamais ce qu'il garde.** Sinon il perd par\n  construction tout paramètre ajouté après lui, en produisant une URL valide.\n- **Ne jamais lancer `next dev` sur un `.next` issu d'un `npm run build`** :\n  `rm -rf .next tsconfig.tsbuildinfo` entre les deux.\n- **Google Ads `change_event` : 30 jours maximum**, et une fenêtre plus large\n  fait rejeter la requête entière au lieu de la tronquer.","lignes":19,"id":"8-les-pièges-qui-ont-déjà-coûté-cher"},{"titre":"9 · Vérifier avant de dire que c'est fait","niveau":2,"chemin":["CLAUDE.md — Pulse"],"ligne":156,"texte":"- `saas/web` : `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et\n  `npm run build` verts, **13 routes** (un écart signale une page de contrôle\n  oubliée).\n- Python : `python3.12 -m py_compile` sur ce qui a été touché.\n- Une correction du worker **ne se voit qu'après un « ↻ Recharger mes conseils »**,\n  et une correction de récolte après « ↻ Mes données ». Le dire à chaque fois.\n- Ce qui n'a pas pu être vérifié se dit franchement — pas de vérification\n  supposée, pas de résultat prédit.","lignes":8,"id":"9-vérifier-avant-de-dire-que-c-est-fait"}]},"specialistes":{"agents":{"dossier":".claude/agents","present":true,"items":[{"genre":"agent","nom":"recos","fichier":".claude/agents/recos.md","titre":"Recos — le conseil qui se mérite","mandat":"Le responsable des recommandations de Pulse.","declenchement":"À utiliser dès que David parle de recos, de conseils, de « ça se répète », de « ça sert à rien », de recos pour l'organique ou pour les campagnes, du tri des conseils, de leur nombre, de leur confiance, ou qu'il colle un lot de recos et demande ce qu'il vaut. À distinguer de `vision-produit`, qui décide si une information mérite d'exister ; de `vision-ux`, qui décide de l'ordre et de la forme ; de la skill `hebdo`, qui revoit la structure du rapport.","description":"Le responsable des recommandations de Pulse. Juge la PERTINENCE et la VARIÉTÉ des conseils produits par le rapport hebdo — lesquels se répètent, lesquels ne changent aucune décision, lesquels on ne pourra jamais vérifier — et écrit ou corrige les règles qui les fabriquent. Connaît la grammaire maison (pourquoi / comment vérifier / angle mort / confiance ●◐○) et les chiffres qu'on n'a PAS le droit de fabriquer. À utiliser dès que David parle de recos, de conseils, de « ça se répète », de « ça sert à rien », de recos pour l'organique ou pour les campagnes, du tri des conseils, de leur nombre, de leur confiance, ou qu'il colle un lot de recos et demande ce qu'il vaut. À distinguer de `vision-produit`, qui décide si une information mérite d'exister ; de `vision-ux`, qui décide de l'ordre et de la forme ; de la skill `hebdo`, qui revoit la structure du rapport.","portee":"modèle opus · outils : Read, Grep, Glob, Bash, WebSearch, WebFetch · 148 lignes"},{"genre":"agent","nom":"vision-produit","fichier":".claude/agents/vision-produit.md","titre":"Vision produit — ce qui mérite d'être montré, et pourquoi","mandat":"Directeur produit de Pulse.","declenchement":"À utiliser quand David colle une maquette ou une section et demande « qu'est-ce qu'on garde », « comment améliorer », « qu'est-ce qui manque », quand il parle de gamification, de motivation, de rétention, de ce qu'on devrait ajouter comme information, de la qualité ou de la variété des recommandations, ou qu'il veut challenger une idée avant de la construire. À distinguer de `vision-ux`, qui décide de l'ORDRE et de la FORME une fois qu'on sait quoi montrer ; de la skill `hebdo`, qui revoit la structure du rapport ; de la skill `challenger`, qui fait une critique courte et conversationnelle.","description":"Directeur produit de Pulse. Dit CE QU'IL FAUT METTRE EN AVANT et POURQUOI — quelle information mérite d'exister, quelle décision elle change, ce qui manque, et ce qu'une idée coûte. Garde un œil critique sur les idées que David apporte : il les passe au banc d'essai (décision, lundi matin, honnêteté, gamification, variété) et dit ce qu'on garde, ce qu'on jette, et ce qu'on garde à condition de. À utiliser quand David colle une maquette ou une section et demande « qu'est-ce qu'on garde », « comment améliorer », « qu'est-ce qui manque », quand il parle de gamification, de motivation, de rétention, de ce qu'on devrait ajouter comme information, de la qualité ou de la variété des recommandations, ou qu'il veut challenger une idée avant de la construire. À distinguer de `vision-ux`, qui décide de l'ORDRE et de la FORME une fois qu'on sait quoi montrer ; de la skill `hebdo`, qui revoit la structure du rapport ; de la skill `challenger`, qui fait une critique courte et conversationnelle.","portee":"modèle opus · outils : Read, Grep, Glob, Bash, WebSearch, WebFetch · 162 lignes"},{"genre":"agent","nom":"vision-ux","fichier":".claude/agents/vision-ux.md","titre":"Vision UX — la hiérarchie de l'information dans Pulse","mandat":"Directeur artistique et architecte de l'information de Pulse.","declenchement":"À utiliser quand David parle de hiérarchie de l'information, de modules, d'uniformiser ou d'harmoniser les dashboards, de ce qui « fait plat », de l'ordre des sections d'une page canal, de ce que le client doit voir en premier, d'inspiration ou de concurrents, de design ou d'effet waouh — ou demande une vision d'ensemble de l'UX de l'application. À distinguer de la skill `ux`, qui suit une ACTION de bout en bout, et de la skill `hebdo`, qui revoit la structure du seul rapport hebdomadaire.","description":"Directeur artistique et architecte de l'information de Pulse. Établit la HIÉRARCHIE de ce que l'utilisateur voit (quoi en premier, quoi ensuite, quoi jamais), UNIFORMISE les modules entre les dashboards Meta Ads / Google Ads / Instagram, va chercher l'inspiration chez les concurrents, et apporte la légèreté et l'effet waouh sans casser l'existant. À utiliser quand David parle de hiérarchie de l'information, de modules, d'uniformiser ou d'harmoniser les dashboards, de ce qui « fait plat », de l'ordre des sections d'une page canal, de ce que le client doit voir en premier, d'inspiration ou de concurrents, de design ou d'effet waouh — ou demande une vision d'ensemble de l'UX de l'application. À distinguer de la skill `ux`, qui suit une ACTION de bout en bout, et de la skill `hebdo`, qui revoit la structure du seul rapport hebdomadaire.","portee":"modèle opus · outils : Read, Grep, Glob, Bash, WebSearch, WebFetch · 112 lignes"}]},"skills":{"dossier":".claude/skills","present":true,"items":[{"genre":"skill","nom":"hebdo","fichier":".claude/skills/hebdo/SKILL.md","titre":"Hebdo — la revue de structure","mandat":"Revue de STRUCTURE du rapport hebdomadaire de Pulse — cartographie les blocs, nomme ce qui tient, trouve le bloc / le lien / le niveau qui manque, et propose des mouvements qui débloquent la compréhension.","declenchement":"Utilise cette skill dès que David parle d'améliorer son rapport hebdo, l'hebdomadaire, la structure du rapport, l'ordre des sections, ce qui manque au rapport, ou demande « analyse mon hebdo », « comment améliorer le rapport », « qu'est-ce qui manque », « est-ce que la structure est bonne », « pourquoi on comprend pas » — même s'il ne dit pas le mot « structure » ni le mot « skill ». S'applique aussi quand il colle un bout du rapport et demande ce qu'on pourrait faire de mieux.","description":"Revue de STRUCTURE du rapport hebdomadaire de Pulse — cartographie les blocs, nomme ce qui tient, trouve le bloc / le lien / le niveau qui manque, et propose des mouvements qui débloquent la compréhension. Ton constructif d'architecte : « la structure tient parce que X, il manque Y, si on met Z ici alors W devient lisible ». Utilise cette skill dès que David parle d'améliorer son rapport hebdo, l'hebdomadaire, la structure du rapport, l'ordre des sections, ce qui manque au rapport, ou demande « analyse mon hebdo », « comment améliorer le rapport », « qu'est-ce qui manque », « est-ce que la structure est bonne », « pourquoi on comprend pas » — même s'il ne dit pas le mot « structure » ni le mot « skill ». S'applique aussi quand il colle un bout du rapport et demande ce qu'on pourrait faire de mieux.","portee":"130 lignes"},{"genre":"skill","nom":"ux","fichier":".claude/skills/ux/SKILL.md","titre":"UX — le niveau d'un produit pro","mandat":"Revue UX de Pulse au niveau d'un produit pro (Notion, Linear, Stripe) — suit une action de bout en bout, compte ce qu'elle coûte à l'utilisateur, vérifie ses quatre états (vide, chargement, erreur, succès) et dit ce qui trahit l'amateurisme.","declenchement":"Utilise cette skill dès que David parle d'UX, d'ergonomie, de « faire pro », de Notion/Linear/Stripe comme référence, de parcours, de flow, de boutons, d'états, de ce qui « fait cheap » ou « fait pas sérieux », ou demande « améliore l'UX », « est-ce que ça fait pro », « la personne va comprendre ? », « optimise le parcours » — même s'il ne nomme ni la page ni la skill. À distinguer de `hebdo`, qui revoit la STRUCTURE du rapport hebdo ; ici on revoit les ACTIONS et le ressenti de qualité sur n'importe quelle page.","description":"Revue UX de Pulse au niveau d'un produit pro (Notion, Linear, Stripe) — suit une action de bout en bout, compte ce qu'elle coûte à l'utilisateur, vérifie ses quatre états (vide, chargement, erreur, succès) et dit ce qui trahit l'amateurisme. Utilise cette skill dès que David parle d'UX, d'ergonomie, de « faire pro », de Notion/Linear/Stripe comme référence, de parcours, de flow, de boutons, d'états, de ce qui « fait cheap » ou « fait pas sérieux », ou demande « améliore l'UX », « est-ce que ça fait pro », « la personne va comprendre ? », « optimise le parcours » — même s'il ne nomme ni la page ni la skill. À distinguer de `hebdo`, qui revoit la STRUCTURE du rapport hebdo ; ici on revoit les ACTIONS et le ressenti de qualité sur n'importe quelle page.","portee":"108 lignes"}]}},"references":{"dossier":"docs","present":true,"items":[{"fichier":"docs/03-grammaire-des-modules.md","titre":"La grammaire d'un module Pulse","extrait":"Issue d'une revue de sept produits de référence — Levers Labs, Kitchen, Be.run, Projector, Intelly, NIKITIN, Fenco — croisée avec nos dix-sept modules.","sections":["Les neuf rangs","Les interdits, en toutes lettres","Les règles de fond, qui priment sur l'esthétique","Le graphe : la géométrie en SVG, les caractères en HTML","Le lexique des signes","Où on en est","Une fusion à ne PAS faire","Ce qu'on gamifie, et ce qu'on ne gamifie jamais","Journal"],"sections_total":9,"lignes":1065,"poids":"93.9 ko"},{"fichier":"docs/references/README.md","titre":"Références — ce qu'on a payé cher pour apprendre","extrait":"Ce dossier existe pour une raison précise : **les contraintes des plateformes ne se devinent pas, et les redécouvrir coûte une session entière à chaque fois.** Elles étaient jusqu'ici enfouies dans des messages de commit, où personne ne va les chercher.","sections":["Comment s'en servir","Le dossier"],"sections_total":2,"lignes":32,"poids":"1.4 ko"},{"fichier":"docs/references/plateformes.md","titre":"Les plateformes — contraintes vérifiées","extrait":"Chaque ligne porte sa source. Ce qui vient d'un essai et non de la documentation est marqué **[pari]**. Ce qu'aucune API ne donne est dans « Ce qui est impossible », et cette section-là est la plus importante du fichier.","sections":["Meta — Marketing API","Google Ads API","GA4","Ce qui est impossible — ne pas essayer de le reconstruire"],"sections_total":4,"lignes":121,"poids":"5.9 ko"}]}};
+  /* LLM_CONTEXT_END */
+
+  const STORE = "pulse-llm-guide-v1";
+  const saved = JSON.parse(localStorage.getItem(STORE) || "{}");
+  const statusMap = saved.statusMap || {};
+  let customTasks = saved.customTasks || [];
+  let localHistory = saved.history || [];
+  let comments = saved.comments || {};
+  let undoStack = saved.undoStack || [];
+  let hiddenTasks = saved.hiddenTasks || [];
+  let agentReviews = saved.agentReviews || [];
+  let filter = "all";
+  let projectFilter = "all";
+
+  function allTasks() {
+    const merged = [...SEED_TASKS, ...HISTORIC_TASKS, ...customTasks];
+    return merged.filter(task => !hiddenTasks.includes(task.id)).map(task => ({
+      ...task,
+      project: task.project || PROJECT_BY_TASK[task.id] || task.category || "Général",
+      status: task.verifiedBy ? task.status : (statusMap[task.id] || task.status || "todo")
+    }));
   }
 
-  function filterBacklog() {
-    currentSearch = document.getElementById('search-input').value.toLowerCase();
-    applyFilters();
+  function save() {
+    localStorage.setItem(STORE, JSON.stringify({ statusMap, customTasks, history: localHistory, comments, undoStack, hiddenTasks, agentReviews }));
+    document.getElementById("savedAt").textContent = "sauvegardé " + new Date().toLocaleString("fr-CH");
   }
 
-  function applyFilters() {
-    let visible = 0;
-    const items = document.querySelectorAll('.backlog-item');
-    items.forEach(item => {
-      const cat = item.dataset.cat;
-      const text = item.textContent.toLowerCase();
-      const matchCat = currentFilter === 'all' || cat === currentFilter;
-      const matchSearch = !currentSearch || text.includes(currentSearch);
-      if (matchCat && matchSearch) {
-        item.classList.remove('hidden');
-        visible++;
-      } else {
-        item.classList.add('hidden');
-      }
-    });
-    document.getElementById('backlog-count').textContent =
-      visible + ' item' + (visible !== 1 ? 's' : '');
+  function log(text) {
+    const now = new Date();
+    localHistory.unshift({ date: now.toISOString(), group: "Activité locale", text });
+  }
 
-    // Cache les groupes vides
-    document.querySelectorAll('.group').forEach(g => {
-      const visibleInGroup = g.querySelectorAll('.backlog-item:not(.hidden)').length;
-      g.style.display = visibleInGroup === 0 ? 'none' : '';
+  function snapshot() {
+    return JSON.stringify({ statusMap, customTasks, history: localHistory, comments, hiddenTasks, agentReviews });
+  }
+
+  function pushUndo() {
+    undoStack.push(snapshot());
+    if (undoStack.length > 30) undoStack.shift();
+  }
+
+  function undo() {
+    const previous = undoStack.pop();
+    if (!previous) return;
+    const state = JSON.parse(previous);
+    Object.keys(statusMap).forEach(key => delete statusMap[key]);
+    Object.assign(statusMap, state.statusMap || {});
+    customTasks = state.customTasks || [];
+    localHistory = state.history || [];
+    comments = state.comments || {};
+    hiddenTasks = state.hiddenTasks || [];
+    agentReviews = state.agentReviews || [];
+    save(); render();
+  }
+
+  function label(status) {
+    return status === "done" ? "[fait]" : status === "in_progress" ? "[en cours]" : "[à faire]";
+  }
+
+  function setStatus(id, status, title) {
+    pushUndo();
+    statusMap[id] = status;
+    log(`${title} → ${label(status)}`);
+    save(); render();
+  }
+
+  function addComment(id, title, text) {
+    const clean = text.trim();
+    if (!clean) return;
+    pushUndo();
+    comments[id] = comments[id] || [];
+    comments[id].push({ date: new Date().toISOString(), text: clean });
+    log(`Commentaire ajouté à « ${title} »`);
+    save(); render();
+  }
+
+  function deleteTask(task) {
+    if (!confirm(`Supprimer la tâche « ${task.title} » ?\n\nTu pourras la restaurer avec Annuler ou Ctrl/Cmd+Z.`)) return;
+    pushUndo();
+    const customIndex = customTasks.findIndex(item => item.id === task.id);
+    if (customIndex >= 0) customTasks.splice(customIndex, 1);
+    else if (!hiddenTasks.includes(task.id)) hiddenTasks.push(task.id);
+    log(`Tâche supprimée : ${task.title}`);
+    save(); render();
+  }
+
+  function toggleDone(task) {
+    setStatus(task.id, task.status === "done" ? "todo" : "done", task.title);
+  }
+
+  function cycle(task) {
+    const next = task.status === "todo" ? "in_progress" : task.status === "in_progress" ? "done" : "todo";
+    setStatus(task.id, next, task.title);
+  }
+
+  function renderProgress(tasks) {
+    const total = tasks.length || 1;
+    const done = tasks.filter(t => t.status === "done").length;
+    const doing = tasks.filter(t => t.status === "in_progress").length;
+    const todo = tasks.length - done - doing;
+    const pct = Math.round(done / total * 100);
+    const circumference = 2 * Math.PI * 50;
+    const ring = document.getElementById("ringValue");
+    ring.style.strokeDasharray = circumference;
+    ring.style.strokeDashoffset = circumference * (1 - pct / 100);
+    document.getElementById("percent").textContent = pct + "%";
+    document.getElementById("doneCount").textContent = done;
+    document.getElementById("doingCount").textContent = doing;
+    document.getElementById("todoCount").textContent = todo;
+
+    const activeProjects = PROJECTS.filter(project => tasks.some(t => t.project === project.id));
+    document.getElementById("categoryBars").innerHTML = activeProjects.slice(0, 6).map(project => {
+      const group = tasks.filter(t => t.project === project.id);
+      const n = group.filter(t => t.status === "done").length;
+      const p = Math.round(n / group.length * 100);
+      return `<div class="metric-row"><span>${project.id}</span><div class="bar"><i style="width:${p}%"></i></div><b>${p}%</b></div>`;
+    }).join("");
+
+    const rank = { high: 0, medium: 1, low: 2 };
+    const next = tasks.filter(t => t.status !== "done").sort((a,b) => rank[a.priority] - rank[b.priority])[0];
+    document.getElementById("nextAction").textContent = next ? next.title : "Roadmap terminée — définir la prochaine version.";
+  }
+
+  function renderProjectGraph(tasks) {
+    document.getElementById("projectGraph").innerHTML = PROJECTS.map(project => {
+      const group = tasks.filter(t => t.project === project.id);
+      const done = group.filter(t => t.status === "done").length;
+      const pct = group.length ? Math.round(done / group.length * 100) : 0;
+      return `<div class="project-node">
+        <div class="project-node-head"><b>${escapeHtml(project.id)}</b><span>${pct}%</span></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <small>${done}/${group.length} mini-tâches · ${escapeHtml(project.description)}</small>
+      </div>`;
+    }).join("");
+  }
+
+  function renderTasks(tasks) {
+    const query = document.getElementById("search").value.trim().toLowerCase();
+    const visible = tasks.filter(t => (filter === "all" || t.status === filter) &&
+      (projectFilter === "all" || t.project === projectFilter) &&
+      (!query || `${t.title} ${t.description} ${t.project} ${t.category}`.toLowerCase().includes(query)));
+    const root = document.getElementById("tasks");
+    if (!visible.length) { root.innerHTML = `<div class="empty">Aucune tâche pour ce filtre.</div>`; return; }
+    const taskHtml = t => `
+      <article class="task ${t.status}" data-id="${t.id}">
+        <button class="check" title="Valider / rouvrir" aria-label="Valider ${escapeHtml(t.title)}"></button>
+        <div>
+          <div class="task-title">${escapeHtml(t.title)}</div>
+          <div class="task-desc">${escapeHtml(t.description || "")}</div>
+          <div class="task-meta"><span class="tag">${escapeHtml(t.project)}</span><span class="tag">${escapeHtml(t.category)}</span><span class="tag ${t.priority}">priorité ${t.priority}</span><span class="tag">id:${t.id}</span>${t.verifiedBy ? `<span class="tag">vérifié par ${escapeHtml(t.verifiedBy)}</span>` : ''}</div>
+          <div class="comments">
+            ${(comments[t.id] || []).map(c => `<div class="comment"><time>${formatDate(c.date)}</time>${escapeHtml(c.text)}</div>`).join("")}
+            <form class="comment-form"><input class="field" placeholder="Ajouter un commentaire…"><button class="btn" type="submit">+ note</button></form>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="state-btn" title="Changer l'état">${label(t.status)}</button>
+          <button class="delete-btn" title="Supprimer cette tâche">supprimer</button>
+        </div>
+      </article>`;
+    const shownProjects = PROJECTS.filter(project => visible.some(t => t.project === project.id));
+    root.innerHTML = shownProjects.map((project, index) => {
+      const group = visible.filter(t => t.project === project.id);
+      const done = group.filter(t => t.status === "done").length;
+      return `<details class="project-block" ${index < 3 ? "open" : ""}>
+        <summary class="project-summary"><div><strong>${escapeHtml(project.id)}</strong><small>${escapeHtml(project.description)}</small></div><div class="project-progress">${done}/${group.length} terminées</div></summary>
+        <div class="project-tasks">${group.map(taskHtml).join("")}</div>
+      </details>`;
+    }).join("");
+    root.querySelectorAll(".task").forEach(node => {
+      const task = tasks.find(t => t.id === node.dataset.id);
+      node.querySelector(".check").onclick = () => toggleDone(task);
+      node.querySelector(".state-btn").onclick = () => cycle(task);
+      node.querySelector(".delete-btn").onclick = () => deleteTask(task);
+      node.querySelector(".comment-form").onsubmit = event => {
+        event.preventDefault();
+        addComment(task.id, task.title, event.currentTarget.querySelector("input").value);
+      };
     });
   }
+
+  function renderHistory() {
+    const events = [...localHistory, ...SEED_HISTORY].sort((a,b) => String(b.date).localeCompare(String(a.date)));
+    const groups = [...new Set(events.map(e => e.group))];
+    document.getElementById("history").innerHTML = groups.map((group, i) => `
+      <details ${i === 0 ? "open" : ""}>
+        <summary>${escapeHtml(group)} · ${events.filter(e => e.group === group).length} événement(s)</summary>
+        <div class="history-list">${events.filter(e => e.group === group).map(e => `
+          <div class="event"><time>${formatDate(e.date)}</time><span>${escapeHtml(e.text)}</span></div>`).join("")}</div>
+      </details>`).join("");
+  }
+
+  function renderGitHistory() {
+    const root = document.getElementById("gitHistory");
+    if (!GIT_HISTORY.length) {
+      root.innerHTML = '<div class="empty">Archive Git à générer avec <code>python3 scripts/build_project_history.py</code>.</div>';
+      return;
+    }
+    const months = [...new Set(GIT_HISTORY.map(item => item.month))];
+    root.innerHTML = `<div class="muted" style="margin-bottom:10px">${GIT_HISTORY.length} commits archivés · du ${escapeHtml(GIT_HISTORY.at(-1).date)} au ${escapeHtml(GIT_HISTORY[0].date)}</div>` + months.map((month, index) => {
+      const commits = GIT_HISTORY.filter(item => item.month === month);
+      return `<details ${index === 0 ? "open" : ""}><summary>${escapeHtml(month)} · ${commits.length} commits</summary><div class="history-list">${commits.map(commit => `<div class="event"><time>${escapeHtml(commit.date)} · ${escapeHtml(commit.hash)}</time><span>${escapeHtml(commit.subject)}</span></div>`).join("")}</div></details>`;
+    }).join("");
+  }
+
+  /* Panneau « ce qui me dirige ». Données injectées par scripts/build_llm_context.py.
+     Rendu une seule fois au chargement : le contenu ne dépend ni des filtres ni du
+     localStorage, et le rejouer refermerait les <details> que David vient d'ouvrir. */
+  function renderLlmContext() {
+    const ordres = document.getElementById("ctxOrdres");
+    const specialistes = document.getElementById("ctxSpecialistes");
+    const references = document.getElementById("ctxReferences");
+    if (!LLM_CONTEXT) {
+      const attente = '<div class="empty">Panneau à générer avec <code>python3.12 scripts/build_llm_context.py</code>.</div>';
+      ordres.innerHTML = specialistes.innerHTML = references.innerHTML = attente;
+      return;
+    }
+    const lu = LLM_CONTEXT.genere_le ? ` · lu le ${escapeHtml(LLM_CONTEXT.genere_le)}` : "";
+
+    const permanents = LLM_CONTEXT.ordres || {};
+    if (!permanents.present) {
+      ordres.innerHTML = `<div class="empty">${escapeHtml(permanents.note || "CLAUDE.md introuvable.")}</div>`;
+    } else if (!(permanents.regles || []).length) {
+      ordres.innerHTML = `<div class="empty"><code>${escapeHtml(permanents.chemin)}</code> existe (${permanents.lignes} lignes) mais aucune règle n'a pu en être lue.</div>`;
+    } else {
+      ordres.innerHTML = `<div class="muted" style="margin-bottom:8px">${permanents.regles.length} règle(s) lues dans <code>${escapeHtml(permanents.chemin)}</code> · ${permanents.lignes} lignes · ${escapeHtml(permanents.poids)}${lu}</div>`
+        + permanents.regles.map(regle => `<details class="ctx-rule"><summary><span class="tag">R/${escapeHtml(regle.id)}</span> ${escapeHtml(regle.titre)} <span class="muted">· ${escapeHtml(permanents.chemin)}:${regle.ligne} · ${regle.lignes} ligne(s)${(regle.chemin || []).length ? " · sous " + escapeHtml(regle.chemin.join(" › ")) : ""}</span></summary><div class="history-list"><div class="ctx-text">${escapeHtml(regle.texte)}</div></div></details>`).join("");
+    }
+
+    const specialistesData = LLM_CONTEXT.specialistes || {};
+    specialistes.innerHTML = [["agent", specialistesData.agents], ["skill", specialistesData.skills]].map(([genre, bloc]) => {
+      if (!bloc || !bloc.present) return `<div class="empty">${escapeHtml((bloc && bloc.note) || `Dossier des ${genre}s introuvable.`)}</div>`;
+      if (!(bloc.items || []).length) return `<div class="empty"><code>${escapeHtml(bloc.dossier)}</code> existe mais ne contient aucun ${genre}.</div>`;
+      return `<div class="muted" style="margin:10px 0 8px">${bloc.items.length} ${genre}(s) · <code>${escapeHtml(bloc.dossier)}</code></div><div class="agent-grid">`
+        + bloc.items.map(item => `<article class="agent-card">
+          <h3>${escapeHtml(item.nom)} <span class="tag">${escapeHtml(item.fichier)}</span></h3>
+          ${item.titre ? `<div class="muted" style="font-size:12px;margin:-2px 0 7px">${escapeHtml(item.titre)}</div>` : ""}
+          <div class="agent-rule"><b>Mandat</b><span>${escapeHtml(item.mandat)}</span></div>
+          <div class="agent-rule"><b>Déclenchement</b><span>${escapeHtml(item.declenchement)}</span></div>
+          <div class="agent-rule"><b>Portée</b><span>${escapeHtml(item.portee)}</span></div>
+          <details class="llm-review"><summary>description complète — c'est elle qui décide du chargement</summary><div class="llm-review-scroll"><div class="ctx-text">${escapeHtml(item.description)}</div></div></details>
+        </article>`).join("") + `</div>`;
+    }).join("");
+
+    const refs = LLM_CONTEXT.references || {};
+    if (!refs.present) {
+      references.innerHTML = `<div class="empty">${escapeHtml(refs.note || "Dossier docs/ introuvable.")}</div>`;
+    } else if (!(refs.items || []).length) {
+      references.innerHTML = `<div class="empty"><code>${escapeHtml(refs.dossier)}</code> existe mais ne contient aucun document.</div>`;
+    } else {
+      references.innerHTML = `<div class="muted" style="margin-bottom:8px">${refs.items.length} document(s) · <code>${escapeHtml(refs.dossier)}</code>${lu}</div>`
+        + refs.items.map(doc => `<details class="ctx-rule"><summary><span class="tag">${escapeHtml(doc.fichier)}</span> ${escapeHtml(doc.titre)} <span class="muted">· ${doc.lignes} lignes · ${escapeHtml(doc.poids)} · ${doc.sections_total} section(s)</span></summary><div class="history-list"><div class="ctx-text">${escapeHtml(doc.extrait)}</div>${(doc.sections || []).length ? `<div class="muted" style="margin-top:9px">Sections : ${doc.sections.map(titre => escapeHtml(titre)).join(" · ")}${doc.sections_total > doc.sections.length ? " · …" : ""}</div>` : ""}</div></details>`).join("");
+    }
+  }
+
+  function renderAgents() {
+    document.getElementById("agentGrid").innerHTML = AGENTS.map(agent => {
+      const llmReviews = LLM_REVIEWS.filter(review => review.agent === agent.id);
+      const feedback = agentReviews.filter(review => review.agent === agent.id);
+      const average = llmReviews.length ? (llmReviews.reduce((sum, review) => sum + review.score, 0) / llmReviews.length).toFixed(1) : "—";
+      return `<article class="agent-card">
+        <h3>${escapeHtml(agent.name)} <span class="tag">${escapeHtml(agent.source)}</span></h3>
+        <div class="agent-rule"><b>Quand</b><span>${escapeHtml(agent.trigger)}</span></div>
+        <div class="agent-rule"><b>Mission</b><span>${escapeHtml(agent.mission)}</span></div>
+        <div class="agent-rule"><b>Méthode</b><span>${escapeHtml(agent.method)}</span></div>
+        <div class="agent-rule"><b>À éviter</b><span>${escapeHtml(agent.avoid)}</span></div>
+        <details class="llm-review">
+          <summary>Auto-revue LLM · ${average}/5 · ${llmReviews.length} apprentissage(s)</summary>
+          <div class="llm-review-scroll">${llmReviews.length ? llmReviews.slice().reverse().map(review => `<div class="learning"><b>${escapeHtml(review.skill)}</b><div class="skill-line"><span>évolution</span><div class="bar"><i style="width:${review.after*20}%"></i></div><strong>${review.before}→${review.after}</strong></div><p>${escapeHtml(review.learned)}</p><span class="saving">Nouvelle règle : ${escapeHtml(review.action)}</span><div class="muted" style="margin-top:5px">Signal : ${escapeHtml(review.evidence)}</div></div>`).join("") : '<div class="empty">Aucun apprentissage documenté.</div>'}</div>
+        </details>
+        ${feedback.slice(-1).map(review => `<div class="comment"><time>retour de David · ${formatDate(review.date)}</time>${escapeHtml(review.text)}</div>`).join("")}
+        <form class="agent-review" data-agent="${agent.id}">
+          <div class="comment-form"><select class="field" aria-label="Impact"><option value="5">très utile</option><option value="3">à améliorer</option><option value="1">problème</option></select><input required class="field" placeholder="Ton retour brut — le prochain LLM doit le transformer en apprentissage…"><button class="btn" type="submit">envoyer</button></div>
+        </form>
+      </article>`;
+    }).join("");
+    document.querySelectorAll(".agent-review").forEach(form => form.onsubmit = event => {
+      event.preventDefault();
+      pushUndo();
+      const fields = event.currentTarget.querySelectorAll("select,input");
+      agentReviews.push({ agent: event.currentTarget.dataset.agent, score: Number(fields[0].value), text: fields[1].value.trim(), date: new Date().toISOString() });
+      log(`Retour de David ajouté pour ${event.currentTarget.dataset.agent} — à synthétiser par le prochain LLM`);
+      save(); render();
+    });
+  }
+
+  function requestCostFix(driver) {
+    const taskId = `cost-${driver.id}`;
+    if (allTasks().some(task => task.id === taskId)) return;
+    pushUndo();
+    customTasks.push({ id: taskId, project: "Agents", category: "Optimisation tokens", title: `Réduire : ${driver.name}`, description: `${driver.why} Solution proposée : ${driver.saving}`, priority: "high", status: "todo" });
+    log(`Optimisation de coût demandée : ${driver.name}`);
+    save(); render();
+    document.getElementById("taches").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderCostDrivers() {
+    document.getElementById("costDrivers").innerHTML = COST_DRIVERS.slice().sort((a,b) => b.weight - a.weight).map(driver => `<article class="cost-card"><div class="cost-card-head"><strong>${escapeHtml(driver.name)}</strong><em>${escapeHtml(driver.estimate)}</em></div><div class="bar" style="margin-top:8px"><i style="width:${driver.weight}%;background:var(--amber)"></i></div><p>${escapeHtml(driver.why)}</p><div class="saving">▸ ${escapeHtml(driver.saving)}</div>${driver.mode === "auto" ? '<span class="cost-status auto">optimisation sûre · appliquée automatiquement</span>' : `<button class="btn cost-fix" data-cost="${driver.id}" type="button">créer une tâche pour le LLM</button>`}</article>`).join("");
+    document.querySelectorAll(".cost-fix").forEach(button => button.onclick = () => requestCostFix(COST_DRIVERS.find(driver => driver.id === button.dataset.cost)));
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+  }
+  function formatDate(value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleString("fr-CH", { dateStyle: "short", timeStyle: "short" });
+  }
+  function render() {
+    const tasks = allTasks();
+    renderProgress(tasks); renderProjectGraph(tasks); renderTasks(tasks); renderAgents(); renderCostDrivers(); renderHistory(); renderGitHistory();
+  }
+
+  document.getElementById("filters").addEventListener("click", e => {
+    const button = e.target.closest("[data-filter]");
+    if (!button) return;
+    filter = button.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach(b => b.classList.toggle("active", b === button));
+    render();
+  });
+  document.getElementById("search").addEventListener("input", render);
+  document.getElementById("projectFilter").addEventListener("change", event => {
+    projectFilter = event.target.value;
+    render();
+  });
+  document.getElementById("undoBtn").addEventListener("click", undo);
+  document.addEventListener("keydown", event => {
+    const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !editing) {
+      event.preventDefault(); undo();
+    }
+  });
+  document.getElementById("addForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const title = document.getElementById("newTitle").value.trim();
+    const id = "custom-" + Date.now();
+    pushUndo();
+    customTasks.push({
+      id, title,
+      project: document.getElementById("newCategory").value,
+      category: "Ajout manuel",
+      priority: document.getElementById("newPriority").value,
+      description: document.getElementById("newDescription").value.trim(),
+      status: "todo"
+    });
+    log(`Nouvelle tâche ajoutée : ${title}`);
+    e.target.reset(); save(); render();
+  });
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    const payload = { exportedAt: new Date().toISOString(), tasks: allTasks(), hiddenTasks, comments, agentReviews, costDrivers: COST_DRIVERS, history: [...localHistory, ...SEED_HISTORY] };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "pulse-llm-status.json" });
+    link.click(); URL.revokeObjectURL(link.href);
+  });
+  document.querySelectorAll("[data-scroll]").forEach(button => button.addEventListener("click", () => {
+    document.getElementById(button.dataset.scroll).scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  renderLlmContext();
+  render();
 </script>
-
 </body>
 </html>
