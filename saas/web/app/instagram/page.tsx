@@ -15,7 +15,7 @@ import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
-import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
+import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 import { Comparer } from "@/components/comparaison";
 
@@ -333,6 +333,11 @@ export default async function InstagramPage({
     d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
   const maxCell = Math.max(...d.heatmap.flat().map((c) => c.avgReach), 1);
 
+  // La table des POSTS ne peut pas porter d'écart — voir son pied. On garde la
+  // comparaison sous la main pour l'écrire, plutôt que de laisser un silence.
+  const cmpPosts =
+    d.comparaison.ventilations && d.comparaison.reference ? d.comparaison.reference.label : null;
+
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
@@ -571,50 +576,11 @@ export default async function InstagramPage({
         </div>
       )}
 
-      {/* ── PAR LABEL ── */}
-      {d.byLabel.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-[14px] font-semibold text-ink mb-3">
-            Performance par thème{" "}
-            <span className="text-faint font-normal">
-              · moyennes par post · triée par {metricLabel(d.topMetric)}
-              {d.scope === "historique" ? " · tout l'historique" : " · période filtrée"}
-            </span>
-          </h2>
-          <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
-            <div className="max-h-[46vh] overflow-y-auto min-w-[640px]">
-              <table className="w-full text-[12.5px]">
-                <thead>
-                  <tr className="text-[10px] uppercase tracking-wide text-faint">
-                    {["Thème", "Posts", "Portée", "Vues", "J'aime", "Comm.", "Enreg.", "Eng."].map((h, hi) => (
-                      <th
-                        key={h}
-                        className={`${hi === 0 ? "text-left px-5" : "text-right px-2"} ${hi === 7 ? "pr-5" : ""} font-semibold py-3 sticky top-0 bg-white z-10 border-b border-line`}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {d.byLabel.map((l) => (
-                    <tr key={l.label}>
-                      <td className="px-5 py-3 font-semibold text-brand">{l.label}</td>
-                      <td className="px-2 py-3 text-right font-mono text-muted">{l.count}</td>
-                      <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mReach)}</td>
-                      <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mViews)}</td>
-                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mLikes)}</td>
-                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mComments)}</td>
-                      <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mSaved)}</td>
-                      <td className="px-2 pr-5 py-3 text-right font-mono text-ink">{l.avgEng.toFixed(1)} %</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── PAR LABEL ──
+          Le module vit dans `channel-dash.tsx` et non ici : dessiné dans une page
+          que `middleware.ts` protège, il ne serait vérifiable qu'en production
+          (même raison que `couts-modules` et `hors-theme`). Une page compose. */}
+      <ByLabelInsta d={d} />
 
       {/* ── POSTS DE LA PÉRIODE ── */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
@@ -652,9 +618,26 @@ export default async function InstagramPage({
         </div>
       </details>
 
+      {/* UN SEUL PIED pour les deux tables de posts, et il porte maintenant la
+          limite qui compte quand une comparaison est posée : une publication
+          appartient à UNE période, celle où elle a été publiée. Une colonne
+          d'écart ici n'aurait donc que des naissances, ligne après ligne — un
+          « nouveau » sur cent lignes n'est pas une comparaison, c'est du bruit
+          présenté comme une mesure. */}
       <p className="text-[11.5px] text-faint leading-relaxed">
         Portée en vert = au-dessus de ton post moyen ({fmtCHF(d.histReach)}). Engagement =
         (j&apos;aime + commentaires + enregistrements) / portée.
+        {cmpPosts && (
+          <>
+            {" "}
+            Ces deux tables ne portent pas d&apos;écart contre {cmpPosts} : une publication
+            appartient à UNE période, celle où elle a été publiée — elle n&apos;a pas d&apos;avant.
+            Une colonne d&apos;écart n&apos;aurait donc que des naissances, ligne après ligne, et
+            « nouveau » répété cent fois n&apos;est pas une comparaison. Ce qui SE compare
+            d&apos;une période à l&apos;autre est au-dessus : le module « Comparer », et la table
+            « Performance par thème ».
+          </>
+        )}
       </p>
     </main>
   );

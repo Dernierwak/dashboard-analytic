@@ -63,15 +63,15 @@ export default async function MetaPage({
           suppose qu'on ait déjà en tête celle qu'on regarde. */}
       <Comparer c={d.comparaison} sp={d.params} path="/meta" tete={d.metric}
         metriqueParDefaut="spend" couleur="#1a56ff" />
-      <ByLabelTable d={d} />
+      {/* Les deux tables qui suivent portent l'écart des MÊMES deux périodes que
+          le module ci-dessus, dès qu'une comparaison est posée — et rien de plus
+          quand elle ne l'est pas. */}
+      <ByLabelTable d={d} path="/meta" />
 
-      {/* Ce que la table permet est écrit DANS son pied, où c'est calculé :
-          promettre ici un dépliage que la donnée ne permet pas fait chercher
-          une panne. */}
-      <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Par campagne <span className="text-faint font-normal">· triées par dépense</span>
-      </h2>
-      <CampaignTable d={d} channel="meta" />
+      {/* Ce que la table permet est écrit DANS son pied, où c'est calculé, et son
+          titre dit son classement — promettre ici un dépliage ou un tri que la
+          donnée ne permet pas fait chercher une panne. */}
+      <CampaignTable d={d} channel="meta" path="/meta" />
       <p className="text-[11.5px] text-faint mt-3 leading-relaxed">
         Le thème relie tes campagnes cross-canal (page Labels) — c&apos;est lui qui permet
         le « ce que chaque thème rapporte » du rapport.

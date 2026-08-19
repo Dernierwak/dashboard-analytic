@@ -228,15 +228,18 @@ export function Comparer({
       </summary>
       <ul className="text-[10.5px] text-faint leading-relaxed mt-1.5 space-y-1 list-disc pl-4">
         <li>
-          <strong className="text-muted">Pas de comparaison campagne par campagne.</strong> La
-          ventilation par campagne dont on dispose côté revenu (`by_campaign`) n&apos;est pas
-          datée : la découper par période produirait un chiffre inventé. La table « Par campagne »
-          suit la période affichée, mais ne se compare à aucune autre.
+          <strong className="text-muted">Pas de revenu ni de ROAS, à aucun niveau.</strong> Google
+          Analytics rend le revenu au niveau du COMPTE, pas du canal — un « revenu Meta »
+          n&apos;existe pas, donc sa variation non plus. Et la ventilation par campagne dont on
+          dispose côté revenu (`by_campaign`) n&apos;est pas datée : la découper par période
+          produirait un chiffre inventé. Les tables ci-dessous comparent donc ce qui EST daté —
+          dépense, clics, impressions et les taux qui en découlent — jamais ce que ça a rapporté.
         </li>
         <li>
-          <strong className="text-muted">Pas de revenu ni de ROAS.</strong> Google Analytics rend le
-          revenu au niveau du COMPTE, pas du canal — un « revenu Meta » n&apos;existe pas, donc sa
-          variation non plus.
+          <strong className="text-muted">Pas d&apos;écart par adset, groupe ou annonce.</strong>{" "}
+          L&apos;écart des tables du dessous se lit au niveau de la campagne et du thème. Un cran
+          plus bas, la question posée n&apos;est plus « qui a bougé » mais « comment est faite cette
+          campagne » — et la référence n&apos;y est pas ventilée.
         </li>
         {c.friseTronquee && (
           <li>

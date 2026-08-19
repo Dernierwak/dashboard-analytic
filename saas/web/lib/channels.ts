@@ -35,6 +35,7 @@ export type DashParams = {
   cmp?: string;     // à quoi comparer : prev | yoy | custom
   cfrom?: string;   // plage de référence choisie : YYYY-MM-DD
   cto?: string;
+  tri?: string;     // tri des tables comparables : "ecart" | absent (la période affichée)
 };
 
 export function periodDays(sp: DashParams | undefined): Days {
@@ -155,11 +156,18 @@ export function pct(cur: number, prev: number): number | null {
 //     fait « +∞ % », il n'a pas de point de comparaison.
 //
 // Ce que le module NE compare PAS, et pourquoi :
-//   · pas de comparaison PAR CAMPAGNE dans le temps — la ventilation par
-//     campagne dont on dispose côté revenu (`by_campaign`, GA4, worker) n'est
-//     pas datée ; la découper par période produirait un chiffre inventé ;
 //   · pas de ROAS ni de revenu — GA4 rend le revenu au niveau du COMPTE, pas du
-//     canal : un « revenu Meta » n'existe pas, donc sa variation non plus.
+//     canal : un « revenu Meta » n'existe pas, donc sa variation non plus. Et la
+//     ventilation par campagne dont on dispose côté revenu (`by_campaign`, GA4,
+//     worker) n'est PAS DATÉE (docs/references/plateformes.md) : la découper par
+//     période produirait un chiffre inventé.
+//
+// EN REVANCHE, LA DÉPENSE, LES CLICS ET LES IMPRESSIONS SONT DATÉS PAR CAMPAGNE.
+// `meta_ads_insights` et `google_ads_insights` portent une ligne par campagne et
+// par jour — c'est ce qui permet aux tables posées sous ce module de montrer le
+// même écart, campagne par campagne et thème par thème, sans rien inventer. La
+// limite de `by_campaign` porte sur le REVENU, pas sur les métriques de régie ;
+// les confondre aurait interdit une comparaison que les données portent.
 
 export type ModeCompare = "prev" | "yoy" | "custom";
 
@@ -198,6 +206,37 @@ export type PointFrise = Record<string, number>;
  *  graphe d'évolution, et pour la même raison. */
 export const FRISE_MAX = 120;
 
+/**
+ * CE QUE LA FENÊTRE DE RÉFÉRENCE A PORTÉ, **LIGNE PAR LIGNE**.
+ *
+ * C'est ce qui permet aux tables posées SOUS le module « Comparer » (par thème,
+ * par campagne) de montrer le même écart que lui sans refaire sa cuisine. Elles
+ * ne recalculent ni la fenêtre de référence, ni les refus, ni le rognage du jour
+ * en cours : `batirComparaison` les a déjà tranchés une fois, ici, et rend `null`
+ * dès que la comparaison ne tient pas. Un second exemplaire de cette liste de
+ * règles finirait par diverger — c'est exactement le défaut qui vient d'être
+ * corrigé sur les constructeurs de liens.
+ *
+ * `reference` ne porte que les grandeurs qui S'ADDITIONNENT, brutes : les taux
+ * (CTR, CPC, engagement) se dérivent des totaux à l'affichage, comme partout
+ * ailleurs. Un CPC stocké par ligne puis re-moyenné donnerait à la campagne à
+ * trois clics le poids de celle à quatre cents.
+ */
+export type VentilationCompare = {
+  /** Les totaux de la fenêtre de RÉFÉRENCE, par clé de ligne. Une clé absente
+   *  n'est pas une ligne à zéro : c'est une ligne qui n'a rien porté. */
+  reference: Record<string, PointFrise>;
+  /**
+   * La PREMIÈRE date relevée pour chaque clé, sur tout l'historique chargé et
+   * sous les MÊMES filtres. C'est elle qui distingue les deux absences que rien
+   * ne séparait : une ligne NÉE après la référence (elle n'a pas d'écart, elle a
+   * une naissance) et une ligne qui existait déjà mais s'est tue (là, l'absence
+   * de mesure n'est pas une baisse de 100 %). Sans cette date, les deux
+   * s'écriraient « nouveau » et l'une des deux mentirait.
+   */
+  premiere: Record<string, string>;
+};
+
 export type Comparaison = {
   mode: ModeCompare;
   courant: FenetreCompare;
@@ -223,6 +262,14 @@ export type Comparaison = {
   /** Une des deux frises a été coupée à `FRISE_MAX` jours. Les chiffres, eux,
    *  portent toujours sur la fenêtre entière — il faut donc le dire. */
   friseTronquee: boolean;
+  /**
+   * CE QUE LES TABLES DU DESSOUS LISENT, une entrée par table comparable
+   * (`campagne`, `theme`). **`null` dès que la comparaison ne tient pas** —
+   * refus, ou référence sans aucune ligne relevée : les modules du dessous n'ont
+   * alors rien à tester de leur côté, la couche d'écart disparaît et la table
+   * redevient exactement ce qu'elle était.
+   */
+  ventilations: Record<string, VentilationCompare> | null;
 };
 
 const ISO_JOUR = /^\d{4}-\d{2}-\d{2}$/;
@@ -285,16 +332,22 @@ function frisePar(
 }
 
 /**
- * Construit la comparaison. `sommes` agrège les lignes d'une fenêtre et `jour`
- * en agrège une journée — les deux seuls morceaux qui changent d'un canal à
- * l'autre, et ils restent chez l'appelant qui connaît ses lignes.
+ * Construit la comparaison. `sommes` agrège les lignes d'une fenêtre, `jour` en
+ * agrège une journée et `ventiler` répartit la fenêtre de référence par ligne de
+ * table — les trois seuls morceaux qui changent d'un canal à l'autre, et ils
+ * restent chez l'appelant qui connaît ses lignes.
+ *
+ * `ventiler` n'est appelé QUE lorsque la comparaison tient : c'est ce qui rend
+ * impossible qu'une table du dessous affiche un écart là où le module de
+ * comparaison affiche un refus.
  */
 function batirComparaison(
   w: Window,
   sp: DashParams | undefined,
   couverture: { debut: string | null; fin: string | null },
   sommes: (since: Date, until: Date) => { mesures: number; metriques: MetriqueCompare[] },
-  jour: (cle: string) => PointFrise
+  jour: (cle: string) => PointFrise,
+  ventiler: (since: Date, until: Date) => Record<string, VentilationCompare>
 ): Comparaison {
   const mode = modeCompare(sp);
   const cur = sommes(w.since, w.until);
@@ -313,6 +366,7 @@ function batirComparaison(
     friseCourant: [],
     friseReference: [],
     friseTronquee: false,
+    ventilations: null,
   });
 
   if (!ref || ref.since > ref.until)
@@ -363,6 +417,10 @@ function batirComparaison(
     friseCourant: fc.pts,
     friseReference: fr.pts,
     friseTronquee: fc.tronquee || fr.tronquee,
+    // Une référence SANS AUCUNE LIGNE n'est pas une référence à zéro : le module
+    // de comparaison l'écrit en toutes lettres au lieu d'un pourcentage, et les
+    // tables du dessous n'ont donc rien à poser non plus.
+    ventilations: rf.mesures > 0 ? ventiler(ref.since, ref.until) : null,
   };
 }
 
@@ -652,7 +710,44 @@ function buildDash(
       // Un jour sans campagne est un jour à ZÉRO, pas un jour absent : c'est ce
       // qui distingue « tu dépenses peu » de « tu dépenses sur peu de jours ».
       return (cle: string) => parJour.get(cle) ?? { spend: 0, clicks: 0, impressions: 0 };
-    })()
+    })(),
+    // LA VENTILATION — ce que la référence a porté PAR CAMPAGNE et PAR THÈME.
+    //
+    // Une seule passe sur les lignes DÉJÀ CHARGÉES : aucune requête de plus, la
+    // seconde fenêtre ne coûte donc pas un aller-retour de base mais un parcours
+    // en mémoire. Le plafond reste celui du `.limit(12000)` du chargement, et il
+    // n'est pas contourné en silence — une référence antérieure à la plus vieille
+    // ligne chargée tombe sur le refus « tes données ne remontent qu'au … ».
+    //
+    // LE THÈME D'UNE CAMPAGNE EST CELUI D'AUJOURD'HUI, des deux côtés. C'est le
+    // seul qu'on ait : `meta/google_campaign_config` porte l'étiquette courante,
+    // pas son histoire. Une campagne ré-étiquetée hier déplace donc tout son
+    // passé avec elle — le pied de la table le dit.
+    (since, until) => {
+      const campagne: VentilationCompare = { reference: {}, premiere: {} };
+      const theme: VentilationCompare = { reference: {}, premiere: {} };
+      const vide = () => ({ spend: 0, clicks: 0, impressions: 0, reach: 0 });
+      for (const r of rows) {
+        if (!keep(r.campaign)) continue;
+        const j = r.date.slice(0, 10);
+        const lbl = cfg.get(r.campaign)?.label ?? null;
+        // La première date se prend sur TOUT l'historique chargé, pas sur la
+        // fenêtre : c'est une naissance qu'on cherche, pas une présence.
+        if (!campagne.premiere[r.campaign] || j < campagne.premiere[r.campaign])
+          campagne.premiere[r.campaign] = j;
+        if (lbl && (!theme.premiere[lbl] || j < theme.premiere[lbl])) theme.premiere[lbl] = j;
+        if (!inWin(r.date, since, until)) continue;
+        const c = campagne.reference[r.campaign] ?? vide();
+        c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
+        campagne.reference[r.campaign] = c;
+        if (lbl) {
+          const t = theme.reference[lbl] ?? vide();
+          t.spend += r.spend; t.clicks += r.clicks; t.impressions += r.impressions; t.reach += r.reach;
+          theme.reference[lbl] = t;
+        }
+      }
+      return { campagne, theme };
+    }
   );
 
   return {
@@ -1093,7 +1188,37 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
       // plutôt qu'en le posant sur l'axe.
       return (cle: string) =>
         parJour.get(cle) ?? { posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0 };
-    })()
+    })(),
+    // LA VENTILATION — ce que la référence a porté PAR THÈME.
+    //
+    // Un seul découpage ici, là où la publicité en a deux : une publication
+    // n'existe que dans la période où elle a été publiée, donc une table de
+    // POSTS n'a pas d'écart à montrer — elle n'aurait que des naissances. C'est
+    // écrit sur la page plutôt que contourné par un « +100 % » par ligne.
+    //
+    // `engSomme` est la somme des taux d'engagement POST PAR POST, et c'est
+    // volontaire : la table des thèmes affiche `avgEng`, une moyenne de taux.
+    // Comparer sa moyenne de taux au taux calculé sur les totaux (celui du module
+    // « Comparer ») opposerait deux nombres différents sous le même nom.
+    (since, until) => {
+      const theme: VentilationCompare = { reference: {}, premiere: {} };
+      for (const p of all) {
+        const j = String(p.date).slice(0, 10);
+        for (const l of p.labels)
+          if (!theme.premiere[l] || j < theme.premiere[l]) theme.premiere[l] = j;
+        if (!inWin(p.date, since, until)) continue;
+        for (const l of p.labels) {
+          const x = theme.reference[l] ?? {
+            posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0, engSomme: 0,
+          };
+          x.posts += 1; x.reach += p.reach; x.views += p.views;
+          x.likes += p.likes; x.comments += p.comments; x.saved += p.saved;
+          x.engSomme += p.eng;
+          theme.reference[l] = x;
+        }
+      }
+      return { theme };
+    }
   );
 
   return {
