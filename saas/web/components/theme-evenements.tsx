@@ -39,9 +39,17 @@ export function ThemeEvenementsModule({ d }: { d: EvenementsData }) {
   // bascule alors sur ce qu'on sait vraiment (le nombre de thèmes en attente),
   // et le module dit quoi faire. Même arbitrage que `labels-couverture` avec
   // son `mesurable: false` : deux vides, deux mots.
-  const mesurable = d.ga4Connecte && d.catalogueMaj !== null && d.catalogue.length > 0;
+  const mesurable =
+    !d.migrationManquante && d.ga4Connecte && d.catalogueMaj !== null && d.catalogue.length > 0;
 
-  const verdict: { texte: string; couleur: string } = !d.ga4Connecte
+  // La migration passe AVANT tout le reste, et ce n'est pas un détail d'ordre :
+  // quand la colonne manque, PostgREST refuse le select entier, donc le
+  // catalogue ET les thèmes reviennent vides. Testé après `ga4Connecte`, on
+  // aurait affiché « jamais récolté » — et envoyé relancer une récolte qui ne
+  // peut rien écrire. C'est exactement la boucle dans laquelle David a tourné.
+  const verdict: { texte: string; couleur: string } = d.migrationManquante
+    ? { texte: "la base n'est pas à jour", couleur: "#c0392b" }
+    : !d.ga4Connecte
     ? { texte: "Google Analytics n'est pas connecté", couleur: "#5a5d66" }
     : d.catalogueMaj === null
     ? { texte: "jamais récolté", couleur: "#5a5d66" }
@@ -72,6 +80,19 @@ export function ThemeEvenementsModule({ d }: { d: EvenementsData }) {
           </div>
         )}
       </div>
+
+      {/* La seule situation qu'aucune récolte ne réparera : on la met en tête,
+          avec le geste exact, parce que c'est la plus coûteuse en temps perdu. */}
+      {d.migrationManquante && (
+        <p className="text-[12.5px] text-neg leading-relaxed mb-3 max-w-[70ch]">
+          Le tableau des événements n&apos;existe pas encore dans ta base, et tant
+          qu&apos;il manque, <span className="font-semibold">aucune récolte ne peut rien
+          y écrire</span> — relancer ne changera rien. Joue{" "}
+          <code className="font-mono text-[11.5px]">supabase/migrations/000_run_me_all.sql</code>{" "}
+          dans Supabase → SQL editor, puis relance « ↻ Mes données ». Ce fichier est
+          rejouable sans risque.
+        </p>
+      )}
 
       {/* Rang 3 — LE chiffre. Aucune forme au-dessus de lui. */}
       <div className="flex items-baseline gap-2.5 flex-wrap">

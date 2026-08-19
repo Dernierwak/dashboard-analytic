@@ -74,6 +74,29 @@ est donc fiable côté Google, contrairement à Meta.
 
 ## GA4
 
+**Fraîcheur : 24 à 48 heures pour qu'une journée se pose.** « Data processing can
+take 24-48 hours. During that time, data in your reports may change. » Les paliers
+annoncés : temps réel « typically a few minutes », intraday 2-6 h en standard
+(≈ 1 h en 360), quotidien 12 h / 18 h / 24 h+ selon le volume d'événements de la
+propriété. Google précise que ces durées **« are not a guarantee, nor an SLA or an
+SLO »** — elles peuvent donc être dépassées sans que rien ne le signale.
+
+**Révision de l'attribution : jusqu'à 12 jours.** « Attribution credit for key
+events can change for up to 12 days after the key event is recorded », au fur et à
+mesure que la modélisation des événements clés s'affine. **Conséquence directe** :
+un jour déjà récolté continue de bouger pendant douze jours sur les deux colonnes
+qui comptent — `conversions` (les événements clés) et `totalRevenue`. C'est le
+chiffre qui fixe `_RECOUVREMENT_JOURS_GA4` dans `components/ga4.py`, et
+contrairement aux 30 jours d'Instagram ce **n'est pas un pari** : c'est le délai
+au-delà duquel Google n'annonce plus de révision.
+
+Sources : [[GA4] Data freshness](https://support.google.com/analytics/answer/11198161) ·
+[[GA4] Data freshness and Service Level Agreement constraints](https://support.google.com/analytics/answer/12233314)
+
+**Aucune méthode pour savoir si un rapport est complet.** L'API Data ne dit pas si
+tous les hits d'une plage ont fini d'être traités. On ne peut donc pas demander
+« est-ce stable ? » — on relit la fenêtre, c'est tout.
+
 **Un événement clé est un booléen, pas un rang.** La ressource Admin
 `properties.keyEvents` porte `name`, `eventName`, `createTime`, `custom`,
 `deletable`, `countingMethod` (`ONCE_PER_EVENT` ou `ONCE_PER_SESSION`) et

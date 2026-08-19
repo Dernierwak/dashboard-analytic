@@ -476,6 +476,16 @@ def run(force: bool = False, only_user: str | None = None,
         except Exception:
             accts = []
 
+        # CE QUI DÉCLENCHE LA SUITE, ET POURQUOI CE N'EST PLUS `logs`.
+        # La labellisation, le rapport et l'email étaient gardés par `if logs:`
+        # — c'est-à-dire « quelque chose a été écrit dans le journal ». Ça
+        # marchait tant que le journal ne contenait QUE des récoltes. Depuis
+        # qu'un saut de GA4 s'y journalise (voir plus bas), `logs` n'est plus
+        # jamais vide : un compte sans aucune connexion déclencherait un rapport
+        # et un email sur zéro donnée. `a_tente` dit ce que `logs` disait
+        # vraiment : au moins une plateforme a été appelée.
+        a_tente = False
+
         # Meta Ads + Instagram (token utilisateur) — la ligne google n'a pas de meta_token.
         for a in accts:
             token = a.get("meta_token")
@@ -485,6 +495,7 @@ def run(force: bool = False, only_user: str | None = None,
                              (_fetch_instagram, (sb, uid, token, a.get("instagram_business_id")))):
                 if fn is _fetch_instagram and not a.get("instagram_business_id"):
                     continue
+                a_tente = True
                 try:
                     logs.append(fn(*args))
                 except Exception as e:
@@ -495,23 +506,46 @@ def run(force: bool = False, only_user: str | None = None,
 
         # Google Ads
         if g.get("google_refresh_token") and g.get("google_customer_id"):
+            a_tente = True
             try:
                 logs.append(_fetch_google(sb, uid, g["google_refresh_token"], g["google_customer_id"]))
             except Exception as e:
                 logs.append(f"google KO: {e}")
 
         # GA4 (run_ga4_fetch est déjà headless)
+        #
+        # LE SAUT SE JOURNALISE — c'est tout l'objet de la branche `else`. Le
+        # `logs.append` vivait À L'INTÉRIEUR du `if` : quand l'une des deux
+        # conditions manquait, GA4 n'était pas appelé ET rien n'était écrit. La
+        # récolte annonçait « terminé », et personne ne pouvait savoir que GA4
+        # n'avait jamais été demandé. On nomme la COLONNE qui manque, jamais son
+        # contenu — un refresh_token ne s'écrit nulle part.
         if g.get("ga4_property_id") and g.get("google_refresh_token"):
+            a_tente = True
             try:
                 res = run_ga4_fetch(sb, uid, refresh_token=g["google_refresh_token"],
                                     property_id=g["ga4_property_id"])
                 logs.append(f"ga4: {res.get('message', '')}")
             except Exception as e:
                 logs.append(f"ga4 KO: {e}")
+        elif not g:
+            logs.append("ga4 SAUTÉ : aucune connexion Google sur ce compte "
+                        "(aucune ligne connected_accounts avec provider='google') "
+                        "→ Comptes → Connexions")
+        else:
+            _absents = [c for c in ("ga4_property_id", "google_refresh_token")
+                        if not g.get(c)]
+            _quoi = {
+                "ga4_property_id": "aucune propriété GA4 choisie",
+                "google_refresh_token": "aucun jeton Google (reconnexion à faire)",
+            }
+            logs.append("ga4 SAUTÉ : " + " et ".join(_quoi[c] for c in _absents)
+                        + " — colonne(s) vide(s) dans connected_accounts : "
+                        + ", ".join(_absents))
 
         # Labellisation IA des nouveaux contenus (posts + campagnes sans thème).
         # Best-effort : jamais bloquant, ne touche jamais un label posé à la main.
-        if logs:
+        if a_tente:
             try:
                 from saas.worker.labeling import auto_label
                 logs.append(auto_label(sb, uid))
@@ -522,7 +556,7 @@ def run(force: bool = False, only_user: str | None = None,
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
         # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
         # RESEND_API_KEY, send_email passe en dry-run (aucun envoi).
-        if logs:
+        if a_tente:
             try:
                 from saas.worker.build_report import publish_weekly_report
                 email_to = None

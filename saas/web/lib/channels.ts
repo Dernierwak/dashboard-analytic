@@ -1355,6 +1355,17 @@ export type EvenementsData = {
    */
   disparus: string[];
   peutEditer: boolean;
+  /**
+   * La migration n'a pas été jouée : `profiles.ga4_event_catalog` ou la table
+   * `theme_ga4_events` n'existent pas. À NE PAS confondre avec « jamais
+   * récolté » — c'est la confusion qui a coûté le plus cher ici : l'écran
+   * envoyait relancer une récolte qui ne pouvait rien écrire, indéfiniment.
+   *
+   * Et l'effet ne s'arrête pas au catalogue : PostgREST refuse le `select`
+   * ENTIER quand une seule colonne demandée manque, donc `profiles.labels`
+   * tombe avec lui et les thèmes disparaissent aussi de cet écran.
+   */
+  migrationManquante: boolean;
 };
 
 export async function getThemeEvenements(): Promise<EvenementsData> {
@@ -1370,6 +1381,14 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
     supabase.from("theme_ga4_events").select("label, event_name, rang").eq("user_id", uid),
     supabase.from("connected_accounts").select("ga4_property_id").eq("user_id", uid),
   ]);
+
+  // PGRST204 / PGRST205 : PostgREST refuse AVANT d'atteindre Postgres (colonne
+  // ou table absente du cache de schéma). 42703 : `undefined_column` remonté
+  // par Postgres lui-même. Les trois disent la même chose — la migration n'est
+  // pas passée — et aucun n'est une panne : c'est une installation inachevée.
+  const codeSchema = (e: { code?: string } | null | undefined) =>
+    ["PGRST204", "PGRST205", "42703"].includes(e?.code ?? "");
+  const migrationManquante = codeSchema(profRes.error) || codeSchema(choixRes.error);
 
   const prof = profRes.data?.[0] as
     | { labels: string[] | null; ga4_event_catalog: unknown }
@@ -1451,5 +1470,6 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
     themes,
     disparus,
     peutEditer: compte.peutEditer,
+    migrationManquante,
   };
 }

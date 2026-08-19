@@ -548,8 +548,24 @@ def upsert_ga4_events(supabase: Client, user_id: str, rows: list[dict]) -> None:
     ).execute()
 
 
+# Ce que PostgREST répond quand la colonne visée n'existe pas. Deux codes, et
+# ils ne veulent pas dire la même chose :
+#  · PGRST204 — « Could not find the '<col>' column of '<table>' in the schema
+#    cache ». C'est PostgREST qui refuse AVANT d'envoyer quoi que ce soit à
+#    Postgres, sur la foi de son cache de schéma. C'est le code qu'on voit quand
+#    la migration n'a jamais été jouée.
+#  · 42703 — `undefined_column`, le code SQLSTATE de Postgres lui-même
+#    (postgresql.org/docs/current/errcodes-appendix.html). C'est celui qui sort
+#    quand le cache de PostgREST est en avance sur la base réelle.
+# Les deux se traduisent par la même phrase pour David : la migration n'est pas
+# passée. Mais il faut les distinguer de TOUT LE RESTE — un réseau coupé, une
+# clé expirée, un jsonb trop gros — qui n'a rien à voir et qui se réparait
+# jusqu'ici en silence, c'est-à-dire jamais.
+_COLONNE_ABSENTE = ("PGRST204", "42703")
+
+
 def upsert_ga4_event_catalog(supabase: Client, user_id: str, evenements: list[dict],
-                             maj: str) -> None:
+                             maj: str) -> str | None:
     """Remplace le catalogue des événements GA4 de la propriété.
 
     ON REMPLACE, ON NE FUSIONNE PAS : le catalogue dit ce que la propriété émet
@@ -561,15 +577,42 @@ def upsert_ga4_event_catalog(supabase: Client, user_id: str, evenements: list[di
     et un événement disparu du catalogue y reste coché. C'est voulu — l'écran
     le signale plutôt que de décocher tout seul un réglage qu'on n'a pas posé.
 
-    Silencieux si la colonne n'existe pas encore (migration non passée) : la
-    récolte ne doit pas échouer pour un cache.
+    NE LÈVE JAMAIS, MAIS NE SE TAIT PLUS. La récolte ne doit pas échouer pour un
+    cache — c'était déjà la règle, et elle ne change pas. Ce qui change, c'est
+    qu'un `except: pass` rendait l'échec INVISIBLE : une colonne absente, et la
+    récolte annonçait « terminé » sans avoir rien écrit. Le retour porte
+    désormais la raison, en clair, pour que l'appelant la journalise.
+
+    Returns: None si le catalogue a bien été écrit, sinon la phrase à afficher.
     """
     try:
-        supabase.table("profiles").update({
-            "ga4_event_catalog": {"maj": maj, "evenements": evenements or []}
-        }).eq("id", user_id).execute()
-    except Exception:
-        pass
+        res = (
+            supabase.table("profiles")
+            .update({"ga4_event_catalog": {"maj": maj, "evenements": evenements or []}})
+            .eq("id", user_id)
+            .execute()
+        )
+    except Exception as e:
+        code = str(getattr(e, "code", "") or "")
+        # supabase-py n'expose pas `code` sur toutes les versions : le message
+        # porte alors le code en clair. On regarde les deux plutôt que de faire
+        # confiance à l'attribut.
+        texte = str(e)
+        if code in _COLONNE_ABSENTE or any(c in texte for c in _COLONNE_ABSENTE):
+            return ("catalogue NON écrit : la colonne profiles.ga4_event_catalog "
+                    "n'existe pas — la migration supabase/migrations/"
+                    "000_run_me_all.sql n'a pas été jouée sur cette base")
+        return f"catalogue NON écrit : {texte}"
+
+    # UN UPDATE QUI NE TOUCHE AUCUNE LIGNE NE LÈVE PAS. C'est le piège RLS
+    # documenté dans CLAUDE.md : une politique qui refuse l'écriture ne renvoie
+    # pas d'erreur, elle renvoie zéro ligne. Le worker passe par la clé service
+    # et ne devrait jamais tomber ici ; l'ancien chemin Streamlit, lui, écrivait
+    # sous la session de l'utilisateur — et un refus y était parfaitement muet.
+    if not (getattr(res, "data", None) or []):
+        return ("catalogue NON écrit : aucune ligne profiles touchée pour cet "
+                "utilisateur (ligne absente, ou écriture refusée par RLS)")
+    return None
 
 
 # ── Boucle de feedback (rapport hebdo) — helpers ──────────────────────────────

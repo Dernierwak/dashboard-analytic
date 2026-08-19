@@ -29,6 +29,38 @@ from scripts.insert_data import (
 # (qui ressusciterait à l'écran des événements retirés du site depuis).
 _CATALOGUE_JOURS = 90
 
+# ── LE RECOUVREMENT GA4 — 12 jours, et le chiffre est DOCUMENTÉ ───────────────
+#
+# La reprise partait de « dernière date en base + 1 jour ». C'est le défaut
+# corrigé pour Meta et Google dans `saas/worker/fetch_all.py` (voir le pavé
+# « LE RECOUVREMENT » qui y explique les deux trous : la journée à moitié
+# écoulée gravée pour toujours, et les chiffres que la plateforme révise après
+# coup). GA4 avait le même, en pire : la boucle va jusqu'à aujourd'hui, donc
+# `latest` devenait aujourd'hui, et le passage suivant repartait de demain.
+#
+# CE QUE GA4 DIT DE SES PROPRES CHIFFRES, et c'est plus dur que Meta ou Google :
+#  · « Data processing can take 24-48 hours. During that time, data in your
+#    reports may change. » Deux jours rien que pour que la journée se pose.
+#  · « Attribution credit for key events can change for up to 12 days after the
+#    key event is recorded », au fur et à mesure que la modélisation s'affine.
+#    Et c'est exactement ce qu'on stocke : `conversions` (les événements clés)
+#    et `totalRevenue` sont deux des trois métriques de `fetch_ga4_insights`.
+# https://support.google.com/analytics/answer/11198161
+# https://support.google.com/analytics/answer/12233314
+#
+# Douze est donc le plus long des deux délais que Google écrit noir sur blanc —
+# ce n'est pas un pari comme les 30 jours d'Instagram, c'est le nombre au-delà
+# duquel Google n'annonce plus de révision. Google précise aussi que ces durées
+# « are not a guarantee, nor an SLA or an SLO » : elles peuvent donc être
+# dépassées, et une valeur relue reste une valeur relue.
+#
+# CE QUE ÇA COÛTE : rien en appels. La boucle découpe en tranches de 90 jours,
+# et 12 jours de recouvrement tiennent dans la tranche que la récolte demandait
+# de toute façon — ZÉRO requête supplémentaire sur un passage de routine. Les
+# lignes réécrites le sont par upsert sur (user_id, date, source, medium,
+# campaign), donc elles REMPLACENT, elles ne s'ajoutent pas.
+_RECOUVREMENT_JOURS_GA4 = 12
+
 
 def fetch_theme_ga4_events(supabase, user_id: str) -> dict[str, list[dict]]:
     """Les événements GA4 rattachés à chaque thème.
@@ -100,20 +132,43 @@ def run_ga4_fetch(
     today = date.today()
 
     # ── LE CATALOGUE D'ABORD, ET QUOI QU'IL ARRIVE ENSUITE ──────────────────
-    # Il est rafraîchi AVANT les gardes de sortie anticipée (« déjà à jour »,
-    # « aucune nouvelle donnée ») : c'est lui qui alimente l'écran où le client
+    # Il est rafraîchi AVANT les sorties anticipées (« la propriété ne rend
+    # rien », départ dans le futur) : c'est lui qui alimente l'écran où le client
     # choisit ses événements, et cet écran doit rester utilisable un jour où il
     # n'y a rien de neuf à récolter. Deux appels d'API, une ligne par nom
     # d'événement — le coût est négligeable devant la récolte elle-même.
+    # ET IL SE JOURNALISE, QUOI QU'IL ARRIVE. `_cat_err` était lu puis jeté, et
+    # `except Exception: pass` avalait le reste : une propriété injoignable, un
+    # scope OAuth absent ou une migration non jouée donnaient tous les trois le
+    # même écran vide et le même « terminé » dans les logs. Le cache ne fait
+    # toujours pas échouer la récolte — mais il DIT ce qui lui est arrivé.
+    catalogue_note = None
     try:
-        catalogue, _cat_err = fetch_ga4_event_catalog(
+        catalogue, cat_err = fetch_ga4_event_catalog(
             access_token, property_id,
             today - timedelta(days=_CATALOGUE_JOURS), today,
         )
-        if not _cat_err:
-            upsert_ga4_event_catalog(supabase, user_id, catalogue, today.isoformat())
-    except Exception:
-        pass  # un cache qui échoue ne fait pas échouer une récolte
+        if cat_err:
+            catalogue_note = f"catalogue NON lu (API GA4) : {cat_err}"
+        elif not catalogue:
+            catalogue_note = (f"catalogue vide : la propriété n'a émis AUCUN événement "
+                              f"sur {_CATALOGUE_JOURS} jours")
+        else:
+            # Le retour porte la raison quand l'écriture n'a pas eu lieu ; None
+            # quand elle a réussi. Voir `scripts/insert_data.py`.
+            echec = upsert_ga4_event_catalog(supabase, user_id, catalogue, today.isoformat())
+            catalogue_note = echec or f"catalogue : {len(catalogue)} événements"
+    except Exception as e:
+        catalogue_note = f"catalogue KO : {e}"
+
+    def _avec_catalogue(msg: str) -> str:
+        """Le mot du catalogue est collé à CHAQUE sortie de la fonction.
+
+        Les sorties anticipées le perdaient, et c'est précisément là qu'un
+        écran d'événements vide est inexplicable : la récolte rend « 0 ligne »
+        sans jamais dire si la liste des événements, elle, a été écrite.
+        """
+        return f"{msg} · {catalogue_note}" if catalogue_note else msg
 
     # Les événements que le client a rattachés à ses thèmes : ce sont EUX qu'on
     # récolte au jour le jour, en plus du plancher du funnel. Voir
@@ -128,15 +183,22 @@ def run_ga4_fetch(
     except Exception:
         _choisis = []
 
+    # LE MÊME DÉPART QUE META ET GOOGLE, ET LA MÊME FONCTION — pas une seconde
+    # copie de la règle. L'import est LOCAL parce qu'il serait circulaire au
+    # niveau du module : `saas/worker/fetch_all.py` importe `run_ga4_fetch` d'ici.
+    # À l'exécution, l'appelant est déjà chargé, donc l'import ne coûte rien.
+    from saas.worker.fetch_all import _depart_recolte
+
     latest = fetch_ga4_latest_date(supabase, user_id) if not force_full else None
-    if latest:
-        since = date.fromisoformat(latest) + timedelta(days=1)
-    else:
-        since = date(today.year, 1, 1)
+    since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_GA4)
     if since_date:
         since = since_date  # choix explicite du pop-up « Mes données »
+    # Ce garde-fou ne peut plus se déclencher sur une reprise (`latest - 12` est
+    # toujours antérieur à aujourd'hui) : il ne reste que pour une date de
+    # départ saisie dans le futur depuis le pop-up « Mes données ».
     if since > today:
-        return {"success": True, "rows": 0, "message": "Données GA4 déjà à jour"}
+        return {"success": True, "rows": 0,
+                "message": _avec_catalogue("Départ demandé après aujourd'hui : rien à récolter")}
 
     # Chunking par 90 jours (cohérent Meta/Google Ads)
     CHUNK = 90
@@ -165,21 +227,31 @@ def run_ga4_fetch(
             event_rows += chunk_events
 
     if not rows:
-        msg = f"Aucune nouvelle donnée GA4. {('Erreur: ' + last_error) if last_error else ''}".strip()
-        return {"success": last_error is None, "rows": 0, "message": msg}
+        # Avec le recouvrement, la fenêtre couvre toujours au moins 12 jours
+        # DÉJÀ connus : zéro ligne ne veut donc plus dire « rien de neuf », ça
+        # veut dire que la propriété ne rend rien du tout sur cette fenêtre.
+        msg = (f"aucune ligne sur {since:%d/%m}→{today:%d/%m} — la propriété ne rend rien"
+               + (f". Erreur : {last_error}" if last_error else ""))
+        return {"success": last_error is None, "rows": 0, "message": _avec_catalogue(msg)}
 
     _p(92, "Sauvegarde Supabase…")
     try:
         upsert_ga4_insights(supabase, user_id, rows)
     except Exception as e:
-        return {"success": False, "rows": 0, "message": f"Sauvegarde échouée: {e}"}
+        return {"success": False, "rows": 0, "message": _avec_catalogue(f"sauvegarde échouée : {e}")}
+    # Le détail par événement : non bloquant, mais plus muet. La table absente
+    # (migration `ga4_events.sql` non jouée) est le cas le plus probable, et
+    # c'est aussi celui qui vide l'écran des événements sans rien expliquer.
+    ev_note = ""
     try:
         upsert_ga4_events(supabase, user_id, event_rows)
-    except Exception:
-        pass  # table absente (migration ga4_events.sql pas passée) → non bloquant
+    except Exception as e:
+        ev_note = f" · événements NON écrits : {e}"
 
     return {"success": True, "rows": len(rows),
-            "message": f"{len(rows)} lignes GA4 chargées (+ {len(event_rows)} événements funnel)"}
+            "message": _avec_catalogue(
+                f"{len(rows)} lignes GA4 depuis le {since:%d/%m} "
+                f"(+ {len(event_rows)} lignes d'événements){ev_note}")}
 
 
 def build_ga4_context(
