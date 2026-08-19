@@ -1,6 +1,7 @@
 from supabase import Client, ClientOptions
 import streamlit as st
 from components.reset_pass import _reset_password_email, _update_password_email
+from scripts.posthog_client import posthog_client
 
 class AuthDashboard():
 
@@ -14,6 +15,13 @@ class AuthDashboard():
         try:
             user = self.supabase.auth.sign_up({"email": email, "password": password})
             if user.session:
+                user_id = user.session.user.id
+                posthog_client.set(distinct_id=user_id, properties={"email": email})
+                posthog_client.capture(
+                    distinct_id=user_id,
+                    event="user_signed_up",
+                    properties={"signup_method": "email_password"},
+                )
                 st.session_state["session"] = user.session
                 st.query_params["refresh_token"] = user.session.refresh_token
                 st.rerun()
@@ -29,6 +37,13 @@ class AuthDashboard():
         try:
             user = self.supabase.auth.sign_in_with_password({"email": email, "password": password})
             if user.session:
+                user_id = user.session.user.id
+                posthog_client.set(distinct_id=user_id, properties={"email": email})
+                posthog_client.capture(
+                    distinct_id=user_id,
+                    event="user_logged_in",
+                    properties={"login_method": "email_password"},
+                )
                 st.session_state["session"] = user.session
                 st.query_params["refresh_token"] = user.session.refresh_token
                 st.rerun()
