@@ -85,6 +85,12 @@ EFFORT_BY_KEY = {
     "orga_essoufflement": "1 h",
     "orga_format": "1 h",
     "orga_reaction": "1 h",
+    # Vérifier un événement dans GA4 → Temps réel, c'est le parcours d'achat à
+    # refaire soi-même : plus long qu'un réglage, plus court qu'un chantier.
+    "theme_event_muet": "30 min",
+    # Comparer un coût par conversion à sa propre marge ne se fait pas dans
+    # l'outil : on sort sa calculette, et c'est vite fait.
+    "theme_event_cout": "10 min",
 }
 
 
@@ -147,6 +153,13 @@ _LEVIER_REGLE = {
     # contenu — il demande de le mettre devant plus de monde. C'est le seul
     # conseil-regle qui tienne l'axe `audience`, qui n'etait servi que par l'IA.
     "orga_reaction": "audience",
+    # Un evenement principal muet est un probleme de MESURE avant d'etre un
+    # probleme commercial : tant qu'on ne sait pas si le tag marche, il n'y a
+    # rien a arbitrer. C'est un prerequis, donc `socle`.
+    "theme_event_muet": "socle",
+    # Le cout par conversion se juge contre une marge, et ce qu'il fait bouger
+    # c'est le budget du theme.
+    "theme_event_cout": "argent",
 }
 # Les conseils IA n'ont pas de cle stable (`ai_<theme>_<n>`) : leur levier se lit
 # dans ce qu'ils demandent de faire. Ordre volontaire — « budget » l'emporte sur
@@ -1017,6 +1030,104 @@ def _reco_dict(key, platform, title, observation, pourquoi, verifier, angle_mort
     }
 
 
+def _reco_evenements(theme, g4t, sem) -> list[dict]:
+    """Les conseils que permettent les événements GA4 désignés sur un thème.
+
+    POURQUOI ICI ET PAS DANS `components/reco_engine.py` : même raison que
+    `_orga_recos` et `_reco_veille` — le moteur est partagé avec le Streamlit,
+    qui ne connaît ni les thèmes ni le rattachement d'un événement à un thème.
+    Ce sont des conseils-règles comme les autres : même dict, même carte, même
+    feedback.
+
+    LA RÈGLE QUI COMMANDE TOUT LE RESTE : ON NE PARLE QUE DE CE QU'ON A MESURÉ.
+    `g4t["evenements"]` ne contient que les événements ayant au moins une ligne
+    GA4 sur la fenêtre ; ceux qui n'en ont pas sont dans `mesure_absente` et ne
+    sont JAMAIS chiffrés — ni à zéro, ni estimés, ni comparés. Un événement
+    absent peut vouloir dire « ça n'a pas eu lieu » comme « le tag est cassé »,
+    et rien dans les données ne tranche entre les deux.
+
+    Le principal porte le verdict, les secondaires servent à comprendre : c'est
+    exactement le partage que le client a posé sur la page Thèmes, et il se lit
+    tel quel dans les deux conseils ci-dessous.
+    """
+    if not g4t:
+        return []
+    evs = g4t.get("evenements") or {}
+    princ = [n for n in (g4t.get("evenements_principaux") or []) if n in evs]
+    absents = g4t.get("mesure_absente") or []
+    secondaires = {n: d for n, d in evs.items() if d.get("rang") == "secondaire"}
+    out = []
+
+    # ── 1. LE PRINCIPAL N'A RIEN, UN SECONDAIRE EN A ─────────────────────────
+    # Le cas qui a motivé toute cette fonctionnalité : le thème produit de
+    # l'intention, pas la conversion sur laquelle son propriétaire veut être
+    # jugé. C'est un constat de FUNNEL, mais sur CE thème — là où `_rule_funnel`
+    # parle du site entier avec les six noms standard.
+    manquants = [n for n in absents if n in (g4t.get("evenements_principaux") or [])]
+    if manquants and secondaires:
+        _s_nom, _s = max(secondaires.items(), key=lambda kv: kv[1]["count"])
+        _p = manquants[0]
+        out.append(_reco_dict(
+            "theme_event_muet", "pub",
+            f"« {_p} » n'a aucune ligne sur ce thème, « {_s_nom} » en a {_s['count']}",
+            f"Sur les campagnes de « {theme} », Google Analytics a compté "
+            f"{_s['count']} fois « {_s_nom} » cette semaine, et pas une seule fois "
+            f"« {_p} » — l'événement que tu as désigné comme principal.",
+            "Deux explications tiennent, et elles n'ont rien à voir : soit les gens "
+            "s'arrêtent avant cette étape (le blocage est sur la page, le prix, le "
+            "paiement), soit l'événement n'est plus envoyé par ton site et il n'y a "
+            "aucun problème commercial derrière.",
+            f"Ouvre GA4 → Temps réel et fais toi-même le parcours jusqu'à déclencher "
+            f"« {_p} ». S'il apparaît, le tag marche et le blocage est réel. S'il "
+            f"n'apparaît pas, c'est le tag qu'il faut réparer avant de conclure quoi "
+            f"que ce soit.",
+            "Je ne sais pas distinguer « personne ne l'a fait » de « l'événement "
+            "n'est plus envoyé » : les deux se ressemblent exactement, une ligne "
+            "absente.",
+            "creuser", 1,
+        ))
+
+    # ── 2. CE QUE COÛTE UNE CONVERSION SUR CE THÈME ─────────────────────────
+    # Le chiffre que le rattachement rend enfin possible : la dépense DU THÈME
+    # divisée par SES conversions à lui. Sans les événements choisis, ce coût se
+    # calculait sur le total `conversions` de GA4, un fourre-tout qui mélangeait
+    # les inscriptions newsletter et les achats.
+    _dep = float((sem or {}).get("spend") or 0)
+    if princ and _dep > 0:
+        _p = max(princ, key=lambda n: evs[n]["count"])
+        _n = evs[_p]["count"]
+        if _n > 0:
+            _cout = _dep / _n
+            # La confiance suit l'échantillon, pas l'envie de conclure. Sous dix
+            # conversions, un coût unitaire bouge de 30 % pour une conversion de
+            # plus ou de moins — c'est une piste, pas une mesure.
+            _conf = "solide" if _n >= 30 else "creuser" if _n >= 10 else "piste"
+            _ctx = ""
+            if secondaires:
+                _s_nom, _s = max(secondaires.items(), key=lambda kv: kv[1]["count"])
+                _ctx = (f" Pour situer : « {_s_nom} », que tu suis en secondaire, "
+                        f"s'est produit {_s['count']} fois sur la même période.")
+            out.append(_reco_dict(
+                "theme_event_cout", "pub",
+                f"Sur « {theme} », chaque « {_p} » t'a coûté {_cout:.2f} CHF",
+                f"{_dep:.0f} CHF dépensés sur les campagnes de ce thème, "
+                f"{_n} fois « {_p} » rattaché à ces mêmes campagnes.{_ctx}",
+                "Ce coût ne se juge pas dans l'absolu : il se juge contre ce que "
+                "l'action te rapporte réellement, et contre ce que le même thème "
+                "coûtait les semaines d'avant.",
+                "Compare-le à ta marge sur une vente (ou à ce que vaut un contact "
+                "chez toi). S'il la dépasse, ce thème te coûte de l'argent même "
+                "quand il convertit — et c'est un problème d'offre ou de ciblage, "
+                "pas de budget.",
+                "Je compte les conversions rattachées aux campagnes de ce thème par "
+                "leur nom de lien : ce qui arrive sans campagne, ou par une autre "
+                "voie, ne rentre pas dans ce calcul. Le vrai coût est donc au plus "
+                "égal à celui-ci, jamais supérieur.",
+                _conf, 2,
+            ))
+    return out
+
+
 def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
@@ -1361,6 +1472,31 @@ def build_payload(sb, user_id: str) -> dict | None:
         goog_cfg = {str(k): v for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
     except Exception:
         meta_cfg, goog_cfg = {}, {}
+
+    # ── LES ÉVÉNEMENTS QUE LE CLIENT A RATTACHÉS À SES THÈMES ────────────────
+    #
+    # {label: [{event_name, rang}]}, les principaux d'abord. Vide quand la
+    # migration `theme_ga4_events.sql` n'est pas passée, ou quand rien n'a été
+    # choisi — et dans ce cas TOUT ce qui suit se tait : aucune règle nouvelle
+    # ne se déclenche, la courbe garde son indicateur d'avant. C'est la
+    # propriété qui rend cette fonctionnalité non bloquante pour les comptes
+    # existants.
+    try:
+        from components.ga4 import fetch_theme_ga4_events
+        theme_events = fetch_theme_ga4_events(sb, user_id) or {}
+    except Exception:
+        theme_events = {}
+
+    # Les lignes datées de `ga4_events`, lues UNE fois. `build_ga4_context`
+    # agrège sur une fenêtre et perd les dates ; la courbe d'un thème, elle, a
+    # besoin de la ventilation par semaine — c'est exactement ce qui manquait au
+    # revenu (voir la note de `_theme_series` : « by_campaign donne un revenu
+    # total par campagne, sans dates »). Un événement choisi n'a pas ce défaut.
+    try:
+        from scripts.fetch_data import fetch_ga4_events as _db_ga4_ev
+        ga4_event_rows = _db_ga4_ev(sb, user_id) or []
+    except Exception:
+        ga4_event_rows = []
 
     # ── Vision globale : matrice full-history + constats validables ──────────
     # Toute la profondeur disponible (Ads depuis le 1er janvier, posts stockés),
@@ -1710,17 +1846,65 @@ def build_payload(sb, user_id: str) -> dict | None:
                 if _wi is not None:
                     reach_w[_wi].append(float(df_insta.iloc[_i].get("reach") or 0))
                     eng_w[_wi].append(float(df_insta.iloc[_i].get("eng") or 0))
+        # ── L'ÉVÉNEMENT PRINCIPAL, SEMAINE PAR SEMAINE ──────────────────────
+        #
+        # C'est la seule série de ce module qui vienne d'un choix EXPLICITE du
+        # client : il a désigné, pour ce thème, l'événement sur lequel il veut
+        # être jugé. Elle passe donc devant la dépense.
+        #
+        # QUAND PLUSIEURS ÉVÉNEMENTS SONT PRINCIPAUX, on prend celui qui a le
+        # plus gros volume sur la fenêtre. Une courbe ne porte qu'une grandeur
+        # (grammaire des modules : une seule forme par module), et additionner
+        # `purchase` et `generate_lead` fabriquerait un total qui ne veut rien
+        # dire. Le nom de l'événement retenu est ÉCRIT sur l'axe — sans lui, le
+        # lecteur ne saurait pas lequel des deux il regarde.
+        ev_pts = None
+        ev_nom = None
+        _princ = [c["event_name"] for c in (theme_events.get(lbl) or [])
+                  if c["rang"] == "principal"]
+        if _princ and ga4_event_rows:
+            _par_nom: dict = {}
+            for _r in ga4_event_rows:
+                _nom = _r.get("event_name") or ""
+                if _nom not in _princ:
+                    continue
+                # Le pont : l'événement n'appartient au thème que si sa campagne
+                # UTM est une campagne étiquetée de ce thème. Pas de campagne,
+                # ou campagne inconnue → il n'est attribué à personne.
+                if name2label.get(_nrm(_r.get("campaign") or "")) != lbl:
+                    continue
+                try:
+                    _dd = date.fromisoformat(str(_r.get("date"))[:10])
+                except Exception:
+                    continue
+                _wi = _wk_idx(_dd)
+                if _wi is None:
+                    continue
+                _par_nom.setdefault(_nom, [0] * _WK)[_wi] += int(_r.get("event_count") or 0)
+            if _par_nom:
+                ev_nom, ev_pts = max(_par_nom.items(), key=lambda kv: sum(kv[1]))
+
         # L'indicateur suit l'objectif du compte. Quand celui qu'on VOULAIT
         # suivre n'est pas mesurable (le ROAS sans valeur de conversion GA4),
         # on se rabat sur le meilleur substitut ET on le dit — plutôt que
         # d'afficher un 0,0 qui ressemble a une catastrophe.
         note = None
-        if objectif == "notoriete" and any(x for x in reach_w):
+        if ev_pts is not None and objectif not in ("notoriete", "engagement"):
+            pts = list(ev_pts)
+            metric_label = f"« {ev_nom} » par semaine"
+        elif objectif == "notoriete" and any(x for x in reach_w):
             pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
             metric_label = "Portée moyenne"
         elif objectif == "engagement" and any(x for x in eng_w):
             pts = [round(sum(x) / len(x), 2) if x else 0 for x in eng_w]
             metric_label = "Engagement moyen (%)"
+        elif ev_pts is not None:
+            # L'objectif visé (portée, engagement) n'a rien à mesurer sur ce
+            # thème — pas de publication organique. L'événement principal
+            # reprend la main plutôt que de laisser la dépense décrire un thème
+            # dont on sait ce qu'il rapporte.
+            pts = list(ev_pts)
+            metric_label = f"« {ev_nom} » par semaine"
         elif has_spend:
             pts = [round(v, 2) for v in spend_w]
             metric_label = "Dépense (CHF)"
@@ -1734,10 +1918,19 @@ def build_payload(sb, user_id: str) -> dict | None:
             # GA4 et qu'envoyer l'utilisateur y regler ses evenements cles
             # serait l'envoyer chercher un probleme qu'il n'a pas.
             if objectif == "ventes" and not (revenu and float(revenu) > 0):
+                # DEUX MANQUES DIFFÉRENTS, DEUX PHRASES. On sait maintenant les
+                # distinguer, et envoyer quelqu'un régler la valeur de ses
+                # conversions dans GA4 alors qu'il n'a désigné AUCUN événement
+                # pour ce thème, c'est l'envoyer au mauvais endroit.
                 note = ("Le ROAS de ce thème n'est pas mesurable : Google Analytics "
                         "remonte tes conversions sans leur valeur en CHF. On suit la "
                         "dépense en attendant — configure la valeur de tes événements "
-                        "clés dans GA4 et cette courbe passera au ROAS.")
+                        "clés dans GA4 et cette courbe passera au ROAS."
+                        if _princ else
+                        "Aucun événement n'est désigné comme principal pour ce thème : "
+                        "on suit donc sa dépense, faute de savoir ce qu'elle doit "
+                        "produire. Va sur la page Thèmes choisir la conversion qui "
+                        "compte pour lui, et cette courbe la suivra.")
         else:
             pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
             metric_label = "Portée moyenne"
@@ -1782,6 +1975,46 @@ def build_payload(sb, user_id: str) -> dict | None:
             # de campagne) : on se tait plutot que d'afficher un chiffre faux.
             ctx["paid_conversions"] = None
             ctx["paid_revenue"] = None
+
+        # ── LES ÉVÉNEMENTS CHOISIS, RAMENÉS AUX CAMPAGNES DE CE THÈME ────────
+        #
+        # Même pont que le revenu ci-dessus, même limite : `events_by_campaign`
+        # est indexé par utm_campaign, et seul un nom qui correspond à une
+        # campagne étiquetée franchit le pont. L'organique n'a pas de campagne,
+        # donc il n'a pas d'événement de thème — jamais.
+        #
+        # ON NE MET DANS `evenements` QUE CE QUI A ÉTÉ MESURÉ. Un événement
+        # choisi qui n'a aucune ligne sur la fenêtre n'entre pas avec un zéro :
+        # il entre dans `mesure_absente`, et les règles savent qu'elles ne
+        # doivent pas en parler. Un zéro mesuré (« l'événement existe, il n'a
+        # pas eu lieu ») et un zéro faute de données ne sont pas la même
+        # information, et ici on ne sait pas distinguer les deux — l'absence de
+        # ligne GA4 peut venir d'un tag cassé comme d'un vrai zéro.
+        choisis = theme_events.get(lbl) or []
+        ctx["evenements"] = {}
+        ctx["evenements_principaux"] = []
+        ctx["mesure_absente"] = []
+        if choisis:
+            ev_by_camp = ga4_ctx.get("events_by_campaign") or {}
+            cumul: dict = {}
+            for _cname, _evs in ev_by_camp.items():
+                if name2label.get(_nrm(_cname)) != lbl:
+                    continue
+                for _nom, _d in (_evs or {}).items():
+                    slot = cumul.setdefault(_nom, {"count": 0, "value": 0.0})
+                    slot["count"] += int((_d or {}).get("count") or 0)
+                    slot["value"] += float((_d or {}).get("value") or 0)
+            for _c in choisis:
+                _nom = _c["event_name"]
+                _vu = cumul.get(_nom)
+                if _vu is None:
+                    ctx["mesure_absente"].append(_nom)
+                    continue
+                ctx["evenements"][_nom] = {
+                    "count": _vu["count"], "value": _vu["value"], "rang": _c["rang"],
+                }
+                if _c["rang"] == "principal":
+                    ctx["evenements_principaux"].append(_nom)
         return ctx
 
     # ── CE QUI PASSE PAR UN THÈME, SEMAINE PAR SEMAINE ───────────────────────
@@ -1962,6 +2195,16 @@ def build_payload(sb, user_id: str) -> dict | None:
                                    _sem_theme["posts"], _frais)
             if _a:
                 t_recos.append(_a)
+        except Exception:
+            pass
+
+        # LES ÉVÉNEMENTS DÉSIGNÉS SUR CE THÈME. Après `_sem_theme` parce que le
+        # coût par conversion a besoin de la dépense de la semaine, et avant le
+        # tri : ces conseils passent la même coupe à trois que les autres, sans
+        # passe-droit. Un thème sans événement choisi n'en produit aucun — la
+        # fonction rend une liste vide et rien ne change pour lui.
+        try:
+            t_recos += _reco_evenements(lbl, _theme_ga4(lbl), _sem_theme)
         except Exception:
             pass
 
@@ -2340,6 +2583,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         "orga_essoufflement": ("reach", "portée moyenne", "", "up", "{:,.0f}"),
         "orga_format":        ("reach", "portée moyenne", "", "up", "{:,.0f}"),
         "orga_reaction":      ("reach", "portée moyenne", "", "up", "{:,.0f}"),
+        # Rien non plus pour les `theme_event_*`, et pour la même raison de
+        # fond : `_kpis_window` sait mesurer un CPC, un ROAS, des posts, une
+        # portée — pas un coût par événement choisi. Lui donner ici la clé
+        # `cpc` ou `roas` ferait juger « chaque purchase t'a coûté 42 CHF » sur
+        # un indicateur qui n'est pas celui du conseil, et un verdict pris sur
+        # la mauvaise mesure repondère ensuite tous les autres conseils. Ces
+        # deux-là partent donc sans baseline — visibles, suivables, mais sans
+        # promesse de verdict à quatorze jours.
+        #
         # Rien pour les `veille_*`, et c'est délibéré : une veille n'a pas de
         # verdict à mériter. Lui donner une baseline reviendrait à promettre
         # une mesure dans quatorze jours sur une décision qu'on n'a pas prise.

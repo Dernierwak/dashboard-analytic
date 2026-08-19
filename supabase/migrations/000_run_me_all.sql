@@ -36,6 +36,8 @@
 --   12)    Partage d'accès : dashboard_members + a_acces() / peut_editer()
 --   13)    platform_budgets — le budget PLANIFIÉ, relevé par relevé
 --   14)    platform_changes — ce que les plateformes déclarent avoir changé
+--   14bis) theme_ga4_events + profiles.ga4_event_catalog — les événements GA4
+--          rattachés à un thème. AVANT la section 15, qui doit la partager.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   17)    landing_url — la page d'arrivée d'une campagne
@@ -1101,6 +1103,104 @@ END $$;
 
 
 -- ============================================================================
+-- 14bis) LES ÉVÉNEMENTS GA4 D'UN THÈME — voir theme_ga4_events.sql.
+--
+--     POURQUOI « 14bis » ET PAS « 22 » : c'est la seule section ajoutée depuis
+--     longtemps qui CRÉE UNE TABLE, et la boucle de partage de la section 15
+--     est une liste fermée jouée une fois. Une table née après elle n'aurait
+--     aucune politique `partage_*` : elle s'afficherait vide chez l'invité,
+--     sans erreur nulle part. Les sections 16 à 21 pouvaient se ranger après —
+--     elles n'ajoutent que des colonnes à des tables déjà couvertes. Celle-ci
+--     non. Elle se pose donc AVANT la section 15, et son nom figure dans la
+--     liste de celle-ci.
+--
+--     CE QU'ELLE INSTALLE, ET POURQUOI DEUX OBJETS PLUTÔT QU'UN.
+--     Le funnel GA4 était une liste de six noms écrits en dur dans
+--     `google_script/fetch_ga4.py`, devinés pour un e-commerce standard. Un
+--     site qui nomme ses conversions autrement ne remontait rien, en silence.
+--       · `profiles.ga4_event_catalog` (jsonb) — LA LISTE des événements que la
+--         propriété émet vraiment, avec leur volume et la marque « événement
+--         clé » de GA4. C'est un cache : lu en entier, pour un seul
+--         utilisateur, jamais joint. D'où le jsonb plutôt qu'une table.
+--       · `theme_ga4_events` — LE CHOIX : quels événements comptent pour quel
+--         thème, et lequel porte le verdict.
+--     Deux besoins différents, et un seul des deux coûte cher à récolter :
+--     savoir QUELS événements existent tient en un appel d'API qui rend une
+--     ligne par nom ; en stocker le détail quotidien × source × campagne
+--     multiplie `ga4_events` par le nombre de noms.
+--
+--     PRIMAIRE / SECONDAIRE EST UN CHOIX, PAS UN IMPORT.
+--     GA4 ne connaît qu'un booléen : un événement est « clé » (key event,
+--     l'ancien « conversion ») ou ne l'est pas. La ressource Admin
+--     `properties.keyEvents` porte eventName, custom, deletable,
+--     countingMethod, defaultValue — et AUCUN champ primaire/secondaire ; la
+--     dimension `isKeyEvent` est binaire elle aussi. Le couple vient de GOOGLE
+--     ADS et de ses actions de conversion (`primary_for_goal` : primaire =
+--     utilisée par les enchères, secondaire = observée seulement). Un événement
+--     clé GA4 importé dans Google Ads y arrive même en secondaire par défaut.
+--     `rang` est donc rempli par le client, par thème.
+--
+--     LE LABEL EST STOCKÉ PAR SON NOM, comme partout ailleurs
+--     (`meta_campaign_config.label`, `suivi_actions.theme`). Renommer ou
+--     supprimer un thème propage ici — voir `renameLabel` / `deleteLabel`
+--     dans saas/web/app/actions.ts.
+-- ============================================================================
+
+-- Le catalogue. `maj` vit DANS le jsonb et non dans une colonne à côté : une
+-- colonne nommée `..._refreshed_at` déclencherait le contrôle de sécurité de
+-- fin de fichier, qui refuse toute colonne de `profiles` dont le nom contient
+-- token/secret/refresh — cette table étant partagée avec les invités.
+-- Forme : {"maj": "2026-08-18", "evenements": [{"nom","volume","valeur","cle"}]}
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS ga4_event_catalog jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS public.theme_ga4_events (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    label       text NOT NULL,
+    event_name  text NOT NULL,
+    rang        text NOT NULL DEFAULT 'secondaire',
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT theme_ga4_events_uq UNIQUE (user_id, label, event_name)
+);
+
+DO $$
+BEGIN
+    ALTER TABLE public.theme_ga4_events
+        ADD CONSTRAINT theme_ga4_events_rang_ck
+        CHECK (rang IN ('principal', 'secondaire'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_theme_ga4_events_user
+    ON public.theme_ga4_events (user_id, label);
+
+DROP TRIGGER IF EXISTS trg_theme_ga4_events_updated_at ON public.theme_ga4_events;
+CREATE TRIGGER trg_theme_ga4_events_updated_at
+    BEFORE UPDATE ON public.theme_ga4_events
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- « Chacun ses lignes ». Le partage d'équipe est posé par la section 15, qui
+-- suit immédiatement et qui porte cette table dans sa liste.
+ALTER TABLE public.theme_ga4_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tge_select_own" ON public.theme_ga4_events;
+DROP POLICY IF EXISTS "tge_insert_own" ON public.theme_ga4_events;
+DROP POLICY IF EXISTS "tge_update_own" ON public.theme_ga4_events;
+DROP POLICY IF EXISTS "tge_delete_own" ON public.theme_ga4_events;
+CREATE POLICY "tge_select_own" ON public.theme_ga4_events
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "tge_insert_own" ON public.theme_ga4_events
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "tge_update_own" ON public.theme_ga4_events
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "tge_delete_own" ON public.theme_ga4_events
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1138,6 +1238,7 @@ DECLARE
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
         'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
+        'theme_ga4_events',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
         -- le profil : objectif, labels unifiés, persona IA, site du client
@@ -1588,6 +1689,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'dashboard_members',        NULL),
     ('t', 'platform_budgets',         NULL),
     ('t', 'platform_changes',         NULL),
+    ('t', 'theme_ga4_events',         NULL),
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1
@@ -1598,6 +1700,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'profiles',                 'time_budget'),          -- §7
     ('c', 'profiles',                 'frustration'),          -- §7
     ('c', 'profiles',                 'site_url'),             -- §18
+    ('c', 'profiles',                 'ga4_event_catalog'),    -- §14bis
+    ('c', 'theme_ga4_events',         'rang'),                 -- §14bis
     ('c', 'connected_accounts',       'provider'),             -- §4
     ('c', 'connected_accounts',       'google_refresh_token'), -- §4
     ('c', 'connected_accounts',       'google_customer_id'),   -- §4

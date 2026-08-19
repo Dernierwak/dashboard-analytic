@@ -563,6 +563,12 @@ export async function renameLabel(oldName: string, newName: string) {
   // plafond des trois chantiers.
   await supabase.from("suivi_actions").update({ theme: clean })
     .eq("user_id", user.id).eq("theme", oldName);
+  // Même raison que la ligne au-dessus : `theme_ga4_events` porte le NOM du
+  // thème. Sans ceci, renommer laisserait les événements choisis accrochés à un
+  // thème qui n'existe plus — le thème renommé repartirait sans conversion, et
+  // la page n'aurait aucun moyen de montrer ce qui reste en arrière.
+  await supabase.from("theme_ga4_events").update({ label: clean })
+    .eq("user_id", user.id).eq("label", oldName);
   const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
     .eq("user_id", user.id).contains("labels", [oldName])).data ?? [];
   for (const p of posts) {
@@ -588,6 +594,12 @@ export async function deleteLabel(name: string) {
     .eq("user_id", user.id).eq("label", name);
   await supabase.from("google_campaign_config").update({ label: null })
     .eq("user_id", user.id).eq("label", name);
+  // Le thème disparaît : ses lignes d'événements n'ont plus de sujet. Elles
+  // sont supprimées et non orphelinées — la contrainte d'unicité porte sur
+  // (user_id, label, event_name), donc un thème recréé plus tard sous le même
+  // nom retrouverait sinon des choix qu'il n'a jamais faits.
+  await supabase.from("theme_ga4_events").delete()
+    .eq("user_id", user.id).eq("label", name);
   const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
     .eq("user_id", user.id).contains("labels", [name])).data ?? [];
   for (const p of posts) {
@@ -597,6 +609,61 @@ export async function deleteLabel(name: string) {
   }
   revalidatePath("/labels");
   return { ok: true, message: `« ${name} » supprimé partout.` };
+}
+
+// Rattache un événement GA4 à un thème, ou l'en retire.
+//
+// `rang` : "principal" — il porte le verdict et la courbe du thème ;
+//          "secondaire" — il sert à comprendre, jamais à juger ;
+//          null — on retire la ligne (l'absence de ligne EST le « non coché »,
+//          il n'y a pas de troisième état à stocker).
+//
+// AUCUNE VALIDATION DU NOM D'ÉVÉNEMENT CONTRE LE CATALOGUE, ET C'EST VOULU.
+// Le catalogue est une photo des 90 derniers jours prise à la dernière récolte.
+// Refuser un nom absent de cette photo, ce serait refuser un événement qu'on
+// vient de poser sur son site et qui n'a pas encore été récolté — exactement le
+// moment où on veut pouvoir le cocher. La contrainte qui compte est en base
+// (`theme_ga4_events_rang_ck`), et elle porte sur le rang, pas sur le nom.
+export async function setThemeEvent(
+  label: string,
+  eventName: string,
+  rang: "principal" | "secondaire" | null
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const lbl = label.trim();
+  const nom = eventName.trim();
+  if (!lbl || !nom) return { ok: false, message: "Thème ou événement vide." };
+
+  if (rang === null) {
+    const r = await supabase
+      .from("theme_ga4_events")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("label", lbl)
+      .eq("event_name", nom);
+    if (r.error)
+      return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  } else {
+    const r = await supabase.from("theme_ga4_events").upsert(
+      { user_id: user.id, label: lbl, event_name: nom, rang },
+      { onConflict: "user_id,label,event_name" }
+    );
+    if (r.error)
+      return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  }
+
+  revalidatePath("/labels");
+  // Le rapport ne bouge pas tant qu'il n'est pas régénéré — ce choix change ce
+  // que la PROCHAINE récolte demande à GA4 et ce que le prochain rapport
+  // mesure. On revalide quand même : la page d'accueil affiche l'état des
+  // réglages, pas seulement le rapport.
+  revalidatePath("/");
+  return { ok: true };
 }
 
 // Assigne un label (ou aucun) à une campagne Meta ou Google.

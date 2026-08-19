@@ -548,6 +548,30 @@ def upsert_ga4_events(supabase: Client, user_id: str, rows: list[dict]) -> None:
     ).execute()
 
 
+def upsert_ga4_event_catalog(supabase: Client, user_id: str, evenements: list[dict],
+                             maj: str) -> None:
+    """Remplace le catalogue des événements GA4 de la propriété.
+
+    ON REMPLACE, ON NE FUSIONNE PAS : le catalogue dit ce que la propriété émet
+    AUJOURD'HUI. Fusionner ferait survivre à l'écran un événement retiré du site
+    il y a six mois, que le client pourrait encore cocher — et qui ne
+    remonterait jamais aucune ligne.
+
+    Le choix du client, lui, n'est pas touché : il vit dans `theme_ga4_events`
+    et un événement disparu du catalogue y reste coché. C'est voulu — l'écran
+    le signale plutôt que de décocher tout seul un réglage qu'on n'a pas posé.
+
+    Silencieux si la colonne n'existe pas encore (migration non passée) : la
+    récolte ne doit pas échouer pour un cache.
+    """
+    try:
+        supabase.table("profiles").update({
+            "ga4_event_catalog": {"maj": maj, "evenements": evenements or []}
+        }).eq("id", user_id).execute()
+    except Exception:
+        pass
+
+
 # ── Boucle de feedback (rapport hebdo) — helpers ──────────────────────────────
 
 def update_objectif(supabase: Client, user_id: str, objectif: str | None) -> None:

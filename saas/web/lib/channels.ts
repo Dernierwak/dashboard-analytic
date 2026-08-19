@@ -1182,3 +1182,149 @@ export async function getLabelsData(): Promise<{
 
   return { email: compte.email, rows, priorities };
 }
+
+// ── Les conversions GA4 d'un thème ───────────────────────────────────────────
+//
+// CE QUE CETTE LECTURE RASSEMBLE, ET POURQUOI EN UN SEUL ENDROIT.
+// Le module a besoin de quatre choses qui vivent dans quatre tables : la liste
+// des thèmes (profiles.labels), leurs campagnes (meta/google_campaign_config —
+// c'est ce qui décide si un thème peut PORTER une conversion), le catalogue des
+// événements que la propriété émet (profiles.ga4_event_catalog, rempli par la
+// récolte) et le choix déjà fait (theme_ga4_events). Les recomposer dans le
+// composant obligerait à passer quatre listes brutes à un composant client ;
+// ici on rend un objet déjà lisible, et le composant ne calcule rien.
+
+export type EvenementCatalogue = {
+  nom: string;
+  /** Occurrences sur les 90 derniers jours, telles que la récolte les a vues. */
+  volume: number;
+  /**
+   * `true` si GA4 a déclaré cet événement comme ÉVÉNEMENT CLÉ (key event).
+   * `null` quand l'API d'administration n'a pas pu être interrogée — auquel cas
+   * l'écran n'affiche aucune marque, plutôt que d'afficher « pas clé » pour une
+   * question qu'on n'a pas posée.
+   */
+  cle: boolean | null;
+};
+
+export type ThemeEvenements = {
+  label: string;
+  /** Le thème porte-t-il au moins une campagne Meta ou Google ? */
+  attribuable: boolean;
+  /** Publications Instagram portant ce thème — sert à nommer le cas organique. */
+  posts: number;
+  principaux: string[];
+  secondaires: string[];
+};
+
+export type EvenementsData = {
+  /** Une propriété GA4 est-elle choisie sur ce compte ? */
+  ga4Connecte: boolean;
+  /** Date de la dernière mise à jour du catalogue (ISO), ou null. */
+  catalogueMaj: string | null;
+  catalogue: EvenementCatalogue[];
+  themes: ThemeEvenements[];
+  /**
+   * Événements cochés qui ne figurent PLUS au catalogue : le site ne les émet
+   * plus depuis 90 jours. On ne les décoche pas tout seuls — on les signale.
+   */
+  disparus: string[];
+  peutEditer: boolean;
+};
+
+export async function getThemeEvenements(): Promise<EvenementsData> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const uid = compte.uid;
+
+  const [profRes, metaRes, googleRes, instaRes, choixRes, connRes] = await Promise.all([
+    supabase.from("profiles").select("labels, ga4_event_catalog").eq("id", uid).limit(1),
+    supabase.from("meta_campaign_config").select("label").eq("user_id", uid),
+    supabase.from("google_campaign_config").select("label").eq("user_id", uid),
+    supabase.from("instagram_organic_posts").select("labels").eq("user_id", uid),
+    supabase.from("theme_ga4_events").select("label, event_name, rang").eq("user_id", uid),
+    supabase.from("connected_accounts").select("ga4_property_id").eq("user_id", uid),
+  ]);
+
+  const prof = profRes.data?.[0] as
+    | { labels: string[] | null; ga4_event_catalog: unknown }
+    | undefined;
+
+  // Le catalogue est un cache écrit par la récolte : on le lit défensivement.
+  // `{}` (jamais récolté) et `{evenements: []}` (récolté, propriété muette) ne
+  // se lisent pas pareil — d'où `catalogueMaj`, qui distingue les deux.
+  const brut = (prof?.ga4_event_catalog ?? {}) as {
+    maj?: string;
+    evenements?: { nom?: string; volume?: number; valeur?: number; cle?: boolean | null }[];
+  };
+  const catalogue: EvenementCatalogue[] = (brut.evenements ?? [])
+    .filter((e) => typeof e?.nom === "string" && e.nom.trim() !== "")
+    .map((e) => ({
+      nom: String(e.nom),
+      volume: Number(e.volume ?? 0),
+      cle: e.cle === true ? true : e.cle === false ? false : null,
+    }));
+
+  const master = prof?.labels ?? [];
+  const pub = new Map<string, number>();
+  const posts = new Map<string, number>();
+  for (const r of metaRes.data ?? [])
+    if (r.label) pub.set(r.label, (pub.get(r.label) ?? 0) + 1);
+  for (const r of googleRes.data ?? [])
+    if (r.label) pub.set(r.label, (pub.get(r.label) ?? 0) + 1);
+  for (const r of instaRes.data ?? [])
+    for (const l of (r.labels as string[] | null) ?? [])
+      posts.set(l, (posts.get(l) ?? 0) + 1);
+
+  const parTheme = new Map<string, { principaux: string[]; secondaires: string[] }>();
+  const coches = new Set<string>();
+  for (const r of choixRes.data ?? []) {
+    const lbl = String(r.label ?? "");
+    const nom = String(r.event_name ?? "");
+    if (!lbl || !nom) continue;
+    coches.add(nom);
+    const slot = parTheme.get(lbl) ?? { principaux: [], secondaires: [] };
+    (r.rang === "principal" ? slot.principaux : slot.secondaires).push(nom);
+    parTheme.set(lbl, slot);
+  }
+  for (const slot of parTheme.values()) {
+    slot.principaux.sort();
+    slot.secondaires.sort();
+  }
+
+  // L'ordre : les thèmes qui peuvent porter une conversion d'abord, et parmi
+  // eux ceux à qui il en manque une. C'est la seule liste où l'ordre alphabé-
+  // tique aurait desservi — le travail restant doit être en haut.
+  const noms = Array.from(new Set([...master, ...pub.keys(), ...posts.keys()]));
+  const themes: ThemeEvenements[] = noms
+    .map((label) => {
+      const slot = parTheme.get(label) ?? { principaux: [], secondaires: [] };
+      return {
+        label,
+        attribuable: (pub.get(label) ?? 0) > 0,
+        posts: posts.get(label) ?? 0,
+        principaux: slot.principaux,
+        secondaires: slot.secondaires,
+      };
+    })
+    .sort((a, b) => {
+      const manque = (t: ThemeEvenements) =>
+        t.attribuable && t.principaux.length === 0 ? 0 : t.attribuable ? 1 : 2;
+      const d = manque(a) - manque(b);
+      return d !== 0 ? d : a.label.localeCompare(b.label, "fr");
+    });
+
+  const auCatalogue = new Set(catalogue.map((e) => e.nom));
+  const disparus = Array.from(coches)
+    .filter((n) => !auCatalogue.has(n))
+    .sort();
+
+  return {
+    ga4Connecte: (connRes.data ?? []).some((l) => Boolean(l.ga4_property_id)),
+    catalogueMaj: typeof brut.maj === "string" ? brut.maj : null,
+    catalogue,
+    themes,
+    disparus,
+    peutEditer: compte.peutEditer,
+  };
+}

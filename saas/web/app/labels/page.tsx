@@ -34,17 +34,22 @@
 // fonction est donc dans `lib/couverture.ts`, à l'identique, et cette page
 // l'importe. Voir l'en-tête de ce fichier-là pour le raisonnement complet.
 import { getEtiquetage } from "@/lib/couverture";
-import { getLabelsData } from "@/lib/channels";
+import { getLabelsData, getThemeEvenements } from "@/lib/channels";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
+import { ThemeEvenementsModule } from "@/components/theme-evenements";
 
 export const dynamic = "force-dynamic";
 
 export default async function LabelsPage() {
-  const [data, etiquetage] = await Promise.all([getLabelsData(), getEtiquetage()]);
+  const [data, etiquetage, evenements] = await Promise.all([
+    getLabelsData(),
+    getEtiquetage(),
+    getThemeEvenements(),
+  ]);
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -140,6 +145,22 @@ export default async function LabelsPage() {
             })}
           </ScrollList>
         )}
+      </div>
+
+      {/* 6 — CE QUE CHAQUE THÈME COMPTE.
+          EN DERNIER, ET C'EST UNE DÉPENDANCE, PAS UN CLASSEMENT D'IMPORTANCE :
+          on ne peut pas désigner la conversion d'un thème avant que le thème
+          existe et porte des campagnes. Le bloc 5 ci-dessus est exactement ce
+          qui les crée. Le poser plus haut ferait tomber le lecteur sur une
+          liste de thèmes vide à sa première visite.
+
+          POURQUOI SUR CETTE PAGE ET PAS DANS LE RAPPORT : voir l'en-tête de
+          `components/theme-evenements.tsx`. En deux mots — le rapport est une
+          lecture hebdomadaire, ceci est une configuration, et l'étoile
+          prioritaire du bloc 5 est le précédent exact d'un réglage par thème
+          qui vit ici et que le rapport consomme. */}
+      <div className="border-t border-line pt-5 mt-6">
+        <ThemeEvenementsModule d={evenements} />
       </div>
     </main>
   );
