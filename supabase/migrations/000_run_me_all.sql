@@ -38,6 +38,8 @@
 --   14)    platform_changes — ce que les plateformes déclarent avoir changé
 --   14bis) theme_ga4_events + profiles.ga4_event_catalog — les événements GA4
 --          rattachés à un thème. AVANT la section 15, qui doit la partager.
+--   14ter) fetch_progress — l'avancement RÉEL de la récolte, canal par canal.
+--          AVANT la section 15 elle aussi, même raison.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   17)    landing_url — la page d'arrivée d'une campagne
@@ -1201,6 +1203,48 @@ CREATE POLICY "tge_delete_own" ON public.theme_ga4_events
 
 
 -- ============================================================================
+-- 14ter) fetch_progress — l'avancement RÉEL de la récolte (voir
+--        fetch_progress.sql, source de vérité).
+--
+--        AVANT LA SECTION 15, qui doit la partager : sans ça, un membre invité
+--        verrait un panneau de récolte vide, sans erreur nulle part.
+--
+--        Elle existe parce que la barre de « ↻ Mes données » ne mesurait rien —
+--        `avancement(sec)` est une exponentielle sur le temps écoulé, et la
+--        liste des étapes est horodatée à la main. Depuis que les quatre
+--        plateformes tournent en parallèle, ces étapes sont fausses par
+--        construction. Le worker écrit désormais où il en est, canal par canal.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.fetch_progress (
+    user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    canal      text NOT NULL CHECK (canal IN
+                   ('meta', 'instagram', 'google', 'ga4', 'labels', 'rapport')),
+    -- Le passage (horodatage ISO du départ). L'écran n'affiche que le run_id le
+    -- plus grand : sur un ISO en UTC, le tri texte donne le plus récent.
+    run_id     text NOT NULL,
+    -- 'saute' n'est pas un échec : c'est « pas appelé, et voici pourquoi ».
+    etat       text NOT NULL CHECK (etat IN
+                   ('attente', 'en_cours', 'fini', 'echec', 'saute')),
+    -- L'étape franchie DANS le canal, en clair. Jamais un pourcentage : le
+    -- nombre d'appels API d'un canal n'est pas connu d'avance.
+    etape      text,
+    -- La ligne que le journal du worker imprime déjà. On la range, on ne la
+    -- réécrit pas.
+    mot_de_fin text,
+    debut_a    timestamptz,
+    fin_a      timestamptz,
+    maj_a      timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, canal)
+);
+
+-- « Chacun ses lignes » n'est PAS posé ici : contrairement à theme_ga4_events,
+-- cette table est neuve et n'a jamais eu d'autre règle. La section 15, juste en
+-- dessous, lui pose ses politiques `partage_*` et c'est la seule source.
+ALTER TABLE public.fetch_progress ENABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1241,6 +1285,8 @@ DECLARE
         'theme_ga4_events',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
+        -- l'avancement de la récolte, lu par le panneau de « ↻ Mes données »
+        'fetch_progress',
         -- le profil : objectif, labels unifiés, persona IA, site du client
         'profiles'
     ];
@@ -1690,6 +1736,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'platform_budgets',         NULL),
     ('t', 'platform_changes',         NULL),
     ('t', 'theme_ga4_events',         NULL),
+    ('t', 'fetch_progress',           NULL),   -- §14ter
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1
@@ -1794,7 +1841,9 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 17 tables de la section 15 :
+--   A) Ce que l'invité peut lire — doit lister les 19 tables de la section 15.
+--      (Le chiffre annoncé ici était 17 : il datait d'avant theme_ga4_events et
+--      fetch_progress. Compté sur la liste, pas de mémoire.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

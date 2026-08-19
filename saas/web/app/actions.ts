@@ -1158,6 +1158,80 @@ export async function checkFetchStatus(): Promise<{
   }
 }
 
+// ── L'avancement RÉEL de la récolte ─────────────────────────────────────────
+//
+// `checkFetchStatus` ne sait qu'une chose : le run GitHub tourne-t-il. Tout le
+// reste était mimé côté navigateur — une exponentielle sur le temps écoulé et
+// une liste d'étapes horodatées à la main. Ça n'a jamais rien mesuré, et depuis
+// que les canaux tournent en parallèle ces étapes sont fausses par construction.
+//
+// Le worker écrit désormais où il en est dans `fetch_progress` (une ligne par
+// canal), et cette action la lit. Les deux se complètent et ne se remplacent
+// pas : GitHub dit SI ça tourne, la table dit OÙ ÇA EN EST.
+export type EtatCanal = "attente" | "en_cours" | "fini" | "echec" | "saute";
+
+export type CanalRecolte = {
+  canal: string;
+  etat: EtatCanal;
+  /** L'étape franchie DANS le canal, en clair. Jamais un pourcentage. */
+  etape: string | null;
+  motDeFin: string | null;
+  debutA: string | null;
+  finA: string | null;
+};
+
+export async function checkFetchProgress(): Promise<{
+  canaux: CanalRecolte[];
+  /** L'horodatage ISO du passage auquel ces lignes appartiennent. L'écran le
+   *  compare à la date de départ du run GitHub : des lignes plus VIEILLES que
+   *  le run en cours sont celles du passage précédent, et les afficher ferait
+   *  passer « 5 / 5 terminées » d'hier pour l'avancement d'aujourd'hui. */
+  runId: string | null;
+  /** true = la table n'a pas répondu (migration fetch_progress.sql pas jouée,
+   *  RLS, réseau). On le DIT à l'écran plutôt que d'afficher un panneau vide
+   *  qui laisserait croire qu'il ne se passe rien. */
+  indisponible: boolean;
+}> {
+  // L'ordre de lecture, le même que celui du journal du worker (`CANAUX` dans
+  // saas/worker/suivi.py). Il vit ici et pas dans un export : un fichier
+  // « use server » ne peut exporter que des fonctions asynchrones.
+  const ordre = ["meta", "instagram", "google", "ga4", "labels", "rapport"];
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  try {
+    const r = await supabase
+      .from("fetch_progress")
+      .select("canal, run_id, etat, etape, mot_de_fin, debut_a, fin_a")
+      .eq("user_id", compte.uid);
+    if (r.error) return { canaux: [], runId: null, indisponible: true };
+    const lignes = r.data ?? [];
+    if (lignes.length === 0) return { canaux: [], runId: null, indisponible: false };
+
+    // ON NE GARDE QUE LE PASSAGE LE PLUS RÉCENT. `run_id` est l'horodatage ISO
+    // du départ, en UTC : le tri texte donne donc le plus récent, sans parsing.
+    // C'est ce filtre qui empêche la ligne « fini » d'hier de se faire passer
+    // pour celle d'aujourd'hui.
+    const dernier = lignes.reduce(
+      (max, l) => ((l.run_id as string) > max ? (l.run_id as string) : max),
+      ""
+    );
+    const canaux = lignes
+      .filter((l) => l.run_id === dernier)
+      .map((l) => ({
+        canal: l.canal as string,
+        etat: l.etat as EtatCanal,
+        etape: (l.etape as string | null) ?? null,
+        motDeFin: (l.mot_de_fin as string | null) ?? null,
+        debutA: (l.debut_a as string | null) ?? null,
+        finA: (l.fin_a as string | null) ?? null,
+      }))
+      .sort((a, b) => ordre.indexOf(a.canal) - ordre.indexOf(b.canal));
+    return { canaux, runId: dernier || null, indisponible: false };
+  } catch {
+    return { canaux: [], runId: null, indisponible: true };
+  }
+}
+
 // ── Partage d'accès ─────────────────────────────────────────────────────────
 // Inviter, changer un rôle, révoquer : ces trois-là s'appliquent TOUJOURS à mon
 // propre compte (compte.moi), jamais au compte que je suis en train de

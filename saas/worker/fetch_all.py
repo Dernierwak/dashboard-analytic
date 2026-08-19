@@ -19,6 +19,7 @@ import os
 import sys
 import json
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -45,6 +46,60 @@ from meta_script.fetch_meta_ads import (                                   # noq
     fetch_campaign_budgets as meta_budgets,
     fetch_activities as meta_changes,
 )
+from saas.worker.suivi import Suivi, CANAUX                                # noqa: E402
+
+# ═══ LA RÉCOLTE EN PARALLÈLE — trois fils, et le compte est fait ══════════════
+#
+# Ce sont des appels réseau qui ATTENDENT : le GIL n'entre pas en jeu, des fils
+# suffisent. Restaient trois questions, et deux d'entre elles ont changé la
+# forme retenue.
+#
+# ① LE CLIENT SUPABASE EST-IL SÛR ENTRE PLUSIEURS FILS ? Pas tout à fait, et ça
+#    se lit dans la bibliothèque installée (supabase 2.27.2 / httpx 0.28.1) :
+#     · CE QUI EST SÛR — `postgrest/_sync/request_builder.py` construit un objet
+#       `Headers` NEUF par requête et n'écrit jamais dans l'état partagé ; et le
+#       transport `httpx` s'appuie sur `httpcore`, dont `ConnectionPool` protège
+#       sa liste de connexions par un `ThreadLock` et dont les connexions HTTP/2
+#       portent quatre verrous (`_init_lock`, `_state_lock`, `_read_lock`,
+#       `_write_lock`). Deux `.execute()` simultanés ne se marchent pas dessus.
+#     · CE QUI NE L'EST PAS — `supabase/_sync/client.py` construit ses
+#       sous-clients PARESSEUSEMENT, en `if self._postgrest is None: … = …`,
+#       SANS verrou. Trois fils qui touchent le même client au même instant pour
+#       la PREMIÈRE fois en fabriquent chacun un, avec chacun son pool de
+#       connexions ; deux sont abandonnés sans jamais être fermés. Même schéma
+#       sur `.storage`, que la récolte Instagram utilise pour les images.
+#    La réponse n'est donc PAS nette, et on ne parie pas : **un client par fil**,
+#    créé dans le fil. Le coût est nul en réseau — `create_client` ne fait aucun
+#    aller-retour (la session est lue dans un stockage mémoire vide) — et il
+#    supprime la question au lieu de l'arbitrer.
+#
+# ② META ADS ET INSTAGRAM TAPENT LA MÊME API AVEC LE MÊME JETON. Les séparer
+#    rapporte quoi, exactement ? La mesure de la veille, en appels par récolte :
+#    Meta ~5-6, Google ~5-6, GA4 ~5, **Instagram 100 à 130**. Sur ~131 appels au
+#    total, le chemin le plus long vaut 120 en trois fils (Meta+Instagram) contre
+#    115 en quatre. Séparer Meta d'Instagram gagne donc ~4 % du chemin critique,
+#    en échange d'une contention sur les compteurs de débit de Meta que personne
+#    ici ne peut mesurer sans jeton. Un gain de 4 % ne s'achète pas avec un
+#    risque non mesurable : **trois fils**.
+#      · fil 1 — Meta Ads puis Instagram, EN SÉRIE ;
+#      · fil 2 — Google Ads ;
+#      · fil 3 — GA4.
+#    (Google Ads et GA4 partagent le jeton Google mais pas l'API ni le quota :
+#     l'un parle à googleads.googleapis.com, l'autre à analyticsdata.)
+#
+# ③ CE QUE ÇA FAIT GAGNER, HONNÊTEMENT. Instagram pèse 115 appels sur 131, soit
+#    88 % du total. La loi d'Amdahl plafonne donc l'accélération à 1 / 0,88 =
+#    1,14× — **environ 12 % au mieux, ~8 % avec la forme retenue**. Et l'appel
+#    n'est qu'un PROXY grossier de la durée : le téléchargement d'image puis
+#    l'envoi au stockage que fait Instagram durent bien plus qu'un GET Graph, ce
+#    qui rend Instagram encore plus dominant, donc le gain encore plus petit.
+#    Le vrai levier était ailleurs, et il est dans `_fetch_insta_post_id`.
+#
+# UNE PLATEFORME QUI ÉCHOUE N'EMPORTE PAS LES AUTRES : chaque canal est attrapé
+# dans son fil. Et le journal est TRIÉ À L'ARRIVÉE dans l'ordre de `CANAUX` —
+# en parallèle, l'ordre d'exécution n'est plus un ordre, c'est le hasard des
+# latences.
+_FILS_MAX = 3
 
 # LES DEUX RÉGIES N'OUBLIENT PAS À LA MÊME VITESSE, ET UNE SEULE CONSTANTE POUR
 # LES DEUX FAISAIT PERDRE À META CE QUE GOOGLE NE PEUT PAS DONNER.
@@ -290,20 +345,34 @@ def _journal_changements(sb, uid, canal: str, recolte) -> None:
         print(f"    changements {canal} KO : {e}")
 
 
-def _fetch_meta(sb, uid, token) -> str:
+def _rien(_etape: str) -> None:
+    """Le rapporteur d'étapes par défaut : celui qui ne rapporte à personne.
+
+    Il existe pour que ces fonctions restent appelables hors du worker (essai à
+    la main, ancien Streamlit) sans traîner un objet de suivi."""
+    return None
+
+
+def _fetch_meta(sb, uid, token, note=_rien) -> str:
+    # `note` marque une étape FRANCHIE, pas un pourcentage : la séquence est
+    # écrite ici, mais le nombre d'appels de chacune ne l'est pas.
+    note("comptes")
     r = requests.get(f"{_GRAPH}/me/adaccounts", params={"fields": "id", "access_token": token}, timeout=30)
     accts = r.json().get("data", [])
     if not accts:
         return "meta: aucun compte pub"
     ad_account_id = accts[0]["id"]
     today = date.today()
+    note("budgets")
     # Avant tout test de fraîcheur : la photo du budget doit être prise même
     # quand les insights sont déjà à jour. Sinon un compte qui ne dépense plus
     # n'aurait plus aucun relevé, et la page Coûts le lirait « rien de prévu ».
     _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
+    note("changements")
     _journal_changements(sb, uid, "meta", lambda: meta_changes(
         token, ad_account_id,
         (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat()))
+    note("insights")
     latest = fetch_meta_ads_latest_date(sb, uid)
     since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_META)
     # Le raccourci « meta: à jour » a disparu, et pas par distraction : avec un
@@ -318,6 +387,7 @@ def _fetch_meta(sb, uid, token) -> str:
     # On demande aussi les dates DECLAREES. Elles ne se deduisent pas de la
     # depense : une campagne programmee jusqu'en decembre et une campagne
     # arretee hier laissent exactement la meme trace dans les insights.
+    note("statuts")
     camp = requests.get(
         f"{_GRAPH}/{ad_account_id}/campaigns",
         params={"access_token": token,
@@ -351,23 +421,28 @@ def _fetch_meta(sb, uid, token) -> str:
 
 # ── Google Ads (refresh_token + secrets app) ──────────────────────────────────
 
-def _fetch_google(sb, uid, refresh, customer_id) -> str:
+def _fetch_google(sb, uid, refresh, customer_id, note=_rien) -> str:
+    note("jeton")
     access = get_access_token_from_refresh(refresh)
     if not access:
         return "google: token invalide"
     today = date.today()
+    note("budgets")
     _photo_budget(sb, uid, "google",
                   lambda: google_budgets(access, customer_id), today)
 
     # Les statuts remontent AVANT le test de fraîcheur : ils portent les noms de
     # campagnes, et sans eux `change_event` ne rendrait que des noms de
     # ressources — « customers/…/campaigns/456 » n'est pas une phrase.
+    note("statuts")
     smap, _ = fetch_campaign_statuses(access, customer_id)
     noms = {cid: v[0] for cid, v in (smap or {}).items()}
+    note("changements")
     _journal_changements(sb, uid, "google", lambda: google_changes(
         access, customer_id, today - timedelta(days=_CHANGES_JOURS_GOOGLE),
         noms_campagnes=noms))
 
+    note("insights")
     latest = fetch_google_ads_latest_date(sb, uid)
     since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_GOOGLE)
     # Même disparition que côté Meta : plus de raccourci « à jour ». Les statuts
@@ -388,16 +463,55 @@ def _fetch_google(sb, uid, refresh, customer_id) -> str:
 
 # ── Instagram organique (token utilisateur) ───────────────────────────────────
 
-def _fetch_instagram(sb, uid, token, biz_id) -> str:
+def _fetch_instagram(sb, uid, token, biz_id, note=_rien) -> str:
     org = OrganicInstagramm(meta_long_token=token, supabase_client=sb,
                             supabase_user_id=uid, instagram_business_id=biz_id)
-    org.fetch_headless()
+    # Instagram est le SEUL canal qui peut chiffrer honnêtement son avancement :
+    # la liste des posts à relire est arrêtée avant d'entrer dans la boucle, donc
+    # « posts 12/37 » est un compte réel, pas une estimation.
+    org.fetch_headless(note=note)
+    note("écriture")
     if org.new_results:
         insert_instagram_org(supabase=sb, results=org.new_results)
     return f"insta: {len(org.new_results)} nouveaux posts"
 
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
+
+def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
+    """Un fil d'exécution : ses canaux joués EN SÉRIE, avec son PROPRE client.
+
+    `taches` : [(canal, appel)] où `appel(sb, note) -> str` rend le mot de la fin.
+    Retour   : [(canal, mot)] — jamais d'exception, quoi qu'il arrive dedans.
+
+    Le client Supabase est créé ICI, dans le fil, et pas partagé : voir la note
+    « LA RÉCOLTE EN PARALLÈLE » en tête de fichier, point ①.
+    """
+    try:
+        sb_fil = _service_client()
+    except Exception as e:
+        # Sans client, ce fil ne peut RIEN faire — pas même écrire son propre
+        # état, puisque l'écrire demanderait justement un client. Les lignes de
+        # suivi restent donc à « attente » ; l'écran les lira comme
+        # interrompues, ce qu'elles sont. Le journal, lui, dit pourquoi.
+        return [(canal, f"{canal} KO: client Supabase indisponible "
+                        f"({type(e).__name__}: {e})") for canal, _ in taches]
+
+    sorties: list[tuple[str, str]] = []
+    for canal, appel in taches:
+        suivi.commence(sb_fil, canal)
+        try:
+            mot = appel(sb_fil, lambda etape, c=canal: suivi.note(sb_fil, c, etape))
+            sorties.append((canal, mot))
+            suivi.termine(sb_fil, canal, "fini", mot)
+        except Exception as e:
+            # Le canal tombe, les deux autres fils continuent. C'est tout
+            # l'intérêt d'attraper ici plutôt qu'autour de l'executor.
+            mot = f"{canal} KO: {e}"
+            sorties.append((canal, mot))
+            suivi.termine(sb_fil, canal, "echec", mot)
+    return sorties
+
 
 def run(force: bool = False, only_user: str | None = None,
         label_only: bool = False, report_only: bool = False) -> None:
@@ -476,62 +590,89 @@ def run(force: bool = False, only_user: str | None = None,
         except Exception:
             accts = []
 
-        # CE QUI DÉCLENCHE LA SUITE, ET POURQUOI CE N'EST PLUS `logs`.
-        # La labellisation, le rapport et l'email étaient gardés par `if logs:`
-        # — c'est-à-dire « quelque chose a été écrit dans le journal ». Ça
-        # marchait tant que le journal ne contenait QUE des récoltes. Depuis
-        # qu'un saut de GA4 s'y journalise (voir plus bas), `logs` n'est plus
-        # jamais vide : un compte sans aucune connexion déclencherait un rapport
-        # et un email sur zéro donnée. `a_tente` dit ce que `logs` disait
-        # vraiment : au moins une plateforme a été appelée.
-        a_tente = False
+        suivi = Suivi(uid)
+        # LE JOURNAL PORTE SON CANAL, il ne se devine pas. Les lignes
+        # s'ajoutaient dans l'ordre d'exécution ; en parallèle, cet ordre est
+        # celui des latences réseau et ne veut plus rien dire. Chaque ligne est
+        # donc rangée avec son canal, et `journal` est trié dans l'ordre de
+        # `CANAUX` juste avant l'impression — le même ordre que le panneau, de
+        # sorte que deux récoltes se comparent ligne à ligne.
+        journal: list[tuple[int, str]] = []
+        _rang = {c: i for i, c in enumerate(CANAUX)}
+
+        # ── QUI TOURNE, ET DANS QUEL FIL ────────────────────────────────────
+        # On construit d'abord le plan, on l'exécute ensuite. Séparer les deux
+        # est ce qui permet d'annoncer à l'écran les canaux « en attente » AVANT
+        # que le premier appel réseau ne parte.
+        fil_meta: list[tuple[str, object]] = []   # même jeton, même API → en série
+        fil_google: list[tuple[str, object]] = []
+        fil_ga4: list[tuple[str, object]] = []
+        # Les canaux volontairement NON appelés, avec leur raison. Ils vont dans
+        # `fetch_progress` pour que le panneau montre les six lignes, jamais un
+        # trou — mais seul GA4 en parle dans le journal, comme avant.
+        non_appeles: list[tuple[str, str]] = []
 
         # Meta Ads + Instagram (token utilisateur) — la ligne google n'a pas de meta_token.
+        # S'il y avait plusieurs comptes Meta, leurs tâches s'empileraient dans
+        # le même fil et se partageraient une seule ligne de suivi par canal ; le
+        # journal, lui, garderait les deux lignes.
+        _meta_vu = False
         for a in accts:
             token = a.get("meta_token")
             if not token:
                 continue
-            for fn, args in ((_fetch_meta, (sb, uid, token)),
-                             (_fetch_instagram, (sb, uid, token, a.get("instagram_business_id")))):
-                if fn is _fetch_instagram and not a.get("instagram_business_id"):
-                    continue
-                a_tente = True
-                try:
-                    logs.append(fn(*args))
-                except Exception as e:
-                    logs.append(f"{fn.__name__} KO: {e}")
+            _meta_vu = True
+            fil_meta.append(("meta",
+                             lambda sb_f, note, t=token: _fetch_meta(sb_f, uid, t, note=note)))
+            biz = a.get("instagram_business_id")
+            if biz:
+                fil_meta.append(("instagram",
+                                 lambda sb_f, note, t=token, b=biz:
+                                 _fetch_instagram(sb_f, uid, t, b, note=note)))
+            else:
+                non_appeles.append(("instagram",
+                                    "aucun compte Instagram Business lié — colonne vide "
+                                    "dans connected_accounts : instagram_business_id"))
+        if not _meta_vu:
+            non_appeles.append(("meta", "aucune connexion Meta sur ce compte "
+                                        "→ Comptes → Connexions"))
+            non_appeles.append(("instagram", "aucune connexion Meta sur ce compte "
+                                             "→ Comptes → Connexions"))
 
-        # Connexion Google (provider='google') → Ads + GA4 partagent le token.
+        # Connexion Google (provider='google') → Ads + GA4 partagent le token,
+        # mais ni l'API ni le quota : ils peuvent tourner dans deux fils.
         g = next((a for a in accts if a.get("provider") == "google"), {})
 
-        # Google Ads
         if g.get("google_refresh_token") and g.get("google_customer_id"):
-            a_tente = True
-            try:
-                logs.append(_fetch_google(sb, uid, g["google_refresh_token"], g["google_customer_id"]))
-            except Exception as e:
-                logs.append(f"google KO: {e}")
+            fil_google.append(("google",
+                               lambda sb_f, note, r=g["google_refresh_token"],
+                               c=g["google_customer_id"]:
+                               _fetch_google(sb_f, uid, r, c, note=note)))
+        else:
+            non_appeles.append(("google", "aucune connexion Google Ads sur ce compte "
+                                          "→ Comptes → Connexions"))
 
         # GA4 (run_ga4_fetch est déjà headless)
         #
-        # LE SAUT SE JOURNALISE — c'est tout l'objet de la branche `else`. Le
-        # `logs.append` vivait À L'INTÉRIEUR du `if` : quand l'une des deux
+        # LE SAUT SE JOURNALISE — c'était tout l'objet de la branche `else`. Le
+        # `logs.append` a vécu À L'INTÉRIEUR du `if` : quand l'une des deux
         # conditions manquait, GA4 n'était pas appelé ET rien n'était écrit. La
         # récolte annonçait « terminé », et personne ne pouvait savoir que GA4
         # n'avait jamais été demandé. On nomme la COLONNE qui manque, jamais son
         # contenu — un refresh_token ne s'écrit nulle part.
         if g.get("ga4_property_id") and g.get("google_refresh_token"):
-            a_tente = True
-            try:
-                res = run_ga4_fetch(sb, uid, refresh_token=g["google_refresh_token"],
-                                    property_id=g["ga4_property_id"])
-                logs.append(f"ga4: {res.get('message', '')}")
-            except Exception as e:
-                logs.append(f"ga4 KO: {e}")
+            fil_ga4.append(("ga4",
+                            lambda sb_f, note, r=g["google_refresh_token"],
+                            p=g["ga4_property_id"]:
+                            "ga4: " + str(run_ga4_fetch(
+                                sb_f, uid, refresh_token=r,
+                                property_id=p).get("message", ""))))
         elif not g:
-            logs.append("ga4 SAUTÉ : aucune connexion Google sur ce compte "
+            _mot_ga4 = ("ga4 SAUTÉ : aucune connexion Google sur ce compte "
                         "(aucune ligne connected_accounts avec provider='google') "
                         "→ Comptes → Connexions")
+            non_appeles.append(("ga4", _mot_ga4))
+            journal.append((_rang["ga4"], _mot_ga4))
         else:
             _absents = [c for c in ("ga4_property_id", "google_refresh_token")
                         if not g.get(c)]
@@ -539,24 +680,71 @@ def run(force: bool = False, only_user: str | None = None,
                 "ga4_property_id": "aucune propriété GA4 choisie",
                 "google_refresh_token": "aucun jeton Google (reconnexion à faire)",
             }
-            logs.append("ga4 SAUTÉ : " + " et ".join(_quoi[c] for c in _absents)
+            _mot_ga4 = ("ga4 SAUTÉ : " + " et ".join(_quoi[c] for c in _absents)
                         + " — colonne(s) vide(s) dans connected_accounts : "
                         + ", ".join(_absents))
+            non_appeles.append(("ga4", _mot_ga4))
+            journal.append((_rang["ga4"], _mot_ga4))
+
+        # CE QUI DÉCLENCHE LA SUITE, ET POURQUOI CE N'EST PAS `logs`.
+        # La labellisation, le rapport et l'email étaient gardés par `if logs:`
+        # — c'est-à-dire « quelque chose a été écrit dans le journal ». Ça
+        # marchait tant que le journal ne contenait QUE des récoltes. Depuis
+        # qu'un saut de GA4 s'y journalise, `logs` n'est plus jamais vide : un
+        # compte sans aucune connexion déclencherait un rapport et un email sur
+        # zéro donnée. `a_tente` dit ce que `logs` disait vraiment : au moins une
+        # plateforme a été appelée.
+        fils = [f for f in (fil_meta, fil_google, fil_ga4) if f]
+        a_tente = bool(fils)
+
+        # ── L'ANNONCE, PUIS L'EXÉCUTION ─────────────────────────────────────
+        # `planifie` pose tous les canaux prévus à « attente » avec un run_id
+        # neuf. C'est aussi ce qui EFFACE un « en cours » laissé par un worker
+        # mort au passage précédent : l'écran n'a jamais à deviner l'âge d'une
+        # ligne, il ne lit que le run_id le plus récent.
+        # DÉDOUBLONNÉ, et ce n'est pas de la coquetterie : `planifie` envoie un
+        # upsert unique, et Postgres refuse un `ON CONFLICT DO UPDATE` qui
+        # toucherait deux fois la même ligne. Deux comptes Meta sur un même
+        # utilisateur feraient donc échouer TOUTE l'annonce. `dict.fromkeys`
+        # dédoublonne en gardant l'ordre.
+        prevus = list(dict.fromkeys(c for f in fils for c, _ in f))
+        if a_tente:
+            prevus += ["labels", "rapport"]
+        suivi.planifie(sb, prevus)
+        for canal, pourquoi in non_appeles:
+            suivi.saute(sb, canal, pourquoi)
+
+        if fils:
+            # `map` rend les résultats DANS L'ORDRE DES FILS, pas dans l'ordre où
+            # ils finissent — mais chaque ligne porte son canal, donc l'ordre du
+            # journal ne dépend pas de celui-là.
+            with ThreadPoolExecutor(max_workers=min(_FILS_MAX, len(fils))) as ex:
+                for sorties in ex.map(lambda f: _fil(f, suivi), fils):
+                    journal += [(_rang.get(canal, len(CANAUX)), mot)
+                                for canal, mot in sorties]
 
         # Labellisation IA des nouveaux contenus (posts + campagnes sans thème).
         # Best-effort : jamais bloquant, ne touche jamais un label posé à la main.
+        # Séquentiel et sur le client principal : il lit ce que les trois fils
+        # viennent d'écrire, il ne peut donc pas partir avant leur jointure.
         if a_tente:
+            suivi.commence(sb, "labels")
             try:
                 from saas.worker.labeling import auto_label
-                logs.append(auto_label(sb, uid))
+                _mot = auto_label(sb, uid)
+                journal.append((_rang["labels"], _mot))
+                suivi.termine(sb, "labels", "fini", _mot)
             except Exception as e:
-                logs.append(f"labels KO: {e}")
+                _mot = f"labels KO: {e}"
+                journal.append((_rang["labels"], _mot))
+                suivi.termine(sb, "labels", "echec", _mot)
 
         # Rapport hebdo précalculé → weekly_reports (lu par Pulse) + email hebdo.
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
         # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
         # RESEND_API_KEY, send_email passe en dry-run (aucun envoi).
         if a_tente:
+            suivi.commence(sb, "rapport")
             try:
                 from saas.worker.build_report import publish_weekly_report
                 email_to = None
@@ -564,9 +752,19 @@ def run(force: bool = False, only_user: str | None = None,
                     email_to = sb.auth.admin.get_user_by_id(uid).user.email
                 except Exception:
                     pass
-                logs.append(publish_weekly_report(sb, uid, email_to=email_to))
+                _mot = publish_weekly_report(sb, uid, email_to=email_to)
+                journal.append((_rang["rapport"], _mot))
+                suivi.termine(sb, "rapport", "fini", _mot)
             except Exception as e:
-                logs.append(f"rapport KO: {e}")
+                _mot = f"rapport KO: {e}"
+                journal.append((_rang["rapport"], _mot))
+                suivi.termine(sb, "rapport", "echec", _mot)
+
+        # Tri STABLE sur le seul rang : deux lignes d'un même canal gardent
+        # l'ordre où elles ont été produites.
+        journal.sort(key=lambda r: r[0])
+        logs += [mot for _, mot in journal]
+        suivi.bilan()
 
         if logs:
             print(f"  {uid} → " + " | ".join(logs))

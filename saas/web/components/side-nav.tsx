@@ -402,11 +402,16 @@ export function SideNav({
           64 px repliée : 40 px de cible cliquable et 12 px de marge de chaque
           côté — c'est le minimum sous lequel un rail cesse d'être un rail. */}
       <aside
-        // `overflow-y-auto` : le panneau de récolte ajoute ~110 px au bloc du
-        // bas quand il s'ouvre. Sur une fenêtre courte (un portable de 13" avec
-        // la barre d'onglets et le dock), la colonne n'a plus la hauteur — et
-        // sans cette ligne le débordement était simplement invisible, comme il
-        // l'était déjà sans le panneau sous 480 px de haut.
+        // `overflow-y-auto` : le panneau de récolte ajoute de la hauteur au bloc
+        // du bas quand il s'ouvre — nettement plus depuis qu'il liste les six
+        // canaux avec leur état, là où il ne montrait qu'une barre. Sur une
+        // fenêtre courte (un portable de 13" avec la barre d'onglets et le
+        // dock), la colonne n'a plus la hauteur — et sans cette ligne le
+        // débordement était simplement invisible, comme il l'était déjà sans le
+        // panneau sous 480 px de haut.
+        // La liste des canaux porte son propre plafond (`max-h` dans
+        // fetch-button.tsx) : un message d'erreur long ne peut donc pas
+        // repousser le bouton indéfiniment vers le bas.
         className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200 ${
           replie ? "lg:w-[64px]" : "lg:w-[280px]"
         }`}

@@ -30,6 +30,13 @@ _POSTS_RAFRAICHIS_MAX = 40
 # de 30 jours ne rendrait qu'un seul post et le reste du mur ne bougerait plus.
 _POSTS_RAFRAICHIS_MIN = 6
 
+# Plafond de pages sur l'inventaire des médias. À 100 par page (voir
+# `_fetch_insta_post_id`), 60 pages = 6 000 posts : au-delà, ce n'est plus un
+# compte de marque, et une boucle sans fin coûterait le passage de TOUS les
+# autres utilisateurs. Le chiffre borne aussi le pire cas en temps — 60 requêtes
+# à 30 s de délai d'attente, pas l'infini.
+_MEDIA_PAGES_MAX = 60
+
 # CE QUE ÇA COÛTE — simulé sur les quatre rythmes de publication, en posts
 # relus par passage (un post relu = 3 appels Graph : info, insights, follows) :
 #     1 post/jour     20 → 30      1 post/semaine  20 → 6
@@ -104,21 +111,63 @@ class OrganicInstagramm():
         target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_id_business}/media"
         params = {
             "fields": "id,timestamp",
-            "access_token": self.meta_long_token
+            "access_token": self.meta_long_token,
+            # LE POSTE LE PLUS BAVARD DE LA RÉCOLTE, POUR RIEN.
+            # Cette boucle parcourt TOUT l'historique média du compte — il le
+            # faut, `total_posts` est un décompte complet — mais elle le faisait
+            # SANS `limit`, donc par pages de 25, qui est le défaut du Graph API.
+            # Un compte à 500 posts payait 20 allers-retours, un compte à 1 000
+            # en payait 40, uniquement pour compter.
+            #
+            # 100 plutôt que 25 : la taille maximale de page n'est PAS fermement
+            # documentée pour cette edge (la référence de la pagination par
+            # curseur décrit `limit` comme « the maximum number of objects that
+            # may be returned » et prévient explicitement de ne pas déduire la
+            # fin d'une page plus courte que demandé). On ne peut donc pas
+            # l'essayer sans jeton, et on ne le suppose pas.
+            # Ce qui rend le choix SANS RISQUE, c'est la condition d'arrêt : la
+            # boucle s'arrête sur l'ABSENCE de `next`, jamais sur un compte de
+            # lignes. Si Meta plafonne la page plus bas que 100, on refait
+            # simplement plus de pages — exactement le comportement d'avant,
+            # aux mêmes données. Le pire cas est « aucun gain », pas « données
+            # tronquées ».
+            "limit": 100,
         }
 
-        r = requests.get(url=target_url, params=params)
+        r = requests.get(url=target_url, params=params, timeout=30)
         list_id = []
         data = r.json()
+        # UNE ERREUR NE DOIT PLUS PASSER POUR UN COMPTE VIDE. Sans ce contrôle,
+        # un jeton expiré rendait `{"error": {...}}` : `data.get("data", [])`
+        # valait `[]`, aucun `next`, et la suite plantait sur un `KeyError:
+        # 'timestamp'` en construisant le DataFrame — un message qui ne dit rien
+        # de la vraie cause. Pire, `total_posts` aurait pu être écrit à 0.
+        if isinstance(data, dict) and data.get("error"):
+            raise ValueError("Instagram — l'API a refusé la liste des médias : "
+                             + str(data["error"].get("message", data["error"])))
 
         list_id.extend(data.get("data", []))
         next_url = data.get("paging", {}).get("next")
-        while next_url:
-            r = requests.get(url=next_url)
+        # Le garde-fou déjà posé sur les activités Meta (voir
+        # `_ACTIVITES_PAGES_MAX` dans fetch_meta_ads.py) manquait ici : le Graph
+        # API sait rendre un curseur `next` sur une page VIDE, et rien
+        # n'empêchait alors la boucle de tourner sans fin sur un seul compte, en
+        # mangeant le passage de tous les autres.
+        pages = 1
+        while next_url and pages < _MEDIA_PAGES_MAX:
+            r = requests.get(url=next_url, timeout=30)
             paging_data = r.json()
-            list_id.extend(paging_data.get("data", []))
+            lot = paging_data.get("data", []) or []
+            if not lot:
+                break          # curseur épuisé qui tourne à vide
+            list_id.extend(lot)
+            pages += 1
             next_url = paging_data.get("paging", {}).get("next")
-
+        if next_url and pages >= _MEDIA_PAGES_MAX:
+            # Pas une erreur : ce qui a été lu est bon. Mais ça se dit, sinon
+            # `total_posts` est faux sans que rien ne le signale.
+            print(f"    médias Instagram : arrêt à {_MEDIA_PAGES_MAX} pages "
+                  f"({len(list_id)} posts lus), le total sera sous-estimé.")
 
         df = pd.DataFrame(list_id).sort_values(by="timestamp", ascending=False)
         self.total_posts = len(df)
@@ -292,17 +341,28 @@ class OrganicInstagramm():
                 expanded=False,
             )
 
-    def fetch_headless(self) -> list:
+    def fetch_headless(self, note=None) -> list:
         """Version SANS Streamlit pour le worker cron. instagram_business_id requis
         (fourni depuis connected_accounts) → on saute la sélection de Page.
         Remplit self.new_results / self.followers / self.total_posts et les retourne.
+
+        `note(etape)` — facultatif — reçoit l'étape en cours pour que l'écran
+        puisse l'afficher. C'est ICI que le chiffre est honnête : `total` est
+        connu AVANT d'entrer dans la boucle, donc « posts 12/37 » est un compte
+        réel. Ailleurs dans la récolte, le nombre d'appels d'une étape n'est pas
+        connu d'avance et rien n'est chiffré.
         """
         if not self.meta_id_business:
             raise ValueError("instagram_business_id requis en mode headless")
+        dire = note or (lambda _e: None)
+        dire("inventaire")
         self._fetch_insta_post_id()              # plus de st.spinner → safe headless
+        dire("abonnés")
         self.followers = self._fetch_account_followers()
         results = []
-        for post_id in self.new_post_ids:
+        total = len(self.new_post_ids)
+        for rang, post_id in enumerate(self.new_post_ids, start=1):
+            dire(f"posts {rang}/{total}")
             info = self._fetch_post_info(post_id)
             media_type = info.get("media_type", "IMAGE")
             metrics = self._fetch_post_metrics(post_id, media_type)
