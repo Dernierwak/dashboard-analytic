@@ -182,8 +182,26 @@ class OrganicInstagramm():
         existing_rows = (self.supabase_client.table("instagram_organic_posts")
                          .select("post_id, media_url")
                          .eq("user_id", self.supabase_user_id).execute().data) or []
-        existing_ids = {row["post_id"] for row in existing_rows}
-        self._media_connu = {r["post_id"]: r.get("media_url") for r in existing_rows}
+        # LE BUG QUI RENDAIT LA RÉCOLTE JAMAIS INCRÉMENTALE, ET DEPUIS TOUJOURS.
+        # `post_id` est une colonne numérique (bigint) : PostgREST le rend en
+        # `int` Python. `df["id"]` vient du Graph API, qui rend TOUJOURS ses IDs
+        # en chaînes JSON. `pid not in existing_ids` comparait donc une chaîne à
+        # un ensemble d'entiers — jamais égal, quoi qu'il arrive. Chaque post du
+        # compte (jusqu'à `self.limit`) était donc traité comme neuf à CHAQUE
+        # récolte, sans jamais toucher au plafond `_POSTS_RAFRAICHIS_MAX` : sur
+        # un compte à 200 posts, ça fait 200 posts relus (3 appels Graph
+        # chacun) au lieu d'une poignée de nouveaux + 40 rafraîchis. Mesuré en
+        # conditions réelles (2026-08-24) : `new_post_ids` rendait exactement
+        # les 200 IDs déjà en base, en chaînes, alors que `existing_ids` les
+        # portait en entiers — la comparaison ne pouvait jamais matcher.
+        # Le même bug défaisait `_media_connu` (ajouté le 18 août pour éviter
+        # de re-télécharger une image déjà en stockage) : la clé cherchée était
+        # une chaîne, le dict était indexé par entier, `.get()` rendait
+        # toujours `None`, et `_image_du_post` refaisait le trajet
+        # téléchargement + envoi pour une image qu'on avait déjà — le poste le
+        # plus cher de la récolte Instagram, payé pour rien à chaque passage.
+        existing_ids = {str(row["post_id"]) for row in existing_rows}
+        self._media_connu = {str(r["post_id"]): r.get("media_url") for r in existing_rows}
 
         # La fenêtre de rafraîchissement, en jours (voir _JOURS_RAFRAICHIS).
         # `errors="coerce"` : un timestamp illisible devient NaT, donc hors

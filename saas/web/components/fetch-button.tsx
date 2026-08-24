@@ -115,6 +115,23 @@ function mmss(sec: number): string {
   return `${m}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+// LA SEULE BARRE DE POURCENTAGE DU MODULE, ET ELLE NE MESURE PAS UNE ESTIMATION.
+// La note « CE QU'ON N'AFFICHE TOUJOURS PAS » plus haut explique pourquoi un
+// pourcentage est absent partout ailleurs : le nombre d'appels d'un canal
+// n'est jamais connu d'avance. Instagram est l'unique exception, écrite dans
+// `fetch_headless` (meta_script/fetch_instagram.py) : la liste des posts à
+// relire est arrêtée AVANT la boucle, donc `note("posts 12/37")` est un
+// compte réel. La barre lit ce même texte, elle n'invente rien de plus.
+const POSTS_RE = /^posts (\d+)\/(\d+)$/;
+function progresInstagram(etape: string | null): number | null {
+  if (!etape) return null;
+  const m = POSTS_RE.exec(etape);
+  if (!m) return null;
+  const total = Number(m[2]);
+  if (!total) return null;
+  return Math.min(100, Math.round((Number(m[1]) / total) * 100));
+}
+
 // Le nom lisible d'un canal. La clé est celle que le worker écrit (`CANAUX`
 // dans saas/worker/suivi.py) ; un canal inconnu s'affiche tel quel plutôt que
 // de disparaître.
@@ -420,6 +437,12 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
             // le mot de la fin s'il existe, sinon l'étape en cours, sinon rien.
             const dit =
               c.motDeFin ?? (e === "en_cours" ? c.etape : null) ?? null;
+            // La barre bleue : Instagram seulement, et seulement pendant que
+            // l'étape en cours est un compte de posts — voir `progresInstagram`.
+            const pct =
+              c.canal === "instagram" && e === "en_cours"
+                ? progresInstagram(c.etape)
+                : null;
             return (
               <li key={c.canal} className="flex gap-1.5 min-w-0">
                 <span className={`${style.couleur} text-[11px] leading-[1.35] shrink-0 w-2.5`}>
@@ -444,6 +467,20 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
                       title={dit}
                     >
                       {dit}
+                    </span>
+                  )}
+                  {pct !== null && (
+                    <span
+                      className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-brand/15"
+                      role="progressbar"
+                      aria-valuenow={pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <span
+                        className="block h-full rounded-full bg-brand transition-[width]"
+                        style={{ width: `${pct}%` }}
+                      />
                     </span>
                   )}
                 </span>

@@ -20,9 +20,23 @@ from scripts.app_secrets import secret
 
 
 # ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.
-# Versions supportées actuellement : v19, v20, v21 (mai 2026)
-# Doc : https://developers.google.com/google-ads/api/docs/release-notes
-_API_VERSION = "v21"
+#
+# v21 a sunsetté le 5 août 2026 — confirmé en conditions réelles le 24 août
+# 2026 (compte de test, jeton valide) : `googleAds:searchStream` en v21 rend
+# un 404 HTML de Google (pas une erreur JSON de l'API), sur CHAQUE appel —
+# insights, statuts, budgets ET `change_event`. C'est la cause de « quasi
+# aucune donnée Google Ads historique » : `fetch_campaign_insights` rentre
+# dans le `except Exception` (le corps HTML n'est pas du JSON), rend
+# `([], "Erreur API: ...")`, et `_fetch_google` avale l'erreur en `google: 0
+# lignes` — silencieux, comme prévu pour ne jamais faire tomber la récolte,
+# mais qui laissait `google_ads_insights` figé au 11 août pour toujours.
+# v22 à v25 répondent tous 200 avec de vraies lignes (testé en direct sur le
+# même compte) ; v25, sortie le 22 juillet 2026, est la plus récente et
+# sunsettera en août 2027 — c'est elle qui repousse le plus loin la prochaine
+# panne du même genre.
+# Versions supportées actuellement : v23, v24, v25 (août 2026)
+# Doc : https://developers.google.com/google-ads/api/docs/sunset-dates
+_API_VERSION = "v25"
 _BASE = f"https://googleads.googleapis.com/{_API_VERSION}"
 
 
@@ -395,11 +409,22 @@ def fetch_campaign_statuses(
 
 # ── Le journal des changements DÉCLARÉS (change_event) ────────────────────────
 #
-# Trois contraintes de l'API, qui font rejeter la requête si on les oublie :
+# Quatre contraintes de l'API, qui font rejeter la requête si on les oublie :
 #   1. la fenêtre ne peut pas dépasser 30 JOURS — au-delà, l'information
 #      n'existe plus, aucun rattrapage n'est possible ;
 #   2. le filtre sur change_date_time est OBLIGATOIRE ;
-#   3. LIMIT est OBLIGATOIRE, et plafonné à 10 000.
+#   3. LIMIT est OBLIGATOIRE, et plafonné à 10 000 ;
+#   4. LA FENÊTRE DOIT ÊTRE FINIE — bornée des DEUX côtés. Un simple
+#      `>= depuis` (sans borne haute) était pris pour « depuis X jusqu'à
+#      maintenant » ; l'API le refuse purement et simplement :
+#      `CHANGE_DATE_RANGE_INFINITE` — « missing filters … or filtering with
+#      an infinite range ». Confirmé en conditions réelles le 24 août 2026 :
+#      la requête a toujours échoué avec ce message, `change_event` n'a donc
+#      jamais rendu une seule ligne, quelle que soit la version d'API — c'est
+#      la seconde cause, indépendante de la première (v21 sunsettée), de
+#      « aucune donnée de changements Google Ads ». La borne haute est
+#      `demain` (pas `aujourd'hui`) pour couvrir tout aujourd'hui : une
+#      comparaison sur une date seule vaut minuit de ce jour-là.
 #
 # Doc : https://developers.google.com/google-ads/api/docs/change-event
 
@@ -721,6 +746,7 @@ def fetch_campaign_changes(
     """
     plancher = date.today() - timedelta(days=_CHANGE_FENETRE_MAX - 1)
     depuis = max(since, plancher)
+    jusqua = date.today() + timedelta(days=1)  # borne haute — voir la note plus haut
     noms = noms_campagnes or {}
 
     query = f"""
@@ -731,6 +757,7 @@ def fetch_campaign_changes(
                change_event.campaign, change_event.client_type
         FROM change_event
         WHERE change_event.change_date_time >= '{depuis.isoformat()}'
+          AND change_event.change_date_time <= '{jusqua.isoformat()}'
         ORDER BY change_event.change_date_time DESC
         LIMIT 10000
     """
