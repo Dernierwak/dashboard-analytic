@@ -311,7 +311,7 @@ export function phraseEcart(
   mot: { ligne: string; lignes: string }
 ): string {
   const p: string[] = [
-    `L'écart compare la période affichée à ${l.reference}, la même référence que le module « Comparer » ci-dessus.`,
+    `L'écart compare la période affichée à ${l.reference}.`,
   ];
   if (l.parJour)
     p.push(
