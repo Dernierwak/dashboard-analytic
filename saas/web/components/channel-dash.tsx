@@ -1025,19 +1025,24 @@ function StatusChip({ status }: { status: string | null }) {
 //
 // UNE LIGNE QUI NE SE DÉPLIE PAS N'EST PAS UN `<details>`.
 //
-// C'est la correction du « on ne peut plus déplier les campagnes Google ». Le
-// dépliage se nourrit d'une table dédiée, `google_ads_ad_insights`, alimentée
-// autrefois par le passage Streamlit et qui ne l'est plus depuis que la récolte
-// est autonome (`saas/worker/fetch_all.py`, `_fetch_google`, ne demande que le
-// niveau CAMPAGNE ; Meta, lui, récolte au niveau annonce et sert les deux). La
-// vraie réparation est dans le worker, hors de ce périmètre.
+// C'était la correction du « on ne peut plus déplier les campagnes Google ».
+// Le dépliage se nourrit d'une table dédiée, `google_ads_ad_insights`,
+// alimentée autrefois par le passage Streamlit et qui ne l'était plus depuis
+// que la récolte est autonome (`saas/worker/fetch_all.py`, `_fetch_google` ne
+// demandait que le niveau CAMPAGNE ; Meta, lui, récolte au niveau annonce et
+// sert les deux). `_fetch_google` appelle maintenant aussi `fetch_ad_insights`
+// et écrit dans `google_ads_ad_insights` (sa propre date de reprise, déduite
+// d'elle-même comme les autres tables) — la vraie réparation était dans le
+// worker, elle y est faite.
 //
-// Ce qui est réparable ICI, et qui est la moitié visible du défaut : la ligne
-// restait un `<details>` avec son curseur de main et son fond au survol, on
-// cliquait, elle s'ouvrait — SUR RIEN. Un pied écrivait même « clique une
-// campagne pour dérouler ses groupes ». On promettait un geste qui ne pouvait
-// pas aboutir, et le silence se lisait comme une panne d'interface.
-// Sans détail, la ligne redevient une ligne, et le pied DIT pourquoi.
+// Ce qui restait réparable ICI, et qui était la moitié visible du défaut : la
+// ligne restait un `<details>` avec son curseur de main et son fond au
+// survol, on cliquait, elle s'ouvrait — SUR RIEN. Un pied écrivait même
+// « clique une campagne pour dérouler ses groupes ». On promettait un geste
+// qui ne pouvait pas aboutir, et le silence se lisait comme une panne
+// d'interface. Sans détail, la ligne redevient une ligne, et le pied DIT
+// pourquoi — ce qui reste vrai tant que le worker n'a pas encore tourné une
+// première fois après ce correctif (aucune ligne en base pour l'instant).
 export function CampaignTable({
   d,
   channel,

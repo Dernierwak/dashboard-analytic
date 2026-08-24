@@ -30,15 +30,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from supabase import create_client                                        # noqa: E402
 from scripts.app_secrets import secret                                    # noqa: E402
-from scripts.fetch_data import fetch_meta_ads_latest_date, fetch_google_ads_latest_date  # noqa: E402
+from scripts.fetch_data import (                                          # noqa: E402
+    fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
+    fetch_google_ads_ad_insights_latest_date,
+)
 from scripts.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
-    upsert_google_ads, upsert_google_campaign_statuses,
+    upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     insert_instagram_org, upsert_platform_budgets, upsert_platform_changes,
 )
 from google_script.fetch_token import get_access_token_from_refresh        # noqa: E402
 from google_script.fetch_google_ads import (                               # noqa: E402
-    fetch_campaign_insights, fetch_campaign_statuses,
+    fetch_campaign_insights, fetch_ad_insights, fetch_campaign_statuses,
     fetch_campaign_budgets as google_budgets,
     fetch_campaign_changes as google_changes,
 )
@@ -458,7 +461,25 @@ def _fetch_google(sb, uid, refresh, customer_id, note=_rien) -> str:
         upsert_google_ads(sb, uid, rows)
     if smap:
         upsert_google_campaign_statuses(sb, uid, smap)
-    return f"google: {len(rows)} lignes"
+
+    # Détail par annonce (drill-down campagne → groupe → annonce), table à
+    # part : sa fraîcheur se déduit d'elle-même, pas de google_ads_insights —
+    # les deux récoltes ne sont pas à la même profondeur tant que l'une des
+    # deux n'a jamais tourné (voir fetch_google_ads_ad_insights_latest_date).
+    note("détail annonces")
+    latest_ad = fetch_google_ads_ad_insights_latest_date(sb, uid)
+    since_ad = _depart_recolte(latest_ad, today, _RECOUVREMENT_JOURS_GOOGLE)
+    ad_rows, cur = [], since_ad
+    while cur <= today:
+        end = min(cur + timedelta(days=_CHUNK - 1), today)
+        chunk, err = fetch_ad_insights(access, customer_id, cur, end)
+        if not err:
+            ad_rows += chunk
+        cur = end + timedelta(days=1)
+    if ad_rows:
+        upsert_google_ads_ad_insights(sb, uid, ad_rows)
+
+    return f"google: {len(rows)} lignes, {len(ad_rows)} lignes annonces"
 
 
 # ── Instagram organique (token utilisateur) ───────────────────────────────────

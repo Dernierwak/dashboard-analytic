@@ -200,6 +200,22 @@ def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
     return res.data[0]["date_start"] if res.data else None
 
 
+def fetch_google_ads_ad_insights_latest_date(supabase: Client, user_id: str) -> str | None:
+    """Même rôle que `fetch_google_ads_latest_date`, sur la table du détail par
+    annonce (`google_ads_ad_insights`) : son point de reprise se déduit d'elle
+    seule, pas de la table campagne — les deux récoltes ne sont pas à la même
+    profondeur tant que l'une des deux n'a jamais tourné."""
+    res = (
+        supabase.table("google_ads_ad_insights")
+        .select("date_start")
+        .eq("user_id", user_id)
+        .order("date_start", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["date_start"] if res.data else None
+
+
 def fetch_google_campaign_labels(supabase: Client, user_id: str) -> list[str]:
     """Compat — pointe désormais sur la liste unifiée profiles.labels."""
     return fetch_labels(supabase, user_id)
