@@ -48,11 +48,19 @@ figés au jour où on l'a lu.
 
 ## Google Ads API
 
-**`change_event` — trois contraintes qui vont ensemble** : un filtre de date est
-obligatoire, un `LIMIT` est obligatoire (≤ 10 000), et la fenêtre ne peut pas
-dépasser **30 jours**. Une fenêtre plus large **fait rejeter la requête entière**
-— elle n'est pas tronquée. C'est pourquoi la fenêtre Google et la fenêtre Meta
-sont deux constantes séparées dans `saas/worker/fetch_all.py`.
+**`change_event` — quatre contraintes qui vont ensemble** : un filtre de date est
+obligatoire, un `LIMIT` est obligatoire (≤ 10 000), la fenêtre ne peut pas
+dépasser **30 jours**, et **la fenêtre doit être bornée des DEUX côtés** — un
+simple `>= depuis` (sans borne haute) est pris pour « depuis X jusqu'à l'infini »
+et rejeté avec `CHANGE_DATE_RANGE_INFINITE`, pas toléré ni tronqué. Confirmé en
+conditions réelles le 24 août 2026 (TASK-007) : cette 4e contrainte, à elle
+seule et indépendamment de toute autre cause, a fait échouer 100 % des requêtes
+`change_event` — zéro changement Google Ads n'était jamais remonté, quelle que
+soit la version d'API. La borne haute se met à `demain`, pas `aujourd'hui`, pour
+couvrir toute la journée en cours. Une fenêtre plus large que 30 jours (les deux
+bornes présentes mais trop écartées) **fait rejeter la requête entière** — elle
+n'est pas tronquée. C'est pourquoi la fenêtre Google et la fenêtre Meta sont deux
+constantes séparées dans `saas/worker/fetch_all.py`.
 
 **Fenêtre de conversion : 30 jours par défaut**, jusqu'à 90. « If you don't
 customize the click-through conversion window […] the default window is 30 days. »

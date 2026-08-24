@@ -492,6 +492,139 @@ _ETATS_M = {   # même chose, accord au masculin
     "REMOVED": "a été supprimé",
 }
 
+_AJOUT = {"m": "a été ajouté", "f": "a été ajoutée"}
+_CREE  = {"m": "a été créé",   "f": "a été créée"}
+_MODIF = {"m": "a été modifié", "f": "a été modifiée"}
+_SUPPR = {"m": "a été supprimé", "f": "a été supprimée"}
+
+# `change_event.change_resource_type` pour un LIEN entre un asset déjà
+# existant et une campagne, un groupe d'annonces ou le compte — par
+# opposition à `ASSET`, qui décrit l'objet asset lui-même (son contenu
+# créatif). Clé du oneof `old_resource`/`new_resource` : (camelCase, snake_case).
+_CLES_ASSET_LIEN = {
+    "CAMPAIGN_ASSET": ("campaignAsset", "campaign_asset"),
+    "AD_GROUP_ASSET": ("adGroupAsset", "ad_group_asset"),
+    "CUSTOMER_ASSET": ("customerAsset", "customer_asset"),
+}
+
+# Le type d'asset (`asset.type` sur l'objet lui-même, `field_type` sur son
+# lien à une campagne/groupe d'annonces/compte — deux enums Google Ads
+# distincts mais qui partagent le même vocabulaire) → (article + nom, genre).
+# Vérifié le 24 août 2026 sur les pages de champs `/fields/v25/asset` et
+# `/fields/v25/campaign_asset` : listes complètes des deux enums à cette date.
+# Les valeurs absentes d'ici (types de flux dynamiques rares, aperçus internes…)
+# retombent sur le générique « un asset » plutôt que d'être jetées en silence.
+_TYPES_ASSET: dict[str, tuple[str, str]] = {
+    "SITELINK":                      ("un sitelien",                        "m"),
+    "CALLOUT":                       ("une accroche",                       "f"),
+    "STRUCTURED_SNIPPET":            ("un extrait de site structuré",       "m"),
+    "CALL":                          ("une extension d'appel",              "f"),
+    "PRICE":                         ("une extension de prix",              "f"),
+    "PROMOTION":                     ("une promotion",                      "f"),
+    "LEAD_FORM":                     ("un formulaire pour prospects",       "m"),
+    "MOBILE_APP":                    ("une extension d'application mobile", "f"),
+    "HOTEL_CALLOUT":                 ("une accroche d'hôtel",               "f"),
+    "HOTEL_PROPERTY":                ("un établissement hôtelier",          "m"),
+    "CALL_TO_ACTION":                ("un appel à l'action",                "m"),
+    "CALL_TO_ACTION_SELECTION":      ("un appel à l'action",                "m"),
+    "BOOK_ON_GOOGLE":                ("une réservation via Google",         "f"),
+    "BUSINESS_MESSAGE":              ("une messagerie professionnelle",     "f"),
+    "APP_DEEP_LINK":                 ("un lien profond vers l'application", "m"),
+    "IMAGE":                         ("une image",                          "f"),
+    "AD_IMAGE":                      ("une image",                          "f"),
+    "CLASSIC_DISPLAY_IMAGE":         ("une image display",                  "f"),
+    "MARKETING_IMAGE":               ("une image marketing",                "f"),
+    "SQUARE_MARKETING_IMAGE":        ("une image marketing carrée",         "f"),
+    "PORTRAIT_MARKETING_IMAGE":      ("une image marketing portrait",       "f"),
+    "TALL_PORTRAIT_MARKETING_IMAGE": ("une image marketing portrait",       "f"),
+    "LANDSCAPE_LOGO":                ("un logo paysage",                    "m"),
+    "LOGO":                          ("un logo",                            "m"),
+    "BUSINESS_LOGO":                 ("un logo",                            "m"),
+    "MEDIA_BUNDLE":                  ("un fichier HTML5",                   "m"),
+    "VIDEO":                         ("une vidéo",                          "f"),
+    "YOUTUBE_VIDEO":                 ("une vidéo YouTube",                  "f"),
+    "YOUTUBE_VIDEO_LIST":            ("une liste de vidéos YouTube",        "f"),
+    "RELATED_YOUTUBE_VIDEOS":        ("des vidéos YouTube associées",       "f"),
+    "TEXT":                          ("un texte publicitaire",              "m"),
+    "HEADLINE":                      ("un titre",                           "m"),
+    "LONG_HEADLINE":                 ("un titre long",                      "m"),
+    "DESCRIPTION":                   ("une description",                    "f"),
+    "LONG_DESCRIPTION":              ("une description longue",             "f"),
+    "MANDATORY_AD_TEXT":             ("un texte obligatoire",               "m"),
+    "BUSINESS_NAME":                 ("le nom de l'entreprise",             "m"),
+    "LANDING_PAGE_PREVIEW":          ("un aperçu de page de destination",   "m"),
+    "DEMAND_GEN_CAROUSEL_CARD":      ("une carte de carrousel",             "f"),
+    "LOCATION":                      ("une extension de lieu",              "f"),
+    "PAGE_FEED":                     ("un flux de pages",                   "m"),
+    "DYNAMIC_CUSTOM":                ("un flux personnalisé",               "m"),
+    "DYNAMIC_EDUCATION":             ("un flux éducation",                  "m"),
+    "DYNAMIC_FLIGHTS":               ("un flux vols",                       "m"),
+    "DYNAMIC_HOTELS_AND_RENTALS":    ("un flux hôtels et locations",        "m"),
+    "DYNAMIC_JOBS":                  ("un flux offres d'emploi",            "m"),
+    "DYNAMIC_LOCAL":                 ("un flux local",                      "m"),
+    "DYNAMIC_REAL_ESTATE":           ("un flux immobilier",                 "m"),
+    "DYNAMIC_TRAVEL":                ("un flux voyage",                     "m"),
+}
+
+# `asset.type` manque parfois dans le payload de `change_event` (confirmé en
+# conditions réelles le 24 août 2026 sur un extrait de site structuré créé :
+# `type` absent, mais `structured_snippet_asset` rempli). Le sous-message
+# rempli — un oneof — trahit le type tout aussi sûrement ; on s'en sert en
+# repli. Vérifié le même jour sur `/fields/v25/asset` : liste des sous-champs
+# `*_asset` de la ressource.
+_ONEOF_ASSET_A_TYPE = {
+    "textAsset": "TEXT", "text_asset": "TEXT",
+    "sitelinkAsset": "SITELINK", "sitelink_asset": "SITELINK",
+    "calloutAsset": "CALLOUT", "callout_asset": "CALLOUT",
+    "structuredSnippetAsset": "STRUCTURED_SNIPPET", "structured_snippet_asset": "STRUCTURED_SNIPPET",
+    "callAsset": "CALL", "call_asset": "CALL",
+    "imageAsset": "IMAGE", "image_asset": "IMAGE",
+    "priceAsset": "PRICE", "price_asset": "PRICE",
+    "promotionAsset": "PROMOTION", "promotion_asset": "PROMOTION",
+    "leadFormAsset": "LEAD_FORM", "lead_form_asset": "LEAD_FORM",
+    "mobileAppAsset": "MOBILE_APP", "mobile_app_asset": "MOBILE_APP",
+    "callToActionAsset": "CALL_TO_ACTION", "call_to_action_asset": "CALL_TO_ACTION",
+    "bookOnGoogleAsset": "BOOK_ON_GOOGLE", "book_on_google_asset": "BOOK_ON_GOOGLE",
+    "businessMessageAsset": "BUSINESS_MESSAGE", "business_message_asset": "BUSINESS_MESSAGE",
+    "appDeepLinkAsset": "APP_DEEP_LINK", "app_deep_link_asset": "APP_DEEP_LINK",
+    "hotelCalloutAsset": "HOTEL_CALLOUT", "hotel_callout_asset": "HOTEL_CALLOUT",
+    "hotelPropertyAsset": "HOTEL_PROPERTY", "hotel_property_asset": "HOTEL_PROPERTY",
+    "locationAsset": "LOCATION", "location_asset": "LOCATION",
+    "pageFeedAsset": "PAGE_FEED", "page_feed_asset": "PAGE_FEED",
+    "youtubeVideoAsset": "YOUTUBE_VIDEO", "youtube_video_asset": "YOUTUBE_VIDEO",
+    "youtubeVideoListAsset": "YOUTUBE_VIDEO_LIST", "youtube_video_list_asset": "YOUTUBE_VIDEO_LIST",
+    "demandGenCarouselCardAsset": "DEMAND_GEN_CAROUSEL_CARD",
+    "demand_gen_carousel_card_asset": "DEMAND_GEN_CAROUSEL_CARD",
+    "dynamicCustomAsset": "DYNAMIC_CUSTOM", "dynamic_custom_asset": "DYNAMIC_CUSTOM",
+    "dynamicEducationAsset": "DYNAMIC_EDUCATION", "dynamic_education_asset": "DYNAMIC_EDUCATION",
+    "dynamicFlightsAsset": "DYNAMIC_FLIGHTS", "dynamic_flights_asset": "DYNAMIC_FLIGHTS",
+    "dynamicHotelsAndRentalsAsset": "DYNAMIC_HOTELS_AND_RENTALS",
+    "dynamic_hotels_and_rentals_asset": "DYNAMIC_HOTELS_AND_RENTALS",
+    "dynamicJobsAsset": "DYNAMIC_JOBS", "dynamic_jobs_asset": "DYNAMIC_JOBS",
+    "dynamicLocalAsset": "DYNAMIC_LOCAL", "dynamic_local_asset": "DYNAMIC_LOCAL",
+    "dynamicRealEstateAsset": "DYNAMIC_REAL_ESTATE", "dynamic_real_estate_asset": "DYNAMIC_REAL_ESTATE",
+    "dynamicTravelAsset": "DYNAMIC_TRAVEL", "dynamic_travel_asset": "DYNAMIC_TRAVEL",
+    "marketingImageAsset": "MARKETING_IMAGE", "marketing_image_asset": "MARKETING_IMAGE",
+    "squareMarketingImageAsset": "SQUARE_MARKETING_IMAGE",
+    "square_marketing_image_asset": "SQUARE_MARKETING_IMAGE",
+    "portraitMarketingImageAsset": "PORTRAIT_MARKETING_IMAGE",
+    "portrait_marketing_image_asset": "PORTRAIT_MARKETING_IMAGE",
+}
+
+
+def _type_asset_objet(bloc: dict) -> str:
+    """Le type d'un asset (SITELINK, CALLOUT…), avec repli sur le sous-message
+    rempli quand `asset.type` manque — voir `_ONEOF_ASSET_A_TYPE`."""
+    if not isinstance(bloc, dict):
+        return ""
+    t = str(bloc.get("type") or "").upper()
+    if t:
+        return t
+    for cle, valeur in _ONEOF_ASSET_A_TYPE.items():
+        if bloc.get(cle):
+            return valeur
+    return ""
+
 
 # Les critères qui ne sont PAS des mots-clés. Quand l'un de ces champs est
 # présent, on sait qu'on n'a pas affaire à un mot-clé et on se tait plutôt que
@@ -533,6 +666,65 @@ def _mot_cle(bloc: dict) -> str | None:
     return (kw.get("text") or "").strip() or None
 
 
+def _texte_asset(bloc: dict) -> str | None:
+    """Le texte visible d'un asset, quand son type en porte un.
+
+    `asset` est un oneof côté API : un seul sous-message est rempli selon le
+    type (`text_asset`, `sitelink_asset`, `callout_asset`…). Sans texte
+    exploitable (une image, une vidéo…), on retombe sur `asset.name` — le nom
+    donné à l'asset dans la bibliothèque, quand il existe.
+    """
+    if not isinstance(bloc, dict):
+        return None
+    txt = (bloc.get("textAsset") or bloc.get("text_asset") or {}).get("text")
+    if txt:
+        return str(txt).strip() or None
+    sl = bloc.get("sitelinkAsset") or bloc.get("sitelink_asset") or {}
+    lien = sl.get("linkText") or sl.get("link_text")
+    if lien:
+        return str(lien).strip() or None
+    ca = bloc.get("calloutAsset") or bloc.get("callout_asset") or {}
+    accroche = ca.get("calloutText") or ca.get("callout_text")
+    if accroche:
+        return str(accroche).strip() or None
+    ss = bloc.get("structuredSnippetAsset") or bloc.get("structured_snippet_asset") or {}
+    entete = ss.get("header")
+    valeurs = ss.get("values") or []
+    if entete and valeurs:
+        return f"{entete} : " + ", ".join(str(v) for v in valeurs)
+    if entete:
+        return str(entete).strip() or None
+    call = bloc.get("callAsset") or bloc.get("call_asset") or {}
+    tel = call.get("phoneNumber") or call.get("phone_number")
+    if tel:
+        return str(tel).strip() or None
+    nom = bloc.get("name")
+    if nom:
+        return str(nom).strip() or None
+    return None
+
+
+def _type_champ_asset(rn: str | None, bloc_new: dict, bloc_old: dict) -> str:
+    """Le type de champ d'un lien asset — SITELINK, CALLOUT, AD_IMAGE…
+
+    `campaign_asset` / `ad_group_asset` / `customer_asset` ne renvoie quasiment
+    jamais `field_type` dans `old_resource`/`new_resource` — confirmé en
+    conditions réelles le 24 août 2026 : sur un compte de test, la quasi-
+    totalité des `CAMPAIGN_ASSET`/`AD_GROUP_ASSET` en CREATE arrivent réduits à
+    `{"status": "ENABLED"}`, sans `field_type`. Il est cependant TOUJOURS
+    encodé dans le nom de ressource lui-même :
+    `customers/X/campaignAssets/{campaign_id}~{asset_id}~{FIELD_TYPE}` — le
+    dernier segment après le dernier `~`. On le lit là en priorité.
+    """
+    ft = str(bloc_new.get("fieldType") or bloc_new.get("field_type")
+             or bloc_old.get("fieldType") or bloc_old.get("field_type") or "").upper()
+    if ft:
+        return ft
+    if rn:
+        return str(rn).rstrip("/").split("~")[-1].upper()
+    return ""
+
+
 def _traduire_google(
     ev: dict,
     nom_campagne: str | None,
@@ -543,6 +735,13 @@ def _traduire_google(
     La règle vaut plus que la couverture : on n'écrit RIEN qu'on ne sache dire
     en français. Un fil rempli de « AD_GROUP_AD updated » chasse les lignes
     utiles et fait perdre confiance dans celles qui restent.
+
+    Exception assumée pour les types ASSET / CAMPAIGN_ASSET / AD_GROUP_ASSET /
+    CUSTOMER_ASSET (Performance Max, sitelinks, accroches…) : quand le type
+    précis d'asset ou son texte manque, on écrit quand même une phrase
+    générique (« un asset a été modifié… ») plutôt que de jeter la ligne — ces
+    changements étaient auparavant TOUS silencieusement perdus, et une phrase
+    peu précise vaut mieux qu'une catégorie entière invisible.
 
     `textes` : {nom_de_ressource: texte du mot-clé}, résolu par une requête
     séparée — `change_event` ne renvoie que les VALEURS MODIFIÉES, donc un
@@ -642,6 +841,47 @@ def _traduire_google(
             return ("statut", f'le groupe d\'annonces "{nom}" {_ETATS_M[etat]}')
         if nom_campagne:
             return ("statut", f"un groupe d'annonces{de_la_campagne} {_ETATS_M[etat]}")
+        return None
+
+    # ── L'asset (Performance Max, sitelinks, accroches…) ──────────────────────
+    # `ASSET` décrit l'objet asset lui-même — son contenu créatif (texte,
+    # sitelien, accroche…). `CAMPAIGN_ASSET` / `AD_GROUP_ASSET` / `CUSTOMER_ASSET`
+    # décrivent le LIEN entre un asset déjà existant et une campagne, un
+    # groupe d'annonces ou le compte entier (ajout, retrait, pause). Un même
+    # geste dans l'interface (« ajouter ce sitelien à cette campagne ») produit
+    # souvent DEUX `change_event` distincts — l'un pour l'objet, l'autre pour
+    # le lien — traduits ici séparément, comme le reste de la fonction.
+    if typ == "ASSET":
+        atype = (_type_asset_objet(_ressource(new, "asset", "asset"))
+                 or _type_asset_objet(_ressource(old, "asset", "asset")))
+        label, genre = _TYPES_ASSET.get(atype, ("un asset", "m"))
+        texte = _texte_asset(_ressource(new, "asset", "asset")) or _texte_asset(_ressource(old, "asset", "asset"))
+        sujet = f'{label} "{texte}"' if texte else label
+        if op == "CREATE":
+            return ("creatif", f"{sujet} {_CREE[genre]}")
+        if op == "REMOVE":
+            return ("creatif", f"{sujet} {_SUPPR[genre]}")
+        return ("creatif", f"{sujet} {_MODIF[genre]}")
+
+    if typ in _CLES_ASSET_LIEN:
+        camel, snake = _CLES_ASSET_LIEN[typ]
+        bloc_new = _ressource(new, camel, snake)
+        bloc_old = _ressource(old, camel, snake)
+        ft = _type_champ_asset(rn, bloc_new, bloc_old)
+        label, genre = _TYPES_ASSET.get(ft, ("un asset", "m"))
+        # Un CUSTOMER_ASSET est un lien au compte entier — aucune campagne ne
+        # le porte, donc pas de `de_la_campagne` à lui accoler.
+        suffixe = " au niveau du compte" if typ == "CUSTOMER_ASSET" else de_la_campagne
+        sujet = f"{label}{suffixe}"
+        if op == "CREATE":
+            return ("creatif", f"{sujet} {_AJOUT[genre]}")
+        if op == "REMOVE":
+            return ("creatif", f"{sujet} {_SUPPR[genre]}")
+        if "status" in champs:
+            etat = str(bloc_new.get("status") or "").upper()
+            etats = _ETATS if genre == "f" else _ETATS_M
+            if etat in etats:
+                return ("creatif", f"{sujet} {etats[etat]}")
         return None
 
     # ── Le reste : uniquement ce qu'on sait nommer ───────────────────────────
