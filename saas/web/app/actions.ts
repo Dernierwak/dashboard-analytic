@@ -378,6 +378,9 @@ export async function saveObjectif(objectif: string | null) {
     .update({ objectif: objectif || null })
     .eq("id", user.id);
   revalidatePath("/");
+  // Réglable aussi sur /conversions (module « Nos thèmes principaux », à côté
+  // des objectifs par thème) depuis que le rapport est passé en lecture seule.
+  revalidatePath("/conversions");
   return { ok: true };
 }
 
@@ -618,6 +621,101 @@ export async function deleteLabel(name: string) {
   return { ok: true, message: `« ${name} » supprimé partout.` };
 }
 
+// ── Les catégories de conversions (page /conversions) ───────────────────────
+//
+// MÊME PATRON QUE createLabel/renameLabel/deleteLabel, sur `conversion_categories`
+// au lieu de `profiles.labels` : une catégorie est stockée par son NOM, et le
+// renommer/la supprimer doit donc propager dans `ga4_event_categories.category`
+// (l'événement, lui, ne bouge jamais).
+
+async function _categories(
+  supabase: ReturnType<typeof createClient>,
+  uid: string
+): Promise<string[]> {
+  const r = await supabase.from("conversion_categories").select("name").eq("user_id", uid);
+  return (r.data ?? []).map((row) => String(row.name)).sort((a, b) => a.localeCompare(b, "fr"));
+}
+
+export async function createConversionCategory(name: string) {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const clean = name.trim();
+  if (!clean) return { ok: false, message: "Nom vide." };
+  const current = await _categories(supabase, user.id);
+  if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
+  const r = await supabase.from("conversion_categories").insert({ user_id: user.id, name: clean });
+  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  revalidatePath("/conversions");
+  return { ok: true, message: `« ${clean} » créée.` };
+}
+
+export async function renameConversionCategory(oldName: string, newName: string) {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const clean = newName.trim();
+  if (!clean) return { ok: false, message: "Nouveau nom vide." };
+  const current = await _categories(supabase, user.id);
+  if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
+  const r = await supabase.from("conversion_categories")
+    .update({ name: clean }).eq("user_id", user.id).eq("name", oldName);
+  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  await supabase.from("ga4_event_categories").update({ category: clean })
+    .eq("user_id", user.id).eq("category", oldName);
+  revalidatePath("/conversions");
+  return { ok: true, message: `Renommée en « ${clean} » partout.` };
+}
+
+export async function deleteConversionCategory(name: string) {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const r = await supabase.from("conversion_categories")
+    .delete().eq("user_id", user.id).eq("name", name);
+  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  // La catégorie disparaît : les événements qui la portaient redeviennent
+  // « non catégorisés » — l'absence de ligne EST cet état, comme pour
+  // theme_ga4_events quand un thème est supprimé.
+  await supabase.from("ga4_event_categories").delete()
+    .eq("user_id", user.id).eq("category", name);
+  revalidatePath("/conversions");
+  return { ok: true, message: `« ${name} » supprimée partout.` };
+}
+
+// Pose ou retire la catégorie d'un événement GA4 — un choix qui vient d'un
+// clic humain, donc toujours `category_source: 'user'` : c'est ce qui empêche
+// la classification IA (`saas/worker/categorizing.py`) de jamais l'écraser.
+export async function saveCategoryForEvent(eventName: string, category: string | null) {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const nom = eventName.trim();
+  if (!nom) return { ok: false, message: "Événement vide." };
+
+  if (category === null) {
+    const r = await supabase.from("ga4_event_categories")
+      .delete().eq("user_id", user.id).eq("event_name", nom);
+    if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  } else {
+    const r = await supabase.from("ga4_event_categories").upsert(
+      { user_id: user.id, event_name: nom, category, category_source: "user" },
+      { onConflict: "user_id,event_name" }
+    );
+    if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  }
+  revalidatePath("/conversions");
+  return { ok: true };
+}
+
 // Rattache un événement GA4 à un thème, ou l'en retire.
 //
 // `rang` : "principal" — il porte le verdict et la courbe du thème ;
@@ -670,6 +768,7 @@ export async function setThemeEvent(
   // mesure. On revalide quand même : la page d'accueil affiche l'état des
   // réglages, pas seulement le rapport.
   revalidatePath("/");
+  revalidatePath("/conversions");
   return { ok: true };
 }
 
@@ -711,6 +810,7 @@ export async function saveThemeObjectif(
 
   revalidatePath("/labels");
   revalidatePath("/");
+  revalidatePath("/conversions");
   return { ok: true };
 }
 
@@ -1024,6 +1124,58 @@ export async function annulerEtiquettesIA(
   return { ok: true, n: avant.n };
 }
 
+// Même patron que `_compterIA`, sur `ga4_event_categories` : pas de colonne
+// `label_at` dédiée ici, `updated_at` (posée par le trigger `set_updated_at`)
+// joue le même rôle — la borne du passage qu'on peut annuler.
+async function _compterCategoriesIA(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  depuis: string
+): Promise<{ ok: boolean; n: number }> {
+  const r = await supabase.from("ga4_event_categories")
+    .select("event_name", { count: "exact", head: true })
+    .eq("user_id", uid).eq("category_source", "ai").gte("updated_at", depuis);
+  if (r.error) return { ok: false, n: 0 };
+  return { ok: true, n: r.count ?? 0 };
+}
+
+export async function compterCategoriesIA(
+  depuis: string
+): Promise<{ ok: boolean; n: number; message?: string }> {
+  if (!depuis) return { ok: true, n: 0 };
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const r = await _compterCategoriesIA(supabase, compte.uid, depuis);
+  if (!r.ok)
+    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (conversion_categories.sql)." };
+  return { ok: true, n: r.n };
+}
+
+export async function annulerCategoriesIA(
+  depuis: string
+): Promise<{ ok: boolean; n: number; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, n: 0, message: "Tu es en lecture seule sur ce compte." };
+  if (!depuis) return { ok: true, n: 0 };
+
+  const avant = await _compterCategoriesIA(supabase, compte.uid, depuis);
+  if (!avant.ok)
+    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (conversion_categories.sql)." };
+  if (avant.n === 0) return { ok: true, n: 0 };
+
+  // La ligne disparaît (pas un état intermédiaire) : l'absence de ligne EST le
+  // « non catégorisé », comme partout ailleurs sur cette table.
+  const r = await supabase.from("ga4_event_categories")
+    .delete().eq("user_id", compte.uid).eq("category_source", "ai").gte("updated_at", depuis);
+  if (r.error)
+    return { ok: false, n: 0, message: "Annulation incomplète — recharge la page et réessaie." };
+
+  revalidatePath("/conversions");
+  return { ok: true, n: avant.n };
+}
+
 // ── GITHUB ACTIONS : UN CODE HTTP N'EST PAS UN MESSAGE ──────────────────────
 //
 // Quatre fonctions tapent la même API avec le même jeton pour lancer ou suivre
@@ -1124,12 +1276,17 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
 // sans thème + republication du rapport — via le même workflow GitHub Actions,
 // en mode label_only (pas de re-fetch réseau, ~1 min).
 //
-// C'EST LA SEULE CLASSIFICATION IA DU PRODUIT, et le bouton « Étiqueter tout »
-// de la page Thèmes appelle celle-ci. Elle vit dans `saas/worker/labeling.py`,
-// tourne dans GitHub Actions et respecte déjà la règle d'or : elle saute tout
-// ce qui porte `label_source='user'`, donc elle ne remplit que le vide. En
-// écrire une seconde côté web aurait donné deux classements divergents sur les
-// mêmes contenus.
+// C'EST LA SEULE CLASSIFICATION IA DE THÈMES DU PRODUIT, et le bouton
+// « Étiqueter tout » de la page Thèmes appelle celle-ci. Elle vit dans
+// `saas/worker/labeling.py`, tourne dans GitHub Actions et respecte déjà la
+// règle d'or : elle saute tout ce qui porte `label_source='user'`, donc elle
+// ne remplit que le vide. En écrire une seconde CÔTÉ WEB, sur les MÊMES
+// contenus (campagnes/posts), aurait donné deux classements divergents.
+//
+// `triggerCategorize`, plus bas, est un SECOND classifieur — même mécanisme
+// (worker Python, GitHub Actions, Gemini, règle d'or `category_source`), mais
+// sur un contenu DIFFÉRENT (les événements GA4, pas les campagnes/posts) : ce
+// n'est donc pas la duplication que ce paragraphe met en garde contre.
 //
 // `depuis` EST LE BORNAGE DE L'ANNULATION. Il est pris ici, sur le serveur,
 // AVANT que le workflow ne parte : tout ce que la base horodatera après cette
@@ -1153,6 +1310,31 @@ export async function triggerClassify(): Promise<{
     "Classement lancé — l'IA labellise tes contenus, ~1 minute."
   );
   // `depuis` ne borne l'annulation que si le classement est effectivement parti.
+  return res.ok ? { ...res, depuis } : res;
+}
+
+// « ✨ Classer mes conversions » (page /conversions) : catégorise tous les
+// événements GA4 du catalogue qui n'ont pas encore de catégorie, via le même
+// workflow GitHub Actions, en mode categorize_only. Même mécanisme que
+// `triggerClassify` ci-dessus, sur un contenu différent — voir l'en-tête de
+// `triggerClassify` pour pourquoi ce n'est pas la duplication qu'il proscrit.
+// Ne republie PAS le rapport : une catégorie de conversion n'influence aucun
+// conseil ni aucun chiffre du rapport, contrairement à un thème.
+export async function triggerCategorize(): Promise<{
+  ok: boolean;
+  message: string;
+  depuis?: string;
+}> {
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const depuis = new Date(Date.now() - 30_000).toISOString();
+
+  const res = await lancerWorkflow(
+    { user_id: compte.uid, categorize_only: true },
+    "Classement lancé — l'IA range tes conversions par catégorie, ~1 minute."
+  );
   return res.ok ? { ...res, depuis } : res;
 }
 
