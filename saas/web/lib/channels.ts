@@ -1486,8 +1486,9 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
 // seule source de vérité des conversions par thème.
 //
 // `evenements` ARRIVE DÉJÀ CHARGÉ, EN PARAMÈTRE, plutôt que d'être relu ici :
-// `/labels` appelle `getThemeEvenements` pour son propre bloc 6, et refaire le
-// même appel doublerait cinq requêtes Supabase pour la même réponse.
+// `/conversions` (`app/conversions/page.tsx`) appelle déjà `getThemeEvenements`
+// pour son propre camembert et son propre catalogue, et refaire le même appel
+// doublerait cinq requêtes Supabase pour la même réponse.
 //
 // UNIQUEMENT LES THÈMES ÉTOILÉS : ce réglage n'a de sens que pour les thèmes
 // prioritaires (le reste du rapport suit l'objectif du compte sans exception).
@@ -1570,6 +1571,66 @@ export async function getThemeObjectifs(
     ga4Connecte: evenements.ga4Connecte,
     catalogueMaj: evenements.catalogueMaj,
     themes,
+    peutEditer: compte.peutEditer,
+    migrationManquante,
+  };
+}
+
+// ── Les catégories de conversions (page /conversions) ───────────────────────
+//
+// LA CATÉGORIE EST UNE PROPRIÉTÉ DE L'ÉVÉNEMENT, PAS DU COUPLE (THÈME,
+// ÉVÉNEMENT) : `purchase` veut dire la même chose quel que soit le thème qui
+// le suit. C'est ce qui permet au camembert de /conversions de compter « mes
+// conversions par catégorie » sur tout le compte, sans regarder les thèmes un
+// par un — voir l'en-tête de `conversion_categories.sql`.
+
+export type ConversionCategoryRow = {
+  name: string;
+  /** Combien d'événements du catalogue portent cette catégorie. */
+  evenements: number;
+};
+
+export type ConversionCategoriesData = {
+  categories: ConversionCategoryRow[];
+  /** { nom d'événement → catégorie }, uniquement les événements catégorisés. */
+  parEvenement: Record<string, string>;
+  peutEditer: boolean;
+  /** `conversion_categories` ou `ga4_event_categories` absente. */
+  migrationManquante: boolean;
+};
+
+export async function getConversionCategories(): Promise<ConversionCategoriesData> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const uid = compte.uid;
+
+  const [catRes, mapRes] = await Promise.all([
+    supabase.from("conversion_categories").select("name").eq("user_id", uid),
+    supabase.from("ga4_event_categories").select("event_name, category").eq("user_id", uid),
+  ]);
+
+  const codeSchema = (e: { code?: string } | null | undefined) =>
+    ["PGRST204", "PGRST205", "42703"].includes(e?.code ?? "");
+  const migrationManquante = codeSchema(catRes.error) || codeSchema(mapRes.error);
+
+  const parEvenement: Record<string, string> = {};
+  const compteParCat = new Map<string, number>();
+  for (const r of mapRes.data ?? []) {
+    const nom = String(r.event_name ?? "");
+    const cat = String(r.category ?? "");
+    if (!nom || !cat) continue;
+    parEvenement[nom] = cat;
+    compteParCat.set(cat, (compteParCat.get(cat) ?? 0) + 1);
+  }
+
+  const noms = (catRes.data ?? []).map((r) => String(r.name ?? "")).filter(Boolean);
+  const categories: ConversionCategoryRow[] = noms
+    .map((name) => ({ name, evenements: compteParCat.get(name) ?? 0 }))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+  return {
+    categories,
+    parEvenement,
     peutEditer: compte.peutEditer,
     migrationManquante,
   };

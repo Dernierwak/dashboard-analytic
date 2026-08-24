@@ -514,7 +514,8 @@ def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
 
 
 def run(force: bool = False, only_user: str | None = None,
-        label_only: bool = False, report_only: bool = False) -> None:
+        label_only: bool = False, categorize_only: bool = False,
+        report_only: bool = False) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
                 .select("id, fetch_schedule")
@@ -523,12 +524,14 @@ def run(force: bool = False, only_user: str | None = None,
         # Bouton « Mes données » de Pulse : un seul user, sans attendre son jour
         profiles = [p for p in profiles if p["id"] == only_user]
         force = True
-    _mode = " · labels seulement" if label_only else (" · rapport seulement" if report_only else "")
+    _mode = (" · labels seulement" if label_only
+             else " · catégories seulement" if categorize_only
+             else " · rapport seulement" if report_only else "")
     print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils{_mode}")
 
     # Sans ces secrets, le refresh du token Google echoue et TOUT Google Ads +
     # GA4 est saute en silence. On le dit fort une fois, en tete de run.
-    if not (label_only or report_only):
+    if not (label_only or categorize_only or report_only):
         _needed = {
             "GOOGLE_ADS_CLIENT_ID": "google_ads.client_id",
             "GOOGLE_ADS_CLIENT_SECRET": "google_ads.client_secret",
@@ -577,6 +580,20 @@ def run(force: bool = False, only_user: str | None = None,
                 logs.append(publish_weekly_report(sb, uid))
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
+            print(f"  {uid} → " + " | ".join(logs))
+            continue
+
+        # Bouton « ✨ Classer mes conversions » (page /conversions) : classement
+        # IA des événements GA4 sans catégorie, sans re-fetch réseau. Ne republie
+        # PAS le rapport : une catégorie de conversion n'influence aucun conseil
+        # ni aucun chiffre du rapport, contrairement à un thème (label_only,
+        # ci-dessus, republie parce que le thème EST ce que le rapport lit).
+        if categorize_only:
+            try:
+                from saas.worker.categorizing import auto_categorize
+                logs.append(auto_categorize(sb, uid))
+            except Exception as e:
+                logs.append(f"categories KO: {e}")
             print(f"  {uid} → " + " | ".join(logs))
             continue
 
@@ -781,12 +798,17 @@ if __name__ == "__main__":
     if "--label-only" in sys.argv:  # labellisation IA + republication, sans fetch
         only_user = sys.argv[sys.argv.index("--label-only") + 1]
         label_only = True
+    categorize_only = False
+    if "--categorize-only" in sys.argv:  # catégorisation IA des conversions GA4, sans fetch
+        only_user = sys.argv[sys.argv.index("--categorize-only") + 1]
+        categorize_only = True
     report_only = False
     if "--report-only" in sys.argv:  # republie juste le rapport (conseils), ~30 s
         only_user = sys.argv[sys.argv.index("--report-only") + 1]
         report_only = True
     try:
-        run(force=force, only_user=only_user, label_only=label_only, report_only=report_only)
+        run(force=force, only_user=only_user, label_only=label_only,
+            categorize_only=categorize_only, report_only=report_only)
     except Exception:
         traceback.print_exc()
         sys.exit(1)

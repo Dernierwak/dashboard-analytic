@@ -24,6 +24,7 @@ export function ThemeDonut({
   montants = false,
   unite = "thème",
   etroit = false,
+  uniteValeur = "CHF",
 }: {
   rows: { label: string; spend: number }[];
   /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». */
@@ -53,6 +54,15 @@ export function ThemeDonut({
   unite?: string;
   /** Deux anneaux côte à côte : la légende n'a plus la place de ses colonnes. */
   etroit?: boolean;
+  /**
+   * L'UNITÉ DE `spend`, ÉCRITE AU CENTRE ET DANS LE `<title>` DE CHAQUE ARC —
+   * PAS TOUJOURS UN MONTANT. `spend` porte un montant en franc sur toutes les
+   * répartitions de dépense (d'où le nom et le défaut « CHF »), mais le même
+   * anneau sert aussi à compter des ÉVÉNEMENTS (le camembert des conversions
+   * par catégorie, sur /conversions) : y écrire « CHF » sous un nombre de
+   * conversions serait un chiffre faux, pas juste un mot en trop.
+   */
+  uniteValeur?: string;
 }) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
   if (tries.length === 0) return null;
@@ -113,7 +123,7 @@ export function ThemeDonut({
                 strokeDasharray={`${a.dash} ${C - a.dash}`}
                 strokeDashoffset={-a.offset}
               >
-                <title>{`${a.label} — ${fmtCHF(a.spend)} CHF (${Math.round(a.frac * 100)} %)`}</title>
+                <title>{`${a.label} — ${fmtCHF(a.spend)} ${uniteValeur} (${Math.round(a.frac * 100)} %)`}</title>
               </circle>
             ))}
           </svg>
@@ -122,7 +132,7 @@ export function ThemeDonut({
               {fmtCHF(total)}
             </span>
             <span className="text-[10.5px] text-faint mt-1">
-              CHF · {parts.length} {unite}
+              {uniteValeur} · {parts.length} {unite}
               {parts.length > 1 ? "s" : ""}
             </span>
           </div>

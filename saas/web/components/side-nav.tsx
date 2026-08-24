@@ -57,18 +57,20 @@ type Entree = { href: string; label: string; glyphe: string; proprio?: true };
 type Groupe = { titre: string | null; entrees: Entree[] };
 
 // Les glyphes de canal viennent du lexique commun (▣ Meta, ◆ Google,
-// ◎ Instagram, ◫ Thèmes) — jamais réinventés ici. Les trois autres sont choisis
-// pour se distinguer À 13 PX, taille à laquelle cinq carrés hachurés se
-// ressemblent tous : ▤ la page écrite du rapport, ◔ la part d'enveloppe
-// consommée (le geste même des anneaux de la page Coûts), ⧉ deux vues du même
-// tableau pour le partage d'équipe. C'est la seule chose qui reste quand la
-// colonne est repliée — il faut donc que ça se reconnaisse.
+// ◎ Instagram, ◫ Thèmes) — jamais réinventés ici. Les autres sont choisis pour
+// se distinguer À 13 PX, taille à laquelle cinq carrés hachurés se ressemblent
+// tous : ▤ la page écrite du rapport, ◔ la part d'enveloppe consommée (le
+// geste même des anneaux de la page Coûts), ◈ la conversion visée (un losange,
+// pour ne pas se confondre avec les carrés/cercles déjà pris), ⧉ deux vues du
+// même tableau pour le partage d'équipe. C'est la seule chose qui reste quand
+// la colonne est repliée — il faut donc que ça se reconnaisse.
 const GROUPES: Groupe[] = [
   { titre: null, entrees: [{ href: "/", label: "Rapport", glyphe: "▤" }] },
   {
     titre: "Où va l'argent",
     entrees: [
       { href: "/labels", label: "Thèmes", glyphe: "◫" },
+      { href: "/conversions", label: "Conversions", glyphe: "◈" },
       { href: "/couts", label: "Coûts", glyphe: "◔" },
     ],
   },

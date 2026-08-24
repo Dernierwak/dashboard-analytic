@@ -17,11 +17,13 @@
 //   4. DÉJÀ ÉTIQUETÉ — la vérification, repliée.
 //   5. TES THÈMES — le vocabulaire, qui n'est plus le sujet mais reste
 //      nécessaire : c'est là qu'on crée, renomme, et marque les priorités.
-//   5bis. L'OBJECTIF PAR THÈME — uniquement les thèmes étoilés du bloc 5 :
-//      chacun peut suivre son propre indicateur au lieu de celui du compte.
-//      Numéroté « bis » et pas « 6 » : c'est une DÉPENDANCE du bloc 5 (il ne
-//      montre que ce que le bloc 5 vient d'étoiler), pas une étape suivante
-//      du parcours de lecture.
+//
+// « L'OBJECTIF PAR THÈME » ET « CE QUE CHAQUE THÈME COMPTE » (les blocs 5bis
+// et 6 qui vivaient ici) SONT PARTIS SUR /conversions. Cette page ne doit
+// porter que le VOCABULAIRE des thèmes (créer, renommer, étoiler) — la
+// sélection et la catégorisation des conversions GA4 sont un sujet à part,
+// qui a désormais sa propre page. Voir `app/conversions/page.tsx` et
+// `components/conversions-themes.tsx`.
 //
 // LA PAGE COMPOSE, ELLE NE DESSINE PAS. Tout ce qui a une forme vit dans
 // `components/labels-*.tsx` — même raison que `couts-modules` et `hors-theme` :
@@ -39,26 +41,20 @@
 // fonction est donc dans `lib/couverture.ts`, à l'identique, et cette page
 // l'importe. Voir l'en-tête de ce fichier-là pour le raisonnement complet.
 import { getEtiquetage } from "@/lib/couverture";
-import { getLabelsData, getThemeEvenements, getThemeObjectifs } from "@/lib/channels";
+import { getLabelsData } from "@/lib/channels";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
-import { ThemeEvenementsModule } from "@/components/theme-evenements";
-import { ObjectifParThemeModule } from "@/components/objectif-par-theme";
 
 export const dynamic = "force-dynamic";
 
 export default async function LabelsPage() {
-  const [data, etiquetage, evenements] = await Promise.all([
+  const [data, etiquetage] = await Promise.all([
     getLabelsData(),
     getEtiquetage(),
-    getThemeEvenements(),
   ]);
-  // Dépend d'`evenements` (voir l'en-tête de `getThemeObjectifs` dans
-  // `lib/channels.ts`) : posé après, pas dans le même `Promise.all`.
-  const objectifs = await getThemeObjectifs(evenements);
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -154,31 +150,6 @@ export default async function LabelsPage() {
             })}
           </ScrollList>
         )}
-      </div>
-
-      {/* 5bis — L'OBJECTIF PAR THÈME, uniquement pour ce que le bloc 5 vient
-          d'étoiler. Après lui (les étoiles n'existent pas encore avant), et
-          avant le bloc 6 dont il redessine un sélecteur de conversions
-          équivalent pour ce seul sous-ensemble — voir l'en-tête de
-          `components/objectif-par-theme.tsx`. */}
-      <div className="mt-6">
-        <ObjectifParThemeModule d={objectifs} />
-      </div>
-
-      {/* 6 — CE QUE CHAQUE THÈME COMPTE.
-          EN DERNIER, ET C'EST UNE DÉPENDANCE, PAS UN CLASSEMENT D'IMPORTANCE :
-          on ne peut pas désigner la conversion d'un thème avant que le thème
-          existe et porte des campagnes. Le bloc 5 ci-dessus est exactement ce
-          qui les crée. Le poser plus haut ferait tomber le lecteur sur une
-          liste de thèmes vide à sa première visite.
-
-          POURQUOI SUR CETTE PAGE ET PAS DANS LE RAPPORT : voir l'en-tête de
-          `components/theme-evenements.tsx`. En deux mots — le rapport est une
-          lecture hebdomadaire, ceci est une configuration, et l'étoile
-          prioritaire du bloc 5 est le précédent exact d'un réglage par thème
-          qui vit ici et que le rapport consomme. */}
-      <div className="border-t border-line pt-5 mt-6">
-        <ThemeEvenementsModule d={evenements} />
       </div>
     </main>
   );

@@ -1321,6 +1321,102 @@ CREATE POLICY "to_delete_own" ON public.theme_objectifs
 
 
 -- ============================================================================
+-- 14quinquies) conversion_categories + ga4_event_categories — les catégories
+--              de conversions (voir conversion_categories.sql, source de vérité).
+--
+--              AVANT LA SECTION 15, qui doit les partager, même raison que
+--              14bis/14ter/14quater.
+--
+--              `theme_ga4_events` dit quel événement GA4 compte pour quel
+--              THÈME. Ceci dit à quel GENRE de conversion appartient chaque
+--              événement (Ventes, Contacts…) — PAR NOM D'ÉVÉNEMENT, PAS PAR
+--              THÈME : un même événement signifie la même chose quel que soit
+--              le thème qui le suit, et c'est ce qui permet au camembert de
+--              /conversions de compter « conversions par catégorie » sur tout
+--              le compte. `category_source` rejoue la règle d'or de la
+--              labellisation IA : un choix humain n'est jamais écrasé par la
+--              classification automatique (`saas/worker/categorizing.py`).
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.conversion_categories (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name        text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT conversion_categories_uq UNIQUE (user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversion_categories_user
+    ON public.conversion_categories (user_id);
+
+DROP TRIGGER IF EXISTS trg_conversion_categories_updated_at ON public.conversion_categories;
+CREATE TRIGGER trg_conversion_categories_updated_at
+    BEFORE UPDATE ON public.conversion_categories
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TABLE IF NOT EXISTS public.ga4_event_categories (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    event_name      text NOT NULL,
+    category        text NOT NULL,
+    category_source text NOT NULL DEFAULT 'user',
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ga4_event_categories_uq UNIQUE (user_id, event_name)
+);
+
+DO $$
+BEGIN
+    ALTER TABLE public.ga4_event_categories
+        ADD CONSTRAINT ga4_event_categories_source_ck
+        CHECK (category_source IN ('user', 'ai'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_ga4_event_categories_user
+    ON public.ga4_event_categories (user_id);
+
+DROP TRIGGER IF EXISTS trg_ga4_event_categories_updated_at ON public.ga4_event_categories;
+CREATE TRIGGER trg_ga4_event_categories_updated_at
+    BEFORE UPDATE ON public.ga4_event_categories
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- « Chacun ses lignes ». Le partage d'équipe est posé par la section 15, qui
+-- suit immédiatement et qui porte ces deux tables dans sa liste.
+ALTER TABLE public.conversion_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "cc_select_own" ON public.conversion_categories;
+DROP POLICY IF EXISTS "cc_insert_own" ON public.conversion_categories;
+DROP POLICY IF EXISTS "cc_update_own" ON public.conversion_categories;
+DROP POLICY IF EXISTS "cc_delete_own" ON public.conversion_categories;
+CREATE POLICY "cc_select_own" ON public.conversion_categories
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "cc_insert_own" ON public.conversion_categories
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "cc_update_own" ON public.conversion_categories
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "cc_delete_own" ON public.conversion_categories
+    FOR DELETE USING (auth.uid() = user_id);
+
+ALTER TABLE public.ga4_event_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gec_select_own" ON public.ga4_event_categories;
+DROP POLICY IF EXISTS "gec_insert_own" ON public.ga4_event_categories;
+DROP POLICY IF EXISTS "gec_update_own" ON public.ga4_event_categories;
+DROP POLICY IF EXISTS "gec_delete_own" ON public.ga4_event_categories;
+CREATE POLICY "gec_select_own" ON public.ga4_event_categories
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gec_insert_own" ON public.ga4_event_categories
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gec_update_own" ON public.ga4_event_categories
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gec_delete_own" ON public.ga4_event_categories
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1359,6 +1455,8 @@ DECLARE
         -- ce que Pulse produit et ce que l'utilisateur y répond
         'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
         'theme_ga4_events', 'theme_objectifs',
+        -- les catégories de conversions
+        'conversion_categories', 'ga4_event_categories',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
         -- l'avancement de la récolte, lu par le panneau de « ↻ Mes données »
@@ -1824,6 +1922,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'theme_ga4_events',         NULL),
     ('t', 'fetch_progress',           NULL),   -- §14ter
     ('t', 'theme_objectifs',          NULL),   -- §14quater
+    ('t', 'conversion_categories',    NULL),   -- §14quinquies
+    ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1
@@ -1931,9 +2031,9 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 20 tables de la section 15.
---      (Le chiffre annoncé ici était 17 : il datait d'avant theme_ga4_events,
---      fetch_progress et theme_objectifs. Compté sur la liste, pas de mémoire.)
+--   A) Ce que l'invité peut lire — doit lister les 22 tables de la section 15.
+--      (Le chiffre annoncé ici était 20 : il datait d'avant conversion_categories
+--      et ga4_event_categories. Compté sur la liste, pas de mémoire.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

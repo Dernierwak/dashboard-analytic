@@ -17,6 +17,7 @@ import { NoteAjout } from "@/components/note-ajout";
 import { RecoCard } from "@/components/reco-card";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
+import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
 
 // UNE SEULE CARTE PAR THÈME, ET ELLE PORTE TOUT.
 //
@@ -146,6 +147,8 @@ export function ThemeCard({
   comments,
   suivis,
   capReached = false,
+  conversionsTheme = [],
+  objectifEffectif = null,
 }: {
   theme: ThemeFocus;
   actions: TrackedAction[];
@@ -166,6 +169,15 @@ export function ThemeCard({
   /** L'action produite par un conseil, par clé de conseil. */
   suivis: Record<string, TrackedAction>;
   capReached?: boolean;
+  /** Les événements GA4 que CE thème suit comme conversions (`theme_ga4_events`,
+   *  rang 'principal') — lu à part du payload du rapport, voir `app/page.tsx`. */
+  conversionsTheme?: string[];
+  /** L'objectif EFFECTIF de CE thème — le sien (`theme.objectif`) s'il en a un,
+   *  sinon celui du compte. PRÉCALCULÉ PAR L'APPELANT (`app/page.tsx`) : `ThemeCard`
+   *  ne connaît pas `data.objectif` (l'objectif du compte), donc ne peut pas
+   *  reproduire le repli lui-même — même raison que `objectif-theme.tsx` avant
+   *  lui, qui recevait `objectifEffectif` tout calculé pour la même raison. */
+  objectifEffectif?: string | null;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
   const vals = s ? s.points.map((p) => p.value) : [];
@@ -337,6 +349,15 @@ export function ThemeCard({
             </>
           )}
         </div>
+
+        {/* Le mini-module objectif + conversions de CE thème — entre le bilan
+            chiffré qu'on vient de lire et la courbe qui montre comment ça
+            évolue. Voir l'en-tête de `theme-objectif-mini.tsx`. */}
+        <ThemeObjectifMini
+          objectifEffectif={objectifEffectif}
+          objectifPropre={theme.objectif_propre ?? false}
+          conversions={conversionsTheme}
+        />
 
         {s && (
           <div className="px-3 pt-3 pb-2">

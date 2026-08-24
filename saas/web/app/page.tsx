@@ -10,8 +10,8 @@ import {
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
+import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
-import { ObjectifTheme } from "@/components/objectif-theme";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { ThemesCarrousel } from "@/components/themes-carrousel";
@@ -154,21 +154,30 @@ export default async function Page() {
   // Meta un peu plus : demander plus large ne coûte rien, la couche de données
   // rend ce qu'elle a.
   const depuisChg = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-  // TROIS LECTURES QUI NE S'ATTENDENT PAS.
+  // QUATRE LECTURES QUI NE S'ATTENDENT PAS.
   //
   // Elles étaient en série — le rapport, puis les changements déclarés — et la
   // couverture des thèmes en aurait fait une troisième à la queue leu leu.
-  // Aucune des trois n'a besoin du résultat des deux autres, donc les enchaîner
-  // revient à additionner trois allers-retours Supabase sur la page la plus lue
-  // du produit. La couverture est la plus chère des trois (elle lit l'univers
+  // Aucune des quatre n'a besoin du résultat des autres, donc les enchaîner
+  // revient à additionner des allers-retours Supabase sur la page la plus lue
+  // du produit. La couverture est la plus chère des quatre (elle lit l'univers
   // complet des campagnes) : c'est justement celle qu'il ne faut pas mettre au
   // bout d'une file.
-  const [data, changementsApi, couverture] = await Promise.all([
+  //
+  // `evenements` (`getThemeEvenements`) — AJOUTÉE ici, PAS relue depuis
+  // `/conversions` : le mini-module objectif + conversions de chaque
+  // `ThemeCard` (`theme-objectif-mini.tsx`, ci-dessous) a besoin de savoir
+  // quels événements GA4 chaque thème suit comme conversions, en LECTURE
+  // SEULE — la même fonction que `/conversions` utilise pour sa propre
+  // édition, elle reste la seule source de vérité de `theme_ga4_events`.
+  const [data, changementsApi, couverture, evenements] = await Promise.all([
     getWeeklyData(),
     getChangementsApi(depuisChg),
     getCouverture(),
+    getThemeEvenements(),
   ]);
   const report = data.report;
+  const conversionsParTheme = new Map(evenements.themes.map((t) => [t.label, t.principaux]));
 
   // Thèmes prioritaires — le fil qui relie la vision aux conseils. Plus de
   // plafond depuis le 14 août 2026 ; seules les trois premières étoiles ont des
@@ -206,11 +215,10 @@ export default async function Page() {
   // aucun payload ancien ne circule.
   //
   // C'EST LA LISTE VIVANTE DES ÉTOILES QUI FAIT FOI, pas le `is_priority` figé
-  // dans le payload, et la raison se voit à l'écran : `ObjectifTheme` affiche
-  // `priorities` — relu dans `insight_feedback` à chaque rendu — quarante pixels
-  // au-dessus des cartes. Les deux doivent dire la même chose. Ce choix couvre
-  // du même coup l'autre cas possible : un thème étoilé le jour de la
-  // publication et désétoilé depuis.
+  // dans le payload : `priorities`, ci-dessus, est relu dans `insight_feedback`
+  // à chaque rendu, et c'est CETTE liste qui décide des cartes affichées. Ce
+  // choix couvre du même coup l'autre cas possible : un thème étoilé le jour de
+  // la publication et désétoilé depuis.
   //
   // ET IL NE VIDE JAMAIS LA SECTION. Aucune étoile → le worker retient les trois
   // plus gros thèmes, c'est un défaut assumé et on les garde tous. Des étoiles
@@ -352,16 +360,6 @@ export default async function Page() {
         a.rangWorker - b.rangWorker
     )
     .map((x) => x.t);
-
-  // Sert `ObjectifTheme` juste en dessous : il ne doit jamais affirmer un
-  // objectif « commun à tes N thèmes » quand ce n'est plus vrai — depuis que
-  // chaque thème prioritaire peut avoir le sien (réglable sur /labels),
-  // « commun » n'est plus garanti par construction. `t.objectif` (absent des
-  // anciens payloads) retombe sur l'objectif du compte, comme avant lui.
-  const objectifsAffiches = cartes.map((t) => t.objectif ?? data.objectif ?? null);
-  const objectifCommunATous =
-    objectifsAffiches.length === 0 || objectifsAffiches.every((o) => o === objectifsAffiches[0]);
-  const nbAvecObjectifPropre = cartes.filter((t) => t.objectif_propre).length;
 
   return (
     <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -570,56 +568,16 @@ export default async function Page() {
             </div>
           )}
 
-          {/* L'OBJECTIF, JUSTE AU-DESSUS DES CARTES QU'IL COMMANDE.
-              Il prend son thème en props et ne lit aucun état global.
-
-              IL EST SORTI DE LA BOUCLE. Il était rendu dans l'enveloppe de la
-              PREMIÈRE carte (`i === 0`) : avec une seule carte visible à la
-              fois, il aurait disparu dès le premier changement d'onglet, alors
-              que plusieurs thèmes peuvent en dépendre. Le rendre dans chaque
-              panneau serait pire — un même module rendu N fois sur une page
-              est exactement ce que la grammaire interdit. Il est donc posé une
-              fois, au-dessus de la navigation.
-
-              CHAQUE THÈME PRIORITAIRE PEUT DÉSORMAIS AVOIR SON PROPRE
-              OBJECTIF (réglable sur /labels, table `theme_objectifs`) —
-              `profiles.objectif` n'est plus qu'un DÉFAUT hérité en silence.
-              « commun à tes N thèmes » ne peut donc plus être affirmé sans
-              vérifier : `objectifCommunATous` compare l'objectif EFFECTIF
-              (`t.objectif`, pas `data.objectif`) de chaque carte affichée, et
-              le module bascule sur un décompte + un lien vers /labels dès que
-              ce n'est plus vrai. Affirmer « commun » à tort serait exactement
-              la contradiction que ce module existait pour éviter.
-
-              DEUX PROPS DISTINCTES, ET C'EST VOULU : `objectifCompte`
-              (toujours `data.objectif`) alimente le SEUL sélecteur qui écrit
-              `profiles.objectif` ; `objectifEffectif` (celui de la carte
-              affichée, propre ou hérité) alimente le mot du résumé. Les
-              confondre ferait afficher, sous « L'objectif du compte », une
-              valeur que son propre `onChange` n'écrirait pas. `nbPropre`
-              (pas `objectifCommunATous` seul) décide aussi si le pied peut
-              dire « tant qu'aucun n'a le sien » — deux thèmes convergeant sur
-              la MÊME valeur par CHOIX PROPRE restent « commun », mais pas
-              « aucun n'a le sien ». */}
-          <ObjectifTheme
-            theme={{
-              label: cartesOrdonnees[0].label,
-              is_priority: cartesOrdonnees[0].is_priority,
-            }}
-            objectifCompte={data.objectif}
-            objectifEffectif={cartesOrdonnees[0].objectif ?? data.objectif}
-            objectifPropre={cartesOrdonnees[0].objectif_propre ?? false}
-            commun={objectifCommunATous}
-            nbPropre={nbAvecObjectifPropre}
-            priorities={priorities}
-            nbThemes={cartes.length}
-          />
-
-          {/* UNE CARTE À LA FOIS. Le module porte sa barre d'onglets, ses
-              flèches, le repère « 2 / 5 » et le clavier ; il se retire de
-              lui-même quand il n'y a qu'un thème. Les cartes lui sont passées
-              DÉJÀ RENDUES : elles restent des composants serveur, il n'en
-              fabrique aucune. */}
+          {/* L'OBJECTIF DU COMPTE ET L'OBJECTIF PAR THÈME NE SE RÈGLENT PLUS ICI.
+              La carte globale (`ObjectifTheme`) qui vivait à cet endroit — un
+              sélecteur `<ObjectifSelect>` éditable + un résumé des thèmes
+              prioritaires — est retirée : régler l'objectif du compte se fait
+              maintenant sur `/conversions` (module dédié), et l'objectif de
+              CHAQUE thème s'affiche désormais en lecture seule DANS sa propre
+              carte (`theme-objectif-mini.tsx`, dans `ThemeCard`, juste sous
+              son bilan chiffré) — plus juste qu'un résumé global qui ne disait
+              jamais lequel des N thèmes affichés avait un « objectif propre »
+              sans qu'on remonte les yeux le vérifier. */}
           <ThemesCarrousel
             themes={cartesOrdonnees.map((t) => ({
               label: t.label,
@@ -643,28 +601,12 @@ export default async function Page() {
                 comments={data.comments}
                 suivis={data.suivis}
                 capReached={capReached}
+                conversionsTheme={conversionsParTheme.get(t.label) ?? []}
+                objectifEffectif={t.objectif ?? data.objectif ?? null}
               />
             ))}
           </ThemesCarrousel>
         </section>
-      )}
-
-      {/* Aucun thème classé : l'objectif reste réglable quand même. Le laisser
-          dans la seule section 2 le ferait disparaître pour le compte qui en a
-          justement le plus besoin — celui qui n'a encore rien classé. */}
-      {cartes.length === 0 && (
-        <div className="mb-8 max-w-[68ch]">
-          <ObjectifTheme
-            theme={null}
-            objectifCompte={data.objectif}
-            objectifEffectif={data.objectif}
-            objectifPropre={false}
-            commun
-            nbPropre={0}
-            priorities={priorities}
-            nbThemes={0}
-          />
-        </div>
       )}
 
       {/* LE FILET N'EST PLUS ICI — il est monté à gauche de « Ta boussole »,
