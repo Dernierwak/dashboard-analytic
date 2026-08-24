@@ -17,6 +17,11 @@
 //   4. DÉJÀ ÉTIQUETÉ — la vérification, repliée.
 //   5. TES THÈMES — le vocabulaire, qui n'est plus le sujet mais reste
 //      nécessaire : c'est là qu'on crée, renomme, et marque les priorités.
+//   5bis. L'OBJECTIF PAR THÈME — uniquement les thèmes étoilés du bloc 5 :
+//      chacun peut suivre son propre indicateur au lieu de celui du compte.
+//      Numéroté « bis » et pas « 6 » : c'est une DÉPENDANCE du bloc 5 (il ne
+//      montre que ce que le bloc 5 vient d'étoiler), pas une étape suivante
+//      du parcours de lecture.
 //
 // LA PAGE COMPOSE, ELLE NE DESSINE PAS. Tout ce qui a une forme vit dans
 // `components/labels-*.tsx` — même raison que `couts-modules` et `hors-theme` :
@@ -34,13 +39,14 @@
 // fonction est donc dans `lib/couverture.ts`, à l'identique, et cette page
 // l'importe. Voir l'en-tête de ce fichier-là pour le raisonnement complet.
 import { getEtiquetage } from "@/lib/couverture";
-import { getLabelsData, getThemeEvenements } from "@/lib/channels";
+import { getLabelsData, getThemeEvenements, getThemeObjectifs } from "@/lib/channels";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
 import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
 import { ThemeEvenementsModule } from "@/components/theme-evenements";
+import { ObjectifParThemeModule } from "@/components/objectif-par-theme";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +56,9 @@ export default async function LabelsPage() {
     getEtiquetage(),
     getThemeEvenements(),
   ]);
+  // Dépend d'`evenements` (voir l'en-tête de `getThemeObjectifs` dans
+  // `lib/channels.ts`) : posé après, pas dans le même `Promise.all`.
+  const objectifs = await getThemeObjectifs(evenements);
 
   return (
     <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
@@ -145,6 +154,15 @@ export default async function LabelsPage() {
             })}
           </ScrollList>
         )}
+      </div>
+
+      {/* 5bis — L'OBJECTIF PAR THÈME, uniquement pour ce que le bloc 5 vient
+          d'étoiler. Après lui (les étoiles n'existent pas encore avant), et
+          avant le bloc 6 dont il redessine un sélecteur de conversions
+          équivalent pour ce seul sous-ensemble — voir l'en-tête de
+          `components/objectif-par-theme.tsx`. */}
+      <div className="mt-6">
+        <ObjectifParThemeModule d={objectifs} />
       </div>
 
       {/* 6 — CE QUE CHAQUE THÈME COMPTE.

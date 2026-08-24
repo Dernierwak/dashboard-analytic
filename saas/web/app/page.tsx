@@ -353,6 +353,16 @@ export default async function Page() {
     )
     .map((x) => x.t);
 
+  // Sert `ObjectifTheme` juste en dessous : il ne doit jamais affirmer un
+  // objectif « commun à tes N thèmes » quand ce n'est plus vrai — depuis que
+  // chaque thème prioritaire peut avoir le sien (réglable sur /labels),
+  // « commun » n'est plus garanti par construction. `t.objectif` (absent des
+  // anciens payloads) retombe sur l'objectif du compte, comme avant lui.
+  const objectifsAffiches = cartes.map((t) => t.objectif ?? data.objectif ?? null);
+  const objectifCommunATous =
+    objectifsAffiches.length === 0 || objectifsAffiches.every((o) => o === objectifsAffiches[0]);
+  const nbAvecObjectifPropre = cartes.filter((t) => t.objectif_propre).length;
+
   return (
     <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
@@ -561,26 +571,46 @@ export default async function Page() {
           )}
 
           {/* L'OBJECTIF, JUSTE AU-DESSUS DES CARTES QU'IL COMMANDE.
-              Il prend son thème en props et ne lit aucun état global : c'est
-              ce qui le rend transposable tel quel le jour où chaque thème
-              portera le sien.
+              Il prend son thème en props et ne lit aucun état global.
 
               IL EST SORTI DE LA BOUCLE. Il était rendu dans l'enveloppe de la
               PREMIÈRE carte (`i === 0`) : avec une seule carte visible à la
               fois, il aurait disparu dès le premier changement d'onglet, alors
-              qu'un seul objectif commande les cinq thèmes. Le rendre dans
-              chaque panneau serait pire — un même module rendu N fois sur une
-              page est exactement ce que la grammaire interdit. Il est donc posé
-              une fois, au-dessus de la navigation ; il nomme le premier thème
-              quand il n'y en a qu'un, et dit « commun à tes N thèmes » sinon.
-              Le jour où l'objectif sera PAR THÈME (`profiles.objectif` est
-              unique par compte aujourd'hui), il redescendra dans le panneau. */}
+              que plusieurs thèmes peuvent en dépendre. Le rendre dans chaque
+              panneau serait pire — un même module rendu N fois sur une page
+              est exactement ce que la grammaire interdit. Il est donc posé une
+              fois, au-dessus de la navigation.
+
+              CHAQUE THÈME PRIORITAIRE PEUT DÉSORMAIS AVOIR SON PROPRE
+              OBJECTIF (réglable sur /labels, table `theme_objectifs`) —
+              `profiles.objectif` n'est plus qu'un DÉFAUT hérité en silence.
+              « commun à tes N thèmes » ne peut donc plus être affirmé sans
+              vérifier : `objectifCommunATous` compare l'objectif EFFECTIF
+              (`t.objectif`, pas `data.objectif`) de chaque carte affichée, et
+              le module bascule sur un décompte + un lien vers /labels dès que
+              ce n'est plus vrai. Affirmer « commun » à tort serait exactement
+              la contradiction que ce module existait pour éviter.
+
+              DEUX PROPS DISTINCTES, ET C'EST VOULU : `objectifCompte`
+              (toujours `data.objectif`) alimente le SEUL sélecteur qui écrit
+              `profiles.objectif` ; `objectifEffectif` (celui de la carte
+              affichée, propre ou hérité) alimente le mot du résumé. Les
+              confondre ferait afficher, sous « L'objectif du compte », une
+              valeur que son propre `onChange` n'écrirait pas. `nbPropre`
+              (pas `objectifCommunATous` seul) décide aussi si le pied peut
+              dire « tant qu'aucun n'a le sien » — deux thèmes convergeant sur
+              la MÊME valeur par CHOIX PROPRE restent « commun », mais pas
+              « aucun n'a le sien ». */}
           <ObjectifTheme
             theme={{
               label: cartesOrdonnees[0].label,
               is_priority: cartesOrdonnees[0].is_priority,
             }}
-            objectif={data.objectif}
+            objectifCompte={data.objectif}
+            objectifEffectif={cartesOrdonnees[0].objectif ?? data.objectif}
+            objectifPropre={cartesOrdonnees[0].objectif_propre ?? false}
+            commun={objectifCommunATous}
+            nbPropre={nbAvecObjectifPropre}
             priorities={priorities}
             nbThemes={cartes.length}
           />
@@ -626,7 +656,11 @@ export default async function Page() {
         <div className="mb-8 max-w-[68ch]">
           <ObjectifTheme
             theme={null}
-            objectif={data.objectif}
+            objectifCompte={data.objectif}
+            objectifEffectif={data.objectif}
+            objectifPropre={false}
+            commun
+            nbPropre={0}
             priorities={priorities}
             nbThemes={0}
           />

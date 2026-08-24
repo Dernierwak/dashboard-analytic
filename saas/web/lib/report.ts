@@ -286,6 +286,20 @@ export type ThemeSeries = {
 export type ThemeFocus = {
   label: string;
   is_priority: boolean;
+  /**
+   * L'objectif EFFECTIF de ce thème — celui qui pilote réellement sa courbe
+   * (`series.metric_label`) et l'ordre de ses conseils, PAS forcément celui du
+   * compte. Absent des payloads publiés avant cette fonctionnalité : le front
+   * retombe alors sur l'objectif du compte, exactement le comportement d'avant.
+   */
+  objectif?: string | null;
+  /**
+   * `true` seulement si CE thème a un réglage propre (`theme_objectifs`) ET
+   * qu'il est toujours étoilé — un thème qui perd son étoile retombe sur
+   * l'objectif du compte sans que sa ligne soit effacée (voir le worker).
+   * Absent ou `false` = hérité du compte.
+   */
+  objectif_propre?: boolean;
   summary: ThemeSummary;
   series?: ThemeSeries | null;
   campaigns: ThemeCampaign[];

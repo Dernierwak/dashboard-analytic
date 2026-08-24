@@ -1473,3 +1473,104 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
     migrationManquante,
   };
 }
+
+// ── L'objectif d'un thème prioritaire ────────────────────────────────────────
+//
+// CE QUE CE MODULE COMPOSE, ET POURQUOI IL NE REFAIT PAS `getThemeEvenements`.
+// L'objectif propre d'un thème (`theme_objectifs`) se choisit et se lit à côté
+// des conversions GA4 de CE thème : sans elles, savoir « ce thème vise plus de
+// ventes » ne dit toujours pas quel événement porte ce verdict. Plutôt que de
+// recopier ici les quatre lectures qui construisent `ThemeEvenements`
+// (labels, campagnes Meta/Google, catalogue GA4, choix déjà fait), on COMPOSE
+// au-dessus de son résultat — `getThemeEvenements` elle-même reste inchangée,
+// seule source de vérité des conversions par thème.
+//
+// `evenements` ARRIVE DÉJÀ CHARGÉ, EN PARAMÈTRE, plutôt que d'être relu ici :
+// `/labels` appelle `getThemeEvenements` pour son propre bloc 6, et refaire le
+// même appel doublerait cinq requêtes Supabase pour la même réponse.
+//
+// UNIQUEMENT LES THÈMES ÉTOILÉS : ce réglage n'a de sens que pour les thèmes
+// prioritaires (le reste du rapport suit l'objectif du compte sans exception).
+
+export type ThemeObjectifRow = {
+  label: string;
+  /** Choix propre à ce thème. `null` = aucun — il hérite de l'objectif du compte. */
+  objectif: string | null;
+  attribuable: boolean;
+  posts: number;
+  principaux: string[];
+  secondaires: string[];
+};
+
+export type ThemesObjectifsData = {
+  /** L'objectif du compte — c'est lui que « hérite » désigne. */
+  accountObjectif: string | null;
+  catalogue: EvenementCatalogue[];
+  ga4Connecte: boolean;
+  catalogueMaj: string | null;
+  /** Uniquement les thèmes étoilés — voir l'en-tête ci-dessus. */
+  themes: ThemeObjectifRow[];
+  peutEditer: boolean;
+  /** `theme_objectifs` absente (migration `theme_objectifs.sql` pas jouée),
+   * ou `getThemeEvenements` déjà en panne de migration — les deux se lisent
+   * pareil ici : le réglage est indisponible tant que le SQL n'est pas rejoué. */
+  migrationManquante: boolean;
+};
+
+export async function getThemeObjectifs(
+  evenements: EvenementsData
+): Promise<ThemesObjectifsData> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const uid = compte.uid;
+
+  const [profRes, choixRes, prioRes] = await Promise.all([
+    supabase.from("profiles").select("objectif").eq("id", uid).limit(1),
+    supabase.from("theme_objectifs").select("label, objectif").eq("user_id", uid),
+    supabase
+      .from("insight_feedback")
+      .select("insight_key")
+      .eq("user_id", uid)
+      .like("insight_key", "priority_label:%"),
+  ]);
+
+  const codeSchema = (e: { code?: string } | null | undefined) =>
+    ["PGRST204", "PGRST205", "42703"].includes(e?.code ?? "");
+  const migrationManquante = evenements.migrationManquante || codeSchema(choixRes.error);
+
+  const priorites = new Set(
+    (prioRes.data ?? [])
+      .map((r) => String(r.insight_key).split(":").slice(1).join(":"))
+      .filter(Boolean)
+  );
+
+  const objParTheme = new Map<string, string>();
+  for (const r of choixRes.data ?? []) {
+    const lbl = String(r.label ?? "");
+    if (lbl && r.objectif) objParTheme.set(lbl, String(r.objectif));
+  }
+
+  // `evenements.themes` couvre déjà TOUS les thèmes de `profiles.labels` (pas
+  // seulement ceux qui portent une campagne) : un thème étoilé y figure donc
+  // toujours, qu'il soit attribuable ou pas.
+  const themes: ThemeObjectifRow[] = evenements.themes
+    .filter((t) => priorites.has(t.label))
+    .map((t) => ({
+      label: t.label,
+      objectif: objParTheme.get(t.label) ?? null,
+      attribuable: t.attribuable,
+      posts: t.posts,
+      principaux: t.principaux,
+      secondaires: t.secondaires,
+    }));
+
+  return {
+    accountObjectif: (profRes.data?.[0]?.objectif as string | null) ?? null,
+    catalogue: evenements.catalogue,
+    ga4Connecte: evenements.ga4Connecte,
+    catalogueMaj: evenements.catalogueMaj,
+    themes,
+    peutEditer: compte.peutEditer,
+    migrationManquante,
+  };
+}

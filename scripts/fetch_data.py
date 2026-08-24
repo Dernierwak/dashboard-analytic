@@ -383,6 +383,33 @@ def fetch_objectif(supabase: Client, user_id: str) -> str | None:
     return None
 
 
+def fetch_theme_objectifs(supabase: Client, user_id: str) -> dict[str, str]:
+    """L'objectif propre d'un thème, quand il diffère de celui du compte.
+
+    Returns: {label: 'ventes'|'notoriete'|'engagement'}. {} si la table est
+    absente (migration `theme_objectifs.sql` pas passée) ou si rien n'a été
+    choisi — l'appelant retombe alors sur `fetch_objectif` (l'objectif du
+    compte), exactement comme avant cette fonctionnalité.
+    """
+    try:
+        res = (
+            supabase.table("theme_objectifs")
+            .select("label, objectif")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        rows = res.data or []
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for r in rows:
+        lbl = (r.get("label") or "").strip()
+        obj = r.get("objectif")
+        if lbl and obj:
+            out[lbl] = obj
+    return out
+
+
 def fetch_reco_feedback(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:
     """Dernière réaction connue par type de conseil, sur les `recent_weeks` semaines.
     Returns: {reco_key: "useful"|"not_for_me"|"done"} (la plus récente par key).
