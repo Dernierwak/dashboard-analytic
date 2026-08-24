@@ -2635,11 +2635,14 @@ def build_payload(sb, user_id: str) -> dict | None:
         def _norm(s):
             return str(s or "").strip().lower()
         sp_lbl: dict = {}
+        meta_labeled = 0.0
         if not df_camp.empty:
             for _, r in df_camp.iterrows():
                 lbl = (meta_cfg.get(r["campaign_name"], {}) or {}).get("label")
                 if lbl:
                     sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(r["spend"])
+                    meta_labeled += float(r["spend"])
+        google_labeled = 0.0
         if not df_google.empty and "campaign_id" in df_google.columns:
             gw = df_google[
                 (df_google["date_start"] >= pd.Timestamp(cur_since))
@@ -2652,26 +2655,40 @@ def build_payload(sb, user_id: str) -> dict | None:
                     lbl = (goog_cfg.get(cid, {}) or {}).get("label")
                     if lbl and chf > 0:
                         sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(chf)
+                        google_labeled += float(chf)
+        # Ce qui n'est rattaché à AUCUN thème — le même bucket « autres » que
+        # sur la page Coûts (`couts/page.tsx` : total de la fenêtre moins ce
+        # qui est étiqueté). AVANT ce correctif, cette place était prise par
+        # le revenu GA4 sans correspondance de campagne — une notion
+        # entièrement différente (du CHF de VENTE, pas de la DÉPENSE non
+        # étiquetée) — donc les campagnes sans thème posé disparaissaient
+        # purement et simplement du camembert au lieu d'apparaître en
+        # « autres » : la ou les campagnes étiquetées se retrouvaient à tort
+        # à 100 % du budget affiché.
+        spend_orphan = max(0.0, (total_spend - meta_labeled) + (g_spend - google_labeled))
         name_lbl = {_norm(n): (c or {}).get("label")
                     for n, c in meta_cfg.items() if (c or {}).get("label")}
         for cid, c in goog_cfg.items():
             if (c or {}).get("label") and c.get("campaign_name"):
                 name_lbl.setdefault(_norm(c["campaign_name"]), c["label"])
-        rv_lbl, orphan = {}, 0.0
+        rv_lbl: dict = {}
         for camp, dd in ga4_ctx["by_campaign"].items():
             rev = float(dd.get("revenue") or 0)
             lbl = name_lbl.get(_norm(camp))
             if lbl:
                 rv_lbl[lbl] = rv_lbl.get(lbl, 0.0) + rev
-            else:
-                orphan += rev
+        # Pas de troncature ici : `ThemeDonut` regroupe déjà lui-même tout ce
+        # qui dépasse les 5 premières parts dans « autres » (même logique que
+        # la page Coûts, qui lui passe tous les thèmes sans les couper avant).
+        # Couper à 4 ici les aurait fait disparaître purement et simplement,
+        # au lieu de les regrouper visiblement.
         t_rows = sorted(
             ({"label": lbl, "spend": round(s, 2), "rev": round(rv_lbl.get(lbl, 0.0), 2)}
              for lbl, s in sp_lbl.items() if s > 0),
             key=lambda r: -r["spend"],
-        )[:4]
+        )
         if t_rows:
-            themes = {"rows": t_rows, "orphan": round(orphan, 2)}
+            themes = {"rows": t_rows, "orphan": round(spend_orphan, 2)}
 
     # ── Boucle de la preuve : les « Fait » des semaines passées, re-mesurés ───
     # Le jour où la mesure est passée du compte au thème. Voir plus bas : une

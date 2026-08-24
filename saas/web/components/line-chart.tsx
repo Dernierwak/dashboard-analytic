@@ -23,10 +23,7 @@ import type { CSSProperties } from "react";
 //  · les points deviennent des ronds HTML — un cercle SVG étiré sans rapport
 //    d'aspect uniforme donnerait un œuf ;
 //  · l'infobulle est une vraie bulle stylée, immédiate, au lieu du `<title>`
-//    natif qui met une seconde à venir et n'existe pas au doigt ;
-//  · une étiquette arrondie sur la courbe devient possible — c'est ce qui rend
-//    le repère d'action lisible (« ▸ Budget +20 % · sem. du 24 jun ») au lieu
-//    d'un trait pointillé muet.
+//    natif qui met une seconde à venir et n'existe pas au doigt.
 //
 // Le trait, lui, garde `vectorEffect="non-scaling-stroke"` : sans ça il
 // s'amincit jusqu'à disparaître sur mobile.
@@ -46,25 +43,17 @@ export const TON_ZONE: Record<string, string> = {
   pos: "#1a7a4a",
 };
 
-// LA PASTILLE PERMANENTE EST DEVENUE UN POINT QU'ON SURVOLE.
+// LES REPÈRES D'ACTION (points pleins sur la ligne du haut, cf. git blame
+// pour l'ancienne mise en œuvre) NE SE DESSINENT PLUS SUR LA COURBE.
 //
-// Elle écrivait le nom de l'action à même le haut du graphe. Deux d'entre elles
-// se chevauchaient et se coupaient — « Tes conversions te coûtent 28… » posée
-// sur « Budget +20 % » — et le module devenait illisible là où il devait être
-// le plus clair. La parade d'alors était un plafond : au-delà de deux repères,
-// plus aucune étiquette, et un pied qui écrivait « 5 actions » sans dire
-// lesquelles ni quand. On payait la lisibilité en information.
-//
-// Le repère est maintenant un POINT de 7 px sur la ligne du haut, et son nom
-// n'apparaît qu'au survol, dans la même bulle que les colonnes. Deux points
-// côte à côte ne se coupent pas — ils se touchent au pire. Le plafond de deux
-// tombe donc, et avec lui le comptage en pied : dix repères s'affichent, tous
-// nommés, chacun à son tour.
-//
-// Au doigt, où le survol n'existe pas : le point est un vrai `<button>`, et la
-// bulle s'ouvre aussi sur `focus-within`. Un `tap` donne le focus, la bulle
-// vient, un `tap` ailleurs la ferme. Aucun JavaScript, donc utilisable dans un
-// composant serveur.
+// Retiré à la demande de David (retour du 24 août 2026, TASK-008) : sur une
+// carte de thème, ils ressortaient comme deux points noirs pleins au milieu
+// des points bleus de la série et brouillaient la lecture de la courbe. La
+// même information (quelle semaine porte une action, laquelle) reste
+// disponible dans « Ton historique d'actions » — ce n'était donc pas la
+// seule vue possible sur ce fait, juste celle qui vivait ici. `markers` /
+// `marqueurs` restent acceptés pour ne pas casser les appelants existants,
+// mais ne produisent plus rien à l'écran.
 
 // Où poser un texte dont l'ancre est à `pct` % de la largeur, sans qu'il sorte
 // du cadre. Aux bords on cale le texte contre le bord au lieu de le centrer.
@@ -97,14 +86,10 @@ export function LineChart({
   // Ligne de référence horizontale — le budget du jour, par exemple. Une
   // courbe sans seuil ne dit pas si ce qu'on voit est normal ou anormal.
   repere?: { value: number; label: string; color?: string };
-  // Index des colonnes où une action a été appliquée. Le repère posé SUR le
-  // graphe relie le geste à son effet ; en légende à côté, il ne relie rien.
-  // C'est un TRAIT POINTILLÉ, pas un glyphe : le ▲ est réservé à la pente
-  // (docs/03-grammaire-des-modules.md), et il servait ici un troisième sens.
-  // Et il est en encre, pas en bleu : le bleu est la couleur de la courbe
-  // elle-même — un repère invisible sur la ligne qu'il commente.
+  // Index des colonnes où une action a été appliquée — ne se dessine plus
+  // (voir la note plus haut sur les repères d'action retirés).
   markers?: number[];
-  /** Les mêmes repères, mais NOMMÉS. Prend le pas sur `markers` quand présent. */
+  /** Les mêmes repères, mais NOMMÉS — ne se dessinent plus non plus. */
   marqueurs?: Marqueur[];
   // Les zones de qualité, en fond de courbe. Elles remplacent la jauge séparée :
   // une jauge dit « où tu es maintenant », le fond dit « où tu es ET depuis
@@ -131,19 +116,9 @@ export function LineChart({
   const n = labels.length;
   if (n < 2 || series.length === 0) return null;
 
-  // Un repère, avec son nom quand on l'a. `markers` (payloads d'avant août
-  // 2026) ne porte que l'index : le point s'affiche, muet — il ne perd rien,
-  // il ne gagne simplement pas le nom.
-  const reperes: { i: number; label?: string }[] = marqueurs?.length
-    ? marqueurs.filter((m) => m.i >= 0 && m.i < n).map((m) => ({ i: m.i, label: m.label }))
-    : (markers ?? []).filter((i) => i >= 0 && i < n).map((i) => ({ i }));
-
   const W = 720;
   const H = height;
   const PAD_L = 6, PAD_R = 6, PAD_B = 22;
-  // Plus de bandeau réservé en haut : les repères ne sont plus des pastilles
-  // de texte qui poussaient la courbe de 18 px vers le bas, mais des points de
-  // 7 px posés sur la ligne du cadre.
   const PAD_T = 10;
   const plotH = H - PAD_T - PAD_B;
 
@@ -287,21 +262,6 @@ export function LineChart({
             />
           )}
 
-          {reperes.map((m) => (
-            <line
-              key={`mk-${m.i}`}
-              x1={x(m.i)}
-              y1={PAD_T}
-              x2={x(m.i)}
-              y2={PAD_T + plotH}
-              stroke="#0e0f12"
-              strokeOpacity="0.4"
-              strokeWidth="1"
-              strokeDasharray="3 3"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
           {series.map((s, si) => {
             const pts = s.values
               .map((v, i) => (v === null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
@@ -436,42 +396,6 @@ export function LineChart({
           </div>
         ))}
 
-        {/* LES REPÈRES D'ACTION — un point, et son nom au survol.
-            Rendus APRÈS les colonnes et au-dessus d'elles : c'est ce qui fait
-            que survoler le point ouvre SA bulle et non celle de la colonne. Les
-            deux ne sont pas frères par hasard — la colonne dit la valeur du
-            jour, le repère dit ce qu'on a fait ce jour-là, et les afficher
-            ensemble donnerait deux bulles superposées.
-            En encre : un repère est un fait daté, pas un jugement — c'est le
-            libellé qui dit ce qu'on a fait, pas la couleur
-            (docs/03-grammaire-des-modules.md, lexique des signes). */}
-        {reperes.map((m) => (
-          <span
-            key={`rp-${m.i}`}
-            className="group absolute z-20 -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${px(m.i)}%`, top: `${(PAD_T / H) * 100}%` }}
-          >
-            <button
-              type="button"
-              // Cible tactile de 22 px autour d'un point de 7 px : viser 7 px
-              // au doigt est impossible, et grossir le point le rendrait aussi
-              // voyant que la courbe qu'il commente.
-              className="block h-[22px] w-[22px] -m-[7.5px] grid place-items-center outline-none cursor-help"
-              aria-label={m.label ? `Action : ${m.label}` : "Une action a été lancée ici"}
-            >
-              <span className="block h-[7px] w-[7px] rounded-full bg-ink ring-2 ring-white group-hover:h-[9px] group-hover:w-[9px] group-focus-within:h-[9px] group-focus-within:w-[9px] transition-all" />
-            </button>
-            {m.label && (
-              <span
-                className={`pointer-events-none absolute top-[14px] left-1/2 z-30 hidden group-hover:block group-focus-within:block rounded-lg bg-ink text-white text-[10.5px] font-semibold px-2 py-1 whitespace-nowrap shadow-card ${ancrage(
-                  px(m.i)
-                )}`}
-              >
-                {m.label}
-              </span>
-            )}
-          </span>
-        ))}
       </div>
 
       {/* Les noms de zones, à droite du tracé, chacun en face de sa bande.
