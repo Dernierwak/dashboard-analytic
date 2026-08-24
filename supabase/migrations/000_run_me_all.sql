@@ -75,11 +75,25 @@
 -- ────────────────────────────────────────────────────────────────────────────
 -- COMMENT SAVOIR QUE ÇA A MARCHÉ
 --
--- La dernière instruction du fichier est une REQUÊTE DE CONTRÔLE : elle liste
--- toutes les tables, colonnes et fonctions attendues et met en HAUT du résultat
--- ce qui manque encore. Rien à interpréter — si la première ligne affiche « ✓ »,
+-- Une REQUÊTE DE CONTRÔLE, juste avant la toute fin du fichier, liste toutes
+-- les tables, colonnes et fonctions attendues et met en HAUT du résultat ce
+-- qui manque encore. Rien à interpréter — si la première ligne affiche « ✓ »,
 -- il ne manque rien. Elle vérifie aussi, dans le même tableau, que les jetons
 -- Meta/Google ne sont lisibles par aucun membre invité.
+--
+-- ATTENTION : ce n'est PLUS la dernière instruction du fichier — un
+-- `NOTIFY pgrst, 'reload schema'` la suit, pour que PostgREST connaisse tout
+-- de suite les tables tout juste créées (voir la note en toute fin de
+-- fichier). Or le SQL editor de Supabase n'affiche que le résultat de la
+-- TOUTE DERNIÈRE instruction jouée : rejouer le fichier en entier affichera
+-- donc « Success. No rows returned », pas le tableau de contrôle. Pour lire
+-- ce tableau, sélectionne uniquement le bloc CONTRÔLE ci-dessous (du `WITH
+-- attendu` jusqu'au `ORDER BY` qui le termine) et exécute cette sélection
+-- seule (Cmd/Ctrl+Entrée sur le texte sélectionné) — APRÈS avoir joué le
+-- fichier complet, jamais avant : lue trop tôt, sur une base où tout n'est
+-- pas encore installé, elle remonte des ✗ normaux (rien n'a de raison d'être
+-- là) qui n'ont rien à voir avec un échec. C'est seulement une fois le
+-- fichier entier rejoué que ces mêmes ✗ deviennent le signal utile.
 -- ============================================================================
 
 -- Fonction trigger updated_at (réutilisée par plusieurs tables) ---------------
@@ -1701,8 +1715,18 @@ CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
 
 
 -- ============================================================================
--- CONTRÔLE — la dernière instruction du fichier, et la seule qui renvoie
--- quelque chose. Après avoir joué le tout, Supabase affiche SON résultat.
+-- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
+-- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
+-- la dernière instruction, et le SQL editor de Supabase n'affiche que le
+-- résultat de la toute dernière instruction jouée. Rejouer le fichier en
+-- entier affichera « Success. No rows returned », pas ce tableau. Pour le
+-- voir, sélectionne uniquement ce bloc (du `WITH attendu` ci-dessous jusqu'au
+-- `ORDER BY` qui le termine) et exécute cette sélection seule
+-- (Cmd/Ctrl+Entrée) — APRÈS avoir joué le fichier complet, jamais avant : lue
+-- trop tôt, sur une base où tout n'est pas encore installé, elle remonte des
+-- ✗ normaux (rien n'a de raison d'être là) qui n'ont rien à voir avec un
+-- échec. C'est seulement une fois le fichier entier rejoué que ces mêmes ✗
+-- deviennent le signal utile.
 --
 -- Ce qui manque remonte EN HAUT du tableau. Si la première ligne dit « ✓ »,
 -- il ne manque rien. Rien à interpréter, rien à comparer à la main.
@@ -1836,7 +1860,10 @@ FROM (SELECT * FROM catalogue UNION ALL SELECT * FROM securite) r(famille, objet
 ORDER BY (etat = '✓'), famille, objet;
 
 -- ============================================================================
--- FIN — et cette fois c'est vraiment la fin.
+-- FIN — la dernière section de FOND du fichier (tables, policies, contrôle).
+-- Ce qui suit n'installe plus rien : deux requêtes de contrôle annexes, à
+-- lancer à part (A et B ci-dessous), puis un unique `NOTIFY pgrst, 'reload
+-- schema'` exécutable, tout en bas du fichier — voir la note qui l'accompagne.
 --
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
@@ -1864,3 +1891,17 @@ ORDER BY (etat = '✓'), famille, objet;
 --                          AND coalesce(p.qual, '') ~ 'a_acces')
 --      ORDER BY 1;
 -- ============================================================================
+
+-- Supabase recharge normalement le cache de schéma de PostgREST après un DDL
+-- passé par le SQL editor — sans ça, aucune des tables de ce fichier ne
+-- répondrait jamais en REST, alors qu'elles le font toutes aujourd'hui. Mais
+-- ce rechargement automatique n'est pas garanti instantané ni infaillible :
+-- s'il prend du retard ou ne se déclenche pas pour une table neuve (ex.
+-- fetch_progress, créée section 14ter), elle peut répondre PGRST205 (« table
+-- introuvable ») côté API alors qu'elle existe bien en base — et ça vaut pour
+-- TOUTE requête REST vers cette table, écriture comme lecture, y compris avec
+-- la clé service_role : cette clé fait sauter la RLS, pas ce cache. Voir le
+-- commentaire détaillé en fin de `fetch_progress.sql` pour le symptôme que ça
+-- produit côté écran. NOTIFY force ce rechargement explicitement, en secours —
+-- commande standard, non destructive.
+NOTIFY pgrst, 'reload schema';

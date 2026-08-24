@@ -22,7 +22,10 @@
 -- ce que cette table sert, c'est « où en est la récolte MAINTENANT ». L'historique
 -- des récoltes, lui, vit déjà dans les runs GitHub Actions.
 --
--- Idempotent : ré-exécutable sans erreur. Aucun DROP, aucun DELETE.
+-- Rejouable sans erreur : la table (`CREATE TABLE IF NOT EXISTS`) n'est jamais
+-- recréée et aucune donnée n'est jamais supprimée (aucun DELETE). Les 4
+-- policies de partage, elles, sont recréées à chaque passage via
+-- `DROP POLICY IF EXISTS` + `CREATE POLICY` — voir plus bas pourquoi.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.fetch_progress (
@@ -74,12 +77,26 @@ ALTER TABLE public.fetch_progress ENABLE ROW LEVEL SECURITY;
 -- fonctions de partage plutôt que de la supposer, pour que cette migration
 -- puisse tourner sur une base où la section 12 n'a pas encore été jouée.
 --
--- Et contrairement aux migrations plus anciennes, aucun `DROP POLICY` ici : sur
--- une table neuve il n'y a rien à remplacer, et une création gardée par
--- `pg_policies` est tout aussi rejouable sans jamais retirer un accès, même une
--- fraction de seconde. La section 15 de 000_run_me_all.sql, elle, garde son
--- drop/create : c'est elle qui garantit que TOUTES les tables partagées portent
--- exactement les mêmes règles.
+-- DROP POLICY IF EXISTS avant chaque CREATE — et c'est un revirement sur ce
+-- fichier : la version précédente ne créait QUE si la policy manquait, au nom
+-- d'un « rejouable sans jamais retirer un accès ». Le raisonnement avait un
+-- trou : « rejouable » n'est pas « convergent », et ce trou ne se voit que
+-- quand ce fichier est rejoué SEUL. Si ce fichier a un jour été exécuté seul,
+-- avant que la section 12 n'existe encore (`partage` à faux), il a posé un
+-- repli `auth.uid() = user_id` — et un rejeu ultérieur de ce même fichier,
+-- isolément, ne le remplaçait JAMAIS, puisque la policy « existait déjà » au
+-- sens de la garde `pg_policies`. Un tel repli n'empêche rien pour le
+-- propriétaire (`auth.uid() = user_id` reste vrai pour lui), mais renvoie une
+-- table vide, sans un octet d'accès, à quiconque n'est QUE invité sur ce
+-- compte — silencieusement, sans jamais se corriger tout seul tant que seul
+-- ce fichier est rejoué. Le bundle 000_run_me_all.sql, lui, n'a jamais eu ce
+-- trou : sa section 15 traite déjà `fetch_progress` comme toutes les autres
+-- tables partagées, sans garde `pg_policies`, en DROP+CREATE à chaque passage
+-- — c'est CE fichier isolé qu'on aligne maintenant sur ce que le bundle fait
+-- déjà. Chaque rejeu ramène la policy à sa définition ACTUELLE, jamais à
+-- celle qui existait au premier passage. La fenêtre sans policy entre le DROP
+-- et le CREATE dure une fraction de commande SQL et échoue fermé (RLS activée
+-- + aucune policy = aucune ligne visible) : jamais un accès en trop.
 --
 -- Le worker écrit avec la clé service_role, qui passe au-dessus de la RLS : ces
 -- politiques ne décident donc que de la LECTURE par l'écran, et de l'écriture
@@ -89,53 +106,64 @@ DECLARE
     partage boolean := to_regprocedure('public.a_acces(uuid)') IS NOT NULL
                    AND to_regprocedure('public.peut_editer(uuid)') IS NOT NULL;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_policies
-                   WHERE schemaname = 'public' AND tablename = 'fetch_progress'
-                     AND policyname = 'partage_select') THEN
-        IF partage THEN
-            CREATE POLICY "partage_select" ON public.fetch_progress
-                FOR SELECT USING (public.a_acces(user_id));
-        ELSE
-            CREATE POLICY "partage_select" ON public.fetch_progress
-                FOR SELECT USING (auth.uid() = user_id);
-        END IF;
+    DROP POLICY IF EXISTS "partage_select" ON public.fetch_progress;
+    IF partage THEN
+        CREATE POLICY "partage_select" ON public.fetch_progress
+            FOR SELECT USING (public.a_acces(user_id));
+    ELSE
+        CREATE POLICY "partage_select" ON public.fetch_progress
+            FOR SELECT USING (auth.uid() = user_id);
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_policies
-                   WHERE schemaname = 'public' AND tablename = 'fetch_progress'
-                     AND policyname = 'partage_insert') THEN
-        IF partage THEN
-            CREATE POLICY "partage_insert" ON public.fetch_progress
-                FOR INSERT WITH CHECK (public.peut_editer(user_id));
-        ELSE
-            CREATE POLICY "partage_insert" ON public.fetch_progress
-                FOR INSERT WITH CHECK (auth.uid() = user_id);
-        END IF;
+    DROP POLICY IF EXISTS "partage_insert" ON public.fetch_progress;
+    IF partage THEN
+        CREATE POLICY "partage_insert" ON public.fetch_progress
+            FOR INSERT WITH CHECK (public.peut_editer(user_id));
+    ELSE
+        CREATE POLICY "partage_insert" ON public.fetch_progress
+            FOR INSERT WITH CHECK (auth.uid() = user_id);
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_policies
-                   WHERE schemaname = 'public' AND tablename = 'fetch_progress'
-                     AND policyname = 'partage_update') THEN
-        IF partage THEN
-            CREATE POLICY "partage_update" ON public.fetch_progress
-                FOR UPDATE USING (public.peut_editer(user_id))
-                WITH CHECK (public.peut_editer(user_id));
-        ELSE
-            CREATE POLICY "partage_update" ON public.fetch_progress
-                FOR UPDATE USING (auth.uid() = user_id)
-                WITH CHECK (auth.uid() = user_id);
-        END IF;
+    DROP POLICY IF EXISTS "partage_update" ON public.fetch_progress;
+    IF partage THEN
+        CREATE POLICY "partage_update" ON public.fetch_progress
+            FOR UPDATE USING (public.peut_editer(user_id))
+            WITH CHECK (public.peut_editer(user_id));
+    ELSE
+        CREATE POLICY "partage_update" ON public.fetch_progress
+            FOR UPDATE USING (auth.uid() = user_id)
+            WITH CHECK (auth.uid() = user_id);
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_policies
-                   WHERE schemaname = 'public' AND tablename = 'fetch_progress'
-                     AND policyname = 'partage_delete') THEN
-        IF partage THEN
-            CREATE POLICY "partage_delete" ON public.fetch_progress
-                FOR DELETE USING (public.peut_editer(user_id));
-        ELSE
-            CREATE POLICY "partage_delete" ON public.fetch_progress
-                FOR DELETE USING (auth.uid() = user_id);
-        END IF;
+    DROP POLICY IF EXISTS "partage_delete" ON public.fetch_progress;
+    IF partage THEN
+        CREATE POLICY "partage_delete" ON public.fetch_progress
+            FOR DELETE USING (public.peut_editer(user_id));
+    ELSE
+        CREATE POLICY "partage_delete" ON public.fetch_progress
+            FOR DELETE USING (auth.uid() = user_id);
     END IF;
 END $$;
+
+-- fetch_progress est une table neuve : Supabase recharge normalement le cache
+-- de schéma de PostgREST après un DDL passé par le SQL editor — c'est ainsi
+-- que meta_ads_insights, platform_budgets, ga4_events… répondent déjà en REST
+-- sans qu'aucune migration antérieure n'ait jamais posé de NOTIFY. Mais ce
+-- rechargement automatique n'est pas garanti instantané ni infaillible ; s'il
+-- prend du retard ou ne se déclenche pas pour cette table précise, TOUTE
+-- requête REST vers elle échoue en attendant avec PGRST205 (« table
+-- introuvable ») alors qu'elle existe bel et bien en base, y compris avec la
+-- clé service_role : cette clé fait sauter la RLS, pas ce cache-là.
+--
+-- Ça veut dire que le worker aurait échoué à écrire ici exactement comme
+-- l'écran échoue à lire — mais silencieusement pour lui : `Suivi._ecrire`
+-- (saas/worker/suivi.py) attrape l'exception et ne l'imprime que dans le
+-- journal du run GitHub, jamais à l'écran. Le reste de la récolte, lui,
+-- continue d'écrire sans problème : Meta Ads, Google Ads, GA4, Instagram
+-- vivent dans des tables anciennes, déjà connues du cache. C'est cohérent
+-- avec le symptôme rapporté : la récolte aboutit, mais le panneau de détail
+-- par plateforme reste vide ou en « indisponible » tant que ce cache n'a pas
+-- été rechargé. NOTIFY force ce rechargement explicitement, sans dépendre de
+-- ce que le rechargement automatique se soit bien déclenché — commande
+-- standard, non destructive.
+NOTIFY pgrst, 'reload schema';
