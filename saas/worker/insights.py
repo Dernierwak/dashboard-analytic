@@ -44,14 +44,28 @@ def _slug(s) -> str:
 # ── Matrice ──────────────────────────────────────────────────────────────────
 
 def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
-                 ga4_full, last_full_day) -> dict | None:
+                 ga4_full, last_full_day, theme_events=None) -> dict | None:
     """Vue agrégée de tout l'historique. None si aucune donnée exploitable.
 
-    df_meta_raw : meta_ads_insights complet (date_start, campaign_name, spend, …)
-    df_google   : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
-    df_insta    : instagram_organic_posts complet (date, type, reach, eng, labels, …)
-    meta_cfg    : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
-    ga4_full    : build_ga4_context sur TOUT l'historique (ou None)
+    df_meta_raw   : meta_ads_insights complet (date_start, campaign_name, spend, …)
+    df_google     : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
+    df_insta      : instagram_organic_posts complet (date, type, reach, eng, labels, …)
+    meta_cfg      : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
+    ga4_full      : build_ga4_context sur TOUT l'historique (ou None)
+    theme_events  : {label: [{event_name, rang}]} — la conversion que le client a
+                    désignée par thème (page Thèmes). Quand un thème a un événement
+                    « principal » MESURÉ ET DOTÉ D'UNE VALEUR MONÉTAIRE, cette valeur
+                    (`events_by_campaign`) remplace le revenu GA4 générique du compte
+                    pour ce thème — sinon la même campagne « achat » gonflait le ROAS
+                    d'un thème « newsletter » qui n'a jamais vendu.
+                    UN PRINCIPAL MESURÉ MAIS SANS VALEUR (generate_lead, sign_up,
+                    contact…) NE REMPLACE RIEN : il n'a pas de CHF à donner, et
+                    écrire 0 CHF affirmerait un revenu nul alors que GA4 attribue
+                    peut-être un vrai revenu à ces mêmes campagnes (bug constaté :
+                    « ROAS 0.0 » publié pour un thème dont les 40 leads mesurés
+                    prouvent au contraire que la conversion fonctionne). Sans thème
+                    choisi, ou principal jamais mesuré, ou mesuré sans valeur, le
+                    comportement d'avant reste identique (revenu GA4 générique).
     """
     campaigns: list[dict] = []
     dates: list = []
@@ -106,6 +120,21 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
     if has_ga4:
         rev_by_name = {_norm(k): float((v or {}).get("revenue") or 0)
                        for k, v in ga4_full["by_campaign"].items()}
+
+    # Événements GA4 par campagne (même pont, même normalisation) — sert plus
+    # bas à remplacer le revenu générique d'un thème par SA conversion choisie.
+    events_by_name = {}
+    if has_ga4:
+        events_by_name = {_norm(k): (v or {})
+                          for k, v in (ga4_full.get("events_by_campaign") or {}).items()}
+    # L'événement principal par thème (page Thèmes). Un thème sans principal
+    # choisi n'entre pas dans ce dict et garde le revenu générique ci-dessous.
+    princ_by_label: dict[str, set] = {}
+    for lbl, evs in (theme_events or {}).items():
+        noms = {e["event_name"] for e in (evs or []) if e.get("rang") == "principal"}
+        if noms:
+            princ_by_label[lbl] = noms
+
     for c in campaigns:
         c["ctr"] = c["clicks"] / c["impressions"] * 100 if c["impressions"] > 0 else 0.0
         c["cpc"] = c["spend"] / c["clicks"] if c["clicks"] > 0 else 0.0
@@ -173,6 +202,9 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
 
     # Thèmes : dépense/clics/revenu (campagnes) + posts/portée/engagement (Instagram)
     themes_map: dict[str, dict] = {}
+    # Revenu de LA conversion choisie, cumulé campagne par campagne — seulement
+    # pour les thèmes qui ont un événement principal (voir princ_by_label).
+    theme_event_acc: dict[str, dict] = {}
     for c in campaigns:
         if not c["label"]:
             continue
@@ -184,6 +216,14 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         t["_impr"] += c["impressions"]
         if has_ga4 and c["revenue"] is not None:
             t["revenue"] = (t["revenue"] or 0.0) + c["revenue"]
+        if has_ga4 and c["label"] in princ_by_label:
+            cev = events_by_name.get(_norm(c["name"])) or {}
+            acc = theme_event_acc.setdefault(c["label"], {"count": 0, "value": 0.0})
+            for nom in princ_by_label[c["label"]]:
+                d = cev.get(nom)
+                if d:
+                    acc["count"] += int(d.get("count") or 0)
+                    acc["value"] += float(d.get("value") or 0)
     for lbl, a in posts_by_label.items():
         t = themes_map.setdefault(lbl, {
             "label": lbl, "spend": 0.0, "clicks": 0, "revenue": 0.0 if has_ga4 else None,
@@ -196,6 +236,32 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         impr = t.pop("_impr")
         t["ctr"] = round(t["clicks"] / impr * 100, 2) if impr > 0 else None
         t["spend"] = round(t["spend"], 2)
+        # Le thème a un événement principal mesuré ET DOTÉ D'UNE VALEUR (> 0) :
+        # sa conversion choisie remplace le revenu générique du compte — c'est
+        # elle, et pas le fourre-tout GA4, que le client a désigné pour juger
+        # ce thème.
+        #
+        # LA CONDITION PORTE SUR LA VALEUR, PAS SUR LE COMPTE. Un principal
+        # mesuré mais sans valeur (generate_lead, sign_up, contact…) — le cas
+        # majoritaire hors e-commerce — ne remplace RIEN : il n'a aucun CHF à
+        # donner, et écrire 0 CHF affirmerait un revenu nul alors que GA4 peut
+        # très bien attribuer un vrai revenu à ces mêmes campagnes. `acc["count"]
+        # > 0` seul avait ce bug : il gardait la condition sur le nombre de
+        # conversions mais écrivait `acc["value"]`, donc 0 CHF, pour tout
+        # événement non monétaire mesuré — un thème qui convertit bien se
+        # voyait alors étiqueté « dépense sans vente attribuée ».
+        #
+        # Sans principal choisi, choisi mais jamais mesuré, ou mesuré sans
+        # valeur, on garde le revenu générique déjà calculé ci-dessus
+        # (comportement inchangé, cf. angle mort « thème sans conversion
+        # choisie »). Le NOMBRE de conversions mesurées (ex. « 40 leads »)
+        # reste disponible ailleurs, au niveau hebdomadaire par thème
+        # (`_theme_ga4` → `_reco_evenements` et `_theme_ai_recos` dans
+        # build_report.py) : ce n'est pas ce chiffre de revenu qui doit le
+        # porter.
+        acc = theme_event_acc.get(t["label"])
+        if acc and acc["value"] > 0:
+            t["revenue"] = acc["value"]
         t["roas"] = (round(t["revenue"] / t["spend"], 2)
                      if has_ga4 and t["revenue"] is not None and t["spend"] >= C_SEUILS["theme_spend_min"]
                      else None)
