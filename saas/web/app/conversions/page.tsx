@@ -8,22 +8,28 @@
 // concerne les CONVERSIONS elles-mêmes : quels événements GA4 comptent pour
 // quels thèmes, et de quel GENRE de conversion il s'agit.
 //
-//   1. LE CAMEMBERT — combien de conversions par catégorie, tout le compte
-//      confondu (indépendant des thèmes : une catégorie est une propriété de
-//      l'événement, pas du couple thème/événement — voir l'en-tête de
-//      `conversion_categories.sql`). LIMITÉ AUX VRAIES CONVERSIONS (catégorisées
-//      ou marquées « clé » par GA4) — jamais tout le catalogue, qui contient
-//      aussi le bruit (page_view, scroll…) qu'aucun compte n'appelle une
-//      conversion.
+//   1. LE CAMEMBERT — combien de GENRES de conversions par catégorie, tout le
+//      compte confondu (indépendant des thèmes : une catégorie est une
+//      propriété de l'événement, pas du couple thème/événement — voir
+//      l'en-tête de `conversion_categories.sql`). Compte des TYPES d'événements
+//      distincts, jamais leur volume — voir le calcul plus bas pour pourquoi.
+//      LIMITÉ AUX VRAIES CONVERSIONS (catégorisées ou marquées « clé » par
+//      GA4) — jamais tout le catalogue, qui contient aussi le bruit
+//      (page_view, scroll…) qu'aucun compte n'appelle une conversion.
 //   2. NOS THÈMES PRINCIPAUX — pour chaque thème prioritaire : son objectif
-//      propre, et quels événements GA4 il suit comme conversions.
-//   3. LES CATÉGORIES — créer, renommer, supprimer, classer via l'IA.
+//      propre, et quels événements GA4 il suit comme conversions, groupés
+//      par catégorie.
+//   3. TOUTES TES CONVERSIONS — le catalogue GA4 complet, pour assigner ou
+//      changer la catégorie de n'importe quel événement, indépendamment de
+//      toute sélection de thème.
+//   4. LES CATÉGORIES — créer, renommer, supprimer, classer via l'IA.
 //
 // LA PAGE COMPOSE, ELLE NE DESSINE PAS — même règle que /labels : tout ce qui
 // a une forme vit dans `components/*.tsx`.
 import { getThemeEvenements, getThemeObjectifs, getConversionCategories } from "@/lib/channels";
 import { ThemeDonut } from "@/components/theme-donut";
 import { ConversionsThemesModule } from "@/components/conversions-themes";
+import { ConversionsCatalogueModule } from "@/components/conversions-catalogue";
 import { CreateCategory, CategoryRow } from "@/components/category-manager";
 import { ClassifyConversionsButton } from "@/components/classify-conversions-button";
 import { ScrollList } from "@/components/scroll-list";
@@ -41,19 +47,28 @@ export default async function ConversionsPage() {
 
   const nomsCategories = cat.categories.map((c) => c.name);
 
-  // Le camembert compte le VOLUME (nombre d'événements mesurés sur la fenêtre
-  // GA4) de chaque événement, groupé par catégorie — pas la sélection des
-  // thèmes : c'est l'état du catalogue, pas ce que module 2 en a déjà fait
-  // suivre à un thème.
+  // Le camembert compte le NOMBRE DE GENRES DE CONVERSIONS (des noms
+  // d'événements distincts) par catégorie — jamais leur VOLUME (le nombre de
+  // fois qu'ils se sont déclenchés). Retour direct de David après usage réel :
+  // sommer le volume faisait qu'une catégorie portant une seule conversion
+  // très fréquente (ex. « page_view » catégorisé à la main, déclenché 10 000
+  // fois) écrasait une catégorie portant trois conversions rares — l'anneau
+  // répondait alors à « qu'est-ce qui se déclenche le plus », jamais à la
+  // question posée par le titre « Tes conversions par catégorie », qui porte
+  // sur le NOMBRE DE SORTES de conversions que chaque catégorie regroupe.
+  // Exemple : un catalogue de 20 conversions dont 3 catégorisées « Ventes »
+  // → « Ventes » vaut 3/20 = 15 %, que l'une des trois pèse 1 déclenchement ou
+  // 10 000 ne change rien à ce pourcentage.
   //
   // `evenements.catalogue` N'EST PAS FILTRÉ AUX CONVERSIONS — c'est TOUT ce
   // que la propriété GA4 émet (page_view, session_start, scroll compris). Le
-  // sommer tel quel sous un titre « Tes conversions » aurait affiché un
-  // anneau dominé à ~99 % par du bruit non catégorisable, présenté comme des
+  // compter tel quel sous un titre « Tes conversions » aurait affiché un
+  // anneau dominé par du bruit non catégorisable, présenté comme des
   // conversions : exactement le chiffre trompeur que CLAUDE.md §7 interdit.
   //
   // L'UNIVERS DU CAMEMBERT SE LIMITE DONC À DEUX SIGNAUX DE CONVERSION,
-  // JAMAIS AU CATALOGUE ENTIER :
+  // JAMAIS AU CATALOGUE ENTIER — MÊME DÉFINITION QU'AVANT, SEUL LE COMPTAGE
+  // CHANGE :
   //   · un événement CATÉGORISÉ (`ga4_event_categories`) — un humain ou l'IA
   //     a déjà dit « ça compte », quel que soit ce que GA4 en pense ;
   //   · un événement marqué « key event » PAR GA4 LUI-MÊME (`cle === true`,
@@ -66,8 +81,8 @@ export default async function ConversionsPage() {
   let nonCategorise = 0;
   for (const e of evenements.catalogue) {
     const c = cat.parEvenement[e.nom];
-    if (c) parCategorie.set(c, (parCategorie.get(c) ?? 0) + e.volume);
-    else if (e.cle === true) nonCategorise += e.volume;
+    if (c) parCategorie.set(c, (parCategorie.get(c) ?? 0) + 1);
+    else if (e.cle === true) nonCategorise += 1;
   }
   const rowsCamembert = [
     ...nomsCategories.map((name) => ({ label: name, spend: parCategorie.get(name) ?? 0 })),
@@ -103,7 +118,7 @@ export default async function ConversionsPage() {
             unite="catégorie"
             uniteValeur="conversions"
             montants
-            note="Volume mesuré par Google Analytics sur la fenêtre récoltée, groupé par catégorie — indépendant de ce qu'un thème suit ou non."
+            note="Nombre de conversions différentes par catégorie (pas leur fréquence de déclenchement) — indépendant de ce qu'un thème suit ou non."
           />
         </div>
       ) : (
@@ -114,7 +129,7 @@ export default async function ConversionsPage() {
                 ? evenements.ga4Connecte
                   ? "Aucun événement connu — lance ↻ Rafraîchir maintenant dans la barre latérale."
                   : "Google Analytics n'est pas connecté — va dans Comptes → Connexions."
-                : "Aucune conversion pour l'instant : ni événement marqué « clé » par Google Analytics, ni conversion catégorisée à la main. Choisis une catégorie sur une conversion plus bas pour voir ce camembert se remplir."}
+                : "Aucune conversion pour l'instant : ni événement marqué « clé » par Google Analytics, ni conversion catégorisée à la main. Choisis une catégorie sur une conversion plus bas, dans « Toutes tes conversions », pour voir ce camembert se remplir."}
             </p>
           </div>
         )
@@ -123,16 +138,44 @@ export default async function ConversionsPage() {
       {/* 2 — NOS THÈMES PRINCIPAUX. */}
       <ConversionsThemesModule d={objectifs} categories={nomsCategories} parEvenement={cat.parEvenement} />
 
-      {/* 3 — LES CATÉGORIES. */}
+      {/* 3 — TOUTES TES CONVERSIONS — module séparé, façon /labels : catégoriser
+          n'importe quel événement du catalogue GA4, indépendamment de toute
+          sélection de thème. Voir l'en-tête de `conversions-catalogue.tsx`. */}
       <div className="border-t border-line pt-5">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <p className="text-[11.5px] text-faint leading-relaxed max-w-2xl">
-            Une catégorie regroupe des conversions de même nature (Ventes, Contacts,
-            Engagement…). Crée-les à la main, ou laisse l&apos;IA proposer une catégorie pour
-            chaque conversion qui n&apos;en a pas encore.
+            Chaque événement que Google Analytics connaît sur ton site — assigne-lui une
+            catégorie à la main, ou laisse l&apos;IA proposer une catégorie pour tout ce qui
+            n&apos;en a pas encore.
           </p>
           <ClassifyConversionsButton />
         </div>
+
+        {cat.migrationManquante && (
+          <p className="text-[12.5px] text-neg leading-relaxed mb-3 max-w-[70ch]">
+            Le tableau des catégories n&apos;existe pas encore dans ta base —{" "}
+            <span className="font-semibold">aucune conversion ne peut être catégorisée</span>.
+            Joue{" "}
+            <code className="font-mono text-[11.5px]">supabase/migrations/000_run_me_all.sql</code>{" "}
+            dans Supabase → SQL editor, puis recharge cette page. Ce fichier est rejouable sans
+            risque.
+          </p>
+        )}
+
+        <ConversionsCatalogueModule
+          catalogue={evenements.catalogue}
+          categories={nomsCategories}
+          parEvenement={cat.parEvenement}
+        />
+      </div>
+
+      {/* 4 — LES CATÉGORIES : le vocabulaire (créer, renommer, supprimer). */}
+      <div className="border-t border-line pt-5">
+        <p className="text-[11.5px] text-faint leading-relaxed max-w-2xl mb-3">
+          Une catégorie regroupe des conversions de même nature (Ventes, Contacts,
+          Engagement…). Crée-la, renomme-la ou supprime-la ici — assigne-la à une conversion
+          plus haut, dans « Toutes tes conversions ».
+        </p>
 
         {cat.migrationManquante && (
           <p className="text-[12.5px] text-neg leading-relaxed mb-3 max-w-[70ch]">

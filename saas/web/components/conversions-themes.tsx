@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveThemeObjectif, setThemeEvent, saveCategoryForEvent } from "@/app/actions";
-import type { ThemesObjectifsData, ThemeObjectifRow } from "@/lib/channels";
+import { saveThemeObjectif, setThemeEvent } from "@/app/actions";
+import type { ThemesObjectifsData, ThemeObjectifRow, EvenementCatalogue } from "@/lib/channels";
 import { ObjectifSelect } from "@/components/objectif-select";
 
 // « NOS THÈMES PRINCIPAUX » — module 1 de /conversions.
@@ -21,8 +21,15 @@ import { ObjectifSelect } from "@/components/objectif-select";
 //     ligne `theme_ga4_events` (rang 'principal' ou absence de ligne) — le
 //     worker n'a jamais eu besoin d'exclusivité, `_theme_ga4` agrège déjà
 //     TOUS les événements `rang='principal'` d'un thème ;
-//   · une pastille de catégorie à droite de chaque conversion, qui pointe
-//     vers la liste gérée par le module 2 de cette même page.
+//   · les conversions disponibles se lisent PAR CATÉGORIE, en sections
+//     repliables — retour direct de David après usage réel : catégoriser
+//     n'a plus lieu ICI (voir `components/conversions-catalogue.tsx`, module
+//     séparé qui couvre TOUT le catalogue, pas seulement ce qui est déjà
+//     coché sur un thème), donc la catégorie n'est plus qu'une LECTURE dans
+//     cette carte — un regroupement, pas un sélecteur. Chaque section porte
+//     un bouton « tout sélectionner »/« tout désélectionner » qui coche ou
+//     décoche toute la catégorie d'un coup ; les conversions sans catégorie
+//     restent visibles dans leur propre section, jamais masquées.
 //
 // UNIQUEMENT LES THÈMES PRIORITAIRES (POUR L'INSTANT) : `getThemeObjectifs`
 // ne renvoie que le sous-ensemble étoilé, comme avant. `getThemeEvenements`
@@ -181,10 +188,22 @@ function CarteTheme({
       setMessage(r.ok ? null : r.message ?? null);
     });
 
-  const poserCategorie = (nom: string, cat: string) =>
+  // Coche ou décoche TOUTE une catégorie d'un coup — un clic plutôt qu'un par
+  // conversion. Séquentiel (pas `Promise.all`) : plusieurs upserts concurrents
+  // sur la même ligne `theme_ga4_events` n'ont aucune raison de mal se passer,
+  // mais un échec au milieu doit s'arrêter net plutôt que de continuer à
+  // écrire sur une erreur déjà signalée.
+  const basculerGroupe = (noms: string[], cible: boolean) =>
     startTransition(async () => {
-      const r = await saveCategoryForEvent(nom, cat || null);
-      setMessage(r.ok ? null : r.message ?? null);
+      for (const nom of noms) {
+        if (selectionne(nom) === cible) continue;
+        const r = await setThemeEvent(t.label, nom, cible ? "principal" : null);
+        if (!r.ok) {
+          setMessage(r.message ?? null);
+          return;
+        }
+      }
+      setMessage(null);
     });
 
   const mot = t.objectif ? OBJ_LABEL[t.objectif] ?? t.objectif : null;
@@ -244,45 +263,48 @@ function CarteTheme({
                 Aucune conversion sélectionnée : ce thème se juge sur sa dépense en attendant.
               </p>
             )}
-            <div className="defile max-h-[220px] overflow-y-auto pr-1 -mr-1 space-y-1.5">
-              {d.catalogue.map((e) => {
-                const coche = selectionne(e.nom);
+            <div className="defile max-h-[220px] overflow-y-auto pr-1 -mr-1 space-y-2">
+              {grouperParCategorie(d.catalogue, categories, parEvenement).map((g) => {
+                const coches = g.items.filter((e) => selectionne(e.nom)).length;
+                const toutCoche = coches === g.items.length;
                 return (
-                  <div
-                    key={e.nom}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${
-                      coche ? "border-brand bg-brand/[0.06]" : "border-line"
-                    }`}
-                  >
-                    <button
-                      disabled={pending || !d.peutEditer}
-                      title={coche ? "Retirer des conversions suivies" : "Suivre comme conversion de ce thème"}
-                      onClick={() => basculer(e.nom)}
-                      className="flex-1 min-w-0 text-left text-[11.5px] font-mono text-ink disabled:opacity-40 truncate"
-                    >
-                      {coche ? "☑" : "☐"} {e.nom}
-                      <span className="text-faint ml-1">{e.volume.toLocaleString("fr-CH")}</span>
-                      {e.cle === true && (
-                        <span className="text-brand ml-1" title="Événement clé dans GA4">
-                          ◆
-                        </span>
-                      )}
-                    </button>
-                    <select
-                      value={parEvenement[e.nom] ?? ""}
-                      disabled={pending || !d.peutEditer}
-                      onChange={(ev) => poserCategorie(e.nom, ev.target.value)}
-                      title="Catégorie de cette conversion"
-                      className="shrink-0 max-w-[86px] text-[10px] text-muted bg-white border border-line rounded-full px-1.5 py-1 outline-none cursor-pointer disabled:opacity-40"
-                    >
-                      <option value="">sans catégorie</option>
-                      {categories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
+                  <details key={g.nom} className="group" open={coches > 0}>
+                    <summary className="cursor-pointer list-none flex items-center gap-1.5 py-1 select-none">
+                      <span className="text-[9px] text-faint transition-transform group-open:rotate-90">
+                        ▶
+                      </span>
+                      <span className="text-[10.5px] font-semibold text-ink truncate flex-1">
+                        {g.nom}
+                      </span>
+                      <span className="text-[9.5px] text-faint shrink-0">
+                        {coches}/{g.items.length}
+                      </span>
+                    </summary>
+                    <div className="pl-3 space-y-1.5 mt-1">
+                      <button
+                        disabled={pending || !d.peutEditer}
+                        onClick={() =>
+                          basculerGroupe(
+                            g.items.map((e) => e.nom),
+                            !toutCoche
+                          )
+                        }
+                        className="text-[10px] font-semibold text-brand disabled:opacity-40"
+                      >
+                        {toutCoche ? "Tout désélectionner" : `Tout sélectionner (${g.items.length})`}
+                      </button>
+                      {g.items.map((e) => (
+                        <LigneConversion
+                          key={e.nom}
+                          e={e}
+                          coche={selectionne(e.nom)}
+                          pending={pending}
+                          peutEditer={d.peutEditer}
+                          onToggle={() => basculer(e.nom)}
+                        />
                       ))}
-                    </select>
-                  </div>
+                    </div>
+                  </details>
                 );
               })}
             </div>
@@ -292,5 +314,69 @@ function CarteTheme({
 
       {message && <p className="text-[11px] text-neg mt-2">{message}</p>}
     </div>
+  );
+}
+
+// Regroupe le catalogue d'un thème par catégorie — l'ORDRE des catégories est
+// celui de `categories` (alphabétique, tel que rendu par `getConversionCategories`),
+// et « Non catégorisé » ferme toujours la liste. Une catégorie sans aucune
+// conversion dans CE catalogue n'apparaît pas : une section vide n'a rien à
+// montrer ni à cocher.
+type GroupeCategorie = { nom: string; items: EvenementCatalogue[] };
+
+function grouperParCategorie(
+  catalogue: EvenementCatalogue[],
+  categories: string[],
+  parEvenement: Record<string, string>
+): GroupeCategorie[] {
+  const parCat = new Map<string, EvenementCatalogue[]>();
+  const sansCategorie: EvenementCatalogue[] = [];
+  for (const e of catalogue) {
+    const c = parEvenement[e.nom];
+    if (c) {
+      const arr = parCat.get(c) ?? [];
+      arr.push(e);
+      parCat.set(c, arr);
+    } else {
+      sansCategorie.push(e);
+    }
+  }
+  const groupes: GroupeCategorie[] = categories
+    .filter((c) => (parCat.get(c) ?? []).length > 0)
+    .map((c) => ({ nom: c, items: parCat.get(c)! }));
+  if (sansCategorie.length > 0) groupes.push({ nom: "Non catégorisé", items: sansCategorie });
+  return groupes;
+}
+
+function LigneConversion({
+  e,
+  coche,
+  pending,
+  peutEditer,
+  onToggle,
+}: {
+  e: EvenementCatalogue;
+  coche: boolean;
+  pending: boolean;
+  peutEditer: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      disabled={pending || !peutEditer}
+      title={coche ? "Retirer des conversions suivies" : "Suivre comme conversion de ce thème"}
+      onClick={onToggle}
+      className={`w-full flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11.5px] font-mono text-ink disabled:opacity-40 truncate ${
+        coche ? "border-brand bg-brand/[0.06]" : "border-line"
+      }`}
+    >
+      {coche ? "☑" : "☐"} {e.nom}
+      <span className="text-faint ml-1">{e.volume.toLocaleString("fr-CH")}</span>
+      {e.cle === true && (
+        <span className="text-brand ml-1" title="Événement clé dans GA4">
+          ◆
+        </span>
+      )}
+    </button>
   );
 }
