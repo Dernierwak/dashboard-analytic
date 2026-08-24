@@ -9,16 +9,27 @@ import { ObjectifSelect } from "@/components/objectif-select";
 // par CHAQUE carte de thème et de l'ordre de ses conseils. Il se pose
 // maintenant juste au-dessus de la première carte : la cause avant l'effet.
 //
-// IL PREND SON THÈME EN PROPS, IL NE LIT AUCUN ÉTAT GLOBAL — et c'est ce qui
-// prépare la suite. Le jour où la section des thèmes défilera horizontalement,
-// chaque thème portera son propre objectif : il suffira de rendre un
-// `ObjectifTheme` par carte, dans le même conteneur qui glisse, sans toucher à
-// ce fichier. Voir le commentaire de `app/page.tsx`, section 2.
+// IL PREND SON THÈME EN PROPS, IL NE LIT AUCUN ÉTAT GLOBAL.
 //
-// Aujourd'hui l'objectif est UNIQUE par compte (`profiles.objectif`). Le module
-// l'écrit noir sur blanc dès qu'il y a plus d'un thème, plutôt que de laisser
-// croire qu'il ne concerne que la carte du dessous — ce serait un réglage
-// présenté pour autre chose que ce qu'il commande.
+// CHAQUE THÈME PRIORITAIRE PEUT DÉSORMAIS AVOIR SON PROPRE OBJECTIF
+// (`theme_objectifs`, réglable sur /labels) — `profiles.objectif` n'est plus
+// qu'un DÉFAUT hérité en silence. Deux valeurs DIFFÉRENTES en découlent, et
+// elles ne peuvent PLUS partager une seule prop `objectif` (erreur de la passe
+// précédente, corrigée) :
+//   · `objectifCompte` — `profiles.objectif` tel quel. C'est la SEULE valeur
+//     que `<ObjectifSelect>` doit lire et écrire : le sélecteur sous « L'objectif
+//     du compte » appelle `saveObjectif` → `profiles.objectif`, donc lui montrer
+//     l'objectif effectif d'un thème (potentiellement différent) afficherait une
+//     valeur qui n'est pas celle que le `onChange` va écrire.
+//   · `objectifEffectif` — le mot du résumé (rang 3) : le sien si le thème
+//     affiché a un réglage propre, sinon celui du compte. C'est LUI qui pilote
+//     réellement la courbe et les conseils (voir le worker, `_obj_theme`).
+//
+// `commun` compare les objectifs EFFECTIFS de tous les thèmes affichés — il
+// reste vrai même quand la convergence vient d'un choix propre, PAS seulement
+// de l'héritage. Le pied ne peut donc pas se contenter de `commun` pour dire
+// « tant qu'aucun n'a le sien » : il vérifie `nbPropre` séparément (2e défaut
+// de la passe précédente, corrigé).
 
 const OBJ_MOT: Record<string, string> = {
   ventes: "Plus de ventes",
@@ -28,20 +39,32 @@ const OBJ_MOT: Record<string, string> = {
 
 export function ObjectifTheme({
   theme,
-  objectif,
+  objectifCompte,
+  objectifEffectif,
+  objectifPropre,
+  commun,
+  nbPropre,
   priorities,
   nbThemes,
 }: {
   /** Le thème que ce widget coiffe. `null` = aucun thème classé encore. */
   theme: { label: string; is_priority: boolean } | null;
-  /** L'objectif qui s'applique à CE thème. Un jour : `theme.objectif`. */
-  objectif: string | null;
+  /** `profiles.objectif` — la valeur que lit et écrit `<ObjectifSelect>`. */
+  objectifCompte: string | null;
+  /** L'objectif EFFECTIF du thème affiché (rang 3) — le sien s'il en a un, sinon celui du compte. */
+  objectifEffectif: string | null;
+  /** Ce thème a-t-il un réglage propre (vs hérité du compte) ? */
+  objectifPropre: boolean;
+  /** Tous les thèmes affichés partagent-ils exactement le même objectif effectif ? */
+  commun: boolean;
+  /** Combien, parmi les thèmes affichés, ont leur propre objectif. */
+  nbPropre: number;
   priorities: string[];
-  /** Combien de thèmes se partagent cet objectif — 1, 6, ou zéro. */
+  /** Combien de thèmes ce module regarde en tout — 1, 6, ou zéro. */
   nbThemes: number;
 }) {
-  const mot = OBJ_MOT[objectif ?? ""] ?? "à définir";
-  const partage = nbThemes > 1;
+  const mot = commun ? OBJ_MOT[objectifEffectif ?? ""] ?? "à définir" : "plusieurs objectifs";
+  const plusieurs = nbThemes > 1;
 
   return (
     <details className="group rounded-xl border border-line bg-white shadow-card mb-3">
@@ -52,14 +75,27 @@ export function ObjectifTheme({
         <span className="text-[14px] font-semibold text-brand">{mot}</span>
         {theme && (
           <span className="text-[12.5px] text-muted">
-            {partage ? "· commun à " : "· pour "}
-            {partage ? (
-              <span className="font-semibold text-ink">tes {nbThemes} thèmes</span>
+            {!plusieurs ? (
+              <>
+                · pour{" "}
+                <span className="font-semibold text-ink">
+                  {theme.is_priority && <span className="text-warn">★ </span>}
+                  {theme.label}
+                </span>
+                {objectifPropre && <span className="text-faint"> (objectif propre)</span>}
+              </>
+            ) : commun ? (
+              <>
+                · commun à <span className="font-semibold text-ink">tes {nbThemes} thèmes</span>
+              </>
             ) : (
-              <span className="font-semibold text-ink">
-                {theme.is_priority && <span className="text-warn">★ </span>}
-                {theme.label}
-              </span>
+              <>
+                ·{" "}
+                <span className="font-semibold text-ink">
+                  {nbPropre} sur {nbThemes}
+                </span>{" "}
+                {nbPropre > 1 ? "ont leur" : "a son"} propre objectif
+              </>
             )}
           </span>
         )}
@@ -74,10 +110,14 @@ export function ObjectifTheme({
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
             L&apos;objectif du compte
           </div>
-          <ObjectifSelect current={objectif} />
+          {/* TOUJOURS `objectifCompte` — jamais `objectifEffectif`. Ce
+              sélecteur écrit `profiles.objectif` (`saveObjectif`) : lui faire
+              afficher l'objectif propre d'un thème montrerait une valeur que
+              son propre `onChange` n'écrirait pas. */}
+          <ObjectifSelect current={objectifCompte} />
           <p className="text-[11px] text-faint mt-2 leading-relaxed">
-            Il décide de l&apos;indicateur suivi par chaque carte et de l&apos;ordre des
-            conseils. Pris en compte à la prochaine publication du rapport.
+            Le DÉFAUT hérité par tout thème sans réglage propre. Pris en compte à la
+            prochaine publication du rapport.
           </p>
         </div>
         <div>
@@ -130,14 +170,68 @@ export function ObjectifTheme({
         </div>
       </div>
 
-      {/* Rang 9 — le pied, un seul. Ce que ce réglage ne sait PAS encore faire. */}
-      {partage && (
+      {/* Rang 9 — le pied, un seul. Ce que ce réglage sait faire, et où —
+          y compris quand un seul thème est affiché et porte déjà le sien :
+          sans cette branche, le seul texte visible à l'écran (« objectif
+          propre ») ne dirait jamais où ce réglage se change. */}
+      {plusieurs ? (
         <p className="text-[11px] text-faint px-4 pb-3.5 leading-relaxed">
-          Un seul objectif pour l&apos;instant, partagé par tes {nbThemes} thèmes. Un
-          thème qui vise la notoriété et un autre les ventes ne se pilotent pas au
-          même indicateur — c&apos;est ici que ça se réglera quand chaque thème aura le
-          sien.
+          {nbPropre === 0 ? (
+            <>
+              Objectif par défaut, partagé par tes {nbThemes} thèmes tant qu&apos;aucun n&apos;a
+              le sien. Un thème qui vise la notoriété et un autre les ventes ne se pilotent
+              pas au même indicateur — chacun peut avoir le sien sur{" "}
+              <Link href="/labels" className="font-semibold text-brand hover:underline">
+                ◫ Thèmes →
+              </Link>
+              .
+            </>
+          ) : commun ? (
+            <>
+              Tes {nbThemes} thèmes suivent pour l&apos;instant tous le même objectif, mais{" "}
+              {nbPropre} {nbPropre > 1 ? "l'ont choisi" : "l'a choisi"} spécifiquement plutôt
+              que de l&apos;hériter du compte — détail thème par thème sur{" "}
+              <Link href="/labels" className="font-semibold text-brand hover:underline">
+                ◫ Thèmes →
+              </Link>
+              .
+            </>
+          ) : nbPropre < nbThemes ? (
+            <>
+              {nbPropre} de tes {nbThemes} thèmes {nbPropre > 1 ? "suivent" : "suit"} déjà{" "}
+              {nbPropre > 1 ? "leur" : "son"} propre objectif ; les autres restent sur celui du
+              compte. Détail thème par thème sur{" "}
+              <Link href="/labels" className="font-semibold text-brand hover:underline">
+                ◫ Thèmes →
+              </Link>
+              .
+            </>
+          ) : (
+            // `nbPropre === nbThemes` ET `!commun` : CHAQUE thème a le sien, avec
+            // des valeurs différentes — il n'y a donc aucun « autre » qui hérite
+            // encore du compte. La branche précédente le dirait à tort : c'est
+            // l'aboutissement normal de la fonctionnalité (un objectif propre par
+            // thème étoilé), pas un cas limite.
+            <>
+              Tes {nbThemes} thèmes suivent chacun leur propre objectif — plus aucun
+              n&apos;hérite de celui du compte. Détail thème par thème sur{" "}
+              <Link href="/labels" className="font-semibold text-brand hover:underline">
+                ◫ Thèmes →
+              </Link>
+              .
+            </>
+          )}
         </p>
+      ) : (
+        objectifPropre && (
+          <p className="text-[11px] text-faint px-4 pb-3.5 leading-relaxed">
+            Objectif propre à ce thème, distinct de celui du compte si besoin — réglable sur{" "}
+            <Link href="/labels" className="font-semibold text-brand hover:underline">
+              ◫ Thèmes →
+            </Link>
+            .
+          </p>
+        )
       )}
     </details>
   );

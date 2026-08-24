@@ -31,7 +31,7 @@ import requests  # noqa: E402
 from scripts.app_secrets import secret  # noqa: E402
 from scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_reco_feedback, fetch_google_ads,
+    fetch_objectif, fetch_theme_objectifs, fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
     fetch_insight_feedback,
 )
@@ -1160,7 +1160,7 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
     roas_txt = f", ROAS {s['roas']:.1f}" if s.get("roas") is not None else ""
     raw = _call_gemini(
         "Tu es un consultant marketing senior pour une PME suisse. "
-        f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif du compte : {obj_txt}). "
+        f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif de ce thème : {obj_txt}). "
         f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
         f"{roas_txt}, {s.get('posts', 0)} posts. "
         f"Ses campagnes : {facts}. "
@@ -1486,6 +1486,39 @@ def build_payload(sb, user_id: str) -> dict | None:
         theme_events = fetch_theme_ga4_events(sb, user_id) or {}
     except Exception:
         theme_events = {}
+
+    # ── L'OBJECTIF PROPRE D'UN THÈME, QUAND IL DIFFÈRE DE CELUI DU COMPTE ────
+    #
+    # {label: 'ventes'|'notoriete'|'engagement'}. Vide quand la migration
+    # `theme_objectifs.sql` n'est pas passée, ou quand rien n'a été choisi — et
+    # dans ce cas `_obj_theme` ci-dessous retombe systématiquement sur
+    # `objectif`, l'objectif du compte. C'est ce qui rend la fonctionnalité non
+    # bloquante pour les comptes existants : un thème sans réglage propre se
+    # comporte exactement comme avant elle.
+    try:
+        theme_objectifs = fetch_theme_objectifs(sb, user_id) or {}
+    except Exception:
+        theme_objectifs = {}
+
+    # `_obj_theme` est défini ICI mais lit `priority_labels`, calculée plus bas
+    # (§ vision globale) — Python résout les variables libres d'une closure au
+    # MOMENT DE L'APPEL, pas à la définition, et `_obj_theme` n'est jamais
+    # appelée avant que `priority_labels` existe (le premier appel réel est dans
+    # `_theme_series`, définie bien après). Voir `priority_labels: list = []`
+    # plus bas pour la valeur de repli si la lecture échoue.
+    def _obj_theme(lbl: str) -> str | None:
+        """L'objectif EFFECTIF d'un thème : le sien s'il en a un ET que le
+        thème est ENCORE prioritaire, sinon celui du compte.
+
+        UNIQUEMENT SI ÉTOILÉ : ce réglage n'a de sens que pour les thèmes
+        prioritaires (voir la tâche d'origine). Un thème qui perd son étoile
+        retombe donc silencieusement sur l'objectif du compte — sans que sa
+        ligne `theme_objectifs` soit effacée : le choix dort, il ne s'annule
+        pas, et se réapplique tout seul si le thème redevient prioritaire un
+        jour (voir le commentaire de `theme_objectifs.sql`)."""
+        if lbl not in priority_labels:
+            return objectif
+        return theme_objectifs.get(lbl) or objectif
 
     # Les lignes datées de `ga4_events`, lues UNE fois. `build_ga4_context`
     # agrège sur une fenêtre et perd les dates ; la courbe d'un thème, elle, a
@@ -1884,18 +1917,20 @@ def build_payload(sb, user_id: str) -> dict | None:
             if _par_nom:
                 ev_nom, ev_pts = max(_par_nom.items(), key=lambda kv: sum(kv[1]))
 
-        # L'indicateur suit l'objectif du compte. Quand celui qu'on VOULAIT
-        # suivre n'est pas mesurable (le ROAS sans valeur de conversion GA4),
-        # on se rabat sur le meilleur substitut ET on le dit — plutôt que
-        # d'afficher un 0,0 qui ressemble a une catastrophe.
+        # L'indicateur suit l'objectif DU THÈME — le sien s'il en a un, sinon
+        # celui du compte (`_obj_theme`, héritage silencieux). Quand celui
+        # qu'on VOULAIT suivre n'est pas mesurable (le ROAS sans valeur de
+        # conversion GA4), on se rabat sur le meilleur substitut ET on le dit —
+        # plutôt que d'afficher un 0,0 qui ressemble a une catastrophe.
+        obj = _obj_theme(lbl)
         note = None
-        if ev_pts is not None and objectif not in ("notoriete", "engagement"):
+        if ev_pts is not None and obj not in ("notoriete", "engagement"):
             pts = list(ev_pts)
             metric_label = f"« {ev_nom} » par semaine"
-        elif objectif == "notoriete" and any(x for x in reach_w):
+        elif obj == "notoriete" and any(x for x in reach_w):
             pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
             metric_label = "Portée moyenne"
-        elif objectif == "engagement" and any(x for x in eng_w):
+        elif obj == "engagement" and any(x for x in eng_w):
             pts = [round(sum(x) / len(x), 2) if x else 0 for x in eng_w]
             metric_label = "Engagement moyen (%)"
         elif ev_pts is not None:
@@ -1917,7 +1952,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             # depense — mais en silence, parce qu'il n'y a rien a corriger cote
             # GA4 et qu'envoyer l'utilisateur y regler ses evenements cles
             # serait l'envoyer chercher un probleme qu'il n'a pas.
-            if objectif == "ventes" and not (revenu and float(revenu) > 0):
+            if obj == "ventes" and not (revenu and float(revenu) > 0):
                 # DEUX MANQUES DIFFÉRENTS, DEUX PHRASES. On sait maintenant les
                 # distinguer, et envoyer quelqu'un régler la valeur de ses
                 # conversions dans GA4 alors qu'il n'a désigné AUCUN événement
@@ -2132,6 +2167,16 @@ def build_payload(sb, user_id: str) -> dict | None:
     for lbl in theme_list:
         nlbl = _nrm(lbl)
         t_camps = [c for c in matrix_campaigns if _nrm(c.get("label")) == nlbl]
+        # L'objectif EFFECTIF de ce thème (le sien, sinon celui du compte) —
+        # il pilote à la fois les règles gratuites (`build_recos` ci-dessous)
+        # et les pistes rédigées par Gemini (`_theme_ai_recos`, plus bas).
+        _obj_lbl = _obj_theme(lbl)
+        _obj_txt_lbl = OBJECTIFS[_obj_lbl]["label"] if _obj_lbl in OBJECTIFS else _obj_txt0
+        # Écrit dans le payload (voir `themes_focus.append` plus bas) pour que
+        # le module du rapport (`objectif-theme.tsx`) puisse dire la vérité :
+        # « propre à ce thème » seulement quand c'est vraiment le cas — jamais
+        # quand le thème a perdu son étoile (`_obj_theme` l'ignore alors).
+        _obj_propre = lbl in priority_labels and lbl in theme_objectifs
 
         # Sous-ensembles de la semaine pour faire tourner les règles sur ce thème
         tc = None
@@ -2153,7 +2198,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             df_camp=tc, avg_ctr=avg_ctr,
             df_insta=ti if not ti.empty else None,
             df_week_posts=tw, followers_current=followers_current,
-            ga4=_theme_ga4(lbl), objectif=objectif, feedback=feedback, vision=constats,
+            ga4=_theme_ga4(lbl), objectif=_obj_lbl, feedback=feedback, vision=constats,
         )
         t_recos = [r for r in t_recos if r.get("key") not in SETUP_KEYS]
 
@@ -2226,11 +2271,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         _ai = []
         if _ia_redigee:
             try:
-                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt_lbl, want=_need)
                 # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
                 # on retente une fois avant d'abandonner.
                 if _need and not _ai:
-                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt_lbl, want=_need)
             except Exception:
                 _ai = []
         # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
@@ -2291,6 +2336,13 @@ def build_payload(sb, user_id: str) -> dict | None:
             # traite l'absence comme un « oui », pour ne pas coller
             # rétroactivement une explication sur d'anciens rapports.
             "ia_redigee": _ia_redigee,
+            # L'objectif EFFECTIF de ce thème (celui qui pilote réellement sa
+            # courbe et ses conseils ci-dessus), et s'il lui est PROPRE ou
+            # hérité du compte. Absent des payloads publiés avant cette
+            # fonctionnalité : le front traite l'absence comme « hérité »,
+            # exactement ce qu'était le comportement avant elle.
+            "objectif": _obj_lbl,
+            "objectif_propre": _obj_propre,
             "summary": summary,
             "series": _series,
             "campaigns": [

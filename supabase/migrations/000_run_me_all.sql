@@ -40,6 +40,8 @@
 --          rattachés à un thème. AVANT la section 15, qui doit la partager.
 --   14ter) fetch_progress — l'avancement RÉEL de la récolte, canal par canal.
 --          AVANT la section 15 elle aussi, même raison.
+--   14quater) theme_objectifs — l'objectif propre d'un thème prioritaire, quand
+--          il diffère de celui du compte. AVANT la section 15, même raison.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   17)    landing_url — la page d'arrivée d'une campagne
@@ -1259,6 +1261,66 @@ ALTER TABLE public.fetch_progress ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================================
+-- 14quater) theme_objectifs — l'objectif propre d'un thème prioritaire (voir
+--           theme_objectifs.sql, source de vérité).
+--
+--           AVANT LA SECTION 15, qui doit la partager, même raison que 14bis.
+--
+--           `profiles.objectif` fixe UN objectif pour tout le compte. Deux
+--           thèmes prioritaires n'ont pourtant pas toujours la même vocation :
+--           cette table laisse en choisir un DIFFÉRENT par thème. L'absence de
+--           ligne EST le « pas de réglage propre » — le thème hérite alors en
+--           silence de `profiles.objectif`, exactement comme un compte qui n'a
+--           jamais touché à ce réglage aujourd'hui.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.theme_objectifs (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    label       text NOT NULL,
+    objectif    text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT theme_objectifs_uq UNIQUE (user_id, label)
+);
+
+DO $$
+BEGIN
+    ALTER TABLE public.theme_objectifs
+        ADD CONSTRAINT theme_objectifs_objectif_ck
+        CHECK (objectif IN ('ventes', 'notoriete', 'engagement'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_theme_objectifs_user
+    ON public.theme_objectifs (user_id, label);
+
+DROP TRIGGER IF EXISTS trg_theme_objectifs_updated_at ON public.theme_objectifs;
+CREATE TRIGGER trg_theme_objectifs_updated_at
+    BEFORE UPDATE ON public.theme_objectifs
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- « Chacun ses lignes », comme theme_ga4_events (contrairement à
+-- fetch_progress, ce réglage existe déjà en dehors du partage d'équipe dans le
+-- fichier autonome, donc on garde le même filet).
+ALTER TABLE public.theme_objectifs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "to_select_own" ON public.theme_objectifs;
+DROP POLICY IF EXISTS "to_insert_own" ON public.theme_objectifs;
+DROP POLICY IF EXISTS "to_update_own" ON public.theme_objectifs;
+DROP POLICY IF EXISTS "to_delete_own" ON public.theme_objectifs;
+CREATE POLICY "to_select_own" ON public.theme_objectifs
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "to_insert_own" ON public.theme_objectifs
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "to_update_own" ON public.theme_objectifs
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "to_delete_own" ON public.theme_objectifs
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1296,7 +1358,7 @@ DECLARE
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
         'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
-        'theme_ga4_events',
+        'theme_ga4_events', 'theme_objectifs',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
         -- l'avancement de la récolte, lu par le panneau de « ↻ Mes données »
@@ -1761,6 +1823,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'platform_changes',         NULL),
     ('t', 'theme_ga4_events',         NULL),
     ('t', 'fetch_progress',           NULL),   -- §14ter
+    ('t', 'theme_objectifs',          NULL),   -- §14quater
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1
@@ -1868,9 +1931,9 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 19 tables de la section 15.
---      (Le chiffre annoncé ici était 17 : il datait d'avant theme_ga4_events et
---      fetch_progress. Compté sur la liste, pas de mémoire.)
+--   A) Ce que l'invité peut lire — doit lister les 20 tables de la section 15.
+--      (Le chiffre annoncé ici était 17 : il datait d'avant theme_ga4_events,
+--      fetch_progress et theme_objectifs. Compté sur la liste, pas de mémoire.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

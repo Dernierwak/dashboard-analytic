@@ -569,6 +569,9 @@ export async function renameLabel(oldName: string, newName: string) {
   // la page n'aurait aucun moyen de montrer ce qui reste en arrière.
   await supabase.from("theme_ga4_events").update({ label: clean })
     .eq("user_id", user.id).eq("label", oldName);
+  // Même raison, pour l'objectif propre du thème (`theme_objectifs`).
+  await supabase.from("theme_objectifs").update({ label: clean })
+    .eq("user_id", user.id).eq("label", oldName);
   const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
     .eq("user_id", user.id).contains("labels", [oldName])).data ?? [];
   for (const p of posts) {
@@ -599,6 +602,10 @@ export async function deleteLabel(name: string) {
   // (user_id, label, event_name), donc un thème recréé plus tard sous le même
   // nom retrouverait sinon des choix qu'il n'a jamais faits.
   await supabase.from("theme_ga4_events").delete()
+    .eq("user_id", user.id).eq("label", name);
+  // Même raison : un thème recréé plus tard sous le même nom ne doit pas
+  // retrouver un objectif qu'il n'a jamais choisi.
+  await supabase.from("theme_objectifs").delete()
     .eq("user_id", user.id).eq("label", name);
   const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
     .eq("user_id", user.id).contains("labels", [name])).data ?? [];
@@ -662,6 +669,47 @@ export async function setThemeEvent(
   // que la PROCHAINE récolte demande à GA4 et ce que le prochain rapport
   // mesure. On revalide quand même : la page d'accueil affiche l'état des
   // réglages, pas seulement le rapport.
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// L'objectif propre d'un thème (voir `saveObjectif` pour celui du compte).
+// `null` = pas de réglage propre : le thème retombe sur l'objectif du compte,
+// et c'est l'ABSENCE de ligne dans `theme_objectifs` qui porte ce choix — même
+// convention que `setThemeEvent` avec `rang: null`. Repondère l'indicateur
+// suivi et l'ordre des conseils de CE thème — pris en compte à la prochaine
+// publication du rapport.
+export async function saveThemeObjectif(
+  label: string,
+  objectif: "ventes" | "notoriete" | "engagement" | null
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const lbl = label.trim();
+  if (!lbl) return { ok: false, message: "Thème vide." };
+
+  if (objectif === null) {
+    const r = await supabase
+      .from("theme_objectifs")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("label", lbl);
+    if (r.error)
+      return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  } else {
+    const r = await supabase.from("theme_objectifs").upsert(
+      { user_id: user.id, label: lbl, objectif },
+      { onConflict: "user_id,label" }
+    );
+    if (r.error)
+      return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
+  }
+
+  revalidatePath("/labels");
   revalidatePath("/");
   return { ok: true };
 }
