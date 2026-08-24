@@ -1054,7 +1054,6 @@ def _reco_evenements(theme, g4t, sem) -> list[dict]:
         return []
     evs = g4t.get("evenements") or {}
     princ = [n for n in (g4t.get("evenements_principaux") or []) if n in evs]
-    absents = g4t.get("mesure_absente") or []
     secondaires = {n: d for n, d in evs.items() if d.get("rang") == "secondaire"}
     out = []
 
@@ -1063,7 +1062,13 @@ def _reco_evenements(theme, g4t, sem) -> list[dict]:
     # l'intention, pas la conversion sur laquelle son propriétaire veut être
     # jugé. C'est un constat de FUNNEL, mais sur CE thème — là où `_rule_funnel`
     # parle du site entier avec les six noms standard.
-    manquants = [n for n in absents if n in (g4t.get("evenements_principaux") or [])]
+    #
+    # `evenements_principaux` ne contient QUE les principaux MESURÉS (voir
+    # `_theme_ga4`) — un principal absent n'y entre jamais, donc l'intersection
+    # avec `mesure_absente` était structurellement toujours vide. Le bon
+    # ensemble est `principaux_absents` : les principaux choisis par
+    # l'utilisateur et restés sans ligne mesurée.
+    manquants = g4t.get("principaux_absents") or []
     if manquants and secondaires:
         _s_nom, _s = max(secondaires.items(), key=lambda kv: kv[1]["count"])
         _p = manquants[0]
@@ -1145,8 +1150,32 @@ def _compares_channels(reco: dict) -> bool:
     return any(w in txt for w in cmp_words)
 
 
+def _theme_conversions_txt(g4t: dict | None) -> str:
+    """Les événements GA4 désignés sur un thème, en une phrase pour un prompt IA.
+
+    Reprend EXACTEMENT ce que `_theme_ga4` a mesuré (ou pas) — jamais un zéro
+    inventé pour un événement absent. « mesuré » et « absent » sont dits comme
+    tels, pour que l'IA ne les confonde pas dans ses pistes.
+    """
+    if not g4t:
+        return ""
+    evs = g4t.get("evenements") or {}
+    absents = g4t.get("mesure_absente") or []
+    princ_absents = set(g4t.get("principaux_absents") or [])
+    if not evs and not absents:
+        return ""
+    parts = []
+    for nom, d in evs.items():
+        val_txt = f", valeur {d['value']:.0f} CHF" if d.get("value") else ""
+        parts.append(f"{d['rang']} « {nom} » mesuré {d['count']} fois{val_txt}")
+    for nom in absents:
+        rang = "principal" if nom in princ_absents else "secondaire"
+        parts.append(f"{rang} « {nom} » : aucune ligne mesurée sur la période (pas forcément zéro)")
+    return "; ".join(parts)
+
+
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
-                    obj_txt: str, want: int = 3) -> list[dict]:
+                    obj_txt: str, g4t: dict | None = None, want: int = 3) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
     (léger, thinking off). [] si Gemini échoue → jamais bloquant."""
     import json as _json
@@ -1158,12 +1187,23 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         for c in camps[:12]) or "aucune campagne pub sur ce thème"
     s = tsummary or {}
     roas_txt = f", ROAS {s['roas']:.1f}" if s.get("roas") is not None else ""
+    conv_txt = _theme_conversions_txt(g4t)
+    conv_prompt = (
+        f" Conversions Google Analytics désignées pour ce thème : {conv_txt}. "
+        "Un événement dit « absent » n'a produit aucune ligne mesurée sur la "
+        "période — ça ne veut PAS dire qu'il vaut zéro, ne l'affirme jamais. "
+        "Utilise ces conversions quand elles éclairent une piste (funnel, coût "
+        "par conversion, quel événement suivre) — sans les répéter si elles "
+        "n'apportent rien à l'idée."
+        if conv_txt else ""
+    )
     raw = _call_gemini(
         "Tu es un consultant marketing senior pour une PME suisse. "
         f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif du compte : {obj_txt}). "
         f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
         f"{roas_txt}, {s.get('posts', 0)} posts. "
-        f"Ses campagnes : {facts}. "
+        f"Ses campagnes : {facts}."
+        f"{conv_prompt} "
         f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
         "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
         "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
@@ -1514,7 +1554,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             ga4_full = None
         matrix = build_matrix(df_meta_raw, df_google,
                               df_insta if not df_insta.empty else None,
-                              meta_cfg, goog_cfg, ga4_full, last_full_day)
+                              meta_cfg, goog_cfg, ga4_full, last_full_day,
+                              theme_events=theme_events)
         ins_fb = fetch_insight_feedback(sb, user_id)
         # TOUS les thèmes étoilés (page Thèmes), dans l'ordre où ils ont été
         # étoilés — stockés dans insight_feedback sous la clé
@@ -1994,6 +2035,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         ctx["evenements"] = {}
         ctx["evenements_principaux"] = []
         ctx["mesure_absente"] = []
+        # Les principaux CHOISIS par l'utilisateur qui restent muets (aucune
+        # ligne mesurée) — distinct de `mesure_absente` qui mélange principaux
+        # et secondaires, et distinct de `evenements_principaux` qui ne contient
+        # QUE les principaux mesurés. C'est ce sous-ensemble précis que
+        # `_reco_evenements` doit lire pour détecter « principal choisi, resté
+        # muet, alors qu'un secondaire a des lignes ».
+        ctx["principaux_absents"] = []
         if choisis:
             ev_by_camp = ga4_ctx.get("events_by_campaign") or {}
             cumul: dict = {}
@@ -2009,6 +2057,8 @@ def build_payload(sb, user_id: str) -> dict | None:
                 _vu = cumul.get(_nom)
                 if _vu is None:
                     ctx["mesure_absente"].append(_nom)
+                    if _c["rang"] == "principal":
+                        ctx["principaux_absents"].append(_nom)
                     continue
                 ctx["evenements"][_nom] = {
                     "count": _vu["count"], "value": _vu["value"], "rang": _c["rang"],
@@ -2203,8 +2253,14 @@ def build_payload(sb, user_id: str) -> dict | None:
         # tri : ces conseils passent la même coupe à trois que les autres, sans
         # passe-droit. Un thème sans événement choisi n'en produit aucun — la
         # fonction rend une liste vide et rien ne change pour lui.
+        #
+        # Calculé une fois : `_theme_ai_recos` plus bas s'en sert aussi, pour
+        # que les pistes rédigées par Gemini voient la même conversion choisie
+        # que les conseils-règles ci-dessus.
+        _g4t_lbl = None
         try:
-            t_recos += _reco_evenements(lbl, _theme_ga4(lbl), _sem_theme)
+            _g4t_lbl = _theme_ga4(lbl)
+            t_recos += _reco_evenements(lbl, _g4t_lbl, _sem_theme)
         except Exception:
             pass
 
@@ -2226,11 +2282,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         _ai = []
         if _ia_redigee:
             try:
-                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0,
+                                      g4t=_g4t_lbl, want=_need)
                 # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
                 # on retente une fois avant d'abandonner.
                 if _need and not _ai:
-                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0, want=_need)
+                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt0,
+                                          g4t=_g4t_lbl, want=_need)
             except Exception:
                 _ai = []
         # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
