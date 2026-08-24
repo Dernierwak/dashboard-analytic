@@ -1,15 +1,8 @@
 import type { ChangementPlateforme, TrackedAction } from "@/lib/report";
 import type { ChangementApi } from "@/lib/changements-api";
-import {
-  CANAL,
-  Effet,
-  Pastille,
-  dateCourte,
-  etat,
-  phraseChangement,
-} from "@/components/etat-action";
-import { ActionVivante } from "@/components/action-vivante";
-import { NoteLigne } from "@/components/note-ligne";
+import { phraseChangement } from "@/components/etat-action";
+import { Entree, LigneFait, MOT_CATEGORIE, type Fait } from "@/components/rail-entree";
+import { RailFiltre } from "@/components/rail-filtre";
 
 // LE FIL D'ACTIONS — un rail vertical, une pastille par action, du plus urgent
 // au plus ancien. La forme suit ce que l'objet EST : une chronologie.
@@ -21,8 +14,11 @@ import { NoteLigne } from "@/components/note-ligne";
 // abandonné — le lexique existe déjà) et la PRÉSENCE DE BOUTONS. Une entrée
 // close ne porte aucun bouton, et c'est la différence la plus lisible qui soit.
 //
-// Les entrées closes sont rendues côté serveur : seules les vivantes ont besoin
-// de JavaScript. C'est ce qui justifie que ce composant-ci reste serveur.
+// « En cours », le rail vertical et les programmées repliées restent rendus
+// ici, côté serveur. Seul « Ce qui s'est passé » a besoin de JavaScript,
+// depuis qu'il se filtre par thème et par plateforme (`rail-filtre.tsx`) — un
+// `<select>` réclame de l'état, un fil qui se contente d'afficher n'en a pas
+// besoin.
 //
 // LE FIL VOIT AUSSI CE QU'ON N'A PAS FAIT DEPUIS PULSE. Une campagne lancée un
 // mardi soir dans le gestionnaire Meta, une autre coupée, une dépense qui
@@ -56,29 +52,6 @@ function rang(a: TrackedAction): number {
   if (a.status === "running") return ORDRE.running;
   return ORDRE.observation;
 }
-
-/** Ce que le rail sait afficher d'un fait de plateforme, quelle que soit sa
- *  provenance. Un déclaré porte en plus ce qui a été touché (`quoi`). */
-type Fait = {
-  date: string;
-  canal: string;
-  campagne: string;
-  theme: string | null;
-  phrase: string;
-  detail?: string | null;
-  /** « budget », « mot-clé »… — absent des faits déduits, qui ne le savent pas. */
-  quoi?: string | null;
-};
-
-const MOT_CATEGORIE: Record<string, string> = {
-  budget: "budget",
-  motcle: "mot-clé",
-  enchere: "enchère",
-  statut: "statut",
-  audience: "audience",
-  creatif: "visuel",
-  autre: "réglage",
-};
 
 export function RailActions({
   actions,
@@ -182,67 +155,6 @@ export function RailActions({
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
   if (vivantes.length + closes.length + programmees.length === 0) return null;
 
-  const Entree = ({ a, vivante }: { a: TrackedAction; vivante: boolean }) => {
-    const e = etat(a);
-    return (
-      <div className="relative pl-6 py-2.5">
-        <span className="absolute left-0 top-[15px]">
-          <Pastille e={e} />
-        </span>
-        <div className="text-[10px] uppercase tracking-widest text-faint font-semibold">
-          {dateCourte(a.decided_at)}
-          {a.theme && a.theme !== themeCourant && (
-            <span className="text-muted normal-case tracking-normal"> · {a.theme}</span>
-          )}
-        </div>
-        <div className="text-[13.5px] text-ink leading-snug mt-0.5">{a.title}</div>
-        {vivante ? (
-          // La `key` dépend de l'état : sans elle, l'état local du composant
-          // client survit à `revalidatePath` et les deux vues du même objet
-          // divergent jusqu'au rechargement.
-          <ActionVivante key={`${a.id}:${a.status}`} a={a} />
-        ) : (
-          <div className="text-[11.5px] mt-0.5 flex items-baseline gap-2 flex-wrap">
-            <span className={`font-semibold ${e.cls}`}>{e.label}</span>
-            <Effet a={a} />
-            {a.kind === "note" && <NoteLigne id={a.id} />}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // UN FAIT, PAS UNE DÉCISION. Le glyphe du canal à la place de la pastille :
-  // on voit d'un coup d'œil que ça vient de Meta ou de Google et pas de toi.
-  const LigneFait = ({ f, dense = false }: { f: Fait; dense?: boolean }) => {
-    const ca = CANAL[f.canal] ?? CANAL.meta;
-    return (
-      <div className={`relative pl-6 ${dense ? "py-1" : "py-2.5"}`}>
-        <span
-          className={`absolute left-[-2px] text-[11px] leading-none ${dense ? "top-[5px]" : "top-[11px]"}`}
-          style={{ color: ca.couleur }}
-          aria-hidden
-        >
-          {ca.glyphe}
-        </span>
-        <div className="text-[10px] uppercase tracking-widest text-faint font-semibold">
-          {dateCourte(f.date)}
-          <span className="text-muted normal-case tracking-normal">
-            {" "}· sur {ca.nom}
-            {/* Ce que la plateforme dit avoir touché. Absent d'un fait déduit,
-                qui ne le sait pas — et on ne le devine pas. */}
-            {f.quoi && <> · {f.quoi}</>}
-            {f.theme && f.theme !== themeCourant && <> · {f.theme}</>}
-          </span>
-        </div>
-        <div className="text-[13px] text-muted leading-snug mt-0.5">
-          <b className="text-ink font-semibold">{f.campagne}</b> {f.phrase}
-          {f.detail && <span className="text-faint"> — {f.detail}</span>}
-        </div>
-      </div>
-    );
-  };
-
   const Titre = ({ children }: { children: React.ReactNode }) => (
     <div className="text-[10px] uppercase tracking-widest text-faint/80 font-bold pl-6 pt-2 pb-0.5">
       {children}
@@ -257,22 +169,23 @@ export function RailActions({
         <div className="absolute left-[3px] top-[22px] bottom-[22px] w-px bg-ink/[0.14]" />
         {vivantes.length > 0 && closes.length > 0 && <Titre>En cours</Titre>}
         {vivantes.map((a) => (
-          <Entree key={a.id} a={a} vivante />
+          <Entree key={a.id} a={a} vivante themeCourant={themeCourant} />
         ))}
         {closes.length > 0 && vivantes.length > 0 && <Titre>Ce qui s&apos;est passé</Titre>}
-        {closes.map((l) =>
-          "action" in l ? (
-            <Entree key={l.cle} a={l.action} vivante={false} />
-          ) : (
-            <LigneFait key={l.cle} f={l.fait} />
-          )
-        )}
+        {/* LE FILTRE NE PORTE QUE SUR « CE QUI S'EST PASSÉ ». Une campagne
+            « programmée » n'est pas un événement (voir plus bas) et une action
+            « en cours » n'est pas encore un fait révolu — les filtrer donnerait
+            l'illusion qu'un thème ou une plateforme n'a RIEN en attente alors
+            qu'il en a, simplement pas encore classé. */}
+        <RailFiltre closes={closes} themeCourant={themeCourant} />
 
         {/* CE QUI ATTEND, replié. Une campagne programmée n'est pas un
             événement — c'est un état, et vingt états datés en pleine
             chronologie enterrent les trois faits qui comptent. En dessous de
             deux, le repli coûterait plus qu'il ne range. */}
-        {programmees.length === 1 && <LigneFait f={faitDeduit(programmees[0])} />}
+        {programmees.length === 1 && (
+          <LigneFait f={faitDeduit(programmees[0])} themeCourant={themeCourant} />
+        )}
         {programmees.length > 1 && (
           <details className="group relative pl-6 py-2">
             <span
@@ -289,7 +202,12 @@ export function RailActions({
             </summary>
             <div className="mt-1 -ml-6">
               {programmees.map((c, i) => (
-                <LigneFait key={`pl-${c.canal}-${c.campagne}-${i}`} f={faitDeduit(c)} dense />
+                <LigneFait
+                  key={`pl-${c.canal}-${c.campagne}-${i}`}
+                  f={faitDeduit(c)}
+                  themeCourant={themeCourant}
+                  dense
+                />
               ))}
             </div>
           </details>
