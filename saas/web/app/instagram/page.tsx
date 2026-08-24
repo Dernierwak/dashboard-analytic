@@ -1,7 +1,7 @@
 // Dashboard Instagram organique :
 // Ta page (abonnés, courbe, croissance 30 j) · Tes moyennes (une seule fois, et
-// sur la période affichée) · Tes posts un par un · Comparer deux périodes ·
-// Tes formats · Quand publier ? (jour × créneau) · Top 3 posts ·
+// sur la période affichée) · Tes posts un par un · Tes formats ·
+// Quand publier ? (jour × créneau) · Top 3 posts ·
 // Posts de la période vs ton post moyen · Par label · Vue globale.
 import {
   getInstaDash,
@@ -17,7 +17,6 @@ import { ScrollList } from "@/components/scroll-list";
 import { LineChart } from "@/components/line-chart";
 import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
-import { Comparer } from "@/components/comparaison";
 
 import { getCompteActif } from "@/lib/account";
 import { Triangle, sensPente } from "@/components/pente";
@@ -412,18 +411,6 @@ export default async function InstagramPage({
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
       <PostsMetricChart posts={chartPosts} metric={metric} params={d.params} />
 
-      {/* Même module, même place que sur Meta et Google — après la forme, parce
-          que comparer deux périodes suppose d'avoir déjà en tête celle qu'on
-          regarde. Ce qui change est la liste des métriques, pas la règle. */}
-      <Comparer
-        c={d.comparaison}
-        sp={d.params}
-        path="/instagram"
-        tete={d.topMetric}
-        metriqueParDefaut="reach"
-        couleur="#7b4fff"
-      />
-
       {/* ── FORMATS ── */}
       {d.formats.length > 0 && (
         <div className="mb-8">
@@ -634,8 +621,7 @@ export default async function InstagramPage({
             appartient à UNE période, celle où elle a été publiée — elle n&apos;a pas d&apos;avant.
             Une colonne d&apos;écart n&apos;aurait donc que des naissances, ligne après ligne, et
             « nouveau » répété cent fois n&apos;est pas une comparaison. Ce qui SE compare
-            d&apos;une période à l&apos;autre est au-dessus : le module « Comparer », et la table
-            « Performance par thème ».
+            d&apos;une période à l&apos;autre est au-dessus : la table « Performance par thème ».
           </>
         )}
       </p>

@@ -62,6 +62,15 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 
 ## Général
 
+### Module « Comparer » à repenser
+- Retiré des pages Google Ads, Meta Ads et Instagram (`app/google/page.tsx`,
+  `app/meta/page.tsx`, `app/instagram/page.tsx`) — David l'a jugé pas optimal.
+- Le composant (`components/comparaison.tsx`) et les calculs sous-jacents
+  (`batirComparaison` dans `lib/channels.ts`, type `Comparaison`) sont
+  **conservés en base**, juste plus rendus nulle part, pour repartir de ce
+  code plutôt que de zéro.
+- À reprendre proprement plus tard — sans présumer ici de sa forme future.
+
 ### Notifications dashboard
 - Centre de notifications (badge rouge en haut à droite du nav)
 - Agrège : alertes budget, baisse de portée, dépassement, etc.

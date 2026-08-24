@@ -13,8 +13,6 @@ import {
   ByLabelTable,
 } from "@/components/channel-dash";
 
-import { Comparer } from "@/components/comparaison";
-
 import { getCompteActif } from "@/lib/account";
 
 export const dynamic = "force-dynamic";
@@ -57,14 +55,9 @@ export default async function GooglePage({
           même question doivent la poser dans le même ordre. */}
       <MoyennesAds d={d} path="/google" />
       <MetricChart d={d} path="/google" />
-      {/* On lit ce qui s'est passé, son rythme, sa forme — PUIS on le compare.
-          Le module arrive après la courbe et non avant : comparer deux périodes
-          suppose qu'on ait déjà en tête celle qu'on regarde. */}
-      <Comparer c={d.comparaison} sp={d.params} path="/google" tete={d.metric}
-        metriqueParDefaut="spend" couleur="#1a56ff" />
-      {/* Les deux tables qui suivent portent l'écart des MÊMES deux périodes que
-          le module ci-dessus, dès qu'une comparaison est posée — et rien de plus
-          quand elle ne l'est pas. */}
+      {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
+          qu'une comparaison, dès qu'elle est posée — et rien de plus quand
+          elle ne l'est pas. */}
       <ByLabelTable d={d} path="/google" />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
