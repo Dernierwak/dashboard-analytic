@@ -5,7 +5,10 @@
 Ce package contient les maquettes hi-fi d'un dashboard analytics Instagram & Meta Ads.
 Le fichier HTML joint (`UX Variations.html`) est une **référence de design** — un prototype interactif montrant l'intention visuelle et les interactions. Il ne s'agit pas de code de production à copier directement.
 
-**Objectif** : recréer ces designs dans l'environnement existant (Streamlit, React, ou autre) en s'appuyant sur les spécifications ci-dessous.
+**Objectif d'origine** : recréer ces designs dans l'environnement existant en
+s'appuyant sur les spécifications ci-dessous. Depuis, la Variation A (Clarity)
+a été portée dans Next.js/Tailwind (`saas/web`) — ce document reste comme trace
+des tokens et de l'intention visuelle d'origine.
 
 ---
 
@@ -300,32 +303,12 @@ Les paths SVG exacts sont dans le fichier `UX Variations.html`, objet `Ic`.
 
 ---
 
-## Notes pour l'implémentation Streamlit
+## Note historique — implémentation Streamlit retirée
 
-Le projet existant utilise Streamlit. Quelques équivalences :
-
-| Design | Streamlit |
-|--------|-----------|
-| KPI strip (4 colonnes) | `st.columns(4)` + HTML custom via `st.markdown(..., unsafe_allow_html=True)` |
-| Sparklines | `plotly` avec `height` réduit, `margin` à 0, `template: plotly_white` |
-| IA bloc texte | `st.markdown` avec CSS custom (border-left) |
-| Accordéon (Var C) | `st.expander` avec CSS override |
-| Sidebar | `st.sidebar` avec CSS custom via `DASHBOARD_CSS` |
-| Chips / Tags | `st.markdown` HTML inline |
-
-Injecter les fonts DM Sans et DM Mono via le CSS existant (`DASHBOARD_CSS` dans `components/styles.py`) :
-
-```css
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-
-.stApp, .stApp > * {
-  font-family: 'DM Sans', sans-serif !important;
-}
-
-/* Appliquer DM Mono sur les métriques */
-[data-testid="stMetricValue"] {
-  font-family: 'DM Mono', monospace !important;
-  font-weight: 400 !important;
-  letter-spacing: -0.5px !important;
-}
-```
+Ce document datait de l'époque où l'interface était Streamlit ; il contenait ici
+des équivalences design → widgets Streamlit (`st.columns`, `st.markdown`,
+`components/styles.py`…). Streamlit a été entièrement retiré (voir
+`STREAMLIT_REMOVAL.md` à la racine) : l'interface est maintenant Next.js/Tailwind
+dans `saas/web`, où ces mêmes tokens de design (couleurs, DM Sans/Mono) sont déjà
+portés. Les équivalences Streamlit ci-dessus ne s'appliquent plus à rien — gardées
+comme trace de la variation A (Clarity) d'origine, pas comme guide d'implémentation.

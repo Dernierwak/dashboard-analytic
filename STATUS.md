@@ -1,6 +1,6 @@
 # État du projet Pulse
 
-Dernière mise à jour : 19 août 2026
+Dernière mise à jour : 25 août 2026
 
 ## Produit actif
 
@@ -25,34 +25,23 @@ les postes probables (contexte, historique, outils, sous-agents, gros fichiers)
 détectés par le LLM. Les optimisations sûres sont appliquées automatiquement ;
 les changements qui demandent une décision créent une tâche pour David.
 
-L'ancienne interface Streamlit située à la racine doit être retirée. Ce retrait
-ne doit supprimer ni les traitements encore utilisés par le worker, ni les
-connaissances accumulées pendant le développement.
+L'ancienne interface Streamlit a été entièrement retirée du dépôt (TASK-016,
+voir `STREAMLIT_REMOVAL.md`). `saas/web` (Next.js) est la seule interface
+produit. Aucun traitement utilisé par le worker n'a été perdu : `ga4.py`,
+`reco_engine.py` et `user_persona.py` vivent maintenant dans `saas/core/` ;
+`meta_script/`, `google_script/` et `scripts/` restent à la racine, rendus
+100% headless (zéro import Streamlit).
 
 ## Travail en cours
 
-1. Extraire les fonctions serveur encore mélangées à l'interface Streamlit.
-2. Vérifier que la collecte et la génération des rapports fonctionnent sans
-   importer Streamlit.
-3. Retirer ensuite les points d'entrée et composants exclusivement Streamlit.
-4. Nettoyer les dépendances et actualiser la documentation.
-
-## Dépendances qui bloquent encore le retrait complet
-
-Le worker importe actuellement :
-
-- `components/ga4.py` et `components/reco_engine.py` ;
-- `scripts/app_secrets.py`, `scripts/fetch_data.py` et `scripts/insert_data.py` ;
-- `google_script/` ;
-- `meta_script/fetch_meta_ads.py` et `meta_script/fetch_instagram.py`.
-
-Ces éléments doivent être déplacés ou rendus totalement indépendants de
-Streamlit avant suppression de l'ancienne application.
+Rien en cours sur le retrait de Streamlit — terminé et validé (compilation
+Python, imports réels du worker, build Next.js 16 routes vert).
 
 ## Prochaine étape
 
-Créer les modules d'intégration headless dans `saas`, rediriger les imports du
-worker vers eux, puis exécuter les contrôles Python et le build Next.js.
+Voir `BACKLOG.md` : Stripe reste à construire côté Next.js (jamais branché en
+réel), et `saas/core/user_persona.py` est extrait mais pas encore câblé dans
+`saas/worker/build_report.py`.
 
 ## Règle de fin de session
 

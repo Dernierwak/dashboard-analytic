@@ -94,7 +94,7 @@ events can change for up to 12 days after the key event is recorded », au fur e
 mesure que la modélisation des événements clés s'affine. **Conséquence directe** :
 un jour déjà récolté continue de bouger pendant douze jours sur les deux colonnes
 qui comptent — `conversions` (les événements clés) et `totalRevenue`. C'est le
-chiffre qui fixe `_RECOUVREMENT_JOURS_GA4` dans `components/ga4.py`, et
+chiffre qui fixe `_RECOUVREMENT_JOURS_GA4` dans `saas/core/ga4.py`, et
 contrairement aux 30 jours d'Instagram ce **n'est pas un pari** : c'est le délai
 au-delà duquel Google n'annonce plus de révision.
 

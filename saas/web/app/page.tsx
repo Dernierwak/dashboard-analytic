@@ -1,6 +1,6 @@
 // Rapport hebdo — données réelles (même Supabase que le dashboard actuel).
-// Les conseils viennent de weekly_reports (publié par le rapport Streamlit,
-// bientôt par le worker cron) : même contenu partout.
+// Les conseils viennent de weekly_reports, publié en headless par
+// saas/worker/build_report.py (fetch cron) : même contenu partout.
 
 import Link from "next/link";
 import {

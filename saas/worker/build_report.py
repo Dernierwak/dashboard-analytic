@@ -1,14 +1,14 @@
 """Construit et publie le rapport hebdo précalculé (weekly_reports.payload) — headless.
 
-Réplique de la préparation de pages/rapport.py : mêmes fenêtres (7 jours pleins
-ancrés sur la dernière donnée, jamais aujourd'hui), même moteur de recos, même
-structure de payload. Deux producteurs, un consommateur :
-  • le Streamlit publie à l'ouverture du rapport (pont, avec persona IA) ;
-  • ce worker publie après le fetch cron → Pulse est frais le lundi matin
-    sans que personne n'ouvre quoi que ce soit.
+Seul producteur de weekly_reports.payload : ce worker publie après le fetch
+cron → Pulse est frais le lundi matin sans que personne n'ouvre quoi que ce soit.
+Mêmes fenêtres (7 jours pleins ancrés sur la dernière donnée, jamais
+aujourd'hui), même moteur de recos (`saas/core/reco_engine.py`), même
+structure de payload que ce que rendait l'ancien Streamlit (retiré).
 
-Différence assumée : le brief IA du worker n'utilise pas le persona utilisateur
-(il vit dans la session Streamlit) — fallback déterministe si Gemini échoue.
+Différence assumée : le brief IA du worker n'utilise pas de persona utilisateur
+(voir `saas/core/user_persona.py`, disponible mais pas encore branché ici) —
+fallback déterministe si Gemini échoue.
 
 Usage :
   python saas/worker/build_report.py --user <uuid> [--print]
@@ -21,7 +21,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
-# Permet d'importer scripts/ et components/ quel que soit le cwd
+# Permet d'importer scripts/ et saas/ quel que soit le cwd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -36,7 +36,7 @@ from scripts.fetch_data import (  # noqa: E402
     fetch_insight_feedback,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
-from components.reco_engine import (  # noqa: E402
+from saas.core.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
 from saas.worker.insights import build_matrix, build_constats  # noqa: E402
@@ -290,7 +290,7 @@ def _importance(reco: dict, rang: int = 0) -> tuple:
 
 # ── L'ORGANIQUE A DROIT À SES PROPRES CONSEILS ───────────────────────────────
 #
-# `components/reco_engine.py` porte bien quatre règles Instagram, mais elles
+# `saas/core/reco_engine.py` porte bien quatre règles Instagram, mais elles
 # sont taillées pour le COMPTE ENTIER : `_rule_creneau` demande 20 posts,
 # `_rule_page_endormie` en demande 5 plus 100 abonnés, `_rule_silence` ne parle
 # que d'une semaine restée vide. Depuis le passage au rapport par thème, elles
@@ -1033,9 +1033,10 @@ def _reco_dict(key, platform, title, observation, pourquoi, verifier, angle_mort
 def _reco_evenements(theme, g4t, sem) -> list[dict]:
     """Les conseils que permettent les événements GA4 désignés sur un thème.
 
-    POURQUOI ICI ET PAS DANS `components/reco_engine.py` : même raison que
-    `_orga_recos` et `_reco_veille` — le moteur est partagé avec le Streamlit,
-    qui ne connaît ni les thèmes ni le rattachement d'un événement à un thème.
+    POURQUOI ICI ET PAS DANS `saas/core/reco_engine.py` : même raison que
+    `_orga_recos` et `_reco_veille` — le moteur est partagé entre le niveau
+    compte et les thèmes, mais il ne connaît ni les thèmes ni le rattachement
+    d'un événement à un thème.
     Ce sont des conseils-règles comme les autres : même dict, même carte, même
     feedback.
 
@@ -1495,13 +1496,13 @@ def build_payload(sb, user_id: str) -> dict | None:
     except Exception:
         pass
     try:
-        from components.ga4 import build_ga4_context
+        from saas.core.ga4 import build_ga4_context
         ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
     except Exception:
         ga4_ctx = None
     # Meme contexte sur la fenetre precedente — sert le repere du bloc metriques.
     try:
-        from components.ga4 import build_ga4_context as _bgc_prev
+        from saas.core.ga4 import build_ga4_context as _bgc_prev
         ga4_prev = _bgc_prev(sb, user_id, prev_since, prev_until)
     except Exception:
         ga4_prev = None
@@ -1522,7 +1523,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # propriété qui rend cette fonctionnalité non bloquante pour les comptes
     # existants.
     try:
-        from components.ga4 import fetch_theme_ga4_events
+        from saas.core.ga4 import fetch_theme_ga4_events
         theme_events = fetch_theme_ga4_events(sb, user_id) or {}
     except Exception:
         theme_events = {}
@@ -1581,7 +1582,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     try:
         hist_since = date(today.year, 1, 1)
         try:
-            from components.ga4 import build_ga4_context as _bgc_full
+            from saas.core.ga4 import build_ga4_context as _bgc_full
             ga4_full = _bgc_full(sb, user_id, hist_since, last_full_day)
         except Exception:
             ga4_full = None
@@ -1707,8 +1708,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     # un thème n'a rien à dire. Deux requêtes sur la même table pouvaient rendre
     # deux vérités différentes si une publication passait entre les deux.
     #
-    # LA SEMAINE EN COURS EST EXCLUE, et ce n'est pas un détail : le Streamlit
-    # publie à l'ouverture du rapport et « ↻ Recharger mes conseils » republie
+    # LA SEMAINE EN COURS EST EXCLUE, et ce n'est pas un détail : ce worker
+    # publie au fetch cron, et « ↻ Recharger mes conseils » (Pulse) republie
     # par-dessus. Sans ce filtre, un thème calme le matin se serait compté
     # lui-même l'après-midi, et la carte aurait changé de texte à chaque
     # rechargement sans qu'aucune donnée n'ait bougé.
@@ -2254,10 +2255,10 @@ def build_payload(sb, user_id: str) -> dict | None:
 
         # L'ORGANIQUE DU THÈME, puis la VEILLE de ses campagnes neuves.
         #
-        # Les deux sont calculés ici et pas dans `components/reco_engine.py` :
-        # le moteur est partagé avec le Streamlit, qui ne connaît ni les thèmes
-        # ni les dates déclarées. Ce sont pourtant des conseils-règles comme les
-        # autres — même dict, même carte, même feedback.
+        # Les deux sont calculés ici et pas dans `saas/core/reco_engine.py` :
+        # le moteur est partagé entre le niveau compte et les thèmes, mais il
+        # ne connaît ni les thèmes ni les dates déclarées. Ce sont pourtant des
+        # conseils-règles comme les autres — même dict, même carte, même feedback.
         try:
             t_recos += _orga_recos(lbl, ti, df_insta, last_full_day)
         except Exception:
@@ -2763,7 +2764,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             k["eng"] = float(p["eng"].mean()) if len(p) else None
             k["reach"] = float(p["reach"].mean()) if len(p) and "reach" in p.columns else None
         try:
-            from components.ga4 import build_ga4_context as _bgc
+            from saas.core.ga4 import build_ga4_context as _bgc
             g = _bgc(sb, user_id, w_since, w_until)
         except Exception:
             g = None

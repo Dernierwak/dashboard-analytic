@@ -611,8 +611,8 @@ ALTER TABLE public.profiles
 
 -- ============================================================================
 -- 6) weekly_reports — rapport hebdo précalculé (payload JSON)
---    Lu par Pulse (Next.js, saas/web) et le futur email hebdo.
---    Écrit par le Streamlit à l'ouverture du rapport, puis par le worker cron.
+--    Lu par Pulse (Next.js, saas/web) et l'email hebdo.
+--    Écrit en headless par saas/worker/build_report.py, au fetch cron.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.weekly_reports (

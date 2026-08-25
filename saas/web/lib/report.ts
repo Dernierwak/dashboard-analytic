@@ -19,7 +19,7 @@ export type Kpi = {
 
 export type ChannelSpend = { name: string; icon: string; color: string; spend: number; prev: number };
 
-// Payload publié par le rapport Streamlit (weekly_reports.payload) — même contenu.
+// Payload publié en headless par saas/worker/build_report.py (weekly_reports.payload).
 export type PayloadReco = {
   key: string;
   platform: "instagram" | "meta" | "google" | "pub" | "ia";
@@ -517,8 +517,9 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const meta = metaRes.data ?? [];
   const google = googleRes.data ?? [];
   const followers = followersRes.data ?? [];
-  // Table absente tant que la migration n'est pas passée → error, on affiche
-  // simplement l'invitation à ouvrir le rapport Streamlit une fois.
+  // null si la table est absente (migration pas encore passée) ou si le
+  // worker n'a pas encore publié pour ce compte — l'écran gère les deux
+  // sans distinction, en état vide.
   const report: ReportPayload | null =
     (reportRes.data?.[0]?.payload as ReportPayload | undefined) ?? null;
 

@@ -26,9 +26,9 @@ crédible.
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. |
 | `saas/worker/` | La récolte et la fabrication du rapport. `fetch_all.py`, `build_report.py`, `labeling.py`, `insights.py`, `run_weekly.py`. Lancé par GitHub Actions (`weekly-fetch.yml`). |
-| `meta_script/`, `google_script/`, `components/ga4.py`, `scripts/` | Les accès aux API des plateformes. Appelés par le worker. |
+| `saas/core/` | Le moteur partagé, headless. `reco_engine.py`, `ga4.py`, `user_persona.py`. |
+| `meta_script/`, `google_script/`, `scripts/` | Les accès aux API des plateformes. Appelés par le worker. |
 | `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |
-| racine (`main.py`, `pages/`, `components/*.py` d'interface) | **Ancien Streamlit, en cours de retrait.** Voir `STREAMLIT_REMOVAL.md`. Ne rien y construire de neuf. |
 
 Python : **`python3.12`**, jamais `python3`.
 
@@ -99,7 +99,7 @@ chercher**, et leur `.md` doit le leur dire.
 | `docs/03-grammaire-des-modules.md` | **La grammaire d'un module.** Neuf rangs, et le rang 3 est le chiffre — aucune forme graphique avant lui. Tout module créé ou restructuré met à jour sa section « Où on en est » dans le même commit. |
 | `docs/04-modules-partages-entre-sources.md` | **Qui est générique entre Meta/Google/Instagram, qui est dupliqué, qui est spécifique par nature** — et le gabarit pour brancher une nouvelle source (TikTok, LinkedIn…) sans dupliquer la logique. |
 | `docs/references/` | Les contraintes des plateformes (Meta, Google Ads, GA4, Supabase) et les références UX. C'est là que va ce qu'on a payé cher pour apprendre. |
-| `STREAMLIT_REMOVAL.md` | L'inventaire du retrait de Streamlit. |
+| `STREAMLIT_REMOVAL.md` | L'inventaire du retrait de Streamlit — terminé, gardé comme trace. |
 | `handoff/` | Les reprises de contexte. |
 
 ## 7 · Ce qui ne se négocie jamais
@@ -157,7 +157,7 @@ tout son échafaudage. `git grep` doit être propre.
 ## 9 · Vérifier avant de dire que c'est fait
 
 - `saas/web` : `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et
-  `npm run build` verts, **13 routes** (un écart signale une page de contrôle
+  `npm run build` verts, **16 routes** (un écart signale une page de contrôle
   oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
 - Une correction du worker **ne se voit qu'après un « ↻ Recharger mes conseils »**,

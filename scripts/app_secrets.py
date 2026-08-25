@@ -1,13 +1,9 @@
-"""Accès aux secrets — fonctionne AVEC ou SANS Streamlit.
-
-But : permettre au worker headless (cron) de lire les mêmes credentials que l'app,
-sans dépendre de st.secrets / d'un ScriptRunContext Streamlit.
+"""Accès aux secrets — headless, sans dépendance à une interface.
 
 Ordre de résolution pour secret("google_ads.developer_token") :
   1. variable d'env  GOOGLE_ADS_DEVELOPER_TOKEN  (worker / GitHub Actions)
-  2. st.secrets       (l'app Streamlit — robuste, comme avant)
-  3. .streamlit/secrets.toml  /  ~/.streamlit/secrets.toml  (worker sans env)
-  4. default
+  2. .streamlit/secrets.toml  /  ~/.streamlit/secrets.toml  (worker en local, sans env)
+  3. default
 """
 
 import os
@@ -44,19 +40,7 @@ def secret(path: str, default=None):
     if os.environ.get(env_key):
         return os.environ[env_key]
 
-    # 2) st.secrets — robuste dans l'app Streamlit (toute version Python).
-    #    Hors Streamlit / sans secrets.toml, ça lève → on tombe sur le TOML.
-    try:
-        import streamlit as st  # import local : le worker n'en dépend pas
-        cur = st.secrets
-        for part in parts:
-            cur = cur[part]
-        if cur is not None:
-            return cur
-    except Exception:
-        pass
-
-    # 3) lecture directe du secrets.toml (worker headless sans env)
+    # 2) lecture directe du secrets.toml (worker en local, sans env)
     cur = _toml_secrets()
     for part in parts:
         if isinstance(cur, dict) and part in cur:

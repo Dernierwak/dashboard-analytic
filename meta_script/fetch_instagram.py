@@ -1,9 +1,7 @@
-import streamlit as st
 import requests
 from supabase import Client
 import pandas as pd
 
-from scripts.fetch_data import fetch_post_metrics
 from scripts.insert_data import insert_instagram_total_posts_id
 
 # ── QUELS POSTS ON RELIT — une DURÉE, plus un compte ─────────────────────────
@@ -80,32 +78,6 @@ class OrganicInstagramm():
         self._media_connu: dict = {}
         self.total_posts: int = 0
         self.followers: int = 0
-
-    def _fetch_id_instagram(self):
-        target_url = f"https://graph.facebook.com/{self.api_version}/me/accounts"
-        params = {"access_token": self.meta_long_token}
-        r = requests.get(url=target_url, params=params)
-        data = r.json()
-        pages = data.get("data", [])
-        if not pages:
-            raise ValueError("Aucune Page Facebook trouvée. Tu dois avoir une Page Facebook liée à ton compte.")
-        selected_id = st.session_state.get("selected_fb_page_id")
-        page = next((p for p in pages if p.get("id") == selected_id), pages[0])
-        self.meta_account_name = page.get("name")
-        self.meta_account_id = page.get("id")
-
-    def _fetch_id_business(self):
-        target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_account_id}"
-        params = {
-            "fields": "instagram_business_account",
-            "access_token": self.meta_long_token
-        }
-        r = requests.get(url=target_url, params=params)
-        data = r.json()
-        insta = data.get("instagram_business_account")
-        if not insta:
-            raise ValueError(f"La Page Facebook '{self.meta_account_name}' n'a pas de compte Instagram Business lié.")
-        self.meta_id_business = insta.get("id")
 
     def _fetch_insta_post_id(self):
         target_url = f"https://graph.facebook.com/{self.api_version}/{self.meta_id_business}/media"
@@ -313,54 +285,8 @@ class OrganicInstagramm():
         r = requests.get(url=target_url, params=params)
         return r.json().get("followers_count", 0)
 
-    def fetch_insta_post_insight(self):
-        with st.status("Récupération des données Instagram", expanded=True) as status:
-            st.write("Connexion à Meta…")
-            if not self.meta_id_business:
-                self._fetch_id_instagram()
-                self._fetch_id_business()
-
-            st.write("Identification des posts…")
-            self._fetch_insta_post_id()
-
-            st.write("Lecture du nombre d'abonnés…")
-            self.followers = self._fetch_account_followers()
-
-            total = len(self.new_post_ids)
-            if total > 0:
-                results = []
-                progress = st.progress(0, text=f"0 / {total} nouveaux posts")
-                for i, post_id in enumerate(self.new_post_ids):
-                    info = self._fetch_post_info(post_id)
-                    media_type = info.get("media_type", "IMAGE")
-                    metrics = self._fetch_post_metrics(post_id, media_type)
-                    results.append({
-                        "post_id": post_id,
-                        "type": info.get("media_type"),
-                        "caption": info.get("caption", "")[:500],  # assez pour labelliser par thème
-                        "date": info.get("timestamp", ""),  # ISO complet (date + heure + tz)
-                        "media_url": self._image_du_post(post_id, info),
-                        "follows": metrics.get("follows", 0),
-                        "likes": metrics.get("likes", 0),
-                        "comments": metrics.get("comments", 0),
-                        "saved": metrics.get("saved", 0),
-                        "views": metrics.get("views", 0),
-                        "reach": metrics.get("reach", 0),
-                        "user_id": self.supabase_user_id
-                    })
-                    progress.progress((i + 1) / total, text=f"{i + 1} / {total} nouveaux posts")
-                self.new_results = results
-            else:
-                st.write("Aucun nouveau post à charger.")
-
-            status.update(
-                label=f"Terminé — {self.total_posts} posts au total",
-                state="complete",
-                expanded=False,
-            )
-
     def fetch_headless(self, note=None) -> list:
-        """Version SANS Streamlit pour le worker cron. instagram_business_id requis
+        """Récolte headless pour le worker cron. instagram_business_id requis
         (fourni depuis connected_accounts) → on saute la sélection de Page.
         Remplit self.new_results / self.followers / self.total_posts et les retourne.
 
@@ -374,7 +300,7 @@ class OrganicInstagramm():
             raise ValueError("instagram_business_id requis en mode headless")
         dire = note or (lambda _e: None)
         dire("inventaire")
-        self._fetch_insta_post_id()              # plus de st.spinner → safe headless
+        self._fetch_insta_post_id()
         dire("abonnés")
         self.followers = self._fetch_account_followers()
         results = []
@@ -400,21 +326,6 @@ class OrganicInstagramm():
             })
         self.new_results = results
         return results
-
-    def show_insta_data(self):
-        self.fetch_insta_post_insight()
-
-        old_results = fetch_post_metrics(self.supabase_client, self.supabase_user_id)
-        df_old = pd.DataFrame(old_results) if old_results else pd.DataFrame()
-        df_new = pd.DataFrame(self.new_results) if self.new_results else pd.DataFrame()
-
-        df = pd.concat([df_new, df_old], ignore_index=True).drop_duplicates(subset="post_id")
-
-        st.metric("Followers", self.followers)
-        plan_label = "Pro" if self.limit == 50 else "Gratuit — max 10 posts"
-        st.caption(f"{self.limit} posts affichés sur {self.total_posts} au total · Plan {plan_label}")
-        st.session_state["results"] = df.to_dict("records")
-        st.dataframe(df)
 
 
 if __name__ == "__main__":

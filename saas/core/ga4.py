@@ -1,6 +1,5 @@
 """GA4 — orchestration du fetch + helper de contexte pour le moteur de recos.
 
-Mirror de components/google_ads.py mais pour Google Analytics 4.
 Réutilise le refresh_token Google déjà stocké (profiles.google_refresh_token).
 """
 

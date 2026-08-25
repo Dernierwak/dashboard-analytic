@@ -1,9 +1,0 @@
-[[pages]]
-path = "landing.py"
-
-[[pages]]
-path = "pages/main.py"
-
-[[pages]]
-path = "pages/privacy.py"
-hidden = true

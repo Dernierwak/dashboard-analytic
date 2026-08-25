@@ -7,7 +7,7 @@ priorités, sujets à éviter. Ce profil est ensuite injecté dans les prompts d
 pour que les retours de l'IA collent au type d'user.
 
 Le module est découplé de l'appel IA concret : on lui passe `call_ai(prompt) -> str|None`
-(dans le rapport, c'est `_call_gemini`). Pas d'import de streamlit/gemini ici.
+(dans le rapport, c'est `_call_gemini`). Pas d'import de gemini ici — module headless.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from scripts.fetch_data import fetch_reco_comments, fetch_user_profile
 from scripts.insert_data import save_user_profile
 
 try:  # libellés lisibles des conseils (facultatif — dégrade proprement)
-    from components.reco_engine import KEY_LABELS, OBJECTIFS
+    from saas.core.reco_engine import KEY_LABELS, OBJECTIFS
 except Exception:  # pragma: no cover
     KEY_LABELS, OBJECTIFS = {}, {}
 

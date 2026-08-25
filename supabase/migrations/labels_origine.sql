@@ -14,11 +14,12 @@
 -- date, et c'est tout ce que ce fichier ajoute.
 --
 -- POURQUOI UN TRIGGER, ET PAS UNE COLONNE ÉCRITE PAR L'APPLICATION
--- Trois producteurs écrivent ces labels : Pulse (Next.js), le worker de
--- labellisation (`saas/worker/labeling.py`) et le Streamlit historique. Faire
--- porter l'horodatage par chacun d'eux, c'est trois endroits à tenir d'accord
--- et un oubli qui rend l'annulation silencieusement fausse. La base le pose
--- elle-même : quel que soit l'écrivain, `label_at` dit la vérité.
+-- Plusieurs producteurs écrivent ces labels : Pulse (Next.js), le worker de
+-- labellisation (`saas/worker/labeling.py`), et longtemps le Streamlit
+-- (retiré depuis). Faire porter l'horodatage par chacun d'eux, c'est autant
+-- d'endroits à tenir d'accord et un oubli qui rend l'annulation silencieusement
+-- fausse. La base le pose elle-même : quel que soit l'écrivain, `label_at` dit
+-- la vérité.
 --
 -- LA RÈGLE DU TRIGGER, EN UNE PHRASE : pas de source, pas de date.
 -- C'est ce qui permet à l'annulation de fonctionner. Elle remet la ligne à

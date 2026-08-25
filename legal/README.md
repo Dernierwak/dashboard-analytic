@@ -31,16 +31,15 @@ Tous les fichiers contiennent des `<PLACEHOLDERS>` à remplacer :
 | `<PRO_PRICE>` | 35 |
 | `<LIABILITY_CAP>` | 500 |
 | `<DPO_NAME>` | Optionnel (Data Protection Officer) |
-| `<PRIVACY_URL>` | https://ton-app.streamlit.app/privacy |
+| `<PRIVACY_URL>` | https://ton-app.vercel.app/privacy |
 
 ### 2. Publier les pages sur une URL publique
 
 Google requiert que la Privacy Policy + Terms soient accessibles à des URLs **publiques HTTPS**. Plusieurs options :
 
-#### Option A — Pages Streamlit (recommandé si tu n'as pas de site)
-1. Convertis les `.md` en pages Streamlit (`pages/privacy.py`, `pages/terms.py`)
-2. Accessibles via ton URL Streamlit
-3. Dans `pages.toml`, marque ces pages comme visibles
+#### Option A — Pages Next.js (recommandé, `saas/web` est déjà déployé)
+1. Convertis les `.md` en pages (`saas/web/app/privacy/page.tsx`, `saas/web/app/terms/page.tsx`)
+2. Accessibles via ton URL Vercel (`saas/web`)
 
 #### Option B — GitHub Pages (gratuit, rapide)
 1. Crée un repo `<ton-agence>.github.io`

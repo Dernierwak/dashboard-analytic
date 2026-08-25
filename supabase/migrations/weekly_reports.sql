@@ -1,5 +1,5 @@
 -- Rapport hebdo précalculé (payload JSON) — lu par Pulse (Next.js) et l'email hebdo.
--- Écrit par le Streamlit à l'ouverture du rapport (pont), puis par le worker cron.
+-- Écrit en headless par saas/worker/build_report.py, au fetch cron.
 -- Idempotent : ré-exécutable sans risque.
 
 CREATE TABLE IF NOT EXISTS public.weekly_reports (

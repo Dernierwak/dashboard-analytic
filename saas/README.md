@@ -1,16 +1,17 @@
-# saas/ — la version web moderne (en construction, à côté du Streamlit)
+# saas/ — le produit (Next.js + worker headless)
 
-Ce dossier fait grandir le **nouveau produit** sans toucher au Streamlit actuel
-(*strangler pattern*). Le Streamlit reste à la racine, 100 % fonctionnel pour les
-pilotes. Les deux mondes lisent le **même Supabase** → mêmes données, zéro doublon
-de données. Seul le code du moteur est copié (`core/reco_engine.py`) pour l'isolation ;
-on l'extraira en package partagé quand ce sera stable.
+Ce dossier porte **Pulse** : `web/` (le portail Next.js, déployé sur Vercel) et
+`worker/` (récolte + rapport, lancé par GitHub Actions). L'ancien Streamlit a
+été retiré (voir `STREAMLIT_REMOVAL.md` à la racine) — les accès aux API des
+plateformes (`meta_script/`, `google_script/`, `scripts/`) restent à la racine
+du dépôt, appelés par le worker.
 
 ## ⚡ Fetch automatique (le « ça marche sans moi ») — FAIT
 
 `saas/worker/fetch_all.py` récolte **Meta Ads + Google Ads + GA4 + Instagram**
 pour tous les comptes, **sans personne connecté**. Réutilise la logique de fetch
-existante rendue *headless* (scripts/app_secrets.py pour les credentials hors Streamlit).
+headless de `meta_script/`, `google_script/` et `scripts/` (`scripts/app_secrets.py`
+pour les credentials, sans dépendance à une interface).
 
 **Tester en local** (⚠ écrit dans la vraie base) :
 ```bash
@@ -41,18 +42,21 @@ Meta Ads + Instagram n'ont besoin d'aucun secret app (token utilisateur en base)
 | 2 | **Email hebdo** responsive — lit le même payload `weekly_reports` | 🟡 rendu OK, envoi à brancher |
 | 3 | Portail **Next.js** (Vercel) : `web/` = **Pulse** | ✅ en prod (auth, KPIs, conseils, réactions) |
 
-But final : retirer Streamlit quand le portail couvre tout.
-
 ## Structure
 
 ```
 saas/
-├── core/        moteur de recos (copie isolée) + intégrations (à venir)
+├── core/        moteur de recos (reco_engine.py), ga4.py, user_persona.py — headless
 ├── emailing/    render.py (email « L'essentiel ») + send.py (envoi)
-└── worker/      run_weekly.py (cron : récolte + envoie, sans personne connecté)
+└── worker/      fetch_all.py (récolte cron) + build_report.py (rapport)
+                 + run_weekly.py (démo recos → email → envoi, pas encore câblé au cron)
 ```
 
-## Tester l'email tout de suite (sans compte, sans risque)
+## Tester l'email de démo (sans compte, sans risque)
+
+`worker/run_weekly.py::run()` (chargement multi-users) n'est pas câblé — voir
+« Ce qui reste à câbler » plus bas. Son `__main__` reste utile pour prévisualiser
+le rendu email sur un utilisateur fictif :
 
 ```bash
 cd saas
@@ -84,7 +88,7 @@ le reste ne bouge pas.
 - `worker/run()` : lister les users Supabase (service key) + charger leurs données
   (réutiliser les requêtes de `../scripts/fetch_data.py`) puis appeler `weekly_for_user`.
 - Brancher `run()` sur un cron (Railway cron / Supabase scheduled / GitHub Actions), lundi 07:00.
-- Optionnel : remplacer `build_wins_text` (déterministe) par l'IA, comme dans le rapport Streamlit.
+- Optionnel : remplacer `build_wins_text` (déterministe) par l'IA, comme dans `worker/build_report.py` (`_call_gemini`).
 
 ## Variables d'environnement
 

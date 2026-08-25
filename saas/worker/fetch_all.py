@@ -25,7 +25,7 @@ from pathlib import Path
 
 import requests
 
-# Racine du projet sur le path (pour importer scripts/, google_script/, meta_script/, components/)
+# Racine du projet sur le path (pour importer scripts/, google_script/, meta_script/, saas/)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from supabase import create_client                                        # noqa: E402
@@ -269,7 +269,7 @@ def _depart_recolte(latest: str | None, today: date, recouvrement: int) -> date:
 # l'API, c'est l'écriture : `upsert_meta_ads` envoie TOUT en un seul appel
 # PostgREST, et 22 500 lignes d'un coup n'ont jamais été essayées. À découper
 # avant d'élargir quoi que ce soit.
-from components.ga4 import run_ga4_fetch                                   # noqa: E402
+from saas.core.ga4 import run_ga4_fetch                                    # noqa: E402
 from meta_script.fetch_instagram import OrganicInstagramm                  # noqa: E402
 
 _GRAPH = "https://graph.facebook.com/v24.0"

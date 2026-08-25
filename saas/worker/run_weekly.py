@@ -12,7 +12,7 @@ Flux :
 
 État : la chaîne recos → rendu → envoi est RÉELLE et testable (voir __main__).
 Le chargement Supabase multi-users est balisé TODO (besoin de la service key +
-réutiliser les requêtes de scripts/fetch_data.py côté Streamlit).
+réutiliser les requêtes de `scripts/fetch_data.py`, déjà headless).
 """
 
 from __future__ import annotations
@@ -30,7 +30,8 @@ from emailing.send import send_email               # noqa: E402
 
 def build_wins_text(followers_delta: int, avg_engagement: float, ctr: float) -> str:
     """Synthèse déterministe de 'ce qui a marché' (fallback sans IA).
-    Plus tard : remplaçable par un appel IA (même logique que le rapport Streamlit).
+    Plus tard : remplaçable par un appel IA (même logique que `_call_gemini`
+    dans `saas/worker/build_report.py`).
     """
     bits = []
     if followers_delta > 0:

@@ -27,7 +27,7 @@ récolte → constat → conseil → action → verdict → apprentissage
 
 Un constat sans conseil est une observation stérile. Un conseil sans action est un vœu. Une action sans verdict est un travail dont on ne saura jamais s'il a servi. Un verdict qui ne nourrit pas le conseil suivant est une boucle ouverte. **Quand tu évalues une idée, dis à quel maillon elle s'accroche.**
 
-**Le cap.** Sortir complètement de Streamlit (fait côté OAuth), puis : créer les campagnes depuis Pulse à partir d'un budget saisi. Une idée qui prépare ce terrain vaut plus qu'une idée équivalente qui n'y mène pas.
+**Le cap.** Streamlit est sorti (voir `STREAMLIT_REMOVAL.md`). Le prochain : créer les campagnes depuis Pulse à partir d'un budget saisi. Une idée qui prépare ce terrain vaut plus qu'une idée équivalente qui n'y mène pas.
 
 ---
 

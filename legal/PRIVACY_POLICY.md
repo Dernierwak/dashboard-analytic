@@ -47,7 +47,7 @@ If you subscribe to a paid plan:
 - We store: subscription status (paid/free), subscription start date
 
 ### 2.5 Usage data
-- Pages visited, features used (via Streamlit logs, no external analytics tool)
+- Pages visited, features used (via Vercel logs, no external analytics tool)
 - IP address (for security and authentication)
 
 ---
@@ -86,7 +86,7 @@ We use the following sub-processors who may process your data on our behalf:
 | Provider | Purpose | Location |
 |---|---|---|
 | Supabase (Supabase Inc.) | Database + authentication | EU / US |
-| Streamlit (Snowflake Inc.) | App hosting | US |
+| Vercel Inc. | App hosting | US |
 | Stripe (Stripe Inc.) | Payment processing | US |
 | Meta (Meta Platforms, Inc.) | Source of Instagram/Meta Ads data via API | US |
 | Google (Google LLC) | Source of Google Ads data via API | US |

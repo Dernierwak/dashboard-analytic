@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd  # noqa: E402
 
-from components.reco_engine import DAYS, HOURS, FORMAT_LABELS, SEUILS  # noqa: E402
+from saas.core.reco_engine import DAYS, HOURS, FORMAT_LABELS, SEUILS  # noqa: E402
 
 # Seuils anti-bruit des constats (cohérents avec SEUILS du moteur)
 C_SEUILS = {

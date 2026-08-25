@@ -2,16 +2,6 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [
-        "-m", "streamlit", "run", "landing.py",
-        "--server.port", "8503",
-        "--server.headless", "true"
-      ],
-      "port": 8503
-    },
-    {
       "name": "web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "saas/web", "run", "dev"],

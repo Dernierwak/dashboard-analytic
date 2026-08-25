@@ -9,7 +9,7 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 ### Alertes budget
 - Notification quand `spend > 80%` du `budget_planifié` (warning jaune)
 - Notification critique quand `spend > 100%` (rouge + badge sur la card campagne)
-- Visuellement via `st.toast` au rendu + badge persistant
+- Visuellement via un toast Next.js au rendu + badge persistant
 - Idée d'extension : envoi d'un email/notif si l'utilisateur a opté pour les alertes
 
 ### Tab Insights
@@ -60,6 +60,33 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 
 ---
 
+## Paiement
+
+### Stripe côté Next.js — à reconstruire
+- Stripe n'est pas branché en réel aujourd'hui (ni côté ancien Streamlit, ni
+  côté Next.js). L'ancien code Streamlit (`scripts/stripe.py`,
+  `components/callbacks.py::handle_stripe_payment`, la card d'upgrade dans
+  `components/account_tab.py`) a été retiré avec le reste de Streamlit
+  (voir `STREAMLIT_REMOVAL.md`), pas migré — c'est un chantier séparé.
+- Repères de l'ancienne implémentation, au cas où ils servent de point de
+  départ : plans `starter` (15 CHF/mois), `pro` (35 CHF/mois), `agency`
+  (150 CHF/mois), abonnement mensuel, `stripe.checkout.Session` en mode
+  `subscription`, statut stocké dans `profiles.is_paid`.
+- À construire : route API Next.js pour créer la session checkout, webhook
+  Stripe pour confirmer le paiement et mettre à jour `profiles.is_paid`,
+  page d'upgrade dans `saas/web`.
+
+### Persona utilisateur IA — extrait mais pas branché
+- `saas/core/user_persona.py` (déplacé depuis l'ancien `components/user_persona.py`
+  au retrait de Streamlit) sait construire et rafraîchir un profil utilisateur
+  à partir des commentaires laissés sur les conseils (`build_user_persona`,
+  `regenerate_user_persona`), pour personnaliser le ton de l'IA. Le module est
+  headless et fonctionnel, mais **n'est appelé par aucun code aujourd'hui** —
+  l'ancien Streamlit l'utilisait dans `pages/rapport.py` (retiré), et
+  `saas/worker/build_report.py` ne l'a jamais branché (brief IA en fallback
+  déterministe). À décider : le brancher dans `build_report.py`, ou construire
+  l'équivalent côté Next.js.
+
 ## Général
 
 ### Module « Comparer » à repenser
@@ -78,8 +105,9 @@ Liste des idées notées pendant le développement, à implémenter plus tard.
 
 ### Export rapport hebdomadaire
 - PDF/HTML avec un screenshot des KPI principaux
-- Envoi automatique par email chaque lundi
-- Pattern existant dans `pages/rapport.py` à étendre
+- Envoi automatique par email chaque lundi — déjà en place (Resend, voir
+  `saas/worker/build_report.py` + `saas/emailing/`) ; ce qui manque, c'est le
+  export PDF/HTML téléchargeable en plus de l'email
 
 ### Mode dark
 - CSS tokens déjà en place (`--ink`, `--ink-3`, etc.)
