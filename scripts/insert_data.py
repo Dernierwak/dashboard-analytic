@@ -27,23 +27,91 @@ def insert_schedule_data(supabase:Client, user_id, fetch_schedule):
     supabase.table("profiles").update({"fetch_schedule": fetch_schedule}).eq("id", user_id).execute()
 
 
-def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
+def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict], complet: bool = True):
     """Upsert des données Meta Ads dans meta_ads_insights.
-    Conflict sur (user_id, date_start, ad_name) — une ligne par pub par jour.
+    Conflict sur (user_id, date_start, ad_id) — une ligne par pub par jour.
+
+    `complet` : True SEULEMENT si `rows` couvre la plage demandée EN ENTIER,
+    sans page perdue en cours de route (voir `_meta_chunk`,
+    saas/worker/fetch_all.py). Détermine si le DELETE de nettoyage (point 1
+    ci-dessous) peut avoir lieu sans risque — voir ce point pour le pourquoi.
+
+    `ad_id` est l'identifiant Meta VRAIMENT unique d'une annonce. `ad_name` ne
+    l'est pas : deux annonces DISTINCTES peuvent porter le même nom dans la
+    même campagne, rien ne l'interdit dans Meta Ads Manager — constaté en
+    conditions réelles, campagne BW_Sommer_Traffic_2026, deux annonces
+    "fr_awarness" avec des ad_id différents. Dédupliquer/upserter sur ad_name
+    faisait donc écraser silencieusement l'une des deux par l'autre à chaque
+    récolte (TASK-018 : ~17€ de dépense réelle perdue le 19/08, ~15€ le 20/08
+    sur le compte de test — absente de la base alors que l'API la renvoie).
+
+    DEUX PIÈGES TROUVÉS À LA RELECTURE DU PREMIER CORRECTIF — les deux se
+    seraient traduits par de la donnée fausse, pas juste perdue :
+
+    1. LE DOUBLE COMPTAGE SUR LA FENÊTRE DE RECOUVREMENT. La migration qui
+       ajoute la colonne (meta_ads_ad_id.sql) laisse les lignes déjà en base
+       avec `ad_id IS NULL` — c'est volontaire, NULL n'entre jamais en
+       conflit avec une contrainte UNIQUE, donc l'ALTER passe. Mais ça veut
+       dire aussi que quand la récolte SUIVANTE réécrit ces mêmes jours
+       (`_RECOUVREMENT_JOURS_META = 7` jours, saas/worker/fetch_all.py) avec
+       un ad_id RÉEL cette fois, l'upsert n'entre PAS en conflit avec la
+       vieille ligne NULL : Postgres INSÈRE une seconde ligne au lieu de
+       remplacer la première, et la dépense de ces jours serait comptée DEUX
+       FOIS — indéfiniment, rien ne la nettoierait jamais. D'où le DELETE
+       explicite plus bas, AVANT l'upsert : il retire, pour CET utilisateur
+       et pour les dates EXACTEMENT couvertes par CE lot, toute ligne
+       `ad_id IS NULL` qui y traînerait encore. Ce n'est sûr QUE SI la plage
+       est effectivement redemandée et réécrite EN ENTIER (voir le
+       commentaire de `_depart_recolte` dans fetch_all.py) : toute annonce
+       ayant dépensé un de ces jours doit ressortir dans `rows` pour être
+       réinsérée juste après avec son ad_id. C'EST TOUT L'INTÉRÊT DU
+       PARAMÈTRE `complet` — relu par le checker sur le premier jet de ce
+       correctif : `_meta_chunk` peut se tronquer en silence (erreur réseau
+       en cours de pagination, ou Meta qui répond un JSON d'erreur plutôt
+       qu'une page — ce dernier cas n'a NI exception NI `paging.next`, donc
+       ressemble à une fin de pagination normale). Sans le signaler, le
+       DELETE supprimerait les lignes héritées d'un jour dont on n'a reçu
+       qu'une partie de la dépense, et l'upsert n'en réinsérerait qu'une
+       partie : une perte de dépense réelle, exactement le bug que cette
+       tâche doit supprimer. `complet=False` fait donc N'ÉCRIRE STRICTEMENT
+       RIEN (ni DELETE ni upsert, la fonction retourne immédiatement) : les
+       lignes historiques restent ce qu'elles étaient, `latest` n'avance pas
+       côté appelant, et le passage suivant retentera naturellement la même
+       plage jusqu'à obtenir une récolte complète. Les dates plus anciennes
+       que la fenêtre de recouvrement ne sont, elles, jamais retouchées :
+       leurs lignes NULL historiques restent seules, sans doublon possible
+       puisque plus jamais réécrites.
+
+    2. ad_id ABSENT OU VIDE DANS LA RÉPONSE DE L'API. Meta documente ad_id
+       comme toujours présent au niveau `level=ad`
+       (developers.facebook.com/docs/marketing-api/insights/), donc ce cas ne
+       DEVRAIT jamais survenir — mais « ne devrait jamais » n'est pas une
+       garantie testée. `row.get("ad_id", "")` renvoie None (pas "") si la clé
+       existe avec une valeur null — un str() direct dessus écrirait la chaîne
+       littérale "None" en base. Et une clé de dédup vide/commune pour toutes
+       les lignes sans ad_id d'un même jour écraserait ces annonces les unes
+       sur les autres — pire que le bug d'origine. Donc : si ad_id manque, la
+       ligne n'est PAS écartée (ad_id reste NULL, jamais "None"), PAS
+       dédupliquée sur une clé vide (on la garde telle quelle), et le fait est
+       signalé bruyamment dans les logs du worker. Le DELETE du point 1
+       ci-dessus nettoie aussi ces lignes-orphelines à chaque passage suivant
+       sur la même fenêtre : elles ne s'accumulent donc pas semaine après
+       semaine si le cas venait à se répéter.
     """
     if not rows:
         return
 
     seen = set()
     records = []
+    orphelins = 0
     for row in rows:
-        key = (row.get("date_start"), row.get("ad_name", ""))
-        if key in seen:
-            continue
-        seen.add(key)
-        records.append({
+        brut = row.get("ad_id")
+        ad_id = str(brut).strip() if brut not in (None, "") else ""
+        date_start = row.get("date_start")
+
+        base = {
             "user_id": user_id,
-            "date_start": row.get("date_start"),
+            "date_start": date_start,
             "campaign_name": row.get("campaign_name", ""),
             "adset_name": row.get("adset_name", ""),
             "ad_name": row.get("ad_name", ""),
@@ -52,11 +120,59 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
             "reach": int(row.get("reach") or 0) if row.get("reach") is not None else None,
             "link_clicks": int(row.get("link_clicks") or 0) if row.get("link_clicks") is not None else None,
             "spend": float(row.get("spend") or 0),
-        })
+        }
+
+        if not ad_id:
+            # Pas de clé fiable pour dédupliquer cette ligne : on la GARDE
+            # toujours, jamais de perte silencieuse (voir docstring, point 2).
+            orphelins += 1
+            records.append({**base, "ad_id": None})
+            continue
+
+        key = (date_start, ad_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({**base, "ad_id": ad_id})
+
+    if orphelins:
+        print(f"    meta: {orphelins} ligne(s) reçues sans ad_id — écrites "
+              f"quand même (ad_id NULL), voir upsert_meta_ads (TASK-018).")
+
+    if not records:
+        return
+
+    # Voir le point 1 de la docstring : sans ce DELETE, réécrire une fenêtre
+    # déjà connue avec les VRAIS ad_id compterait la dépense en double, la
+    # vieille ligne (ad_id NULL) et la nouvelle (ad_id réel) n'étant jamais en
+    # conflit l'une avec l'autre. Portée strictement bornée à CET utilisateur
+    # et aux dates de CE lot — jamais un DELETE large.
+    #
+    # `complet` est le garde-fou : si la récolte qui a produit `rows` a été
+    # tronquée en cours de route, ON NE SAIT PAS que toutes les annonces de
+    # ces dates sont bien dans `records` — ni supprimer les lignes héritées
+    # (on purgerait une dépense qu'on n'a que partiellement réinsérée), ni
+    # upserter ce lot partiel (les lignes reçues, avec leur ad_id réel,
+    # s'écriraient À CÔTÉ des lignes héritées ad_id NULL non supprimées :
+    # double comptage permanent sur cette fenêtre). Donc : si `complet` est
+    # faux, on n'écrit RIEN — ni DELETE ni upsert. `latest` en base n'avance
+    # pas côté appelant, et le passage suivant retentera naturellement la
+    # même plage jusqu'à obtenir une récolte complète.
+    if not complet:
+        print(f"    meta: récolte tronquée pour {user_id} — aucune écriture "
+              f"ce passage (ni DELETE ni upsert), la plage sera retentée au "
+              f"prochain passage (voir upsert_meta_ads).")
+        return
+
+    dates = sorted({r["date_start"] for r in records if r.get("date_start")})
+    if dates:
+        supabase.table("meta_ads_insights").delete() \
+            .eq("user_id", user_id).in_("date_start", dates) \
+            .is_("ad_id", "null").execute()
 
     supabase.table("meta_ads_insights").upsert(
         records,
-        on_conflict="user_id,date_start,ad_name"
+        on_conflict="user_id,date_start,ad_id"
     ).execute()
 
 

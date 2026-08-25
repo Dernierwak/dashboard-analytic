@@ -166,8 +166,10 @@ _CHANGES_JOURS_META = 180
 # quelqu'un voudra le « corriger » un jour, alors autant l'écrire ici : on ne
 # compare RIEN avec la plateforme, on redemande la plage et on la réécrit.
 # Les trois tables portent une clé d'unicité — meta_ads_insights
-# (user_id, date_start, ad_name), google_ads_insights (user_id, date_start,
-# campaign_id), instagram_organic_posts (user_id, post_id) — et les écritures
+# (user_id, date_start, ad_id — TASK-018 : ad_name ne l'est pas, deux annonces
+# distinctes peuvent porter le même nom), google_ads_insights (user_id,
+# date_start, campaign_id), instagram_organic_posts (user_id, post_id) — et
+# les écritures
 # sont des upserts sur ces clés exactes. Réécrire un jour connu REMPLACE donc
 # la ligne, il n'en ajoute pas une. Une comparaison ligne à ligne coûterait de
 # relire toute la base, de faire un diff, et se tromperait le jour où un champ
@@ -293,10 +295,33 @@ def _due_today(fetch_schedule: str | None) -> bool:
 
 # ── Meta Ads (token utilisateur) ──────────────────────────────────────────────
 
-def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> list:
+def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, bool]:
+    """Retourne (rows, complet).
+
+    `complet=False` signale une récolte TRONQUÉE avant la fin de la
+    pagination — pas juste « rien à cette page ». Deux chemins, ni l'un ni
+    l'autre visibles dans le `rows` retourné avant ce correctif :
+      · une exception réseau sur une page ≥ 2 (`break` muet) ;
+      · Meta répond un JSON D'ERREUR (rate limit, code 17/613…) plutôt qu'une
+        page de données — `resp.get("data", [])` vaut alors `[]` et
+        `paging.next` est absent, ce qui ressemblait à une fin de pagination
+        NORMALE alors que la plage n'a pas été lue en entier.
+    Pourquoi ça compte MAINTENANT (TASK-018, relu par le checker) :
+    `upsert_meta_ads` supprime les vieilles lignes `ad_id IS NULL` des dates
+    qu'il réécrit, en tenant pour acquis que la plage EST relue en entier —
+    exactement ce que `complet` vérifie ici. Une récolte tronquée dont on ne
+    sait rien ferait supprimer les lignes héritées d'un jour sans les
+    réinsérer toutes : une perte de dépense réelle, le bug que cette tâche
+    doit supprimer, pas en recréer un autre.
+    """
     params = {
         "access_token": token, "level": "ad",
-        "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+        # `ad_id` — l'identifiant Meta VRAIMENT unique d'une annonce. `ad_name`
+        # ne l'est pas : deux annonces distinctes peuvent porter le même nom
+        # dans une même campagne (rien ne l'interdit dans Meta Ads Manager),
+        # et dédupliquer/upserter sur ad_name faisait disparaître l'une des
+        # deux en silence (TASK-018, voir scripts/insert_data.upsert_meta_ads).
+        "fields": "campaign_name,adset_name,ad_name,ad_id,impressions,clicks,reach,spend,actions,date_start",
         "time_increment": 1,
         "time_range": json.dumps({"since": since_iso, "until": until_iso}),
         "limit": 500,
@@ -304,17 +329,23 @@ def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> list:
     try:
         data = requests.get(f"{_GRAPH}/{ad_account_id}/insights", params=params, timeout=60).json()
     except Exception:
-        return []
+        return [], False
+    if data.get("error"):
+        print(f"    meta insights KO ({since_iso}→{until_iso}) : {data['error']}")
+        return [], False
     rows = data.get("data", [])
     nxt = data.get("paging", {}).get("next")
     while nxt:
         try:
             resp = requests.get(nxt, timeout=60).json()
         except Exception:
-            break
+            return rows, False
+        if resp.get("error"):
+            print(f"    meta insights KO en cours de pagination ({since_iso}→{until_iso}) : {resp['error']}")
+            return rows, False
         rows += resp.get("data", [])
         nxt = resp.get("paging", {}).get("next")
-    return rows
+    return rows, True
 
 
 def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
@@ -383,9 +414,17 @@ def _fetch_meta(sb, uid, token, note=_rien) -> str:
     # antérieur à aujourd'hui), et surtout il n'a plus de sens. Il n'y a plus de
     # « à jour » — il y a une fenêtre qu'on relit à chaque passage.
     rows, cur = [], since
+    # `complet` reste True tant qu'AUCUN morceau n'a été tronqué — un seul
+    # chunk incomplet suffit à rendre douteuse toute la plage relue par ce
+    # passage (voir _meta_chunk : c'est ce booléen qui décide, dans
+    # upsert_meta_ads, si le nettoyage des lignes héritées ad_id NULL peut
+    # avoir lieu sans risque de perdre de la dépense réelle).
+    complet = True
     while cur <= today:
         end = min(cur + timedelta(days=_CHUNK - 1), today)
-        rows += _meta_chunk(token, ad_account_id, cur.isoformat(), end.isoformat())
+        chunk_rows, chunk_complet = _meta_chunk(token, ad_account_id, cur.isoformat(), end.isoformat())
+        rows += chunk_rows
+        complet = complet and chunk_complet
         cur = end + timedelta(days=1)
     # On demande aussi les dates DECLAREES. Elles ne se deduisent pas de la
     # depense : une campagne programmee jusqu'en decembre et une campagne
@@ -417,9 +456,10 @@ def _fetch_meta(sb, uid, token, note=_rien) -> str:
             status_map.get(row.get("campaign_name", ""), {}).get("status") or "UNKNOWN"
         )
     if rows:
-        upsert_meta_ads(sb, uid, rows)
+        upsert_meta_ads(sb, uid, rows, complet=complet)
         upsert_campaign_statuses(sb, uid, status_map)
-    return f"meta: {len(rows)} lignes"
+    tronque = "" if complet else " (récolte tronquée — aucune écriture ce passage, plage retentée au prochain passage, voir upsert_meta_ads)"
+    return f"meta: {len(rows)} lignes{tronque}"
 
 
 # ── Google Ads (refresh_token + secrets app) ──────────────────────────────────

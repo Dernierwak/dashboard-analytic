@@ -49,6 +49,8 @@
 --   19)    suivi_actions.kind — tes propres notes dans le fil
 --   20)    label_at + triggers — QUAND une étiquette a été posée
 --   21)    (volontairement absent — voir la section, il faut ta décision)
+--   22)    meta_ads_insights.ad_id — l'identifiant vraiment unique d'une
+--          annonce Meta, à la place du nom (TASK-018)
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1875,6 +1877,71 @@ CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
 
 
 -- ============================================================================
+-- 22) META ADS — ad_id, l'identifiant VRAIMENT unique d'une annonce
+--     (TASK-018 — copie autonome et détaillée : meta_ads_ad_id.sql,
+--      source de vérité pour le pourquoi complet).
+--
+--     LE BUG, MESURÉ EN CONDITIONS RÉELLES. Deux annonces DISTINCTES peuvent
+--     porter le même `ad_name` dans la MÊME campagne — rien ne l'interdit
+--     dans Meta Ads Manager. Constaté sur le compte de test : la campagne
+--     BW_Sommer_Traffic_2026 porte deux annonces "fr_awarness" avec des
+--     ad_id différents. `upsert_meta_ads` dédupliquait sur (date_start,
+--     ad_name), et `meta_ads_insights_uq` portait la même clé : l'une des
+--     deux écrasait SILENCIEUSEMENT l'autre à chaque récolte — ~17€ de
+--     dépense réelle absente de la base le 19/08/2026, ~15€ le 20/08.
+--
+--     LE FIX porte la clé sur `ad_id`, l'identifiant numérique Meta qui,
+--     lui, n'est jamais dupliqué — même principe que `google_ads_ad_insights`
+--     (§3bis).
+--
+--     POURQUOI LA COLONNE EST NULLABLE, SANS DEFAULT — et pas comme
+--     `ga4_insights.campaign` (§2, `NOT NULL DEFAULT ''`) : là-bas, l'ancienne
+--     contrainte (user_id, date, source, medium) restait vraie une fois
+--     `campaign` ajoutée à toutes les lignes avec la même valeur par défaut.
+--     Ici, backfiller `ad_id` à '' ferait au contraire ENTRER EN COLLISION
+--     toutes les annonces d'un même jour qui portaient des ad_name
+--     DIFFÉRENTS — l'ADD CONSTRAINT échouerait sur la première violation.
+--     NULL est le seul choix honnête : Postgres ne considère jamais deux NULL
+--     comme égaux dans une contrainte UNIQUE, donc l'ALTER passe même avec des
+--     doublons d'ad_name déjà en base.
+--
+--     ⚠️ CETTE COHABITATION SANS ERREUR N'EST PAS UNE FIN EN SOI — ELLE
+--     DÉPLACE LE PROBLÈME, ET LE VRAI FIX EST CÔTÉ CODE. Sans intervention, la
+--     récolte SUIVANTE qui réécrit une date déjà connue (fenêtre de
+--     recouvrement) upserte un ad_id RÉEL qui n'entre en conflit avec RIEN —
+--     la vieille ligne NULL et la nouvelle cohabitent, et la dépense de cette
+--     date serait comptée DEUX FOIS, durablement. C'est `upsert_meta_ads`
+--     (scripts/insert_data.py) qui répare ça : avant chaque upsert, il
+--     supprime les lignes `ad_id IS NULL` restantes pour les dates qu'il
+--     s'apprête à réécrire (portée bornée à l'utilisateur et aux dates du lot
+--     en cours). C'est CETTE PARTIE-LÀ, pas cette migration seule, qui évite
+--     le double comptage.
+--
+--     CE QUE ÇA NE RÉPARE PAS RÉTROACTIVEMENT. Les lignes déjà écrasées avant
+--     ce fix restent perdues tant qu'elles ne sont pas redemandées. Le
+--     recouvrement de récolte (`_RECOUVREMENT_JOURS_META = 7` jours,
+--     saas/worker/fetch_all.py) les couvre automatiquement tant que la date
+--     la plus récente déjà en base pour l'utilisateur ne dépasse pas sept
+--     jours après le 19-20/08 — au-delà, un rejeu manuel plus large serait
+--     nécessaire pour ces deux jours précis.
+--
+--     Aucun DROP de table, aucun DELETE dans CE fichier SQL — le DELETE vit
+--     dans le code Python (voir ci-dessus), scopé et exécuté à chaque
+--     récolte. La seule opération sensible ICI est le DROP CONSTRAINT +
+--     ADD CONSTRAINT ci-dessous (remplacer une contrainte d'unicité
+--     existante) — signalée comme demandé par CLAUDE.md §7.
+-- ============================================================================
+
+ALTER TABLE public.meta_ads_insights
+    ADD COLUMN IF NOT EXISTS ad_id text;
+
+ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights_uq;
+ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights_uq2;
+ALTER TABLE public.meta_ads_insights
+    ADD CONSTRAINT meta_ads_insights_uq2 UNIQUE (user_id, date_start, ad_id);
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1958,6 +2025,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'suivi_actions',            'done_at'),              -- §10
     ('c', 'suivi_actions',            'detail'),               -- §11
     ('c', 'suivi_actions',            'kind'),                 -- §19
+    ('c', 'meta_ads_insights',        'ad_id'),                -- §22
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
