@@ -97,6 +97,7 @@ chercher**, et leur `.md` doit le leur dire.
 | `STATUS.md` | Où en est le projet. |
 | `PROJECT_STATUS.html` | Le tableau de bord : tâches, agents, coût en tokens, historique. Les notes que je tiens pour David. |
 | `docs/03-grammaire-des-modules.md` | **La grammaire d'un module.** Neuf rangs, et le rang 3 est le chiffre — aucune forme graphique avant lui. Tout module créé ou restructuré met à jour sa section « Où on en est » dans le même commit. |
+| `docs/04-modules-partages-entre-sources.md` | **Qui est générique entre Meta/Google/Instagram, qui est dupliqué, qui est spécifique par nature** — et le gabarit pour brancher une nouvelle source (TikTok, LinkedIn…) sans dupliquer la logique. |
 | `docs/references/` | Les contraintes des plateformes (Meta, Google Ads, GA4, Supabase) et les références UX. C'est là que va ce qu'on a payé cher pour apprendre. |
 | `STREAMLIT_REMOVAL.md` | L'inventaire du retrait de Streamlit. |
 | `handoff/` | Les reprises de contexte. |
