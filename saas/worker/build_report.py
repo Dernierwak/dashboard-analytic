@@ -65,7 +65,8 @@ def _call_gemini(prompt: str) -> str | None:
 # pour le suivi « ▶ Je le teste » (photographie de la décision).
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
                "repere", "angle_mort", "confidence", "priority", "source",
-               "metric", "metric_label", "direction", "baseline", "effort")
+               "metric", "metric_label", "direction", "baseline", "effort",
+               "levier")
 
 # Effort a prevoir pour appliquer un conseil-regle : c'est la moitie de la
 # decision (l'autre moitie, c'est l'indicateur vise). Affiche en pastille.
@@ -91,6 +92,29 @@ EFFORT_BY_KEY = {
     # Comparer un coût par conversion à sa propre marge ne se fait pas dans
     # l'outil : on sort sa calculette, et c'est vite fait.
     "theme_event_cout": "10 min",
+}
+
+# Le LEVIER et la MÉTRIQUE qu'une piste IA (`_theme_ai_recos`) doit déclarer
+# elle-même — deux listes fermées, même principe que `EFFORTS` ci-dessus.
+# Une valeur hors liste fait rejeter la piste entière (elle n'est jamais
+# affichée) : un levier ou une métrique devinés après coup ne seraient ni
+# l'un ni l'autre.
+LEVIERS_IA = ("argent", "contenu", "tempo", "audience")
+# Le vocabulaire exact que `_kpis_window` (plus bas, dans `build_payload`)
+# sait mesurer — une piste qui déclarerait une métrique hors de cette liste
+# ne pourrait de toute façon jamais recevoir de verdict à 14 jours.
+METRICS_IA = ("cpc", "roas", "posts", "reach", "eng", "purchases")
+# Libellé, unité, sens d'amélioration et format d'affichage de chaque
+# métrique déclarable — mêmes valeurs que les entrées correspondantes de
+# `PROOF_KPI` (plus bas), factorisées ici pour qu'une piste IA reçoive la
+# même mesure qu'une reco-règle sans avoir besoin d'une clé stable.
+METRIC_INFO_IA = {
+    "cpc":       ("CPC moyen", "CHF", "down", "{:.2f}"),
+    "roas":      ("ROAS", "", "up", "{:.1f}"),
+    "posts":     ("posts publiés", "", "up", "{:.0f}"),
+    "reach":     ("portée moyenne", "", "up", "{:,.0f}"),
+    "eng":       ("engagement moyen", "%", "up", "{:.1f}"),
+    "purchases": ("achats (GA4)", "", "up", "{:.0f}"),
 }
 
 
@@ -161,9 +185,13 @@ _LEVIER_REGLE = {
     # c'est le budget du theme.
     "theme_event_cout": "argent",
 }
-# Les conseils IA n'ont pas de cle stable (`ai_<theme>_<n>`) : leur levier se lit
-# dans ce qu'ils demandent de faire. Ordre volontaire — « budget » l'emporte sur
-# « visuel » quand les deux mots sont la, parce que c'est le geste qui coute.
+# Depuis août 2026, une piste IA declare directement son levier (voir
+# `_theme_ai_recos` et `LEVIERS_IA`) : `_levier()` ne devine plus jamais le
+# sien par mots-cles. Cette table ne sert donc plus qu'a un conseil qui ne
+# serait ni une regle (cle dans `_LEVIER_REGLE`), ni une veille, ni issu de
+# l'IA — gardee en repli defensif, pas en usage courant. Ordre volontaire —
+# « budget » l'emporte sur « visuel » quand les deux mots sont la, parce que
+# c'est le geste qui coute.
 _LEVIER_MOTS = (
     ("argent", ("budget", "depense", "dépense", "investi", "cpc", "cout", "coût",
                 "enchere", "enchère", "reallou", "réallou", "financ")),
@@ -188,6 +216,11 @@ def _levier(reco: dict) -> str:
         return "veille"
     if cle in _LEVIER_REGLE:
         return _LEVIER_REGLE[cle]
+    if reco.get("source") == "ai":
+        # `_theme_ai_recos` rejette déjà toute piste dont le `levier` déclaré
+        # n'est pas dans `LEVIERS_IA` (jamais affichée) : ici, `levier` est
+        # donc garanti présent et valide — on le lit, on ne le devine plus.
+        return reco.get("levier")
     txt = f"{reco.get('title', '')} {reco.get('observation', '')}".lower()
     for nom, mots in _LEVIER_MOTS:
         if any(m in txt for m in mots):
@@ -1212,9 +1245,16 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "pas sur un arbitrage entre les deux régies. "
         "Réponds UNIQUEMENT avec un tableau JSON de "
         f"{want} objets, chacun avec ces clés : "
-        '{"title","observation","pourquoi","verifier","angle_mort","effort"}. '
+        '{"title","observation","pourquoi","verifier","angle_mort","effort","levier","metric"}. '
         '"effort" = le temps qu\'il faut pour le mettre en place, EXACTEMENT une '
         'de ces valeurs : "10 min", "30 min", "1 h", "2 h+". '
+        '"levier" = sur quoi agit cette idée, EXACTEMENT une de ces valeurs : '
+        '"argent" (combien on met et où), "contenu" (ce qu\'on montre), '
+        '"tempo" (quand et à quelle fréquence on publie), "audience" (à qui on parle). '
+        '"metric" = l\'indicateur chiffré que cette idée doit faire bouger, EXACTEMENT '
+        'une de ces valeurs : "cpc" (coût par clic pub), "roas" (retour sur dépense pub), '
+        '"posts" (nombre de publications), "reach" (portée moyenne des posts), '
+        '"eng" (engagement moyen des posts), "purchases" (achats mesurés par GA4). '
         "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
     )
     if not raw:
@@ -1231,16 +1271,25 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         for i, d in enumerate(arr[:want]):
             if not isinstance(d, dict):
                 continue
-            if all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-                out.append({
-                    "key": f"ai_{theme}_{i + 1}", "platform": "ia",
-                    "title": str(d["title"])[:90],
-                    "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
-                    "verifier": str(d["verifier"]), "repere": "",
-                    "angle_mort": str(d["angle_mort"]),
-                    "confidence": "piste", "priority": 9 + i, "source": "ai",
-                    "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
-                })
+            if not all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+                continue
+            # `levier` et `metric` sont des listes fermées, comme `effort` — mais
+            # contrairement à `effort`, une valeur hors liste REJETTE la piste
+            # entière au lieu de retomber sur une valeur par défaut : un levier ou
+            # une métrique devinés casseraient respectivement la diversité de
+            # `_diversifier` et la promesse de verdict à 14 jours (`PROOF_KPI`).
+            if d.get("levier") not in LEVIERS_IA or d.get("metric") not in METRICS_IA:
+                continue
+            out.append({
+                "key": f"ai_{theme}_{i + 1}", "platform": "ia",
+                "title": str(d["title"])[:90],
+                "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
+                "verifier": str(d["verifier"]), "repere": "",
+                "angle_mort": str(d["angle_mort"]),
+                "confidence": "piste", "priority": 9 + i, "source": "ai",
+                "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
+                "levier": d["levier"], "metric": d["metric"],
+            })
         return out
     except Exception:
         return []
@@ -2696,6 +2745,13 @@ def build_payload(sb, user_id: str) -> dict | None:
     # action antérieure garde la mesure sur laquelle elle a été photographiée.
     _BASCULE_THEME = "2026-08-12"
 
+    # PROOF_KPI ne couvre que les recos-règles : leur `key` est stable d'une
+    # semaine à l'autre (ex. "gaspillage"), donc une clé fixe suffit à
+    # retrouver leur indicateur. Une piste IA (`_theme_ai_recos`) a une clé
+    # dynamique (`ai_<theme>_<n>`, différente chaque semaine) — elle ne peut
+    # donc jamais être ajoutée ici par clé. C'est `METRIC_INFO_IA` (plus haut
+    # dans ce fichier) + `_attach_metric` (plus bas) qui lui donnent le même
+    # verdict à 14 jours, à partir de la `metric` qu'elle a déclarée elle-même.
     PROOF_KPI = {
         "gaspillage":     ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
         "roas":           ("roas", "ROAS", "", "up", "{:.1f}"),
@@ -2847,6 +2903,17 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     def _attach_metric(r, theme=None):
         spec = PROOF_KPI.get(r.get("key"))
+        if not spec and r.get("source") == "ai":
+            # Une piste IA n'a pas de clé stable (`ai_<theme>_<n>`, différente
+            # chaque semaine) : impossible de la trouver dans `PROOF_KPI` par
+            # sa clé. Elle a en revanche déclaré elle-même sa `metric` (voir
+            # `_theme_ai_recos`, toujours une valeur de `METRICS_IA`) — on
+            # construit donc le même genre de spec à partir de `METRIC_INFO_IA`,
+            # pour qu'elle reçoive la même baseline et le même verdict à 14
+            # jours (« ▶ Je le teste ») qu'une reco-règle.
+            _info = METRIC_INFO_IA.get(r.get("metric"))
+            if _info:
+                spec = (r["metric"],) + _info
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
