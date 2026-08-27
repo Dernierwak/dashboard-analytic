@@ -87,7 +87,13 @@ export function RecoActions({
               <span className="text-[12px] font-semibold text-brand">
                 {fait
                   ? `✓ Fait${action?.done_at ? ` le ${dateCourte(action.done_at)}` : ""}`
-                  : `◷ Pris${action ? ` le ${dateCourte(action.decided_at)}` : ""}`}
+                  : action?.status === "auto"
+                    // `"auto"` = l'hypothèse du thème, posée par le worker sans
+                    // clic (voir `build_report.py`) — « ◷ Pris » mentirait sur
+                    // qui a décidé. Rejet du checker : le label ne doit jamais
+                    // laisser croire que le client l'a prise.
+                    ? `◆ Suivie automatiquement${action ? ` depuis le ${dateCourte(action.decided_at)}` : ""}`
+                    : `◷ Pris${action ? ` le ${dateCourte(action.decided_at)}` : ""}`}
               </span>
               {fait && action && (
                 <span className="text-[11px] text-muted">

@@ -77,22 +77,52 @@ const VERDICT: Record<string, Etat> = {
   stable: { forme: "pleine", couleur: "#b86b00", cls: "text-warn", label: "stable" },
 };
 
+// VRAIE DÉCISION CLIENT, PEU IMPORTE LE `status` ACTUEL — même règle que
+// `estDecisionClient` (`lib/report.ts`), redéfinie ici plutôt que réimportée :
+// ce fichier est chargé par des composants CLIENT (`action-vivante.tsx`), et
+// `lib/report.ts` entraîne `next/headers` avec lui dans leur bundle dès qu'on
+// y importe autre chose qu'un type (piège CLAUDE.md §8 — vu à l'inverse ici :
+// pas une constante qui fuit du client vers le serveur, mais un module serveur
+// qui fuit dans le client).
+function estDecisionClient(a: TrackedAction): boolean {
+  return a.origin !== "auto" || Boolean(a.done_at);
+}
+
 export function etat(a: TrackedAction): Etat {
   // Une note n'a ni indicateur ni échéance : rien à juger, donc pas de verdict.
   // Elle prend un glyphe, pas une pastille — même règle que les changements de
   // plateforme : le rond est réservé à ce qu'on a décidé et qui sera mesuré.
   if (a.kind === "note")
     return { forme: "note", couleur: "#8b8e98", cls: "text-faint", label: "ta note" };
+  // « ✓ Vu — je range » et « × j'abandonne » sont accessibles directement
+  // depuis l'état `"auto"` (voir `action-vivante.tsx`) : dès l'un des deux
+  // cliqué, `status` devient `"archived"`/`"dropped"` SANS que le client ait
+  // jamais rien décidé lui-même (rejet du checker, 3e passe). La pastille
+  // PLEINE et les mots « rangée »/« abandonnée » sont réservés aux vraies
+  // décisions — `estDecisionClient` (lit `origin`, durable) tranche, pas
+  // `status` (qui a justement changé).
   if (a.status === "dropped")
-    return { forme: "barree", couleur: "#8b8e98", cls: "text-faint", label: "abandonnée" };
+    return estDecisionClient(a)
+      ? { forme: "barree", couleur: "#8b8e98", cls: "text-faint", label: "abandonnée" }
+      : { forme: "creuse", couleur: "#8b8e98", cls: "text-faint", label: "hypothèse écartée" };
   if (a.status === "archived")
     return a.verdict
       ? VERDICT[a.verdict] ?? VERDICT.stable
-      : { forme: "pleine", couleur: "#5a5d66", cls: "text-muted", label: "rangée" };
+      : estDecisionClient(a)
+        ? { forme: "pleine", couleur: "#5a5d66", cls: "text-muted", label: "rangée" }
+        : { forme: "creuse", couleur: "#5a5d66", cls: "text-muted", label: "hypothèse rangée" };
   if (a.status === "done")
     return a.due
       ? { forme: "creuse", couleur: "#b86b00", cls: "text-warn", label: "à juger" }
       : { forme: "creuse", couleur: "#1a7a4a", cls: "text-pos", label: "en observation" };
+  // `"auto"` : l'hypothèse d'un thème, posée par le worker sans clic (voir
+  // `build_report.py`). Le label ne doit JAMAIS laisser croire que le client
+  // l'a prise ou faite — d'où un mot différent des deux autres états, à
+  // chaque palier.
+  if (a.status === "auto")
+    return a.due
+      ? { forme: "creuse", couleur: "#b86b00", cls: "text-warn", label: "hypothèse à juger" }
+      : { forme: "creuse", couleur: "#1a7a4a", cls: "text-pos", label: "suivie automatiquement" };
   return { forme: "creuse", couleur: "#1a56ff", cls: "text-brand", label: "à faire" };
 }
 

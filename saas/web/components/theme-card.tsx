@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ChangementApi } from "@/lib/changements-api";
 import {
+  estDecisionClient,
   fmtCHF,
   noteSerie,
   revenuTheme,
@@ -215,17 +216,34 @@ export function ThemeCard({
 
   // Les actions de CE thème. Le rail les répartit lui-même entre ce qui court
   // et ce qui est clos ; ici on ne calcule que ce qui se lit AVANT lui.
+  //
+  // `miennes` reste TOUT — y compris `"auto"` (l'hypothèse posée par le worker
+  // sans clic, voir `build_report.py`) — parce que le rail doit continuer à
+  // la montrer et à porter son verdict (confirmé correct par le checker).
   const miennes = [...actions, ...archived].filter((a) => a.theme === theme.label);
+  // `miennesManuelles` : ce que LE CLIENT a réellement décidé de tenter.
+  // Rejet du checker (2e ET 3e passe) : le ratio « ce que tu as tenté a bougé
+  // l'indicateur », la date de dernière décision et l'alerte de carence ne
+  // peuvent pas compter une hypothèse que personne n'a cliquée, sous peine
+  // de fabriquer un chiffre (CLAUDE.md §7) et de désactiver ces deux alertes
+  // en silence. `a.status !== "auto"` NE SUFFIT PAS (3e passe) : « ✓ Vu — je
+  // range » et « × j'abandonne » changent `status` sans que le client ait
+  // rien décidé — `estDecisionClient` lit `origin` (durable, survit à ces
+  // deux gestes) au lieu de `status` (voir `lib/report.ts`).
+  const miennesManuelles = miennes.filter(estDecisionClient);
   // Ce qui a MARCHÉ sur ce thème, pas ce qui a été coché : le verdict vient du
   // worker quatorze jours après coup, pas du clic.
-  const jugees = miennes.filter((a) => a.verdict);
+  const jugees = miennesManuelles.filter((a) => a.verdict);
   const gagnantes = jugees.filter((a) => a.verdict === "better").length;
   const prochain = miennes
-    .filter((a) => a.status === "done" && !a.due)
+    // Ici, en revanche, `"auto"` reste inclue : « prochain verdict le… » est
+    // informatif sur CE QUI VA ÊTRE JUGÉ, peu importe qui l'a déclenché — ce
+    // n'est pas un chiffre attribué au client, juste une date.
+    .filter((a) => (a.status === "done" || a.status === "auto") && !a.due)
     .map((a) => a.check_at)
     .filter(Boolean)
     .sort()[0];
-  const derniereDecision = miennes.map((a) => a.decided_at).sort().pop();
+  const derniereDecision = miennesManuelles.map((a) => a.decided_at).sort().pop();
   const semainesDepuis = derniereDecision
     ? Math.floor(
         (Date.now() - new Date(derniereDecision + "T00:00:00").getTime()) / (7 * 864e5)
@@ -530,22 +548,31 @@ export function ThemeCard({
               </p>
             )}
 
-            {miennes.length + changements.length + changementsApi.length > 0 ? (
+            {/* Le rail montre TOUT ce qui vit sur ce thème — y compris une
+                hypothèse `"auto"` sans aucune action manuelle. L'alerte
+                juste en dessous, elle, ne parle que de ce que LE CLIENT a
+                tenté : les deux ne sont plus le même test (rejet du checker,
+                2e passe) — sinon une hypothèse auto-suivie masquait en
+                silence le rappel « tu n'as encore rien lancé toi-même ». */}
+            {miennes.length + changements.length + changementsApi.length > 0 && (
               <RailActions
                 actions={miennes}
                 changements={changements}
                 changementsApi={changementsApi}
                 themeCourant={theme.label}
               />
-            ) : (
-              <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
-                Rien n&apos;a encore été tenté sur ce thème
-                {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}. Prends
-                un conseil à gauche : tu sauras dans deux semaines ce qu&apos;il a donné.
-              </p>
             )}
+            {miennesManuelles.length === 0 &&
+              changements.length === 0 &&
+              changementsApi.length === 0 && (
+                <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
+                  Rien n&apos;a encore été tenté sur ce thème
+                  {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}. Prends
+                  un conseil à gauche : tu sauras dans deux semaines ce qu&apos;il a donné.
+                </p>
+              )}
 
-            {miennes.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
+            {miennesManuelles.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
               <p className="text-[11.5px] text-warn font-semibold mt-2">
                 Rien de nouveau lancé depuis {semainesDepuis} semaines.
               </p>

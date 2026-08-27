@@ -69,8 +69,11 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
     });
   };
 
-  const aJuger = a.status === "done" && a.due;
-  const enObservation = a.status === "done" && !a.due;
+  // `"auto"` (l'hypothèse d'un thème, posée par le worker sans clic) suit le
+  // même verdict que `"done"` — voir `rang()` (`rail-actions.tsx`) et `etat()`
+  // (`etat-action.tsx`), qui font la même distinction.
+  const aJuger = (a.status === "done" || a.status === "auto") && a.due;
+  const enObservation = (a.status === "done" || a.status === "auto") && !a.due;
 
   return (
     <>
@@ -93,8 +96,9 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
       {enObservation && <Etape a={a} />}
 
       {/* Le conseil aura disparu du rapport dans deux jours : sans son détail
-          sous la main, l'action redevient un titre énigmatique. */}
-      {a.status === "running" &&
+          sous la main, l'action redevient un titre énigmatique. Vaut aussi
+          pour `"auto"` : la piste IA qui l'a produite disparaîtra pareil. */}
+      {(a.status === "running" || a.status === "auto") &&
         (a.detail?.observation || a.detail?.pourquoi || a.detail?.verifier) && (
           <details className="group mt-1">
             <summary className="text-[11.5px] font-semibold text-brand cursor-pointer select-none list-none">
@@ -122,7 +126,10 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
         )}
 
       <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-        {a.status === "running" && !fait && (
+        {/* `"auto"` peut aussi être confirmée « faite » : le client dit alors
+            qu'il l'a réellement mise en place, et le compte à rebours repart
+            de ce jour — même geste, même `resolveAction`, que pour `"running"`. */}
+        {(a.status === "running" || a.status === "auto") && !fait && (
           <Bouton
             ton="encre"
             disabled={pending}
