@@ -39,6 +39,18 @@ export type PayloadReco = {
   baseline?: number | null;
   // Temps à prévoir pour l'appliquer (« 10 min », « 30 min », « 1 h », « 2 h+ »).
   effort?: string | null;
+  // Le rôle qu'une piste IA se déclare elle-même (voir `ROLES_IA`,
+  // `build_report.py`) — absent des recos-règles, jamais rendu par elles.
+  //   generale  — un geste, constatable demain à l'œil dans la plateforme.
+  //   hypothese — une hypothèse, dont le verdict tombe à 14 jours.
+  role?: "generale" | "hypothese" | null;
+  // Le type de geste qu'une piste IA se déclare (voir `NATURES_IA`) — même
+  // portée que `role` : absent des recos-règles.
+  nature?: "couper" | "augmenter" | "tester" | "créer" | "corriger" | null;
+  // Le nom exact de la campagne visée par une piste IA, recopié tel quel
+  // depuis les campagnes du thème — `null` quand le thème n'a aucune
+  // campagne pub (organique uniquement) ou pour une reco-règle.
+  cible?: string | null;
 };
 
 // « Ta boussole » — l'indicateur qui compte, choisi selon l'objectif du compte,

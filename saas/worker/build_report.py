@@ -65,10 +65,14 @@ def _call_gemini(prompt: str) -> str | None:
 # pour le suivi « ▶ Je le teste » (photographie de la décision).
 # `role` (depuis le 27 août 2026) : le rôle que se déclare une piste IA sur un
 # thème rédigé par Gemini — voir `ROLES_IA` plus bas et `_theme_ai_recos`.
+# `nature`/`cible` (redesign du 27 août 2026, diagnostic `vision-produit`) : le
+# TYPE de geste (voir `NATURES_IA`) et l'objet NOMMÉ qu'il vise (une campagne
+# ou un post, recopié tel quel depuis `facts`) — sans eux, une piste IA ne
+# nomme jamais ce qu'elle demande de faire concrètement.
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
                "repere", "angle_mort", "confidence", "priority", "source",
                "metric", "metric_label", "direction", "baseline", "effort",
-               "levier", "role")
+               "levier", "role", "nature", "cible")
 
 # Effort a prevoir pour appliquer un conseil-regle : c'est la moitie de la
 # decision (l'autre moitie, c'est l'indicateur vise). Affiche en pastille.
@@ -119,14 +123,34 @@ METRIC_INFO_IA = {
     "purchases": ("achats (GA4)", "", "up", "{:.0f}"),
 }
 
+# Le TYPE de geste qu'une piste IA se déclare elle-même (redesign du 27 août
+# 2026, diagnostic `vision-produit`) — cinq natures, parce que sans elles seul
+# `levier` forçait la variété : trois pistes pouvaient toutes dire « ajuste un
+# budget » (même levier « argent », trois natures différentes : couper ce
+# budget, l'augmenter, ou en tester un nouveau). `_theme_ai_recos` exige les 3
+# idées d'un thème sur 3 natures DISTINCTES, même mécanique de rejet que pour
+# `LEVIERS_IA`/`METRICS_IA`.
+NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
+
 # Le RÔLE qu'une piste IA se déclare elle-même, depuis que la composition par
 # thème est passée à 100 % Gemini (décision de David, 27 août 2026) : plus
 # aucun conseil-règle (`saas/core/reco_engine.py`, `_orga_recos`,
 # `_reco_evenements`) ne participe aux 3 recos d'un thème rédigé par Gemini —
 # les 3 places sont TOUJOURS 2 « générale » + 1 « hypothèse ».
-#   generale  — un conseil qu'un pro du marketing ferait, toutes plateformes
-#               confondues, sans hypothèse à suivre dans le temps ;
-#   hypothese — une idée qu'on va suivre : elle entre automatiquement dans
+#
+# Redéfini le 27 août 2026 (diagnostic `vision-produit`) : l'ancienne
+# définition de « generale » disait « valable sur n'importe quel canal, sans
+# rien à vérifier dans le temps » — ça condamnait 2 pistes sur 3 à être
+# génériques AVANT même que Gemini écrive un mot, et ça contredisait le champ
+# `verifier` (obligatoire) qu'on lui demandait quand même de remplir pour ces
+# pistes. Le nouvel axe n'oppose plus général/spécifique mais le DÉLAI DE LA
+# PREUVE — la clé JSON « generale » ne change pas (aucune migration), sa
+# définition oui :
+#   generale  — alias « geste » dans le prompt : une modification précise sur
+#               un élément NOMMÉ (une campagne, un post, une ligne de budget),
+#               dont on peut CONSTATER DEMAIN, à l'œil, dans la plateforme,
+#               qu'elle a été faite — un état, jamais un KPI ;
+#   hypothese — une idée moins sûre : elle entre automatiquement dans
 #               `suivi_actions` à la publication (voir plus bas dans
 #               `build_payload`) et reçoit un verdict mesuré à 14 jours, que le
 #               client l'ait cliquée ou non.
@@ -1258,7 +1282,21 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
     Depuis le 27 août 2026 (composition par thème 100 % Gemini), chaque piste
     porte aussi un `role` ("generale" ou "hypothese", voir `ROLES_IA`) —
     toujours exactement 1 "hypothese" parmi les pistes rendues, garanti par le
-    code et non par le prompt (voir le décompte forcé plus bas)."""
+    code et non par le prompt (voir le décompte forcé plus bas).
+
+    Redesign du 27 août 2026 (diagnostic `vision-produit`) : chaque piste
+    déclare aussi une `nature` (voir `NATURES_IA`, 3 valeurs distinctes exigées
+    sur les 3 idées d'un thème) et une `cible` — le nom exact de la campagne
+    visée, recopié dans `facts` ci-dessous. Une piste dont la `cible`
+    n'apparaît pas mot pour mot dans `facts` est rejetée : un objet visé qu'on
+    ne retrouve pas dans les campagnes du thème n'est pas un objet réel.
+
+    EXCEPTION tranchée par David (27 août 2026) : un thème SANS AUCUNE
+    campagne pub (`camps` vide — thème purement organique) n'a justement AUCUN
+    objet publicitaire à nommer. Le filtre `cible` ne s'y applique pas : ses
+    pistes portent sur autre chose (cadence, format de publication) sans
+    campagne ciblée, et `cible` vaut `None`. Pour un thème qui A des
+    campagnes, rien ne change : le filtre reste strict."""
     import json as _json
     if want <= 0:
         return []
@@ -1278,6 +1316,21 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "n'apportent rien à l'idée."
         if conv_txt else ""
     )
+    # Le filtre déterministe `cible` (plus bas) exige un nom recopié mot pour
+    # mot dans `facts` — impossible pour un thème purement organique, où
+    # `facts` ne contient aucune campagne à nommer (voir la docstring, David,
+    # 27 août 2026). Le prompt doit donc ne PAS exiger `cible` dans ce cas,
+    # sinon Gemini en invente un qui ne matchera jamais.
+    cible_prompt = (
+        '"cible" = le nom EXACT, recopié mot pour mot depuis « Ses campagnes » '
+        "ci-dessus, de LA campagne visée par cette idée — jamais un nom reformulé, "
+        "raccourci ou traduit. "
+        if camps else
+        "Ce thème n'a AUCUNE campagne publicitaire (organique uniquement) : "
+        'mets "cible": "" pour les 3 idées — elles portent sur la cadence, le '
+        "format ou le contenu des publications, jamais sur une campagne qui "
+        "n'existe pas. "
+    )
     raw = _call_gemini(
         "Tu es un consultant marketing senior pour une PME suisse. "
         f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif de ce thème : {obj_txt}). "
@@ -1290,13 +1343,21 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
         "« Meta fait mieux que Google » ni l'inverse — chaque conseil porte sur UN levier, "
         "pas sur un arbitrage entre les deux régies. "
-        "Parmi ces idées, 2 doivent être des conseils d'AMÉLIORATION GÉNÉRALE (ce qu'un "
-        "consultant marketing conseillerait, valable sur n'importe quel canal, sans rien "
-        "à vérifier dans le temps) et 1 doit être une HYPOTHÈSE À SUIVRE (une idée moins "
-        "sûre, qu'on va tester et mesurer sur 14 jours). "
+        "Parmi ces idées : 2 doivent être des GESTES — une modification précise à "
+        "faire sur un élément NOMMÉ du compte ci-dessus (une campagne, un post, une "
+        "ligne de budget), dont on peut CONSTATER DEMAIN, à l'œil, dans la plateforme, "
+        "qu'elle a été faite. Leur champ \"verifier\" décrit exactement ce qu'on doit "
+        "VOIR demain pour savoir que c'est fait (un état, pas un KPI) — par exemple "
+        "« demain, le budget de X affiche 40 CHF/j au lieu de 25 ». Un geste dont on "
+        "ne peut pas constater l'exécution en un coup d'œil n'est pas un geste : "
+        "reformule-le. "
+        "Et 1 doit être une HYPOTHÈSE : une idée moins sûre dont on ne saura qu'au "
+        "bout de 14 jours si elle a marché. Son champ \"verifier\" nomme l'indicateur "
+        "à comparer à aujourd'hui, et dans quel sens il doit bouger. "
         "Réponds UNIQUEMENT avec un tableau JSON de "
         f"{want} objets, chacun avec ces clés : "
-        '{"title","observation","pourquoi","verifier","angle_mort","effort","levier","metric","role"}. '
+        '{"title","observation","pourquoi","verifier","angle_mort","effort","levier",'
+        '"metric","role","nature","cible"}. '
         '"effort" = le temps qu\'il faut pour le mettre en place, EXACTEMENT une '
         'de ces valeurs : "10 min", "30 min", "1 h", "2 h+". '
         '"levier" = sur quoi agit cette idée, EXACTEMENT une de ces valeurs : '
@@ -1306,9 +1367,17 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         'une de ces valeurs : "cpc" (coût par clic pub), "roas" (retour sur dépense pub), '
         '"posts" (nombre de publications), "reach" (portée moyenne des posts), '
         '"eng" (engagement moyen des posts), "purchases" (achats mesurés par GA4). '
-        '"role" = EXACTEMENT une de ces valeurs : "generale" (amélioration générale) ou '
-        '"hypothese" (hypothèse à suivre) — au total sur les idées que tu proposes, '
-        f"{max(0, want - 1)} en \"generale\" et 1 en \"hypothese\". "
+        '"role" = EXACTEMENT une de ces valeurs : "generale" (un geste, constatable '
+        'demain) ou "hypothese" (une hypothèse, mesurée à 14 jours) — au total sur les '
+        f"idées que tu proposes, {max(0, want - 1)} en \"generale\" et 1 en \"hypothese\". "
+        '"nature" = le TYPE de geste, EXACTEMENT une de ces valeurs : "couper" '
+        '(arrêter ou réduire quelque chose), "augmenter" (mettre plus de budget ou de '
+        'fréquence sur ce qui marche), "tester" (essayer une variante nouvelle), '
+        '"créer" (produire un contenu ou une campagne qui n\'existe pas encore), '
+        '"corriger" (réparer quelque chose qui ne fonctionne pas) — les '
+        f"{want} idées que tu proposes doivent porter {want} valeurs de \"nature\" "
+        "TOUTES DIFFÉRENTES entre elles. "
+        f"{cible_prompt}"
         "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
     )
     if not raw:
@@ -1337,6 +1406,31 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
             if (d.get("levier") not in LEVIERS_IA or d.get("metric") not in METRICS_IA
                     or d.get("role") not in ROLES_IA):
                 continue
+            # `nature` : même mécanique de rejet — hors liste, ou en doublon
+            # d'une piste DÉJÀ retenue de ce thème (`out`), casserait la
+            # promesse « 3 natures différentes » qui remplace ici `levier`
+            # comme garde-fou contre 3 pistes qui disent toutes « ajuste un
+            # budget ».
+            _nature = d.get("nature")
+            if _nature not in NATURES_IA or any(o.get("nature") == _nature for o in out):
+                continue
+            # `cible` : le nom exact d'une campagne du thème, recopié dans
+            # `facts` plus haut — jamais deviné après coup. Absente ou non
+            # retrouvée mot pour mot dans `facts`, la piste ne vise aucun objet
+            # réel : ce n'est pas un geste valide (même esprit que le filtre
+            # `_compares_channels`, qui rejette lui aussi une piste entière
+            # après réception plutôt que de la corriger).
+            #
+            # EXCEPTION (David, 27 août 2026) : `camps` vide → thème purement
+            # organique, aucune campagne à nommer — le filtre ne s'applique
+            # pas, et `cible` reste `None` (rien à vérifier, donc rien à
+            # afficher). Pour un thème qui A des campagnes, rien ne change.
+            if camps:
+                _cible = str(d.get("cible") or "").strip()
+                if not _cible or _cible not in facts:
+                    continue
+            else:
+                _cible = None
             out.append({
                 "key": f"ai_{theme}_{i + 1}", "platform": "ia",
                 "title": str(d["title"])[:90],
@@ -1346,6 +1440,7 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                 "confidence": "piste", "priority": 9 + i, "source": "ai",
                 "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
                 "levier": d["levier"], "metric": d["metric"], "role": d["role"],
+                "nature": _nature, "cible": _cible,
             })
         # LE DÉCOMPTE DES RÔLES NE SE FIE JAMAIS AU TEXTE LIBRE DE GEMINI — voir
         # `_forcer_une_hypothese`. La garantie « toujours 2 générale + 1

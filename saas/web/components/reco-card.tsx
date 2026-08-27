@@ -54,6 +54,21 @@ export function RecoCard({
   const cf = CONF[r.confidence] ?? CONF.piste;
   const veille = estVeille(r.key);
   const hasDetail = Boolean(r.pourquoi || r.verifier || r.repere || r.angle_mort);
+  // Le libellé du champ `verifier` DÉPEND de ce qu'il promet réellement — trois
+  // sens différents cohabitaient dans le dépôt (redesign du 27 août 2026,
+  // diagnostic `vision-produit`) : « Avant d'agir » laissait croire à une
+  // précondition à checker AVANT le geste, alors que pour une piste IA
+  // (`r.role`) le champ décrit ce qu'on CONSTATE APRÈS coup — demain pour un
+  // geste (`role === "generale"`), à 14 jours pour une hypothèse. Une
+  // reco-règle (pas de `role`) garde « Avant d'agir » : son `verifier` est
+  // réellement une précondition (voir `saas/core/reco_engine.py`).
+  const verifierLabel = veille
+    ? "Ce qu'on surveille — "
+    : r.role === "hypothese"
+      ? "Dans 14 jours — "
+      : r.role === "generale"
+        ? "À constater demain — "
+        : "Avant d'agir — ";
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-4 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5">
@@ -78,10 +93,16 @@ export function RecoCard({
       <h3 className="text-[14px] font-semibold text-ink leading-snug">{r.title}</h3>
       <p className="text-[12.5px] text-muted leading-relaxed mt-1">{r.observation}</p>
 
-      {/* Les deux infos qui permettent de trancher en 5 secondes : ce que ça
+      {/* Les infos qui permettent de trancher en 5 secondes : sur quoi ça porte
+          (`cible`, une piste IA quand le thème a des campagnes pub), ce que ça
           coûte à faire, et l'indicateur qu'on regardera après. */}
-      {(r.effort || r.metric_label) && (
+      {(r.cible || r.effort || r.metric_label) && (
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          {r.cible && (
+            <span className="text-[11px] font-semibold text-ink bg-black/[0.05] rounded-full px-2.5 py-1">
+              ▪ {r.cible}
+            </span>
+          )}
           {r.effort && (
             <span className="text-[11px] font-semibold text-muted bg-black/[0.05] rounded-full px-2.5 py-1">
               ⏱ {r.effort}
@@ -112,9 +133,7 @@ export function RecoCard({
             )}
             {r.verifier && (
               <p className="text-[12px] text-muted leading-relaxed">
-                <span className="font-semibold text-ink">
-                  {veille ? "Ce qu'on surveille — " : "Avant d'agir — "}
-                </span>
+                <span className="font-semibold text-ink">{verifierLabel}</span>
                 {r.verifier}
               </p>
             )}
