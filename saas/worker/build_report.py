@@ -63,9 +63,12 @@ def _call_gemini(prompt: str) -> str | None:
 # Champs d'une reco tels que stockés dans le payload (miroir du dict _reco()).
 # metric/metric_label/direction/baseline : indicateur-cible + sa valeur du moment,
 # pour le suivi « ▶ Je le teste » (photographie de la décision).
+# `role` (depuis le 27 août 2026) : le rôle que se déclare une piste IA sur un
+# thème rédigé par Gemini — voir `ROLES_IA` plus bas et `_theme_ai_recos`.
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
                "repere", "angle_mort", "confidence", "priority", "source",
-               "metric", "metric_label", "direction", "baseline", "effort")
+               "metric", "metric_label", "direction", "baseline", "effort",
+               "levier", "role")
 
 # Effort a prevoir pour appliquer un conseil-regle : c'est la moitie de la
 # decision (l'autre moitie, c'est l'indicateur vise). Affiche en pastille.
@@ -92,6 +95,69 @@ EFFORT_BY_KEY = {
     # l'outil : on sort sa calculette, et c'est vite fait.
     "theme_event_cout": "10 min",
 }
+
+# Le LEVIER et la MÉTRIQUE qu'une piste IA (`_theme_ai_recos`) doit déclarer
+# elle-même — deux listes fermées, même principe que `EFFORTS` ci-dessus.
+# Une valeur hors liste fait rejeter la piste entière (elle n'est jamais
+# affichée) : un levier ou une métrique devinés après coup ne seraient ni
+# l'un ni l'autre.
+LEVIERS_IA = ("argent", "contenu", "tempo", "audience")
+# Le vocabulaire exact que `_kpis_window` (plus bas, dans `build_payload`)
+# sait mesurer — une piste qui déclarerait une métrique hors de cette liste
+# ne pourrait de toute façon jamais recevoir de verdict à 14 jours.
+METRICS_IA = ("cpc", "roas", "posts", "reach", "eng", "purchases")
+# Libellé, unité, sens d'amélioration et format d'affichage de chaque
+# métrique déclarable — mêmes valeurs que les entrées correspondantes de
+# `PROOF_KPI` (plus bas), factorisées ici pour qu'une piste IA reçoive la
+# même mesure qu'une reco-règle sans avoir besoin d'une clé stable.
+METRIC_INFO_IA = {
+    "cpc":       ("CPC moyen", "CHF", "down", "{:.2f}"),
+    "roas":      ("ROAS", "", "up", "{:.1f}"),
+    "posts":     ("posts publiés", "", "up", "{:.0f}"),
+    "reach":     ("portée moyenne", "", "up", "{:,.0f}"),
+    "eng":       ("engagement moyen", "%", "up", "{:.1f}"),
+    "purchases": ("achats (GA4)", "", "up", "{:.0f}"),
+}
+
+# Le RÔLE qu'une piste IA se déclare elle-même, depuis que la composition par
+# thème est passée à 100 % Gemini (décision de David, 27 août 2026) : plus
+# aucun conseil-règle (`saas/core/reco_engine.py`, `_orga_recos`,
+# `_reco_evenements`) ne participe aux 3 recos d'un thème rédigé par Gemini —
+# les 3 places sont TOUJOURS 2 « générale » + 1 « hypothèse ».
+#   generale  — un conseil qu'un pro du marketing ferait, toutes plateformes
+#               confondues, sans hypothèse à suivre dans le temps ;
+#   hypothese — une idée qu'on va suivre : elle entre automatiquement dans
+#               `suivi_actions` à la publication (voir plus bas dans
+#               `build_payload`) et reçoit un verdict mesuré à 14 jours, que le
+#               client l'ait cliquée ou non.
+# Une valeur hors liste fait rejeter la piste entière, même principe que
+# `LEVIERS_IA`/`METRICS_IA` — mais le DÉCOMPTE (exactement 1 hypothèse) n'est
+# jamais laissé au texte libre de Gemini : `_theme_ai_recos` le force lui-même
+# après coup (voir plus bas), parce qu'un prompt ne peut pas GARANTIR un compte
+# exact sur trois objets indépendants.
+ROLES_IA = ("generale", "hypothese")
+
+
+def _forcer_une_hypothese(pool: list[dict]) -> None:
+    """Garantit qu'AU PLUS une piste porte `role="hypothese"` dans `pool`,
+    et exactement une s'il y en a au moins une — mute `pool` sur place.
+
+    Appelée deux fois : une fois dans `_theme_ai_recos` juste après avoir reçu
+    Gemini (il peut mal compter sur un texte libre), et une seconde fois après
+    le filtre `_compares_channels` dans `build_payload` — ce filtre peut
+    justement écarter LA piste que Gemini avait désignée comme hypothèse, et
+    la garantie « toujours 2 générale + 1 hypothèse » doit survivre aux deux.
+    Ne fait rien sur une liste vide : rien à désigner.
+    """
+    if not pool:
+        return
+    if sum(1 for d in pool if d.get("role") == "hypothese") == 1:
+        return
+    # Règle déterministe et stable : la DERNIÈRE piste de la liste porte
+    # l'hypothèse, les autres sont générales — reproductible, jamais un choix
+    # aléatoire qui changerait de piste sans que rien n'ait changé.
+    for i, d in enumerate(pool):
+        d["role"] = "hypothese" if i == len(pool) - 1 else "generale"
 
 
 def _effort_de(reco: dict) -> str:
@@ -161,9 +227,13 @@ _LEVIER_REGLE = {
     # c'est le budget du theme.
     "theme_event_cout": "argent",
 }
-# Les conseils IA n'ont pas de cle stable (`ai_<theme>_<n>`) : leur levier se lit
-# dans ce qu'ils demandent de faire. Ordre volontaire — « budget » l'emporte sur
-# « visuel » quand les deux mots sont la, parce que c'est le geste qui coute.
+# Depuis août 2026, une piste IA declare directement son levier (voir
+# `_theme_ai_recos` et `LEVIERS_IA`) : `_levier()` ne devine plus jamais le
+# sien par mots-cles. Cette table ne sert donc plus qu'a un conseil qui ne
+# serait ni une regle (cle dans `_LEVIER_REGLE`), ni une veille, ni issu de
+# l'IA — gardee en repli defensif, pas en usage courant. Ordre volontaire —
+# « budget » l'emporte sur « visuel » quand les deux mots sont la, parce que
+# c'est le geste qui coute.
 _LEVIER_MOTS = (
     ("argent", ("budget", "depense", "dépense", "investi", "cpc", "cout", "coût",
                 "enchere", "enchère", "reallou", "réallou", "financ")),
@@ -188,6 +258,11 @@ def _levier(reco: dict) -> str:
         return "veille"
     if cle in _LEVIER_REGLE:
         return _LEVIER_REGLE[cle]
+    if reco.get("source") == "ai":
+        # `_theme_ai_recos` rejette déjà toute piste dont le `levier` déclaré
+        # n'est pas dans `LEVIERS_IA` (jamais affichée) : ici, `levier` est
+        # donc garanti présent et valide — on le lit, on ne le devine plus.
+        return reco.get("levier")
     txt = f"{reco.get('title', '')} {reco.get('observation', '')}".lower()
     for nom, mots in _LEVIER_MOTS:
         if any(m in txt for m in mots):
@@ -1178,7 +1253,12 @@ def _theme_conversions_txt(g4t: dict | None) -> str:
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                     obj_txt: str, g4t: dict | None = None, want: int = 3) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
-    (léger, thinking off). [] si Gemini échoue → jamais bloquant."""
+    (léger, thinking off). [] si Gemini échoue → jamais bloquant.
+
+    Depuis le 27 août 2026 (composition par thème 100 % Gemini), chaque piste
+    porte aussi un `role` ("generale" ou "hypothese", voir `ROLES_IA`) —
+    toujours exactement 1 "hypothese" parmi les pistes rendues, garanti par le
+    code et non par le prompt (voir le décompte forcé plus bas)."""
     import json as _json
     if want <= 0:
         return []
@@ -1210,11 +1290,25 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
         "« Meta fait mieux que Google » ni l'inverse — chaque conseil porte sur UN levier, "
         "pas sur un arbitrage entre les deux régies. "
+        "Parmi ces idées, 2 doivent être des conseils d'AMÉLIORATION GÉNÉRALE (ce qu'un "
+        "consultant marketing conseillerait, valable sur n'importe quel canal, sans rien "
+        "à vérifier dans le temps) et 1 doit être une HYPOTHÈSE À SUIVRE (une idée moins "
+        "sûre, qu'on va tester et mesurer sur 14 jours). "
         "Réponds UNIQUEMENT avec un tableau JSON de "
         f"{want} objets, chacun avec ces clés : "
-        '{"title","observation","pourquoi","verifier","angle_mort","effort"}. '
+        '{"title","observation","pourquoi","verifier","angle_mort","effort","levier","metric","role"}. '
         '"effort" = le temps qu\'il faut pour le mettre en place, EXACTEMENT une '
         'de ces valeurs : "10 min", "30 min", "1 h", "2 h+". '
+        '"levier" = sur quoi agit cette idée, EXACTEMENT une de ces valeurs : '
+        '"argent" (combien on met et où), "contenu" (ce qu\'on montre), '
+        '"tempo" (quand et à quelle fréquence on publie), "audience" (à qui on parle). '
+        '"metric" = l\'indicateur chiffré que cette idée doit faire bouger, EXACTEMENT '
+        'une de ces valeurs : "cpc" (coût par clic pub), "roas" (retour sur dépense pub), '
+        '"posts" (nombre de publications), "reach" (portée moyenne des posts), '
+        '"eng" (engagement moyen des posts), "purchases" (achats mesurés par GA4). '
+        '"role" = EXACTEMENT une de ces valeurs : "generale" (amélioration générale) ou '
+        '"hypothese" (hypothèse à suivre) — au total sur les idées que tu proposes, '
+        f"{max(0, want - 1)} en \"generale\" et 1 en \"hypothese\". "
         "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
     )
     if not raw:
@@ -1231,16 +1325,33 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         for i, d in enumerate(arr[:want]):
             if not isinstance(d, dict):
                 continue
-            if all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-                out.append({
-                    "key": f"ai_{theme}_{i + 1}", "platform": "ia",
-                    "title": str(d["title"])[:90],
-                    "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
-                    "verifier": str(d["verifier"]), "repere": "",
-                    "angle_mort": str(d["angle_mort"]),
-                    "confidence": "piste", "priority": 9 + i, "source": "ai",
-                    "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
-                })
+            if not all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+                continue
+            # `levier`, `metric` et `role` sont des listes fermées, comme `effort`
+            # — mais contrairement à `effort`, une valeur hors liste REJETTE la
+            # piste entière au lieu de retomber sur une valeur par défaut : un
+            # levier ou une métrique devinés casseraient respectivement la
+            # diversité de `_diversifier` et la promesse de verdict à 14 jours
+            # (`PROOF_KPI`) ; un rôle deviné romprait la garantie « 2 générale +
+            # 1 hypothèse » que le reste du produit tient pour acquise.
+            if (d.get("levier") not in LEVIERS_IA or d.get("metric") not in METRICS_IA
+                    or d.get("role") not in ROLES_IA):
+                continue
+            out.append({
+                "key": f"ai_{theme}_{i + 1}", "platform": "ia",
+                "title": str(d["title"])[:90],
+                "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
+                "verifier": str(d["verifier"]), "repere": "",
+                "angle_mort": str(d["angle_mort"]),
+                "confidence": "piste", "priority": 9 + i, "source": "ai",
+                "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
+                "levier": d["levier"], "metric": d["metric"], "role": d["role"],
+            })
+        # LE DÉCOMPTE DES RÔLES NE SE FIE JAMAIS AU TEXTE LIBRE DE GEMINI — voir
+        # `_forcer_une_hypothese`. La garantie « toujours 2 générale + 1
+        # hypothèse » pilote l'entrée automatique dans `suivi_actions` (voir
+        # `build_payload`), elle est donc absolue, pas une préférence.
+        _forcer_une_hypothese(out)
         return out
     except Exception:
         return []
@@ -1839,8 +1950,31 @@ def build_payload(sb, user_id: str) -> dict | None:
         # Le repere se pose au jour ou l'action a ete FAITE (a defaut, decidee).
         # On garde son TITRE avec sa date : un pointille muet ne relie rien, et
         # l'index de semaine seul ne permet pas d'ecrire ce qu'on a fait.
+        #
+        # UNE HYPOTHÈSE AUTO (`detail.origin == "auto"`, voir plus bas dans
+        # cette fonction) EST EXCLUE tant qu'elle n'a jamais reçu de vraie
+        # décision client. Un repère ▲ signifie « le client a décidé ceci, et
+        # ça sera jugé » (voir `etat-action.tsx`, la distinction pastille
+        # ronde / glyphe de plateforme) — en poser un pour une décision que
+        # personne n'a prise fabrique un fait, ce que ce produit interdit
+        # (CLAUDE.md §7). Cette frise ET la courbe de la boussole
+        # (`kpi_focus.marqueurs`, plus bas) lisent ce même dict : le filtre à
+        # la source suffit pour les deux.
+        #
+        # ATTENTION (rejet du checker, 3e passe) : NE PAS filtrer sur
+        # `status == "auto"` — `status` change (archivée, abandonnée,
+        # confirmée) sans que ça touche `detail.origin`, qui lui est durable
+        # (voir le commentaire détaillé plus bas, section « suivi_actions »).
+        # Un `done_at` posé est la PREUVE d'un vrai clic « ✓ Je l'ai fait »
+        # (seul `resolveAction(id,"done")` l'écrit) : dès qu'il existe, la
+        # ligne devient une vraie décision client, quelle que soit son
+        # origine, et mérite son repère.
         for _a in (sb.table("suivi_actions").select("*")
                    .eq("user_id", user_id).execute().data or []):
+            _det = _a.get("detail")
+            _origine_auto = isinstance(_det, dict) and _det.get("origin") == "auto"
+            if _origine_auto and not _a.get("done_at"):
+                continue
             _d = _a.get("done_at") or _a.get("decided_at")
             _markers.setdefault(_nrm(_a.get("theme")), []).append(
                 {"date": str(_d)[:10], "titre": (_a.get("title") or "").strip()}
@@ -2245,33 +2379,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         if df_week_posts is not None and not df_week_posts.empty and "labels" in df_week_posts.columns:
             tw = df_week_posts[df_week_posts["labels"].map(_has)]
 
-        t_recos = build_recos(
-            df_camp=tc, avg_ctr=avg_ctr,
-            df_insta=ti if not ti.empty else None,
-            df_week_posts=tw, followers_current=followers_current,
-            ga4=_theme_ga4(lbl), objectif=_obj_lbl, feedback=feedback, vision=constats,
-        )
-        t_recos = [r for r in t_recos if r.get("key") not in SETUP_KEYS]
-
-        # L'ORGANIQUE DU THÈME, puis la VEILLE de ses campagnes neuves.
-        #
-        # Les deux sont calculés ici et pas dans `saas/core/reco_engine.py` :
-        # le moteur est partagé entre le niveau compte et les thèmes, mais il
-        # ne connaît ni les thèmes ni les dates déclarées. Ce sont pourtant des
-        # conseils-règles comme les autres — même dict, même carte, même feedback.
-        try:
-            t_recos += _orga_recos(lbl, ti, df_insta, last_full_day)
-        except Exception:
-            pass
-        try:
-            for _c in _camp_recentes:
-                if _nrm(_c.get("theme")) != nlbl:
-                    continue
-                _v = _reco_veille(_c, last_full_day)
-                if _v:
-                    t_recos.append(_v)
-        except Exception:
-            pass
+        # AU-DELÀ DES `_THEMES_IA` PREMIERS ÉTOILAGES, Gemini ne rédige pas pour
+        # ce thème (garde-fou de coût, voir `_THEMES_IA`) — inchangé par cette
+        # décision. Elle ne concerne QUE les thèmes qu'il rédige : `_ia_redigee`
+        # décide donc dès ici lequel des deux chemins ce thème emprunte.
+        _ia_redigee = nlbl in _themes_ia
 
         # LE THÈME CONTRE LUI-MÊME. Quatre fenêtres, calculées une fois : elles
         # servent la règle de l'arrêt ci-dessous et le filet tout en bas.
@@ -2281,6 +2393,31 @@ def build_payload(sb, user_id: str) -> dict | None:
                            last_full_day - timedelta(days=7 * _k))
             for _k in range(1, 9)
         ]
+
+        # Calculé une fois, pour les deux chemins : `_theme_ai_recos` s'en sert
+        # comme contexte de prompt, `_reco_evenements` (chemin règles) en fait
+        # des conseils.
+        _g4t_lbl = None
+        try:
+            _g4t_lbl = _theme_ga4(lbl)
+        except Exception:
+            pass
+
+        # LA VEILLE DU THÈME (campagnes trop jeunes, thème qui s'arrête net) —
+        # calculée pour les deux chemins, mais rangée différemment selon eux
+        # (voir plus bas pourquoi). Une veille n'est PAS un conseil : elle ne
+        # porte pas de bouton « Je le teste » et n'a aucun verdict à mériter
+        # (voir `_est_veille` plus haut dans ce fichier).
+        t_veille: list[dict] = []
+        try:
+            for _c in _camp_recentes:
+                if _nrm(_c.get("theme")) != nlbl:
+                    continue
+                _v = _reco_veille(_c, last_full_day)
+                if _v:
+                    t_veille.append(_v)
+        except Exception:
+            pass
         try:
             _prec = _hebdo_theme[0]
             _ref = _pub_theme(lbl, cur_since - timedelta(days=_CALME_REF),
@@ -2290,87 +2427,154 @@ def build_payload(sb, user_id: str) -> dict | None:
             _a = _reco_theme_arret(lbl, _sem_theme, _prec, _ref,
                                    _sem_theme["posts"], _frais)
             if _a:
-                t_recos.append(_a)
+                t_veille.append(_a)
         except Exception:
             pass
 
-        # LES ÉVÉNEMENTS DÉSIGNÉS SUR CE THÈME. Après `_sem_theme` parce que le
-        # coût par conversion a besoin de la dépense de la semaine, et avant le
-        # tri : ces conseils passent la même coupe à trois que les autres, sans
-        # passe-droit. Un thème sans événement choisi n'en produit aucun — la
-        # fonction rend une liste vide et rien ne change pour lui.
-        #
-        # Calculé une fois : `_theme_ai_recos` plus bas s'en sert aussi, pour
-        # que les pistes rédigées par Gemini voient la même conversion choisie
-        # que les conseils-règles ci-dessus.
-        _g4t_lbl = None
-        try:
-            _g4t_lbl = _theme_ga4(lbl)
-            t_recos += _reco_evenements(lbl, _g4t_lbl, _sem_theme)
-        except Exception:
-            pass
-
-        t_recos = sorted(t_recos, key=_importance)
-        # On vise 3 conseils par thème : les règles d'abord, puis on COMPLÈTE avec
-        # autant de pistes IA distinctes que nécessaire. Ce nombre a beaucoup
-        # baissé depuis que l'organique et la veille produisent leurs propres
-        # règles — c'est voulu : un constat mesuré vaut mieux qu'une piste, et
-        # un appel Gemini de moins est une source d'erreur de moins.
-        #
-        # AU-DELÀ DES `_THEMES_IA` PREMIERS, on ne complète pas. Le thème garde
-        # ses conseils-règles et sa carte entière ; il n'a simplement pas de
-        # pistes rédigées, et sa carte le DIT (voir `ia_redigee` plus bas, lu
-        # par `components/theme-card.tsx`). Le `want=0` de `_theme_ai_recos`
-        # suffirait à ne rien appeler, mais on préfère ne pas entrer dans la
-        # fonction du tout : c'est ici que se lit la garantie de coût.
-        _ia_redigee = nlbl in _themes_ia
-        _need = max(0, 3 - len(t_recos)) if _ia_redigee else 0
-        _ai = []
         if _ia_redigee:
-            try:
-                _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt_lbl,
-                                      g4t=_g4t_lbl, want=_need)
-                # Un hoquet Gemini ne doit pas laisser le theme avec un seul conseil :
-                # on retente une fois avant d'abandonner.
-                if _need and not _ai:
-                    _ai = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl), _obj_txt_lbl,
-                                          g4t=_g4t_lbl, want=_need)
-            except Exception:
-                _ai = []
-        # Filet de sécurité : on écarte tout conseil qui OPPOSE Meta et Google
-        # (le client n'en veut pas — filtre à la génération, pas qu'à l'affichage).
-        # Et on ne garde QUE LES TROIS PLUS IMPORTANTS : la coupe se faisait
-        # avant sur la seule priorité du moteur, c'est-à-dire sur l'ordre dans
-        # lequel les règles sont écrites.
-        t_recos = sorted([r for r in (t_recos + _ai) if not _compares_channels(r)],
-                         key=_importance)[:3]
+            # ── COMPOSITION 100 % GEMINI (décision de David, 27 août 2026) ───
+            #
+            # Plus aucun conseil-règle (`build_recos`, `_orga_recos`,
+            # `_reco_evenements`) ne participe aux 3 recos de ce thème — David,
+            # mot pour mot : « jamais de code fixe, c'est des recos qui sont
+            # faites par l'IA, qui dit je vais les classer là — mais c'est
+            # jamais un code fixe ». Les 3 places VISENT TOUJOURS 2 « générale »
+            # + 1 « hypothèse » (voir `ROLES_IA`, `_theme_ai_recos`) : la garde
+            # de coût conditionnelle qui existait ici (`_need = max(0, 3 -
+            # len(t_recos))`) disparaît, puisque plus rien d'autre ne remplit
+            # ces 3 places — Gemini est donc appelé à chaque fois pour ce
+            # thème, pas seulement pour compléter.
+            #
+            # DEUX TENTATIVES, PAS UNE SEULE — corrigé après un rejet du
+            # checker : la 1re version ne retentait QUE si Gemini rendait 0
+            # piste, alors qu'une piste dont `levier`/`metric`/`role` est hors
+            # liste (voir `_theme_ai_recos`) ou qui compare Meta/Google
+            # (`_compares_channels`, juste en dessous) peut faire tomber le
+            # thème à 2, voire 1 reco, SANS jamais relancer Gemini. On garde
+            # maintenant la MEILLEURE des deux tentatives (celle qui rend le
+            # plus de pistes, filtre anti-comparaison appliqué), et on
+            # s'arrête dès qu'une tentative rend déjà 3 pistes valides.
+            #
+            # CE N'EST PAS UNE GARANTIE MATHÉMATIQUE ABSOLUE : si Gemini rend
+            # moins de 3 pistes valides sur les DEUX tentatives, la carte sort
+            # avec moins de 3 recos plutôt que de compléter avec un texte
+            # template — la décision de David l'interdit explicitement pour ce
+            # flux. C'est rare (mesuré : la quasi-totalité des générations
+            # rendent 3 pistes valides du premier coup), mais possible, et ce
+            # commentaire ne prétend pas le contraire.
+            #
+            # La veille (campagne neuve, thème à l'arrêt), elle, reste HORS
+            # QUOTA : elle s'affiche EN PLUS des recos, jamais à leur place.
+            t_recos: list[dict] = []
+            for _essai in range(2):
+                try:
+                    _cand = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl),
+                                            _obj_txt_lbl, g4t=_g4t_lbl, want=3)
+                except Exception:
+                    _cand = []
+                # Filet : on écarte tout conseil qui OPPOSE Meta et Google (le
+                # client n'en veut pas — filtre à la génération, pas qu'à
+                # l'affichage), AVANT de comparer les deux tentatives entre elles.
+                _cand = [r for r in _cand if not _compares_channels(r)]
+                if len(_cand) > len(t_recos):
+                    t_recos = _cand
+                if len(t_recos) >= 3:
+                    break
+            # Ce filtre peut écarter PILE la piste que Gemini avait désignée
+            # comme hypothèse : on réapplique donc `_forcer_une_hypothese`
+            # sur le résultat final, pas seulement à la sortie de
+            # `_theme_ai_recos`.
+            _forcer_une_hypothese(t_recos)
 
-        # ── LE FILET : AUCUNE CARTE NE SORT MUETTE ───────────────────────────
-        #
-        # Il passe EN DERNIER, après les règles, après l'IA, après la coupe à
-        # trois. Écrit plus haut, il aurait fait baisser `_need` d'une unité et
-        # poussé dehors une piste rédigée : un filet qui prend une place n'est
-        # plus un filet. Écrit ici, il ne s'exécute que si la carte serait
-        # partie vide — 14 % des cartes sur le rejeu de 12 semaines.
-        #
-        # Il ne fabrique aucun chiffre : tout ce qu'il écrit vient de
-        # `_sem_theme` et `_hebdo_theme`, c'est-à-dire des mêmes lignes que la
-        # courbe juste au-dessus de lui sur la carte.
-        if not t_recos:
+            # ── LE FILET : AUCUNE CARTE NE SORT MUETTE ───────────────────────
+            #
+            # Ne se déclenche que si Gemini n'a RIEN rendu du tout (échec des
+            # deux tentatives) ET qu'il n'y a aucune veille à montrer non plus
+            # — sinon la carte aurait bien quelque chose à dire. Le résultat
+            # est lui-même une veille (`veille_theme_…`), donc rangé avec les
+            # autres, jamais à la place des 2+1.
+            if not t_recos and not t_veille:
+                try:
+                    _aveugle = (_sem_theme["spend"] > 0
+                                and not (_g4t_lbl or {}).get("paid_revenue"))
+                    _sil = 1
+                    for _h in _hebdo_theme:
+                        if _h["spend"] > 0 or _h["posts"] > 0:
+                            break
+                        _sil += 1
+                    t_veille = [_reco_theme_calme(
+                        lbl, _sem_theme, _hebdo_theme,
+                        _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+                except Exception:
+                    pass
+        else:
+            # ── CE THÈME N'EST PAS RÉDIGÉ PAR GEMINI ─────────────────────────
+            #
+            # `_THEMES_IA` protège la facture (voir sa note) : au-delà des
+            # premiers étoilages, ce thème garde ses conseils-règles (moteur +
+            # organique + événements + veille), mélangés et coupés à 3 comme
+            # avant cette tâche — TASK-023 ne change QUE la composition des
+            # thèmes que Gemini rédige. Le RÉSULTAT est le même qu'avant pour
+            # ce chemin, mais PAS le code ligne à ligne — 3 divergences
+            # relevées par le checker, toutes bénignes, aucune corrigée (elles
+            # viennent du partage de `_g4t_lbl`/`_sem_theme`/`_hebdo_theme`
+            # entre les deux chemins, nécessaire à la restructuration) :
+            #   · `_theme_ga4(lbl)` est appelée deux fois au lieu de trois
+            #     (`_g4t_lbl` plus haut dans la boucle, partagé avec le chemin
+            #     Gemini, et ici pour `ga4=`) — sans coût réseau, cette
+            #     fonction ne fait que lire des lignes déjà en mémoire ;
+            #   · si `_g4t_lbl` a levé une exception plus haut, il vaut `None`
+            #     ici, et `_reco_evenements(lbl, None, ...)` est quand même
+            #     appelée (elle rend `[]`, comme pour tout thème sans
+            #     conversion désignée) — avant, le `try` unique qui entourait
+            #     l'appel à `_theme_ga4` ET `_reco_evenements` sautait les deux
+            #     d'un coup, sans jamais appeler la seconde ;
+            #   · le filet final RÉUTILISE `_g4t_lbl` au lieu de rappeler
+            #     `_theme_ga4(lbl)` une 3e fois : si CET appel-là avait été
+            #     celui qui échouait (transitoire, le même thème sur la même
+            #     donnée échoue en général de façon reproductible), le code
+            #     d'origine abandonnait tout le filet (`except: t_recos = []`,
+            #     carte muette) — ici, en réutilisant une valeur déjà résolue
+            #     (fût-elle `None`), le filet ne peut plus échouer sur CET
+            #     appel précis et retombe de façon fiable sur
+            #     `_reco_theme_calme(...)` plutôt que sur une carte muette.
+            t_recos = build_recos(
+                df_camp=tc, avg_ctr=avg_ctr,
+                df_insta=ti if not ti.empty else None,
+                df_week_posts=tw, followers_current=followers_current,
+                ga4=_theme_ga4(lbl), objectif=_obj_lbl, feedback=feedback, vision=constats,
+            )
+            t_recos = [r for r in t_recos if r.get("key") not in SETUP_KEYS]
             try:
-                _g4t = _theme_ga4(lbl)
-                _aveugle = (_sem_theme["spend"] > 0
-                            and not (_g4t or {}).get("paid_revenue"))
-                _sil = 1
-                for _h in _hebdo_theme:
-                    if _h["spend"] > 0 or _h["posts"] > 0:
-                        break
-                    _sil += 1
-                t_recos = [_reco_theme_calme(
-                    lbl, _sem_theme, _hebdo_theme,
-                    _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+                t_recos += _orga_recos(lbl, ti, df_insta, last_full_day)
             except Exception:
-                t_recos = []
+                pass
+            # Ici, la veille N'EST PAS hors quota : elle rentre dans le même
+            # mélange qu'avant cette tâche, exactement comme du temps où ce
+            # thème n'était de toute façon jamais rédigé par Gemini.
+            t_recos += t_veille
+            t_veille = []
+            try:
+                t_recos += _reco_evenements(lbl, _g4t_lbl, _sem_theme)
+            except Exception:
+                pass
+            t_recos = sorted([r for r in t_recos if not _compares_channels(r)],
+                             key=_importance)[:3]
+
+            if not t_recos:
+                try:
+                    _aveugle = (_sem_theme["spend"] > 0
+                                and not (_g4t_lbl or {}).get("paid_revenue"))
+                    _sil = 1
+                    for _h in _hebdo_theme:
+                        if _h["spend"] > 0 or _h["posts"] > 0:
+                            break
+                        _sil += 1
+                    t_recos = [_reco_theme_calme(
+                        lbl, _sem_theme, _hebdo_theme,
+                        _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+                except Exception:
+                    t_recos = []
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {
@@ -2409,7 +2613,11 @@ def build_payload(sb, user_id: str) -> dict | None:
                                        "label_source", "spend", "revenue", "ctr", "cpc")}
                 for c in t_camps[:8]
             ],
-            "recos": [_strip_reco(r) for r in t_recos],
+            # `t_veille` est TOUJOURS AJOUTÉE, jamais mélangée à la coupe des
+            # 2+1 (thèmes rédigés par Gemini) ni comptée dans les 3 (thèmes
+            # règles, où elle est déjà dans `t_recos` — voir plus haut, elle
+            # y est vidée après fusion pour ne pas doublonner ici).
+            "recos": [_strip_reco(r) for r in (t_recos + t_veille)],
         })
 
     # Réglages de base : les conseils « socle » (GA4 muet, connexion, funnel),
@@ -2696,6 +2904,13 @@ def build_payload(sb, user_id: str) -> dict | None:
     # action antérieure garde la mesure sur laquelle elle a été photographiée.
     _BASCULE_THEME = "2026-08-12"
 
+    # PROOF_KPI ne couvre que les recos-règles : leur `key` est stable d'une
+    # semaine à l'autre (ex. "gaspillage"), donc une clé fixe suffit à
+    # retrouver leur indicateur. Une piste IA (`_theme_ai_recos`) a une clé
+    # dynamique (`ai_<theme>_<n>`, différente chaque semaine) — elle ne peut
+    # donc jamais être ajoutée ici par clé. C'est `METRIC_INFO_IA` (plus haut
+    # dans ce fichier) + `_attach_metric` (plus bas) qui lui donnent le même
+    # verdict à 14 jours, à partir de la `metric` qu'elle a déclarée elle-même.
     PROOF_KPI = {
         "gaspillage":     ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
         "roas":           ("roas", "ROAS", "", "up", "{:.1f}"),
@@ -2847,6 +3062,17 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     def _attach_metric(r, theme=None):
         spec = PROOF_KPI.get(r.get("key"))
+        if not spec and r.get("source") == "ai":
+            # Une piste IA n'a pas de clé stable (`ai_<theme>_<n>`, différente
+            # chaque semaine) : impossible de la trouver dans `PROOF_KPI` par
+            # sa clé. Elle a en revanche déclaré elle-même sa `metric` (voir
+            # `_theme_ai_recos`, toujours une valeur de `METRICS_IA`) — on
+            # construit donc le même genre de spec à partir de `METRIC_INFO_IA`,
+            # pour qu'elle reçoive la même baseline et le même verdict à 14
+            # jours (« ▶ Je le teste ») qu'une reco-règle.
+            _info = METRIC_INFO_IA.get(r.get("metric"))
+            if _info:
+                spec = (r["metric"],) + _info
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
@@ -2871,6 +3097,126 @@ def build_payload(sb, user_id: str) -> dict | None:
         # des prérequis du compte, leur mesure l'est aussi.
         _attach_metric(_r)
         _attach_effort(_r)
+
+    # ── L'HYPOTHÈSE DE LA SEMAINE ENTRE AUTOMATIQUEMENT EN SUIVI ─────────────
+    #
+    # Décision de David (27 août 2026) : « suivie dans le temps » ne veut pas
+    # dire une carte affichée cette semaine sans lendemain — la piste que
+    # Gemini désigne `role="hypothese"` (voir `_theme_ai_recos`, `ROLES_IA`)
+    # doit recevoir un verdict mesuré à 14 jours, SANS attendre que le client
+    # clique « ▶ Je le teste » NI « ✓ Je l'ai fait ».
+    #
+    # STATUT DÉDIÉ `"auto"` — PAS `"running"` (rejet du checker, 1re passe de
+    # vérification). `"running"` est le statut du suivi MANUEL, et deux
+    # mécanismes du produit lisent SPÉCIFIQUEMENT `status == "done"` pour
+    # déclencher un verdict :
+    #   · le gate `due` de la boucle de mesure juste en dessous (avant ce
+    #     correctif : `due = status == "done" and today >= chk`) ;
+    #   · côté web, `resolveAction(..., "done")` (`saas/web/app/actions.ts`)
+    #     est le SEUL endroit du dépôt qui écrit `status="done"` — geste
+    #     exclusivement client (« ✓ Je l'ai fait »).
+    # Une ligne posée `"running"` restait donc `"running"` pour toujours,
+    # verdict structurellement inatteignable sans ce clic — l'inverse de ce
+    # que David a demandé. `"auto"` est un troisième statut, propre à ce
+    # mécanisme, que la boucle de mesure traite comme équivalent à `"done"`
+    # (verdict à l'échéance) SANS jamais dépendre d'un `done_at` posé par un
+    # clic. Il n'est CHOISI PAR AUCUN CHECK SQL (colonne `status` libre, sans
+    # contrainte — vérifié dans `supabase/migrations/000_run_me_all.sql`),
+    # donc aucune migration n'est nécessaire pour l'introduire.
+    #
+    # HORS DU PLAFOND DE 3 CHANTIERS ET DE « ▶ JE LE TESTE » (rejet du checker) :
+    # `saas/web/app/page.tsx` calcule `capReached` sur les actions dont le
+    # statut n'est PAS `"done"` — avec `"running"` seul, les 3 hypothèses
+    # auto-créées (une par thème rédigé par Gemini) saturaient ce plafond et
+    # désactivaient le bouton partout. `capReached` exclut maintenant aussi
+    # `"auto"` (voir la modification de `page.tsx`).
+    #
+    # PAS DE DOUBLON SUR UN RE-RUN LE MÊME JOUR (rejet du checker) : la clé
+    # d'une piste IA (`ai_<theme>_<i>`) dépend de sa POSITION dans la réponse
+    # de Gemini, qui peut varier d'un appel à l'autre (« ↻ Recharger mes
+    # conseils » relance `_theme_ai_recos`). `on_conflict` seul ne suffit donc
+    # pas à retrouver l'ancienne ligne : on purge d'abord toute ligne encore
+    # `"auto"` de CE thème et CE jour avant d'écrire la nouvelle — ne touche
+    # jamais une ligne que le client a reprise à son compte (`status`
+    # basculé sur `"running"`/`"done"` par un clic, donc plus `"auto"`).
+    #
+    # `detail.origin = "auto"` — MARQUEUR D'ORIGINE DURABLE (rejet du checker,
+    # 3e passe). `status` porte DEUX rôles à la fois : l'origine (auto/manuel)
+    # ET le cycle de vie (running/done/archived/dropped). Deux gestes client
+    # normaux écrasent `status="auto"` sans jamais toucher un client réel :
+    # « ✓ Vu — je range » (`resolveAction(id,"seen")` → `status="archived"`)
+    # et « × j'abandonne » (`resolveAction(id,"drop")` → `status="dropped"`),
+    # tous deux disponibles directement depuis l'état `"auto"` — dès que l'un
+    # des deux se produit, plus aucun filtre sur `status == "auto"` ne
+    # retrouve la ligne, qui redevient indiscernable d'une décision manuelle
+    # (repère ▲ fantôme sur les courbes, ratio « ce que tu as tenté » faussé —
+    # voir `_markers` plus bas et `theme-card.tsx`).
+    #
+    # `detail` est un jsonb NULLABLE déjà en place (migration §11, AUCUNE
+    # migration supplémentaire nécessaire) et n'est JAMAIS réécrit par
+    # `resolveAction` (`saas/web/app/actions.ts` — ses trois branches ne
+    # touchent que `status`/`done_at`/`check_at`) : `origin` y survit à
+    # n'importe quel geste client ultérieur. La règle de lecture, partout où
+    # elle compte encore une fois `status` transitionné : une ligne
+    # `detail.origin == "auto"` reste une hypothèse auto tant qu'aucun
+    # `done_at` n'a été posé — un `done_at` ne peut venir QUE d'un clic
+    # « ✓ Je l'ai fait » (`resolveAction(id,"done")`), donc SA présence est
+    # elle-même la preuve d'une vraie décision client, quelle que soit
+    # l'origine de la ligne.
+    #
+    # `baseline`/`metric`/`metric_label`/`direction` viennent d'ÊTRE posés par
+    # `_attach_metric` juste au-dessus : c'est la même photo de la décision
+    # qu'aurait prise un clic client aujourd'hui.
+    _hyp_today = today.isoformat()
+    _hyp_check = (today + timedelta(days=14)).isoformat()
+    for _tf in themes_focus:
+        _hyp = next((r for r in _tf["recos"] if r.get("role") == "hypothese"), None)
+        if not _hyp:
+            continue
+        try:
+            sb.table("suivi_actions").delete().eq("user_id", user_id).eq(
+                "theme", _tf["label"]
+            ).eq("decided_at", _hyp_today).eq("status", "auto").execute()
+        except Exception:
+            pass
+        _row = {
+            "user_id": user_id,
+            "reco_key": _hyp["key"],
+            "title": _hyp["title"],
+            "theme": _tf["label"],
+            "metric": _hyp.get("metric"),
+            "metric_label": _hyp.get("metric_label"),
+            "direction": _hyp.get("direction"),
+            "baseline": _hyp.get("baseline"),
+            "decided_at": _hyp_today,
+            "check_at": _hyp_check,
+            "status": "auto",
+            "detail": {
+                "observation": _hyp.get("observation"),
+                "pourquoi": _hyp.get("pourquoi"),
+                "verifier": _hyp.get("verifier"),
+                "effort": _hyp.get("effort"),
+                # Marqueur d'origine DURABLE — voir le commentaire au-dessus.
+                # Survit à tout changement de `status` (archivage, abandon,
+                # confirmation manuelle) puisque `resolveAction` ne réécrit
+                # jamais `detail`.
+                "origin": "auto",
+            },
+        }
+        try:
+            sb.table("suivi_actions").upsert(
+                _row, on_conflict="user_id,reco_key,decided_at"
+            ).execute()
+        except Exception:
+            # Repli si la colonne `detail` n'existe pas encore (migration pas
+            # passée) — même repli que côté web (`actions.ts`, `startTracking`).
+            try:
+                _row.pop("detail", None)
+                sb.table("suivi_actions").upsert(
+                    _row, on_conflict="user_id,reco_key,decided_at"
+                ).execute()
+            except Exception:
+                pass
 
     # ── Les 3 du moment ──────────────────────────────────────────────────────
     # Jusqu'a 12 conseils repartis en 4 themes, personne ne choisit dans 12. Une
@@ -2899,8 +3245,11 @@ def build_payload(sb, user_id: str) -> dict | None:
     #    à l'échéance (check_at), on remesure l'indicateur → verdict.
     tracking = None
     try:
+        # `"auto"` (voir plus haut, l'hypothèse auto-suivie) entre dans LA MÊME
+        # boucle de mesure que `"running"`/`"done"` — son verdict tombe à
+        # l'échéance, comme `"done"`, mais sans jamais dépendre d'un clic.
         _sa = (sb.table("suivi_actions").select("*")
-               .eq("user_id", user_id).in_("status", ["running", "done"])
+               .eq("user_id", user_id).in_("status", ["running", "done", "auto"])
                .order("check_at").execute().data) or []
     except Exception:
         _sa = []
@@ -2926,9 +3275,11 @@ def build_payload(sb, user_id: str) -> dict | None:
                 chk = today
             status = str(a.get("status") or "running")
             done_at = str(a.get("done_at"))[:10] if a.get("done_at") else None
-            # Le compteur des 2 semaines ne tourne que sur une action FAITE :
-            # tant qu'elle est a faire, il n'y a rien a mesurer.
-            due = status == "done" and today >= chk
+            # Le compteur des 2 semaines ne tourne que sur une action FAITE
+            # (`"done"`, un clic client) OU auto-suivie (`"auto"`, l'hypothèse
+            # du thème — voir plus haut) : tant qu'elle est encore `"running"`
+            # (à faire, jamais cliquée), il n'y a rien à mesurer.
+            due = status in ("done", "auto") and today >= chk
             entry = {
                 "id": a.get("id"), "title": a.get("title"), "theme": a.get("theme"),
                 "reco_key": a.get("reco_key"),
@@ -2960,16 +3311,25 @@ def build_payload(sb, user_id: str) -> dict | None:
                 #
                 # Trois conditions, et elles sont strictes, parce qu'un signal
                 # précoce qui contredit le verdict final ruine le verdict :
-                #   · l'action est FAITE depuis au moins 7 jours pleins ;
+                #   · l'action est FAITE (ou auto-suivie) depuis au moins 7
+                #     jours pleins ;
                 #   · le mouvement dépasse 10 % — sous ce seuil, sept jours de
                 #     données ne distinguent pas un effet d'un lundi calme ;
                 #   · on ne prononce jamais « ça a marché », seulement un sens.
+                #
+                # L'ORIGINE DU COMPTE À REBOURS n'est pas la même pour les deux
+                # statuts : un « done » redémarre son horloge le jour du clic
+                # (`done_at`) ; un « auto » n'a pas ce clic, son horloge part de
+                # `decided_at` (le jour de la photo, `check_at = decided_at+14`).
+                _origine = done_at if status == "done" else (
+                    str(a.get("decided_at"))[:10] if status == "auto" else None
+                )
                 if (
-                    status == "done" and not due and done_at
+                    status in ("done", "auto") and not due and _origine
                     and metric and base is not None and now is not None
                 ):
                     try:
-                        _fait = date.fromisoformat(done_at)
+                        _fait = date.fromisoformat(_origine)
                     except ValueError:
                         _fait = None
                     if _fait and (today - _fait).days >= 7 and abs(float(base)) > 1e-9:

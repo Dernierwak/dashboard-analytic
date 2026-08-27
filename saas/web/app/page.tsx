@@ -190,7 +190,13 @@ export default async function Page() {
   const reglages = report?.reglages ?? [];
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
-  const capReached = data.actions.filter((a) => a.status !== "done").length >= 3;
+  //
+  // `"auto"` (l'hypothèse d'un thème rédigé par Gemini, voir `build_report.py`)
+  // EN EST EXCLUE : elle n'est pas un chantier que le client a choisi de mener,
+  // c'est le worker qui la suit tout seul. La compter ici saturait le plafond
+  // dès la publication (jusqu'à 3 hypothèses auto-créées) et désactivait
+  // « ▶ Je le teste » sur tout le rapport, en continu — rejeté par le checker.
+  const capReached = data.actions.filter((a) => a.status !== "done" && a.status !== "auto").length >= 3;
 
   // TOUS les thèmes ont désormais une carte, qu'ils aient une courbe ou non :
   // c'est la carte qui décide de montrer sa courbe. Deux cartes pour le même

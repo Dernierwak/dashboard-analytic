@@ -106,9 +106,15 @@ export type KpiFocus = {
 // Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
 export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolean };
 
-// Une action décidée depuis un conseil. Trois états :
-//   running  = à faire (elle vit en haut du rapport)
-//   done     = faite le done_at, on observe 14 jours à partir de ce jour
+// Une action décidée depuis un conseil. Cinq états :
+//   running  = à faire (elle vit en haut du rapport) — un clic client
+//   done     = faite le done_at, on observe 14 jours à partir de ce jour — un clic client
+//   auto     = l'hypothèse d'un thème (voir `build_report.py`, `_theme_ai_recos`
+//              `role="hypothese"`) : posée par le WORKER à la publication, sans
+//              aucun clic. Reçoit un verdict à l'échéance exactement comme
+//              `done`, mais ne compte PAS dans le plafond de 3 chantiers
+//              (`capReached`, `app/page.tsx`) et ne bloque jamais « ▶ Je le
+//              teste » sur les autres conseils.
 //   archived = verdict vu, rangée dans l'historique
 //   dropped  = abandonnée — elle quitte la liste mais reste dans l'historique
 export type TrackedAction = {
@@ -123,7 +129,20 @@ export type TrackedAction = {
   decided_at: string;
   check_at: string;
   done_at?: string | null;
-  status?: "running" | "done" | "archived" | "dropped";
+  status?: "running" | "done" | "auto" | "archived" | "dropped";
+  /**
+   * MARQUEUR D'ORIGINE DURABLE — distinct de `status` (rejet du checker,
+   * 3e passe). `status` porte le cycle de vie ET, pour `"auto"`, l'origine —
+   * mais deux gestes client parfaitement normaux (« ✓ Vu — je range »,
+   * « × j'abandonne ») écrasent `status="auto"` sans que le client ait
+   * jamais rien décidé lui-même. `origin` vient de `detail.origin` (posé une
+   * fois par le worker, jamais réécrit par `resolveAction` — voir
+   * `build_report.py`) : il reste `"auto"` même après un archivage ou un
+   * abandon. Un `done_at` posé (uniquement via `resolveAction(id,"done")`,
+   * donc un clic « ✓ Je l'ai fait ») fait quand même de la ligne une vraie
+   * décision client, quelle que soit son origine — voir `estDecisionClient`.
+   */
+  origin?: "auto";
   due?: boolean;
   then?: number;
   now?: number;
@@ -135,6 +154,10 @@ export type TrackedAction = {
     pourquoi?: string;
     verifier?: string;
     effort?: string | null;
+    /** Copie brute de l'origine — `origin` (ci-dessus) est la forme lue par
+     *  le reste du produit ; ce champ n'existe que parce que `detail` est
+     *  l'endroit où le worker l'écrit (jsonb déjà en place, sans migration). */
+    origin?: "auto";
   } | null;
   /**
    * LE POINT D'ÉTAPE À SEPT JOURS — à mi-parcours, pas un verdict.
@@ -144,6 +167,20 @@ export type TrackedAction = {
    */
   etape?: { jours: number; delta: number; sens: "bon" | "mauvais" } | null;
 };
+
+/**
+ * VRAIE DÉCISION CLIENT, PEU IMPORTE LE `status` ACTUEL.
+ *
+ * Utilisée partout où compter/étiqueter une ligne de suivi comme « ce que TU
+ * as fait » ne doit PAS inclure une hypothèse auto-suivie que le client n'a
+ * fait que ranger ou abandonner (rejet du checker, 3e passe) : `origin` seul
+ * ne suffit pas, parce qu'une hypothèse auto que le client confirme via
+ * « ✓ Je l'ai fait » (`done_at` posé) DEVIENT une vraie décision — c'est
+ * justement le seul geste qui écrit `done_at`, et lui seul.
+ */
+export function estDecisionClient(a: TrackedAction): boolean {
+  return a.origin !== "auto" || Boolean(a.done_at);
+}
 
 export type ThemeRow = { label: string; spend: number; rev: number };
 
@@ -572,7 +609,19 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       check_at: check,
       done_at: r.done_at ? String(r.done_at).slice(0, 10) : null,
       status,
-      due: status === "done" && check !== "" && check <= todayIso,
+      // Lu UNIQUEMENT depuis la ligne elle-même — jamais depuis le repli
+      // `recoDetail` (la photo d'un conseil du rapport courant, qui ne sait
+      // pas qui a créé la ligne de suivi). Absent avant que le worker n'ait
+      // commencé à l'écrire (migration §11 déjà en place, mais rapports
+      // publiés avant cette tâche) : ces lignes-là n'ont simplement pas
+      // d'origine connue, traitées comme manuelles par défaut — c'était déjà
+      // leur seul comportement possible.
+      origin: r.detail && typeof r.detail === "object" && r.detail.origin === "auto"
+        ? "auto"
+        : undefined,
+      // `"auto"` (l'hypothèse auto-suivie) reçoit son verdict à l'échéance
+      // exactement comme `"done"` — sans jamais dépendre d'un clic client.
+      due: (status === "done" || status === "auto") && check !== "" && check <= todayIso,
       detail:
         (r.detail as TrackedAction["detail"]) ??
         recoDetail.get(String(r.reco_key ?? "")) ??

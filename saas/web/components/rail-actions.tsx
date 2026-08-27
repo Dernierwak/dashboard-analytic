@@ -48,7 +48,11 @@ import { RailFiltre } from "@/components/rail-filtre";
 const ORDRE: Record<string, number> = { juger: 0, running: 1, observation: 2 };
 
 function rang(a: TrackedAction): number {
-  if (a.status === "done" && a.due) return ORDRE.juger;
+  // `"auto"` (l'hypothèse d'un thème, posée par le worker sans clic) suit le
+  // même rang que `"done"` : à juger une fois l'échéance passée, sinon en
+  // observation — jamais « en cours », ce mot désignant un chantier que le
+  // client a lui-même choisi de mener.
+  if ((a.status === "done" || a.status === "auto") && a.due) return ORDRE.juger;
   if (a.status === "running") return ORDRE.running;
   return ORDRE.observation;
 }
@@ -72,7 +76,7 @@ export function RailActions({
   maxH?: string;
 }) {
   const vivantes = actions
-    .filter((a) => a.status === "running" || a.status === "done")
+    .filter((a) => a.status === "running" || a.status === "done" || a.status === "auto")
     // L'urgence en haut : « à juger » est la seule chose du rail qui réclame un
     // geste, un tri purement chronologique l'enterrerait sous cinq entrées.
     .sort((a, b) => rang(a) - rang(b) || (a.decided_at < b.decided_at ? 1 : -1));

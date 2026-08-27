@@ -54,12 +54,16 @@ export async function startTracking(a: {
 
   if (a.tracked) {
     // Toggle off : on retire de la liste les suivis non rangés de ce conseil.
+    // `"auto"` (l'hypothèse d'un thème posée par le worker, voir
+    // `build_report.py`) est incluse : sans elle, « annuler » sur une carte
+    // auto-suivie ne supprimait rien en base, et la carte redevenait « suivie »
+    // au rechargement suivant malgré le clic.
     await supabase
       .from("suivi_actions")
       .delete()
       .eq("user_id", user.id)
       .eq("reco_key", a.recoKey)
-      .in("status", ["running", "done"]);
+      .in("status", ["running", "done", "auto"]);
     revalidatePath("/");
     return { ok: true };
   }
