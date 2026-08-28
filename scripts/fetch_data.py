@@ -451,6 +451,91 @@ def fetch_reco_feedback(supabase: Client, user_id: str, recent_weeks: int = 4) -
     return out
 
 
+def fetch_reco_theme_context(supabase: Client, user_id: str, recent_weeks: int = 4) -> list[dict] | None:
+    """Feedback contextualisé par thème (migration `reco_feedback_contexte.sql`
+    — colonnes `theme`/`title`, NOT NULL DEFAULT '' pour `theme`). Sert deux
+    besoins distincts du Graphe B (`build_report.py`) :
+      - museler `not_for_me` par (reco_key, thème) plutôt que par reco_key
+        seul sur tout le compte (voir `build_recos`, `saas/core/reco_engine.py`) ;
+      - donner à `_theme_ai_recos` le TEXTE des pistes IA récemment écartées
+        ou appliquées sur SON thème — les clés `ai_<theme>_<i>` sont
+        positionnelles (l'ordre de Gemini change d'une semaine à l'autre),
+        seul ce texte survit d'une semaine à l'autre.
+    Returns: [{reco_key, theme, title, reaction, week_start}] du plus récent
+    au plus ancien, filtré aux lignes qui portent un thème réel (`theme <> ''`
+    — `''` est le sentinel « pas de thème », voir la migration).
+
+    `None` (PAS `[]`) SI LA REQUÊTE ÉCHOUE — distinction volontaire (rejet du
+    checker, 2e passe) : `[]` doit vouloir dire « interrogé avec succès, rien
+    à raconter » (aucun museau à appliquer, c'est correct et attendu tant que
+    personne n'a encore cliqué). Une exception (migration pas encore jouée,
+    colonne absente) veut dire autre chose : « je ne sais pas », et NE DOIT
+    PAS être lu comme « rien n'a jamais été refusé » — sinon `not_for_me`
+    perdrait tout effet sur les cartes de thème tant que la migration n'est
+    pas jouée (régression relevée par le checker, 2e passe). L'appelant
+    (`build_payload`) retombe sur l'ancien museau compte-entier quand ce
+    signal vaut `None`.
+    """
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
+    try:
+        res = (
+            supabase.table("reco_feedback")
+            .select("reco_key, theme, title, reaction, week_start")
+            .eq("user_id", user_id)
+            .gte("week_start", cutoff)
+            .neq("theme", "")
+            .order("week_start", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return None
+
+
+def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:
+    """Le dernier verdict PERSISTÉ (migration `suivi_actions_verdict.sql`) par
+    reco_key, sur les `recent_weeks` semaines — écrit une seule fois par
+    `build_report.py`, au moment où la boucle de mesure calcule le verdict
+    d'une action `done`/`auto`. Alimente la repondération du feedback `done`
+    dans `build_recos` (`saas/core/reco_engine.py`) : un verdict qui confirme
+    l'effet dépriorise fortement, un verdict qui le contredit ne dépriorise
+    pas, et tant qu'aucun verdict n'est encore tombé (colonne NULL, ou
+    migration pas encore passée) la clé est simplement absente d'ici —
+    repondération neutre par défaut.
+
+    LE FILTRE PORTE SUR `check_at`, PAS `decided_at` (rejet du checker, 2e
+    passe) : le verdict n'est calculé/écrit qu'à `today >= check_at`, et
+    `check_at` est RECALCULÉ à `done_at + 14j` au clic « ✓ C'est fait »
+    (`saas/web/app/actions.ts::resolveAction`) — `done_at` est postérieur à
+    `decided_at` (le jour de « ▶ Je le teste »), parfois de bien plus de 14
+    jours. Filtrer sur `decided_at` rendait donc le verdict illisible dès que
+    le délai entre les deux clics dépassait `recent_weeks` : `check_at` est la
+    SEULE date qui dit fidèlement quand le verdict est réellement tombé.
+    Returns: {reco_key: "better"|"worse"|"stable"} (le plus récent par clé).
+    """
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
+    out: dict[str, str] = {}
+    try:
+        res = (
+            supabase.table("suivi_actions")
+            .select("reco_key, verdict, check_at")
+            .eq("user_id", user_id)
+            .gte("check_at", cutoff)
+            .not_.is_("verdict", "null")
+            .order("check_at", desc=True)
+            .execute()
+        )
+        for row in (res.data or []):
+            key = row.get("reco_key")
+            if key and key not in out:
+                out[key] = row.get("verdict")
+    except Exception:
+        pass
+    return out
+
+
 def fetch_reco_decisions(supabase: Client, user_id: str, recent_weeks: int = 5) -> list[dict]:
     """Décisions « Fait » datées — alimente la boucle de la preuve du rapport
     (le rapport suivant mesure l'effet de chaque décision sur son KPI).

@@ -33,7 +33,7 @@ from scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_theme_objectifs, fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
-    fetch_insight_feedback,
+    fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
 )
 from scripts.insert_data import upsert_weekly_report  # noqa: E402
 from saas.core.reco_engine import (  # noqa: E402
@@ -1275,9 +1275,18 @@ def _theme_conversions_txt(g4t: dict | None) -> str:
 
 
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
-                    obj_txt: str, g4t: dict | None = None, want: int = 3) -> list[dict]:
+                    obj_txt: str, g4t: dict | None = None, want: int = 3,
+                    eviter: list | None = None, deja_fait: list | None = None) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
     (léger, thinking off). [] si Gemini échoue → jamais bloquant.
+
+    `eviter`/`deja_fait` (TASK-025) : le TEXTE (`title`) des pistes IA que le
+    client a récemment marquées « pas pour moi »/« fait » SUR CE THÈME (voir
+    `reco_ctx` dans `build_payload`) — les retours client entrent ainsi
+    directement dans la composition, pas seulement en boucle après coup. Les
+    clés `ai_<theme>_<i>` étant positionnelles, ce texte est la SEULE chose qui
+    identifie une piste passée de façon stable ; sans lui, Gemini ne peut pas
+    savoir qu'il repropose une idée déjà écartée ou déjà en place.
 
     Depuis le 27 août 2026 (composition par thème 100 % Gemini), chaque piste
     porte aussi un `role` ("generale" ou "hypothese", voir `ROLES_IA`) —
@@ -1331,13 +1340,29 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         "format ou le contenu des publications, jamais sur une campagne qui "
         "n'existe pas. "
     )
+    # LES RETOURS CLIENT DANS LA COMPOSITION, PAS SEULEMENT EN BOUCLE APRÈS
+    # COUP (TASK-025) — voir la docstring pour pourquoi c'est le TEXTE, jamais
+    # la clé, qui identifie une piste passée.
+    feedback_prompt = ""
+    if eviter:
+        feedback_prompt += (
+            " Le client a déjà dit « pas pour moi » récemment sur ces idées-là : "
+            + " / ".join(eviter) +
+            " — ne repropose pas une idée proche de celles-ci."
+        )
+    if deja_fait:
+        feedback_prompt += (
+            " Il a récemment mis en place ces idées-là : "
+            + " / ".join(deja_fait) +
+            " — ne les répète pas à l'identique (tu peux t'appuyer dessus pour la suite)."
+        )
     raw = _call_gemini(
         "Tu es un consultant marketing senior pour une PME suisse. "
         f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif de ce thème : {obj_txt}). "
         f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
         f"{roas_txt}, {s.get('posts', 0)} posts. "
         f"Ses campagnes : {facts}."
-        f"{conv_prompt} "
+        f"{conv_prompt}{feedback_prompt} "
         f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
         "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
         "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
@@ -1696,11 +1721,43 @@ def build_payload(sb, user_id: str) -> dict | None:
     # ── Profil + GA4 + recos (même moteur que le rapport) ────────────────────
     objectif = None
     feedback: dict = {}
+    # Le verdict PERSISTÉ (voir `suivi_actions.verdict`, écrit plus bas dans la
+    # boucle de mesure) — repondère `done` selon ce qu'il a réellement donné,
+    # pas seulement selon le clic (`_DONE_W`, `saas/core/reco_engine.py`).
+    verdicts: dict = {}
+    # Le contexte par thème d'un feedback (colonnes `theme`/`title`, migration
+    # `reco_feedback_contexte.sql`) — sert à museler `not_for_me` PAR THÈME
+    # (pas tout le compte, voir `feedback_theme` plus bas) et à donner à
+    # `_theme_ai_recos` le texte des pistes IA récemment écartées/appliquées.
+    reco_ctx: list | None = None
     try:
         objectif = fetch_objectif(sb, user_id)
         feedback = fetch_reco_feedback(sb, user_id)
+        verdicts = fetch_reco_verdicts(sb, user_id)
+        reco_ctx = fetch_reco_theme_context(sb, user_id)
     except Exception:
         pass
+    # `reco_ctx` vaut `None` quand la requête a échoué (migration
+    # `reco_feedback_contexte.sql` pas encore jouée) — DISTINCT d'une liste
+    # vide (requête réussie, rien à raconter). Sert de garde-fou plus bas
+    # (`theme=`/`feedback_theme=` des deux appels à `build_recos`) : tant que
+    # ce signal vaut `None`, le museau `not_for_me` PAR THÈME retombe sur
+    # l'ancien museau compte entier — sinon `not_for_me` perdrait tout effet
+    # sur les cartes de thème tant que la migration n'est pas jouée
+    # (régression relevée par le checker, 2e passe).
+    _theme_ctx_ok = reco_ctx is not None
+    # {(reco_key, thème normalisé): reaction} — la plus récente par couple
+    # (`reco_ctx` est déjà trié du plus récent au plus ancien). `_nrm` n'est
+    # défini que plus bas (dans `build_payload`) : on répète ici la même règle
+    # de normalisation (`str(...).strip().lower()`) pour rester autonome.
+    feedback_theme: dict = {}
+    for _row in (reco_ctx or []):
+        _k = _row.get("reco_key")
+        _t = str(_row.get("theme") or "").strip().lower()
+        if _k and _t:
+            _pair = (_k, _t)
+            if _pair not in feedback_theme:
+                feedback_theme[_pair] = _row.get("reaction")
     try:
         from saas.core.ga4 import build_ga4_context
         ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
@@ -1818,6 +1875,12 @@ def build_payload(sb, user_id: str) -> dict | None:
         ga4=ga4_ctx,
         objectif=objectif,
         feedback=feedback,
+        # Pas de `theme` ici : les « réglages » (GA4, funnel) sont comptes
+        # entier, pas par thème — `not_for_me` reste donc scopé compte entier,
+        # comme avant TASK-025. `verdicts`, lui, s'applique partout : `done`
+        # dépriorise selon ce qu'il a réellement donné (`_DONE_W`), pas
+        # seulement selon le clic.
+        verdicts=verdicts,
         vision=constats,
     )
 
@@ -2560,11 +2623,37 @@ def build_payload(sb, user_id: str) -> dict | None:
             #
             # La veille (campagne neuve, thème à l'arrêt), elle, reste HORS
             # QUOTA : elle s'affiche EN PLUS des recos, jamais à leur place.
+            #
+            # LES RETOURS CLIENT ENTRENT DANS LA COMPOSITION (TASK-025) — pas
+            # seulement en boucle après coup. Les clés des pistes IA
+            # (`ai_<theme>_<i>`) sont POSITIONNELLES : l'ordre de réponse de
+            # Gemini change d'une semaine à l'autre, un `reco_key` d'une
+            # semaine passée ne dit donc rien d'une piste précise la semaine
+            # suivante. Seul le TEXTE (`title`, colonne posée par la migration
+            # `reco_feedback_contexte.sql`) survit — on le retrouve ici pour
+            # CE thème, filtré aux clés `ai_` (les clés-règles ne sont de toute
+            # façon jamais rédigées par Gemini sur ce chemin). `reco_ctx` est
+            # déjà trié du plus récent au plus ancien : la première occurrence
+            # d'un texte est la plus récente.
+            _ai_eviter, _ai_fait = [], []
+            for _row in (reco_ctx or []):
+                if not str(_row.get("reco_key") or "").startswith("ai_"):
+                    continue
+                if str(_row.get("theme") or "").strip().lower() != nlbl:
+                    continue
+                _txt = str(_row.get("title") or "").strip()
+                if not _txt:
+                    continue
+                if _row.get("reaction") == "not_for_me" and _txt not in _ai_eviter:
+                    _ai_eviter.append(_txt)
+                elif _row.get("reaction") == "done" and _txt not in _ai_fait:
+                    _ai_fait.append(_txt)
             t_recos: list[dict] = []
             for _essai in range(2):
                 try:
                     _cand = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl),
-                                            _obj_txt_lbl, g4t=_g4t_lbl, want=3)
+                                            _obj_txt_lbl, g4t=_g4t_lbl, want=3,
+                                            eviter=_ai_eviter[:5], deja_fait=_ai_fait[:5])
                 except Exception:
                     _cand = []
                 # Filet : on écarte tout conseil qui OPPOSE Meta et Google (le
@@ -2638,6 +2727,21 @@ def build_payload(sb, user_id: str) -> dict | None:
                 df_insta=ti if not ti.empty else None,
                 df_week_posts=tw, followers_current=followers_current,
                 ga4=_theme_ga4(lbl), objectif=_obj_lbl, feedback=feedback, vision=constats,
+                # Appel PAR THÈME (TASK-025) : `not_for_me` ne se fie qu'à
+                # `feedback_theme` (un refus sur un AUTRE thème ne muselle plus
+                # celui-ci) ; `verdicts` fait dépendre le poids de `done` du
+                # résultat réel, comme pour `rule_recos` plus haut.
+                #
+                # `_theme_ctx_ok` (rejet du checker, 2e passe) : tant que la
+                # migration `reco_feedback_contexte.sql` n'est pas jouée,
+                # `theme`/`feedback_theme` retombent à `None` — `build_recos`
+                # retrouve alors l'ANCIEN museau compte entier (`feedback`
+                # seul), pour ne jamais faire perdre tout effet à
+                # `not_for_me` sur les cartes de thème en attendant que la
+                # migration soit jouée.
+                theme=(nlbl if _theme_ctx_ok else None),
+                feedback_theme=(feedback_theme if _theme_ctx_ok else None),
+                verdicts=verdicts,
             )
             t_recos = [r for r in t_recos if r.get("key") not in SETUP_KEYS]
             try:
@@ -3389,12 +3493,27 @@ def build_payload(sb, user_id: str) -> dict | None:
                 direction = a.get("direction") or "up"
                 better = delta is not None and ((delta <= -5) if direction == "down" else (delta >= 5))
                 worse = delta is not None and ((delta >= 5) if direction == "down" else (delta <= -5))
+                _verdict = "better" if better else ("worse" if worse else "stable")
                 entry.update({
                     "then": round(b, 2), "now": round(float(now), 2),
                     "delta": round(delta, 1) if delta is not None else None,
-                    "verdict": "better" if better else ("worse" if worse else "stable"),
+                    "verdict": _verdict,
                 })
                 verified.append(entry)
+                # PERSISTE LE VERDICT (TASK-025, migration `suivi_actions_verdict.sql`)
+                # — sans ça, il n'existait qu'à la volée, dans CE rapport, et
+                # redevenait introuvable la semaine suivante : `build_recos`
+                # (`saas/core/reco_engine.py`) ne pouvait donc jamais faire
+                # dépendre le poids de `done` de ce que l'action a réellement
+                # donné. Écrit à chaque passage (idempotent, même valeur tant
+                # que rien ne bouge) — sans effet si la colonne n'existe pas
+                # encore (migration pas jouée).
+                try:
+                    sb.table("suivi_actions").update(
+                        {"verdict": _verdict}
+                    ).eq("id", a.get("id")).execute()
+                except Exception:
+                    pass
             else:
                 entry["due"] = due  # échéance atteinte mais pas de chiffre auto → à juger soi-même
                 # LE POINT D'ÉTAPE À SEPT JOURS.

@@ -162,6 +162,8 @@ export function RecoCard({
         comment={comment}
         action={action}
         capReached={capReached}
+        theme={theme}
+        title={r.title}
         // Pas de `track` sur une veille : sans lui, `RecoActions` n'affiche ni
         // « ▶ Je le teste » ni l'état d'une action. Il ne reste que les retours,
         // et c'est exactement ce qu'on veut pouvoir donner sur une veille.

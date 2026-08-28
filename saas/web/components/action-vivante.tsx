@@ -60,8 +60,15 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
     startTransition(async () => {
       // Le 3e argument n'est pas décoratif : c'est le SEUL endroit de l'app qui
       // écrit `reco_feedback.reaction = "done"`. Sans lui, l'IA ne sait jamais
-      // qu'un conseil a été appliqué.
-      const r = await resolveAction(a.id, mode, mode === "done" ? a.reco_key : undefined);
+      // qu'un conseil a été appliqué. `a.theme`/`a.title` (TASK-025) : le
+      // contexte de CETTE action, persisté avec la réaction.
+      const r = await resolveAction(
+        a.id,
+        mode,
+        mode === "done" ? a.reco_key : undefined,
+        mode === "done" ? a.theme : undefined,
+        mode === "done" ? a.title : undefined
+      );
       if (!r.ok) {
         annuler?.();
         setErreur(r.message ?? "Enregistrement impossible — réessaie.");

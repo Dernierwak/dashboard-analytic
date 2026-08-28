@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ChangementApi } from "@/lib/changements-api";
 import {
   estDecisionClient,
+  feedbackKey,
   fmtCHF,
   noteSerie,
   revenuTheme,
@@ -435,8 +436,8 @@ export function ThemeCard({
                       >
                         <RecoCard
                           r={r}
-                          current={feedback[r.key] ?? null}
-                          comment={comments[r.key] ?? null}
+                          current={feedback[feedbackKey(r.key, theme.label)] ?? feedback[r.key] ?? null}
+                          comment={comments[feedbackKey(r.key, theme.label)] ?? comments[r.key] ?? null}
                           theme={theme.label}
                           action={suivis[r.key] ?? null}
                           capReached={capReached}

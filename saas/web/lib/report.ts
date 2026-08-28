@@ -451,10 +451,15 @@ export type WeeklyData = {
   channels: ChannelSpend[];
   report: ReportPayload | null;
   // Dernière réaction par type de conseil (4 semaines) — live, comme le Streamlit.
+  // Deux formats de clé cohabitent (TASK-025, voir `feedbackKey`) : la clé
+  // COMPOSITE `${reco_key}::${theme}` (précise, une clé-règle générique porte
+  // une ligne par thème) et la clé PLATE `reco_key` seul (repli). Lire avec
+  // `feedback[feedbackKey(key, theme)] ?? feedback[key] ?? null`.
   feedback: Record<string, string>;
   // Verdicts sur les constats de la vision globale — live (le payload peut dater).
   insightFeedback: Record<string, string>;
   // Commentaires de la semaine courante (pré-remplissage) + objectif du compte.
+  // Même double clé que `feedback` ci-dessus.
   comments: Record<string, string>;
   objectif: string | null;
   onboarded: boolean;
@@ -494,6 +499,51 @@ function pctDelta(cur: number, prev: number): number | null {
   return ((cur - prev) / prev) * 100;
 }
 
+// LA CLÉ DE LOOKUP « current »/« comment » D'UNE CARTE (TASK-025) — `reco_key`
+// seul ne suffit plus : une clé-règle générique (ex. « gaspillage ») porte
+// maintenant une ligne PAR THÈME (`reco_feedback_uq2`, migration
+// `reco_feedback_contexte.sql`). `""` est le sentinel « pas de thème »
+// (réglages compte entier), le même que côté écriture (`actions.ts`).
+export function feedbackKey(recoKey: string, theme: string | null): string {
+  return `${recoKey}::${theme ?? ""}`;
+}
+
+// Lit `reco_feedback` avec repli si la colonne `theme` n'existe pas encore
+// (migration `reco_feedback_contexte.sql` pas jouée) — sans repli, AJOUTER
+// `theme` à la sélection ferait échouer TOUTE la requête (donc perdre
+// `reaction`/`comment` aussi, pas seulement le thème) tant que la migration
+// n'est pas passée.
+//
+// `migrationOk` REMONTE la distinction jusqu'à l'appelant (rejet du checker,
+// 3e passe) — sans ça, la clé plate `reco_key` (repli légitime SEULEMENT
+// quand la migration est absente) était aussi peuplée quand elle était
+// juste ABSENTE POUR CE THÈME PRÉCIS (migration active, mais rien cliqué sur
+// CE thème) : un refus sur le thème A s'affichait alors comme actif sur le
+// thème B, et le désactiver ne supprimait aucune ligne (aucune n'existe pour
+// B) — plus « transféré » comme au 1er rejet, mais « impossible à poser sur
+// un 2e thème ». `migrationOk` permet à l'appelant de ne peupler la clé
+// plate QUE quand la migration est réellement absente.
+async function fetchRecoFeedbackRows(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  cutoff: string
+) {
+  const withTheme = await supabase
+    .from("reco_feedback")
+    .select("reco_key, reaction, week_start, comment, theme")
+    .eq("user_id", uid)
+    .gte("week_start", cutoff)
+    .order("week_start", { ascending: false });
+  if (!withTheme.error) return { ...withTheme, migrationOk: true as const };
+  const sansTheme = await supabase
+    .from("reco_feedback")
+    .select("reco_key, reaction, week_start, comment")
+    .eq("user_id", uid)
+    .gte("week_start", cutoff)
+    .order("week_start", { ascending: false });
+  return { ...sansTheme, migrationOk: false as const };
+}
+
 export async function getWeeklyData(): Promise<WeeklyData> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -527,12 +577,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .order("week_start", { ascending: false })
       .limit(1),
-    supabase
-      .from("reco_feedback")
-      .select("reco_key, reaction, week_start, comment")
-      .eq("user_id", uid)
-      .gte("week_start", fbCutoff)
-      .order("week_start", { ascending: false }),
+    fetchRecoFeedbackRows(supabase, uid, fbCutoff),
     supabase.from("profiles").select("objectif, business_type, labels").eq("id", uid).limit(1),
     // Pour la Vue d'ensemble selon la mission (ventes → revenu, noto/eng → posts)
     supabase
@@ -662,14 +707,27 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const trackedKeys: string[] = Object.keys(suivis);
 
   // Dernière réaction par clé (tri desc → première vue = la plus récente),
-  // même logique que fetch_reco_feedback côté Python.
+  // même logique que fetch_reco_feedback côté Python. Clé COMPOSITE
+  // (`feedbackKey`, précise — une clé-règle générique comme « gaspillage »
+  // porte une ligne par thème) TOUJOURS peuplée. La clé PLATE (`reco_key`
+  // seul, ancien comportement compte-entier) n'est peuplée QUE si
+  // `!fbRes.migrationOk` (rejet du checker, 3e passe) : sinon, dès que la
+  // migration est active, l'ABSENCE de ligne pour CE thème précis (rien
+  // cliqué ici) se voyait recouverte par la clé plate d'un AUTRE thème —
+  // un refus sur A s'affichait comme actif sur B, et le désactiver sur B ne
+  // supprimait aucune ligne (aucune n'existe pour B). La clé plate ne doit
+  // servir de repli QUE quand la migration est réellement absente.
   const feedback: Record<string, string> = {};
   for (const row of fbRes.data ?? []) {
-    if (row.reco_key && row.reaction && !(row.reco_key in feedback))
-      feedback[row.reco_key] = row.reaction;
+    if (!row.reco_key || !row.reaction) continue;
+    const composite = feedbackKey(row.reco_key, (row as { theme?: string | null }).theme ?? null);
+    if (!(composite in feedback)) feedback[composite] = row.reaction;
+    if (!fbRes.migrationOk && !(row.reco_key in feedback)) feedback[row.reco_key] = row.reaction;
   }
 
   // Commentaires de la semaine courante (lundi) — pré-remplissent les cartes.
+  // Même règle de clé (composite toujours, plate seulement si `!migrationOk`)
+  // que `feedback` ci-dessus.
   const nowLocal = new Date();
   const mondayLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
   mondayLocal.setDate(mondayLocal.getDate() - ((mondayLocal.getDay() + 6) % 7));
@@ -677,8 +735,10 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const mondayIso = `${mondayLocal.getFullYear()}-${p2(mondayLocal.getMonth() + 1)}-${p2(mondayLocal.getDate())}`;
   const comments: Record<string, string> = {};
   for (const row of fbRes.data ?? []) {
-    if (row.reco_key && row.comment && String(row.week_start).slice(0, 10) === mondayIso)
-      comments[row.reco_key] = row.comment;
+    if (!row.reco_key || !row.comment || String(row.week_start).slice(0, 10) !== mondayIso) continue;
+    const composite = feedbackKey(row.reco_key, (row as { theme?: string | null }).theme ?? null);
+    if (!(composite in comments)) comments[composite] = row.comment;
+    if (!fbRes.migrationOk && !(row.reco_key in comments)) comments[row.reco_key] = row.comment;
   }
 
   // Si la colonne business_type n'existe pas encore (migration §7 pas passée),

@@ -49,6 +49,9 @@
 --   19)    suivi_actions.kind — tes propres notes dans le fil
 --   20)    label_at + triggers — QUAND une étiquette a été posée
 --   21)    (volontairement absent — voir la section, il faut ta décision)
+--   22)    reco_feedback.theme/title + reco_feedback_uq2 — le contexte d'un
+--          feedback (Graphe B, TASK-025)
+--   23)    suivi_actions.verdict — le verdict d'une action, persisté (TASK-025)
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1875,6 +1878,73 @@ CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
 
 
 -- ============================================================================
+-- 22) reco_feedback.theme/title + reco_feedback_uq2 — voir
+--     reco_feedback_contexte.sql (source de vérité, commentaire complet).
+--
+--     `theme` DANS LA CLÉ D'UNICITÉ, PAS JUSTE UNE COLONNE À CÔTÉ : une
+--     clé-règle générique (ex. « gaspillage ») apparaît sur PLUSIEURS cartes
+--     de thème du même rapport — sans `theme` dans la clé, un refus « pas
+--     pour moi » sur le thème A et un autre sur le thème B, la même semaine,
+--     retombaient sur la MÊME ligne (musellement transféré au lieu d'être
+--     scopé par thème). `theme` est NOT NULL DEFAULT '' (jamais NULL : deux
+--     NULL ne sont jamais égaux dans une contrainte UNIQUE Postgres, ce qui
+--     aurait cassé l'upsert des réglages compte-entier). `title` reste
+--     nullable et hors clé — un texte d'affichage, jamais un identifiant.
+--
+--     DROP CONSTRAINT + ADD CONSTRAINT, même patron que la section 2
+--     (`ga4_insights_uq` → `ga4_insights_uq2`) : sans danger sur les lignes
+--     déjà en base, qui héritent toutes de `theme=''` au rejeu.
+-- ============================================================================
+
+ALTER TABLE public.reco_feedback
+    ADD COLUMN IF NOT EXISTS theme text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS title text;
+
+ALTER TABLE public.reco_feedback DROP CONSTRAINT IF EXISTS reco_feedback_uq;
+ALTER TABLE public.reco_feedback DROP CONSTRAINT IF EXISTS reco_feedback_uq2;
+ALTER TABLE public.reco_feedback
+    ADD CONSTRAINT reco_feedback_uq2 UNIQUE (user_id, reco_key, week_start, theme);
+
+CREATE INDEX IF NOT EXISTS idx_reco_feedback_theme
+    ON public.reco_feedback (user_id, theme, reco_key)
+    WHERE theme <> '';
+
+
+-- ============================================================================
+-- 23) suivi_actions.verdict — voir suivi_actions_verdict.sql (source de
+--     vérité, commentaire complet).
+--
+--     Le verdict d'une action (`"better"`/`"worse"`/`"stable"`) était calculé
+--     À LA VOLÉE dans `build_report.py`, jamais réécrit en base : introuvable
+--     la semaine suivante, donc inutilisable pour repondérer un conseil
+--     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/core/reco_engine.py`).
+--     Nullable, écrite UNE FOIS au moment où le verdict tombe.
+--
+--     Index sur `check_at`, PAS `decided_at` : `fetch_reco_verdicts`
+--     (`scripts/fetch_data.py`) filtre et trie sur `check_at` — c'est la seule
+--     date qui dit fidèlement quand le verdict est réellement tombé
+--     (`check_at` est recalculé à `done_at + 14j` au clic « ✓ C'est fait »,
+--     qui peut survenir bien après `decided_at`).
+-- ============================================================================
+
+ALTER TABLE public.suivi_actions
+    ADD COLUMN IF NOT EXISTS verdict text;
+
+DO $$
+BEGIN
+    ALTER TABLE public.suivi_actions
+        ADD CONSTRAINT suivi_actions_verdict_ck
+        CHECK (verdict IS NULL OR verdict IN ('better', 'worse', 'stable'));
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_suivi_actions_verdict
+    ON public.suivi_actions (user_id, reco_key, check_at DESC)
+    WHERE verdict IS NOT NULL;
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1958,6 +2028,9 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'suivi_actions',            'done_at'),              -- §10
     ('c', 'suivi_actions',            'detail'),               -- §11
     ('c', 'suivi_actions',            'kind'),                 -- §19
+    ('c', 'reco_feedback',            'theme'),                -- §22
+    ('c', 'reco_feedback',            'title'),                -- §22
+    ('c', 'suivi_actions',            'verdict'),              -- §23
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

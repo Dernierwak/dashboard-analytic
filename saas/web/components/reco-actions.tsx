@@ -51,6 +51,8 @@ export function RecoActions({
   track,
   action = null,
   capReached = false,
+  theme = null,
+  title,
 }: {
   recoKey: string;
   current: string | null;
@@ -58,6 +60,11 @@ export function RecoActions({
   track?: TrackInfo;
   action?: TrackedAction | null;
   capReached?: boolean;
+  /** Le thème de la carte + son titre (TASK-025) — persistés avec la réaction
+   *  pour que le worker sache PLUS TARD, sur quel thème et sur quelle idée
+   *  précise, ce feedback portait (voir `saveRecoFeedback`/`resolveAction`). */
+  theme?: string | null;
+  title: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [showComment, setShowComment] = useState(false);
@@ -137,8 +144,10 @@ export function RecoActions({
                   startTransition(async () => {
                     // Le 3e argument est le SEUL endroit de l'app qui écrit
                     // `reco_feedback.reaction = "done"` : sans lui, l'IA ne sait
-                    // jamais qu'un conseil a été appliqué.
-                    const r = await resolveAction(action.id, "done", recoKey);
+                    // jamais qu'un conseil a été appliqué. `action.theme`/
+                    // `action.title` (TASK-025) : le contexte de LA DÉCISION
+                    // suivie, tel que photographié à sa prise.
+                    const r = await resolveAction(action.id, "done", recoKey, action.theme, action.title);
                     if (!r.ok) {
                       setFait(false);
                       setErreur(r.message ?? "Enregistrement impossible — réessaie.");
@@ -183,7 +192,7 @@ export function RecoActions({
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  const r = await saveRecoFeedback(recoKey, b.reaction, active);
+                  const r = await saveRecoFeedback(recoKey, b.reaction, active, theme, title);
                   if (!r?.ok) setErreur("Ton retour n'a pas pu être enregistré — réessaie.");
                 })
               }
@@ -226,7 +235,7 @@ export function RecoActions({
               disabled={pending || text === (comment ?? "")}
               onClick={() =>
                 startTransition(async () => {
-                  await saveComment(recoKey, text);
+                  await saveComment(recoKey, text, theme);
                   setCommentSaved(true);
                 })
               }

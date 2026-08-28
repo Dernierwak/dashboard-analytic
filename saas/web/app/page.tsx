@@ -5,6 +5,7 @@
 import Link from "next/link";
 import {
   getWeeklyData,
+  feedbackKey,
   type ReportPayload,
   type TrackedAction,
 } from "@/lib/report";
@@ -682,8 +683,8 @@ export default async function Page() {
                   <RecoCard
                     key={r.key}
                     r={r}
-                    current={data.feedback[r.key] ?? null}
-                    comment={data.comments[r.key] ?? null}
+                    current={data.feedback[feedbackKey(r.key, null)] ?? data.feedback[r.key] ?? null}
+                    comment={data.comments[feedbackKey(r.key, null)] ?? data.comments[r.key] ?? null}
                     theme={null}
                     action={data.suivis[r.key] ?? null}
                     capReached={capReached}

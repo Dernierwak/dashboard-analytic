@@ -621,6 +621,23 @@ def _rule_creneau(df_insta):
 
 
 # ── Orchestration ────────────────────────────────────────────────────────────
+#
+# LE POIDS D'UN CONSEIL « DONE », SELON CE QU'IL A RÉELLEMENT DONNÉ (TASK-025).
+# Avant cette tâche, `done` valait toujours +2, qu'un verdict existe ou non, et
+# quel qu'il soit — une reco confirmée « ça a marché » et une reco cochée
+# « fait » sans jamais avoir eu d'effet mesurable étaient traitées à
+# l'identique. Le verdict, une fois tombé (`suivi_actions.verdict`, persisté
+# par `build_report.py` au moment où il est calculé), change ce poids :
+#   · `None` (aucun verdict encore tombé) : +1, faible et neutre — on ne sait
+#     pas encore si ça a marché, on ne dépriorise donc qu'à peine ;
+#   · "stable"  : +2 — le poids d'avant cette tâche, gardé pour le seul cas où
+#     il était déjà juste : traité, sans effet mesurable, laisse la place ;
+#   · "better"  : +6 — même poids que `not_for_me` : confirmé, ça a marché,
+#     inutile de continuer à occuper une place utile à un autre conseil ;
+#   · "worse"   : -4 — ne dépriorise pas, RESURFACE au contraire : un verdict
+#     qui dit que ça a empiré mérite d'être revu, pas rangé en silence.
+_DONE_W = {None: 1, "stable": 2, "better": 6, "worse": -4}
+
 
 def build_recos(
     df_camp=None,
@@ -632,13 +649,40 @@ def build_recos(
     objectif: str | None = None,
     feedback: dict | None = None,
     vision: list | None = None,
+    theme: str | None = None,
+    feedback_theme: dict | None = None,
+    verdicts: dict | None = None,
 ) -> list[dict]:
     """Évalue toutes les règles, trie par priorité (1 = plus fort).
 
     ga4 : dict optionnel — lève le plafond de confiance des recos pub.
     objectif : 'ventes' | 'notoriete' | 'engagement' — remonte les recos pertinentes.
-    feedback : {reco_key: "useful"|"not_for_me"|"done"} — la dernière réaction connue ;
-               'not_for_me' déprioritise, 'done' déprioritise légèrement (déjà traité).
+    feedback : {reco_key: "useful"|"not_for_me"|"done"} — la dernière réaction connue,
+               COMPTE ENTIER (pas de notion de thème). 'useful' n'affecte pas la
+               priorité (compté ailleurs). 'not_for_me' et 'done' sont traités
+               ci-dessous (TASK-025) :
+      - 'not_for_me' : les clés-règles (ex. « gaspillage ») sont GÉNÉRIQUES, pas
+        namespacées par thème — un refus sur le thème A muselait donc la même
+        clé sur TOUS les thèmes (bug corrigé ici). Quand `theme` et
+        `feedback_theme` sont fournis (appel PAR THÈME), le museau ne se fie
+        qu'à `feedback_theme` — un refus sur un AUTRE thème, ou un feedback
+        posé avant la migration `reco_feedback_contexte.sql` (donc sans
+        thème connu), ne muselle plus ce thème-ci. Sans `theme` (appel compte
+        entier, ex. les « réglages ») le comportement est inchangé : `feedback`
+        seul, comme avant cette tâche.
+      - 'done' dépriorisait de +2 QUEL QUE SOIT LE RÉSULTAT MESURÉ (bug corrigé
+        ici) : une reco confirmée qui a amélioré son indicateur et une reco
+        cochée « fait » sans jamais avoir eu d'effet mesurable étaient traitées
+        à l'identique. `verdicts` (le dernier verdict PERSISTÉ par reco_key,
+        voir `suivi_actions.verdict` / `scripts/fetch_data.py::fetch_reco_verdicts`)
+        fait maintenant dépendre le poids du résultat réel — voir `_DONE_W`.
+    feedback_theme : {(reco_key, thème): "useful"|"not_for_me"|"done"} — la
+                     dernière réaction connue SUR CE THÈME (voir plus haut).
+                     Ignoré si `theme` vaut `None`.
+    verdicts : {reco_key: "better"|"worse"|"stable"} — le dernier verdict connu
+               (compte entier, une action ne se mesure qu'une fois par clé).
+    theme : le thème de cet appel, ou `None` pour un appel compte entier (les
+            « réglages » GA4/funnel, qui n'ont pas de notion de thème).
     vision : constats de la vision globale [{kind, status, …}] (worker) — un constat
              validé remonte les règles qui le prolongent, un constat rejeté les recule.
     Défensif : une règle qui plante est ignorée — le rapport ne casse jamais.
@@ -666,16 +710,26 @@ def build_recos(
 
     obj = OBJECTIFS.get(objectif or "")
     fb = feedback or {}
+    fb_theme = feedback_theme or {}
+    vd = verdicts or {}
     for r in recos:
         # Objectif : -3 si la reco sert l'objectif (plateforme ou key)
         if obj and (r["platform"] in obj["boost_platforms"] or r["key"] in obj["boost_keys"]):
             r["priority"] -= 3
-        # Feedback : respecter ce que l'utilisateur a déjà dit
-        react = fb.get(r["key"])
-        if react == "not_for_me":
+        # Feedback : respecter ce que l'utilisateur a déjà dit.
+        # 'not_for_me' : scopé par thème quand l'appel en fournit un (voir la
+        # docstring) — 'done' reste lu compte entier, `fb`, comme avant cette
+        # tâche : rien dans TASK-025 ne demande de scoper 'done' par thème,
+        # seulement de faire dépendre son poids du verdict (`_DONE_W`).
+        not_for_me = (
+            fb_theme.get((r["key"], theme)) == "not_for_me"
+            if theme is not None
+            else fb.get(r["key"]) == "not_for_me"
+        )
+        if not_for_me:
             r["priority"] += 6   # pousse en bas sans masquer (un signal réel reste visible)
-        elif react == "done":
-            r["priority"] += 2   # déjà traité cette semaine → laisse la place au reste
+        elif fb.get(r["key"]) == "done":
+            r["priority"] += _DONE_W.get(vd.get(r["key"]), _DONE_W[None])
 
     # Vision globale : les règles hebdo qui PROLONGENT un constat validé remontent,
     # celles qui s'appuient sur un constat rejeté reculent (sans jamais disparaître).

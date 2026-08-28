@@ -116,7 +116,15 @@ export async function startTracking(a: {
 export async function resolveAction(
   id: string,
   action: "done" | "seen" | "drop",
-  recoKey?: string
+  recoKey?: string,
+  // Le thème + le titre de LA PISTE au moment du clic (TASK-025) — persistés
+  // dans `reco_feedback` (colonnes `theme`/`title`, migration
+  // `reco_feedback_contexte.sql`) pour que le worker sache PLUS TARD sur quel
+  // thème et sur QUELLE idée précise ce « fait » portait. Les clés IA
+  // (`ai_<theme>_<i>`) sont positionnelles — sans ce texte posé ICI, au clic,
+  // rien ne le retrouve la semaine suivante.
+  theme?: string | null,
+  title?: string
 ): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -160,10 +168,33 @@ export async function resolveAction(
     // Un seul geste, deux tables : le conseil est aussi marqué « appliqué »
     // côté reco_feedback → l'IA sait ce que tu as réellement mis en place.
     if (recoKey) {
-      await supabase.from("reco_feedback").upsert(
-        { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
-        { onConflict: "user_id,reco_key,week_start" }
+      // `theme` vaut `""` (jamais `null`) : c'est le sentinel « pas de
+      // thème » posé dans la clé d'unicité `reco_feedback_uq2` (migration
+      // reco_feedback_contexte.sql) — un `not_for_me`/`done` sur le thème A
+      // et un autre sur le thème B, la même semaine, doivent produire deux
+      // LIGNES distinctes, pas écraser l'une l'autre (rejet du checker, 2e
+      // passe : `null` aurait laissé passer plusieurs lignes « réglages »
+      // pour la même clé/semaine, `""` est une vraie valeur comparable).
+      const fb = await supabase.from("reco_feedback").upsert(
+        {
+          user_id: user.id,
+          reco_key: recoKey,
+          reaction: "done",
+          week_start: mondayISO(),
+          theme: theme ?? "",
+          title: title ?? null,
+        },
+        { onConflict: "user_id,reco_key,week_start,theme" }
       );
+      // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
+      // n'existent pas encore (migration reco_feedback_contexte.sql pas
+      // passée) — même patron que done_at plus haut, sur l'ANCIENNE clé.
+      if (fb.error) {
+        await supabase.from("reco_feedback").upsert(
+          { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
+          { onConflict: "user_id,reco_key,week_start" }
+        );
+      }
     }
   }
   revalidatePath("/");
@@ -246,7 +277,19 @@ export async function deleteNote(id: string): Promise<{ ok: boolean; message?: s
 // la retire (toggle) ; en choisir une autre la remplace. Même table que le
 // Streamlit (reco_feedback) → la boucle de la preuve voit aussi les « Fait »
 // posés depuis Pulse.
-export async function saveRecoFeedback(recoKey: string, reaction: Reaction, active: boolean) {
+export async function saveRecoFeedback(
+  recoKey: string,
+  reaction: Reaction,
+  active: boolean,
+  // Le thème + le titre de LA CARTE au moment du clic (TASK-025) — persistés
+  // dans `reco_feedback` (colonnes `theme`/`title`, migration
+  // `reco_feedback_contexte.sql`). Sert deux besoins : museler `not_for_me`
+  // par (reco_key, thème) plutôt que par reco_key seul sur tout le compte, et
+  // retrouver le TEXTE d'une piste IA passée (ses clés sont positionnelles,
+  // sans ce texte rien ne l'identifie la semaine suivante).
+  theme?: string | null,
+  title?: string
+) {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
@@ -255,23 +298,52 @@ export async function saveRecoFeedback(recoKey: string, reaction: Reaction, acti
 
   const week = mondayISO();
   if (active) {
-    // Toggle off : on retire la réaction de la semaine courante.
-    await supabase
+    // Toggle off : on retire la réaction de la semaine courante — SUR CE
+    // THÈME (rejet du checker, 2e passe) : plusieurs lignes peuvent partager
+    // `(reco_key, week_start)` depuis que `theme` est dans la clé
+    // d'unicité, une par thème où ce `reco_key` apparaît. Filtrer sans
+    // `theme` effacerait le retour de TOUS les thèmes d'un coup au lieu du
+    // seul dont la carte a été cliquée.
+    const del = await supabase
       .from("reco_feedback")
       .delete()
       .eq("user_id", user.id)
       .eq("reco_key", recoKey)
-      .eq("week_start", week);
+      .eq("week_start", week)
+      .eq("theme", theme ?? "");
+    // Repli si la colonne theme n'existe pas encore (migration pas passée) —
+    // PostgREST refuse de filtrer sur une colonne absente, sans ce repli le
+    // toggle échouerait en silence plutôt que de retomber sur l'ancien
+    // comportement compte entier.
+    if (del.error) {
+      await supabase
+        .from("reco_feedback")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("reco_key", recoKey)
+        .eq("week_start", week);
+    }
   } else {
-    await supabase.from("reco_feedback").upsert(
+    const r = await supabase.from("reco_feedback").upsert(
       {
         user_id: user.id,
         reco_key: recoKey,
         reaction,
         week_start: week,
+        theme: theme ?? "",
+        title: title ?? null,
       },
-      { onConflict: "user_id,reco_key,week_start" }
+      { onConflict: "user_id,reco_key,week_start,theme" }
     );
+    // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
+    // n'existent pas encore (migration reco_feedback_contexte.sql pas
+    // passée) — sur l'ANCIENNE clé.
+    if (r.error) {
+      await supabase.from("reco_feedback").upsert(
+        { user_id: user.id, reco_key: recoKey, reaction, week_start: week },
+        { onConflict: "user_id,reco_key,week_start" }
+      );
+    }
   }
 
   revalidatePath("/");
@@ -390,21 +462,42 @@ export async function saveObjectif(objectif: string | null) {
 
 // Commentaire libre sur un conseil (nourrit le persona IA). Upsert sur la
 // semaine courante — ne touche pas à la réaction existante.
-export async function saveComment(recoKey: string, comment: string) {
+//
+// `theme` (TASK-025, rejet du checker 2e passe) : DOIT être fourni et
+// correspondre EXACTEMENT à celui déjà posé par `saveRecoFeedback`/
+// `resolveAction` pour la MÊME carte — la clé d'unicité `reco_feedback_uq2`
+// porte maintenant `theme`, un commentaire sans thème irait sur une AUTRE
+// ligne (celle du sentinel `""`) que la réaction déjà enregistrée pour cette
+// carte, au lieu de rejoindre la même.
+export async function saveComment(recoKey: string, comment: string, theme?: string | null) {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  await supabase.from("reco_feedback").upsert(
+  const r = await supabase.from("reco_feedback").upsert(
     {
       user_id: user.id,
       reco_key: recoKey,
       week_start: mondayISO(),
       comment: comment.trim() || null,
+      theme: theme ?? "",
     },
-    { onConflict: "user_id,reco_key,week_start" }
+    { onConflict: "user_id,reco_key,week_start,theme" }
   );
+  // Repli si la colonne theme (et reco_feedback_uq2) n'existent pas encore
+  // (migration reco_feedback_contexte.sql pas passée) — sur l'ANCIENNE clé.
+  if (r.error) {
+    await supabase.from("reco_feedback").upsert(
+      {
+        user_id: user.id,
+        reco_key: recoKey,
+        week_start: mondayISO(),
+        comment: comment.trim() || null,
+      },
+      { onConflict: "user_id,reco_key,week_start" }
+    );
+  }
   revalidatePath("/");
   return { ok: true };
 }
