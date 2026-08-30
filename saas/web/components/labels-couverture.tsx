@@ -1,4 +1,17 @@
 import { fmtCHF, type Couverture } from "@/components/labels-modele";
+import { ThemeDonut } from "@/components/theme-donut";
+import { NEUTRE, type Teinte } from "@/lib/palette";
+
+// La couleur du rang 6 est FORCÉE, pas puisée dans `teinteLabel` : ce ne sont
+// pas deux thèmes qui se partagent l'anneau, mais deux ÉTATS (rattaché / pas)
+// — même raisonnement que `TEINTE_CANAL` dans `app/couts/page.tsx`. Le vert
+// reprend celui du verdict « tout est rattaché » (rang 4, ci-dessous) ; le
+// gris est `NEUTRE`, la même teinte que l'« autres » de tous les anneaux de
+// l'app pour « pas rattaché à un thème ».
+const TEINTE_COUVERTURE: Record<string, Teinte> = {
+  "Rattaché à un thème": { nom: "vert", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
+  "Non rattaché": NEUTRE,
+};
 
 // LA COUVERTURE — le cœur pédagogique de la page Thèmes.
 //
@@ -30,14 +43,16 @@ import { fmtCHF, type Couverture } from "@/components/labels-modele";
 //
 // LES NEUF RANGS (docs/03-grammaire-des-modules.md) :
 //   1 surtitre · 3 le montant hors thème · 4 la part, en verdict ·
-//   6 UNE barre, ses deux bornes écrites · 7 la répartition · 9 le pied.
+//   6 UN anneau (`ThemeDonut`, même composant que `/conversions` et
+//   `/couts` — voir docs/04-modules-partages-entre-sources.md), ses deux
+//   parts nommées et coloriées, le total au centre · 7 la répartition ·
+//   9 le pied.
 // Rang 5 absent : il n'y a pas de « couverture de la semaine dernière » à
 // comparer — le rapport ne l'a jamais archivée, et un delta inventé vaut moins
 // que pas de delta.
 export function LabelsCouverture({ c }: { c: Couverture }) {
   const partHorsTheme =
     c.depenseTotale > 0 ? (c.depenseSansTheme / c.depenseTotale) * 100 : 0;
-  const partCouverte = Math.max(0, Math.min(100, 100 - partHorsTheme));
 
   // Le verdict est coloré par le SENS : ici, plus il en échappe, plus c'est
   // grave. Les seuils sont grossiers volontairement — c'est une alerte, pas
@@ -104,26 +119,28 @@ export function LabelsCouverture({ c }: { c: Couverture }) {
         — la dépense sort du compte, l&apos;analyse ne la voit jamais.
       </p>
 
-      {/* Rang 6 — UNE forme, et ses deux bornes écrites. La barre montre la
-          part RATTACHÉE : c'est elle qu'on veut voir grandir. Elle ne s'affiche
-          pas quand il n'y a pas de dépense — une barre à 0 % sur un
-          dénominateur nul est du décor. */}
+      {/* Rang 6 — UNE forme, ses deux parts écrites. Même anneau que
+          `/conversions` (le camembert des catégories de conversions) et
+          `/couts` — `ThemeDonut`, en mode `carte={false}` pour se fondre
+          dans cette carte au lieu d'en ouvrir une seconde. Les deux parts
+          sont RATTACHÉ (vert, l'état qu'on veut voir grandir) et NON
+          RATTACHÉ (gris `NEUTRE`, même convention que l'« autres » des
+          anneaux par thème) — même sens que l'ancienne barre. Il ne s'affiche
+          pas quand il n'y a pas de dépense — un anneau sur un dénominateur
+          nul est du décor. */}
       {c.mesurable && (
         <div className="mt-4">
-          <div className="h-2.5 rounded-full bg-black/[0.06] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-brand"
-              style={{ width: `${partCouverte.toFixed(1)}%` }}
-            />
-          </div>
-          <div className="flex items-baseline justify-between gap-3 mt-1.5">
-            <span className="text-[11px] font-semibold text-brand">
-              {Math.round(partCouverte)} % rattaché à un thème
-            </span>
-            <span className="text-[11px] text-faint font-mono">
-              sur {fmtCHF(c.depenseTotale)} CHF
-            </span>
-          </div>
+          <ThemeDonut
+            rows={[
+              { label: "Rattaché à un thème", spend: Math.max(0, c.depenseTotale - c.depenseSansTheme) },
+              { label: "Non rattaché", spend: c.depenseSansTheme },
+            ]}
+            teintes={TEINTE_COUVERTURE}
+            unite="part"
+            uniteValeur="CHF"
+            montants
+            carte={false}
+          />
         </div>
       )}
 

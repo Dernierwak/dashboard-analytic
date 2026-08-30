@@ -25,6 +25,7 @@ export function ThemeDonut({
   unite = "thème",
   etroit = false,
   uniteValeur = "CHF",
+  carte = true,
 }: {
   rows: { label: string; spend: number }[];
   /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». */
@@ -63,6 +64,15 @@ export function ThemeDonut({
    * conversions serait un chiffre faux, pas juste un mot en trop.
    */
   uniteValeur?: string;
+  /**
+   * FAUX : rendre l'anneau NU, sans son cadre, son titre ni sa note — pour se
+   * nicher dans une carte qui les porte déjà (`labels-couverture`, rang 1 =
+   * son surtitre, rang 4 = son verdict). Un module qui redit un titre et un
+   * fond que son hôte affiche déjà à côté produit un cadre dans le cadre.
+   * Par défaut à `true` : les trois usages existants (rapport, Coûts,
+   * Conversions) restent des cartes autonomes, inchangés.
+   */
+  carte?: boolean;
 }) {
   const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
   if (tries.length === 0) return null;
@@ -87,18 +97,10 @@ export function ThemeDonut({
     return arc;
   });
 
-  return (
-    // `min-w-0` n'est pas cosmétique : cette carte est un ÉLÉMENT DE GRILLE
-    // (deux anneaux côte à côte sur la page Coûts), et un élément de grille a
-    // `min-width: auto` — il refuse donc de descendre sous la largeur
-    // min-content de son contenu. Sur un iPhone la carte débordait de 28 px et
-    // c'est TOUTE LA PAGE qui se mettait à défiler horizontalement.
-    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6 h-full min-w-0">
-      <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
-        {titre}
-        {sousTitre && <span className="text-faint/70 normal-case tracking-normal"> · {sousTitre}</span>}
-      </div>
-
+  // L'anneau et sa légende, communs aux deux rendus — carte autonome ou
+  // anneau nu posé dans une carte qui l'héberge.
+  const anneau = (
+    <>
       <div
         className={`flex items-center gap-5 flex-wrap justify-center ${
           etroit ? "" : "sm:gap-7 sm:flex-nowrap sm:justify-start"
@@ -168,6 +170,34 @@ export function ThemeDonut({
           ))}
         </div>
       </div>
+    </>
+  );
+
+  if (!carte) {
+    // Anneau nu : pas de cadre, pas de titre, pas de note — l'hôte les porte
+    // déjà. `note`, s'il est passé, reste affiché : rien n'empêche un appelant
+    // sans carte de vouloir sa propre légende sous l'anneau.
+    return (
+      <div className="min-w-0">
+        {anneau}
+        {note && <p className="text-[11px] text-faint leading-relaxed mt-3.5">{note}</p>}
+      </div>
+    );
+  }
+
+  return (
+    // `min-w-0` n'est pas cosmétique : cette carte est un ÉLÉMENT DE GRILLE
+    // (deux anneaux côte à côte sur la page Coûts), et un élément de grille a
+    // `min-width: auto` — il refuse donc de descendre sous la largeur
+    // min-content de son contenu. Sur un iPhone la carte débordait de 28 px et
+    // c'est TOUTE LA PAGE qui se mettait à défiler horizontalement.
+    <div className="bg-white border border-line rounded-2xl shadow-card p-5 sm:p-6 h-full min-w-0">
+      <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
+        {titre}
+        {sousTitre && <span className="text-faint/70 normal-case tracking-normal"> · {sousTitre}</span>}
+      </div>
+
+      {anneau}
 
       <p className="text-[11px] text-faint leading-relaxed mt-3.5">
         {note ??
