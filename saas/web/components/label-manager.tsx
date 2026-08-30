@@ -64,7 +64,9 @@ export function LabelRow({
    */
   rang?: number | null;
 }) {
-  const [mode, setMode] = useState<"view" | "rename" | "confirm-delete">("view");
+  const [mode, setMode] = useState<"view" | "rename" | "confirm-delete" | "confirm-merge">(
+    "view"
+  );
   const [newName, setNewName] = useState(row.name);
   const [message, setMessage] = useState<string | null>(null);
   const [echec, setEchec] = useState(false);
@@ -158,6 +160,12 @@ export function LabelRow({
               onClick={() =>
                 startTransition(async () => {
                   const r = await renameLabel(row.name, newName);
+                  if (r.collision) {
+                    setMessage(r.message ?? null);
+                    setEchec(false);
+                    setMode("confirm-merge");
+                    return;
+                  }
                   setMessage(r.ok ? null : r.message);
                   setEchec(!r.ok);
                   if (r.ok) setMode("view");
@@ -171,6 +179,33 @@ export function LabelRow({
               onClick={() => {
                 setMode("view");
                 setNewName(row.name);
+                setMessage(null);
+              }}
+              className="text-[12px] text-faint px-2 py-2"
+            >
+              annuler
+            </button>
+          </>
+        )}
+        {mode === "confirm-merge" && (
+          <>
+            <button
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  const r = await renameLabel(row.name, newName, true);
+                  setMessage(r.message ?? null);
+                  setEchec(!r.ok);
+                  if (r.ok) setMode("view");
+                })
+              }
+              className="text-[12px] font-semibold text-white bg-warn rounded-full px-4 py-2 disabled:opacity-40"
+            >
+              {pending ? "…" : "Fusionner"}
+            </button>
+            <button
+              onClick={() => {
+                setMode("rename");
                 setMessage(null);
               }}
               className="text-[12px] text-faint px-2 py-2"

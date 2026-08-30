@@ -619,9 +619,17 @@ export async function saveOnboarding(answers: {
 
 // ── Labels unifiés (liste maîtresse profiles.labels + assignations par canal) ─
 
-async function _labels(supabase: ReturnType<typeof createClient>, uid: string): Promise<string[]> {
+// Le SELECT peut échouer (réseau, PostgREST) sans lever — supabase-js rend
+// { data: null, error }. `error` est donc rendu à l'appelant plutôt qu'avalé :
+// un appelant qui l'ignore garde l'ancien comportement (repli sur `[]`), mais
+// `_fusionnerLabels` doit la vérifier avant d'écrire `profiles.labels` — une
+// lecture ratée ne doit jamais se traduire par un UPDATE qui vide la liste.
+async function _labels(
+  supabase: ReturnType<typeof createClient>,
+  uid: string
+): Promise<{ data: string[]; error: { message: string } | null }> {
   const r = await supabase.from("profiles").select("labels").eq("id", uid).limit(1);
-  return (r.data?.[0]?.labels as string[] | null) ?? [];
+  return { data: (r.data?.[0]?.labels as string[] | null) ?? [], error: r.error };
 }
 
 export async function createLabel(name: string) {
@@ -632,15 +640,159 @@ export async function createLabel(name: string) {
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = name.trim();
   if (!clean) return { ok: false, message: "Nom vide." };
-  const current = await _labels(supabase, user.id);
+  const { data: current } = await _labels(supabase, user.id);
   if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
   await supabase.from("profiles").update({ labels: [...current, clean].sort() }).eq("id", user.id);
   revalidatePath("/labels");
   return { ok: true, message: `« ${clean} » créé.` };
 }
 
+// Fusionne `oldName` dans `target` (déjà existant) : toutes les campagnes et
+// posts qui portaient `oldName` portent désormais `target`, et `oldName`
+// disparaît de la liste maîtresse — jamais deux labels avec le même nom.
+//
+// ORDRE : la liste maîtresse `profiles.labels` est retirée EN DERNIER, une fois
+// TOUTES les autres tables migrées avec succès. Si une étape intermédiaire
+// échoue (RLS, table absente, réseau), `oldName` reste visible dans la liste —
+// donc rejouable — au lieu de disparaître avec des campagnes/posts orphelins
+// qui pointent encore vers un label introuvable nulle part.
+//
+// `theme_ga4_events` (unique user_id+label+event_name), `theme_objectifs`
+// (unique user_id+label), `reco_feedback` (unique user_id+reco_key+week_start+
+// theme) et `insight_feedback` (unique user_id+insight_key, où la priorité
+// d'un thème est stockée sous la clé `priority_label:<nom>`) peuvent chacun
+// avoir DÉJÀ une ligne sous `target` là où `oldName` en a une aussi — un
+// simple UPDATE violerait la contrainte. La ligne de la cible gagne (déjà en
+// place, donc déjà le réglage voulu), celle de l'absorbé est écartée plutôt
+// que de faire échouer toute la fusion.
+//
+// Chaque étape vérifie `.error` avant de continuer : si une échoue, la fusion
+// s'arrête et `renameLabel` NE répond PAS `ok:true` — l'appelant ne doit
+// jamais afficher « fusionné » sans que ce soit vrai.
+async function _fusionnerLabels(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  oldName: string,
+  target: string
+): Promise<{ ok: true } | { ok: false; etape: string }> {
+  {
+    const r = await supabase.from("meta_campaign_config").update({ label: target })
+      .eq("user_id", uid).eq("label", oldName);
+    if (r.error) return { ok: false, etape: "campagnes Meta" };
+  }
+  {
+    const r = await supabase.from("google_campaign_config").update({ label: target })
+      .eq("user_id", uid).eq("label", oldName);
+    if (r.error) return { ok: false, etape: "campagnes Google" };
+  }
+  {
+    const r = await supabase.from("suivi_actions").update({ theme: target })
+      .eq("user_id", uid).eq("theme", oldName);
+    if (r.error) return { ok: false, etape: "actions en cours" };
+  }
+  {
+    const [oldEvents, targetEvents] = await Promise.all([
+      supabase.from("theme_ga4_events").select("id, event_name")
+        .eq("user_id", uid).eq("label", oldName),
+      supabase.from("theme_ga4_events").select("event_name")
+        .eq("user_id", uid).eq("label", target),
+    ]);
+    if (oldEvents.error || targetEvents.error) return { ok: false, etape: "événements GA4 du thème" };
+    const targetEventNames = new Set((targetEvents.data ?? []).map((r) => r.event_name));
+    for (const row of oldEvents.data ?? []) {
+      const r = targetEventNames.has(row.event_name)
+        ? await supabase.from("theme_ga4_events").delete().eq("id", row.id)
+        : await supabase.from("theme_ga4_events").update({ label: target }).eq("id", row.id);
+      if (r.error) return { ok: false, etape: "événements GA4 du thème" };
+    }
+  }
+  {
+    const targetObjectif = await supabase.from("theme_objectifs").select("id")
+      .eq("user_id", uid).eq("label", target).limit(1);
+    if (targetObjectif.error) return { ok: false, etape: "objectif du thème" };
+    const r = (targetObjectif.data ?? []).length > 0
+      ? await supabase.from("theme_objectifs").delete().eq("user_id", uid).eq("label", oldName)
+      : await supabase.from("theme_objectifs").update({ label: target })
+          .eq("user_id", uid).eq("label", oldName);
+    if (r.error) return { ok: false, etape: "objectif du thème" };
+  }
+  {
+    // `theme` est dans la clé d'unicité de reco_feedback (TASK-025, scoping par
+    // thème d'un « pas pour moi »/commentaire) — même traitement de conflit.
+    const [oldFeedback, targetFeedback] = await Promise.all([
+      supabase.from("reco_feedback").select("id, reco_key, week_start")
+        .eq("user_id", uid).eq("theme", oldName),
+      supabase.from("reco_feedback").select("reco_key, week_start")
+        .eq("user_id", uid).eq("theme", target),
+    ]);
+    if (oldFeedback.error || targetFeedback.error) return { ok: false, etape: "retours sur les conseils" };
+    const targetKeys = new Set(
+      (targetFeedback.data ?? []).map((r) => `${r.reco_key}::${r.week_start}`)
+    );
+    for (const row of oldFeedback.data ?? []) {
+      const key = `${row.reco_key}::${row.week_start}`;
+      const r = targetKeys.has(key)
+        ? await supabase.from("reco_feedback").delete().eq("id", row.id)
+        : await supabase.from("reco_feedback").update({ theme: target }).eq("id", row.id);
+      if (r.error) return { ok: false, etape: "retours sur les conseils" };
+    }
+  }
+  {
+    // L'étoile « thème prioritaire » vit dans insight_feedback sous la clé
+    // priority_label:<nom> (voir togglePriorityLabel). En UPDATE-ant la ligne
+    // (plutôt que delete+insert), `created_at` ne bouge pas : le rang de
+    // priorité de l'absorbé (ordre d'ancienneté) passe intact à la cible.
+    const oldKey = `priority_label:${oldName}`;
+    const targetKey = `priority_label:${target}`;
+    const [oldStar, targetStar] = await Promise.all([
+      supabase.from("insight_feedback").select("id")
+        .eq("user_id", uid).eq("insight_key", oldKey).limit(1),
+      supabase.from("insight_feedback").select("id")
+        .eq("user_id", uid).eq("insight_key", targetKey).limit(1),
+    ]);
+    if (oldStar.error || targetStar.error) return { ok: false, etape: "priorité du thème" };
+    if ((oldStar.data ?? []).length > 0) {
+      const r = (targetStar.data ?? []).length > 0
+        ? await supabase.from("insight_feedback").delete()
+            .eq("user_id", uid).eq("insight_key", oldKey)
+        : await supabase.from("insight_feedback").update({ insight_key: targetKey })
+            .eq("user_id", uid).eq("insight_key", oldKey);
+      if (r.error) return { ok: false, etape: "priorité du thème" };
+    }
+  }
+  {
+    const posts = await supabase.from("instagram_organic_posts").select("id, labels")
+      .eq("user_id", uid).contains("labels", [oldName]);
+    if (posts.error) return { ok: false, etape: "posts Instagram" };
+    for (const p of posts.data ?? []) {
+      const merged = Array.from(
+        new Set(((p.labels as string[]) ?? []).map((l) => (l === oldName ? target : l)))
+      );
+      const r = await supabase.from("instagram_organic_posts")
+        .update({ labels: merged }).eq("id", p.id);
+      if (r.error) return { ok: false, etape: "posts Instagram" };
+    }
+  }
+  {
+    // Liste maîtresse EN DERNIER — voir le commentaire d'en-tête. La lecture
+    // qui précède l'UPDATE est vérifiée AVANT de construire l'UPDATE : sans
+    // ça, un SELECT en échec (`data: null`, replié sur `[]`) écrirait
+    // `labels: []` et ferait disparaître TOUS les thèmes du compte.
+    const { data: current, error: lectureError } = await _labels(supabase, uid);
+    if (lectureError) return { ok: false, etape: "lecture de la liste des thèmes" };
+    const r = await supabase.from("profiles")
+      .update({ labels: current.filter((l) => l !== oldName).sort() })
+      .eq("id", uid);
+    if (r.error) return { ok: false, etape: "liste des thèmes" };
+  }
+  return { ok: true };
+}
+
 // Renomme partout : liste maîtresse + assignations Meta/Google + posts Instagram.
-export async function renameLabel(oldName: string, newName: string) {
+// Si `newName` correspond à un label DÉJÀ existant, renomme ne fait rien tant que
+// `confirmerFusion` n'est pas passé à true — le retour porte `collision: true`
+// pour que l'appelant affiche l'alerte de confirmation avant de fusionner.
+export async function renameLabel(oldName: string, newName: string, confirmerFusion = false) {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
@@ -648,8 +800,29 @@ export async function renameLabel(oldName: string, newName: string) {
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = newName.trim();
   if (!clean) return { ok: false, message: "Nouveau nom vide." };
-  const current = await _labels(supabase, user.id);
-  if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
+  const { data: current } = await _labels(supabase, user.id);
+  if (current.includes(clean) && clean !== oldName) {
+    if (!confirmerFusion) {
+      return {
+        ok: false,
+        collision: true,
+        message: `« ${clean} » existe déjà — les éléments de « ${oldName} » seront fusionnés dedans.`,
+      };
+    }
+    const fusion = await _fusionnerLabels(supabase, user.id, oldName, clean);
+    if (!fusion.ok) {
+      revalidatePath("/labels");
+      return {
+        ok: false,
+        message:
+          `Fusion interrompue sur « ${fusion.etape} » — ce qui est déjà fusionné ` +
+          `n'est pas refait, relance la fusion pour continuer.`,
+      };
+    }
+    revalidatePath("/labels");
+    revalidatePath("/");
+    return { ok: true, message: `« ${oldName} » fusionné dans « ${clean} ».` };
+  }
   await supabase.from("profiles")
     .update({ labels: current.map((l) => (l === oldName ? clean : l)).sort() })
     .eq("id", user.id);
@@ -690,7 +863,7 @@ export async function deleteLabel(name: string) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  const current = await _labels(supabase, user.id);
+  const { data: current } = await _labels(supabase, user.id);
   await supabase.from("profiles")
     .update({ labels: current.filter((l) => l !== name) }).eq("id", user.id);
   await supabase.from("meta_campaign_config").update({ label: null })
