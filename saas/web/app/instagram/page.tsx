@@ -14,7 +14,7 @@ import { fmtCHF } from "@/lib/report";
 import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
-import { LineChart } from "@/components/line-chart";
+import { BarChart } from "@/components/bar-chart";
 import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 
@@ -142,9 +142,13 @@ function PostsMetricChart({
         </span>
       </div>
 
-      <LineChart
-        labels={pts.map((p) => fmtDate(p.date).slice(0, 6))}
-        series={[{ name: meta.label, color: "#7b4fff", values: pts.map(val) }]}
+      <BarChart
+        items={pts.map((p) => ({
+          label: fmtDate(p.date).slice(0, 6),
+          name: p.caption || "(sans légende)",
+          value: val(p),
+        }))}
+        color="#7b4fff"
         fmt={fmtV}
         unit={meta.unit}
         ariaLabel={`${meta.label} par post`}
