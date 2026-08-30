@@ -397,17 +397,6 @@ export type ReportPayload = {
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
-  /**
-   * Graphe A (compte entier, TASK-026) : les recos-règles compte entier (ROAS,
-   * gaspillage, scaler, silence, format gagnant, page endormie, créneau — les
-   * clés-réglages GA4/funnel restent dans `reglages`, circuit séparé) + la
-   * candidate IA libre du compte, si elle a été classée dans l'une de ces
-   * catégories. C'est la MÊME liste que celle qui alimente `top_recos` (le
-   * worker les construit ensemble) — exposée ici en entier pour que « Si tu ne
-   * fais que trois choses » ait un endroit RÉEL où pointer quand son conseil
-   * n'appartient à aucun thème (voir `ancreCompteEntier` dans `page.tsx`).
-   */
-  recos_compte?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).
   metrics_read?: {
@@ -659,7 +648,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   };
   for (const tf of report?.themes_focus ?? []) for (const x of tf.recos) collecte(x);
   for (const x of report?.reglages ?? []) collecte(x);
-  for (const x of report?.recos_compte ?? []) collecte(x);
   for (const x of report?.top_recos ?? []) collecte(x);
   for (const x of report?.recos ?? []) collecte(x);
 

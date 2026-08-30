@@ -52,9 +52,6 @@
 --   22)    reco_feedback.theme/title + reco_feedback_uq2 — le contexte d'un
 --          feedback (Graphe B, TASK-025)
 --   23)    suivi_actions.verdict — le verdict d'une action, persisté (TASK-025)
---   14sexies) reco_news — la file « recos news » du classificateur du Graphe A
---          (TASK-026). AVANT la section 15, qui doit la partager, même raison
---          que 14bis/14ter/14quater/14quinquies (elle CRÉE une table).
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1423,60 +1420,6 @@ CREATE POLICY "gec_delete_own" ON public.ga4_event_categories
 
 
 -- ============================================================================
--- 14sexies) reco_news — voir reco_news.sql (source de vérité).
---
---     AVANT LA SECTION 15, qui doit la partager, même raison que
---     14bis/14ter/14quater/14quinquies : elle CRÉE une table.
---
---     Le classificateur du Graphe A (`saas/worker/build_report.py`, voir
---     `CLASSIFIER_CATEGORIES_IA`, TASK-026) fait déclarer à la candidate IA
---     libre du compte à quelle catégorie de `reco_engine.py` elle correspond,
---     parmi 7 valeurs fermées, ou explicitement "aucune". Quand aucune
---     catégorie ne correspond, la piste part ici — jamais dans un fourre-tout
---     générique « autre » (même défaut déjà corrigé côté Graphe B, TASK-021).
---
---     Pas un pipeline de décision : ni statut, ni compteur, ni promotion
---     automatique en 11e catégorie — décision explicite de David. Un endroit
---     consultable à la main (Supabase Studio), une ligne par utilisateur et
---     par semaine (`reco_news_uq`) : un rapport régénéré la même semaine
---     remplace la ligne plutôt que d'empiler des doublons.
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.reco_news (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    week_start  date NOT NULL DEFAULT current_date,
-    title       text NOT NULL,
-    observation text NOT NULL,
-    pourquoi    text NOT NULL,
-    verifier    text NOT NULL,
-    angle_mort  text NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT reco_news_uq UNIQUE (user_id, week_start)
-);
-
-CREATE INDEX IF NOT EXISTS idx_reco_news_user
-    ON public.reco_news (user_id, week_start DESC);
-
--- « Chacun ses lignes ». Le partage d'équipe est posé par la section 15, qui
--- suit immédiatement et qui porte cette table dans sa liste.
-ALTER TABLE public.reco_news ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "reco_news_select_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_insert_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_update_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_delete_own" ON public.reco_news;
-CREATE POLICY "reco_news_select_own" ON public.reco_news
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "reco_news_insert_own" ON public.reco_news
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_news_update_own" ON public.reco_news
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_news_delete_own" ON public.reco_news
-    FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1514,7 +1457,7 @@ DECLARE
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
         'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
-        'theme_ga4_events', 'theme_objectifs', 'reco_news',
+        'theme_ga4_events', 'theme_objectifs',
         -- les catégories de conversions
         'conversion_categories', 'ga4_event_categories',
         -- budgets et journal des plateformes
@@ -2051,7 +1994,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'theme_objectifs',          NULL),   -- §14quater
     ('t', 'conversion_categories',    NULL),   -- §14quinquies
     ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
-    ('t', 'reco_news',                NULL),   -- §14sexies
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1

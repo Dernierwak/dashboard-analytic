@@ -162,78 +162,6 @@ NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
 ROLES_IA = ("generale", "hypothese")
 
 
-# ── LE CLASSIFICATEUR DU GRAPHE A (compte entier) — TASK-026 ─────────────────
-#
-# Les recos-RÈGLES (`saas/core/reco_engine.py`, via `build_recos()`) n'ont
-# JAMAIS besoin d'être classifiées : leur `key` EST déjà, par construction,
-# une des catégories de `reco_engine` — aucun jugement à ajouter, aucun appel
-# Gemini de plus (c'est exactement l'appel redondant que la critique
-# `vision-produit` avait identifié, et que David a confirmé vouloir éviter
-# tout en construisant la structure complète). Le classificateur ne s'exerce
-# donc RÉELLEMENT que sur la candidate IA libre du compte (`ai_reco`,
-# `_theme_ai_recos` restant, lui, le circuit Graphe B — hors périmètre) :
-# comme pour les pistes par thème (TASK-021), la catégorie n'est jamais
-# devinée après coup — c'est Gemini qui la DÉCLARE au moment même où il
-# rédige l'idée, dans le même appel.
-#
-# `SETUP_KEYS` (GA4 muet, connecter GA4, funnel) reste le socle d'un circuit
-# d'affichage séparé, jamais touché par cette tâche (voir `reglages` dans
-# `build_payload`) — décision de David (TASK-026) : la candidate IA libre ne
-# peut donc JAMAIS matcher dessus. `CLASSIFIER_CATEGORIES_IA` est la liste
-# fermée qui reste : les 10 clés de `reco_engine.KEY_LABELS` moins les 3
-# clés-réglages et moins "ai" (qui n'est pas une catégorie, c'est l'ancienne
-# clé de cette candidate elle-même, avant cette tâche). Une valeur hors
-# liste, ou absente, REJETTE la piste entière — jamais un repli sur "ai" ou
-# une catégorie devinée.
-SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
-CLASSIFIER_CATEGORIES_IA = tuple(
-    k for k in KEY_LABELS if k not in SETUP_KEYS and k != "ai"
-)
-
-# Le PLATEFORME de la candidate, une fois classifiée : la même que la
-# reco-règle de cette catégorie (voir `saas/core/reco_engine.py`, l'argument
-# `platform` de chaque `_rule_*`) — « comportement normal », comme demandé
-# par la tâche : rien ne doit distinguer, en aval, une candidate IA classée
-# « scaler » d'une candidate-règle « scaler ».
-CATEGORY_PLATFORM_IA = {
-    "roas": "pub", "gaspillage": "meta", "scaler": "meta",
-    "silence": "instagram", "format_gagnant": "instagram",
-    "page_endormie": "instagram", "creneau": "instagram",
-}
-
-
-def _queue_reco_news(sb, user_id: str, week_start, data: dict) -> None:
-    """La candidate IA libre qui ne correspond à AUCUNE des 7 catégories de
-    `reco_engine` part ici — dans une file consultable (table `reco_news`),
-    PAS dans un fourre-tout d'affichage générique « autre » (c'est exactement
-    le défaut que TASK-021 avait corrigé côté Graphe B).
-
-    Cette file n'est qu'un endroit à consulter à la main (Supabase Studio) :
-    aucune page dédiée, et surtout AUCUNE promotion automatique en 11e
-    catégorie — décision explicite de David (TASK-026) : personne ne sait
-    définir « assez de fois » ni sur quelle population, et le volume de
-    comptes est aujourd'hui trop faible pour que ce soit utile.
-
-    Une ligne par utilisateur et par semaine (`reco_news_uq`, voir la
-    migration) : un rapport régénéré la même semaine remplace la ligne
-    plutôt que d'empiler des doublons. Défensif comme le reste du worker :
-    une écriture ratée (table pas encore migrée en prod, par exemple)
-    n'interrompt jamais la publication du rapport.
-    """
-    try:
-        sb.table("reco_news").upsert({
-            "user_id": user_id,
-            "week_start": week_start.isoformat(),
-            "title": str(data["title"])[:90],
-            "observation": str(data["observation"]),
-            "pourquoi": str(data["pourquoi"]),
-            "verifier": str(data["verifier"]),
-            "angle_mort": str(data["angle_mort"]),
-        }, on_conflict="user_id,week_start").execute()
-    except Exception:
-        pass
-
-
 def _forcer_une_hypothese(pool: list[dict]) -> None:
     """Garantit qu'AU PLUS une piste porte `role="hypothese"` dans `pool`,
     et exactement une s'il y en a au moins une — mute `pool` sur place.
@@ -1962,8 +1890,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # Ces conseils-là sont GRATUITS : ce sont les règles du moteur. Seuls les
     # `_THEMES_IA` premiers thèmes y ajoutent des pistes rédigées par Gemini.
     # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part.
-    # `SETUP_KEYS` est désormais définie au niveau module (TASK-026, voir
-    # `CLASSIFIER_CATEGORIES_IA` plus haut, qui s'en sert aussi).
+    SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
     _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
 
     def _nrm(s):
@@ -3030,151 +2957,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         if _top_todo:
             brief += f" Priorité n°1 : {_top_todo}."
 
-    # ── Reco IA compte entier : la candidate IA libre du Graphe A ────────────
-    #
-    # Avant TASK-026 : cette candidate (clé fixe "ai") était injectée telle
-    # quelle dans le payload, sans jamais passer par un classificateur ni une
-    # file d'attente — du code mort côté affichage (ni `saas/web`, ni
-    # `saas/emailing/render.py` ne lisaient `payload["recos"]`), qui coûtait
-    # quand même un appel Gemini chaque semaine.
-    #
-    # Depuis TASK-026, elle DÉCLARE elle-même sa catégorie dans ce même appel
-    # (même principe que `_theme_ai_recos`, TASK-021 : jamais deviné après
-    # coup) :
-    #   · une des `CLASSIFIER_CATEGORIES_IA` (7 des 10 clés de
-    #     `reco_engine` — les 3 clés-réglages sont explicitement hors de la
-    #     liste qu'on lui propose, voir plus haut) ET qu'AUCUNE reco-règle de
-    #     cette même catégorie n'existe déjà cette semaine → la candidate
-    #     REJOINT `recos_compte` avec CETTE clé : « comportement normal »,
-    #     comme une reco-règle de cette catégorie (mêmes `PROOF_KPI`,
-    #     `EFFORT_BY_KEY`, `KEY_LABELS`, `_levier` qu'une reco-règle
-    #     « scaler », par exemple) ;
-    #   · "aucune", OU une catégorie valide mais DÉJÀ prise cette semaine par
-    #     une reco-règle (collision de clé — voir plus bas) → part dans la
-    #     file `reco_news` (`_queue_reco_news`), consultable à la main, jamais
-    #     affichée ni promue automatiquement ;
-    #   · toute autre valeur (ou absente) → la piste ENTIÈRE est rejetée :
-    #     jamais affichée, jamais mise en file — pas de repli par défaut.
-    # Badge IA + confiance « piste » (c'est une idée à tester, pas un fait).
-    # Ne répète pas les conseils des règles ; JSON strict, sinon on s'en passe.
-    ai_reco = None
-    try:
-        import json as _json
-        # Digest COMPLET de la matrice full-history : l'IA voit la totalité des
-        # campagnes et posts, pas un top 3 — sa suggestion peut porter sur
-        # n'importe lequel (couverture demandée par le client).
-        matrix_facts = ""
-        if matrix:
-            mcamps = matrix["campaigns"]
-            lines = [
-                f"{c['name']} [{c['channel']}] : {c['spend']:.0f} CHF, CPC {c['cpc']:.2f}, "
-                f"CTR {c['ctr']:.1f} %"
-                + (f", revenu {c['revenue']:.0f} CHF" if c.get("revenue") is not None else "")
-                + (f", thème {c['label']}" if c.get("label") else "")
-                for c in mcamps[:25]
-            ]
-            if len(mcamps) > 25:
-                _rest = mcamps[25:]
-                lines.append(f"+ {len(_rest)} autres campagnes ({sum(c['spend'] for c in _rest):.0f} CHF cumulés)")
-            th = " ; ".join(
-                f"{t['label']} ({t['spend']:.0f} CHF"
-                + (f", ROAS {t['roas']:.1f}" if t.get("roas") is not None else "")
-                + (f", {t['posts']} posts" if t.get("posts") else "") + ")"
-                for t in matrix["themes"][:8])
-            fm = " ; ".join(
-                f"{f['format']} ({f['posts']} posts, portée moy {f['reach_avg']:.0f})"
-                for f in matrix["formats"])
-            cov = matrix["coverage"]
-            matrix_facts = (
-                f" Historique complet ({matrix['period']['days']} jours) — tu vois la TOTALITÉ : "
-                f"{cov['campaigns_total']} campagnes et {cov['posts_total']} posts. "
-                f"Campagnes : {' | '.join(lines) or 'aucune'}. "
-                f"Thèmes : {th or 'aucun'}. Formats : {fm or 'aucun'}.")
-        known = " ; ".join(r["title"] for r in rule_recos)
-        categorie_prompt = " ; ".join(
-            f'"{k}" ({KEY_LABELS[k]})' for k in CLASSIFIER_CATEGORIES_IA)
-        ai_raw = _call_gemini(
-            "Tu es un consultant marketing senior pour une PME suisse. "
-            f"Faits de la semaine : dépense pub {float(df_camp['spend'].sum()) if not df_camp.empty else 0:.0f} CHF, "
-            f"CTR {avg_ctr:.2f} %, abonnés Instagram {followers_delta:+d}, "
-            f"engagement moyen {avg_engagement:.1f} %."
-            f"{matrix_facts}{vision_txt} "
-            f"Objectif du client : {obj_txt}. "
-            f"Conseils DÉJÀ donnés cette semaine (n'en répète aucun) : {known or 'aucun'}. "
-            "Propose UNE seule idée d'action originale, concrète et faisable cette semaine, "
-            "cohérente avec la vision long terme validée. "
-            "Réponds UNIQUEMENT avec un objet JSON (aucun texte autour) avec exactement ces clés : "
-            '{"title": "titre court", '
-            '"observation": "le fait chiffré qui motive cette idée — uniquement des chiffres fournis ci-dessus", '
-            '"pourquoi": "pourquoi ça peut marcher", '
-            '"verifier": "comment la tester à petite échelle avant de généraliser", '
-            '"angle_mort": "ce que cette idée ignore", '
-            '"categorie": "à quelle catégorie ci-dessous cette idée correspond le mieux"}. '
-            '"categorie" = EXACTEMENT une de ces valeurs : ' + categorie_prompt +
-            ' — ou "aucune" si ton idée ne correspond VRAIMENT à aucune d\'elles '
-            "(ne force jamais une correspondance approximative). "
-            "Français, ton direct, ne déforme aucun chiffre."
-        )
-        if ai_raw:
-            txt = ai_raw.strip()
-            if txt.startswith("```"):
-                txt = txt.strip("`")
-                txt = txt[4:] if txt.lower().startswith("json") else txt
-            data = _json.loads(txt.strip())
-            _categorie = data.get("categorie")
-            # `build_recos()` a DÉJÀ pu produire une reco-règle de cette même
-            # catégorie cette semaine (rien n'interdit à Gemini de déclarer
-            # "gaspillage" alors qu'une reco-règle "gaspillage" existe déjà —
-            # le prompt interdit de répéter le TITRE, pas la CATÉGORIE). Les
-            # deux prendraient alors la MÊME clé, compte entier : un même
-            # `feedbackKey`, le même verdict `suivi_actions`, la même entrée de
-            # `recoDetail` côté web — un 👍/👎 posé sur l'une s'appliquerait à
-            # l'autre. Une catégorie déjà prise cette semaine par une
-            # reco-règle n'est donc PAS une correspondance utilisable : elle
-            # part dans la file, exactement comme "aucune" (aucun repli sur
-            # une clé maison, jamais de fourre-tout).
-            _cle_prise = any(r.get("key") == _categorie for r in rule_recos)
-            if all(data.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-                if _categorie in CLASSIFIER_CATEGORIES_IA and not _cle_prise:
-                    # 4a — même clé qu'une reco-règle de cette catégorie :
-                    # comportement normal partout où cette clé compte déjà.
-                    ai_reco = {
-                        "key": _categorie, "platform": CATEGORY_PLATFORM_IA[_categorie],
-                        "title": str(data["title"])[:90],
-                        "observation": str(data["observation"]),
-                        "pourquoi": str(data["pourquoi"]),
-                        "verifier": str(data["verifier"]),
-                        "repere": "",
-                        "angle_mort": str(data["angle_mort"]),
-                        "confidence": "piste", "priority": 9, "source": "ai",
-                    }
-                elif _categorie == "aucune" or (_categorie in CLASSIFIER_CATEGORIES_IA and _cle_prise):
-                    # 4b — file d'attente « recos news », jamais un fourre-tout.
-                    _queue_reco_news(sb, user_id, week_start_monday, data)
-                # Toute autre valeur de `categorie` (hors liste, ou absente)
-                # REJETTE la piste entière — jamais un repli par défaut, jamais
-                # affichée, jamais mise en file.
-    except Exception:
-        ai_reco = None
-
-    # ── recos_compte : la contribution du Graphe A au pool `top_recos` ───────
-    #
-    # `rule_recos` (calculé plus haut, compte entier) n'alimentait jusqu'ici
-    # QUE `reglages` (les 3 clés-socle) et `todo`/le brief e-mail — jamais
-    # `top_recos` (« Les 3 du moment »), le seul pool que le Graphe B
-    # alimentait jusqu'ici. `recos_compte` est cette contribution manquante :
-    # les recos-règles compte entier (hors clés-réglages, qui gardent leur
-    # circuit séparé) + la candidate IA libre, si elle vient d'être classée
-    # ci-dessus. Elle rejoint le MÊME pool que les recos par thème plus bas
-    # (voir `_pool`), où `_importance()`/`_diversifier()` choisissent.
-    # `_strip_reco` (déjà utilisé pour `reglages`, même défense) : copies
-    # indépendantes de `rule_recos`/`ai_reco`, pour que `_attach_metric` /
-    # `_attach_effort` (plus bas) ne mutent jamais les dicts encore lus
-    # ailleurs (`todos`, `payload["recos"]`).
-    recos_compte = [_strip_reco(r) for r in rule_recos if r.get("key") not in SETUP_KEYS]
-    if ai_reco:
-        recos_compte.append(_strip_reco(ai_reco))
-
     _n_done = sum(1 for v in feedback.values() if v == "done")
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
@@ -3439,12 +3221,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         # des prérequis du compte, leur mesure l'est aussi.
         _attach_metric(_r)
         _attach_effort(_r)
-    for _r in recos_compte:
-        # Le Graphe A (compte entier) ne porte pas de thème non plus — même
-        # mesure que les réglages, `theme=None` → `_kpis_du_theme` retombe
-        # sur `cur_kpis` (compte entier).
-        _attach_metric(_r)
-        _attach_effort(_r)
 
     # ── L'HYPOTHÈSE DE LA SEMAINE ENTRE AUTOMATIQUEMENT EN SUIVI ─────────────
     #
@@ -3583,39 +3359,9 @@ def build_payload(sb, user_id: str) -> dict | None:
             if _est_veille(_r) and not _veille_urgente(_r):
                 continue
             _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
-    # Le Graphe A (compte entier, `recos_compte`) REJOINT ce même pool —
-    # TASK-026 : avant cette tâche, `top_recos` ne venait QUE du Graphe B
-    # (recos par thème). `theme=None` : ni `_rang_theme` ni le filtre
-    # `!r.theme || themesRendus.has(r.theme)` côté web n'en ont besoin pour un
-    # conseil qui ne porte sur AUCUN thème en particulier — même traitement
-    # que les réglages, qui n'ont eux non plus jamais eu de thème.
-    for _r in recos_compte:
-        _pool.append(dict(_r, theme=None, is_priority=False))
-
-    # LE RANG D'UN CONSEIL COMPTE ENTIER (rejet du checker, 1re passe) :
-    # `_rang_theme.get(_nrm(theme), 9)` retombait TOUJOURS sur 9 pour
-    # `theme=None` — le pire rang possible, alors que `_rang_theme` ne rend
-    # jamais plus que 0..len(theme_list)-1 (souvent 0..2). Dans `_importance`,
-    # `rang` passe AVANT la confiance : un conseil compte entier ne pouvait
-    # donc JAMAIS l'emporter sur un thème réel, quelle que soit sa gravité —
-    # `top_recos` ne le retenait que dans les cas marginaux (0 ou 1 thème),
-    # jamais dans le cas nominal à 3 thèmes (vérifié par simulation).
-    #
-    # Un conseil compte entier (ROAS, gaspillage… calculés sur TOUTES les
-    # campagnes) porte, par construction, sur au moins autant d'enjeu que le
-    # thème le plus lourd du compte — jamais moins, puisqu'il l'inclut. Il
-    # reçoit donc le même rang que le thème le plus lourd (rang 0) : un « vrai
-    # rang », au sens de `_poids_theme`/`_rang_theme` (ce qui pèse le plus),
-    # pas un repli arbitraire. Il continue de perdre face à un thème que LE
-    # CLIENT a désigné prioritaire (`is_priority`, testé avant `rang` dans le
-    # tuple) — ce critère-là reste au-dessus, comme documenté.
-    def _rang_de(r):
-        if r.get("theme") is None:
-            return 0
-        return _rang_theme.get(_nrm(r.get("theme")), 9)
-
     top_recos = _diversifier(
-        sorted(_pool, key=lambda r: _importance(r, _rang_de(r))),
+        sorted(_pool,
+               key=lambda r: _importance(r, _rang_theme.get(_nrm(r.get("theme")), 9))),
         3,
     )
 
@@ -4551,7 +4297,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 "key", "platform", "title", "observation", "pourquoi",
                 "verifier", "repere", "angle_mort", "confidence", "priority", "source")}
             for r in sorted(insta_items + meta_items, key=lambda r: r["priority"])
-        ] + ([ai_reco] if ai_reco else []),
+        ],
         # Le cœur du rapport v2 : conseils regroupés PAR THÈME (cross-canal).
         "themes_focus": themes_focus,
         "themes_intro": themes_intro,
@@ -4563,13 +4309,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         },
         "top_recos": top_recos,
         "reglages": reglages,
-        # Graphe A (compte entier, TASK-026) : les recos-règles compte entier
-        # (hors clés-réglages) + la candidate IA classée, si elle existe — la
-        # même liste que celle qui alimente `top_recos` (voir plus haut), mais
-        # exposée en entier ici pour que le front ait un endroit RÉEL où
-        # rendre son contenu complet (rejet du checker, 2e passe : un lien
-        # de `top_recos` vers un thème inexistant, sans carte nulle part).
-        "recos_compte": recos_compte,
         "tracking": tracking,
         "themes": themes,
         "preuve": preuve,
