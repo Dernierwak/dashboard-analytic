@@ -248,9 +248,10 @@ function resoudrePeriode(f: FiltreCouts, aujourdhui: string, yearStart: string, 
   }
 
   const jours = Math.max(1, dJours(from, to));
-  // Au-delà de dix semaines, un point par jour donne un peigne illisible — et
-  // `LineChart` cesse de toute façon de dessiner ses points au-delà de 60
-  // colonnes. On agrège alors par semaine : la FORME reste, le bruit part.
+  // Au-delà de dix semaines, un point par jour donne un peigne illisible —
+  // `LineChart` dessine bien un point par colonne quel que soit n (TASK-033),
+  // mais un peigne à 90 dents reste un peigne. On agrège alors par semaine :
+  // la FORME reste, le bruit part.
   return { from, to, jours, preset, titre, pas: jours > 70 ? "semaine" : "jour" };
 }
 

@@ -1378,8 +1378,10 @@ function EcartSansDetail({ mot }: { mot: string }) {
 // ne verrait rien de la croissance qu'on vient lire.
 //
 // Plutôt que de forcer, `LineChart` gagne `socle="bas"` : l'axe part du point le
-// plus bas, ses DEUX bornes sont écrites aux coins, et l'aplat sous le trait
-// disparaît. Le défaut reste « zéro » — aucune autre courbe ne bouge.
+// plus bas, et ses DEUX bornes sont écrites aux coins. Le dégradé sous le
+// trait reste (retour de David, TASK-033 : cette courbe le portait comme
+// toutes les autres, l'exception qui le retirait n'avait plus lieu d'être). Le
+// défaut reste « zéro » — aucune autre courbe ne bouge.
 const MOIS_AXE = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
 function jourCourt(isoStr: string): string {
   const d = new Date(isoStr);
