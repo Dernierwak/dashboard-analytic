@@ -2,72 +2,73 @@ import { fmtCHF, type Couverture } from "@/components/labels-modele";
 import { ThemeDonut } from "@/components/theme-donut";
 import { NEUTRE, type Teinte } from "@/lib/palette";
 
-// La couleur du rang 6 est FORCÉE, pas puisée dans `teinteLabel` : ce ne sont
-// pas deux thèmes qui se partagent l'anneau, mais deux ÉTATS (rattaché / pas)
-// — même raisonnement que `TEINTE_CANAL` dans `app/couts/page.tsx`. Le vert
-// reprend celui du verdict « tout est rattaché » (rang 4, ci-dessous) ; le
-// gris est `NEUTRE`, la même teinte que l'« autres » de tous les anneaux de
-// l'app pour « pas rattaché à un thème ».
-const TEINTE_COUVERTURE: Record<string, Teinte> = {
-  "Rattaché à un thème": { nom: "vert", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
-  "Non rattaché": NEUTRE,
+// La couleur de « Sans thème » est FORCÉE, pas puisée dans `teinteLabel` : ce
+// n'est pas un thème, c'est ce qui n'en a AUCUN — même raisonnement que
+// `TEINTE_CANAL` dans `app/couts/page.tsx`. Le gris est `NEUTRE`, la même
+// teinte que l'« autres » de tous les anneaux de l'app.
+const TEINTE_SANS_THEME: Record<string, Teinte> = {
+  "Sans thème": NEUTRE,
 };
 
 // LA COUVERTURE — le cœur pédagogique de la page Thèmes.
 //
-// LE CHIFFRE, ET POURQUOI CE CHIFFRE-LÀ.
-// Le réflexe était « 12 campagnes sans thème ». Ça ne fait rien faire à
-// personne : douze campagnes, c'est peut-être douze essais à 4 CHF arrêtés en
-// mars. Ce qu'on perd quand une campagne n'a pas de thème, ce n'est pas une
-// ligne dans un tableau, c'est de l'ARGENT sorti du compte qu'aucun bilan ne
-// sait rattacher à quoi que ce soit. « 18 400 CHF ne sont rattachés à aucun
-// thème » se comprend sans explication et fait ouvrir la liste ; « 12 » se lit
-// et s'oublie.
+// LE CAMEMBERT DIT LA VRAIE QUESTION, PAS UN VERDICT BINAIRE.
+// La première version opposait deux ÉTATS — « rattaché » / « non rattaché » —
+// et il fallait deux paragraphes au-dessus pour l'expliquer, au point de
+// devenir illisible (« 0 CHF... tout est rattaché » ne se comprend pas d'un
+// coup d'œil). La vraie question qu'on se pose sur cette page n'est pas
+// « est-ce que c'est rattaché » mais « où va mon argent, thème par thème » —
+// et la réponse est directement le camembert : une part par thème, avec son
+// nombre d'éléments et son montant.
 //
-// Le compte de lignes ne disparaît pas — il descend au rang 7, où il est à sa
-// place : la répartition de ce montant, et le canal qui n'a pas de montant.
+// LE CAMEMBERT SE DIMENSIONNE PAR LE NOMBRE, PAS PAR LA DÉPENSE.
+// « On s'en fiche de la dépense » : un thème purement organique (Instagram
+// seul, 0 CHF) doit apparaître comme n'importe quel autre, avec le poids que
+// lui donne son nombre d'éléments — un camembert dimensionné par le montant le
+// ferait disparaître par construction (une part à 0 CHF a une surface nulle).
+// `ThemeDonut` gagne donc `parNombre` : la taille des parts, le tri et le
+// seuil « visible ou pas » suivent `count`. Le montant CHF reste affiché en
+// info complémentaire (légende + info-bulle), via `montants`, comme avant.
+//
+// « SANS THÈME » RESTE UNE PART DU MÊME CAMEMBERT, PAS UN TEXTE À PART.
+// C'est l'objet même du module : ce qui n'a aucun thème ne doit pas
+// disparaître silencieusement sous prétexte que ce n'en est pas un vrai, ni se
+// fondre dans le paquet générique « autres » si elle tombe hors du top 5 (un
+// compte à quinze thèmes, par exemple). `ThemeDonut` gagne `epingles` pour
+// cette raison précise : un label qui reste sa propre part, quel que soit son
+// rang.
 //
 // INSTAGRAM N'A PAS DE DÉPENSE, ET ON NE FAIT PAS SEMBLANT.
-// Une publication organique ne coûte rien. L'additionner au montant serait
-// ajouter zéro et prétendre avoir mesuré ; l'oublier laisserait croire que
-// l'Instagram est couvert. Elle se COMPTE, dans le bilan, sous son propre mot
-// — et le pied dit l'asymétrie au lieu de la laisser se deviner.
+// Une publication organique ne coûte rien. Elle compte dans le NOMBRE
+// d'éléments de son thème (ou de « Sans thème »), jamais dans le montant —
+// l'additionner au montant serait ajouter zéro en prétendant mesurer.
 //
-// LE CAS OÙ LE MONTANT N'EXISTE PAS.
-// Un compte qui n'a encore aucune dépense relevée (Instagram seul, ou récolte
-// jamais lancée) verrait « 0 CHF ne sont rattachés à aucun thème », ce qui est
-// à la fois vrai et parfaitement trompeur — un zéro non mesuré présenté comme
-// mesuré. Le module bascule alors son rang 3 sur le comptage, et écrit
-// pourquoi. C'est le même arbitrage que la page Coûts entre « au prochain
-// relevé » et « rien de réglé en ce moment » : deux vides, deux mots.
+// TROIS PORTÉES TEMPORELLES, ET LE PIED LES DIT TOUTES.
+// Le montant CHF de chaque part du camembert couvre la fenêtre de 90 jours ;
+// le nombre d'éléments, lui, porte tout l'historique — la même convention que
+// `sansTheme.length` (voir `lib/couverture.ts`). Le détail par canal (rang 7,
+// juste en dessous) porte lui aussi la fenêtre de 90 jours, CHF comme nombre
+// de publications Instagram (`postsSansTheme`, filtré par `dansFenetre` dans
+// `lib/couverture.ts`) — un pied qui ne dirait que la règle du camembert
+// laisserait croire, par contamination, que ce nombre de publications porte
+// lui aussi tout l'historique. Un pied qui prétendrait que tout tient dans 90
+// jours (ou l'inverse) mentirait sur la moitié de ce qu'il couvre.
 //
-// LES NEUF RANGS (docs/03-grammaire-des-modules.md) :
-//   1 surtitre · 3 le montant hors thème · 4 la part, en verdict ·
-//   6 UN anneau (`ThemeDonut`, même composant que `/conversions` et
-//   `/couts` — voir docs/04-modules-partages-entre-sources.md), ses deux
-//   parts nommées et coloriées, le total au centre · 7 la répartition ·
-//   9 le pied.
-// Rang 5 absent : il n'y a pas de « couverture de la semaine dernière » à
-// comparer — le rapport ne l'a jamais archivée, et un delta inventé vaut moins
-// que pas de delta.
-export function LabelsCouverture({ c }: { c: Couverture }) {
-  const partHorsTheme =
-    c.depenseTotale > 0 ? (c.depenseSansTheme / c.depenseTotale) * 100 : 0;
-
-  // Le verdict est coloré par le SENS : ici, plus il en échappe, plus c'est
-  // grave. Les seuils sont grossiers volontairement — c'est une alerte, pas
-  // une note.
-  const verdict: { texte: string; couleur: string } =
-    !c.mesurable
-      ? { texte: "aucune dépense relevée", couleur: "#5a5d66" }
-      : c.depenseSansTheme <= 0
-      ? { texte: "tout est rattaché", couleur: "#1a7a4a" }
-      : partHorsTheme >= 20
-      ? { texte: `${Math.round(partHorsTheme)} % de ta dépense`, couleur: "#c0392b" }
-      : partHorsTheme >= 5
-      ? { texte: `${Math.round(partHorsTheme)} % de ta dépense`, couleur: "#b86b00" }
-      : { texte: `${Math.round(partHorsTheme)} % de ta dépense`, couleur: "#1a7a4a" };
-
+// LE CAS OÙ IL N'Y A RIEN À MONTRER.
+// Un compte tout neuf, sans la moindre campagne ni publication relevée
+// (`c.total === 0`), n'a rien à répartir — pas de camembert, une phrase.
+// Ce n'est plus un problème de dépense nulle (le camembert s'en moque
+// désormais), seulement d'univers vide.
+//
+// LES RANGS (docs/03-grammaire-des-modules.md) :
+//   1 surtitre · 6 UN anneau (`ThemeDonut`, même composant que `/conversions`
+//   et `/couts` — voir docs/04-modules-partages-entre-sources.md), une part
+//   par thème + « Sans thème », nombre d'éléments et montant · 7 la
+//   répartition de ce qui échappe, par canal · 9 le pied.
+// Pas de rang 3/4 séparé : le camembert PORTE son chiffre — le total et le
+// nombre de thèmes, au centre de l'anneau (rang 6) — il n'y a plus de verdict
+// binaire à résumer en mots au-dessus de lui.
+export function LabelsCouverture({ c, labels }: { c: Couverture; labels: string[] }) {
   return (
     <section className="bg-white border border-line rounded-2xl shadow-card px-4 sm:px-5 py-4 mb-5">
       {/* Rang 1 — surtitre : c'est une tuile qu'on scanne, pas un texte qu'on lit. */}
@@ -75,78 +76,50 @@ export function LabelsCouverture({ c }: { c: Couverture }) {
         Ce qui échappe à tes thèmes
       </div>
 
-      {/* Rang 3 — LE chiffre. Aucune forme au-dessus de lui. */}
-      <div className="flex items-baseline gap-2.5 flex-wrap">
-        <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {c.mesurable ? fmtCHF(c.depenseSansTheme) : c.sansTheme}
-          {c.mesurable && <span className="text-[15px] text-faint"> CHF</span>}
-        </span>
-        {/* Rang 4 — le verdict, en mots, recette maison couleur / couleur+14. */}
-        <span
-          className="text-[10.5px] font-bold px-2 py-0.5 rounded-full"
-          style={{ color: verdict.couleur, background: `${verdict.couleur}14` }}
-        >
-          {verdict.texte}
-        </span>
-      </div>
+      {c.total > 0 ? (
+        <>
+          <p className="text-[12.5px] text-ink leading-relaxed">
+            Tes éléments (campagnes + publications), répartis par thème — nombre et
+            dépense pour chacun.{" "}
+            <span className="font-semibold">« Sans thème » est sa propre part</span> :
+            ce qui n&apos;en porte aucun n&apos;entre dans aucun bilan, ne reçoit aucun
+            conseil et ne compte dans aucun budget par thème.
+          </p>
 
-      <p className="text-[12px] text-muted mt-2 leading-snug">
-        {c.mesurable ? (
-          <>
-            de dépense au total ne sont rattachés à aucun thème ·{" "}
-            <span className="text-faint">{c.fenetreCourte}</span>
-          </>
-        ) : (
-          <>
-            contenus n&apos;ont aucun thème, sur tout ton historique. Aucune dépense
-            n&apos;a été relevée sur {c.fenetreCourte} — alors on les compte, faute de
-            pouvoir les chiffrer.
-          </>
-        )}
-      </p>
-
-      {/* LA PHRASE QUI FAIT COMPRENDRE — elle appartient au chiffre, pas au
-          pied. Le rang 9 est réservé à ce qui rend le module honnête (une
-          limite de mesure) ; ceci explique l'ENJEU, ce n'est pas la même
-          chose, et ça se lit avant la forme ou ça ne se lit pas. */}
-      <p className="text-[12.5px] text-ink mt-2.5 leading-relaxed">
-        Un thème regroupe une campagne Meta, une campagne Google et une publication sous
-        le même sujet. Ce qui n&apos;en porte pas{" "}
-        <span className="font-semibold">
-          n&apos;entre dans aucun bilan par thème, ne reçoit aucun conseil et ne compte
-          dans aucun budget par thème
-        </span>{" "}
-        — la dépense sort du compte, l&apos;analyse ne la voit jamais.
-      </p>
-
-      {/* Rang 6 — UNE forme, ses deux parts écrites. Même anneau que
-          `/conversions` (le camembert des catégories de conversions) et
-          `/couts` — `ThemeDonut`, en mode `carte={false}` pour se fondre
-          dans cette carte au lieu d'en ouvrir une seconde. Les deux parts
-          sont RATTACHÉ (vert, l'état qu'on veut voir grandir) et NON
-          RATTACHÉ (gris `NEUTRE`, même convention que l'« autres » des
-          anneaux par thème) — même sens que l'ancienne barre. Il ne s'affiche
-          pas quand il n'y a pas de dépense — un anneau sur un dénominateur
-          nul est du décor. */}
-      {c.mesurable && (
-        <div className="mt-4">
-          <ThemeDonut
-            rows={[
-              { label: "Rattaché à un thème", spend: Math.max(0, c.depenseTotale - c.depenseSansTheme) },
-              { label: "Non rattaché", spend: c.depenseSansTheme },
-            ]}
-            teintes={TEINTE_COUVERTURE}
-            unite="part"
-            uniteValeur="CHF"
-            montants
-            carte={false}
-          />
-        </div>
+          {/* Rang 6 — UNE forme, ses parts écrites : une par thème, plus
+              « Sans thème », toujours sa propre part (`epingles`). Même
+              anneau que `/conversions` et `/couts` — `ThemeDonut`, en mode
+              `carte={false}` pour se fondre dans cette carte au lieu d'en
+              ouvrir une seconde, et `parNombre` pour que la taille des parts
+              suive le nombre d'éléments, pas la dépense. */}
+          <div className="mt-4">
+            <ThemeDonut
+              rows={[
+                ...c.parTheme.map((t) => ({ label: t.label, spend: t.depense, count: t.nb })),
+                { label: "Sans thème", spend: c.depenseSansTheme, count: c.sansTheme },
+              ]}
+              teintes={TEINTE_SANS_THEME}
+              univers={labels}
+              unite="thème"
+              uniteValeur="éléments"
+              montants
+              carte={false}
+              parNombre
+              epingles={["Sans thème"]}
+            />
+          </div>
+        </>
+      ) : (
+        <p className="text-[12.5px] text-muted leading-relaxed">
+          Aucune campagne ni publication relevée pour l&apos;instant — rien à répartir
+          par thème.
+        </p>
       )}
 
-      {/* Rang 7 — le détail : où est le trou, et le canal qui n'a pas de
-          montant. Un seul fond, trois chiffres à 19 px contre 34 px en tête :
-          on lit un titre et sa suite, pas trois titres qui se disputent. */}
+      {/* Rang 7 — le détail : où est le trou de la part « Sans thème », et le
+          canal qui n'a pas de montant. Un seul fond, trois chiffres à 19 px
+          contre 34 px en tête : on lit un titre et sa suite, pas trois titres
+          qui se disputent. */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-4 rounded-xl bg-black/[0.02] px-3 py-3">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1 truncate">
@@ -177,13 +150,22 @@ export function LabelsCouverture({ c }: { c: Couverture }) {
         </div>
       </div>
 
-      {/* Rang 9 — le pied, un seul, deux lignes : les deux conventions sans
-          lesquelles les chiffres ci-dessus se lisent de travers. */}
+      {/* Rang 9 — le pied : TROIS portées à distinguer, chacune à l'endroit
+          où elle s'applique. (1) Le nombre d'éléments du camembert porte tout
+          l'historique. (2) Le montant CHF affiché à côté, dans le camembert,
+          ne couvre que la fenêtre de 90 jours. (3) Le détail par canal juste
+          au-dessus (rang 7) — CHF Meta/Google ET nombre de publications
+          Instagram — porte lui aussi cette même fenêtre de 90 jours, pas
+          l'historique complet : sans le dire, un lecteur applique la règle du
+          camembert (« historique complet ») au nombre de publications d'à
+          côté, qui lui est scopé 90 jours — même défaut que le camembert au
+          premier passage, juste déplacé d'un rang plus bas. */}
       <p className="text-[10.5px] text-faint/90 mt-3 leading-relaxed">
-        Tout ce module couvre {c.fenetreLongue}, aujourd&apos;hui exclu — publications
-        comprises. Les publications Instagram ne coûtent rien : elles se comptent, elles
-        ne s&apos;ajoutent pas au montant. Les listes ci-dessous, elles, portent tout ton
-        historique.
+        Dans le camembert, le nombre d&apos;éléments par part porte tout ton
+        historique ; son montant CHF ne couvre que {c.fenetreLongue}, aujourd&apos;hui
+        exclu — comme le détail par canal juste au-dessus (Meta, Google, et le nombre
+        de publications Instagram). Une publication Instagram ne coûte rien : elle se
+        compte, elle ne s&apos;ajoute jamais au montant.
       </p>
     </section>
   );

@@ -26,9 +26,18 @@ export function ThemeDonut({
   etroit = false,
   uniteValeur = "CHF",
   carte = true,
+  parNombre = false,
+  epingles,
 }: {
-  rows: { label: string; spend: number }[];
-  /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». */
+  /**
+   * `count`, optionnel : le nombre d'éléments qui composent la part, en
+   * complément du montant — utilisé par `labels-couverture` (une campagne ou
+   * une publication par thème), ignoré des trois usages existants (rapport,
+   * Coûts, Conversions), qui ne le passent pas.
+   */
+  rows: { label: string; spend: number; count?: number }[];
+  /** Ce qui n'est rattaché à aucun thème — versé dans « autres ». Un montant :
+   *  n'a de sens qu'en mode `spend` (voir `parNombre`), ignoré en mode `count`. */
   orphan?: number;
   // La liste maîtresse des thèmes : elle fixe la couleur de chacun, pour qu'un
   // thème garde la sienne d'un module à l'autre et d'une semaine à l'autre.
@@ -56,8 +65,9 @@ export function ThemeDonut({
   /** Deux anneaux côte à côte : la légende n'a plus la place de ses colonnes. */
   etroit?: boolean;
   /**
-   * L'UNITÉ DE `spend`, ÉCRITE AU CENTRE ET DANS LE `<title>` DE CHAQUE ARC —
-   * PAS TOUJOURS UN MONTANT. `spend` porte un montant en franc sur toutes les
+   * L'UNITÉ DE LA VALEUR QUI PILOTE L'ANNEAU (`spend`, ou `count` si
+   * `parNombre`), ÉCRITE AU CENTRE ET DANS LE `<title>` DE CHAQUE ARC — PAS
+   * TOUJOURS UN MONTANT. `spend` porte un montant en franc sur toutes les
    * répartitions de dépense (d'où le nom et le défaut « CHF »), mais le même
    * anneau sert aussi à compter des ÉVÉNEMENTS (le camembert des conversions
    * par catégorie, sur /conversions) : y écrire « CHF » sous un nombre de
@@ -66,32 +76,78 @@ export function ThemeDonut({
   uniteValeur?: string;
   /**
    * FAUX : rendre l'anneau NU, sans son cadre, son titre ni sa note — pour se
-   * nicher dans une carte qui les porte déjà (`labels-couverture`, rang 1 =
-   * son surtitre, rang 4 = son verdict). Un module qui redit un titre et un
-   * fond que son hôte affiche déjà à côté produit un cadre dans le cadre.
+   * nicher dans une carte qui les porte déjà (`labels-couverture`, dont le
+   * rang 1 est déjà le surtitre). Un module qui redit un titre et un fond que
+   * son hôte affiche déjà à côté produit un cadre dans le cadre.
    * Par défaut à `true` : les trois usages existants (rapport, Coûts,
    * Conversions) restent des cartes autonomes, inchangés.
    */
   carte?: boolean;
+  /**
+   * VRAI : la taille des parts, le tri, et le seuil « visible ou pas » sont
+   * pilotés par `count` (le nombre d'éléments) au lieu de `spend` (le
+   * montant). Ajouté pour `labels-couverture` : un thème purement organique
+   * (0 CHF) doit quand même apparaître, avec le poids que lui donne son
+   * nombre d'éléments — « on s'en fiche de la dépense » pour dimensionner,
+   * elle reste affichée à côté en info complémentaire (via `montants`).
+   * Par défaut `false` : les trois usages existants continuent de
+   * dimensionner par `spend`, à l'identique. `orphan` est ignoré dans ce mode
+   * (c'est un montant, il n'a pas de `count`).
+   */
+  parNombre?: boolean;
+  /**
+   * Labels qui ne doivent JAMAIS être absorbés dans la part « autres », quel
+   * que soit leur rang — ils restent leur propre part identifiable même s'ils
+   * tombent hors du top 5. Utilisé par `labels-couverture` pour « Sans
+   * thème » : c'est l'objet même du module, il ne peut pas se fondre dans un
+   * paquet générique. Un label épinglé absent de `rows`, ou dont la valeur
+   * qui pilote l'anneau est nulle, n'apparaît simplement pas — épingler ne
+   * fabrique pas une part vide.
+   */
+  epingles?: string[];
 }) {
-  const tries = [...rows].sort((a, b) => b.spend - a.spend).filter((r) => r.spend > 0);
+  const poids = (r: { spend: number; count?: number }) => (parNombre ? r.count ?? 0 : r.spend);
+  const tries = [...rows].sort((a, b) => poids(b) - poids(a)).filter((r) => poids(r) > 0);
   if (tries.length === 0) return null;
 
   const couleur = (label: string) => teintes?.[label] ?? teinteLabel(label, univers);
-  const top = tries.slice(0, 5);
-  const reste = tries.slice(5).reduce((a, r) => a + r.spend, 0) + (orphan > 0 ? orphan : 0);
+  const estEpingle = (label: string) => (epingles ?? []).includes(label);
+  const epingleesRows = tries.filter((r) => estEpingle(r.label));
+  const restantes = tries.filter((r) => !estEpingle(r.label));
+  const placesLibres = Math.max(0, 5 - epingleesRows.length);
+  const top = [...epingleesRows, ...restantes.slice(0, placesLibres)].sort(
+    (a, b) => poids(b) - poids(a)
+  );
+  const dela = restantes.slice(placesLibres);
+  const resteSpend = dela.reduce((a, r) => a + r.spend, 0) + (!parNombre && orphan > 0 ? orphan : 0);
+  // Le nombre d'éléments de « autres » ne se reconstitue que si CHAQUE ligne
+  // au-delà du top 5 porte un `count` — sinon on ne sait pas ce que l'orphan
+  // représente en éléments, et un total à moitié compté vaudrait moins que pas
+  // de total. `dela.length > 0` est nécessaire : `[].every(...)` vaut
+  // toujours `true` (vide), ce qui donnait « 0 élément » à une part « autres »
+  // faite uniquement d'`orphan` — un compte faux, pas une absence de compte.
+  const resteCount = dela.length > 0 && dela.every((r) => typeof r.count === "number")
+    ? dela.reduce((a, r) => a + (r.count ?? 0), 0)
+    : undefined;
+  // `restePoids` PILOTE la taille de la part « autres » — elle ne se déduit
+  // pas de `resteCount` (gardé strict, `undefined` dès qu'une ligne manque son
+  // `count`) ni de `resteSpend` recalculés séparément : les trois divergeraient
+  // dès qu'une ligne bucketée n'a pas de `count` en mode `parNombre`.
+  const restePoids = parNombre ? dela.reduce((a, r) => a + (r.count ?? 0), 0) : resteSpend;
   const parts = [
-    ...top.map((r) => ({ label: r.label, spend: r.spend, t: couleur(r.label) })),
-    ...(reste > 0 ? [{ label: "autres", spend: reste, t: NEUTRE }] : []),
+    ...top.map((r) => ({ label: r.label, spend: r.spend, count: r.count, poidsPart: poids(r), t: couleur(r.label) })),
+    ...(restePoids > 0
+      ? [{ label: "autres", spend: resteSpend, count: resteCount, poidsPart: restePoids, t: NEUTRE }]
+      : []),
   ];
-  const total = parts.reduce((a, p) => a + p.spend, 0);
+  const total = parts.reduce((a, p) => a + p.poidsPart, 0);
   if (total <= 0) return null;
 
   // Anneau dessiné en arcs de cercle : un seul cercle, un dasharray par part.
   const R = 42, C = 2 * Math.PI * R;
   let offset = 0;
   const arcs = parts.map((p) => {
-    const frac = p.spend / total;
+    const frac = p.poidsPart / total;
     const arc = { ...p, frac, dash: frac * C, offset };
     offset += frac * C;
     return arc;
@@ -110,24 +166,35 @@ export function ThemeDonut({
             sans son total est une forme sans sa valeur. */}
         <div className="relative shrink-0">
           <svg viewBox="0 0 100 100" className={`-rotate-90 ${etroit ? "w-[150px] h-[150px]" : "w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]"}`} role="img"
-            aria-label={`Répartition de la dépense par ${unite}`}>
+            aria-label={`Répartition ${parNombre ? "du nombre d'éléments" : "de la dépense"} par ${unite}`}>
             <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f1f4" strokeWidth="16" />
-            {arcs.map((a) => (
-              <circle
-                key={a.label}
-                cx="50"
-                cy="50"
-                r={R}
-                fill="none"
-                stroke={a.t.trait}
-                strokeWidth="16"
-                opacity={0.9}
-                strokeDasharray={`${a.dash} ${C - a.dash}`}
-                strokeDashoffset={-a.offset}
-              >
-                <title>{`${a.label} — ${fmtCHF(a.spend)} ${uniteValeur} (${Math.round(a.frac * 100)} %)`}</title>
-              </circle>
-            ))}
+            {arcs.map((a) => {
+              // Le complément est TOUJOURS l'autre valeur que celle qui pilote
+              // l'anneau : le montant quand c'est le nombre qui pilote
+              // (`parNombre`), le nombre quand c'est le montant — jamais les
+              // deux fois la même.
+              const complement = parNombre
+                ? ` · ${fmtCHF(a.spend)} CHF`
+                : typeof a.count === "number"
+                  ? ` · ${a.count} élément${a.count > 1 ? "s" : ""}`
+                  : "";
+              return (
+                <circle
+                  key={a.label}
+                  cx="50"
+                  cy="50"
+                  r={R}
+                  fill="none"
+                  stroke={a.t.trait}
+                  strokeWidth="16"
+                  opacity={0.9}
+                  strokeDasharray={`${a.dash} ${C - a.dash}`}
+                  strokeDashoffset={-a.offset}
+                >
+                  <title>{`${a.label} — ${fmtCHF(a.poidsPart)} ${uniteValeur} (${Math.round(a.frac * 100)} %)${complement}`}</title>
+                </circle>
+              );
+            })}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <span className="font-mono text-[22px] sm:text-[26px] leading-none font-medium text-ink">
@@ -160,8 +227,23 @@ export function ThemeDonut({
               />
               <span className="text-[12.5px] text-ink truncate">{a.label}</span>
               <span className="ml-auto font-mono text-[12px] text-muted shrink-0">
-                {montants && <span className="text-ink">{fmtCHF(a.spend)}</span>}
+                {montants && (
+                  <span className="text-ink">
+                    {fmtCHF(a.spend)}
+                    {/* En mode `parNombre`, le centre de l'anneau déclare
+                        `uniteValeur` (« éléments ») — le nombre nu ici serait
+                        lu comme cette même unité. Seul cas où le CHF n'est PAS
+                        la valeur qui pilote l'anneau : on l'écrit en toutes
+                        lettres. */}
+                    {parNombre && " CHF"}
+                  </span>
+                )}
                 {montants && " "}
+                {typeof a.count === "number" && (
+                  <span className="text-faint">
+                    {a.count} élément{a.count > 1 ? "s" : ""} ·{" "}
+                  </span>
+                )}
                 <span className={montants ? "text-faint" : undefined}>
                   {Math.round(a.frac * 100)} %
                 </span>

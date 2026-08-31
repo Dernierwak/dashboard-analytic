@@ -52,6 +52,11 @@ export type Couverture = {
    *  bascule alors son rang 3 sur un comptage et le DIT : « 0 CHF » écrit là
    *  où rien n'a été mesuré serait un chiffre faux. */
   mesurable: boolean;
+  /** La dépense (fenêtre) et le nombre d'éléments (tout l'historique, tous
+   *  canaux) rattachés à chaque thème — les parts du camembert de
+   *  `labels-couverture`. Le « sans thème » n'y figure pas : il se construit
+   *  à partir de `depenseSansTheme` et `sansTheme` ci-dessus, sa propre part. */
+  parTheme: { label: string; depense: number; nb: number }[];
 };
 
 export function fmtCHF(n: number): string {

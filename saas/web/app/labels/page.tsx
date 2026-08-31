@@ -9,8 +9,8 @@
 // ce qui n'en avait pas, donc elle ne pouvait pas être l'endroit où on répare.
 // Elle est maintenant lue de haut en bas comme un parcours :
 //
-//   1. LA COUVERTURE — combien d'argent échappe à l'analyse, et pourquoi ça
-//      compte. C'est le seul module de la page qui porte un rang 3.
+//   1. LA COUVERTURE — où va l'argent, thème par thème, et ce qui n'en a
+//      aucun. Le seul module de la page qui porte un camembert (rang 6).
 //   2. LE GESTE DE MASSE — l'IA étiquette tout ce qui est vide, en un clic,
 //      et se défait en un clic.
 //   3. SANS THÈME — le travail restant, éditable sur place.
@@ -74,7 +74,7 @@ export default async function LabelsPage() {
       </div>
 
       {/* 1 — LE MODULE QUI DIT POURQUOI ON EST LÀ. */}
-      <LabelsCouverture c={etiquetage.couverture} />
+      <LabelsCouverture c={etiquetage.couverture} labels={etiquetage.labels} />
 
       {/* 2 — LE GESTE DE MASSE, juste sous le chiffre qu'il fait baisser.
           Il n'est plus dans l'en-tête : une action qui répare ce qu'un module

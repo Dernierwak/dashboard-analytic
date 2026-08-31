@@ -211,6 +211,25 @@ export async function getEtiquetage(): Promise<Etiquetage> {
     else googleSansTheme += l.depense;
   }
 
+  // ── La répartition par thème — le camembert de `labels-couverture`. ──────
+  // Même arithmétique que les trois compteurs ci-dessus, appliquée à chaque
+  // thème au lieu d'être collapsée dans un seul panier « sans thème » :
+  // `depense` vient de `l.depense` (la fenêtre de 90 jours, 0 sur Instagram),
+  // `nb` compte les lignes tous canaux confondus, sur tout l'historique — la
+  // même portée que `sansTheme.length` juste au-dessus. La somme des `nb` de
+  // tous les thèmes plus `sansTheme.length` vaut toujours `lignes.length`.
+  const parThemeMap = new Map<string, { depense: number; nb: number }>();
+  for (const l of lignes) {
+    if (!l.label) continue;
+    const cur = parThemeMap.get(l.label) ?? { depense: 0, nb: 0 };
+    cur.depense += l.depense;
+    cur.nb += 1;
+    parThemeMap.set(l.label, cur);
+  }
+  const parTheme = [...parThemeMap.entries()]
+    .map(([label, v]) => ({ label, depense: v.depense, nb: v.nb }))
+    .sort((a, b) => b.depense - a.depense || a.label.localeCompare(b.label));
+
   return {
     labels,
     sansTheme,
@@ -226,6 +245,7 @@ export async function getEtiquetage(): Promise<Etiquetage> {
       sansTheme: sansTheme.length,
       total: lignes.length,
       mesurable: depenseTotale > 0,
+      parTheme,
     },
   };
 }

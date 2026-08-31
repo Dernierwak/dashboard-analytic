@@ -111,14 +111,26 @@ nouvelle source**, à condition de ne pas laisser une cinquième copie ailleurs
 
 ### `ThemeDonut` — l'anneau de répartition
 
-`components/theme-donut.tsx`. Prend `rows: { label, spend }[]` — n'importe
-quelle donnée qui prend cette forme peut s'y brancher, quelle que soit sa
-provenance. Utilisé tel quel sur le rapport hebdomadaire (par thème) et sur
-`app/couts/page.tsx` (par thème ET par plateforme, avec le prop `teintes` qui
-force les couleurs de canal sur le second anneau — voir `couts/page.tsx:79`,
-`TEINTE_CANAL`). Une nouvelle source qui doit apparaître dans un anneau n'a
-besoin de rien de plus qu'un objet `{label, spend}` et, si elle a une couleur
-de convention, une entrée dans le `teintes` qu'on lui passe.
+`components/theme-donut.tsx`. Prend `rows: { label, spend, count? }[]` —
+n'importe quelle donnée qui prend cette forme peut s'y brancher, quelle que
+soit sa provenance. Utilisé tel quel sur le rapport hebdomadaire (par thème)
+et sur `app/couts/page.tsx` (par thème ET par plateforme, avec le prop
+`teintes` qui force les couleurs de canal sur le second anneau — voir
+`couts/page.tsx:79`, `TEINTE_CANAL`). Une nouvelle source qui doit apparaître
+dans un anneau n'a besoin de rien de plus qu'un objet `{label, spend}` et, si
+elle a une couleur de convention, une entrée dans le `teintes` qu'on lui
+passe. `count`, optionnel, ajoute le nombre d'éléments d'une part à côté de
+son montant (légende + info-bulle) — utilisé par `components/labels-couverture.tsx`
+(une campagne ou une publication par thème), ignoré des trois usages
+existants qui ne le passent pas. `parNombre` (booléen, défaut `false`) fait
+piloter la taille des parts, le tri et le seuil « visible ou pas » par
+`count` au lieu de `spend` — pour que `labels-couverture` puisse afficher un
+thème purement organique (0 CHF) à la taille que lui donne son nombre
+d'éléments ; le montant reste affiché en info complémentaire. `epingles`
+(labels qui ne sont jamais absorbés dans la part « autres », quel que soit
+leur rang) sert au même appelant pour « Sans thème ». Les trois usages
+existants ne passent ni l'un ni l'autre et gardent leur comportement
+d'origine (dimension `spend`).
 
 ### Primitives sans aucune conscience de la source
 
