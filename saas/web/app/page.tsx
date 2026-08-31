@@ -21,7 +21,6 @@ import { HorsTheme } from "@/components/hors-theme";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
-import { Apprentissage } from "@/components/apprentissage";
 import { RecoCard } from "@/components/reco-card";
 import { Triangle } from "@/components/pente";
 
@@ -321,7 +320,6 @@ export default async function Page() {
   let _n = 0;
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
   const nThemes = cartes.length > 0 ? ++_n : undefined;
-  const nApprendre = report?.apprentissage ? ++_n : undefined;
 
   // ── L'ORDRE DES CARTES DE THÈME ──────────────────────────────────────────
   //
@@ -710,11 +708,6 @@ export default async function Page() {
                 ))}
               </div>
             </details>
-          )}
-
-          {/* ALLER PLUS LOIN — le savoir-faire qui répond à ce qui te bloque */}
-          {report?.apprentissage && (
-            <Apprentissage data={report.apprentissage} num={nApprendre} />
           )}
         </>
       )}

@@ -388,12 +388,6 @@ export type ReportPayload = {
   themes_intro?: string | null;
   // Savoir-faire de fond par thématique — durable, pas lié à la semaine.
   themes_tips?: { theme: string; tips: { titre: string; texte: string }[] }[] | null;
-  // Ce que tu n'arrives pas à appliquer, et le savoir-faire qui répond.
-  apprentissage?: {
-    bloques: string[];
-    recurrents: { titre: string; fois: number }[];
-    tips: { theme: string; tips: { titre: string; texte: string }[] }[];
-  } | null;
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;

@@ -3903,58 +3903,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         themes_intro = (f"{_tete} — voilà {_quoi} sur {_sur}."
                         if _tete else f"Voilà {_quoi} sur {_sur}.")
 
-    # Savoir-faire de fond par thematique — se lit quand on a cinq minutes.
-    # Conseils proposés semaine après semaine SANS jamais être appliqués : le
-    # signal le plus honnête qu'il manque un savoir-faire, pas de la volonté.
-    _recurrents = []
-    try:
-        _compte, _titre_hist = {}, {}
-        for _pl in _rapports_publies:
-            _vus_sem = set()
-            for _tf in (_pl.get("themes_focus") or []):
-                for _r in (_tf.get("recos") or []):
-                    _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
-            for _r in (_pl.get("reglages") or []):
-                _vus_sem.add(_r.get("key")); _titre_hist[_r.get("key")] = _r.get("title")
-            # UNE VEILLE N'EST PAS UN CONSEIL NON APPLIQUÉ. Ce compteur nourrit
-            # « il te manque un savoir-faire sur ce sujet » ; une veille ne
-            # demande rien à personne, la voir trois lundis de suite ne prouve
-            # aucun blocage. Sans ce filtre, le filet des thèmes calmes serait
-            # devenu, en trois semaines, le sujet n°1 des conseils de fond.
-            for _k in _vus_sem:
-                if str(_k or "").startswith("veille_"):
-                    continue
-                _compte[_k] = _compte.get(_k, 0) + 1
-        _faits = set()
-        try:
-            _faits = {r["reco_key"] for r in ((sb.table("reco_feedback").select("reco_key")
-                      .eq("user_id", user_id).eq("reaction", "done").execute().data) or [])}
-        except Exception:
-            _faits = set()
-        _recurrents = [
-            {"titre": _titre_hist.get(k) or KEY_LABELS.get(k, k), "fois": n}
-            for k, n in sorted(_compte.items(), key=lambda kv: -kv[1])
-            if n >= 3 and k not in _faits
-        ][:4]
-    except Exception:
-        _recurrents = []
-
-    _bloques = []
-    try:
-        _bl = (sb.table("reco_feedback").select("reco_key")
-               .eq("user_id", user_id).eq("reaction", "too_hard")
-               .order("week_start", desc=True).limit(8).execute().data) or []
-        _vus = {r["reco_key"] for r in _bl}
-        # on remonte le TITRE du conseil, pas sa clé technique
-        _titres = {}
-        for _tf in themes_focus:
-            for _r in _tf["recos"]:
-                _titres[_r["key"]] = _r["title"]
-        for _r in reglages:
-            _titres[_r["key"]] = _r["title"]
-        _bloques = [_titres.get(k, KEY_LABELS.get(k, k)) for k in _vus]
-    except Exception:
-        _bloques = []
     try:
         # LES MÊMES TROIS QUE LES PISTES, jamais un autre découpage. C'était
         # `themes_focus[:3]`, ce qui donnait le même résultat tant que la liste
@@ -3964,8 +3912,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # thème s'afficherait deux blocs plus bas. Un seul appel Gemini, quel
         # que soit le nombre de thèmes.
         themes_tips = _themes_tips([t["label"] for t in themes_focus if t["ia_redigee"]],
-                                   _obj_txt0,
-                                   bloques=_bloques + [r["titre"] for r in _recurrents])
+                                   _obj_txt0)
     except Exception:
         themes_tips = []
 
@@ -4302,11 +4249,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         "themes_focus": themes_focus,
         "themes_intro": themes_intro,
         "themes_tips": themes_tips,
-        "apprentissage": {
-            "bloques": _bloques,
-            "recurrents": _recurrents,
-            "tips": themes_tips,
-        },
         "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,
