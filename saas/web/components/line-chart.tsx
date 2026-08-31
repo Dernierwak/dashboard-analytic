@@ -456,64 +456,125 @@ export function LineChart({
   );
 }
 
-// Version minuscule — pas d'axe, pas d'info-bulle, juste la forme. Glissée
-// dans une tuile, elle transforme un chiffre nu en tendance lisible d'un coup.
+// Version minuscule — juste la forme, glissée dans une tuile pour transformer
+// un chiffre nu en tendance lisible d'un coup.
 //
-// Même grammaire que `LineChart` malgré le rendu 100 % SVG (pas de texte ici,
-// donc pas besoin de la couche HTML) : un dégradé de la couleur du trait sous
-// la courbe, et un point sur CHAQUE valeur — pas seulement la dernière, sans
-// quoi une sparkline racontait une tendance différemment d'une grande courbe
-// (retour de David, TASK-033).
+// A PORTÉ UNE COUCHE HTML AU-DESSUS DU SVG (TASK-037) — ce qu'elle n'avait
+// jamais eu jusque-là (« pas de texte ici, donc pas besoin de la couche HTML »,
+// disait l'ancienne note). Deux retours de David l'ont rendue nécessaire :
+// « les points sont énormes et on peut pas hover ». Le second à lui seul
+// l'imposait déjà — une bulle est du texte, donc de la couche HTML, par la
+// règle de tête de fichier. Le premier confirme que la couche SVG seule ne
+// pouvait de toute façon plus suffire : voir pourquoi juste en dessous.
 //
-// LE POINT LUI-MÊME EST LE MÊME QUE CELUI DE `LineChart` : un disque blanc
-// cerclé de la couleur du trait — pas un disque plein. Cette version-ci avait
-// d'abord dessiné un disque plein en SVG (plus simple à écrire dans une forme
-// sans couche HTML), mais `LineChart` reste la référence utilisée par dix-sept
-// courbes de l'app ; deux primitives différentes pour le même point auraient
-// été une divergence, pas un choix (rejet du checker, TASK-033). MÊME
-// PROPORTION que `LineChart` aussi : 30 % de l'encre totale en bordure, 40 %
-// en blanc central — pas un palier séparé qui aurait laissé les deux
-// composants converger en apparence sans partager de règle (deuxième rejet du
-// checker : l'ancienne bordure de Sparkline, à `rayon*0.45` borné [0.35, 1],
-// gardait ~25 % de blanc à n=120 quand `LineChart`, avec sa bordure fixe,
-// n'en gardait plus du tout — même look, proportions différentes).
+// LA TAILLE DU POINT DEVIENT UN NOMBRE DE PIXELS RÉELS — plus une proportion
+// de l'espacement DANS LE VIEWBOX. C'est le cœur du bug rapporté : l'ancienne
+// formule plafonnait l'ENCRE (rayon×2 + bordure) à 70 % de l'espacement
+// mesuré en unités du viewBox (100 de large, quel que soit n). Cette unité
+// n'a pas de taille fixe à l'écran : elle vaut ce que le NAVIGATEUR décide en
+// étalant ces 100 unités sur la largeur réelle de la tuile. Sur une tuile
+// étroite (téléphone, ~180 px) une unité valait ~1,8 px et le point restait
+// petit ; sur une tuile large (bureau, un `sm:grid-cols-3` peut donner
+// ~350 px à la carte) la MÊME unité valait ~3,5 px, et le même point plafonné
+// à 4,4 unités faisait ~15 px de diamètre — un point qui domine la courbe
+// qu'il est censé illustrer. Exactement ce que David a vu. `LineChart` n'a
+// pas ce défaut parce que SES points sont déjà en HTML, dimensionnés en
+// pixels réels constants (cf. sa note sur `327`) — c'est la même correction
+// qu'on applique ici, à l'identique dans l'esprit, avec une largeur de
+// référence et des bornes propres à ce composant, plus petit.
 //
-// Une SEULE différence assumée avec `LineChart` : la bordure ici N'EST PAS
-// `vectorEffect="non-scaling-stroke"`, contrairement au trait juste en
-// dessous. Volontaire, pas un oubli : le trait doit rester lisible en pixels
-// RÉELS constants sur tout écran (c'est tout l'objet de `non-scaling-stroke`),
-// alors que l'anneau doit rester à 30 % du DISQUE — une proportion, pas une
-// épaisseur absolue. Fixer l'anneau en pixels réels aurait cassé cette
-// proportion selon la largeur du conteneur ; la laisser suivre l'échelle du
-// SVG la garde exacte à toute taille.
+// LA HAUTEUR RENDUE DE LA FORME, ELLE, N'A PAS CHANGÉ ET NE DEVAIT PAS
+// CHANGER — seule la taille du point était en cause. Le SVG d'origine
+// (`w-full`, sans hauteur CSS) suivait le ratio intrinsèque du viewBox
+// (`W:H`, soit `10:3` pour `H=30`) : sur une tuile mesurée à 312 px de large
+// (Meta/Google) ou 355 px (Coûts), la forme rend ≈ 94 à 106 px de haut — PAS
+// 26 à 30 px. La boîte qui porte la couche HTML (plus bas) reproduit ce même
+// ratio via `aspectRatio` plutôt qu'une hauteur fixée en pixels, pour ne pas
+// racourcir la forme d'un facteur ~3 (voir la note sur le retour du checker,
+// juste avant le `return`).
 //
-// Le rayon rétrécit avec le nombre de points, et pas par palier fixe : on
-// calcule l'espacement RÉEL entre deux points consécutifs dans le viewBox
-// (100 unités de large, quel que soit n) et on plafonne l'ENCRE TOTALE — pas
-// seulement le rayon — à 70 % de cet espacement. L'encre totale d'un point est
-// `2×rayon + bordure` : le trait SVG est centré sur le rayon, donc la bordure
-// déborde de sa moitié de chaque côté du disque plein — l'ignorer avait laissé
-// le recouvrement réapparaître au premier rejet (déplacé de n=73 à n=87,
-// jamais résolu). En bornant l'encre totale (et non le rayon seul) à 70 % de
-// l'espacement, il reste TOUJOURS 30 % d'espace visible entre deux points,
-// par construction, quel que soit n — vérifié jusqu'aux 120 valeurs servies
-// par `lib/channels.ts` (`Chiffre` lit la même `d.daily`, cf. `chiffre.tsx` et
-// `channel-dash.tsx`). Le plancher (0,3) et le plafond (4,4) sont purement
-// esthétiques : sans eux un point resterait minuscule même sur une courte
-// série, ou continuerait de rétrécir sans fin sur une série plus longue que
-// 120 valeurs — le plancher (0,3) ne dépasse l'espacement (et donc ne recrée
-// un recouvrement) qu'à partir de n=335 (100/(n−1) < 0,3), bien au-delà des
-// 120 valeurs réellement servies. Aucun compromis « point plus grand que le
-// trait » à documenter ici, contrairement à `LineChart` (voir sa note : sur un
-// HTML dimensionné en pixels réels, ce compromis existe et y est assumé).
+// LA LARGEUR DE RÉFÉRENCE POUR L'ESPACEMENT ENTRE POINTS EST 180 PX — pas les
+// 327 px de `LineChart`. Ce n'est pas un pire cas théorique qu'aucune tuile
+// n'atteindrait : c'est le rendu MOBILE RÉEL. `chiffre.tsx` pose
+// `min-w-[180px] shrink-0` sous le point de rupture `sm:` ; en dessous de
+// `sm:`, le contenu `max-content` d'une tuile (titre ~10 px + chiffre ~30 px
+// + `Pente` ~11 px + le padding de la carte) reste plus étroit que 180 px, donc
+// c'est le `min-width` qui gouverne — la tuile fait EXACTEMENT 180 px, pas
+// « au moins ». Et ce cas n'a rien d'un cas limite qu'on n'atteindrait jamais :
+// `PeriodPills` propose 7 j, ce qui donne `n = 7` sur `d.daily`, et
+// `taillePoint = clamp(180/6 × 0,75, 2, 4) = 4 px` s'y applique réellement, pas
+// en théorie.
+//
+// Au-delà de `sm:`, la grille passe à `sm:grid-cols-3` avec `sm:min-w-0` :
+// AU POINT DE RUPTURE EXACT (viewport 640 px), le conteneur de page fait
+// 640 − 48 px de padding = 592 px (`app/meta/page.tsx`), et `sm:grid-cols-3
+// gap-3` donne `(592 − 2×12) / 3 ≈ 189,3 px` par carte — un peu plus que
+// 180 px, donc le plancher mobile reste le pire cas, mais de peu (≈ 9 px, pas
+// les ~20 px qu'un calcul arrondi à « ~200 px » aurait suggéré). Au-delà de ce
+// point de rupture le conteneur ne fait que s'élargir, donc 180 px reste bien
+// le pire cas documenté sur toute la plage, comme `LineChart` prend le sien
+// sur le plus étroit conteneur qu'il liste. Sans mesure réelle du conteneur
+// (l'architecture s'interdit le JS de mise en page, voir l'en-tête du
+// fichier), un point sûr au pire cas documenté reste sûr sur toute tuile plus
+// large — juste pas dimensionné au mieux de la place disponible là où il y en
+// a plus. CE PIRE CAS NE BORNE QUE L'ESPACEMENT ENTRE POINTS, PAS LA HAUTEUR
+// affichée — celle-ci suit toujours la largeur RÉELLE du conteneur, cf. le
+// paragraphe précédent.
+//
+// LE CALCUL, POUR DES VALEURS DE `daily` PLAFONNÉES À 120 (`lib/channels.ts`,
+// `chiffre.tsx` lit la même série que `channel-dash.tsx`) :
+//   espacementPx = 180 / (n − 1)
+//   taillePoint  = clamp(espacementPx × 0,75, 2, 4)   — diamètre, en pixels réels
+//   bordurePoint = taillePoint × 0,3                  — même proportion que
+//                                                        `LineChart`
+// Le plancher (2 px) est EXACTEMENT la largeur du trait (`strokeWidth="2"`
+// plus bas) : sous ce plancher le point serait plus fin que la ligne qu'il
+// marque et s'y ferait avaler (même raison que `LineChart`, cf. sa note). Le
+// plafond (4 px) est la moitié de celui de `LineChart` (7 px) — vérifié
+// contre la hauteur RÉELLE (voir plus haut), pas contre les 26-30 px qu'on
+// aurait pu croire de mémoire (CLAUDE.md §7) : sur les tuiles larges mesurées
+// (94 à 106 px de haut), un point de 4 px vaut 3,8 à 4,3 % de la hauteur, du
+// même ordre que les 3,7 % de `LineChart` (7 px sur 190 px). Sur la tuile
+// mobile de 180 px (ci-dessus — RÉELLEMENT rendue, pas un pire cas écarté),
+// la hauteur vaut 54 px et le même point y pèse 7,4 % — plus que `LineChart`,
+// mais encore un point net, pas un disque qui avale la courbe ; assumé, pas
+// annulé par une largeur qu'on ne rencontrerait jamais.
+//
+// LE RECOUVREMENT, à ce plancher, commence quand `2 > 180/(n−1)`, soit
+// n > 91 — DONC À PARTIR DE n = 92. Au maximum réellement servi (n = 120),
+// l'espacement au pire cas (180 px) vaut 180/119 ≈ 1,513 px contre un point
+// plancher de 2 px : un recouvrement de ≈ 0,487 px entre deux points voisins,
+// UN PEU PLUS que celui accepté par `LineChart` (≤ 0,3 px à n = 120) parce que
+// son pire cas (327 px) est presque deux fois plus large que celui-ci
+// (180 px) — la même physique, sur une tuile deux fois plus étroite. Comme
+// pour `LineChart`, c'est un compromis choisi et documenté : en dessous du
+// plancher de lisibilité, un point invisible serait pire qu'un point qui
+// touche à peine son voisin.
+//
+// LA BULLE AU SURVOL reprend le principe de `LineChart` (une zone HTML par
+// colonne, une bulle qui s'affiche au survol ET au focus — ce dernier ajouté
+// ici en s'inspirant de `BarChart`, TASK-031, pour répondre aussi au clavier
+// et au doigt qui ne « survole » jamais). Elle montre la valeur — au minimum
+// exigé — et la date quand l'appelant la fournit (`labels`, le `label` du
+// `DayPoint` correspondant) ; sans elle, la bulle se contente de la valeur.
 export function Sparkline({
   values,
   color = "#1a56ff",
   height = 26,
+  labels,
+  unite,
+  fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2)),
 }: {
   values: (number | null)[];
   color?: string;
   height?: number;
+  /** Le libellé de chaque colonne — une date, le plus souvent (`DayPoint.label`
+   *  côté appelant). Affiché dans la bulle au survol quand fourni. */
+  labels?: string[];
+  /** Ajouté après la valeur dans la bulle (« CHF », « % »…) — le même que celui
+   *  affiché en tête de la tuile par `Chiffre`. */
+  unite?: string;
+  fmt?: (v: number) => string;
 }) {
   const reels = values.filter((v): v is number => v !== null);
   if (reels.length < 2) return null;
@@ -528,50 +589,105 @@ export function Sparkline({
     .filter((p): p is { x: number; y: number } => p !== null);
   if (pts.length < 2) return null;
   const uid = `${n}-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
-  const espacementUnites = W / (n - 1);
-  // Encre totale (rayon × 2 + bordure, cf. note plus haut) plafonnée à 70 % de
-  // l'espacement, puis répartie 30 % bordure / 70 % disque plein — soit un
-  // rayon à 35 % de l'encre et une bordure à 30 %, laissant 40 % de l'encre en
-  // blanc visible (`2×rayon − bordure = 0,7×encre − 0,3×encre = 0,4×encre`),
-  // toujours positif quelle que soit l'encre. Même répartition que
-  // `LineChart` (`bordurePoint = taillePoint * 0.3`).
-  const encre = Math.min(4.4, Math.max(0.3, espacementUnites * 0.7));
-  const rayon = encre * 0.35;
-  const bordure = encre * 0.3;
   const chemin = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L");
 
+  // Voir la note plus haut pour le détail du calcul et son recouvrement
+  // documenté au-delà de n = 91.
+  const LARGEUR_MIN_TUILE = 180;
+  const espacementPx = LARGEUR_MIN_TUILE / (n - 1);
+  const taillePoint = Math.max(2, Math.min(4, espacementPx * 0.75));
+  const bordurePoint = taillePoint * 0.3;
+  // `x(i)` est déjà un pourcentage (`W` vaut 100) ; seul `y(v)` a besoin d'être
+  // ramené en pourcentage de `H`.
+  const topPct = (v: number) => (y(v) / H) * 100;
+  const largeurColPct = 100 / (n - 1);
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id={`spk-${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.16" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path
-        d={`M${pts[0].x.toFixed(1)},${H} L${chemin} L${pts[pts.length - 1].x.toFixed(1)},${H} Z`}
-        fill={`url(#spk-${uid})`}
-      />
-      <polyline
-        points={pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      {pts.map((p, i) => (
-        <circle
-          key={i}
-          cx={p.x}
-          cy={p.y}
-          r={rayon}
-          fill="white"
-          stroke={color}
-          strokeWidth={bordure}
+    // `aspectRatio`, pas une hauteur CSS fixe : L'ANCIEN SVG (`w-full`, sans
+    // hauteur) suivait déjà le ratio intrinsèque du viewBox (`W:H`, donc
+    // `10:3` pour `H=30`) — sur une tuile de 312 px de large (Meta/Google) ou
+    // 355 px (Coûts), la forme rendait ≈ 94 à 106 px de haut, jamais 26-30 px.
+    // Fixer `height: H` ici aurait DIVISÉ CETTE HAUTEUR PAR ~3 : un
+    // changement visuel non demandé par la tâche (qui ne portait que sur les
+    // points et le survol), qui raccourcit chaque tuile d'environ 70 px et
+    // réduit d'autant la zone de survol. `aspect-ratio` reproduit exactement
+    // le comportement précédent — la boîte suit `W/H`, sa hauteur réelle
+    // découle de la largeur du conteneur — tout en donnant à la couche HTML
+    // une boîte dont les pourcentages coïncident avec ceux du SVG.
+    <div className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="absolute inset-0 h-full w-full"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id={`spk-${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d={`M${pts[0].x.toFixed(1)},${H} L${chemin} L${pts[pts.length - 1].x.toFixed(1)},${H} Z`}
+          fill={`url(#spk-${uid})`}
         />
-      ))}
-    </svg>
+        <polyline
+          points={pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+
+      {/* Les points — en HTML, en pixels réels (voir la note plus haut). */}
+      {values.map((v, i) =>
+        v === null ? null : (
+          <span
+            key={i}
+            className="absolute rounded-full bg-white -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+            style={{
+              left: `${x(i)}%`,
+              top: `${topPct(v)}%`,
+              width: taillePoint,
+              height: taillePoint,
+              border: `${bordurePoint}px solid ${color}`,
+            }}
+          />
+        )
+      )}
+
+      {/* La bulle au survol — une colonne par valeur, comme `LineChart` et
+          `BarChart`. `left-1/2` pose son ancre au CENTRE de la colonne (donc
+          au-dessus du point qu'elle commente, pas au bord gauche de la
+          colonne) ; `ancrage(x(i))` retranslate ensuite selon la position du
+          point près des bords, exactement comme `LineChart`/`BarChart`
+          l'utilisent ensemble (cf. leurs classes respectives). Posée
+          AU-DESSUS de la forme (`bottom-full`) plutôt que dedans, pour ne
+          jamais recouvrir le point qu'elle commente. La carte qui la
+          contient a de la marge au-dessus (titre, chiffre, delta) : elle ne
+          se fait pas couper par l'`overflow-hidden` de la tuile
+          (`chiffre.tsx`). */}
+      {values.map((v, i) =>
+        v === null ? null : (
+          <div
+            key={`h-${i}`}
+            tabIndex={0}
+            className="group absolute top-0 bottom-0 outline-none"
+            style={{ left: `${x(i) - largeurColPct / 2}%`, width: `${largeurColPct}%` }}
+          >
+            <span
+              className={`pointer-events-none absolute bottom-full left-1/2 mb-1 z-10 hidden group-hover:block group-focus-within:block rounded-lg bg-ink text-white text-[10.5px] font-semibold px-2 py-1 whitespace-nowrap shadow-card ${ancrage(x(i))}`}
+            >
+              {labels?.[i] ? `${labels[i]} — ` : ""}
+              {fmt(v)}
+              {unite ? ` ${unite}` : ""}
+            </span>
+          </div>
+        )
+      )}
+    </div>
   );
 }

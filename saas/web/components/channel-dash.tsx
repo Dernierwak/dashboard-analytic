@@ -96,6 +96,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           unite="CHF"
           delta={d.spendDelta}
           serie={d.daily.map((p) => p.spend)}
+          serieLabels={d.daily.map((p) => p.label)}
           grand
         />
         <Chiffre
@@ -103,6 +104,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           valeur={fmtCHF(d.clicks)}
           delta={d.clicksDelta}
           serie={d.daily.map((p) => p.clicks)}
+          serieLabels={d.daily.map((p) => p.label)}
           grand
         />
         <Chiffre
@@ -111,6 +113,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           unite="%"
           delta={d.ctrDelta}
           serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
+          serieLabels={d.daily.map((p) => p.label)}
           grand
         />
       </div>

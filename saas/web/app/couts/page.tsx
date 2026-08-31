@@ -185,6 +185,7 @@ export default async function CoutsPage({
             // pour ça que la phrase ci-dessus a cessé de varier.
             ton={ratioMois !== null && ratioMois > 1 ? "neg" : "ink"}
             serie={data.daily.map((j) => j.meta + j.google)}
+            serieLabels={data.daily.map((j) => j.label)}
           />
           <Chiffre
             titre="Moyenne quotidienne"
@@ -199,6 +200,7 @@ export default async function CoutsPage({
             // dérapage, et une fin d'année emballée passe inaperçue.
             ton={data.repereJour > 0 && data.moyenneJour > data.repereJour * 1.05 ? "warn" : "ink"}
             serie={data.daily.map((j) => j.meta + j.google)}
+            serieLabels={data.daily.map((j) => j.label)}
           />
         </div>
 

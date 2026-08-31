@@ -38,6 +38,7 @@ export function Chiffre({
   baisseEstBonne = false,
   verdict,
   serie,
+  serieLabels,
   ton = "ink",
   grand = false,
 }: {
@@ -49,6 +50,9 @@ export function Chiffre({
   baisseEstBonne?: boolean;
   verdict?: { texte: string; ton: Ton };
   serie?: number[];
+  /** Le libellé de chaque point de `serie` (une date, le plus souvent) —
+   *  affiché dans la bulle au survol de la sparkline, en plus de la valeur. */
+  serieLabels?: string[];
   ton?: Ton;
   grand?: boolean;
 }) {
@@ -83,7 +87,7 @@ export function Chiffre({
       </div>
       {utile && (
         <div className="px-0 pb-0 -mb-px">
-          <Sparkline values={serie!} color={TRAIT[ton]} height={30} />
+          <Sparkline values={serie!} color={TRAIT[ton]} height={30} labels={serieLabels} unite={unite} />
         </div>
       )}
     </div>
