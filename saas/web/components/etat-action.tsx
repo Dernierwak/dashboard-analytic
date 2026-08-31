@@ -43,6 +43,11 @@ function court(s: string, max = 30): string {
  *
  * Une semaine qui porte plusieurs actions n'écrit pas plusieurs étiquettes au
  * même endroit : elle dit combien elles sont.
+ *
+ * `libelleSemaine(i)` renvoie désormais le DERNIER jour de la semaine du point
+ * (TASK-039 — les étiquettes des courbes portent la fin de leur semaine, pas
+ * son début, pour rester alignées sur `last_full_day`). « sem. du X » ferait
+ * croire que X est le premier jour ; on écrit donc « semaine finissant le X ».
  */
 export function marqueursCourbe(
   marqueurs: RepereAction[] | undefined,
@@ -57,15 +62,15 @@ export function marqueursCourbe(
         i: m.i,
         label:
           m.n > 1
-            ? `${m.n} actions · sem. du ${libelleSemaine(m.i)}`
+            ? `${m.n} actions · semaine finissant le ${libelleSemaine(m.i)}`
             : m.titre
               ? `${court(m.titre)} · ${dateCourte(m.date)}`
-              : `action · sem. du ${libelleSemaine(m.i)}`,
+              : `action · semaine finissant le ${libelleSemaine(m.i)}`,
       }));
   }
   return (markers ?? [])
     .filter((i) => i >= 0 && i < n)
-    .map((i) => ({ i, label: `action · sem. du ${libelleSemaine(i)}` }));
+    .map((i) => ({ i, label: `action · semaine finissant le ${libelleSemaine(i)}` }));
 }
 
 type Forme = "pleine" | "creuse" | "barree" | "note";

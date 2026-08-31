@@ -209,7 +209,7 @@ Trois conséquences qui tiennent lieu de règles :
 - **l'info-bulle est une vraie bulle**, immédiate, et non le `<title>` natif qui
   met une seconde à venir et n'existe pas au doigt ;
 - **une étiquette peut enfin être arrondie et lisible sur la courbe** — c'est ce
-  qui transforme un pointillé muet en `action · sem. du 22 jul`.
+  qui transforme un pointillé muet en `action · semaine finissant le 22 jul`.
 
 **Une colonne d'une carte n'est pas un module.** Elle n'a pas son propre rang 1
 en titre de lecture, elle hérite du rang 3 de la carte : son chiffre est donc un

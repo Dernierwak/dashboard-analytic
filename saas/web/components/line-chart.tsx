@@ -186,6 +186,26 @@ export function LineChart({
   // qu'un point invisible. Le plafond (7 px) borne la taille sur les courbes
   // peu denses, où l'espacement calculé serait démesuré.
   const espacementPx = 327 * (largeurCol / 100);
+  // LE PIRE CONTENEUR RÉEL DU COMPOSANT N'EST PAS 327 PX (rejet du checker,
+  // TASK-039, 3e passe) : ce nombre ne correspond à AUCUN appelant mesuré,
+  // c'était une estimation. `KpiFocusCard` — « Ta boussole », la carte même
+  // visée par TASK-039 — compresse le tracé sous 259 px à 375 px de viewport
+  // dès que `bandes` est fourni (page `px-4` + carte `px-3` + colonne des noms
+  // de zone `w-[52px]` + `gap-1.5`), et c'est le plus étroit des appelants
+  // recensés (259 px < 303 px de `channel-dash`/`comparaison`/`couts-modules`,
+  // qui n'ont pas cette colonne). Cette valeur ne sert QUE le calcul
+  // d'effacement des étiquettes ci-dessous, pas le dimensionnement des points
+  // juste au-dessus (`taillePoint`) : rien n'a signalé ce dernier comme faux,
+  // et 327 y reste une marge, pas une mesure de collision — le changer sans
+  // raison serait toucher un comportement que personne n'a mis en cause.
+  const espacementPxLabel = 259 * (largeurCol / 100);
+  // LARGEUR D'UNE DATE DE L'AXE, EN PIXELS RÉELS — mesurée dans la police
+  // réellement servie (DM Sans, 10 px) : « 30 aoû » ≈ 32,5 px. On arrondit à
+  // 33 et on ajoute une marge de sécurité (3 px, `margeSecuritePx`) contre les
+  // écarts de rendu (kerning, antialiasing) plutôt que de coller au pixel
+  // mesuré.
+  const largeurDatePx = 33;
+  const margeSecuritePx = 3;
   const taillePoint = Math.max(3, Math.min(7, espacementPx * 0.75));
   // L'anneau — 30 % du diamètre en bordure, donc 40 % en blanc central
   // (`D − 2×0,3D`) — RESTE VISIBLE À TOUTE TAILLE, y compris au plancher de
@@ -390,9 +410,55 @@ export function LineChart({
           </span>
         )}
 
-        {/* L'axe des dates. */}
-        {labels.map((l, i) =>
-          i % step === 0 ? (
+        {/* L'axe des dates. Le tout dernier point s'affiche TOUJOURS, même
+            hors du rythme de `step` (TASK-039) : `9 % 2 !== 0` sur une série de
+            10 semaines faisait sauter l'étiquette du point le plus récent —
+            celui qui porte `last_full_day` — et le lecteur voyait donc une date
+            jusqu'à deux semaines plus vieille que la vraie fraîcheur du graphe.
+            MAIS l'étiquette de rythme la plus proche de la fin ne s'efface pas
+            devant elle sans condition (rejet du checker, TASK-039, 1re, 2e et
+            3e passes) : une marge en FRACTION DE `step` (1re correction) ne
+            garantit rien en pixels, et une marge en pixels FIXE (2e
+            correction) ignorait que la marge nécessaire dépend de l'ANCRAGE de
+            l'étiquette candidate — un point à 84 % de la largeur est encore
+            centré (`ancrage` bascule à droite au-delà de 85 %) et déborde donc
+            à DROITE de la moitié de sa largeur, vers la dernière étiquette
+            (toujours ancrée à droite, elle) ; un point à 87 % est déjà ancré à
+            droite et ne déborde pas du tout dans cette direction. La marge
+            exigée est donc calculée à partir de CE débordement réel :
+              - ancrée à droite (`-translate-x-full`) → 0 (elle s'étale à
+                gauche de son point, jamais vers la dernière étiquette) ;
+              - centrée (`-translate-x-1/2`) → la moitié de `largeurDatePx` ;
+              - ancrée à gauche (`translate-x-0`, cas d'école ici) → sa
+                largeur entière.
+            On y ajoute la largeur de la dernière étiquette elle-même (toujours
+            ancrée à droite, donc toujours étalée à gauche de `largeurDatePx`)
+            et `margeSecuritePx`.
+            LA DÉCISION UTILISE `espacementPxLabel`, FIGÉ SUR 259 PX (voir sa
+            note plus haut) — pas la largeur réelle du conteneur, que ce
+            fichier s'interdit de mesurer. La garantie « pas de chevauchement »
+            ne vaut donc QUE pour un conteneur réel ≥ 243 px (vérifié, script,
+            n=2→120 : premier n sans marge négative à 243 px — 242 px donne
+            encore -0,11 px de recouvrement) ; en dessous, cette valeur figée
+            surestime l'espace dont dispose un conteneur PLUS ÉTROIT que 259,
+            et la garantie ne tient plus (rejet du checker, TASK-039, 4e
+            passe). Tous les appelants réels recensés de ce composant sont
+            ≥ 259 px (le plus étroit : `KpiFocusCard` avec `bandes`, voir la
+            note de `espacementPxLabel`) — largement au-dessus de 243 px, donc
+            couverts en pratique. Marge la plus faible mesurée à chacun des
+            trois conteneurs réels connus : 3,36 px à 259 px, 9,56 px à 303 px,
+            15,18 px à 343 px. */}
+        {labels.map((l, i) => {
+          const dernier = i === n - 1;
+          if (!dernier) {
+            if (i % step !== 0) return null;
+            const ancre = ancrage(px(i));
+            const decalageDroitPx =
+              ancre === "-translate-x-full" ? 0 : ancre === "-translate-x-1/2" ? largeurDatePx / 2 : largeurDatePx;
+            const margeRequisePx = decalageDroitPx + largeurDatePx + margeSecuritePx;
+            if ((n - 1 - i) * espacementPxLabel < margeRequisePx) return null;
+          }
+          return (
             <span
               key={`ax-${i}`}
               className={`absolute bottom-0 text-[10px] text-faint whitespace-nowrap pointer-events-none ${ancrage(px(i))}`}
@@ -400,8 +466,8 @@ export function LineChart({
             >
               {l}
             </span>
-          ) : null
-        )}
+          );
+        })}
 
         {/* Chaque colonne répond : viser un point de 3 px est impossible, et le
             `<title>` natif met une seconde à venir. La bulle est immédiate. */}

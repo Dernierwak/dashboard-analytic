@@ -2305,7 +2305,14 @@ def build_payload(sb, user_id: str) -> dict | None:
             metric_label = "Portée moyenne"
         if sum(1 for v in pts if v > 0) < 3:
             return None  # trop clairsemé → pas de frise
-        labels = [(lambda d: f"{d.day} {MONTHS_FR[d.month]}")(_serie_start + timedelta(days=7 * j))
+        # ÉTIQUETÉ PAR LA FIN DE SEMAINE, PAS SON DÉBUT. Le dernier point porte
+        # sinon une date jusqu'à 6 jours plus vieille que `last_full_day` — le
+        # texte des recos (`week_label`) affiche « 24 → 30 août » pendant que le
+        # point le plus récent du graphe disait « 24 août » (son propre début de
+        # semaine), donnant l'impression fausse d'un graphe perimé (David,
+        # TASK-039). Chaque étiquette est donc le dernier jour de son bucket —
+        # le même jour que `last_full_day` pour le point le plus récent.
+        labels = [(lambda d: f"{d.day} {MONTHS_FR[d.month]}")(_serie_start + timedelta(days=7 * j + 6))
                   for j in range(_WK)]
         _rep = _reperes(_markers.get(nlbl, []))
         return {
@@ -3641,7 +3648,10 @@ def build_payload(sb, user_id: str) -> dict | None:
         _cle = _unite = _titre = _repere = None
         _sens = "up"
         for (d1, _d2) in _sems:
-            _lab.append(f"{d1.day} {MONTHS_FR[d1.month]}")
+            # Fin de semaine, pas début — même raison qu'à `_theme_series`
+            # (TASK-039) : le dernier point doit porter `last_full_day`, pas
+            # une date jusqu'à 6 jours plus vieille.
+            _lab.append(f"{_d2.day} {MONTHS_FR[_d2.month]}")
         _rev_now = _revenu_semaine(*_sems[-1])
         if objectif == "ventes" and _rev_now is not None and _rev_now > 0:
             _cle, _titre, _unite = "roas", "ROAS", ""

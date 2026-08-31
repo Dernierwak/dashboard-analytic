@@ -340,9 +340,9 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
 
   // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
   // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
-  // l'index de semaine est connu et on écrit « sem. du 24 jun » — un seau
-  // hebdomadaire présenté comme un jour serait un chiffre présenté pour autre
-  // chose que ce qu'il mesure.
+  // l'index de semaine est connu et on écrit « semaine finissant le 24 jun » —
+  // un seau hebdomadaire présenté comme un jour serait un chiffre présenté pour
+  // autre chose que ce qu'il mesure.
   const marqueurs = marqueursCourbe(
     k.marqueurs,
     k.markers,
