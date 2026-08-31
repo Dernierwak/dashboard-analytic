@@ -594,6 +594,10 @@ export function Sparkline({
   // Voir la note plus haut pour le détail du calcul et son recouvrement
   // documenté au-delà de n = 91.
   const LARGEUR_MIN_TUILE = 180;
+  // Voir la note sur le retour du checker (TASK-034), juste avant le `return` :
+  // borne la hauteur RENDUE quand le ratio seul la ferait grandir sans fin sur
+  // une tuile large.
+  const HAUTEUR_MAX_PX = 120;
   const espacementPx = LARGEUR_MIN_TUILE / (n - 1);
   const taillePoint = Math.max(2, Math.min(4, espacementPx * 0.75));
   const bordurePoint = taillePoint * 0.3;
@@ -614,7 +618,26 @@ export function Sparkline({
     // le comportement précédent — la boîte suit `W/H`, sa hauteur réelle
     // découle de la largeur du conteneur — tout en donnant à la couche HTML
     // une boîte dont les pourcentages coïncident avec ceux du SVG.
-    <div className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }}>
+    //
+    // `maxHeight: HAUTEUR_MAX_PX` EN PLUS DU RATIO — ajouté quand le retrait
+    // du plafond `max-w-*` des pages (TASK-034) a laissé les tuiles `Chiffre`
+    // grandir sans borne sur un grand écran : une grille `sm:grid-cols-3` sans
+    // conteneur plafonné donne une tuile de ≈ 517 px à 1920 px de fenêtre ou
+    // ≈ 731 px à 2560 px, et le seul ratio y aurait rendu 155 à 219 px de haut
+    // — la forme cesse d'être une SPARKLINE (compacte, lue d'un regard) pour
+    // devenir un graphique plein format, ce que ce composant n'a jamais été
+    // conçu pour rendre (`preserveAspectRatio="none"` suppose une bande basse
+    // et large). 120 px est choisi UN PEU AU-DESSUS du plus haut rendu déjà
+    // vérifié (106 px, sur la tuile de 355 px des Coûts) : les tuiles déjà
+    // testées ne changent pas de hauteur, seules celles qu'aucun conteneur
+    // plafonné ne produisait avant sont désormais bornées. Le ratio continue
+    // de gouverner en dessous de 400 px de large (120 / 0,3) ; au-delà, la
+    // hauteur du SVG (`preserveAspectRatio="none"`, `h-full w-full`) plafonne
+    // et seule sa largeur continue de suivre la tuile.
+    <div
+      className="relative w-full"
+      style={{ aspectRatio: `${W} / ${H}`, maxHeight: `${HAUTEUR_MAX_PX}px` }}
+    >
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="absolute inset-0 h-full w-full"

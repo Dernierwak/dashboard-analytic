@@ -26,7 +26,14 @@ export default async function MetaPage({
   const compte = await getCompteActif();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : le conteneur prend toute la largeur laissée par la
+    // colonne latérale — voir la note dans `app/page.tsx` pour le
+    // raisonnement (un plafond fixe finit toujours par redevenir trop
+    // étroit dès que l'écran ou la colonne change). `CampaignTable` en
+    // profite le premier : sa largeur minimale (`largeurMin` dans
+    // `channel-dash.tsx`) monte à 1 088 px dès qu'une comparaison ajoute sa
+    // colonne d'écart, et ne tenait dans AUCUN plafond fixe testé.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-5">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

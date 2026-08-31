@@ -369,7 +369,25 @@ export default async function Page() {
     .map((x) => x.t);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // PAS DE `max-w-*` SUR LE CONTENEUR — et c'est un changement, pas un
+    // oubli. `<main>` vit déjà à côté de `<aside>` (la colonne latérale,
+    // `app/layout.tsx`) : sa largeur RÉELLE n'est jamais celle de l'écran,
+    // c'est déjà écran moins colonne. Un `max-w-7xl` fixe par-dessus ça
+    // semblait donner de la marge, mais recréait le même défaut à une autre
+    // taille d'écran — un plafond fixe est toujours trop bas pour un écran
+    // encore plus large, et 7xl (1 280 px) ne changeait déjà plus rien sur un
+    // portable de 1 280 px UNE FOIS LA COLONNE DÉCOMPTÉE (1 000 px de
+    // contenu disponible, sous le plafond). Le principe, du coup, n'est plus
+    // « choisir le bon plafond » mais ne PAS en poser : le conteneur prend
+    // toute la largeur que la colonne laisse, à toute taille d'écran et à
+    // toute largeur de colonne (la colonne est maintenant redimensionnable,
+    // voir `components/side-nav.tsx`).
+    // Ce qui NE bouge pas : les paragraphes de prose portent chacun leur
+    // propre plafond en `ch` (`max-w-[68ch]`, `max-w-[60ch]`…) — un texte
+    // long reste lisible indépendamment de la largeur du conteneur qui le
+    // porte. Seuls les modules qui bénéficient réellement de l'espace
+    // (tableaux, grilles de cartes, courbes) suivent la largeur complète.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
           première question du lecteur, elle doit trouver sa réponse avant le

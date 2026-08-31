@@ -1108,11 +1108,26 @@ export function CampaignTable({
   // 124 et faisait franchir le seuil : mesuré à 1 280 × 900, l'en-tête
   // s'arrêtait sur « Dépensé » et « Écart » n'était atteignable par aucun geste.
   const NOM_MIN = 220;
+  // PLAFONNÉE À 420 PX — pas `2.4fr` (retour du checker, TASK-034). `fr` est
+  // la SEULE piste flexible de la grille : depuis que les pages n'ont plus de
+  // `max-w-*` (même tâche), tout l'espace gagné par un grand écran y tombait
+  // en entier — à 2 560 px de fenêtre, la colonne « Campagne » montait à
+  // ≈ 1 346 px, soit ≈ 1 100 px de blanc entre le nom et ses propres chiffres.
+  // Une piste bornée par un `<length>` (pas un `fr`) reste flexible ENTRE ses
+  // deux bornes puis s'arrête — le reste de la largeur disponible n'est
+  // distribué à AUCUNE piste (`justify-content` vaut `normal`, qui équivaut à
+  // `start` en grille : la CSS Grid spec le documente explicitement), donc la
+  // grille garde sa largeur naturelle au lieu de s'étirer. 420 px reste assez
+  // pour un nom de campagne long sans le tronquer — c'était déjà à peu près ce
+  // qu'un écran de bureau ordinaire donnait à cette colonne avant ce
+  // correctif — mais s'arrête là où grandir encore n'aide plus à LIRE le nom,
+  // seulement à l'éloigner de ses chiffres.
+  const NOM_MAX = 420;
   const COLS = isMeta
     ? [150, 90, 90, 80, 70, 70, 70, 100] // thème · impr. · portée · clics · CTR · CPM · CPC · dépensé
     : [150, 90, 80, 70, 70, 70, 100];    // idem sans la portée (Google ne la suit pas)
   const cols = e ? [...COLS, 124] : COLS;
-  const grid = `minmax(${NOM_MIN}px,2.4fr) ${cols.map((c) => `${c}px`).join(" ")}`;
+  const grid = `minmax(${NOM_MIN}px,${NOM_MAX}px) ${cols.map((c) => `${c}px`).join(" ")}`;
   // + 24 : le `px-3` que chaque rangée porte de part et d'autre de la grille.
   // L'oublier laissait la dernière colonne mordre de 24 px sur le bord du cadre.
   const largeurMin = NOM_MIN + cols.reduce((a, b) => a + b, 0) + 24;
@@ -1155,8 +1170,16 @@ export function CampaignTable({
     )}
     {/* `.defile-x` : cette table dépassait déjà la largeur de la page, et la
         colonne d'écart lui ajoute 124 px. Une rangée coupée à droite se lit
-        comme une mise en page ratée tant que rien ne dit qu'elle glisse. */}
-    <div className="bg-white border border-line rounded-xl shadow-card defile-x">
+        comme une mise en page ratée tant que rien ne dit qu'elle glisse.
+        `w-fit max-w-full` — depuis que la colonne « Campagne » est plafonnée
+        (`NOM_MAX` ci-dessus) plutôt que `fr`, la grille ne remplit plus
+        forcément toute la largeur d'une page sans `max-w-*` : sans ça, le
+        CADRE (fond blanc, bordure) restait `w-full` et débordait la table
+        d'un grand rectangle blanc vide sur un écran large. `w-fit` fait
+        épouser le cadre à la largeur réelle de son contenu ; `max-w-full`
+        l'empêche de dépasser son propre conteneur sur un écran étroit, où
+        `.defile-x` reprend alors le relais (`min-width` ci-dessous). */}
+    <div className="bg-white border border-line rounded-xl shadow-card defile-x w-fit max-w-full">
       <div className="max-h-[440px] overflow-y-auto" style={{ minWidth: `${largeurMin}px` }}>
         {/* En-tête collé */}
         <div

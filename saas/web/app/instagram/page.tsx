@@ -342,7 +342,8 @@ export default async function InstagramPage({
     d.comparaison.ventilations && d.comparaison.reference ? d.comparaison.reference.label : null;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">

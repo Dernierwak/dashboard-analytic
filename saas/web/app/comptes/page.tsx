@@ -121,7 +121,8 @@ export default async function ComptesPage({
   // quelqu'un d'autre, cette page ne montre rien.
   if (compte.uid !== compte.moi) {
     return (
-      <main className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+      // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
+      <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
         <h1 className="font-serif text-3xl leading-tight text-ink mb-3">Tes connexions.</h1>
         <div className="bg-white border border-line rounded-xl shadow-card p-6">
           <p className="text-[13.5px] text-ink font-medium">
@@ -220,7 +221,8 @@ export default async function ComptesPage({
   const restants = cx.canaux.filter((c) => !c.connecte).length;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           Sources de données

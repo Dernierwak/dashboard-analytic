@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { FetchButton } from "@/components/fetch-button";
 import { CompteSwitch } from "@/components/compte-switch";
 import { COOKIE_NAV, NAV_DEPLIEE, NAV_REPLIEE } from "@/lib/nav-cookie";
+import {
+  LS_NAV_LARGEUR,
+  NAV_LARGEUR_DEFAUT,
+  NAV_LARGEUR_MAX,
+  NAV_LARGEUR_MIN,
+} from "@/lib/nav-largeur";
 import type { CompteActif } from "@/lib/account";
 
 // La navigation passe sur le côté. Trois raisons, dans l'ordre d'importance :
@@ -290,6 +297,25 @@ export function SideNav({
   const [replie, setReplie] = useState(replieInitial);
   const [ouvert, setOuvert] = useState(false);
 
+  // LA LARGEUR PART TOUJOURS DE LA MÊME VALEUR CÔTÉ SERVEUR ET AU PREMIER
+  // RENDU CLIENT — le `useEffect` juste en dessous la corrige ensuite depuis
+  // `localStorage`. C'est le même compromis qu'a fait `replie` avant de passer
+  // par un cookie (voir la note 3 en tête de fichier) : un saut est possible au
+  // chargement. On l'accepte ici — la demande porte sur `localStorage`, pas sur
+  // un cookie — plutôt qu'un mismatch d'hydratation en lisant `window` pendant
+  // le rendu.
+  const [largeur, setLargeur] = useState(NAV_LARGEUR_DEFAUT);
+  // Coupe la transition CSS pendant le glissement : sinon la colonne suit la
+  // souris avec 200 ms de retard, ce qui se sent comme un pilotage mou.
+  const [enGlissement, setEnGlissement] = useState(false);
+
+  useEffect(() => {
+    const stockee = Number(localStorage.getItem(LS_NAV_LARGEUR));
+    if (Number.isFinite(stockee) && stockee >= NAV_LARGEUR_MIN && stockee <= NAV_LARGEUR_MAX) {
+      setLargeur(stockee);
+    }
+  }, []);
+
   const basculer = () =>
     setReplie((v) => {
       // Un an, sur tout le site : c'est un réglage d'affichage, pas une
@@ -305,6 +331,38 @@ export function SideNav({
   useEffect(() => {
     setOuvert(false);
   }, [courant]);
+
+  // LE GLISSER-DÉPOSER SUR LE BORD DROIT — comme dans Notion. La colonne
+  // commence à x = 0 (premier enfant du `lg:flex` de `layout.tsx`), donc
+  // `clientX` EST la largeur voulue ; bornée entre `NAV_LARGEUR_MIN` et
+  // `NAV_LARGEUR_MAX` pour qu'elle ne devienne ni un rail ni la moitié de
+  // l'écran. On n'écrit dans `localStorage` qu'au relâchement — pas à chaque
+  // pixel — pour ne pas déclencher des centaines d'écritures par glissement.
+  const debuterRedim = (e: ReactMouseEvent) => {
+    if (replie) return;
+    e.preventDefault();
+    setEnGlissement(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const bouger = (ev: MouseEvent) => {
+      const suivante = Math.min(NAV_LARGEUR_MAX, Math.max(NAV_LARGEUR_MIN, ev.clientX));
+      setLargeur(suivante);
+    };
+    const relacher = () => {
+      window.removeEventListener("mousemove", bouger);
+      window.removeEventListener("mouseup", relacher);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setEnGlissement(false);
+      setLargeur((v) => {
+        localStorage.setItem(LS_NAV_LARGEUR, String(v));
+        return v;
+      });
+    };
+    window.addEventListener("mousemove", bouger);
+    window.addEventListener("mouseup", relacher);
+  };
 
   useEffect(() => {
     if (!ouvert) return;
@@ -402,7 +460,15 @@ export function SideNav({
           des sept étapes passe sur deux lignes.
 
           64 px repliée : 40 px de cible cliquable et 12 px de marge de chaque
-          côté — c'est le minimum sous lequel un rail cesse d'être un rail. */}
+          côté — c'est le minimum sous lequel un rail cesse d'être un rail.
+
+          280 RESTE LE POINT DE DÉPART, PAS UNE LIMITE. La colonne se glisse
+          maintenant depuis son bord droit, comme dans Notion — `largeur` porte
+          le choix de l'utilisateur, persisté dans `localStorage`
+          (`lib/nav-largeur.ts`). Les bornes reprennent les mesures ci-dessus :
+          `NAV_LARGEUR_MIN` est le repli de secours à 256 px (une étape peut
+          repasser sur deux lignes, rien de pire), `NAV_LARGEUR_MAX` à 400 px
+          pour qu'elle ne mange pas plus d'un tiers d'un écran de portable. */}
       <aside
         // `overflow-y-auto` : le panneau de récolte ajoute de la hauteur au bloc
         // du bas quand il s'ouvre — nettement plus depuis qu'il liste les six
@@ -414,9 +480,13 @@ export function SideNav({
         // La liste des canaux porte son propre plafond (`max-h` dans
         // fetch-button.tsx) : un message d'erreur long ne peut donc pas
         // repousser le bouton indéfiniment vers le bas.
-        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto border-r border-line bg-white/70 backdrop-blur transition-[width] duration-200 ${
-          replie ? "lg:w-[64px]" : "lg:w-[280px]"
-        }`}
+        // `relative` : le poignée de redimensionnement s'y ancre en `absolute`.
+        // Pas de transition pendant le glissement (`enGlissement`) : sinon la
+        // colonne suit la souris avec 200 ms de retard.
+        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto relative border-r border-line bg-white/70 backdrop-blur ${
+          enGlissement ? "" : "transition-[width] duration-200"
+        } ${replie ? "lg:w-[64px]" : ""}`}
+        style={replie ? undefined : { width: `${largeur}px` }}
       >
         <Contenu
           compte={compte}
@@ -429,6 +499,34 @@ export function SideNav({
             action: basculer,
           }}
         />
+
+        {/* LA POIGNÉE — invisible au repos, un filet au survol et pendant le
+            glissement (le même geste que Tailwind donne déjà à `.defile` :
+            un signal qui n'existe que quand il sert). Absente repliée : un
+            rail de 64 px ne se redimensionne pas, il se déplie. La zone de
+            saisie fait 8 px pour rester atteignable malgré le filet de 1 px
+            qu'elle porte à son bord droit — ENTIÈREMENT DANS la colonne
+            (`right-0`, pas de décalage négatif) : `lg:overflow-y-auto` sur
+            `<aside>` force `overflow-x` à se comporter en `auto`, qui aurait
+            coupé toute poignée débordant du cadre. */}
+        {!replie && (
+          <div
+            onMouseDown={debuterRedim}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Redimensionner la navigation"
+            aria-valuenow={largeur}
+            aria-valuemin={NAV_LARGEUR_MIN}
+            aria-valuemax={NAV_LARGEUR_MAX}
+            className="absolute top-0 right-0 h-full w-2 cursor-col-resize group z-10"
+          >
+            <div
+              className={`ml-auto h-full w-px transition-colors ${
+                enGlissement ? "bg-brand" : "bg-transparent group-hover:bg-brand/50"
+              }`}
+            />
+          </div>
+        )}
       </aside>
     </>
   );

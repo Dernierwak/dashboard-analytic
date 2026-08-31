@@ -90,7 +90,8 @@ export default async function ConversionsPage() {
   ];
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
       <div className="mb-6">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           Ce que Google Analytics compte pour toi

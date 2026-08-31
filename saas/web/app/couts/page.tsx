@@ -138,10 +138,11 @@ export default async function CoutsPage({
     : data.budgetJour * (data.periode.pas === "semaine" ? 7 : 1);
 
   return (
-    /* max-w-6xl et non 5xl : deux anneaux côte à côte et une liste de thèmes en
-       trois colonnes n'ont pas la place dans 1 024 px — à 5xl, la troisième
-       colonne descendait sous la deuxième et la grille ne servait plus à rien. */
-    <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : voir la note dans `app/page.tsx`. Les grilles de cette
+    // page sont déjà en fractions (`minmax(...)`, jamais un pixel fixe), donc
+    // gagner de la largeur profite aux anneaux et à la liste de thèmes au lieu
+    // d'être plafonné avant qu'ils n'en aient besoin.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
       <div className="mb-7">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
           {data.monthLabel}

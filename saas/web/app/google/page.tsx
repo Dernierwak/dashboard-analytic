@@ -26,7 +26,8 @@ export default async function GooglePage({
   const compte = await getCompteActif();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
+    // Pas de `max-w-*` : même raison que /meta, voir sa note.
+    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
       <div className="mb-5">
         <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
