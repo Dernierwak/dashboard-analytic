@@ -58,18 +58,90 @@ export function PeriodPills({ path, d }: { path: string; d: ChannelDash }) {
 }
 
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
-export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
+//
+// Les moyennes par jour/mois vivaient dans une carte séparée (« Tes moyennes »,
+// juste en dessous). Deux cartes empilées qui parlent toutes deux de dépense,
+// clics, CTR se lisaient comme un doublon plutôt que comme deux questions — la
+// fusion demandée par David (2026-09-01) : chaque tuile porte désormais SON
+// chiffre de période (celui d'avant, avec son delta) ET, en petit sous le
+// delta, sa moyenne par jour/mois (`calculMoyennesAds`, même calcul que
+// l'ancien module). Sur CTR et CPC, les deux chiffres ne se valent pas
+// forcément (ratio-des-sommes sur la période vs moyenne des ratios par
+// jour/mois — écart déjà signalé par le qa-testeur, ex. CTR Google 7.38 % vs
+// 4.96 %) : décision de David, on ne tranche pas, on affiche les deux sous des
+// libellés distincts (« CTR période » / « CTR moyen/jour »). Les textes qui
+// rendent la moyenne honnête (mois incomplets écartés, jour sans campagne
+// compté comme zéro mesuré, lien pour élargir la période) ne se répètent pas
+// tuile par tuile : ils vivent en un seul paragraphe sous la grille.
+export function AdsKpis({
+  d,
+  path,
+  channel = "meta",
+}: {
+  d: ChannelDash;
+  path: string;
+  channel?: "meta" | "google";
+}) {
+  const moy = calculMoyennesAds(d, path);
+  const moyDe = (titre: string) => {
+    const c = moy.chiffres.find((x) => x.titre === titre);
+    const m = c ? moyenne(c.parUnite) : null;
+    return m ? { v: m.v, fmt: c!.fmt, unite: c!.unite } : null;
+  };
+  // Une somme : la moyenne se lit comme un débit, « X / jour en moyenne ».
+  const sousSomme = (titre: string) => {
+    const m = moyDe(titre);
+    return m ? `${m.fmt(m.v)}${m.unite ? " " + m.unite : ""}/${moy.unite} en moyenne` : undefined;
+  };
+  // Un taux : deux chiffres légitimes et différents cohabitent sur la même
+  // tuile — le libellé de la moyenne se distingue de celui du chiffre de tête
+  // au lieu de prétendre être la même mesure.
+  const sousTaux = (titre: string, label: string) => {
+    const m = moyDe(titre);
+    return m ? `${label}/${moy.unite} : ${m.fmt(m.v)}${m.unite ? " " + m.unite : ""}` : undefined;
+  };
+  const sousDepense = sousSomme("Dépense");
+  const sousClics = sousSomme("Clics");
+  const sousImpressions = sousSomme("Impressions");
+  const sousCtr = sousTaux("CTR", "CTR moyen");
+  const sousCpc = sousTaux("CPC", "CPC moyen");
+
   // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
   // grand dans le hero, on montre le CPC — l'autre chiffre qu'on regarde.
   const firstTile =
     channel === "google"
       ? {
-          label: "CPC moyen",
+          label: "CPC période",
           value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—",
           delta: d.cpc > 0 ? d.cpcDelta : null,
           invert: true,
+          sous: sousCpc,
         }
-      : { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false };
+      : {
+          label: "Portée",
+          value: d.reach > 0 ? fmtCHF(d.reach) : "—",
+          delta: d.reach > 0 ? d.reachDelta : null,
+          invert: false,
+          sous: undefined as string | undefined,
+        };
+
+  // Le paragraphe unique qui rend TOUTES les moyennes de la carte honnêtes —
+  // une seule fois, pas une variante par tuile.
+  const piedMoy =
+    moy.n === 0 ? (
+      <>
+        {moy.vide}{" "}
+        <a href={moy.elargir.href} className="text-brand font-semibold underline">
+          {moy.elargir.texte}
+        </a>
+        .
+      </>
+    ) : (
+      <>
+        Moyennes par {moy.unite} · {moy.n} {pluriel(moy.unite, moy.n)} · {moy.fenetre}. {moy.pied}
+      </>
+    );
+
   return (
     <div className="mb-8">
       {/* Hero */}
@@ -86,10 +158,13 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           </div>
           <Pente delta={d.imprDelta} base="vs période préc." />
         </div>
+        {sousImpressions && (
+          <div className="text-[11px] text-faint mt-1">{sousImpressions}</div>
+        )}
       </div>
       {/* Ce qu'on regarde d'abord : trois chiffres, chacun avec sa forme.
           Sept tuiles de poids identique, c'était une liste, pas une page. */}
-      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-3 pb-1 sm:pb-0">
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-1.5 pb-1 sm:pb-0">
         <Chiffre
           titre="Dépensé"
           valeur={fmtCHF(d.spend)}
@@ -97,6 +172,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           delta={d.spendDelta}
           serie={d.daily.map((p) => p.spend)}
           serieLabels={d.daily.map((p) => p.label)}
+          sous={sousDepense}
           grand
         />
         <Chiffre
@@ -105,18 +181,21 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           delta={d.clicksDelta}
           serie={d.daily.map((p) => p.clicks)}
           serieLabels={d.daily.map((p) => p.label)}
+          sous={sousClics}
           grand
         />
         <Chiffre
-          titre="CTR moyen"
+          titre="CTR période"
           valeur={`${d.ctr.toFixed(2)}`}
           unite="%"
           delta={d.ctrDelta}
           serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
           serieLabels={d.daily.map((p) => p.label)}
+          sous={sousCtr}
           grand
         />
       </div>
+      <p className="text-[10.5px] text-faint leading-relaxed mb-3">{piedMoy}</p>
 
       {/* Les coûts unitaires descendent d'un cran : on les replie, on ne les
           supprime pas — ils sont regardés par ceux qui savent ce qu'ils
@@ -126,7 +205,13 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           Coûts unitaires et {channel === "google" ? "CPC" : "portée"} — voir
         </summary>
         <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
-          <Chiffre titre={firstTile.label} valeur={firstTile.value} delta={firstTile.delta} baisseEstBonne={firstTile.invert} />
+          <Chiffre
+            titre={firstTile.label}
+            valeur={firstTile.value}
+            delta={firstTile.delta}
+            baisseEstBonne={firstTile.invert}
+            sous={firstTile.sous}
+          />
           <Chiffre
             titre="CPM moyen"
             valeur={d.cpm > 0 ? d.cpm.toFixed(2) : "—"}
@@ -135,11 +220,12 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
             baisseEstBonne
           />
           <Chiffre
-            titre="CPC moyen"
+            titre="CPC période"
             valeur={d.cpc > 0 ? d.cpc.toFixed(2) : "—"}
             unite={d.cpc > 0 ? "CHF" : undefined}
             delta={d.cpc > 0 ? d.cpcDelta : null}
             baisseEstBonne
+            sous={sousCpc}
           />
         </div>
       </details>
@@ -149,8 +235,13 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
 
 // ── LES MOYENNES, ET LEUR UNITÉ ──────────────────────────────────────────────
 //
-// Le module qui manquait au-dessus des courbes. La règle qu'il porte est ce qui
-// le rend honnête :
+// C'était une carte séparée sous les KPIs de tête (« Tes moyennes »), fusionnée
+// dans les tuiles elles-mêmes le 2026-09-01 (demande de David — deux cartes
+// empilées qui parlent toutes deux de dépense/clics/CTR se lisaient comme un
+// doublon, pas comme deux questions). Le calcul, lui, ne change pas — il vit
+// maintenant dans `calculMoyennesAds` / `calculMoyennesInsta`, appelés par
+// `AdsKpis` / `InstaKpis` pour nourrir le petit texte sous chaque tuile. La
+// règle qui le rend honnête est ce qui suit, et elle tient toujours :
 //
 //   UNE MOYENNE POUR CE QUI EST UN TAUX, UN TOTAL POUR CE QUI S'ADDITIONNE.
 //
@@ -160,19 +251,13 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
 // taux calculé sur les totaux de l'unité), et c'est seulement ENTRE les unités
 // qu'on moyenne.
 //
-// L'UNITÉ SUIT LA FENÊTRE, et c'est le changement de cette passe.
-// Le module était mensuel en toutes circonstances. Sur « 7 jours » il n'avait
-// donc aucun mois entier à moyenner et se contentait d'écrire qu'il n'avait
-// rien à dire : le filtre le vidait au lieu de le déplacer, ce qui est
-// exactement le défaut déjà corrigé sur les formats et les thèmes d'Instagram —
-// un filtre qui ne change rien à l'écran a l'air cassé, et ici il l'était.
-//
-//   ON MOYENNE CE QUI SE RÉPÈTE AU MOINS DEUX FOIS DANS LA FENÊTRE.
-//
+// L'UNITÉ SUIT LA FENÊTRE.
 // Deux mois entiers ou plus → l'unité est le MOIS. Sinon → l'unité descend d'un
 // cran, au JOUR pour la publicité, à la PUBLICATION pour Instagram. Un seul mois
-// entier ne fait pas une moyenne, c'est ce mois-là ; le module ne prétend plus
-// le contraire, il change d'unité.
+// entier ne fait pas une moyenne, c'est ce mois-là ; le calcul ne prétend pas
+// le contraire, il change d'unité — un filtre qui ne changerait rien à l'écran
+// aurait l'air cassé, c'est exactement le défaut déjà corrigé sur les formats
+// et les thèmes d'Instagram.
 //
 // UN MOIS INCOMPLET RESTE ÉCARTÉ, et c'est écrit à l'écran.
 // Treize jours d'août pesés comme un mois plein tirent toute la moyenne vers le
@@ -188,7 +273,9 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
 // problème — un jour plein est un jour plein, la fenêtre s'arrêtant déjà hier —
 // mais elle en a un autre : **une fenêtre peut ne rien contenir du tout**, et
 // c'est là qu'un « 0 » mentirait. Zéro n'est pas la moyenne, c'est l'absence de
-// moyenne ; le module l'écrit en toutes lettres.
+// moyenne ; le paragraphe unique sous la grille de tuiles l'écrit en toutes
+// lettres (voir `piedMoy` dans `AdsKpis` / `InstaKpis`), plutôt que de laisser
+// chaque tuile afficher un zéro qui n'a pas été mesuré.
 
 const MOIS_LONG = [
   "janvier", "février", "mars", "avril", "mai", "juin",
@@ -286,136 +373,6 @@ function deQuoi(titre: string): string {
   return /^[aeiouyéèêàâîôûh]/i.test(t) ? `d'${t}` : `de ${t}`;
 }
 
-/** Le seul mot féminin des trois est « publication » — et l'écran écrivait
- *  « la jour est un total ». Une faute d'accord dans la phrase qui EXPLIQUE le
- *  chiffre décrédibilise le chiffre. */
-function article(unite: string): string {
-  return unite === "publication" ? "la" : "le";
-}
-
-export function Moyennes({
-  unite,
-  n,
-  fenetre,
-  chiffres,
-  tete = 0,
-  pied,
-  vide,
-  elargir,
-}: {
-  /** Le DÉNOMINATEUR, au singulier : « mois », « jour », « publication ». */
-  unite: string;
-  /** Combien d'unités sont moyennées. Zéro bascule le module sur `vide`. */
-  n: number;
-  /** La fenêtre, écrite : « 11 aoû → 17 aoû 2026 ». Elle fait partie du
-   *  chiffre — une moyenne dont la fenêtre bouge et qui ne la dit pas se lit
-   *  comme la même moyenne qu'avant. */
-  fenetre: string;
-  chiffres: ChiffreMoyen[];
-  /** Lequel des chiffres porte le rang 3. Les autres forment le bilan. */
-  tete?: number;
-  /** Rang 9 — ce qui rend CETTE moyenne honnête. Un seul pied, jamais deux. */
-  pied?: string;
-  /** Ce qui s'écrit à la place du chiffre quand il n'y a rien à moyenner. */
-  vide: string;
-  /** Où aller chercher plus de matière quand la fenêtre est trop courte. */
-  elargir?: { href: string; texte: string };
-}) {
-  const i = Math.min(tete, chiffres.length - 1);
-
-  return (
-    <div className="mb-8">
-      {/* Rang 1 — l'identité, et rang 2 le contexte : le dénominateur EST dans
-          le titre, la fenêtre juste après. Les deux changent avec le filtre. */}
-      <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Tes moyennes par {unite}{" "}
-        <span className="text-faint font-normal">
-          · {n} {pluriel(unite, n)} · {fenetre}
-        </span>
-      </h2>
-
-      <div className="bg-white border border-line rounded-xl shadow-card p-5">
-        {n === 0 || chiffres.length === 0 ? (
-          // Un vide se dit en toutes lettres, et il dit quoi faire. Zéro serait
-          // un chiffre faux : ce n'est pas « la moyenne vaut 0 », c'est « il
-          // n'y a rien à moyenner ».
-          <p className="text-[12.5px] text-muted leading-relaxed">
-            {vide}
-            {elargir && (
-              <>
-                {" "}
-                <a href={elargir.href} className="text-brand font-semibold underline">
-                  {elargir.texte}
-                </a>
-                .
-              </>
-            )}
-          </p>
-        ) : (
-          <>
-            {/* Rang 3 — le chiffre, avant toute forme. */}
-            {(() => {
-              const t = chiffres[i];
-              const m = moyenne(t.parUnite);
-              return (
-                <div className="flex items-baseline gap-2.5 flex-wrap">
-                  <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-                    {m ? t.fmt(m.v) : "—"}
-                    {t.unite && <span className="text-[15px] text-faint"> {t.unite}</span>}
-                  </span>
-                  <span className="text-[11px] text-faint">
-                    {deQuoi(t.titre)} par {unite}, en moyenne
-                    {` · ${article(unite)} ${unite} est un ${t.nature === "somme" ? "total" : "taux"}`}
-                  </span>
-                </div>
-              );
-            })()}
-
-            {/* Le bilan — au moins 1,7 fois plus petit que la tête (34 → 19 px)
-                et sur UN SEUL fond : c'est ce qui le fait lire comme la suite du
-                chiffre, pas comme quatre chiffres qui lui disputent la place. */}
-            {chiffres.length > 1 && (
-              <div className="mt-4 rounded-lg bg-black/[0.02] border border-line/70">
-                <div className="defile-x flex items-start gap-6 px-4 py-3 rounded-lg">
-                  {chiffres.map((c, j) =>
-                    j === i ? null : (
-                      <div key={c.titre} className="shrink-0">
-                        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
-                          {c.titre}
-                        </div>
-                        <div className="font-mono text-[19px] leading-tight text-ink mt-0.5">
-                          {(() => {
-                            const m = moyenne(c.parUnite);
-                            return m ? c.fmt(m.v) : "—";
-                          })()}
-                          {c.unite && <span className="text-[11px] text-faint"> {c.unite}</span>}
-                        </div>
-                        <div className="text-[10px] text-faint mt-0.5">
-                          {c.nature === "somme" ? "total" : "taux"} · {unite}
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Rang 9 — un seul pied, et il porte la seule chose qui rend la
-            moyenne honnête : sa fenêtre, et ce qu'on en a retiré.
-            IL SE TAIT QUAND IL N'Y A PAS DE MOYENNE : « Moyenne des 0
-            publication de la période » sous un bloc qui vient d'écrire qu'il
-            n'y a rien à moyenner reprend d'une main ce que le vide donnait de
-            l'autre. */}
-        {pied && n > 0 && chiffres.length > 0 && (
-          <p className="text-[10.5px] text-faint leading-relaxed mt-3">{pied}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // Ce que la fenêtre d'un canal donne comme unité, et ce qu'il faut en écrire.
 // Une seule fonction pour les trois pages : c'est elle qui garantit que Meta,
 // Google et Instagram basculent au même moment et le disent avec les mêmes mots.
@@ -470,6 +427,19 @@ function bornes(debut: string, fin: string): string {
   return `${jourISO(debut)} → ${jourISO(fin)} ${fin.slice(0, 4)}`;
 }
 
+// Ce que rendent `calculMoyennesAds` / `calculMoyennesInsta`, pour nourrir les
+// tuiles d'`AdsKpis` / `InstaKpis` et le paragraphe unique qui les rend
+// honnêtes — voir « LES MOYENNES, ET LEUR UNITÉ » plus haut.
+type MoyennesData = {
+  unite: string;
+  n: number;
+  fenetre: string;
+  chiffres: ChiffreMoyen[];
+  pied: string;
+  vide: string;
+  elargir: { href: string; texte: string };
+};
+
 // Les moyennes des dashboards publicitaires (Meta, Google, et toute régie qui
 // suivra). Elles lisent la MÊME fenêtre que la courbe posée juste dessous :
 // c'est ce qui permet de les lire l'une après l'autre sans se demander de quoi
@@ -479,7 +449,7 @@ function bornes(debut: string, fin: string): string {
 // points pour rester lisible en graphe, et une moyenne calculée sur les 120
 // derniers jours d'un historique de deux ans, sous un titre qui dit « Tout »,
 // serait un chiffre présenté pour autre chose que ce qu'il mesure.
-export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
+function calculMoyennesAds(d: ChannelDash, path: string): MoyennesData {
   const pts = d.dailyComplet;
   const { unite, groupes, pied } = uniteDeLaFenetre(
     pts,
@@ -521,11 +491,6 @@ export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
     },
   ];
 
-  // La tête suit la métrique choisie SOUS la courbe : le sélecteur pilote les
-  // deux modules à la fois, et il reste en bas des deux (rang 8).
-  const ordre = ["spend", "clicks", "impressions", "ctr", "cpc"];
-  const tete = Math.max(0, ordre.indexOf(d.metric));
-
   // En branche « jour », le pied dit ce qui rend la moyenne lisible : un jour
   // sans campagne est un jour à ZÉRO, pas un jour absent. C'est la différence
   // entre « tu dépenses peu » et « tu dépenses sur peu de jours », et sans ce
@@ -538,34 +503,31 @@ export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
       : `${actifs} d'entre eux ${actifs > 1 ? "ont porté" : "a porté"} une campagne : les autres comptent comme des jours à zéro, ` +
         "sinon « peu dépensé » et « dépensé sur peu de jours » se liraient pareil.");
 
-  return (
-    <Moyennes
-      unite={unite}
-      n={groupes.length}
-      fenetre={bornes(d.windowDebut, d.windowFin)}
-      chiffres={chiffres}
-      tete={tete}
-      pied={unite === "mois" ? pied : piedJour}
-      vide="La période affichée ne contient aucun jour plein — il n'y a rien à moyenner."
-      elargir={{
-        href: lienAds(path, d, { d: "0" }),
-        texte: "Passe la période sur « Tout »",
-      }}
-    />
-  );
+  return {
+    unite,
+    n: groupes.length,
+    fenetre: bornes(d.windowDebut, d.windowFin),
+    chiffres,
+    pied: unite === "mois" ? pied : piedJour,
+    vide: "La période affichée ne contient aucun jour plein — il n'y a rien à moyenner.",
+    elargir: {
+      href: lienAds(path, d, { d: "0" }),
+      texte: "Passe la période sur « Tout »",
+    },
+  };
 }
 
-// Les moyennes d'Instagram. Même module, même règle, même composant que Meta et
-// Google — c'est le but : trois pages canal qui posent la même question doivent
-// la poser de la même façon. Ce qui change, c'est l'unité observée quand la
-// fenêtre est trop courte pour un mois : là-bas des jours de dépense, ici des
+// Les moyennes d'Instagram. Même calcul, même règle que Meta et Google — c'est
+// le but : trois pages canal qui posent la même question doivent la poser de
+// la même façon. Ce qui change, c'est l'unité observée quand la fenêtre est
+// trop courte pour un mois : là-bas des jours de dépense, ici des
 // PUBLICATIONS. Un jour sans post n'est pas un jour à zéro sur Instagram, c'est
 // un jour où il ne s'est rien passé ; le dénominateur naturel est le post.
 //
-// C'est ce module qui a absorbé « Tes moyennes par post · tout l'historique »,
-// supprimé de la page : il en reprend exactement les chiffres, mais sur la
-// fenêtre affichée au lieu de tout l'historique.
-export function MoyennesInsta({ d }: { d: InstaDash }) {
+// C'est ce calcul qui a absorbé « Tes moyennes par post · tout l'historique »,
+// supprimé de la page en amont : il en reprend exactement les chiffres, mais
+// sur la fenêtre affichée au lieu de tout l'historique.
+function calculMoyennesInsta(d: InstaDash): MoyennesData {
   const posts = d.posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) }));
   const { unite, groupes, pied } = uniteDeLaFenetre(
     posts,
@@ -600,16 +562,13 @@ export function MoyennesInsta({ d }: { d: InstaDash }) {
     },
   ];
   // Le nombre de publications n'a de sens qu'en branche mensuelle : par
-  // publication, il vaudrait 1 partout. Il vient donc en fin de bilan, après les
-  // six métriques dont l'ordre est celui du sélecteur (`tete` en dépend).
+  // publication, il vaudrait 1 partout. Il vient donc en fin de liste, après
+  // les six métriques.
   if (unite === "mois")
     chiffres.push({
       titre: "Publications", nature: "somme", fmt: (v) => v.toFixed(1),
       parUnite: groupes.map((g) => g.length),
     });
-
-  const ordre = ["reach", "views", "likes", "comments", "saved", "eng"];
-  const tete = Math.max(0, ordre.indexOf(d.topMetric));
 
   // Une fenêtre qui couvre deux mois entiers SANS aucune publication donne des
   // moyennes à zéro, et ce zéro-là est mesuré : rien n'a été publié. Il faut le
@@ -619,23 +578,113 @@ export function MoyennesInsta({ d }: { d: InstaDash }) {
       ? `${pied} Aucune publication sur la période : ces moyennes valent zéro parce que rien n'a été publié, pas parce que rien n'a été mesuré.`
       : pied;
 
+  return {
+    unite,
+    n: groupes.length,
+    fenetre: bornes(d.windowDebut, d.windowFin),
+    chiffres,
+    pied:
+      unite === "mois"
+        ? piedMois
+        : `Moyenne des ${posts.length} publication${posts.length > 1 ? "s" : ""} de la période affichée. ` +
+          `Une publication est le dénominateur tant que la fenêtre ne couvre pas deux mois entiers : ` +
+          `sur sept jours, un « par mois » n'aurait aucun mois à moyenner.`,
+    vide: "Aucune publication sur la période affichée — il n'y a rien à moyenner. Ce n'est pas une moyenne à zéro, c'est une moyenne sans dénominateur.",
+    elargir: { href: lienDash("/instagram", d.params, { d: "0" }, "reach"), texte: "Élargis la période" },
+  };
+}
+
+// Équivalent d'`AdsKpis` côté Instagram (demande de David, 2026-09-01) :
+// remplace à la fois les 3 `<div>` faits à la main de « Ta page »
+// (Abonnés/Croissance 30 j/Engagement du compte — sans `Chiffre`, sans
+// sparkline) ET le module séparé « Tes moyennes ». Les trois tuiles d'origine
+// gagnent le format `Chiffre` ; une tuile est ajoutée pour CHAQUE métrique de
+// `calculMoyennesInsta` (portée, vues, j'aime, commentaires, enregistrements,
+// engagement, et publications quand l'unité est le mois) — pas de mapping
+// partiel qui en laisserait de côté, la carte est donc plus chargée que sur
+// Meta/Google, ce qui est assumé. Les textes qui rendent la moyenne honnête ne
+// se répètent pas tuile par tuile : un seul paragraphe sous la grille, comme
+// sur `AdsKpis`.
+export function InstaKpis({ d }: { d: InstaDash }) {
+  const moy = calculMoyennesInsta(d);
+
+  // Le delta des abonnés est un delta ABSOLU (« +2'185 sur la période »),
+  // jamais un pourcentage — `Pente` suffixe toujours « % » et ne convient pas.
+  // Rendu identique à l'ancien `<div>` de « Ta page » qu'il remplace : couleur
+  // par le SENS (vert/rouge), triangle, jamais un simple texte gris — sinon le
+  // signal de sens disparaît de la tuile.
+  const abonnesDelta =
+    d.followersDelta !== null ? (
+      <div
+        className={`font-semibold text-[11px] mt-1.5 ${
+          d.followersDelta >= 0 ? "text-pos" : "text-neg"
+        }`}
+      >
+        <Triangle sens={d.followersDelta >= 0 ? "haut" : "bas"} />{" "}
+        {d.followersDelta >= 0 ? "+" : "−"}
+        {fmtCHF(Math.abs(d.followersDelta))}{" "}
+        <span className="text-faint font-normal">sur la période</span>
+      </div>
+    ) : null;
+
+  const piedMoy =
+    moy.n === 0 ? (
+      <>
+        {moy.vide}{" "}
+        <a href={moy.elargir.href} className="text-brand font-semibold underline">
+          {moy.elargir.texte}
+        </a>
+        .
+      </>
+    ) : (
+      <>
+        Moyennes par {moy.unite} · {moy.n} {pluriel(moy.unite, moy.n)} · {moy.fenetre}. {moy.pied}
+      </>
+    );
+
   return (
-    <Moyennes
-      unite={unite}
-      n={groupes.length}
-      fenetre={bornes(d.windowDebut, d.windowFin)}
-      chiffres={chiffres}
-      tete={tete}
-      pied={
-        unite === "mois"
-          ? piedMois
-          : `Moyenne des ${posts.length} publication${posts.length > 1 ? "s" : ""} de la période affichée. ` +
-            `Une publication est le dénominateur tant que la fenêtre ne couvre pas deux mois entiers : ` +
-            `sur sept jours, un « par mois » n'aurait aucun mois à moyenner.`
-      }
-      vide="Aucune publication sur la période affichée — il n'y a rien à moyenner. Ce n'est pas une moyenne à zéro, c'est une moyenne sans dénominateur."
-      elargir={{ href: lienDash("/instagram", d.params, { d: "0" }, "reach"), texte: "Élargis la période" }}
-    />
+    <div className="mb-8">
+      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-1.5 pb-1 sm:pb-0">
+        <Chiffre
+          titre="Abonnés"
+          valeur={fmtCHF(d.followers)}
+          serie={d.followersSeries.map((p) => p.followers)}
+          serieLabels={d.followersSeries.map((p) => jourISO(p.date))}
+          deltaNode={abonnesDelta}
+        />
+        <Chiffre
+          titre="Croissance 30 j"
+          valeur={d.growth30 !== null ? `${d.growth30 >= 0 ? "+" : ""}${fmtCHF(d.growth30)}` : "—"}
+          sous="nouveaux abonnés"
+        />
+        <Chiffre
+          titre="Engagement du compte"
+          valeur={d.avgEng.toFixed(1)}
+          unite="%"
+          sous={`portée moyenne ${fmtCHF(d.histReach)} / post`}
+        />
+        {/* Une tuile par métrique de `calculMoyennesInsta`, dans le même ordre
+            qu'avant dans le module séparé. */}
+        {moy.chiffres.map((c) => {
+          const m = moyenne(c.parUnite);
+          return (
+            <Chiffre
+              key={c.titre}
+              // « Engagement » existe déjà en haut (« Engagement du compte »,
+              // moyenne sur tout l'historique) — celui-ci porte la moyenne SUR
+              // LA PÉRIODE affichée, par jour/mois/publication : même mot pour
+              // deux mesures différentes se lirait comme un doublon plutôt que
+              // comme deux questions.
+              titre={c.titre === "Engagement" ? "Engagement (moyenne)" : c.titre}
+              valeur={m ? c.fmt(m.v) : "—"}
+              unite={c.unite}
+              sous={m ? `${deQuoi(c.titre)} par ${moy.unite}, en moyenne` : undefined}
+            />
+          );
+        })}
+      </div>
+      <p className="text-[10.5px] text-faint leading-relaxed mb-3">{piedMoy}</p>
+    </div>
   );
 }
 

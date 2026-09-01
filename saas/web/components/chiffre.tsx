@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Sparkline } from "@/components/line-chart";
 import { Pente } from "@/components/pente";
 
@@ -41,6 +42,7 @@ export function Chiffre({
   serieLabels,
   ton = "ink",
   grand = false,
+  deltaNode,
 }: {
   titre: string;
   valeur: string;
@@ -55,6 +57,12 @@ export function Chiffre({
   serieLabels?: string[];
   ton?: Ton;
   grand?: boolean;
+  /** Remplace le `<Pente>` automatique (qui suppose un POURCENTAGE, et suffixe
+   *  toujours « % ») par un rendu fourni par l'appelant — pour un delta
+   *  ABSOLU (ex. abonnés gagnés) qui a besoin du même rang (5, sous le
+   *  chiffre) et du même signal (couleur + triangle par le SENS) mais pas du
+   *  même texte. `delta` est alors ignoré. */
+  deltaNode?: ReactNode;
 }) {
   const utile = (serie ?? []).filter((v) => v > 0).length >= 2;
 
@@ -82,7 +90,7 @@ export function Chiffre({
         </div>
         {/* Le delta est coloré par le SENS, jamais par le signe : un CPC qui
             baisse est une bonne nouvelle et sort en vert. */}
-        <Pente delta={delta} baisseEstBonne={baisseEstBonne} base="vs période préc." />
+        {deltaNode ?? <Pente delta={delta} baisseEstBonne={baisseEstBonne} base="vs période préc." />}
         {sous && <div className="text-[11px] text-faint mt-1 leading-snug">{sous}</div>}
       </div>
       {utile && (

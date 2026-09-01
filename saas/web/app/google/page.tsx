@@ -9,7 +9,6 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
-  MoyennesAds,
   ByLabelTable,
 } from "@/components/channel-dash";
 
@@ -51,10 +50,7 @@ export default async function GooglePage({
         current={d.filters}
       />
 
-      <AdsKpis d={d} channel="google" />
-      {/* Même module, même place que sur Meta : deux pages canal qui posent la
-          même question doivent la poser dans le même ordre. */}
-      <MoyennesAds d={d} path="/google" />
+      <AdsKpis d={d} path="/google" channel="google" />
       <MetricChart d={d} path="/google" />
       {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
           qu'une comparaison, dès qu'elle est posée — et rien de plus quand

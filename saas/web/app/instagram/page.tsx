@@ -15,7 +15,7 @@ import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
-import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
+import { ByLabelInsta, CourbeAbonnes, InstaKpis } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 
 import { getCompteActif } from "@/lib/account";
@@ -360,58 +360,18 @@ export default async function InstagramPage({
         </div>
       </div>
 
-      {/* ── TA PAGE ── */}
+      {/* ── TA PAGE ──
+          Les 3 tuiles (Abonnés/Croissance 30 j/Engagement du compte) et le
+          module séparé « Tes moyennes » vivaient l'un sous l'autre : deux
+          cartes qui parlaient toutes deux de moyennes se lisaient comme un
+          doublon plutôt que comme deux questions. `InstaKpis` fusionne les
+          deux (demande de David, 2026-09-01) — les 3 tuiles gagnent le format
+          `Chiffre` qui leur manquait, et une tuile s'ajoute pour chaque
+          métrique de `calculMoyennesInsta` (portée, vues, j'aime,
+          commentaires, enregistrements, engagement, publications). */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">Ta page</h2>
-      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Abonnés
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">{fmtCHF(d.followers)}</div>
-          {d.followersDelta !== null && (
-            <div
-              className={`text-[11px] font-semibold mt-1.5 ${
-                d.followersDelta >= 0 ? "text-pos" : "text-neg"
-              }`}
-            >
-              <Triangle sens={d.followersDelta >= 0 ? "haut" : "bas"} />{" "}
-              {d.followersDelta >= 0 ? "+" : "−"}
-              {fmtCHF(Math.abs(d.followersDelta))}{" "}
-              <span className="text-faint font-normal">sur la période</span>
-            </div>
-          )}
-        </div>
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Croissance 30 j
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">
-            {d.growth30 !== null ? `${d.growth30 >= 0 ? "+" : ""}${fmtCHF(d.growth30)}` : "—"}
-          </div>
-          <div className="text-[11px] text-faint mt-1">nouveaux abonnés</div>
-        </div>
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Engagement du compte
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">{d.avgEng.toFixed(1)} %</div>
-          <div className="text-[11px] text-faint mt-1">
-            portée moyenne {fmtCHF(d.histReach)} / post
-          </div>
-        </div>
-      </div>
+      <InstaKpis d={d} />
       <CourbeAbonnes series={d.followersSeries} />
-
-      {/* ── TES MOYENNES — une seule fois, et sur la période affichée ──
-          Il y avait ICI un second module de moyennes, « Tes moyennes par post ·
-          tout l'historique » : six chiffres à plat, collés au-dessus de celui-ci
-          qui portait presque le même titre. Deux boîtes « Tes moyennes » l'une
-          sur l'autre ne se lisent pas comme deux questions, elles se lisent
-          comme un doublon — et c'en était un : il ne se distinguait que par son
-          DÉNOMINATEUR, jamais écrit ailleurs que dans son surtitre.
-          Le module qui reste répond aux deux, parce que son unité suit
-          maintenant la fenêtre (voir `Moyennes` dans channel-dash.tsx). */}
-      <MoyennesInsta d={d} />
 
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
       <PostsMetricChart posts={chartPosts} metric={metric} params={d.params} />

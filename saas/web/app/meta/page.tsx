@@ -9,7 +9,6 @@ import {
   AdsKpis,
   CampaignTable,
   MetricChart,
-  MoyennesAds,
   ByLabelTable,
 } from "@/components/channel-dash";
 
@@ -57,11 +56,7 @@ export default async function MetaPage({
         current={d.filters}
       />
 
-      <AdsKpis d={d} />
-      {/* Le rythme d'un mois AVANT la forme du jour : ce qu'un mois coûte et
-          rapporte se compare d'un mois à l'autre, la courbe ne dit que la
-          silhouette de la fenêtre affichée. */}
-      <MoyennesAds d={d} path="/meta" />
+      <AdsKpis d={d} path="/meta" />
       <MetricChart d={d} path="/meta" />
       {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
           qu'une comparaison, dès qu'elle est posée — et rien de plus quand
