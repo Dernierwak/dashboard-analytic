@@ -3,8 +3,8 @@
 // graphe journalier à métrique sélectionnable, campagnes avec statut et
 // drill-down adset/groupe → annonce, vue Par thème.
 import { fmtCHF } from "@/lib/report";
-import { LineChart } from "@/components/line-chart";
-import { Chiffre } from "@/components/chiffre";
+import { LineChart, Sparkline } from "@/components/line-chart";
+import { Chiffre, TRAIT } from "@/components/chiffre";
 import type {
   Campaign, ChannelDash, DashParams, DayPoint, InstaDash, InstaPost, LabelAgg, PostLabelAgg,
 } from "@/lib/channels";
@@ -106,6 +106,28 @@ export function AdsKpis({
   const sousCtr = sousTaux("CTR", "CTR moyen");
   const sousCpc = sousTaux("CPC", "CPC moyen");
 
+  // La sparkline DÉDIÉE à la moyenne (retour de David, 2026-09-01 : « un
+  // texte seul ne suffit pas, fait une sparkline avec une belle couleur »).
+  // Chaque tuile qui a un chiffre dans `moy.chiffres` reçoit sa propre série
+  // par unité (`ChiffreMoyen.parUnite`), jamais la série journalière brute
+  // déjà tracée par `serie` — voir `Chiffre.serieMoyenne`.
+  //
+  // EN BRANCHE « JOUR », `parUnite` EST LISSÉ (`lisser`, 7 points glissants)
+  // avant de nourrir la sparkline (rejet du checker, 3e passage) : chaque
+  // unité y est un seul jour, donc `parUnite` brut vaudrait, point pour point,
+  // la même valeur que `serie` — deux courbes identiques dans deux couleurs.
+  // Le chiffre unique de `sous` (« X/jour en moyenne »), lui, continue de
+  // lire `parUnite` NON lissé via `moyDe` juste au-dessus — seule la forme
+  // graphique change, jamais le chiffre affiché. En branche « mois »,
+  // `parUnite` (un mois entier par point) est déjà distinct de `serie` : rien
+  // à lisser.
+  const serieMoyDe = (titre: string) => {
+    const c = moy.chiffres.find((x) => x.titre === titre);
+    if (!c) return undefined;
+    const valeurs = moy.unite === "mois" ? c.parUnite : lisser(c.parUnite, 7);
+    return { valeurs, labels: moy.labels, unite: c.unite };
+  };
+
   // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
   // grand dans le hero, on montre le CPC — l'autre chiffre qu'on regarde.
   const firstTile =
@@ -116,6 +138,10 @@ export function AdsKpis({
           delta: d.cpc > 0 ? d.cpcDelta : null,
           invert: true,
           sous: sousCpc,
+          // CPC déjà servi par `d.daily` (spend/clics du jour) — Google n'a
+          // pas de portée journalière, donc pas de série ici pour ce canal.
+          serie: d.daily.map((p) => (p.clicks > 0 ? p.spend / p.clicks : 0)),
+          serieMoy: serieMoyDe("CPC"),
         }
       : {
           label: "Portée",
@@ -123,6 +149,10 @@ export function AdsKpis({
           delta: d.reach > 0 ? d.reachDelta : null,
           invert: false,
           sous: undefined as string | undefined,
+          // `DayPoint.reach` (ajouté le 2026-09-01, voir `lib/channels.ts`) —
+          // avant cette date la portée n'avait aucune granularité journalière.
+          serie: d.daily.map((p) => p.reach),
+          serieMoy: serieMoyDe("Portée"),
         };
 
   // Le paragraphe unique qui rend TOUTES les moyennes de la carte honnêtes —
@@ -142,10 +172,21 @@ export function AdsKpis({
       </>
     );
 
+  const sousCpm = sousTaux("CPM", "CPM moyen");
+  const serieMoyImpr = serieMoyDe("Impressions");
+  const heroValeurOk = d.daily.filter((p) => p.impressions > 0).length >= 2;
+  const heroMoyOk =
+    !!serieMoyImpr &&
+    serieMoyImpr.valeurs.filter((v): v is number => v !== null && isFinite(v)).length >= 2;
+
   return (
     <div className="mb-8">
-      {/* Hero */}
-      <div className="bg-white border border-line rounded-xl p-5 mb-3">
+      {/* Hero — pas un `Chiffre` (le chiffre de tête y est deux fois plus
+          grand), donc ses deux sparklines sont posées à la main, même
+          principe : la valeur du jour d'abord, la moyenne ensuite en dessous,
+          séparées par un trait fin, chacune ne se dessinant que si elle a de
+          quoi tracer une tendance. */}
+      <div className="bg-white border border-line rounded-xl p-5 mb-3 overflow-hidden">
         <div className="text-[10px] uppercase tracking-wide text-faint font-semibold">
           Impressions{" "}
           <span className="normal-case tracking-normal font-normal">
@@ -159,7 +200,25 @@ export function AdsKpis({
           <Pente delta={d.imprDelta} base="vs période préc." />
         </div>
         {sousImpressions && (
-          <div className="text-[11px] text-faint mt-1">{sousImpressions}</div>
+          <div className="text-[11px] text-faint mt-1 mb-2">{sousImpressions}</div>
+        )}
+        {/* Un seul conteneur pour les deux sparklines : c'est LUI qui annule le
+            padding de la carte (`-mx-5 -mb-5`), une seule fois — appliquer
+            `-mb-5` à CHACUN des deux blocs (rejet du checker, 3e passage) les
+            faisait remonter tous les deux de 20 px et se chevaucher. À
+            l'intérieur, les deux sparklines s'empilent en flux normal, sans
+            marge négative propre. */}
+        {(heroValeurOk || heroMoyOk) && (
+          <div className="-mx-5 -mb-5 mt-2">
+            {heroValeurOk && (
+              <Sparkline values={d.daily.map((p) => p.impressions)} color={TRAIT.ink} height={26} labels={d.daily.map((p) => p.label)} />
+            )}
+            {heroMoyOk && (
+              <div className={heroValeurOk ? "border-t border-line/70" : ""}>
+                <Sparkline values={serieMoyImpr!.valeurs} color={TRAIT.warn} height={22} labels={serieMoyImpr!.labels} />
+              </div>
+            )}
+          </div>
         )}
       </div>
       {/* Ce qu'on regarde d'abord : trois chiffres, chacun avec sa forme.
@@ -173,6 +232,9 @@ export function AdsKpis({
           serie={d.daily.map((p) => p.spend)}
           serieLabels={d.daily.map((p) => p.label)}
           sous={sousDepense}
+          serieMoyenne={serieMoyDe("Dépense")?.valeurs}
+          serieMoyenneLabels={serieMoyDe("Dépense")?.labels}
+          uniteMoyenne="CHF"
           grand
         />
         <Chiffre
@@ -182,6 +244,8 @@ export function AdsKpis({
           serie={d.daily.map((p) => p.clicks)}
           serieLabels={d.daily.map((p) => p.label)}
           sous={sousClics}
+          serieMoyenne={serieMoyDe("Clics")?.valeurs}
+          serieMoyenneLabels={serieMoyDe("Clics")?.labels}
           grand
         />
         <Chiffre
@@ -192,6 +256,9 @@ export function AdsKpis({
           serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
           serieLabels={d.daily.map((p) => p.label)}
           sous={sousCtr}
+          serieMoyenne={serieMoyDe("CTR")?.valeurs}
+          serieMoyenneLabels={serieMoyDe("CTR")?.labels}
+          uniteMoyenne="%"
           grand
         />
       </div>
@@ -211,13 +278,24 @@ export function AdsKpis({
             delta={firstTile.delta}
             baisseEstBonne={firstTile.invert}
             sous={firstTile.sous}
+            serie={firstTile.serie}
+            serieLabels={d.daily.map((p) => p.label)}
+            serieMoyenne={firstTile.serieMoy?.valeurs}
+            serieMoyenneLabels={firstTile.serieMoy?.labels}
+            uniteMoyenne={firstTile.serieMoy?.unite}
           />
           <Chiffre
-            titre="CPM moyen"
+            titre="CPM période"
             valeur={d.cpm > 0 ? d.cpm.toFixed(2) : "—"}
             unite={d.cpm > 0 ? "CHF" : undefined}
             delta={d.cpm > 0 ? d.cpmDelta : null}
             baisseEstBonne
+            sous={sousCpm}
+            serie={d.daily.map((p) => (p.impressions > 0 ? (p.spend / p.impressions) * 1000 : 0))}
+            serieLabels={d.daily.map((p) => p.label)}
+            serieMoyenne={serieMoyDe("CPM")?.valeurs}
+            serieMoyenneLabels={serieMoyDe("CPM")?.labels}
+            uniteMoyenne="CHF"
           />
           <Chiffre
             titre="CPC période"
@@ -226,6 +304,11 @@ export function AdsKpis({
             delta={d.cpc > 0 ? d.cpcDelta : null}
             baisseEstBonne
             sous={sousCpc}
+            serie={d.daily.map((p) => (p.clicks > 0 ? p.spend / p.clicks : 0))}
+            serieLabels={d.daily.map((p) => p.label)}
+            serieMoyenne={serieMoyDe("CPC")?.valeurs}
+            serieMoyenneLabels={serieMoyDe("CPC")?.labels}
+            uniteMoyenne="CHF"
           />
         </div>
       </details>
@@ -240,7 +323,7 @@ export function AdsKpis({
 // empilées qui parlent toutes deux de dépense/clics/CTR se lisaient comme un
 // doublon, pas comme deux questions). Le calcul, lui, ne change pas — il vit
 // maintenant dans `calculMoyennesAds` / `calculMoyennesInsta`, appelés par
-// `AdsKpis` / `InstaKpis` pour nourrir le petit texte sous chaque tuile. La
+// `AdsKpis` / `InstaKpisPosts` pour nourrir le petit texte sous chaque tuile. La
 // règle qui le rend honnête est ce qui suit, et elle tient toujours :
 //
 //   UNE MOYENNE POUR CE QUI EST UN TAUX, UN TOTAL POUR CE QUI S'ADDITIONNE.
@@ -274,7 +357,7 @@ export function AdsKpis({
 // mais elle en a un autre : **une fenêtre peut ne rien contenir du tout**, et
 // c'est là qu'un « 0 » mentirait. Zéro n'est pas la moyenne, c'est l'absence de
 // moyenne ; le paragraphe unique sous la grille de tuiles l'écrit en toutes
-// lettres (voir `piedMoy` dans `AdsKpis` / `InstaKpis`), plutôt que de laisser
+// lettres (voir `piedMoy` dans `AdsKpis` / `InstaKpisPosts`), plutôt que de laisser
 // chaque tuile afficher un zéro qui n'a pas été mesuré.
 
 const MOIS_LONG = [
@@ -354,6 +437,29 @@ function moyenne(xs: (number | null)[]): { v: number; n: number } | null {
   return { v: reels.reduce((a, b) => a + b, 0) / reels.length, n: reels.length };
 }
 
+// Moyenne glissante — 7 points glissants qui se terminent à chaque index,
+// nuls ignorés dans la fenêtre (un point sans AUCUNE valeur réelle dans sa
+// fenêtre reste `null`, jamais un zéro qui n'a pas été mesuré).
+//
+// Rejet du checker (TASK-040, 3e passage) : en branche « jour » (réglage par
+// défaut, 7/14/30 jours), CHAQUE unité moyennée EST un jour — la sparkline de
+// moyenne (`Chiffre.serieMoyenne`, alimentée par `ChiffreMoyen.parUnite`)
+// redessinait donc, point pour point, la même valeur que la sparkline de la
+// période (`serie`) : deux courbes identiques, une bleue une ambre. Lisser
+// SEULEMENT la série qui nourrit la sparkline — jamais `parUnite` lui-même,
+// qui reste la donnée exacte derrière le chiffre unique de `sous` (« X/jour en
+// moyenne ») — en fait une vraie deuxième lecture : la tendance de fond
+// plutôt que le bruit quotidien. En branche « mois », chaque unité couvre déjà
+// un mois entier : `parUnite` y est intrinsèquement distinct de la série
+// journalière de `serie`, donc inutile d'y toucher (voir les appels).
+function lisser(xs: (number | null)[], fenetre: number): (number | null)[] {
+  return xs.map((_, i) => {
+    const debut = Math.max(0, i - fenetre + 1);
+    const fen = xs.slice(debut, i + 1).filter((v): v is number => v !== null && isFinite(v));
+    return fen.length > 0 ? fen.reduce((a, b) => a + b, 0) / fen.length : null;
+  });
+}
+
 /** « mois » est invariable ; « jour » et « publication » prennent leur s. */
 function pluriel(unite: string, n: number): string {
   return n > 1 && unite !== "mois" ? `${unite}s` : unite;
@@ -383,6 +489,11 @@ function uniteDeLaFenetre<T extends { date: string }>(
 ): {
   unite: string;
   groupes: T[][];
+  /** Un libellé par groupe, dans le même ordre que `groupes` — le nom du mois
+   *  en branche mensuelle, la date du seul point du groupe sinon. Nourrit la
+   *  bulle au survol de la sparkline de moyenne (`Chiffre.serieMoyenneLabels`)
+   *  : sans lui, cette bulle ne dirait qu'un chiffre, jamais QUAND. */
+  labels: string[];
   /** La phrase du rang 9 qui vient de la BRANCHE (pas des chiffres). */
   pied: string;
 } {
@@ -393,7 +504,12 @@ function uniteDeLaFenetre<T extends { date: string }>(
   // deux, on descend d'un cran plutôt que d'écrire « rien à afficher » : c'est
   // le filtre de l'utilisateur, il doit produire une réponse.
   if (complets.length < 2)
-    return { unite: courte, groupes: pts.map((p) => [p]), pied: "" };
+    return {
+      unite: courte,
+      groupes: pts.map((p) => [p]),
+      labels: pts.map((p) => jourISO(p.date)),
+      pied: "",
+    };
 
   const ecartes = mois.filter((m) => !m.complet);
   const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -407,6 +523,7 @@ function uniteDeLaFenetre<T extends { date: string }>(
   return {
     unite: "mois",
     groupes: complets.map((m) => m.pts),
+    labels: complets.map((m) => m.nom),
     pied:
       `Moyenne des ${complets.length} mois entièrement couverts par la période affichée, ` +
       `de ${complets[0].nom} à ${complets[complets.length - 1].nom}.${phrase}`,
@@ -428,13 +545,17 @@ function bornes(debut: string, fin: string): string {
 }
 
 // Ce que rendent `calculMoyennesAds` / `calculMoyennesInsta`, pour nourrir les
-// tuiles d'`AdsKpis` / `InstaKpis` et le paragraphe unique qui les rend
+// tuiles d'`AdsKpis` / `InstaKpisPosts` et le paragraphe unique qui les rend
 // honnêtes — voir « LES MOYENNES, ET LEUR UNITÉ » plus haut.
 type MoyennesData = {
   unite: string;
   n: number;
   fenetre: string;
   chiffres: ChiffreMoyen[];
+  /** Un libellé par unité moyennée, même ordre et même longueur que chaque
+   *  `ChiffreMoyen.parUnite` — nourrit la bulle au survol de la sparkline de
+   *  moyenne d'une tuile. */
+  labels: string[];
   pied: string;
   vide: string;
   elargir: { href: string; texte: string };
@@ -451,7 +572,7 @@ type MoyennesData = {
 // serait un chiffre présenté pour autre chose que ce qu'il mesure.
 function calculMoyennesAds(d: ChannelDash, path: string): MoyennesData {
   const pts = d.dailyComplet;
-  const { unite, groupes, pied } = uniteDeLaFenetre(
+  const { unite, groupes, labels, pied } = uniteDeLaFenetre(
     pts,
     { debut: d.windowDebut, fin: d.windowFin },
     "jour"
@@ -489,6 +610,22 @@ function calculMoyennesAds(d: ChannelDash, path: string): MoyennesData {
         return c > 0 ? som(g, (p) => p.spend) / c : null;
       }),
     },
+    {
+      titre: "CPM", unite: "CHF", nature: "taux", fmt: (v) => v.toFixed(2),
+      parUnite: groupes.map((g) => {
+        const i = som(g, (p) => p.impressions);
+        return i > 0 ? (som(g, (p) => p.spend) / i) * 1000 : null;
+      }),
+    },
+    // Portée : ajoutée le 2026-09-01 pour que sa tuile porte aussi une
+    // moyenne (`DayPoint.reach`, absent jusque-là de la série journalière —
+    // voir sa note dans `lib/channels.ts`). Nature « somme », comme les trois
+    // premières : c'est déjà ainsi que `ChannelDash.reach` la traite au niveau
+    // du compte (aucune réserve documentée sur le cumul journalier).
+    {
+      titre: "Portée", nature: "somme", fmt: fmtCHF,
+      parUnite: groupes.map((g) => som(g, (p) => p.reach)),
+    },
   ];
 
   // En branche « jour », le pied dit ce qui rend la moyenne lisible : un jour
@@ -508,6 +645,7 @@ function calculMoyennesAds(d: ChannelDash, path: string): MoyennesData {
     n: groupes.length,
     fenetre: bornes(d.windowDebut, d.windowFin),
     chiffres,
+    labels,
     pied: unite === "mois" ? pied : piedJour,
     vide: "La période affichée ne contient aucun jour plein — il n'y a rien à moyenner.",
     elargir: {
@@ -528,8 +666,19 @@ function calculMoyennesAds(d: ChannelDash, path: string): MoyennesData {
 // supprimé de la page en amont : il en reprend exactement les chiffres, mais
 // sur la fenêtre affichée au lieu de tout l'historique.
 function calculMoyennesInsta(d: InstaDash): MoyennesData {
-  const posts = d.posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) }));
-  const { unite, groupes, pied } = uniteDeLaFenetre(
+  // `d.posts` arrive trié DATE DESCENDANTE (le plus récent d'abord — même
+  // requête que partout ailleurs dans `lib/channels.ts`). En branche « mois »,
+  // `moisDeLaPeriode` régénère l'ordre chronologique à partir de la fenêtre
+  // (ASCENDANT, indépendant de l'ordre d'entrée) ; en branche « publication »,
+  // chaque groupe est un point de `posts` PRIS TEL QUEL — sans ce tri, la
+  // sparkline de moyenne s'y lisait récent→ancien, à l'inverse de la branche
+  // mensuelle ET du graphe juste en dessous (`PostsMetricChart`, qui fait
+  // `[...posts].reverse()` pour lire ancien→récent). Rejet du checker, 3e
+  // passage : un seul sens de lecture, dans les deux branches.
+  const posts = d.posts
+    .map((p) => ({ ...p, date: String(p.date).slice(0, 10) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const { unite, groupes, labels, pied } = uniteDeLaFenetre(
     posts,
     { debut: d.windowDebut, fin: d.windowFin },
     "publication"
@@ -583,6 +732,7 @@ function calculMoyennesInsta(d: InstaDash): MoyennesData {
     n: groupes.length,
     fenetre: bornes(d.windowDebut, d.windowFin),
     chiffres,
+    labels,
     pied:
       unite === "mois"
         ? piedMois
@@ -594,20 +744,21 @@ function calculMoyennesInsta(d: InstaDash): MoyennesData {
   };
 }
 
-// Équivalent d'`AdsKpis` côté Instagram (demande de David, 2026-09-01) :
-// remplace à la fois les 3 `<div>` faits à la main de « Ta page »
-// (Abonnés/Croissance 30 j/Engagement du compte — sans `Chiffre`, sans
-// sparkline) ET le module séparé « Tes moyennes ». Les trois tuiles d'origine
-// gagnent le format `Chiffre` ; une tuile est ajoutée pour CHAQUE métrique de
-// `calculMoyennesInsta` (portée, vues, j'aime, commentaires, enregistrements,
-// engagement, et publications quand l'unité est le mois) — pas de mapping
-// partiel qui en laisserait de côté, la carte est donc plus chargée que sur
-// Meta/Google, ce qui est assumé. Les textes qui rendent la moyenne honnête ne
-// se répètent pas tuile par tuile : un seul paragraphe sous la grille, comme
-// sur `AdsKpis`.
-export function InstaKpis({ d }: { d: InstaDash }) {
-  const moy = calculMoyennesInsta(d);
+// Équivalent d'`AdsKpis` côté Instagram (demande de David, 2026-09-01),
+// SCINDÉ EN DEUX (retour de David au test, même jour) : une seule grille de 9
+// tuiles mélangeait des métriques DE PAGE (Abonnés, Croissance 30 j,
+// Engagement du compte — l'état du compte) et des métriques DE PUBLICATION
+// (`calculMoyennesInsta` — la moyenne d'un post sur la fenêtre) sans aucune
+// séparation visuelle : « mélange pas page et métrics des postes ». Ce sont
+// deux questions différentes et elles vivent maintenant dans deux modules :
+// `InstaKpisPage` (à côté de `CourbeAbonnes`, la courbe d'abonnés) et
+// `InstaKpisPosts` (juste au-dessus de `PostsMetricChart`, le graphe par
+// publication — même ordre que Meta/Google, où `AdsKpis` précède le graphe
+// de campagnes).
 
+// Les 3 tuiles de page — remplace les `<div>` faits à la main de « Ta page »
+// (sans `Chiffre`, sans sparkline).
+export function InstaKpisPage({ d }: { d: InstaDash }) {
   // Le delta des abonnés est un delta ABSOLU (« +2'185 sur la période »),
   // jamais un pourcentage — `Pente` suffixe toujours « % » et ne convient pas.
   // Rendu identique à l'ancien `<div>` de « Ta page » qu'il remplace : couleur
@@ -627,6 +778,42 @@ export function InstaKpis({ d }: { d: InstaDash }) {
       </div>
     ) : null;
 
+  return (
+    <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
+      <Chiffre
+        titre="Abonnés"
+        valeur={fmtCHF(d.followers)}
+        serie={d.followersSeries.map((p) => p.followers)}
+        serieLabels={d.followersSeries.map((p) => jourISO(p.date))}
+        deltaNode={abonnesDelta}
+      />
+      <Chiffre
+        titre="Croissance 30 j"
+        valeur={d.growth30 !== null ? `${d.growth30 >= 0 ? "+" : ""}${fmtCHF(d.growth30)}` : "—"}
+        sous="nouveaux abonnés"
+      />
+      <Chiffre
+        titre="Engagement du compte"
+        valeur={d.avgEng.toFixed(1)}
+        unite="%"
+        sous={`portée moyenne ${fmtCHF(d.histReach)} / post`}
+      />
+    </div>
+  );
+}
+
+// Une tuile par métrique de `calculMoyennesInsta` (portée, vues, j'aime,
+// commentaires, enregistrements, engagement, et publications quand l'unité
+// est le mois) — pas de mapping partiel qui en laisserait de côté, la carte
+// est donc plus chargée que sur Meta/Google, ce qui est assumé. Absorbe
+// l'ancien module séparé « Tes moyennes » : même titre (rang 1/2, le
+// dénominateur et la fenêtre), mais les chiffres vivent dans des tuiles
+// `Chiffre` au lieu d'un bilan à plat. Les textes qui rendent la moyenne
+// honnête ne se répètent pas tuile par tuile : un seul paragraphe sous la
+// grille.
+export function InstaKpisPosts({ d }: { d: InstaDash }) {
+  const moy = calculMoyennesInsta(d);
+
   const piedMoy =
     moy.n === 0 ? (
       <>
@@ -637,53 +824,47 @@ export function InstaKpis({ d }: { d: InstaDash }) {
         .
       </>
     ) : (
-      <>
-        Moyennes par {moy.unite} · {moy.n} {pluriel(moy.unite, moy.n)} · {moy.fenetre}. {moy.pied}
-      </>
+      moy.pied
     );
 
   return (
     <div className="mb-8">
+      <h2 className="text-[14px] font-semibold text-ink mb-3">
+        Tes moyennes par {moy.unite}{" "}
+        <span className="text-faint font-normal">
+          · {moy.n} {pluriel(moy.unite, moy.n)} · {moy.fenetre}
+        </span>
+      </h2>
       <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-1.5 pb-1 sm:pb-0">
-        <Chiffre
-          titre="Abonnés"
-          valeur={fmtCHF(d.followers)}
-          serie={d.followersSeries.map((p) => p.followers)}
-          serieLabels={d.followersSeries.map((p) => jourISO(p.date))}
-          deltaNode={abonnesDelta}
-        />
-        <Chiffre
-          titre="Croissance 30 j"
-          valeur={d.growth30 !== null ? `${d.growth30 >= 0 ? "+" : ""}${fmtCHF(d.growth30)}` : "—"}
-          sous="nouveaux abonnés"
-        />
-        <Chiffre
-          titre="Engagement du compte"
-          valeur={d.avgEng.toFixed(1)}
-          unite="%"
-          sous={`portée moyenne ${fmtCHF(d.histReach)} / post`}
-        />
-        {/* Une tuile par métrique de `calculMoyennesInsta`, dans le même ordre
-            qu'avant dans le module séparé. */}
         {moy.chiffres.map((c) => {
           const m = moyenne(c.parUnite);
           return (
             <Chiffre
               key={c.titre}
-              // « Engagement » existe déjà en haut (« Engagement du compte »,
-              // moyenne sur tout l'historique) — celui-ci porte la moyenne SUR
-              // LA PÉRIODE affichée, par jour/mois/publication : même mot pour
-              // deux mesures différentes se lirait comme un doublon plutôt que
-              // comme deux questions.
+              // « Engagement » existe déjà dans `InstaKpisPage`
+              // (« Engagement du compte », moyenne sur tout l'historique) —
+              // celui-ci porte la moyenne SUR LA PÉRIODE affichée, par
+              // jour/mois/publication : même mot pour deux mesures
+              // différentes se lirait comme un doublon plutôt que comme deux
+              // questions.
               titre={c.titre === "Engagement" ? "Engagement (moyenne)" : c.titre}
               valeur={m ? c.fmt(m.v) : "—"}
               unite={c.unite}
               sous={m ? `${deQuoi(c.titre)} par ${moy.unite}, en moyenne` : undefined}
+              // Ici, à la différence d'`AdsKpis`, il n'existe pas de « valeur
+              // de la période » distincte de la moyenne : le chiffre de tête
+              // EST déjà la moyenne par unité. Une seule forme, donc — la
+              // sparkline dédiée, en `serieMoyenne` (couleur ambre fixe),
+              // jamais `serie` : `c.parUnite` porte la même donnée que le
+              // chiffre affiché plus haut, pas une seconde série à côté.
+              serieMoyenne={c.parUnite}
+              serieMoyenneLabels={moy.labels}
+              uniteMoyenne={c.unite}
             />
           );
         })}
       </div>
-      <p className="text-[10.5px] text-faint leading-relaxed mb-3">{piedMoy}</p>
+      {piedMoy && <p className="text-[10.5px] text-faint leading-relaxed mb-3">{piedMoy}</p>}
     </div>
   );
 }

@@ -459,6 +459,15 @@ export type DayPoint = {
   spend: number;
   clicks: number;
   impressions: number;
+  // Ajouté le 2026-09-01 pour que la tuile « Portée » d'`AdsKpis` puisse
+  // porter une moyenne par jour/mois comme les quatre autres métriques
+  // (`calculMoyennesAds`, `channel-dash.tsx`) — jusque-là absent de la série
+  // journalière : rien ne l'utilisait (`MetricChart` ne trace pas la portée),
+  // seul le total de la fenêtre (`ChannelDash.reach`) existait. Même
+  // accumulation que `spend`/`clicks`/`impressions`, aucune règle nouvelle :
+  // la portée est déjà sommée sans réserve à ces deux autres niveaux (`reach`,
+  // `byCamp[...].reach` juste en dessous).
+  reach: number;
 };
 
 export type LabelAgg = {
@@ -563,7 +572,7 @@ function buildDash(
 
   let spend = 0, clicks = 0, impressions = 0, reach = 0;
   let pSpend = 0, pClicks = 0, pImpr = 0, pReach = 0;
-  const byDay = new Map<string, { spend: number; clicks: number; impressions: number }>();
+  const byDay = new Map<string, { spend: number; clicks: number; impressions: number; reach: number }>();
   const byCamp = new Map<string, { spend: number; clicks: number; impressions: number; reach: number }>();
 
   for (const r of rows) {
@@ -571,8 +580,8 @@ function buildDash(
     if (inWin(r.date, w.since, w.until)) {
       spend += r.spend; clicks += r.clicks; impressions += r.impressions; reach += r.reach;
       const dk = r.date.slice(0, 10);
-      const dd = byDay.get(dk) ?? { spend: 0, clicks: 0, impressions: 0 };
-      dd.spend += r.spend; dd.clicks += r.clicks; dd.impressions += r.impressions;
+      const dd = byDay.get(dk) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0 };
+      dd.spend += r.spend; dd.clicks += r.clicks; dd.impressions += r.impressions; dd.reach += r.reach;
       byDay.set(dk, dd);
       const c = byCamp.get(r.campaign) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0 };
       c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
@@ -609,8 +618,11 @@ function buildDash(
   const dailyComplet: DayPoint[] = [];
   for (let d = new Date(w.since); d <= w.until; d = addDays(d, 1)) {
     const k = iso(d);
-    const v = byDay.get(k) ?? { spend: 0, clicks: 0, impressions: 0 };
-    dailyComplet.push({ date: k, label: fmtDay(d), spend: v.spend, clicks: v.clicks, impressions: v.impressions });
+    const v = byDay.get(k) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0 };
+    dailyComplet.push({
+      date: k, label: fmtDay(d),
+      spend: v.spend, clicks: v.clicks, impressions: v.impressions, reach: v.reach,
+    });
   }
   const maxPts = 120;
   const daily: DayPoint[] = dailyComplet.slice(-maxPts);

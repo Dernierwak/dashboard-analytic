@@ -25,7 +25,7 @@ nouveau et ne corrige aucun des écarts qu'il liste — voir la section « Frict
 
 ### `buildDash` — le moteur de données des canaux publicitaires
 
-`saas/web/lib/channels.ts:531`. Une seule fonction construit le `ChannelDash`
+`saas/web/lib/channels.ts:540`. Une seule fonction construit le `ChannelDash`
 (hero, KPIs, courbe, campagnes, écart) pour **n'importe quelle régie
 publicitaire** : elle ne connaît ni Meta ni Google, seulement deux formes
 neutres.
@@ -37,7 +37,7 @@ neutres.
   construite depuis la table de configuration de la campagne (thème posé,
   statut).
 
-`getMetaDash` (`lib/channels.ts:789`) et `getGoogleDash` (`lib/channels.ts:832`)
+`getMetaDash` (`lib/channels.ts:801`) et `getGoogleDash` (`lib/channels.ts:844`)
 ne font qu'une chose : lire leurs tables Supabase respectives, les mettre en
 forme dans ces deux types, et appeler `buildDash`. Toute la logique de fenêtre,
 de filtres, de comparaison (`batirComparaison`), de KPI et de drill-down vit une
@@ -65,9 +65,9 @@ quelques mots ou colonnes qui diffèrent réellement :
   tuile du détail « coûts unitaires » affiche son CPC à la place. Prend aussi
   `path` (depuis le 2026-09-01, fusion des moyennes — voir plus bas) pour
   construire le lien « élargir la période » du paragraphe sous la grille.
-- `CampaignTable` (`channel-dash.tsx:1083`) — colonne « Portée » affichée ou
+- `CampaignTable` (`channel-dash.tsx:1279`) — colonne « Portée » affichée ou
   non (`isMeta`), mot « adset » vs « groupe », et une largeur minimale de
-  colonnes différente entre les deux jeux (`COLS`, `channel-dash.tsx:1160`).
+  colonnes différente entre les deux jeux (`COLS`, `channel-dash.tsx:1356`).
 
 **Pour une nouvelle régie** : ces deux endroits (et seulement ceux-là, dans ce
 fichier) demandent une branche explicite si la nouvelle source a, comme Google,
@@ -82,11 +82,15 @@ vivaient dans leur propre carte (`<Moyennes>`, un composant neutre) posée sous
 `AdsKpis`. David a demandé de les fusionner DANS les tuiles plutôt que de les
 garder à côté : `<Moyennes>` a disparu, et le calcul qu'il affichait est devenu
 deux fonctions pures (pas des composants) qui rendent des données, pas du JSX —
-`{ unite, n, fenetre, chiffres: ChiffreMoyen[], pied, vide, elargir }` (type
-`MoyennesData`). `AdsKpis` et `InstaKpis` les appellent pour nourrir le petit
-texte sous le delta de chaque tuile (`Chiffre.sous`) et le paragraphe unique
-sous la grille — c'est TOUJOURS le seul endroit qui sait qu'une somme se
-moyenne différemment d'un taux, et qu'un mois incomplet s'écarte.
+`{ unite, n, fenetre, chiffres: ChiffreMoyen[], labels, pied, vide, elargir }`
+(type `MoyennesData` — `labels` : un libellé par unité moyennée, même ordre que
+chaque `ChiffreMoyen.parUnite`, ajouté pour nourrir la bulle au survol de la
+sparkline de moyenne, voir plus bas). `AdsKpis` et `InstaKpisPosts` les
+appellent pour nourrir le petit texte sous le delta de chaque tuile
+(`Chiffre.sous`), sa sparkline de moyenne (`Chiffre.serieMoyenne`) et le
+paragraphe unique sous la grille — c'est TOUJOURS le seul endroit qui sait
+qu'une somme se moyenne différemment d'un taux, et qu'un mois incomplet
+s'écarte.
 
 `calculMoyennesAds` construit son tableau de `ChiffreMoyen` à partir de
 `DayPoint[]`, `calculMoyennesInsta` à partir d'`InstaPost[]` — même patron
@@ -95,11 +99,48 @@ suivre pour une nouvelle source** : écrire `calculMoyennesXxx`, puis un
 `XxxKpis` (ou enrichir l'existant) qui en tire les tuiles — jamais recréer une
 carte séparée pour les moyennes, c'est précisément ce qui a été défait.
 
-`InstaKpis` (`channel-dash.tsx:608`) est l'équivalent d'`AdsKpis` côté
-Instagram, créé dans la même passe : Instagram n'avait pas de carte au format
-`AdsKpis` (3 `<div>` faits main, sans `Chiffre` ni sparkline) — `InstaKpis`
-répare ça ET absorbe l'ancien `MoyennesInsta`, avec une tuile par métrique de
-`calculMoyennesInsta` en plus des trois tuiles de « Ta page ».
+`calculMoyennesAds` couvre désormais les 7 métriques de coût d'`AdsKpis`
+(Dépense, Clics, Impressions, CTR, CPC, CPM, Portée — les deux dernières
+ajoutées le 2026-09-01, pour que « fait pour tous » soit vrai littéralement) ;
+Portée a nécessité d'ajouter `reach` à `DayPoint` (`lib/channels.ts`), absent
+de la série journalière jusque-là — rien ne l'utilisait avant que sa tuile ait
+besoin d'une moyenne.
+
+`Chiffre.sous` seul ne suffisait pas (retour de David au test : « pas juste un
+texte ») — `Chiffre` gagne `serieMoyenne`/`serieMoyenneLabels`/`uniteMoyenne` :
+une sparkline DÉDIÉE à la moyenne, couleur ambre fixe (`TRAIT.warn`, exporté
+depuis `chiffre.tsx`), empilée sous celle de la valeur, bulle au survol pour le
+chiffre exact. Elle trace `ChiffreMoyen.parUnite` (une valeur par jour/mois/
+publication), jamais la même série que `serie` (la valeur brute déjà tracée) —
+sur `InstaKpisPosts`, où le chiffre de tête EST déjà la moyenne, une seule
+sparkline suffit, passée en `serieMoyenne` pour ne pas redessiner deux fois la
+même donnée.
+
+**En branche « jour », `parUnite` brut vaut, point pour point, la même valeur
+que `serie`** (chaque unité y est un seul jour) — la sparkline de moyenne
+`AdsKpis` lit donc `lisser(c.parUnite, 7)` (moyenne glissante sur 7 points,
+nuls ignorés) au lieu de `parUnite` directement, une vraie tendance de fond
+plutôt qu'une redite de la courbe brute. Le chiffre unique de `sous` continue
+de lire `parUnite` NON lissé — seule la sparkline est lissée. Rien à lisser en
+branche mois, où `parUnite` (un mois entier par point) est déjà distinct de
+`serie`. Et `calculMoyennesInsta` trie `d.posts` (arrivé trié date DESC) par
+date ASCENDANTE avant `uniteDeLaFenetre`, pour que `serieMoyenne`/`labels` se
+lisent ancien→récent dans les deux branches — comme `PostsMetricChart` juste en
+dessous, qui fait le même choix explicitement (`.reverse()`).
+
+`InstaKpisPage` (`channel-dash.tsx:761`) et `InstaKpisPosts`
+(`channel-dash.tsx:814`) sont l'équivalent d'`AdsKpis` côté Instagram, créés
+dans la même passe puis scindés en deux (Instagram n'avait pas de carte au
+format `AdsKpis` — 3 `<div>` faits main, sans `Chiffre` ni sparkline — et une
+première version fusionnait tout dans une seule grille de 9 tuiles, rejetée au
+test humain : « mélange pas page et métrics des postes »). `InstaKpisPage`
+répare le défaut de format sur les 3 métriques DE PAGE (Abonnés, Croissance
+30 j, Engagement du compte) ; `InstaKpisPosts` absorbe l'ancien `MoyennesInsta`
+avec une tuile par métrique DE PUBLICATION de `calculMoyennesInsta`, posée
+juste au-dessus du graphe par publication (`PostsMetricChart`) plutôt qu'à côté
+des tuiles de page — **une grille de tuiles ne mélange jamais deux natures de
+métrique** (page vs publication, ici ; campagne vs thème ailleurs), et une
+carte de synthèse précède toujours le graphe qu'elle résume, jamais l'inverse.
 
 ### `ecart.tsx` — la colonne d'écart entre deux périodes
 
@@ -107,9 +148,9 @@ répare ça ET absorbe l'ancien `MoyennesInsta`, avec une tuile par métrique de
 `phraseEcart`, `trierParEcart` forment un moteur générique piloté par un
 descripteur `MetriqueEcart` (`ecart.tsx:57` : titre, fonction de valeur,
 format, `ramenerAuJour`, `baisseEstBonne`). `ByLabelTable` et `CampaignTable`
-définissent `METRIQUES_ECART` pour la pub (`channel-dash.tsx:754`),
+définissent `METRIQUES_ECART` pour la pub (`channel-dash.tsx:987`),
 `ByLabelInsta` définit `METRIQUES_INSTA` pour Instagram
-(`channel-dash.tsx:877`) — même moteur, deux dictionnaires. Une nouvelle source
+(`channel-dash.tsx:1110`) — même moteur, deux dictionnaires. Une nouvelle source
 écrit son propre dictionnaire de `MetriqueEcart`, rien d'autre.
 
 ### `SOURCE` / `CANAL` — l'identité visuelle d'une source
@@ -174,9 +215,9 @@ corrigé dans cette tâche** — à journaliser séparément.
 Recherche du littéral exact `"meta" | "google"` dans `saas/web/` : il apparaît
 tel quel, retapé, dans au moins ces quinze endroits — `app/actions.ts:819` et
 `:936`, `app/comptes/actions.ts:129`, `components/frise-semaine.tsx:241`,
-`components/campaign-label-select.tsx:17`, `components/channel-dash.tsx:61` et
-`:1052`, `components/deconnecter-bouton.tsx:10`, `lib/changements-api.ts:34`,
-`lib/couts.ts:311`, `lib/report.ts:245`, `lib/channels.ts:1292`,
+`components/campaign-label-select.tsx:17`, `components/channel-dash.tsx:83` et
+`:1285`, `components/deconnecter-bouton.tsx:10`, `lib/changements-api.ts:34`,
+`lib/couts.ts:311`, `lib/report.ts:245`, `lib/channels.ts:1304`,
 `lib/budgets.ts:31` — plus une variante à trois valeurs
 (`lib/report.ts:25` : `"instagram" | "meta" | "google" | "pub" | "ia"`).
 
@@ -248,7 +289,7 @@ faire varier, un vrai chantier dans plusieurs fichiers.
 
 - **`InstaDash` n'hérite pas de `ChannelDash`, et c'est juste.** Un post n'a ni
   dépense, ni statut, ni budget, ni hiérarchie campagne → adset → annonce.
-  `getInstaDash` (`lib/channels.ts:971`) reconstruit son propre type parce que
+  `getInstaDash` (`lib/channels.ts:983`) reconstruit son propre type parce que
   la donnée qu'il porte n'est pas la même famille d'objet — pas parce que
   personne n'a généralisé.
 - **`FilterBar` n'est pas utilisé par Instagram.** Un post n'a ni statut
@@ -256,7 +297,7 @@ faire varier, un vrai chantier dans plusieurs fichiers.
   par métrique (`PeriodPillsInsta`, le tri des colonnes), un besoin différent
   de « Statut / Campagne / Thème ». Ce n'est pas un oubli, la donnée ne porte
   pas ces axes.
-- **`CourbeAbonnes` (`channel-dash.tsx:1390`) est propre à Instagram.** Aucune
+- **`CourbeAbonnes` (`channel-dash.tsx:1648`) est propre à Instagram.** Aucune
   régie publicitaire de Pulse ne suit un stock cumulatif comparable à un
   nombre d'abonnés ; le composant porte d'ailleurs une particularité
   documentée dans son propre en-tête (`socle="bas"` : un cumul ne part pas de
@@ -279,7 +320,7 @@ faire varier, un vrai chantier dans plusieurs fichiers.
 
 Déjà prêts, à réutiliser sans y toucher :
 
-- `buildDash` (`lib/channels.ts:531`) — écrire `getXxxDash()` qui produit
+- `buildDash` (`lib/channels.ts:540`) — écrire `getXxxDash()` qui produit
   `RawAd[]` + `Cfg` dans le format attendu (voir §1) et l'appelle.
 - `MetricChart`, `calculMoyennesAds` (via une éventuelle enveloppe si la forme
   des chiffres diffère), `ByLabelTable`, `DateRange`, `FilterBar`, `ThemeDonut`,
@@ -313,10 +354,14 @@ Déjà prêts, à réutiliser :
 - `calculMoyennesInsta` (ou son propre `calculMoyennesXxx` sur le même patron
   si la forme des chiffres diffère), `ThemeDonut`, `LineChart`/`Sparkline`,
   `Pente`, `ecart.tsx` (avec son propre dictionnaire de métriques, sur le
-  modèle de `METRIQUES_INSTA`). `InstaKpis` (`channel-dash.tsx:608`) est le
-  gabarit à suivre pour la carte de tête de la nouvelle source : une tuile
-  `Chiffre` par métrique propre à la source, plus une par métrique de son
-  `calculMoyennesXxx`.
+  modèle de `METRIQUES_INSTA`). `InstaKpisPage` / `InstaKpisPosts`
+  (`channel-dash.tsx:761` / `:814`) sont le gabarit à suivre pour la carte de
+  tête de la nouvelle source, **en DEUX grilles distinctes** : une tuile
+  `Chiffre` par métrique DE PAGE (l'état du compte) dans un premier bloc posé
+  près de la courbe qui la résume, une tuile par métrique de
+  `calculMoyennesXxx` (DE PUBLICATION) dans un second bloc posé juste au-dessus
+  du graphe par publication — jamais les deux natures dans la même grille (voir
+  la section ci-dessus, le rejet du 2026-09-01 sur exactement ce mélange).
 
 À écrire, faute d'un type neutre existant :
 

@@ -15,7 +15,7 @@ import { DateRange } from "@/components/date-range";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
-import { ByLabelInsta, CourbeAbonnes, InstaKpis } from "@/components/channel-dash";
+import { ByLabelInsta, CourbeAbonnes, InstaKpisPage, InstaKpisPosts } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 
 import { getCompteActif } from "@/lib/account";
@@ -360,18 +360,20 @@ export default async function InstagramPage({
         </div>
       </div>
 
-      {/* ── TA PAGE ──
-          Les 3 tuiles (Abonnés/Croissance 30 j/Engagement du compte) et le
-          module séparé « Tes moyennes » vivaient l'un sous l'autre : deux
-          cartes qui parlaient toutes deux de moyennes se lisaient comme un
-          doublon plutôt que comme deux questions. `InstaKpis` fusionne les
-          deux (demande de David, 2026-09-01) — les 3 tuiles gagnent le format
-          `Chiffre` qui leur manquait, et une tuile s'ajoute pour chaque
-          métrique de `calculMoyennesInsta` (portée, vues, j'aime,
-          commentaires, enregistrements, engagement, publications). */}
+      {/* ── TA PAGE ── métriques DE PAGE (l'état du compte) : Abonnés,
+          Croissance 30 j, Engagement du compte. Gagnent le format `Chiffre`
+          qui leur manquait (delta coloré, sparkline). */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">Ta page</h2>
-      <InstaKpis d={d} />
+      <InstaKpisPage d={d} />
       <CourbeAbonnes series={d.followersSeries} />
+
+      {/* ── TES MOYENNES ── métriques DE PUBLICATION (la moyenne d'un post sur
+          la fenêtre affichée), posées juste au-dessus du graphe par post —
+          même ordre que Meta/Google, où `AdsKpis` précède le graphe de
+          campagnes. Absorbe l'ancien module séparé « Tes moyennes » ; séparé
+          de « Ta page » ci-dessus (retour de David au test : « mélange pas
+          page et métrics des postes »). */}
+      <InstaKpisPosts d={d} />
 
       {/* ── ÉVOLUTION DES POSTS (métrique au choix) ── */}
       <PostsMetricChart posts={chartPosts} metric={metric} params={d.params} />

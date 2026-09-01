@@ -22,7 +22,10 @@ const CLS: Record<Ton, string> = {
   neg: "text-neg",
   warn: "text-warn",
 };
-const TRAIT: Record<Ton, string> = {
+// Exporté : le hero d'`AdsKpis` (`channel-dash.tsx`) n'est pas un `Chiffre`
+// (son chiffre de tête est deux fois plus grand) mais reprend ses deux mêmes
+// couleurs de sparkline à la main — une seule palette, jamais deux hex dupliqués.
+export const TRAIT: Record<Ton, string> = {
   ink: "#1a56ff",
   pos: "#1a7a4a",
   neg: "#c0392b",
@@ -43,6 +46,9 @@ export function Chiffre({
   ton = "ink",
   grand = false,
   deltaNode,
+  serieMoyenne,
+  serieMoyenneLabels,
+  uniteMoyenne,
 }: {
   titre: string;
   valeur: string;
@@ -63,8 +69,25 @@ export function Chiffre({
    *  chiffre) et du même signal (couleur + triangle par le SENS) mais pas du
    *  même texte. `delta` est alors ignoré. */
   deltaNode?: ReactNode;
+  /** Sparkline DÉDIÉE à la moyenne (retour de David, 2026-09-01 : « fait un
+   *  sparkline avec une belle couleur pour les moyennes et en hover on voit le
+   *  chiffre » — un texte seul ne suffisait pas). JAMAIS la même série que
+   *  `serie` : une valeur par UNITÉ moyennée (jour, mois ou publication selon
+   *  la fenêtre — `ChiffreMoyen.parUnite` dans `channel-dash.tsx`), pas la
+   *  courbe brute déjà tracée par `serie`. Couleur fixe (`TRAIT.warn`, le même
+   *  ambre que le repère de seuil sur `LineChart`) : une seule couleur pour
+   *  « ceci est une moyenne » sur toute l'app, jamais celle du `ton` de la
+   *  tuile — sinon les deux formes se confondraient sur les tuiles `warn`. */
+  serieMoyenne?: (number | null)[];
+  serieMoyenneLabels?: string[];
+  /** Unité affichée dans la bulle au survol de la sparkline de moyenne —
+   *  reprend `unite` par défaut, distincte quand le libellé de la moyenne le
+   *  demande (ex. CPM en CHF sur une tuile sans unité de tête). */
+  uniteMoyenne?: string;
 }) {
   const utile = (serie ?? []).filter((v) => v > 0).length >= 2;
+  const utileMoyenne =
+    (serieMoyenne ?? []).filter((v): v is number => v !== null && isFinite(v)).length >= 2;
 
   return (
     <div className="bg-white border border-line rounded-xl min-w-[180px] shrink-0 sm:min-w-0 sm:shrink overflow-hidden flex flex-col">
@@ -93,9 +116,25 @@ export function Chiffre({
         {deltaNode ?? <Pente delta={delta} baisseEstBonne={baisseEstBonne} base="vs période préc." />}
         {sous && <div className="text-[11px] text-faint mt-1 leading-snug">{sous}</div>}
       </div>
+      {/* Deux formes possibles, empilées : la valeur de la période (couleur du
+          `ton`) puis, séparée par un trait fin, sa moyenne par unité (ambre,
+          fixe). Chacune ne se dessine que si elle a de quoi tracer une
+          tendance — un chiffre unique ne serait pas une forme, ce serait un
+          point. */}
       {utile && (
         <div className="px-0 pb-0 -mb-px">
-          <Sparkline values={serie!} color={TRAIT[ton]} height={30} labels={serieLabels} unite={unite} />
+          <Sparkline values={serie!} color={TRAIT[ton]} height={utileMoyenne ? 22 : 30} labels={serieLabels} unite={unite} />
+        </div>
+      )}
+      {utileMoyenne && (
+        <div className={`px-0 pb-0 -mb-px ${utile ? "border-t border-line/70" : ""}`}>
+          <Sparkline
+            values={serieMoyenne!}
+            color={TRAIT.warn}
+            height={22}
+            labels={serieMoyenneLabels}
+            unite={uniteMoyenne ?? unite}
+          />
         </div>
       )}
     </div>
