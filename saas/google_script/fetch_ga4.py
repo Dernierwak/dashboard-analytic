@@ -20,7 +20,7 @@ Aucun developer-token ici (c'est spécifique à Google Ads).
 from datetime import date
 import requests
 
-from google_script.fetch_token import get_access_token_from_refresh
+from saas.google_script.fetch_token import get_access_token_from_refresh
 
 _ADMIN_BASE = "https://analyticsadmin.googleapis.com/v1beta"
 _DATA_BASE = "https://analyticsdata.googleapis.com/v1beta"

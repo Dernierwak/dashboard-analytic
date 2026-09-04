@@ -28,14 +28,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
-from scripts.app_secrets import secret  # noqa: E402
-from scripts.fetch_data import (  # noqa: E402
+from saas.scripts.app_secrets import secret  # noqa: E402
+from saas.scripts.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_theme_objectifs, fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
 )
-from scripts.insert_data import upsert_weekly_report  # noqa: E402
+from saas.scripts.insert_data import upsert_weekly_report  # noqa: E402
 from saas.core.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
@@ -1830,7 +1830,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # revenu (voir la note de `_theme_series` : « by_campaign donne un revenu
     # total par campagne, sans dates »). Un événement choisi n'a pas ce défaut.
     try:
-        from scripts.fetch_data import fetch_ga4_events as _db_ga4_ev
+        from saas.scripts.fetch_data import fetch_ga4_events as _db_ga4_ev
         ga4_event_rows = _db_ga4_ev(sb, user_id) or []
     except Exception:
         ga4_event_rows = []
@@ -3610,7 +3610,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     _rev_par_sem = {}
     _sess_par_jour = {}
     try:
-        from scripts.fetch_data import fetch_ga4_insights as _fga4
+        from saas.scripts.fetch_data import fetch_ga4_insights as _fga4
         for _r in (_fga4(sb, user_id) or []):
             _d = str(_r.get("date") or "")[:10]
             if not _d:

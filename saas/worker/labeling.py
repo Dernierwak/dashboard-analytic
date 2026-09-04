@@ -22,8 +22,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.app_secrets import secret  # noqa: E402
-from scripts.fetch_data import _all_pages  # noqa: E402
+from saas.scripts.app_secrets import secret  # noqa: E402
+from saas.scripts.fetch_data import _all_pages  # noqa: E402
 
 _CHUNK = 80          # items max par appel Gemini
 _MAX_NEW_THEMES = 5  # nouveaux thèmes max par appel (sinon la liste explose)

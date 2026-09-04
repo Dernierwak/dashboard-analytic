@@ -3,19 +3,20 @@
 Ce dossier porte **Pulse** : `web/` (le portail Next.js, déployé sur Vercel) et
 `worker/` (récolte + rapport, lancé par GitHub Actions). L'ancien Streamlit a
 été retiré (voir `STREAMLIT_REMOVAL.md` à la racine) — les accès aux API des
-plateformes (`meta_script/`, `google_script/`, `scripts/`) restent à la racine
-du dépôt, appelés par le worker.
+plateformes (`meta_script/`, `google_script/`, `scripts/`) vivent maintenant
+sous `saas/`, appelés par le worker.
 
 ## ⚡ Fetch automatique (le « ça marche sans moi ») — FAIT
 
 `saas/worker/fetch_all.py` récolte **Meta Ads + Google Ads + GA4 + Instagram**
 pour tous les comptes, **sans personne connecté**. Réutilise la logique de fetch
-headless de `meta_script/`, `google_script/` et `scripts/` (`scripts/app_secrets.py`
-pour les credentials, sans dépendance à une interface).
+headless de `saas/meta_script/`, `saas/google_script/` et `saas/scripts/`
+(`saas/scripts/app_secrets.py` pour les credentials, sans dépendance à une
+interface).
 
 **Tester en local** (⚠ écrit dans la vraie base) :
 ```bash
-# secrets.toml suffit pour Supabase + Google ; --force ignore le jour planifié
+# .env local (ou variables d'environnement) suffit pour Supabase + Google ; --force ignore le jour planifié
 python saas/worker/fetch_all.py --force
 ```
 

@@ -5,18 +5,18 @@ Réutilise le refresh_token Google déjà stocké (profiles.google_refresh_token
 
 from datetime import date, timedelta
 
-from google_script.fetch_token import get_access_token_from_refresh
-from google_script.fetch_ga4 import (
+from saas.google_script.fetch_token import get_access_token_from_refresh
+from saas.google_script.fetch_ga4 import (
     fetch_ga4_insights,
     fetch_ga4_events,
     fetch_ga4_event_catalog,
 )
-from scripts.fetch_data import (
+from saas.scripts.fetch_data import (
     fetch_ga4_latest_date,
     fetch_ga4_insights as db_fetch_ga4,
     fetch_ga4_events as db_fetch_ga4_events,
 )
-from scripts.insert_data import (
+from saas.scripts.insert_data import (
     upsert_ga4_insights,
     upsert_ga4_events,
     upsert_ga4_event_catalog,

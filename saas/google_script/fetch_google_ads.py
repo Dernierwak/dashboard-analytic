@@ -15,8 +15,8 @@ Note : tous les montants sont en MICROS (1 CHF = 1_000_000 micros).
 from datetime import date, timedelta
 import requests
 
-from google_script.fetch_token import get_access_token_from_refresh
-from scripts.app_secrets import secret
+from saas.google_script.fetch_token import get_access_token_from_refresh
+from saas.scripts.app_secrets import secret
 
 
 # ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.

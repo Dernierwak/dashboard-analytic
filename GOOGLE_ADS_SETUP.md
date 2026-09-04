@@ -55,9 +55,8 @@ GOOGLE_ADS_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_ADS_DEVELOPER_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890   # MCC ID (sans tirets). Optionnel.
 ```
-En local (worker lancé à la main), `scripts/app_secrets.py` retombe sur
-`.streamlit/secrets.toml` (`[google_ads]`, gitignoré) si les variables d'env
-sont absentes.
+En local (worker lancé à la main), `saas/scripts/app_secrets.py` retombe sur
+le `.env` à la racine (gitignoré) si les variables d'env sont absentes.
 
 ## 6. Migration SQL Supabase
 

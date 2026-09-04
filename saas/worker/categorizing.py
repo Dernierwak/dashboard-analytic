@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.app_secrets import secret  # noqa: E402
+from saas.scripts.app_secrets import secret  # noqa: E402
 from saas.worker.labeling import call_gemini_json  # noqa: E402
 
 

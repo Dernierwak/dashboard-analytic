@@ -27,7 +27,8 @@ crédible.
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. |
 | `saas/worker/` | La récolte et la fabrication du rapport. `fetch_all.py`, `build_report.py`, `labeling.py`, `insights.py`, `run_weekly.py`. Lancé par GitHub Actions (`weekly-fetch.yml`). |
 | `saas/core/` | Le moteur partagé, headless. `reco_engine.py`, `ga4.py`, `user_persona.py`. |
-| `meta_script/`, `google_script/`, `scripts/` | Les accès aux API des plateformes. Appelés par le worker. |
+| `saas/meta_script/`, `saas/google_script/`, `saas/scripts/` | Les accès aux API des plateformes et les utilitaires data (secrets, fetch, insert). Appelés par le worker. |
+| `scripts/` (racine) | Outillage projet, pas produit : régénère `PROJECT_STATUS.html` (`build_llm_context.py`, `build_project_history.py`). |
 | `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |
 
 Python : **`python3.12`**, jamais `python3`.
@@ -112,9 +113,10 @@ l'estime pas, on ne l'approxime pas. Une absence de donnée n'est pas un zéro. 
 incomplète.
 
 **Aucun secret dans la conversation.** Ni jeton, ni clé, ni mot de passe, ni un
-fragment. Ils vont dans `.streamlit/secrets.toml` (ignoré par git) ou dans
-l'interface Vercel, par David lui-même. Un message d'erreur nomme la **variable**,
-jamais sa valeur.
+fragment. Ils vont dans `.env.local` (ignoré par git, `saas/web/`), dans les
+secrets GitHub Actions (`saas/worker/`, voir `.github/workflows/weekly-fetch.yml`)
+ou dans l'interface Vercel, par David lui-même. Un message d'erreur nomme la
+**variable**, jamais sa valeur.
 
 **Les jetons OAuth de `connected_accounts` ne sont jamais partagés** avec un
 membre invité. Une personne invitée voit les chiffres, jamais de quoi aller les

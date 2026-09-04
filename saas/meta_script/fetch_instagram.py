@@ -2,7 +2,7 @@ import requests
 from supabase import Client
 import pandas as pd
 
-from scripts.insert_data import insert_instagram_total_posts_id
+from saas.scripts.insert_data import insert_instagram_total_posts_id
 
 # ── QUELS POSTS ON RELIT — une DURÉE, plus un compte ─────────────────────────
 #

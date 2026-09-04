@@ -8,8 +8,8 @@ La liste maîtresse vit dans profiles.labels. Les assignations vivent par canal 
 Renommer / supprimer un label se propage partout pour rester cohérent.
 """
 
-from scripts.fetch_data import fetch_labels
-from scripts.insert_data import (
+from saas.scripts.fetch_data import fetch_labels
+from saas.scripts.insert_data import (
     update_labels,
     rename_campaign_label, clear_campaign_label,
     rename_google_campaign_label, clear_google_campaign_label,
