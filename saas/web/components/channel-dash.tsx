@@ -1031,7 +1031,7 @@ function StatusChip({ status }: { status: string | null }) {
 // C'était la correction du « on ne peut plus déplier les campagnes Google ».
 // Le dépliage se nourrit d'une table dédiée, `google_ads_ad_insights`,
 // alimentée autrefois par le passage Streamlit et qui ne l'était plus depuis
-// que la récolte est autonome (`saas/worker/fetch_all.py`, `_fetch_google` ne
+// que la récolte est autonome (`saas/collecte/automatisation/fetch_all.py`, `_fetch_google` ne
 // demandait que le niveau CAMPAGNE ; Meta, lui, récolte au niveau annonce et
 // sert les deux). `_fetch_google` appelle maintenant aussi `fetch_ad_insights`
 // et écrit dans `google_ads_ad_insights` (sa propre date de reprise, déduite

@@ -615,7 +615,7 @@ ALTER TABLE public.profiles
 -- ============================================================================
 -- 6) weekly_reports — rapport hebdo précalculé (payload JSON)
 --    Lu par Pulse (Next.js, saas/web) et l'email hebdo.
---    Écrit en headless par saas/worker/build_report.py, au fetch cron.
+--    Écrit en headless par saas/traitement/build_report.py, au fetch cron.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.weekly_reports (
@@ -1137,7 +1137,7 @@ END $$;
 --
 --     CE QU'ELLE INSTALLE, ET POURQUOI DEUX OBJETS PLUTÔT QU'UN.
 --     Le funnel GA4 était une liste de six noms écrits en dur dans
---     `google_script/fetch_ga4.py`, devinés pour un e-commerce standard. Un
+--     `collecte/ga4/fetch_ga4.py`, devinés pour un e-commerce standard. Un
 --     site qui nomme ses conversions autrement ne remontait rien, en silence.
 --       · `profiles.ga4_event_catalog` (jsonb) — LA LISTE des événements que la
 --         propriété émet vraiment, avec leur volume et la marque « événement
@@ -1338,7 +1338,7 @@ CREATE POLICY "to_delete_own" ON public.theme_objectifs
 --              /conversions de compter « conversions par catégorie » sur tout
 --              le compte. `category_source` rejoue la règle d'or de la
 --              labellisation IA : un choix humain n'est jamais écrasé par la
---              classification automatique (`saas/worker/categorizing.py`).
+--              classification automatique (`saas/traitement/categorizing.py`).
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.conversion_categories (
@@ -1917,7 +1917,7 @@ CREATE INDEX IF NOT EXISTS idx_reco_feedback_theme
 --     Le verdict d'une action (`"better"`/`"worse"`/`"stable"`) était calculé
 --     À LA VOLÉE dans `build_report.py`, jamais réécrit en base : introuvable
 --     la semaine suivante, donc inutilisable pour repondérer un conseil
---     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/core/reco_engine.py`).
+--     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/traitement/reco_engine.py`).
 --     Nullable, écrite UNE FOIS au moment où le verdict tombe.
 --
 --     Index sur `check_at`, PAS `decided_at` : `fetch_reco_verdicts`

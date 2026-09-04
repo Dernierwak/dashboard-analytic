@@ -56,15 +56,15 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
           if [ "${{ inputs.report_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/worker/fetch_all.py --report-only "${{ inputs.user_id }}"
+            python saas/collecte/automatisation/fetch_all.py --report-only "${{ inputs.user_id }}"
           elif [ "${{ inputs.label_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/worker/fetch_all.py --label-only "${{ inputs.user_id }}"
+            python saas/collecte/automatisation/fetch_all.py --label-only "${{ inputs.user_id }}"
           elif [ "${{ inputs.categorize_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/worker/fetch_all.py --categorize-only "${{ inputs.user_id }}"
+            python saas/collecte/automatisation/fetch_all.py --categorize-only "${{ inputs.user_id }}"
           elif [ -n "${{ inputs.user_id }}" ]; then
-            python saas/worker/fetch_all.py --user "${{ inputs.user_id }}"
+            python saas/collecte/automatisation/fetch_all.py --user "${{ inputs.user_id }}"
           elif [ "${{ inputs.force }}" = "true" ]; then
-            python saas/worker/fetch_all.py --force
+            python saas/collecte/automatisation/fetch_all.py --force
           else
-            python saas/worker/fetch_all.py
+            python saas/collecte/automatisation/fetch_all.py
           fi

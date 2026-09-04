@@ -1,4 +1,4 @@
 __pycache__/
 *.pyc
-worker/_preview.html
+collecte/automatisation/_preview.html
 .env

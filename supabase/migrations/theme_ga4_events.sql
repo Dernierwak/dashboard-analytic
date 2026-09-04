@@ -6,7 +6,7 @@
 -- POURQUOI CE FICHIER EXISTE
 -- `ga4_events` sait compter les événements par jour × source × medium ×
 -- campagne. Elle ne sait PAS lesquels comptent pour QUI : le funnel était une
--- liste de six noms écrits en dur dans `google_script/fetch_ga4.py`
+-- liste de six noms écrits en dur dans `collecte/ga4/fetch_ga4.py`
 -- (view_item, add_to_cart, begin_checkout, add_payment_info, purchase,
 -- generate_lead), devinés pour un site e-commerce standard. Un site qui nomme
 -- ses conversions autrement ne remontait rien, en silence.

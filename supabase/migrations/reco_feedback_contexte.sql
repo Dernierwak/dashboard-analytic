@@ -10,7 +10,7 @@
 --      de réponse de Gemini change d'une semaine à l'autre. Un `reco_key`
 --      d'une semaine passée ne dit donc rien d'une piste précise la semaine
 --      suivante — seul le TEXTE (`title`) de la piste, au moment du clic,
---      permet à `_theme_ai_recos` (`saas/worker/build_report.py`) de savoir
+--      permet à `_theme_ai_recos` (`saas/traitement/build_report.py`) de savoir
 --      « ne repropose pas une idée proche de X » / « celle-ci a marché ».
 --   2. `not_for_me` sur une clé-règle générique (ex. « gaspillage », partagée
 --      par TOUS les thèmes qui déclenchent cette règle) muselait la règle sur

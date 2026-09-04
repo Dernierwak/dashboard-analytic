@@ -23,8 +23,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from saas.scripts.app_secrets import secret  # noqa: E402
-from saas.worker.labeling import call_gemini_json  # noqa: E402
+from saas.collecte.commun.app_secrets import secret  # noqa: E402
+from saas.traitement.labeling import call_gemini_json  # noqa: E402
 
 
 def _collect_candidates(sb, user_id: str) -> tuple[list[str], dict]:

@@ -19,7 +19,7 @@
 -- L'affichage ne montre un prévisionnel que dans le premier cas.
 --
 -- Note Google Ads : l'API renvoie 2037-12-30 pour « pas de fin ». Le sentinelle
--- est normalisé en NULL à la récolte (google_script/fetch_google_ads.py), pas
+-- est normalisé en NULL à la récolte (collecte/google/fetch_google_ads.py), pas
 -- ici — on ne stocke jamais une date qui n'a pas de sens.
 -- ============================================================
 

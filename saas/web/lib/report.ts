@@ -19,7 +19,7 @@ export type Kpi = {
 
 export type ChannelSpend = { name: string; icon: string; color: string; spend: number; prev: number };
 
-// Payload publié en headless par saas/worker/build_report.py (weekly_reports.payload).
+// Payload publié en headless par saas/traitement/build_report.py (weekly_reports.payload).
 export type PayloadReco = {
   key: string;
   platform: "instagram" | "meta" | "google" | "pub" | "ia";
@@ -221,7 +221,7 @@ export function revenuTheme(theme: ThemeFocus, rows?: ThemeRow[] | null): number
  * « Le ROAS de ce thème n'est pas mesurable ». Les deux ne peuvent pas être
  * vrais en même temps.
  *
- * La cause est dans le worker (`_theme_series`, `saas/worker/build_report.py`) :
+ * La cause est dans le worker (`_theme_series`, `saas/traitement/build_report.py`) :
  * quand l'objectif est « ventes », aucune branche n'essaie de construire une
  * série de ROAS — on tombe directement sur `has_spend`, la courbe passe en
  * « Dépense (CHF) » et la note est écrite sans qu'on ait regardé si le thème a

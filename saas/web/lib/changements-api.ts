@@ -5,7 +5,7 @@ import { getCompteActif } from "@/lib/account";
 //
 // Le fil sait déjà DÉDUIRE cinq faits de la dépense quotidienne (lancée,
 // arrêtée, reprise, programmée, dépense changée) — voir `changements` dans
-// `saas/worker/build_report.py`. C'est robuste mais aveugle : mettre un
+// `saas/traitement/build_report.py`. C'est robuste mais aveugle : mettre un
 // mot-clé en pause, remonter un CPC cible ou changer une audience ne fait pas
 // forcément bouger la dépense du jour, et n'apparaît donc nulle part.
 //

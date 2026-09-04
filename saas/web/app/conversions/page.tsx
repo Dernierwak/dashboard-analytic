@@ -72,7 +72,7 @@ export default async function ConversionsPage() {
   //   · un événement CATÉGORISÉ (`ga4_event_categories`) — un humain ou l'IA
   //     a déjà dit « ça compte », quel que soit ce que GA4 en pense ;
   //   · un événement marqué « key event » PAR GA4 LUI-MÊME (`cle === true`,
-  //     `properties.keyEvents` — voir `google_script/fetch_ga4.py`), même pas
+  //     `properties.keyEvents` — voir `collecte/ga4/fetch_ga4.py`), même pas
   //     encore catégorisé : c'est le seul signal externe et vérifiable qu'un
   //     événement EST une conversion pour ce compte GA4.
   // Un `page_view` ni catégorisé ni marqué clé n'entre dans aucune des deux

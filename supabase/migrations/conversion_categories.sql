@@ -33,7 +33,7 @@
 -- `category_source` REJOUE LA RÈGLE D'OR DE LA LABELLISATION IA :
 -- un choix humain (`'user'`, posé par le menu déroulant à côté de chaque
 -- conversion sur /conversions) n'est JAMAIS écrasé par la classification
--- automatique (`'ai'`, `saas/worker/categorizing.py`) — même garde-fou que
+-- automatique (`'ai'`, `saas/traitement/categorizing.py`) — même garde-fou que
 -- `label_source` sur les campagnes et les posts Instagram.
 --
 -- Idempotent : rejouable sans risque. Aucun DROP de table, aucun DELETE.

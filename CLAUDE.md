@@ -24,10 +24,10 @@ crédible.
 
 | Où | Quoi |
 |---|---|
-| `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. |
-| `saas/worker/` | La récolte et la fabrication du rapport. `fetch_all.py`, `build_report.py`, `labeling.py`, `insights.py`, `run_weekly.py`. Lancé par GitHub Actions (`weekly-fetch.yml`). |
-| `saas/core/` | Le moteur partagé, headless. `reco_engine.py`, `ga4.py`, `user_persona.py`. |
-| `saas/meta_script/`, `saas/google_script/`, `saas/scripts/` | Les accès aux API des plateformes et les utilitaires data (secrets, fetch, insert). Appelés par le worker. |
+| `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
+| `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour ce qui sert à tous les canaux, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
+| `saas/traitement/` | Fabrique le rapport à partir de ce que `collecte/` a écrit — `build_report.py`, `labeling.py`, `categorizing.py`, `insights.py`, `reco_engine.py`, `user_persona.py`. Son `CLAUDE.md` détaille la logique. |
+| `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
 | `scripts/` (racine) | Outillage projet, pas produit : régénère `PROJECT_STATUS.html` (`build_llm_context.py`, `build_project_history.py`). |
 | `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |
 
@@ -114,7 +114,7 @@ incomplète.
 
 **Aucun secret dans la conversation.** Ni jeton, ni clé, ni mot de passe, ni un
 fragment. Ils vont dans `.env.local` (ignoré par git, `saas/web/`), dans les
-secrets GitHub Actions (`saas/worker/`, voir `.github/workflows/weekly-fetch.yml`)
+secrets GitHub Actions (`saas/collecte/`, voir `.github/workflows/weekly-fetch.yml`)
 ou dans l'interface Vercel, par David lui-même. Un message d'erreur nomme la
 **variable**, jamais sa valeur.
 
@@ -162,7 +162,7 @@ tout son échafaudage. `git grep` doit être propre.
   `npm run build` verts, **16 routes** (un écart signale une page de contrôle
   oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
-- Une correction du worker **ne se voit qu'après un « ↻ Recharger mes conseils »**,
+- Une correction du traitement **ne se voit qu'après un « ↻ Recharger mes conseils »**,
   et une correction de récolte après « ↻ Mes données ». Le dire à chaque fois.
 - Ce qui n'a pas pu être vérifié se dit franchement — pas de vérification
   supposée, pas de résultat prédit.

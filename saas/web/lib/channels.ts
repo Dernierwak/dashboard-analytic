@@ -1266,7 +1266,7 @@ export async function getLabelsData(): Promise<{
    *
    * L'ORDRE EST CHARGÉ DE SENS et ne doit pas être retrié : les trois premiers
    * de cette liste sont exactement les thèmes dont l'IA rédige les pistes (voir
-   * `_THEMES_IA` dans `saas/worker/build_report.py`). Un `sort()` ailleurs
+   * `_THEMES_IA` dans `saas/traitement/build_report.py`). Un `sort()` ailleurs
    * ferait mentir les rangs affichés sur la page Thèmes.
    */
   priorities: string[];

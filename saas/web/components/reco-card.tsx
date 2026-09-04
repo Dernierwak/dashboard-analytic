@@ -61,7 +61,7 @@ export function RecoCard({
   // (`r.role`) le champ décrit ce qu'on CONSTATE APRÈS coup — demain pour un
   // geste (`role === "generale"`), à 14 jours pour une hypothèse. Une
   // reco-règle (pas de `role`) garde « Avant d'agir » : son `verifier` est
-  // réellement une précondition (voir `saas/core/reco_engine.py`).
+  // réellement une précondition (voir `saas/traitement/reco_engine.py`).
   const verifierLabel = veille
     ? "Ce qu'on surveille — "
     : r.role === "hypothese"

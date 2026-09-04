@@ -6,13 +6,13 @@ typiquement lundi 07:00. Tourne tout seul → c'est le « ça marche sans moi »
 Flux :
   1. lister les utilisateurs (Supabase) ayant un email + des comptes connectés
   2. pour chacun : charger ses données (Meta/Insta/GA4) sur la fenêtre 7 jours pleins
-  3. calculer les conseils (core.reco_engine.build_recos)
+  3. calculer les conseils (traitement.reco_engine.build_recos)
   4. construire wins + à-faire, rendre l'email (emailing.render)
   5. envoyer (emailing.send)
 
 État : la chaîne recos → rendu → envoi est RÉELLE et testable (voir __main__).
 Le chargement Supabase multi-users est balisé TODO (besoin de la service key +
-réutiliser les requêtes de `scripts/fetch_data.py`, déjà headless).
+réutiliser les requêtes de `collecte/commun/fetch_data.py`, déjà headless).
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-# Permet d'importer core/ et emailing/ quel que soit le cwd
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Permet d'importer traitement/ et emailing/ quel que soit le cwd
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from core.reco_engine import build_recos          # noqa: E402
+from traitement.reco_engine import build_recos          # noqa: E402
 from emailing.render import build_email_html       # noqa: E402
 from emailing.send import send_email               # noqa: E402
 
@@ -31,7 +31,7 @@ from emailing.send import send_email               # noqa: E402
 def build_wins_text(followers_delta: int, avg_engagement: float, ctr: float) -> str:
     """Synthèse déterministe de 'ce qui a marché' (fallback sans IA).
     Plus tard : remplaçable par un appel IA (même logique que `_call_gemini`
-    dans `saas/worker/build_report.py`).
+    dans `saas/traitement/build_report.py`).
     """
     bits = []
     if followers_delta > 0:
@@ -85,7 +85,7 @@ def run() -> None:
     #   sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     #   users = sb.table("profiles").select("id,email,...").execute().data
     #   pour chaque user : charger df_camp / df_insta / df_follows (mêmes requêtes que
-    #   scripts/fetch_data.py), calculer la fenêtre 7 jours pleins, puis weekly_for_user(...)
+    #   collecte/commun/fetch_data.py), calculer la fenêtre 7 jours pleins, puis weekly_for_user(...)
     raise NotImplementedError("Chargement Supabase multi-users à câbler (Phase 1).")
 
 
@@ -132,4 +132,4 @@ if __name__ == "__main__":
         demo_user["app_url"],
     )
     Path(__file__).resolve().parent.joinpath("_preview.html").write_text(preview, encoding="utf-8")
-    print("Aperçu écrit : saas/worker/_preview.html (ouvre-le dans un navigateur)")
+    print("Aperçu écrit : saas/collecte/automatisation/_preview.html (ouvre-le dans un navigateur)")

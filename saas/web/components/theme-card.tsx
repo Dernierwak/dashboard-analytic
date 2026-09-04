@@ -123,7 +123,7 @@ export function ecartTheme(vals: number[]): number | null {
  * L'IA A-T-ELLE RÉDIGÉ POUR CE THÈME ?
  *
  * Le champ est écrit par le worker (`ia_redigee`, voir `_THEMES_IA` dans
- * `saas/worker/build_report.py`) et n'existe pas dans `ThemeFocus` : ce type
+ * `saas/traitement/build_report.py`) et n'existe pas dans `ThemeFocus` : ce type
  * décrit ce qu'un payload est GARANTI de porter, or les rapports publiés avant
  * août 2026 ne le portent pas. On le lit donc ici, en local et en optionnel.
  *

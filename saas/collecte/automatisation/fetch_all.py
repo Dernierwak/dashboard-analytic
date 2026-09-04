@@ -25,31 +25,31 @@ from pathlib import Path
 
 import requests
 
-# Racine du projet sur le path (pour importer scripts/, google_script/, meta_script/, saas/)
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# Racine du projet sur le path (pour importer saas/ (collecte/, traitement/) depuis la racine du dépôt)
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from supabase import create_client                                        # noqa: E402
-from saas.scripts.app_secrets import secret                                    # noqa: E402
-from saas.scripts.fetch_data import (                                          # noqa: E402
+from saas.collecte.commun.app_secrets import secret                                    # noqa: E402
+from saas.collecte.commun.fetch_data import (                                          # noqa: E402
     fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
     fetch_google_ads_ad_insights_latest_date,
 )
-from saas.scripts.insert_data import (                                         # noqa: E402
+from saas.collecte.commun.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     insert_instagram_org, upsert_platform_budgets, upsert_platform_changes,
 )
-from saas.google_script.fetch_token import get_access_token_from_refresh        # noqa: E402
-from saas.google_script.fetch_google_ads import (                               # noqa: E402
+from saas.collecte.commun.fetch_token import get_access_token_from_refresh        # noqa: E402
+from saas.collecte.google.fetch_google_ads import (                               # noqa: E402
     fetch_campaign_insights, fetch_ad_insights, fetch_campaign_statuses,
     fetch_campaign_budgets as google_budgets,
     fetch_campaign_changes as google_changes,
 )
-from saas.meta_script.fetch_meta_ads import (                                   # noqa: E402
+from saas.collecte.meta.fetch_meta_ads import (                                   # noqa: E402
     fetch_campaign_budgets as meta_budgets,
     fetch_activities as meta_changes,
 )
-from saas.worker.suivi import Suivi, CANAUX                                # noqa: E402
+from saas.collecte.automatisation.suivi import Suivi, CANAUX                                # noqa: E402
 
 # ═══ LA RÉCOLTE EN PARALLÈLE — trois fils, et le compte est fait ══════════════
 #
@@ -269,8 +269,8 @@ def _depart_recolte(latest: str | None, today: date, recouvrement: int) -> date:
 # l'API, c'est l'écriture : `upsert_meta_ads` envoie TOUT en un seul appel
 # PostgREST, et 22 500 lignes d'un coup n'ont jamais été essayées. À découper
 # avant d'élargir quoi que ce soit.
-from saas.core.ga4 import run_ga4_fetch                                    # noqa: E402
-from saas.meta_script.fetch_instagram import OrganicInstagramm                  # noqa: E402
+from saas.collecte.ga4.ga4 import run_ga4_fetch                                    # noqa: E402
+from saas.collecte.meta.fetch_instagram import OrganicInstagramm                  # noqa: E402
 
 _GRAPH = "https://graph.facebook.com/v24.0"
 _CHUNK = 90
@@ -581,7 +581,7 @@ def run(force: bool = False, only_user: str | None = None,
         # des données déjà en base (ni fetch réseau, ni relabel) — ~30 s.
         if report_only:
             try:
-                from saas.worker.build_report import publish_weekly_report
+                from saas.traitement.build_report import publish_weekly_report
                 logs.append(publish_weekly_report(sb, uid))
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
@@ -592,12 +592,12 @@ def run(force: bool = False, only_user: str | None = None,
         # rapport, sans re-fetch réseau (~1 min au lieu de 2-3).
         if label_only:
             try:
-                from saas.worker.labeling import auto_label
+                from saas.traitement.labeling import auto_label
                 logs.append(auto_label(sb, uid))
             except Exception as e:
                 logs.append(f"labels KO: {e}")
             try:
-                from saas.worker.build_report import publish_weekly_report
+                from saas.traitement.build_report import publish_weekly_report
                 logs.append(publish_weekly_report(sb, uid))
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
@@ -611,7 +611,7 @@ def run(force: bool = False, only_user: str | None = None,
         # ci-dessus, republie parce que le thème EST ce que le rapport lit).
         if categorize_only:
             try:
-                from saas.worker.categorizing import auto_categorize
+                from saas.traitement.categorizing import auto_categorize
                 logs.append(auto_categorize(sb, uid))
             except Exception as e:
                 logs.append(f"categories KO: {e}")
@@ -768,7 +768,7 @@ def run(force: bool = False, only_user: str | None = None,
         if a_tente:
             suivi.commence(sb, "labels")
             try:
-                from saas.worker.labeling import auto_label
+                from saas.traitement.labeling import auto_label
                 _mot = auto_label(sb, uid)
                 journal.append((_rang["labels"], _mot))
                 suivi.termine(sb, "labels", "fini", _mot)
@@ -784,7 +784,7 @@ def run(force: bool = False, only_user: str | None = None,
         if a_tente:
             suivi.commence(sb, "rapport")
             try:
-                from saas.worker.build_report import publish_weekly_report
+                from saas.traitement.build_report import publish_weekly_report
                 email_to = None
                 try:
                     email_to = sb.auth.admin.get_user_by_id(uid).user.email

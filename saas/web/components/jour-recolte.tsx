@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { choisirJourRecolte } from "@/app/actions-compte";
 
 // LE JOUR DE LA RÉCOLTE — `profiles.fetch_schedule`, lu par le worker
-// (`saas/worker/fetch_all.py`, `_due_today`) qui compare au jour courant en
+// (`saas/collecte/automatisation/fetch_all.py`, `_due_today`) qui compare au jour courant en
 // anglais et retombe sur lundi quand rien n'est réglé.
 //
 // Le module suit la grammaire (docs/03-grammaire-des-modules.md) :

@@ -2,7 +2,7 @@
 
 Réutilise l'OAuth Google déjà en place (même refresh_token que Google Ads),
 à condition que le consent inclue le scope `analytics.readonly`
-(ajouté dans google_script/fetch_token.py).
+(ajouté dans collecte/commun/fetch_token.py).
 
 Deux API :
   - Admin API  : lister les propriétés GA4 accessibles
@@ -20,7 +20,7 @@ Aucun developer-token ici (c'est spécifique à Google Ads).
 from datetime import date
 import requests
 
-from saas.google_script.fetch_token import get_access_token_from_refresh
+from saas.collecte.commun.fetch_token import get_access_token_from_refresh
 
 _ADMIN_BASE = "https://analyticsadmin.googleapis.com/v1beta"
 _DATA_BASE = "https://analyticsdata.googleapis.com/v1beta"

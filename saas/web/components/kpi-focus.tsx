@@ -107,7 +107,7 @@ const G_SITE = "Ton site";
 const ORDRE_GROUPES = [G_META, G_GOOGLE, G_DEUX, G_DEUX_ANCIEN, G_INSTA, G_SITE];
 
 // LES QUATRE INDICATEURS QUE LE WORKER PUBLIE MAINTENANT PAR RÉGIE
-// (`_PAR_REGIE`, `saas/worker/build_report.py`). Trouvés en clé NUE, ils ne
+// (`_PAR_REGIE`, `saas/traitement/build_report.py`). Trouvés en clé NUE, ils ne
 // disent pas « inséparables » : ils disent « ce rapport date d'avant le 12 août
 // 2026 ». Deux situations que rien ne distinguait, alors qu'elles appellent
 // deux phrases opposées — l'une explique une limite définitive, l'autre indique

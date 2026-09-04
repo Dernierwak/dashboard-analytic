@@ -5,18 +5,18 @@ Réutilise le refresh_token Google déjà stocké (profiles.google_refresh_token
 
 from datetime import date, timedelta
 
-from saas.google_script.fetch_token import get_access_token_from_refresh
-from saas.google_script.fetch_ga4 import (
+from saas.collecte.commun.fetch_token import get_access_token_from_refresh
+from saas.collecte.ga4.fetch_ga4 import (
     fetch_ga4_insights,
     fetch_ga4_events,
     fetch_ga4_event_catalog,
 )
-from saas.scripts.fetch_data import (
+from saas.collecte.commun.fetch_data import (
     fetch_ga4_latest_date,
     fetch_ga4_insights as db_fetch_ga4,
     fetch_ga4_events as db_fetch_ga4_events,
 )
-from saas.scripts.insert_data import (
+from saas.collecte.commun.insert_data import (
     upsert_ga4_insights,
     upsert_ga4_events,
     upsert_ga4_event_catalog,
@@ -31,7 +31,7 @@ _CATALOGUE_JOURS = 90
 # ── LE RECOUVREMENT GA4 — 12 jours, et le chiffre est DOCUMENTÉ ───────────────
 #
 # La reprise partait de « dernière date en base + 1 jour ». C'est le défaut
-# corrigé pour Meta et Google dans `saas/worker/fetch_all.py` (voir le pavé
+# corrigé pour Meta et Google dans `saas/collecte/automatisation/fetch_all.py` (voir le pavé
 # « LE RECOUVREMENT » qui y explique les deux trous : la journée à moitié
 # écoulée gravée pour toujours, et les chiffres que la plateforme révise après
 # coup). GA4 avait le même, en pire : la boucle va jusqu'à aujourd'hui, donc
@@ -171,7 +171,7 @@ def run_ga4_fetch(
 
     # Les événements que le client a rattachés à ses thèmes : ce sont EUX qu'on
     # récolte au jour le jour, en plus du plancher du funnel. Voir
-    # `google_script/fetch_ga4.py::fetch_ga4_events` pour le raisonnement de
+    # `collecte/ga4/fetch_ga4.py::fetch_ga4_events` pour le raisonnement de
     # volumétrie qui interdit de tout prendre.
     try:
         _choisis = sorted({
@@ -184,9 +184,9 @@ def run_ga4_fetch(
 
     # LE MÊME DÉPART QUE META ET GOOGLE, ET LA MÊME FONCTION — pas une seconde
     # copie de la règle. L'import est LOCAL parce qu'il serait circulaire au
-    # niveau du module : `saas/worker/fetch_all.py` importe `run_ga4_fetch` d'ici.
+    # niveau du module : `saas/collecte/automatisation/fetch_all.py` importe `run_ga4_fetch` d'ici.
     # À l'exécution, l'appelant est déjà chargé, donc l'import ne coûte rien.
-    from saas.worker.fetch_all import _depart_recolte
+    from saas.collecte.automatisation.fetch_all import _depart_recolte
 
     latest = fetch_ga4_latest_date(supabase, user_id) if not force_full else None
     since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_GA4)

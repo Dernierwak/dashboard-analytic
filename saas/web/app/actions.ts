@@ -391,7 +391,7 @@ export async function saveInsightFeedback(
 // l'étoile ne se posait pas. Le nombre trois n'était pourtant pas une limite de
 // lecture : il tenait à ce qu'un thème coûte jusqu'à deux appels Gemini dans le
 // worker. On a séparé les deux (voir `_THEMES_IA` dans
-// `saas/worker/build_report.py`) : toutes les étoiles produisent leur carte
+// `saas/traitement/build_report.py`) : toutes les étoiles produisent leur carte
 // complète — chiffres, courbe, campagnes, conseils calculés — et seules les
 // trois premières POSÉES reçoivent en plus des pistes rédigées par l'IA.
 //
@@ -961,7 +961,7 @@ export async function deleteConversionCategory(name: string) {
 
 // Pose ou retire la catégorie d'un événement GA4 — un choix qui vient d'un
 // clic humain, donc toujours `category_source: 'user'` : c'est ce qui empêche
-// la classification IA (`saas/worker/categorizing.py`) de jamais l'écraser.
+// la classification IA (`saas/traitement/categorizing.py`) de jamais l'écraser.
 export async function saveCategoryForEvent(eventName: string, category: string | null) {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -1548,7 +1548,7 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
 //
 // C'EST LA SEULE CLASSIFICATION IA DE THÈMES DU PRODUIT, et le bouton
 // « Étiqueter tout » de la page Thèmes appelle celle-ci. Elle vit dans
-// `saas/worker/labeling.py`, tourne dans GitHub Actions et respecte déjà la
+// `saas/traitement/labeling.py`, tourne dans GitHub Actions et respecte déjà la
 // règle d'or : elle saute tout ce qui porte `label_source='user'`, donc elle
 // ne remplit que le vide. En écrire une seconde CÔTÉ WEB, sur les MÊMES
 // contenus (campagnes/posts), aurait donné deux classements divergents.
@@ -1693,7 +1693,7 @@ export async function checkFetchProgress(): Promise<{
   indisponible: boolean;
 }> {
   // L'ordre de lecture, le même que celui du journal du worker (`CANAUX` dans
-  // saas/worker/suivi.py). Il vit ici et pas dans un export : un fichier
+  // saas/collecte/automatisation/suivi.py). Il vit ici et pas dans un export : un fichier
   // « use server » ne peut exporter que des fonctions asynchrones.
   const ordre = ["meta", "instagram", "google", "ga4", "labels", "rapport"];
   const supabase = createClient();

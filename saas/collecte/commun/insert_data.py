@@ -192,8 +192,8 @@ def upsert_platform_budgets(
     fraîche) mais deux jours différents s'empilent. C'est tout l'historique dont
     on disposera jamais — aucune API ne sait dire ce que valait un budget hier.
 
-    `rows` : la sortie de google_script.fetch_google_ads.fetch_campaign_budgets
-    ou de meta_script.fetch_meta_ads.fetch_campaign_budgets.
+    `rows` : la sortie de collecte.google.fetch_google_ads.fetch_campaign_budgets
+    ou de collecte.meta.fetch_meta_ads.fetch_campaign_budgets.
     """
     if not rows:
         return

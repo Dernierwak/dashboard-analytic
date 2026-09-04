@@ -114,7 +114,7 @@ export async function accessTokenGoogle(refreshToken: string): Promise<string | 
 
 // ── Google Ads : les comptes accessibles ────────────────────────────────────
 
-const ADS_VERSION = "v21"; // aligné sur google_script/fetch_google_ads.py
+const ADS_VERSION = "v21"; // aligné sur collecte/google/fetch_google_ads.py
 
 function enTetesAds(accessToken: string): Record<string, string> | null {
   const dev = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;

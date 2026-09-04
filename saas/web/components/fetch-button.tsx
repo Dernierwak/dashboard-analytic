@@ -119,7 +119,7 @@ function mmss(sec: number): string {
 // La note « CE QU'ON N'AFFICHE TOUJOURS PAS » plus haut explique pourquoi un
 // pourcentage est absent partout ailleurs : le nombre d'appels d'un canal
 // n'est jamais connu d'avance. Instagram est l'unique exception, écrite dans
-// `fetch_headless` (meta_script/fetch_instagram.py) : la liste des posts à
+// `fetch_headless` (collecte/meta/fetch_instagram.py) : la liste des posts à
 // relire est arrêtée AVANT la boucle, donc `note("posts 12/37")` est un
 // compte réel. La barre lit ce même texte, elle n'invente rien de plus.
 const POSTS_RE = /^posts (\d+)\/(\d+)$/;
@@ -133,7 +133,7 @@ function progresInstagram(etape: string | null): number | null {
 }
 
 // Le nom lisible d'un canal. La clé est celle que le worker écrit (`CANAUX`
-// dans saas/worker/suivi.py) ; un canal inconnu s'affiche tel quel plutôt que
+// dans saas/collecte/automatisation/suivi.py) ; un canal inconnu s'affiche tel quel plutôt que
 // de disparaître.
 const NOM_CANAL: Record<string, string> = {
   meta: "Publicités Meta",

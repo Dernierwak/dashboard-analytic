@@ -157,7 +157,7 @@ END $$;
 --
 -- Ça veut dire que le worker aurait échoué à écrire ici exactement comme
 -- l'écran échoue à lire — mais silencieusement pour lui : `Suivi._ecrire`
--- (saas/worker/suivi.py) attrape l'exception et ne l'imprime que dans le
+-- (saas/collecte/automatisation/suivi.py) attrape l'exception et ne l'imprime que dans le
 -- journal du run GitHub, jamais à l'écran. Le reste de la récolte, lui,
 -- continue d'écrire sans problème : Meta Ads, Google Ads, GA4, Instagram
 -- vivent dans des tables anciennes, déjà connues du cache. C'est cohérent
