@@ -6,7 +6,7 @@ typiquement lundi 07:00. Tourne tout seul → c'est le « ça marche sans moi »
 Flux :
   1. lister les utilisateurs (Supabase) ayant un email + des comptes connectés
   2. pour chacun : charger ses données (Meta/Insta/GA4) sur la fenêtre 7 jours pleins
-  3. calculer les conseils (traitement.reco_engine.build_recos)
+  3. calculer les conseils (recos_ia.reco_engine.build_recos)
   4. construire wins + à-faire, rendre l'email (emailing.render)
   5. envoyer (emailing.send)
 
@@ -20,10 +20,10 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-# Permet d'importer traitement/ et emailing/ quel que soit le cwd
+# Permet d'importer recos_ia/ et emailing/ quel que soit le cwd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from traitement.reco_engine import build_recos          # noqa: E402
+from recos_ia.reco_engine import build_recos          # noqa: E402
 from emailing.render import build_email_html       # noqa: E402
 from emailing.send import send_email               # noqa: E402
 

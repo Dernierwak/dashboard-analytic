@@ -26,7 +26,8 @@ crédible.
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
 | `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour ce qui sert à tous les canaux, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
-| `saas/traitement/` | Fabrique le rapport à partir de ce que `collecte/` a écrit — `build_report.py`, `labeling.py`, `categorizing.py`, `insights.py`, `reco_engine.py`, `user_persona.py`. Son `CLAUDE.md` détaille la logique. |
+| `saas/recos_ia/` | Décide quoi recommander — `reco_engine.py` + `insights.py` (déterministes), `labeling.py` + `categorizing.py` + `user_persona.py` (IA, Gemini). Son `CLAUDE.md` détaille qui appelle l'IA et qui non. |
+| `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` et `recos_ia/` ont produit — `build_report.py`. Son `CLAUDE.md` détaille la logique. |
 | `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
 | `scripts/` (racine) | Outillage projet, pas produit : régénère `PROJECT_STATUS.html` (`build_llm_context.py`, `build_project_history.py`). |
 | `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |

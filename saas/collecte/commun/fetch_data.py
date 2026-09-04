@@ -456,7 +456,7 @@ def fetch_reco_theme_context(supabase: Client, user_id: str, recent_weeks: int =
     — colonnes `theme`/`title`, NOT NULL DEFAULT '' pour `theme`). Sert deux
     besoins distincts du Graphe B (`build_report.py`) :
       - museler `not_for_me` par (reco_key, thème) plutôt que par reco_key
-        seul sur tout le compte (voir `build_recos`, `saas/traitement/reco_engine.py`) ;
+        seul sur tout le compte (voir `build_recos`, `saas/recos_ia/reco_engine.py`) ;
       - donner à `_theme_ai_recos` le TEXTE des pistes IA récemment écartées
         ou appliquées sur SON thème — les clés `ai_<theme>_<i>` sont
         positionnelles (l'ordre de Gemini change d'une semaine à l'autre),
@@ -498,7 +498,7 @@ def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -
     reco_key, sur les `recent_weeks` semaines — écrit une seule fois par
     `build_report.py`, au moment où la boucle de mesure calcule le verdict
     d'une action `done`/`auto`. Alimente la repondération du feedback `done`
-    dans `build_recos` (`saas/traitement/reco_engine.py`) : un verdict qui confirme
+    dans `build_recos` (`saas/recos_ia/reco_engine.py`) : un verdict qui confirme
     l'effet dépriorise fortement, un verdict qui le contredit ne dépriorise
     pas, et tant qu'aucun verdict n'est encore tombé (colonne NULL, ou
     migration pas encore passée) la clé est simplement absente d'ici —

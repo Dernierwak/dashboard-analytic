@@ -18,7 +18,7 @@ from saas.collecte.commun.fetch_data import fetch_reco_comments, fetch_user_prof
 from saas.collecte.commun.insert_data import save_user_profile
 
 try:  # libellés lisibles des conseils (facultatif — dégrade proprement)
-    from saas.traitement.reco_engine import KEY_LABELS, OBJECTIFS
+    from saas.recos_ia.reco_engine import KEY_LABELS, OBJECTIFS
 except Exception:  # pragma: no cover
     KEY_LABELS, OBJECTIFS = {}, {}
 

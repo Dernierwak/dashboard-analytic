@@ -1,10 +1,12 @@
-# saas/ — le produit (Next.js + collecte/traitement headless)
+# saas/ — le produit (Next.js + collecte/recos_ia/traitement headless)
 
 Ce dossier porte **Pulse** : `web/` (le portail Next.js, déployé sur Vercel),
 `collecte/` (récolte brute par plateforme, lancée par GitHub Actions),
-`traitement/` (fabrication du rapport à partir de ce que `collecte/` a écrit)
-et `emailing/` (email hebdo). L'ancien Streamlit a été retiré (voir
-`STREAMLIT_REMOVAL.md` à la racine).
+`recos_ia/` (décide quoi recommander — moteur de recos, labellisation IA,
+catégorisation IA, persona, constats), `traitement/` (assemble le rapport
+depuis ce que `collecte/` et `recos_ia/` ont produit) et `emailing/` (email
+hebdo). L'ancien Streamlit a été retiré (voir `STREAMLIT_REMOVAL.md` à la
+racine).
 
 ## ⚡ Fetch automatique (le « ça marche sans moi ») — FAIT
 
@@ -39,7 +41,7 @@ Meta Ads + Instagram n'ont besoin d'aucun secret app (token utilisateur en base)
 
 | Phase | Quoi | Statut |
 |-------|------|--------|
-| 1 | Cron : fetch auto (`collecte/`) + **rapport précalculé** (`traitement/build_report.py` → table `weekly_reports`) | ✅ câblé au cron quotidien |
+| 1 | Cron : fetch auto (`collecte/`) + recos (`recos_ia/`) + **rapport précalculé** (`traitement/build_report.py` → table `weekly_reports`) | ✅ câblé au cron quotidien |
 | 2 | **Email hebdo** responsive — lit le même payload `weekly_reports` | 🟡 rendu OK, envoi à brancher |
 | 3 | Portail **Next.js** (Vercel) : `web/` = **Pulse** | ✅ en prod (auth, KPIs, conseils, réactions) |
 
@@ -53,9 +55,11 @@ saas/
 │   ├── ga4/              fetch_ga4.py + ga4.py (orchestration fetch + contexte recos)
 │   ├── commun/           app_secrets.py, fetch_data.py, insert_data.py, labels.py, fetch_token.py
 │   └── automatisation/   fetch_all.py (cron) + run_weekly.py (démo) + suivi.py
-├── traitement/           fabrique le rapport depuis ce que collecte/ a écrit — voir traitement/CLAUDE.md
-│   reco_engine.py, ga4 côté recos (via collecte/ga4/ga4.py), user_persona.py,
-│   labeling.py, categorizing.py, insights.py, build_report.py
+├── recos_ia/             décide quoi recommander — voir recos_ia/CLAUDE.md
+│   reco_engine.py (moteur, déterministe), insights.py (constats, déterministe),
+│   labeling.py (thèmes, IA), categorizing.py (conversions GA4, IA), user_persona.py (profil, IA)
+├── traitement/           assemble et publie le rapport depuis collecte/ + recos_ia/ — voir traitement/CLAUDE.md
+│   build_report.py
 ├── emailing/             render.py (email « L'essentiel ») + send.py (envoi) — voir emailing/CLAUDE.md
 └── web/                  portail Next.js — voir web/CLAUDE.md
 ```

@@ -6,7 +6,7 @@ et écrit dans le même Supabase que l'app. C'est le « ça marche sans moi ».
 
 Réutilise la logique de fetch existante (rendue headless) :
   - Meta Ads / Instagram : token utilisateur (connected_accounts.meta_token)
-  - Google Ads / GA4      : refresh_token Google + secrets app (via scripts.app_secrets)
+  - Google Ads / GA4      : refresh_token Google + secrets app (via commun.app_secrets)
 
 Variables d'env requises :
   SUPABASE_URL            (sinon lu dans secrets.toml [supabase].url)
@@ -592,7 +592,7 @@ def run(force: bool = False, only_user: str | None = None,
         # rapport, sans re-fetch réseau (~1 min au lieu de 2-3).
         if label_only:
             try:
-                from saas.traitement.labeling import auto_label
+                from saas.recos_ia.labeling import auto_label
                 logs.append(auto_label(sb, uid))
             except Exception as e:
                 logs.append(f"labels KO: {e}")
@@ -611,7 +611,7 @@ def run(force: bool = False, only_user: str | None = None,
         # ci-dessus, republie parce que le thème EST ce que le rapport lit).
         if categorize_only:
             try:
-                from saas.traitement.categorizing import auto_categorize
+                from saas.recos_ia.categorizing import auto_categorize
                 logs.append(auto_categorize(sb, uid))
             except Exception as e:
                 logs.append(f"categories KO: {e}")
@@ -768,7 +768,7 @@ def run(force: bool = False, only_user: str | None = None,
         if a_tente:
             suivi.commence(sb, "labels")
             try:
-                from saas.traitement.labeling import auto_label
+                from saas.recos_ia.labeling import auto_label
                 _mot = auto_label(sb, uid)
                 journal.append((_rang["labels"], _mot))
                 suivi.termine(sb, "labels", "fini", _mot)

@@ -3,11 +3,11 @@
 Seul producteur de weekly_reports.payload : ce worker publie après le fetch
 cron → Pulse est frais le lundi matin sans que personne n'ouvre quoi que ce soit.
 Mêmes fenêtres (7 jours pleins ancrés sur la dernière donnée, jamais
-aujourd'hui), même moteur de recos (`saas/traitement/reco_engine.py`), même
+aujourd'hui), même moteur de recos (`saas/recos_ia/reco_engine.py`), même
 structure de payload que ce que rendait l'ancien Streamlit (retiré).
 
 Différence assumée : le brief IA du worker n'utilise pas de persona utilisateur
-(voir `saas/traitement/user_persona.py`, disponible mais pas encore branché ici) —
+(voir `saas/recos_ia/user_persona.py`, disponible mais pas encore branché ici) —
 fallback déterministe si Gemini échoue.
 
 Usage :
@@ -36,10 +36,10 @@ from saas.collecte.commun.fetch_data import (  # noqa: E402
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
 )
 from saas.collecte.commun.insert_data import upsert_weekly_report  # noqa: E402
-from saas.traitement.reco_engine import (  # noqa: E402
+from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
-from saas.traitement.insights import build_matrix, build_constats  # noqa: E402
+from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -134,7 +134,7 @@ NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
 
 # Le RÔLE qu'une piste IA se déclare elle-même, depuis que la composition par
 # thème est passée à 100 % Gemini (décision de David, 27 août 2026) : plus
-# aucun conseil-règle (`saas/traitement/reco_engine.py`, `_orga_recos`,
+# aucun conseil-règle (`saas/recos_ia/reco_engine.py`, `_orga_recos`,
 # `_reco_evenements`) ne participe aux 3 recos d'un thème rédigé par Gemini —
 # les 3 places sont TOUJOURS 2 « générale » + 1 « hypothèse ».
 #
@@ -389,7 +389,7 @@ def _importance(reco: dict, rang: int = 0) -> tuple:
 
 # ── L'ORGANIQUE A DROIT À SES PROPRES CONSEILS ───────────────────────────────
 #
-# `saas/traitement/reco_engine.py` porte bien quatre règles Instagram, mais elles
+# `saas/recos_ia/reco_engine.py` porte bien quatre règles Instagram, mais elles
 # sont taillées pour le COMPTE ENTIER : `_rule_creneau` demande 20 posts,
 # `_rule_page_endormie` en demande 5 plus 100 abonnés, `_rule_silence` ne parle
 # que d'une semaine restée vide. Depuis le passage au rapport par thème, elles
@@ -1132,7 +1132,7 @@ def _reco_dict(key, platform, title, observation, pourquoi, verifier, angle_mort
 def _reco_evenements(theme, g4t, sem) -> list[dict]:
     """Les conseils que permettent les événements GA4 désignés sur un thème.
 
-    POURQUOI ICI ET PAS DANS `saas/traitement/reco_engine.py` : même raison que
+    POURQUOI ICI ET PAS DANS `saas/recos_ia/reco_engine.py` : même raison que
     `_orga_recos` et `_reco_veille` — le moteur est partagé entre le niveau
     compte et les thèmes, mais il ne connaît ni les thèmes ni le rattachement
     d'un événement à un thème.
@@ -1763,7 +1763,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     feedback: dict = {}
     # Le verdict PERSISTÉ (voir `suivi_actions.verdict`, écrit plus bas dans la
     # boucle de mesure) — repondère `done` selon ce qu'il a réellement donné,
-    # pas seulement selon le clic (`_DONE_W`, `saas/traitement/reco_engine.py`).
+    # pas seulement selon le clic (`_DONE_W`, `saas/recos_ia/reco_engine.py`).
     verdicts: dict = {}
     # Le contexte par thème d'un feedback (colonnes `theme`/`title`, migration
     # `reco_feedback_contexte.sql`) — sert à museler `not_for_me` PAR THÈME
@@ -3475,7 +3475,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 # PERSISTE LE VERDICT (TASK-025, migration `suivi_actions_verdict.sql`)
                 # — sans ça, il n'existait qu'à la volée, dans CE rapport, et
                 # redevenait introuvable la semaine suivante : `build_recos`
-                # (`saas/traitement/reco_engine.py`) ne pouvait donc jamais faire
+                # (`saas/recos_ia/reco_engine.py`) ne pouvait donc jamais faire
                 # dépendre le poids de `done` de ce que l'action a réellement
                 # donné. Écrit à chaque passage (idempotent, même valeur tant
                 # que rien ne bouge) — sans effet si la colonne n'existe pas

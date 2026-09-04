@@ -37,7 +37,7 @@ Ne propose jamais ce qui existe. Va vérifier avant de parler — cette liste es
 
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
-| Rapport hebdo | `saas/worker/build_report.py` → `weekly_reports.payload` → `saas/web/app/page.tsx` | tout le contenu du lundi matin |
+| Rapport hebdo | `saas/traitement/build_report.py` → `weekly_reports.payload` → `saas/web/app/page.tsx` | tout le contenu du lundi matin |
 | Verdict chiffré | `Verdict` dans `app/page.tsx` | l'écart de la semaine en très grand, en carte |
 | Résumé IA | `ResumeSemaine` | texte nu, hors carte — le calculé est encadré, le rédigé ne l'est pas |
 | Ta boussole | `components/kpi-focus.tsx` | l'indicateur de l'objectif + ses bandes nommées + 10 semaines |

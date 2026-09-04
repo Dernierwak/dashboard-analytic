@@ -12,7 +12,7 @@
 -- Ça empêchait de repondérer un conseil `"done"` SELON ce qu'il a réellement
 -- donné : la reco confirmée qui a amélioré un KPI et celle cochée « fait »
 -- sans jamais avoir eu d'effet mesurable étaient traitées à l'identique
--- (`saas/traitement/reco_engine.py::build_recos`). Cette colonne fixe le verdict
+-- (`saas/recos_ia/reco_engine.py::build_recos`). Cette colonne fixe le verdict
 -- le jour où il tombe — le worker le lit ensuite pour repondérer.
 --
 -- Nullable, écrite UNE FOIS par `build_report.py` au moment précis où le

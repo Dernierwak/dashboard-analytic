@@ -15,7 +15,7 @@
 --
 -- POURQUOI UN TRIGGER, ET PAS UNE COLONNE ÉCRITE PAR L'APPLICATION
 -- Plusieurs producteurs écrivent ces labels : Pulse (Next.js), le worker de
--- labellisation (`saas/traitement/labeling.py`), et longtemps le Streamlit
+-- labellisation (`saas/recos_ia/labeling.py`), et longtemps le Streamlit
 -- (retiré depuis). Faire porter l'horodatage par chacun d'eux, c'est autant
 -- d'endroits à tenir d'accord et un oubli qui rend l'annulation silencieusement
 -- fausse. La base le pose elle-même : quel que soit l'écrivain, `label_at` dit

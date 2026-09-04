@@ -961,7 +961,7 @@ export async function deleteConversionCategory(name: string) {
 
 // Pose ou retire la catégorie d'un événement GA4 — un choix qui vient d'un
 // clic humain, donc toujours `category_source: 'user'` : c'est ce qui empêche
-// la classification IA (`saas/traitement/categorizing.py`) de jamais l'écraser.
+// la classification IA (`saas/recos_ia/categorizing.py`) de jamais l'écraser.
 export async function saveCategoryForEvent(eventName: string, category: string | null) {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -1548,7 +1548,7 @@ export async function triggerFetch(): Promise<{ ok: boolean; message: string }> 
 //
 // C'EST LA SEULE CLASSIFICATION IA DE THÈMES DU PRODUIT, et le bouton
 // « Étiqueter tout » de la page Thèmes appelle celle-ci. Elle vit dans
-// `saas/traitement/labeling.py`, tourne dans GitHub Actions et respecte déjà la
+// `saas/recos_ia/labeling.py`, tourne dans GitHub Actions et respecte déjà la
 // règle d'or : elle saute tout ce qui porte `label_source='user'`, donc elle
 // ne remplit que le vide. En écrire une seconde CÔTÉ WEB, sur les MÊMES
 // contenus (campagnes/posts), aurait donné deux classements divergents.

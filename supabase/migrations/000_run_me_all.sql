@@ -1338,7 +1338,7 @@ CREATE POLICY "to_delete_own" ON public.theme_objectifs
 --              /conversions de compter « conversions par catégorie » sur tout
 --              le compte. `category_source` rejoue la règle d'or de la
 --              labellisation IA : un choix humain n'est jamais écrasé par la
---              classification automatique (`saas/traitement/categorizing.py`).
+--              classification automatique (`saas/recos_ia/categorizing.py`).
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.conversion_categories (
@@ -1917,7 +1917,7 @@ CREATE INDEX IF NOT EXISTS idx_reco_feedback_theme
 --     Le verdict d'une action (`"better"`/`"worse"`/`"stable"`) était calculé
 --     À LA VOLÉE dans `build_report.py`, jamais réécrit en base : introuvable
 --     la semaine suivante, donc inutilisable pour repondérer un conseil
---     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/traitement/reco_engine.py`).
+--     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/recos_ia/reco_engine.py`).
 --     Nullable, écrite UNE FOIS au moment où le verdict tombe.
 --
 --     Index sur `check_at`, PAS `decided_at` : `fetch_reco_verdicts`
