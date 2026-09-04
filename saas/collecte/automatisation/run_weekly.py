@@ -12,7 +12,7 @@ Flux :
 
 État : la chaîne recos → rendu → envoi est RÉELLE et testable (voir __main__).
 Le chargement Supabase multi-users est balisé TODO (besoin de la service key +
-réutiliser les requêtes de `collecte/commun/fetch_data.py`, déjà headless).
+réutiliser les requêtes de `commun/fetch_data.py`, déjà headless).
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def run() -> None:
     #   sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     #   users = sb.table("profiles").select("id,email,...").execute().data
     #   pour chaque user : charger df_camp / df_insta / df_follows (mêmes requêtes que
-    #   collecte/commun/fetch_data.py), calculer la fenêtre 7 jours pleins, puis weekly_for_user(...)
+    #   commun/fetch_data.py), calculer la fenêtre 7 jours pleins, puis weekly_for_user(...)
     raise NotImplementedError("Chargement Supabase multi-users à câbler (Phase 1).")
 
 

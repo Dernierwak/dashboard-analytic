@@ -25,9 +25,10 @@ crédible.
 | Où | Quoi |
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
-| `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour ce qui sert à tous les canaux, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
+| `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour l'OAuth Google partagé Ads/GA4, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
 | `saas/recos_ia/` | Décide quoi recommander — `reco_engine.py` + `insights.py` (déterministes), `labeling.py` + `categorizing.py` + `user_persona.py` (IA, Gemini). Son `CLAUDE.md` détaille qui appelle l'IA et qui non. |
 | `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` et `recos_ia/` ont produit — `build_report.py`. Son `CLAUDE.md` détaille la logique. |
+| `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/`, `recos_ia/` et `traitement/`, pas propre à un seul domaine. |
 | `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
 | `scripts/` (racine) | Outillage projet, pas produit : régénère `PROJECT_STATUS.html` (`build_llm_context.py`, `build_project_history.py`). |
 | `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |

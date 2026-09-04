@@ -4,7 +4,8 @@ Ce dossier porte **Pulse** : `web/` (le portail Next.js, déployé sur Vercel),
 `collecte/` (récolte brute par plateforme, lancée par GitHub Actions),
 `recos_ia/` (décide quoi recommander — moteur de recos, labellisation IA,
 catégorisation IA, persona, constats), `traitement/` (assemble le rapport
-depuis ce que `collecte/` et `recos_ia/` ont produit) et `emailing/` (email
+depuis ce que `collecte/` et `recos_ia/` ont produit), `commun/` (lecture/
+écriture Supabase + secrets, utilisé par les trois) et `emailing/` (email
 hebdo). L'ancien Streamlit a été retiré (voir `STREAMLIT_REMOVAL.md` à la
 racine).
 
@@ -13,7 +14,7 @@ racine).
 `saas/collecte/automatisation/fetch_all.py` récolte **Meta Ads + Google Ads +
 GA4 + Instagram** pour tous les comptes, **sans personne connecté**. Réutilise
 la logique de fetch par canal de `saas/collecte/meta/`, `saas/collecte/google/`,
-`saas/collecte/ga4/` et les utilitaires transverses de `saas/collecte/commun/`
+`saas/collecte/ga4/` et les utilitaires transverses de `saas/commun/`
 (`app_secrets.py` pour les credentials, sans dépendance à une interface).
 
 **Tester en local** (⚠ écrit dans la vraie base) :
@@ -53,13 +54,15 @@ saas/
 │   ├── meta/             fetch_meta_ads.py, fetch_instagram.py
 │   ├── google/           fetch_google_ads.py
 │   ├── ga4/              fetch_ga4.py + ga4.py (orchestration fetch + contexte recos)
-│   ├── commun/           app_secrets.py, fetch_data.py, insert_data.py, labels.py, fetch_token.py
+│   ├── commun/           fetch_token.py (OAuth Google, collecte-only)
 │   └── automatisation/   fetch_all.py (cron) + run_weekly.py (démo) + suivi.py
 ├── recos_ia/             décide quoi recommander — voir recos_ia/CLAUDE.md
 │   reco_engine.py (moteur, déterministe), insights.py (constats, déterministe),
 │   labeling.py (thèmes, IA), categorizing.py (conversions GA4, IA), user_persona.py (profil, IA)
 ├── traitement/           assemble et publie le rapport depuis collecte/ + recos_ia/ — voir traitement/CLAUDE.md
 │   build_report.py
+├── commun/               lecture/écriture Supabase + secrets, utilisé par les 3 domaines ci-dessus — voir commun/CLAUDE.md
+│   app_secrets.py, fetch_data.py, insert_data.py
 ├── emailing/             render.py (email « L'essentiel ») + send.py (envoi) — voir emailing/CLAUDE.md
 └── web/                  portail Next.js — voir web/CLAUDE.md
 ```
@@ -100,7 +103,7 @@ le reste ne bouge pas.
 
 - `run()` (`collecte/automatisation/run_weekly.py`) : lister les users Supabase
   (service key) + charger leurs données (réutiliser les requêtes de
-  `collecte/commun/fetch_data.py`) puis appeler `weekly_for_user`.
+  `commun/fetch_data.py`) puis appeler `weekly_for_user`.
 - Brancher `run()` sur un cron (Railway cron / Supabase scheduled / GitHub Actions), lundi 07:00.
 - Optionnel : remplacer `build_wins_text` (déterministe) par l'IA, comme dans
   `traitement/build_report.py` (`_call_gemini`).

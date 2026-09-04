@@ -29,12 +29,12 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from supabase import create_client                                        # noqa: E402
-from saas.collecte.commun.app_secrets import secret                                    # noqa: E402
-from saas.collecte.commun.fetch_data import (                                          # noqa: E402
+from saas.commun.app_secrets import secret                                    # noqa: E402
+from saas.commun.fetch_data import (                                          # noqa: E402
     fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
     fetch_google_ads_ad_insights_latest_date,
 )
-from saas.collecte.commun.insert_data import (                                         # noqa: E402
+from saas.commun.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     insert_instagram_org, upsert_platform_budgets, upsert_platform_changes,

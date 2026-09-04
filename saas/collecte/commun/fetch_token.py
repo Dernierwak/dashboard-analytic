@@ -10,7 +10,7 @@
 from urllib.parse import urlencode
 import requests
 
-from saas.collecte.commun.app_secrets import secret
+from saas.commun.app_secrets import secret
 
 
 # Scopes Google demandés en une seule autorisation :

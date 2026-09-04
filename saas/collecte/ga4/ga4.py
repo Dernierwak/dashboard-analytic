@@ -11,12 +11,12 @@ from saas.collecte.ga4.fetch_ga4 import (
     fetch_ga4_events,
     fetch_ga4_event_catalog,
 )
-from saas.collecte.commun.fetch_data import (
+from saas.commun.fetch_data import (
     fetch_ga4_latest_date,
     fetch_ga4_insights as db_fetch_ga4,
     fetch_ga4_events as db_fetch_ga4_events,
 )
-from saas.collecte.commun.insert_data import (
+from saas.commun.insert_data import (
     upsert_ga4_insights,
     upsert_ga4_events,
     upsert_ga4_event_catalog,

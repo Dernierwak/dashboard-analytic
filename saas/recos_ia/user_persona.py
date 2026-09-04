@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from saas.collecte.commun.fetch_data import fetch_reco_comments, fetch_user_profile
-from saas.collecte.commun.insert_data import save_user_profile
+from saas.commun.fetch_data import fetch_reco_comments, fetch_user_profile
+from saas.commun.insert_data import save_user_profile
 
 try:  # libellés lisibles des conseils (facultatif — dégrade proprement)
     from saas.recos_ia.reco_engine import KEY_LABELS, OBJECTIFS

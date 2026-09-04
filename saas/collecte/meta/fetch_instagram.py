@@ -2,7 +2,7 @@ import requests
 from supabase import Client
 import pandas as pd
 
-from saas.collecte.commun.insert_data import insert_instagram_total_posts_id
+from saas.commun.insert_data import insert_instagram_total_posts_id
 
 # ── QUELS POSTS ON RELIT — une DURÉE, plus un compte ─────────────────────────
 #

@@ -15,7 +15,7 @@ Note : tous les montants sont en MICROS (1 CHF = 1_000_000 micros).
 from datetime import date, timedelta
 import requests
 
-from saas.collecte.commun.app_secrets import secret
+from saas.commun.app_secrets import secret
 
 
 # ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.

@@ -16,7 +16,7 @@ racine du dépôt pour le produit dans son ensemble).
 | `meta/` | Meta Ads + Instagram organique — même token utilisateur, même API Graph. | `fetch_meta_ads.py`, `fetch_instagram.py` |
 | `google/` | Google Ads. | `fetch_google_ads.py` |
 | `ga4/` | Google Analytics 4 — fetch ET le peu de contexte que le moteur de recos lit directement depuis les données GA4 stockées (voir plus bas). | `fetch_ga4.py`, `ga4.py` |
-| `commun/` | Utilitaires transverses aux canaux : secrets, lecture/écriture Supabase, liste des labels. | `app_secrets.py`, `fetch_data.py`, `insert_data.py`, `labels.py`, `fetch_token.py` |
+| `commun/` | OAuth Google, partagé par `google/` et `ga4/` — rien d'autre ici, le reste (secrets, lecture/écriture Supabase) a été remonté en `saas/commun/`, utilisé par tout le produit et pas seulement la récolte. | `fetch_token.py` |
 | `automatisation/` | Orchestration — appelle les quatre canaux, gère le parallélisme, décide qui doit être récolté aujourd'hui, déclenche la suite (labellisation, catégorisation, publication du rapport). | `fetch_all.py`, `run_weekly.py`, `suivi.py` |
 
 ## Les quatre plateformes
@@ -32,7 +32,8 @@ racine du dépôt pour le produit dans son ensemble).
   une fenêtre plus large fait rejeter la requête ENTIÈRE, pas juste tronquer).
 - **GA4** (`ga4/fetch_ga4.py` + `ga4/ga4.py`) — sessions, conversions, revenu,
   événements, par jour × source/medium. Partage le refresh token OAuth de
-  Google Ads (`commun/fetch_token.py`), scope `analytics.readonly` en plus.
+  Google Ads (`collecte/commun/fetch_token.py`), scope `analytics.readonly` en
+  plus.
 
 Chaque plateforme documente ses propres contraintes dans son fichier — ne pas
 les recopier ici, elles se périment vite. `docs/references/plateformes.md`
@@ -82,9 +83,9 @@ par `saas/web/app/comptes/page.tsx` pour afficher où en est chaque compte.
 - **Un chiffre non mesuré n'est pas un zéro.** Une plateforme qui ne rend
   rien sur une fenêtre le DIT dans son message de retour — elle ne rend
   jamais silencieusement `0`.
-- **`app_secrets.py` (`commun/`) est le seul endroit qui lit les credentials.**
-  Aucune clé, jeton ou secret ne se recopie ailleurs — ni en dur, ni dans un
-  commentaire.
+- **`app_secrets.py` (`saas/commun/`) est le seul endroit qui lit les
+  credentials.** Aucune clé, jeton ou secret ne se recopie ailleurs — ni en
+  dur, ni dans un commentaire.
 - **Chaque plateforme échoue seule.** Une erreur sur un canal n'empêche pas
   les trois autres de finir (voir `try/except` par fil dans `fetch_all.py`).
 
