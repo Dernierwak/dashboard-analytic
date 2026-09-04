@@ -86,6 +86,12 @@ déjà connectés à re-consentir).
   `report.ts` (payload `weekly_reports`), `budgets.ts`, `couts.ts`,
   `couverture.ts`, `changements-api.ts`, `oauth.ts`/`oauth-api.ts`, `account.ts`,
   `connexions.ts`, `palette.ts`, `liens.ts`, `nav-cookie.ts`, `nav-largeur.ts`.
+- `legal/` — Privacy Policy, CGU, script vidéo de démo pour la validation
+  OAuth Google Consent Screen en Production. Templates avec `<PLACEHOLDERS>`
+  non remplis (voir `legal/README.md` pour les étapes) — **bloquant** : tant
+  que ce n'est pas publié sur une URL HTTPS, Google garde l'app en mode
+  Testing, limitée à quelques comptes. Pas encore branché en pages Next.js
+  (`app/privacy`, `app/terms`) — ce sont pour l'instant des `.md` sources.
 
 ## Déployer
 

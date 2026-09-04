@@ -103,7 +103,7 @@ chercher**, et leur `.md` doit le leur dire.
 | `docs/04-modules-partages-entre-sources.md` | **Qui est générique entre Meta/Google/Instagram, qui est dupliqué, qui est spécifique par nature** — et le gabarit pour brancher une nouvelle source (TikTok, LinkedIn…) sans dupliquer la logique. |
 | `docs/references/` | Les contraintes des plateformes (Meta, Google Ads, GA4, Supabase) et les références UX. C'est là que va ce qu'on a payé cher pour apprendre. |
 | `STREAMLIT_REMOVAL.md` | L'inventaire du retrait de Streamlit — terminé, gardé comme trace. |
-| `handoff/` | Les reprises de contexte. |
+| `saas/web/legal/` | Les documents requis pour passer l'OAuth Google en mode Production (Privacy Policy, CGU, script vidéo de démo) — templates à compléter, pas encore publiés. |
 
 ## 7 · Ce qui ne se négocie jamais
 
