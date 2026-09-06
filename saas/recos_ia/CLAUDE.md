@@ -20,7 +20,7 @@ pas propres à ce dossier — voir `CLAUDE.md` § 7.
 | `insights.py` | **Non** — déterministe | La matrice full-history + les constats (« Ce qui fonctionne pour toi »). |
 | `labeling.py` | Oui — Gemini | Pose un thème sur chaque post/campagne qui n'en a pas. |
 | `categorizing.py` | Oui — Gemini | Catégorise chaque événement GA4 du catalogue qui n'en a pas. |
-| `user_persona.py` | Oui — IA injectée (`call_ai`, pas un import direct de Gemini) | Synthétise un profil utilisateur pour personnaliser le TON des recos. |
+| `user_persona.py` | Oui — IA injectée (`call_ai`, pas un import direct de Gemini) | Le **profil client vivant** : synthétise un profil pour personnaliser le TON et le NIVEAU des recos. |
 
 Le nom du dossier dit « recos IA » au sens large : *tout ce qui fabrique la
 recommandation*, pas seulement ce qui appelle un modèle. `reco_engine.py` et
@@ -78,20 +78,26 @@ Tout est **best-effort** : sans clé Gemini, sans données, ou sur JSON
 invalide, les deux fichiers logguent et continuent — la récolte n'échoue
 jamais à cause d'un label ou d'une catégorie manquante.
 
-## `user_persona.py` — le profil
+## `user_persona.py` — le profil client vivant
 
-Accumule les commentaires libres laissés sur les recos (+ réactions + objectif
-du compte), et une IA en synthétise un profil court (type d'utilisateur,
-niveau, ton préféré, priorités, sujets à éviter) — injecté ensuite dans les
-prompts du rapport. Le module est **découplé de l'appel IA concret** : on lui
-passe `call_ai(prompt) -> str|None` (dans le rapport, c'est `_call_gemini`) —
-aucun import de Gemini ici, module headless. **Disponible mais pas encore
-branché** dans `build_report.py` au moment où ce fichier est écrit.
+Deux couches : une base **fixe** (onboarding — secteur, budget, temps,
+frustration — saisie une fois, jamais redérivée) et un état **évolutif**
+(niveau de maîtrise, ton, priorités, à éviter), recalculé par l'IA à partir
+des commentaires, réactions (`reco_feedback`), verdicts mesurés
+(`suivi_actions`), avis sur les constats généraux (`insight_feedback`) et
+avis par thème (`reco_feedback.theme`) — ces deux derniers gardés
+**séparés** dans le prompt, pas fondus, pour qu'un rejet de thème ne se
+confonde pas avec un rejet de constat. Le module est **découplé de l'appel
+IA concret** : on lui passe `call_ai(prompt) -> str|None` (dans le rapport,
+c'est `_call_gemini`) — aucun import de Gemini ici, module headless.
+**Branché** dans le brief IA de `build_report.py`, recalculé une fois par
+semaine (le rythme d'appel du module EST le rythme de mise à jour — pas de
+cache interne séparé).
 
 ## Qui appelle ce dossier
 
 `saas/collecte/automatisation/fetch_all.py` déclenche `labeling.py` et
 `categorizing.py` en fin de récolte (imports locaux, pour éviter un cycle).
 `saas/traitement/build_report.py` appelle `reco_engine.py` et `insights.py`
-pour construire le payload du rapport, et pourrait un jour appeler
-`user_persona.py` pour le personnaliser.
+pour construire le payload du rapport, et `user_persona.py` pour calibrer le
+brief IA sur le profil client vivant.

@@ -349,6 +349,26 @@ export type ThemeFocus = {
    * Absent ou `false` = hérité du compte.
    */
   objectif_propre?: boolean;
+  /**
+   * Le jugement assemblé du thème — où il en est sur son indicateur (GA4 pour
+   * ventes/engagement, portée pour notoriété, faute d'équivalent GA4 —
+   * décision de David : la notoriété n'est pas une conversion), en vrai % de
+   * variation MESURÉ vs la semaine précédente (aucune cible chiffrée
+   * n'existe pour un objectif de thème). `mode: "cible"` = le thème se
+   * dégrade au-delà du seuil, les recos ont été réordonnées pour mettre en
+   * avant le levier le plus impactant. `null` si la métrique n'était pas
+   * mesurable cette semaine (pas de baseline) — jamais un chiffre inventé.
+   * Absent des payloads publiés avant cette fonctionnalité.
+   */
+  jugement?: {
+    objectif: string;
+    metric: string;
+    metric_label: string;
+    variation_pct: number;
+    mode: "tout" | "cible";
+    explication: string;
+    levier_impactant: string | null;
+  } | null;
   summary: ThemeSummary;
   series?: ThemeSeries | null;
   campaigns: ThemeCampaign[];
@@ -391,6 +411,18 @@ export type ReportPayload = {
   // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
+  /**
+   * Graphe A (compte entier) : les recos-règles compte entier (ROAS,
+   * gaspillage, scaler, silence, format gagnant, page endormie, créneau —
+   * les clés-réglages GA4/funnel restent dans `reglages`, circuit séparé) +
+   * la candidate IA libre du compte, si elle a été classée dans l'une de ces
+   * catégories. C'est la MÊME liste que celle qui alimente `top_recos` (le
+   * worker les construit ensemble) — exposée ici en entier pour que « Si tu
+   * ne fais que trois choses » ait un endroit RÉEL où pointer quand son
+   * conseil n'appartient à aucun thème (voir `ANCRE_COMPTE_ENTIER` dans
+   * `page.tsx`).
+   */
+  recos_compte?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).
   metrics_read?: {
@@ -642,6 +674,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   };
   for (const tf of report?.themes_focus ?? []) for (const x of tf.recos) collecte(x);
   for (const x of report?.reglages ?? []) collecte(x);
+  for (const x of report?.recos_compte ?? []) collecte(x);
   for (const x of report?.top_recos ?? []) collecte(x);
   for (const x of report?.recos ?? []) collecte(x);
 

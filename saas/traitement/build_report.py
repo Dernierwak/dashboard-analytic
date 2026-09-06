@@ -6,9 +6,10 @@ Mêmes fenêtres (7 jours pleins ancrés sur la dernière donnée, jamais
 aujourd'hui), même moteur de recos (`saas/recos_ia/reco_engine.py`), même
 structure de payload que ce que rendait l'ancien Streamlit (retiré).
 
-Différence assumée : le brief IA du worker n'utilise pas de persona utilisateur
-(voir `saas/recos_ia/user_persona.py`, disponible mais pas encore branché ici) —
-fallback déterministe si Gemini échoue.
+Le brief IA est calibré par le profil client vivant
+(`saas/recos_ia/user_persona.py`, recalculé une fois par semaine à chaque
+génération du rapport) — fallback déterministe si Gemini échoue, comme
+partout ailleurs.
 
 Usage :
   python saas/traitement/build_report.py --user <uuid> [--print]
@@ -31,15 +32,18 @@ import requests  # noqa: E402
 from saas.commun.app_secrets import secret  # noqa: E402
 from saas.commun.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_theme_objectifs, fetch_reco_feedback, fetch_google_ads,
+    fetch_objectif, fetch_onboarding_profile, fetch_theme_objectifs,
+    fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
+    fetch_theme_plan,
 )
-from saas.commun.insert_data import upsert_weekly_report  # noqa: E402
+from saas.commun.insert_data import upsert_weekly_report, upsert_theme_plan  # noqa: E402
 from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
+from saas.recos_ia.user_persona import build_user_persona  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -106,6 +110,45 @@ EFFORT_BY_KEY = {
 # affichée) : un levier ou une métrique devinés après coup ne seraient ni
 # l'un ni l'autre.
 LEVIERS_IA = ("argent", "contenu", "tempo", "audience")
+
+# Fenêtre de vérification d'une hypothèse, PAR LEVIER — décision wayfinder
+# (`.scratch/recos-labels/issues/03-suivi-hypothese.md`) : un levier
+# "contenu"/"tempo" se lit vite (un format ou un rythme se voit en une
+# semaine) ; un levier "argent"/"audience" a besoin de plus de temps pour que
+# le CPC/ROAS ou le reach bougent significativement. 14 jours par défaut si le
+# levier est absent/inconnu (repli sur l'ancien comportement fixe).
+FENETRE_LEVIER = {"contenu": 7, "tempo": 7, "argent": 14, "audience": 14}
+
+# Attente MINIMALE avant de laisser Gemini proposer une NOUVELLE hypothèse
+# pour un thème — distincte de `FENETRE_LEVIER` (qui ne fixe QUE la date du
+# verdict). David : ne pas changer de théorie après un seul cycle, lui laisser
+# 1 à 2 cycles pour prouver qu'elle ne marche pas avant d'en tester une autre.
+# Concrètement : 2 cycles pour les leviers rapides (2×7j), 1.5 cycle arrondi
+# pour les leviers lents (14j) — 14 à 21 jours, comme demandé.
+ATTENTE_MIN_NOUVELLE_HYPOTHESE = {"contenu": 14, "tempo": 14, "argent": 21, "audience": 21}
+_ATTENTE_DEFAUT = 14
+
+# ── LE JUGEMENT ASSEMBLÉ D'UN THÈME (wayfinder
+# `.scratch/recos-labels/issues/04-analyse-assemblee.md`) ────────────────────
+#
+# Aucune cible chiffrée n'existe pour un objectif de thème (`theme_objectifs`
+# est un enum catégoriel, vérifié) — le jugement ne peut donc jamais afficher
+# un « % de l'objectif atteint », seulement une VRAIE variation mesurée entre
+# la semaine et la semaine précédente, sur l'indicateur qui représente le
+# mieux l'objectif du thème. `notoriete` n'a pas d'équivalent GA4 (la
+# notoriété n'est pas une conversion) — décision de David : on mesure sa
+# PORTÉE, pas un événement GA4 inventé pour l'occasion.
+JUGEMENT_METRIC_PAR_OBJECTIF = {"ventes": "roas", "engagement": "eng", "notoriete": "reach"}
+
+# Bascule "améliorer tout" / "cibler le plus impactant" — décision de David :
+# sur une DÉGRADATION mesurée, pas sur une cible chiffrée qui n'existe pas.
+# Même seuil que `verdict_tone` (compte entier, plus bas) : ±10 %.
+JUGEMENT_SEUIL_DEGRADATION = -10.0
+
+# Quand on cible, quel levier favoriser dans l'arbitrage des pistes déjà
+# écrites (simple réordonnancement, jamais une piste inventée en plus) — le
+# levier le plus proche de l'indicateur qui s'est dégradé.
+JUGEMENT_LEVIER_PAR_METRIC = {"roas": "argent", "eng": "contenu", "reach": "audience"}
 # Le vocabulaire exact que `_kpis_window` (plus bas, dans `build_payload`)
 # sait mesurer — une piste qui déclarerait une métrique hors de cette liste
 # ne pourrait de toute façon jamais recevoir de verdict à 14 jours.
@@ -160,6 +203,71 @@ NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
 # après coup (voir plus bas), parce qu'un prompt ne peut pas GARANTIR un compte
 # exact sur trois objets indépendants.
 ROLES_IA = ("generale", "hypothese")
+
+
+# ── LE CLASSIFICATEUR DU GRAPHE A (compte entier) ────────────────────────────
+#
+# Les recos-RÈGLES (`saas/recos_ia/reco_engine.py`, via `build_recos()`) n'ont
+# jamais besoin d'être classifiées : leur `key` EST déjà, par construction,
+# une des catégories de `reco_engine` — aucun jugement à ajouter, aucun appel
+# Gemini de plus. Le classificateur ne s'exerce donc que sur la candidate IA
+# libre du compte (`ai_reco` ci-dessous) : comme pour les pistes par thème
+# (`_theme_ai_recos`), la catégorie n'est jamais devinée après coup — c'est
+# Gemini qui la DÉCLARE au moment même où il rédige l'idée, dans le même
+# appel. Repris tel quel (méthode déjà éprouvée) — wayfinder
+# `.scratch/recos-generales/issues/02-methode-correspondance.md`.
+#
+# `SETUP_KEYS` (GA4 muet, connecter GA4, funnel) reste le socle d'un circuit
+# d'affichage séparé : la candidate IA libre ne peut donc jamais matcher
+# dessus. `CLASSIFIER_CATEGORIES_IA` est la liste fermée qui reste : les clés
+# de `reco_engine.KEY_LABELS` moins les 3 clés-réglages et moins "ai" (l'ancien
+# nom de cette candidate, avant le classificateur). Une valeur hors liste, ou
+# absente, REJETTE la piste entière — jamais un repli sur "ai" ou une
+# catégorie devinée.
+SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
+CLASSIFIER_CATEGORIES_IA = tuple(
+    k for k in KEY_LABELS if k not in SETUP_KEYS and k != "ai"
+)
+
+# La plateforme de la candidate, une fois classifiée : la même que la
+# reco-règle de cette catégorie (voir `saas/recos_ia/reco_engine.py`,
+# l'argument `platform` de chaque `_rule_*`) — rien ne doit distinguer, en
+# aval, une candidate IA classée « scaler » d'une candidate-règle « scaler ».
+CATEGORY_PLATFORM_IA = {
+    "roas": "pub", "gaspillage": "meta", "scaler": "meta",
+    "silence": "instagram", "format_gagnant": "instagram",
+    "page_endormie": "instagram", "creneau": "instagram",
+}
+
+
+def _queue_reco_news(sb, user_id: str, week_start, data: dict) -> None:
+    """La candidate IA libre qui ne correspond à AUCUNE des catégories de
+    `reco_engine` part ici — dans une file consultable (table `reco_news`),
+    PAS dans un fourre-tout d'affichage générique « autre ».
+
+    Cette file n'est qu'un endroit à consulter à la main (Supabase Studio) :
+    aucune page dédiée, et surtout aucune promotion automatique en catégorie
+    supplémentaire — personne ne sait définir « assez de fois » ni sur quelle
+    population, et le volume de comptes est aujourd'hui trop faible pour que
+    ce soit utile.
+
+    Une ligne par utilisateur et par semaine (`reco_news_uq`) : un rapport
+    régénéré la même semaine remplace la ligne plutôt que d'empiler des
+    doublons. Défensif comme le reste du worker : une écriture ratée (table
+    pas encore migrée en prod) n'interrompt jamais la publication du rapport.
+    """
+    try:
+        sb.table("reco_news").upsert({
+            "user_id": user_id,
+            "week_start": week_start.isoformat(),
+            "title": str(data["title"])[:90],
+            "observation": str(data["observation"]),
+            "pourquoi": str(data["pourquoi"]),
+            "verifier": str(data["verifier"]),
+            "angle_mort": str(data["angle_mort"]),
+        }, on_conflict="user_id,week_start").execute()
+    except Exception:
+        pass
 
 
 def _forcer_une_hypothese(pool: list[dict]) -> None:
@@ -1798,6 +1906,14 @@ def build_payload(sb, user_id: str) -> dict | None:
             _pair = (_k, _t)
             if _pair not in feedback_theme:
                 feedback_theme[_pair] = _row.get("reaction")
+    # L'hypothèse ACTIVE de chaque thème (table `theme_plan`) — pas
+    # l'historique, l'état courant, pour bloquer une nouvelle hypothèse tant
+    # que la fenêtre d'attente de la précédente n'est pas écoulée (voir
+    # `ATTENTE_MIN_NOUVELLE_HYPOTHESE` plus haut).
+    try:
+        theme_plan_by = fetch_theme_plan(sb, user_id)
+    except Exception:
+        theme_plan_by = {}
     try:
         from saas.collecte.ga4.ga4 import build_ga4_context
         ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
@@ -1882,6 +1998,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     matrix = None
     constats: list = []
     priority_labels: list = []
+    ins_fb: dict = {}
     try:
         hist_since = date(today.year, 1, 1)
         try:
@@ -1905,6 +2022,23 @@ def build_payload(sb, user_id: str) -> dict | None:
         constats = build_constats(matrix, ins_fb, priority_labels)
     except Exception:
         matrix, constats = None, []
+
+    # ── Profil client vivant — calibre le ton/niveau de détail du brief IA ───
+    # Recalculé au rythme de CET appel, donc une fois par semaine (le rapport
+    # ne se génère pas plus souvent) — pas de boucle de mise à jour séparée à
+    # maintenir. Voir la décision : `.scratch/recos-generales/issues/05-profil-client-vivant.md`.
+    try:
+        onboarding = fetch_onboarding_profile(sb, user_id)
+    except Exception:
+        onboarding = {}
+    try:
+        client_profile = build_user_persona(
+            sb, user_id, _call_gemini, objectif=objectif,
+            onboarding=onboarding, feedback=feedback, verdicts=verdicts,
+            insight_feedback=ins_fb, theme_feedback=feedback_theme,
+        )
+    except Exception:
+        client_profile = None
 
     rule_recos = build_recos(
         df_camp=df_camp if not df_camp.empty else None,
@@ -1930,7 +2064,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     # Ces conseils-là sont GRATUITS : ce sont les règles du moteur. Seuls les
     # `_THEMES_IA` premiers thèmes y ajoutent des pistes rédigées par Gemini.
     # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part.
-    SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
+    # `SETUP_KEYS` est définie au niveau module (voir `CLASSIFIER_CATEGORIES_IA`
+    # plus haut, qui s'en sert aussi pour le classificateur du Graphe A).
     _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
 
     def _nrm(s):
@@ -2717,6 +2852,29 @@ def build_payload(sb, user_id: str) -> dict | None:
             # `_theme_ai_recos`.
             _forcer_une_hypothese(t_recos)
 
+            # ── BLOCAGE : PAS DE NOUVELLE HYPOTHÈSE AVANT SA FENÊTRE D'ATTENTE ─
+            #
+            # Sans ce garde, Gemini rédige une hypothèse FRAÎCHE à chaque
+            # rapport, sans jamais savoir qu'une précédente est encore en
+            # cours de vérification — « suivre une théorie » resterait une
+            # façade (wayfinder `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
+            # Tant que la fenêtre d'attente du levier ACTIF n'est pas écoulée,
+            # on réaffiche la carte déjà suivie (même `reco_key`, donc mêmes
+            # retours client / mêmes verdicts) plutôt que la nouvelle proposée
+            # par Gemini cette semaine — celle-ci est simplement écartée.
+            _plan = theme_plan_by.get(nlbl)
+            if _plan and _plan.get("decided_at") and _plan.get("snapshot"):
+                try:
+                    _decided = date.fromisoformat(str(_plan["decided_at"])[:10])
+                except Exception:
+                    _decided = None
+                _attente = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
+                if _decided and (today - _decided).days < _attente:
+                    for _i, _r in enumerate(t_recos):
+                        if _r.get("role") == "hypothese":
+                            t_recos[_i] = dict(_plan["snapshot"])
+                            break
+
             # ── LE FILET : AUCUNE CARTE NE SORT MUETTE ───────────────────────
             #
             # Ne se déclenche que si Gemini n'a RIEN rendu du tout (échec des
@@ -2925,7 +3083,12 @@ def build_payload(sb, user_id: str) -> dict | None:
     meta_items = sorted(by_section["meta"], key=lambda r: r["priority"])[:3]
     todos = sorted(insta_items + meta_items, key=lambda r: r["priority"])[:3]
 
-    # ── Brief IA (sans persona en headless) + fallback déterministe ──────────
+    # ── Brief IA (calibré par le profil client vivant) + fallback déterministe ─
+    _profile_txt = (
+        f" Profil du client (calibre ton ton et ton niveau de détail, ne le "
+        f"cite jamais mot pour mot) : {client_profile}"
+        if client_profile else ""
+    )
     _done = [KEY_LABELS.get(k, k) for k, v in feedback.items() if v == "done"]
     _skip = [KEY_LABELS.get(k, k) for k, v in feedback.items() if v == "not_for_me"]
     fb_txt = ""
@@ -2984,7 +3147,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         "Ne compare JAMAIS Meta et Google entre eux. "
         "Vocabulaire précis : un ROAS sous 1 se dit « inférieur à 1 », jamais « négatif » ; "
         "ne déforme aucun chiffre fourni. "
-        f"Objectif principal du compte : {obj_txt}.{fb_txt}{vision_txt} "
+        f"Objectif principal du compte : {obj_txt}.{fb_txt}{vision_txt}{_profile_txt} "
         f"{_prio_line}"
         f"Semaine : {week_digest}. "
         f"Totaux : abonnés {followers_delta:+d}, engagement {avg_engagement:.1f} %, "
@@ -3003,6 +3166,95 @@ def build_payload(sb, user_id: str) -> dict | None:
                  else "Semaine calme — rien de marquant, mais rien qui dérape non plus.")
         if _top_todo:
             brief += f" Priorité n°1 : {_top_todo}."
+
+    # ── Reco IA compte entier : la candidate IA libre du Graphe A ────────────
+    #
+    # Elle DÉCLARE elle-même sa catégorie dans ce même appel (même principe
+    # que `_theme_ai_recos`, jamais deviné après coup) :
+    #   · une des `CLASSIFIER_CATEGORIES_IA` ET qu'aucune reco-règle de cette
+    #     même catégorie n'existe déjà cette semaine → la candidate REJOINT
+    #     `recos_compte` avec cette clé, « comportement normal » ;
+    #   · "aucune", OU une catégorie valide mais déjà prise cette semaine par
+    #     une reco-règle (collision — un même `feedbackKey` pour deux idées
+    #     distinctes ferait qu'un 👍/👎 posé sur l'une s'appliquerait à
+    #     l'autre) → part dans la file `reco_news`, consultable à la main ;
+    #   · toute autre valeur (ou absente) → la piste ENTIÈRE est rejetée,
+    #     jamais affichée, jamais mise en file — pas de repli par défaut.
+    # Badge IA + confiance « piste » (c'est une idée à tester, pas un fait).
+    # Ne répète pas les conseils des règles ; JSON strict, sinon on s'en passe.
+    ai_reco = None
+    try:
+        lines = []
+        if not df_camp.empty:
+            for _, r in df_camp.sort_values("spend", ascending=False).head(6).iterrows():
+                lines.append(f"{r['campaign_name']} ({r['spend']:.0f} CHF, CTR {r['ctr']:.1f} %)")
+        th = ", ".join(sorted({
+            (c or {}).get("label") for c in (meta_cfg or {}).values() if (c or {}).get("label")
+        }))
+        known = " ; ".join(r["title"] for r in rule_recos)
+        categorie_prompt = " ; ".join(
+            f'"{k}" ({KEY_LABELS[k]})' for k in CLASSIFIER_CATEGORIES_IA)
+        ai_raw = _call_gemini(
+            "Tu es un consultant marketing senior pour une PME suisse. "
+            f"Faits de la semaine : dépense pub {float(df_camp['spend'].sum()) if not df_camp.empty else 0:.0f} CHF, "
+            f"engagement Instagram {avg_engagement:.1f} %, CTR pub {avg_ctr:.2f} %. "
+            f"Campagnes : {' | '.join(lines) or 'aucune'}. Thèmes : {th or 'aucun'}. "
+            "Propose UNE idée concrète et actionnable qui NE RÉPÈTE PAS ces conseils déjà "
+            f"donnés cette semaine : {known or 'aucun'}. "
+            'Réponds en JSON strict : {"title": "titre court", '
+            '"observation": "le fait chiffré qui motive cette idée — uniquement des chiffres fournis ci-dessus", '
+            '"pourquoi": "pourquoi ça peut marcher", '
+            '"verifier": "comment la tester à petite échelle avant de généraliser", '
+            '"angle_mort": "ce que cette idée ignore", '
+            '"categorie": "à quelle catégorie ci-dessous cette idée correspond le mieux"}. '
+            '"categorie" = EXACTEMENT une de ces valeurs : ' + categorie_prompt +
+            ' — ou "aucune" si ton idée ne correspond VRAIMENT à aucune d\'elles '
+            "(ne force jamais une correspondance approximative). "
+            "Français, ton direct, ne déforme aucun chiffre."
+        )
+        if ai_raw:
+            txt = ai_raw.strip()
+            if txt.startswith("```"):
+                txt = txt.strip("`")
+                txt = txt[4:] if txt.lower().startswith("json") else txt
+            data = json.loads(txt.strip())
+            _categorie = data.get("categorie")
+            # Une catégorie déjà prise cette semaine par une reco-règle n'est
+            # pas une correspondance utilisable : elle part dans la file,
+            # exactement comme "aucune" (aucun repli sur une clé maison).
+            _cle_prise = any(r.get("key") == _categorie for r in rule_recos)
+            if all(data.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
+                if _categorie in CLASSIFIER_CATEGORIES_IA and not _cle_prise:
+                    ai_reco = {
+                        "key": _categorie, "platform": CATEGORY_PLATFORM_IA[_categorie],
+                        "title": str(data["title"])[:90],
+                        "observation": str(data["observation"]),
+                        "pourquoi": str(data["pourquoi"]),
+                        "verifier": str(data["verifier"]),
+                        "repere": "",
+                        "angle_mort": str(data["angle_mort"]),
+                        "confidence": "piste", "priority": 9, "source": "ai",
+                    }
+                elif _categorie == "aucune" or (_categorie in CLASSIFIER_CATEGORIES_IA and _cle_prise):
+                    _queue_reco_news(sb, user_id, week_start_monday, data)
+                # Toute autre valeur (hors liste, ou absente) rejette la piste
+                # entière — jamais un repli par défaut, jamais mise en file.
+    except Exception:
+        ai_reco = None
+
+    # ── recos_compte : la contribution du Graphe A au pool `top_recos` ───────
+    #
+    # `rule_recos` (calculé plus haut, compte entier) n'alimente jusqu'ici que
+    # `reglages` (les 3 clés-socle) et `todo`/le brief — jamais `top_recos`
+    # (« Les 3 du moment »), le seul pool que le Graphe B alimentait jusqu'ici.
+    # `recos_compte` est cette contribution : les recos-règles compte entier
+    # (hors clés-réglages) + la candidate IA libre, si elle vient d'être
+    # classée ci-dessus. `_strip_reco` (même défense que pour `reglages`) :
+    # copies indépendantes, pour que `_attach_metric`/`_attach_effort` (plus
+    # bas) ne mutent jamais les dicts encore lus ailleurs (`todos`, `recos`).
+    recos_compte = [_strip_reco(r) for r in rule_recos if r.get("key") not in SETUP_KEYS]
+    if ai_reco:
+        recos_compte.append(_strip_reco(ai_reco))
 
     _n_done = sum(1 for v in feedback.values() if v == "done")
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
@@ -3231,6 +3483,37 @@ def build_payload(sb, user_id: str) -> dict | None:
             _kpis_theme[theme] = _kpis_window(cur_since, last_full_day, theme=theme)
         return _kpis_theme[theme]
 
+    def _jugement_theme(lbl: str) -> dict | None:
+        """Le jugement explicite d'un thème : où il en est sur SON objectif,
+        avec un vrai % mesuré — jamais un % de cible fabriqué (aucune cible
+        chiffrée n'existe, voir `JUGEMENT_METRIC_PAR_OBJECTIF` plus haut).
+        `None` si la métrique n'est pas mesurable cette semaine (pas de
+        baseline, division par zéro) — on se tait plutôt que d'afficher un
+        chiffre inventé.
+        """
+        obj = _obj_theme(lbl)
+        metric = JUGEMENT_METRIC_PAR_OBJECTIF.get(obj, "eng")
+        now = _kpis_du_theme(lbl).get(metric)
+        then = _kpis_window(prev_since, prev_until, theme=lbl).get(metric)
+        if now is None or then is None or abs(then) < 1e-9:
+            return None
+        variation = round((now - then) / then * 100, 1)
+        info = METRIC_INFO_IA.get(metric, (metric, "", "up", "{:.1f}"))
+        metric_label = info[0]
+        mode = "cible" if variation <= JUGEMENT_SEUIL_DEGRADATION else "tout"
+        if variation >= 5:
+            explication = f"{metric_label} en hausse de {variation:+.1f} % vs la semaine précédente."
+        elif variation <= JUGEMENT_SEUIL_DEGRADATION:
+            explication = (f"{metric_label} en baisse de {variation:.1f} % vs la semaine précédente — "
+                            "on cible le levier le plus impactant plutôt que de tout pousser.")
+        else:
+            explication = f"{metric_label} stable ({variation:+.1f} %) vs la semaine précédente."
+        return {
+            "objectif": obj, "metric": metric, "metric_label": metric_label,
+            "variation_pct": variation, "mode": mode, "explication": explication,
+            "levier_impactant": JUGEMENT_LEVIER_PAR_METRIC.get(metric) if mode == "cible" else None,
+        }
+
     def _attach_metric(r, theme=None):
         spec = PROOF_KPI.get(r.get("key"))
         if not spec and r.get("source") == "ai":
@@ -3268,6 +3551,30 @@ def build_payload(sb, user_id: str) -> dict | None:
         # des prérequis du compte, leur mesure l'est aussi.
         _attach_metric(_r)
         _attach_effort(_r)
+    for _r in recos_compte:
+        # Le Graphe A (compte entier) ne porte pas de thème non plus — même
+        # mesure que les réglages, `theme=None` → `_kpis_du_theme` retombe sur
+        # `cur_kpis` (compte entier).
+        _attach_metric(_r)
+        _attach_effort(_r)
+
+    # ── LE JUGEMENT DE CHAQUE THÈME, ET SON INFLUENCE SUR LA COMPOSITION ─────
+    #
+    # `_jugement_theme` a besoin de `_kpis_du_theme`/`_kpis_window`, définies
+    # juste au-dessus — d'où ce passage séparé, après coup, plutôt que dans la
+    # boucle par thème (qui appelle `_theme_ai_recos` bien plus haut dans ce
+    # fichier, avant que ces fonctions n'existent).
+    #
+    # « Influence la composition » (décision de David) : en mode "cible", on
+    # ne fabrique JAMAIS de piste en plus — on réordonne les pistes déjà
+    # écrites par Gemini pour que celle dont le `levier` correspond à
+    # l'indicateur dégradé passe en tête (elle reste affichée même sans
+    # correspondance, juste pas en premier).
+    for _tf in themes_focus:
+        _jug = _jugement_theme(_tf["label"])
+        _tf["jugement"] = _jug
+        if _jug and _jug.get("mode") == "cible" and _jug.get("levier_impactant"):
+            _tf["recos"].sort(key=lambda r, _lv=_jug["levier_impactant"]: r.get("levier") != _lv)
 
     # ── L'HYPOTHÈSE DE LA SEMAINE ENTRE AUTOMATIQUEMENT EN SUIVI ─────────────
     #
@@ -3339,11 +3646,26 @@ def build_payload(sb, user_id: str) -> dict | None:
     # `_attach_metric` juste au-dessus : c'est la même photo de la décision
     # qu'aurait prise un clic client aujourd'hui.
     _hyp_today = today.isoformat()
-    _hyp_check = (today + timedelta(days=14)).isoformat()
     for _tf in themes_focus:
         _hyp = next((r for r in _tf["recos"] if r.get("role") == "hypothese"), None)
         if not _hyp:
             continue
+        # L'hypothèse a-t-elle simplement été RÉAFFICHÉE (blocage plus haut,
+        # même `reco_key` que le plan actif, fenêtre d'attente pas écoulée) ?
+        # Si oui, ne pas réécrire `suivi_actions`/`theme_plan` : le compteur
+        # doit continuer sur SA date de décision d'origine, pas repartir sur
+        # `today`.
+        _nlbl = _nrm(_tf["label"])
+        _plan = theme_plan_by.get(_nlbl)
+        if _plan and _plan.get("reco_key") == _hyp.get("key") and _plan.get("decided_at"):
+            try:
+                _decided0 = date.fromisoformat(str(_plan["decided_at"])[:10])
+            except Exception:
+                _decided0 = None
+            _attente0 = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
+            if _decided0 and (today - _decided0).days < _attente0:
+                continue  # déjà suivie, rien à réécrire cette semaine
+        _hyp_check = (today + timedelta(days=FENETRE_LEVIER.get(_hyp.get("levier"), _ATTENTE_DEFAUT))).isoformat()
         try:
             sb.table("suivi_actions").delete().eq("user_id", user_id).eq(
                 "theme", _tf["label"]
@@ -3388,6 +3710,15 @@ def build_payload(sb, user_id: str) -> dict | None:
                 ).execute()
             except Exception:
                 pass
+        # Cette hypothèse est NOUVELLE (sinon la garde plus haut aurait fait
+        # `continue`) : elle devient le plan actif du thème, avec sa carte
+        # complète (déjà enrichie de metric/effort par la boucle
+        # `_attach_metric`/`_attach_effort` plus haut) pour pouvoir la
+        # réafficher fidèlement les semaines suivantes si elle est bloquée.
+        upsert_theme_plan(
+            sb, user_id, _tf["label"], _hyp["key"], _hyp.get("levier"),
+            _hyp_today, dict(_hyp),
+        )
 
     # ── Les 3 du moment ──────────────────────────────────────────────────────
     # Jusqu'a 12 conseils repartis en 4 themes, personne ne choisit dans 12. Une
@@ -3406,9 +3737,29 @@ def build_payload(sb, user_id: str) -> dict | None:
             if _est_veille(_r) and not _veille_urgente(_r):
                 continue
             _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
+    # Le Graphe A (compte entier, `recos_compte`) rejoint ce même pool —
+    # `theme=None` : ni `_rang_theme` ni le filtre côté web n'en ont besoin
+    # pour un conseil qui ne porte sur aucun thème en particulier, même
+    # traitement que les réglages, qui n'ont eux non plus jamais eu de thème.
+    for _r in recos_compte:
+        _pool.append(dict(_r, theme=None, is_priority=False))
+
+    # LE RANG D'UN CONSEIL COMPTE ENTIER : `_rang_theme.get(_nrm(theme), 9)`
+    # retomberait sur 9 (le pire rang) pour `theme=None`, alors qu'un conseil
+    # compte entier (ROAS, gaspillage… calculés sur TOUTES les campagnes)
+    # porte, par construction, sur au moins autant d'enjeu que le thème le
+    # plus lourd du compte — jamais moins, puisqu'il l'inclut. Il reçoit donc
+    # le même rang que le thème le plus lourd (rang 0), un « vrai rang » au
+    # sens de `_poids_theme`/`_rang_theme`, pas un repli arbitraire. Il
+    # continue de perdre face à un thème que le CLIENT a désigné prioritaire
+    # (`is_priority`, testé avant `rang` dans `_importance`).
+    def _rang_de(r):
+        if r.get("theme") is None:
+            return 0
+        return _rang_theme.get(_nrm(r.get("theme")), 9)
+
     top_recos = _diversifier(
-        sorted(_pool,
-               key=lambda r: _importance(r, _rang_theme.get(_nrm(r.get("theme")), 9))),
+        sorted(_pool, key=lambda r: _importance(r, _rang_de(r))),
         3,
     )
 
@@ -4301,6 +4652,12 @@ def build_payload(sb, user_id: str) -> dict | None:
         "themes_tips": themes_tips,
         "top_recos": top_recos,
         "reglages": reglages,
+        # Graphe A (compte entier) : les recos-règles compte entier (hors
+        # clés-réglages) + la candidate IA classée, si elle existe — la même
+        # liste que celle qui alimente `top_recos` (voir plus haut), exposée
+        # en entier ici pour que le front ait un endroit réel où rendre son
+        # contenu complet.
+        "recos_compte": recos_compte,
         "tracking": tracking,
         "themes": themes,
         "preuve": preuve,

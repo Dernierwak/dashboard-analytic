@@ -399,6 +399,24 @@ def fetch_objectif(supabase: Client, user_id: str) -> str | None:
     return None
 
 
+def fetch_onboarding_profile(supabase: Client, user_id: str) -> dict[str, str | None]:
+    """Les 4 réponses de l'onboarding express (secteur, budget, temps,
+    frustration) — la base fixe du profil client vivant (`user_persona.py`),
+    saisie une fois à l'inscription et jamais redérivée."""
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("business_type, budget_range, time_budget, frustration")
+            .eq("id", user_id)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+    return {}
+
+
 def fetch_theme_objectifs(supabase: Client, user_id: str) -> dict[str, str]:
     """L'objectif propre d'un thème, quand il diffère de celui du compte.
 
@@ -491,6 +509,30 @@ def fetch_reco_theme_context(supabase: Client, user_id: str, recent_weeks: int =
         return res.data or []
     except Exception:
         return None
+
+
+def fetch_theme_plan(supabase: Client, user_id: str) -> dict[str, dict]:
+    """L'hypothèse ACTIVE d'un thème (table `theme_plan`) — pas l'historique,
+    l'état courant : depuis quand elle tourne, quel levier, et sa carte
+    complète (`snapshot`) pour la réafficher fidèlement tant que la fenêtre
+    d'attente (`ATTENTE_MIN_NOUVELLE_HYPOTHESE`, `build_report.py`) n'est pas
+    écoulée — sans ça, `_theme_ai_recos` proposerait une nouvelle hypothèse
+    chaque semaine et « suivre une théorie » resterait une façade (wayfinder
+    `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
+
+    Returns: {thème normalisé (minuscules) : {reco_key, levier, decided_at,
+    snapshot}}. {} si la table n'est pas encore migrée ou si rien n'est suivi.
+    """
+    try:
+        res = (
+            supabase.table("theme_plan")
+            .select("theme, reco_key, levier, decided_at, snapshot")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return {str(r["theme"]).strip().lower(): r for r in (res.data or []) if r.get("theme")}
+    except Exception:
+        return {}
 
 
 def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:

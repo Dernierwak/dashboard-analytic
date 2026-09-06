@@ -34,6 +34,7 @@ export function ThemeObjectifMini({
   objectifEffectif,
   objectifPropre,
   conversions,
+  jugement,
 }: {
   /** L'objectif EFFECTIF de CE thème — le sien s'il en a un, sinon celui du compte. */
   objectifEffectif: string | null;
@@ -41,24 +42,43 @@ export function ThemeObjectifMini({
   objectifPropre: boolean;
   /** Les événements GA4 que ce thème suit comme conversions — vide = aucun. */
   conversions: string[];
+  /**
+   * Le jugement assemblé (voir `ThemeFocus.jugement`, `lib/report.ts`) — un
+   * vrai % de variation mesuré, jamais un % de cible fabriqué (aucune cible
+   * chiffrée n'existe pour un objectif de thème). `undefined`/`null` = pas
+   * mesurable cette semaine, on ne dit rien plutôt que d'inventer.
+   */
+  jugement?: { explication: string; mode: "tout" | "cible" } | null;
 }) {
   const mot = objectifEffectif ? OBJ_MOT[objectifEffectif] ?? "à définir" : "à définir";
 
   return (
-    <div className="px-5 py-2.5 border-b border-line bg-black/[0.015] flex items-center gap-2 flex-wrap text-[11.5px]">
-      <span className="text-faint">Objectif :</span>
-      <span className="font-semibold text-ink">{mot}</span>
-      <span className="text-faint">{objectifPropre ? "(objectif propre)" : "(hérite du compte)"}</span>
-      <span className="text-line">·</span>
-      <span className="text-faint">Conversions :</span>
-      {conversions.length > 0 ? (
-        <span className="font-mono text-ink truncate max-w-[40ch]">{conversions.join(", ")}</span>
-      ) : (
-        <span className="text-faint">aucune sélectionnée</span>
+    <div className="border-b border-line bg-black/[0.015]">
+      <div className="px-5 py-2.5 flex items-center gap-2 flex-wrap text-[11.5px]">
+        <span className="text-faint">Objectif :</span>
+        <span className="font-semibold text-ink">{mot}</span>
+        <span className="text-faint">{objectifPropre ? "(objectif propre)" : "(hérite du compte)"}</span>
+        <span className="text-line">·</span>
+        <span className="text-faint">Conversions :</span>
+        {conversions.length > 0 ? (
+          <span className="font-mono text-ink truncate max-w-[40ch]">{conversions.join(", ")}</span>
+        ) : (
+          <span className="text-faint">aucune sélectionnée</span>
+        )}
+        <Link href="/conversions" className="ml-auto font-semibold text-brand hover:underline shrink-0">
+          ◈ Conversions →
+        </Link>
+      </div>
+      {jugement && (
+        <p
+          className={`px-5 pb-2 text-[11px] leading-relaxed ${
+            jugement.mode === "cible" ? "text-warn" : "text-faint"
+          }`}
+        >
+          {jugement.mode === "cible" && "▼ "}
+          {jugement.explication}
+        </p>
       )}
-      <Link href="/conversions" className="ml-auto font-semibold text-brand hover:underline shrink-0">
-        ◈ Conversions →
-      </Link>
     </div>
   );
 }

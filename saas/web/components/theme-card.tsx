@@ -376,6 +376,7 @@ export function ThemeCard({
           objectifEffectif={objectifEffectif}
           objectifPropre={theme.objectif_propre ?? false}
           conversions={conversionsTheme}
+          jugement={theme.jugement}
         />
 
         {s && (

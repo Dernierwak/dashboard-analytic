@@ -46,17 +46,22 @@ milliers de lignes) : KPIs 7 jours pleins ancrés sur la dernière donnée
 `CLAUDE.md` § 7), deltas vs la période précédente, dépense par canal, recos
 par thème (organiques ET pub, via `saas/recos_ia/reco_engine.py`),
 diversification des recos affichées (`_diversifier`), brief IA
-(`_call_gemini`, fallback déterministe si Gemini échoue ou n'a pas de clé),
-contexte GA4 par thème (`saas/collecte/ga4/ga4.py::build_ga4_context`).
+(`_call_gemini`, calibré par le profil client vivant de
+`saas/recos_ia/user_persona.py`, fallback déterministe si Gemini échoue ou
+n'a pas de clé), contexte GA4 par thème
+(`saas/collecte/ga4/ga4.py::build_ga4_context`).
 
 **Ne pas essayer de tout retenir de ce fichier avant d'y toucher** — il est
 dense et chaque fonction `_reco_*` / `_orga_*` porte sa propre justification
 en commentaire à côté d'elle. Chercher la fonction concernée plutôt que lire
 le fichier en entier.
 
-## Différence assumée avec l'ancien Streamlit (retiré)
+## Le profil client vivant calibre le brief IA
 
-Le brief IA de `build_report.py` n'utilise pas encore de persona utilisateur
-(voir `saas/recos_ia/user_persona.py`, disponible mais pas branché ici) —
-fallback déterministe si Gemini échoue, comme partout ailleurs dans le
-produit : jamais d'erreur qui casse le rapport pour un conseil manqué.
+Le brief IA de `build_report.py` est calibré par le profil client vivant
+(`saas/recos_ia/user_persona.py::build_user_persona`) — onboarding, objectif,
+réactions/verdicts, avis sur les constats généraux et avis par thème
+(gardés séparés, pas fondus), recalculé une fois par semaine puisque ce
+module n'est appelé qu'à la génération du rapport. Fallback déterministe si
+Gemini échoue, comme partout ailleurs dans le produit : jamais d'erreur qui
+casse le rapport pour un conseil manqué.

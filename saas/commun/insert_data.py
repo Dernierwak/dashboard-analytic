@@ -670,3 +670,30 @@ def save_user_profile(supabase: Client, user_id: str, profile_text: str | None) 
             "user_profile_updated_at": datetime.now(timezone.utc).isoformat(),
         }
     ).eq("id", user_id).execute()
+
+
+def upsert_theme_plan(
+    supabase: Client, user_id: str, theme: str, reco_key: str,
+    levier: str | None, decided_at: str, snapshot: dict,
+) -> None:
+    """Marque une NOUVELLE hypothèse comme active pour ce thème (table
+    `theme_plan`) — appelé uniquement quand `build_report.py` décide qu'une
+    hypothèse fraîche démarre, jamais quand l'ancienne est simplement
+    réaffichée pendant sa fenêtre d'attente (voir `fetch_theme_plan`).
+    Défensif : une écriture ratée (table pas encore migrée) n'interrompt
+    jamais la publication du rapport.
+    """
+    try:
+        supabase.table("theme_plan").upsert(
+            {
+                "user_id": user_id,
+                "theme": theme,
+                "reco_key": reco_key,
+                "levier": levier,
+                "decided_at": decided_at,
+                "snapshot": snapshot,
+            },
+            on_conflict="user_id,theme",
+        ).execute()
+    except Exception:
+        pass
