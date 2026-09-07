@@ -99,15 +99,39 @@ déterministe) du ticket 05 codés et vérifiés (`py_compile` + `tsc --noEmit` 
 **Pas encore codé** : le résumé narratif rédigé par IA du ticket 05 (la
 couche "mémoire lisible" qui nourrirait le prompt de `_theme_ai_recos` —
 l'état déterministe suffit au blocage du ticket 03, ce résumé reste un
-raffinement futur, pas bloquant).
+raffinement futur, pas bloquant). **Grillé le 7 septembre 2026** : toujours
+dans le périmètre de cette carte, mais spécifié séparément via `/to-spec`
+plutôt que codé à la volée — c'est un vrai morceau de conception (schéma de
+génération, déclenchement, contenu), pas un correctif de taille ticket.
+
+**Correctif du 7 septembre 2026 (hors circuit wayfinder)** : l'agent `recos`,
+sollicité par David sur un signal de terrain (« les recos semblent
+inchangées d'une semaine à l'autre »), a trouvé que `_theme_ai_recos()` ne
+recevait que des cumuls sur tout l'historique du thème (`tsummary`) — mesuré,
+deux prompts consécutifs avec de vrais nouveaux chiffres étaient identiques
+à 99,7 %. Corrigé : les chiffres de la semaine + les 4 précédentes sont
+maintenant injectés au prompt ; le titre de l'hypothèse déjà épinglée entre
+dans la liste d'évitement (`eviter`) pour ne plus être reformulé par les 2
+autres cartes ; la baseline d'une carte d'hypothèse réaffichée n'est plus
+recalculée en silence dans `_attach_metric` (elle divergeait de celle que
+`suivi_actions` utilise pour le verdict). `py_compile` + `tsc --noEmit`
+verts (commits `19d07d3`, `ba8c008`).
+
+- [Fenêtre débloquée par le verdict](issues/06-fenetre-verdict.md) : le
+  verdict d'une hypothèse tombe (`FENETRE_LEVIER`, 7 ou 14 jours) souvent
+  avant que le blocage du ticket 03 (`ATTENTE_MIN_NOUVELLE_HYPOTHESE`, 14 à
+  21 jours) ne se lève — une semaine où le système sait déjà mais continue
+  d'afficher la même carte sans le dire. Corrigé : le blocage se lève dès
+  qu'un verdict est tombé (`suivi_actions.verdict` via `verdicts`), le
+  calendrier ne reste qu'un plafond de secours si aucun verdict n'arrive.
+  Pas de délai de digestion après un verdict négatif. Codé et vérifié
+  (`py_compile`) le 7 septembre 2026.
 
 ## Not yet specified
 
-- Quel événement GA4 précis représente les objectifs `notoriete` et
-  `engagement` (le catalogue actuel documente Ventes/Contacts/Engagement,
-  pas explicitement "notoriété") — détail de construction à préciser au
-  moment de coder le ticket "analyse assemblée", pas encore assez net pour
-  un ticket séparé.
+_(vide — le point GA4 notoriété/engagement qui y figurait était déjà tranché
+dans le code, `JUGEMENT_METRIC_PAR_OBJECTIF`, `build_report.py:141` ;
+retiré comme brouillard périmé le 7 septembre 2026.)_
 
 ## Out of scope
 

@@ -119,12 +119,24 @@ LEVIERS_IA = ("argent", "contenu", "tempo", "audience")
 # levier est absent/inconnu (repli sur l'ancien comportement fixe).
 FENETRE_LEVIER = {"contenu": 7, "tempo": 7, "argent": 14, "audience": 14}
 
-# Attente MINIMALE avant de laisser Gemini proposer une NOUVELLE hypothèse
+# Attente MAXIMALE avant de laisser Gemini proposer une NOUVELLE hypothèse
 # pour un thème — distincte de `FENETRE_LEVIER` (qui ne fixe QUE la date du
 # verdict). David : ne pas changer de théorie après un seul cycle, lui laisser
 # 1 à 2 cycles pour prouver qu'elle ne marche pas avant d'en tester une autre.
 # Concrètement : 2 cycles pour les leviers rapides (2×7j), 1.5 cycle arrondi
 # pour les leviers lents (14j) — 14 à 21 jours, comme demandé.
+#
+# PLAFOND DE SECOURS, PAS UN PLANCHER (wayfinder ticket 06,
+# `.scratch/recos-labels/issues/06-fenetre-verdict.md`, 7 septembre 2026) :
+# le verdict d'une hypothèse "contenu"/"tempo" est calculé et écrit dès
+# `FENETRE_LEVIER` (7 jours) — avant cette correction, la carte restait
+# épinglée jusqu'à `ATTENTE_MIN_NOUVELLE_HYPOTHESE` (14 jours) MÊME QUAND le
+# système savait déjà, depuis une semaine, si elle avait marché ou pas :
+# une semaine d'attente vide, exactement le symptôme rapporté par David
+# (« j'ai l'impression que rien ne bouge »). Le blocage plus bas se lève
+# maintenant dès qu'un verdict est tombé (`verdicts`, voir
+# `fetch_reco_verdicts`) ; ces durées ne bornent plus que le cas où AUCUN
+# verdict n'est encore arrivé.
 ATTENTE_MIN_NOUVELLE_HYPOTHESE = {"contenu": 14, "tempo": 14, "argent": 21, "audience": 21}
 _ATTENTE_DEFAUT = 14
 
@@ -2902,16 +2914,24 @@ def build_payload(sb, user_id: str) -> dict | None:
             # `_theme_ai_recos`.
             _forcer_une_hypothese(t_recos)
 
-            # ── BLOCAGE : PAS DE NOUVELLE HYPOTHÈSE AVANT SA FENÊTRE D'ATTENTE ─
+            # ── BLOCAGE : PAS DE NOUVELLE HYPOTHÈSE AVANT SON VERDICT ────────
             #
             # Sans ce garde, Gemini rédige une hypothèse FRAÎCHE à chaque
             # rapport, sans jamais savoir qu'une précédente est encore en
             # cours de vérification — « suivre une théorie » resterait une
             # façade (wayfinder `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
-            # Tant que la fenêtre d'attente du levier ACTIF n'est pas écoulée,
-            # on réaffiche la carte déjà suivie (même `reco_key`, donc mêmes
+            # On réaffiche la carte déjà suivie (même `reco_key`, donc mêmes
             # retours client / mêmes verdicts) plutôt que la nouvelle proposée
             # par Gemini cette semaine — celle-ci est simplement écartée.
+            #
+            # DÉBLOQUÉ PAR LE VERDICT, PAS SEULEMENT PAR LE CALENDRIER
+            # (wayfinder ticket 06, 7 septembre 2026, `.scratch/recos-labels/
+            # issues/06-fenetre-verdict.md`) : `ATTENTE_MIN_NOUVELLE_HYPOTHESE`
+            # ne borne plus que le cas où AUCUN verdict n'est encore tombé —
+            # dès que `suivi_actions` a un verdict pour ce `reco_key`
+            # (`verdicts`, voir `fetch_reco_verdicts`), l'hypothèse suivante de
+            # Gemini n'est plus écartée, quel que soit le nombre de jours
+            # écoulés.
             # (`_plan` déjà lu plus haut, avant `_ai_eviter`.)
             if _plan and _plan.get("decided_at") and _plan.get("snapshot"):
                 try:
@@ -2919,7 +2939,8 @@ def build_payload(sb, user_id: str) -> dict | None:
                 except Exception:
                     _decided = None
                 _attente = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
-                if _decided and (today - _decided).days < _attente:
+                _verdict_tombe = bool(verdicts.get(_plan.get("reco_key")))
+                if _decided and not _verdict_tombe and (today - _decided).days < _attente:
                     for _i, _r in enumerate(t_recos):
                         if _r.get("role") == "hypothese":
                             t_recos[_i] = dict(_plan["snapshot"])
