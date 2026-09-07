@@ -52,9 +52,8 @@
 --   22)    reco_feedback.theme/title + reco_feedback_uq2 — le contexte d'un
 --          feedback (Graphe B, TASK-025)
 --   23)    suivi_actions.verdict — le verdict d'une action, persisté (TASK-025)
---   14sexies) reco_news — la file « recos news » du classificateur du Graphe A.
---          AVANT la section 15, qui doit la partager, même raison que
---          14bis/14ter/14quater/14quinquies (elle CRÉE une table).
+--   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
+--          sur le compte entier — voir la section elle-même).
 --   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
 --          raison qu'au-dessus (elle CRÉE une table).
 --
@@ -1425,55 +1424,24 @@ CREATE POLICY "gec_delete_own" ON public.ga4_event_categories
 
 
 -- ============================================================================
--- 14sexies) reco_news — voir reco_news.sql (source de vérité).
+-- 14sexies) reco_news — RETIRÉE le 7 septembre 2026.
 --
---     AVANT LA SECTION 15, qui doit la partager, même raison que
---     14bis/14ter/14quater/14quinquies : elle CRÉE une table.
+--     Portait la file du classificateur du Graphe A (recos sur le compte
+--     entier), retiré en bloc le même jour sur décision de David : « on a
+--     pas de recos sur le compte entier, je veux que ça soit supprimé de
+--     partout » — voir `.scratch/recos-generales/map.md`, section « Out of
+--     scope », pour l'historique complet (troisième retournement sur ce
+--     sujet). Le code (`saas/traitement/build_report.py`) ne l'alimente
+--     plus depuis ce commit ; ce DROP est le geste explicitement validé par
+--     David pour la donnée elle-même (CLAUDE.md §7 : rien de destructeur
+--     sans le signaler et le faire valider — signalé, validé).
 --
---     Le classificateur du Graphe A (`saas/traitement/build_report.py`, voir
---     `CLASSIFIER_CATEGORIES_IA`) fait déclarer à la candidate IA libre du
---     compte à quelle catégorie de `reco_engine.py` elle correspond, parmi
---     des valeurs fermées, ou explicitement "aucune". Quand aucune catégorie
---     ne correspond, la piste part ici — jamais dans un fourre-tout
---     générique « autre ».
---
---     Pas un pipeline de décision : ni statut, ni compteur, ni promotion
---     automatique en catégorie supplémentaire. Un endroit consultable à la
---     main (Supabase Studio), une ligne par utilisateur et par semaine
---     (`reco_news_uq`) : un rapport régénéré la même semaine remplace la
---     ligne plutôt que d'empiler des doublons.
+--     `IF EXISTS` : rejouable sans risque, que la table ait déjà été
+--     supprimée ou n'ait jamais existé sur cette base (migration jamais
+--     jouée avant le retrait).
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS public.reco_news (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    week_start  date NOT NULL DEFAULT current_date,
-    title       text NOT NULL,
-    observation text NOT NULL,
-    pourquoi    text NOT NULL,
-    verifier    text NOT NULL,
-    angle_mort  text NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT reco_news_uq UNIQUE (user_id, week_start)
-);
-
-CREATE INDEX IF NOT EXISTS idx_reco_news_user
-    ON public.reco_news (user_id, week_start DESC);
-
-ALTER TABLE public.reco_news ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "reco_news_select_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_insert_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_update_own" ON public.reco_news;
-DROP POLICY IF EXISTS "reco_news_delete_own" ON public.reco_news;
-CREATE POLICY "reco_news_select_own" ON public.reco_news
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "reco_news_insert_own" ON public.reco_news
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_news_update_own" ON public.reco_news
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_news_delete_own" ON public.reco_news
-    FOR DELETE USING (auth.uid() = user_id);
+DROP TABLE IF EXISTS public.reco_news;
 
 
 -- ============================================================================
@@ -1569,7 +1537,7 @@ DECLARE
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
         'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
-        'theme_ga4_events', 'theme_objectifs', 'reco_news', 'theme_plan',
+        'theme_ga4_events', 'theme_objectifs', 'theme_plan',
         -- les catégories de conversions
         'conversion_categories', 'ga4_event_categories',
         -- budgets et journal des plateformes
@@ -2106,7 +2074,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'theme_objectifs',          NULL),   -- §14quater
     ('t', 'conversion_categories',    NULL),   -- §14quinquies
     ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
-    ('t', 'reco_news',                NULL),   -- §14sexies
     ('t', 'theme_plan',               NULL),   -- §14septies
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
