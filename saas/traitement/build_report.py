@@ -217,69 +217,10 @@ NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
 ROLES_IA = ("generale", "hypothese")
 
 
-# ── LE CLASSIFICATEUR DU GRAPHE A (compte entier) ────────────────────────────
-#
-# Les recos-RÈGLES (`saas/recos_ia/reco_engine.py`, via `build_recos()`) n'ont
-# jamais besoin d'être classifiées : leur `key` EST déjà, par construction,
-# une des catégories de `reco_engine` — aucun jugement à ajouter, aucun appel
-# Gemini de plus. Le classificateur ne s'exerce donc que sur la candidate IA
-# libre du compte (`ai_reco` ci-dessous) : comme pour les pistes par thème
-# (`_theme_ai_recos`), la catégorie n'est jamais devinée après coup — c'est
-# Gemini qui la DÉCLARE au moment même où il rédige l'idée, dans le même
-# appel. Repris tel quel (méthode déjà éprouvée) — wayfinder
-# `.scratch/recos-generales/issues/02-methode-correspondance.md`.
-#
 # `SETUP_KEYS` (GA4 muet, connecter GA4, funnel) reste le socle d'un circuit
-# d'affichage séparé : la candidate IA libre ne peut donc jamais matcher
-# dessus. `CLASSIFIER_CATEGORIES_IA` est la liste fermée qui reste : les clés
-# de `reco_engine.KEY_LABELS` moins les 3 clés-réglages et moins "ai" (l'ancien
-# nom de cette candidate, avant le classificateur). Une valeur hors liste, ou
-# absente, REJETTE la piste entière — jamais un repli sur "ai" ou une
-# catégorie devinée.
+# d'affichage séparé, sorti du flux normal des recos-thème/recos-règles
+# (voir ses usages plus bas).
 SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
-CLASSIFIER_CATEGORIES_IA = tuple(
-    k for k in KEY_LABELS if k not in SETUP_KEYS and k != "ai"
-)
-
-# La plateforme de la candidate, une fois classifiée : la même que la
-# reco-règle de cette catégorie (voir `saas/recos_ia/reco_engine.py`,
-# l'argument `platform` de chaque `_rule_*`) — rien ne doit distinguer, en
-# aval, une candidate IA classée « scaler » d'une candidate-règle « scaler ».
-CATEGORY_PLATFORM_IA = {
-    "roas": "pub", "gaspillage": "meta", "scaler": "meta",
-    "silence": "instagram", "format_gagnant": "instagram",
-    "page_endormie": "instagram", "creneau": "instagram",
-}
-
-
-def _queue_reco_news(sb, user_id: str, week_start, data: dict) -> None:
-    """La candidate IA libre qui ne correspond à AUCUNE des catégories de
-    `reco_engine` part ici — dans une file consultable (table `reco_news`),
-    PAS dans un fourre-tout d'affichage générique « autre ».
-
-    Cette file n'est qu'un endroit à consulter à la main (Supabase Studio) :
-    aucune page dédiée, et surtout aucune promotion automatique en catégorie
-    supplémentaire — personne ne sait définir « assez de fois » ni sur quelle
-    population, et le volume de comptes est aujourd'hui trop faible pour que
-    ce soit utile.
-
-    Une ligne par utilisateur et par semaine (`reco_news_uq`) : un rapport
-    régénéré la même semaine remplace la ligne plutôt que d'empiler des
-    doublons. Défensif comme le reste du worker : une écriture ratée (table
-    pas encore migrée en prod) n'interrompt jamais la publication du rapport.
-    """
-    try:
-        sb.table("reco_news").upsert({
-            "user_id": user_id,
-            "week_start": week_start.isoformat(),
-            "title": str(data["title"])[:90],
-            "observation": str(data["observation"]),
-            "pourquoi": str(data["pourquoi"]),
-            "verifier": str(data["verifier"]),
-            "angle_mort": str(data["angle_mort"]),
-        }, on_conflict="user_id,week_start").execute()
-    except Exception:
-        pass
 
 
 def _forcer_une_hypothese(pool: list[dict]) -> None:
@@ -2109,9 +2050,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     # conseils, calculés sur SES campagnes (Meta+Google) et SES posts seulement.
     # Ces conseils-là sont GRATUITS : ce sont les règles du moteur. Seuls les
     # `_THEMES_IA` premiers thèmes y ajoutent des pistes rédigées par Gemini.
-    # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part.
-    # `SETUP_KEYS` est définie au niveau module (voir `CLASSIFIER_CATEGORIES_IA`
-    # plus haut, qui s'en sert aussi pour le classificateur du Graphe A).
+    # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part —
+    # `SETUP_KEYS`, définie au niveau module.
     _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
 
     def _nrm(s):
@@ -3238,95 +3178,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         if _top_todo:
             brief += f" Priorité n°1 : {_top_todo}."
 
-    # ── Reco IA compte entier : la candidate IA libre du Graphe A ────────────
-    #
-    # Elle DÉCLARE elle-même sa catégorie dans ce même appel (même principe
-    # que `_theme_ai_recos`, jamais deviné après coup) :
-    #   · une des `CLASSIFIER_CATEGORIES_IA` ET qu'aucune reco-règle de cette
-    #     même catégorie n'existe déjà cette semaine → la candidate REJOINT
-    #     `recos_compte` avec cette clé, « comportement normal » ;
-    #   · "aucune", OU une catégorie valide mais déjà prise cette semaine par
-    #     une reco-règle (collision — un même `feedbackKey` pour deux idées
-    #     distinctes ferait qu'un 👍/👎 posé sur l'une s'appliquerait à
-    #     l'autre) → part dans la file `reco_news`, consultable à la main ;
-    #   · toute autre valeur (ou absente) → la piste ENTIÈRE est rejetée,
-    #     jamais affichée, jamais mise en file — pas de repli par défaut.
-    # Badge IA + confiance « piste » (c'est une idée à tester, pas un fait).
-    # Ne répète pas les conseils des règles ; JSON strict, sinon on s'en passe.
-    ai_reco = None
-    try:
-        lines = []
-        if not df_camp.empty:
-            for _, r in df_camp.sort_values("spend", ascending=False).head(6).iterrows():
-                lines.append(f"{r['campaign_name']} ({r['spend']:.0f} CHF, CTR {r['ctr']:.1f} %)")
-        th = ", ".join(sorted({
-            (c or {}).get("label") for c in (meta_cfg or {}).values() if (c or {}).get("label")
-        }))
-        known = " ; ".join(r["title"] for r in rule_recos)
-        categorie_prompt = " ; ".join(
-            f'"{k}" ({KEY_LABELS[k]})' for k in CLASSIFIER_CATEGORIES_IA)
-        ai_raw = _call_gemini(
-            "Tu es un consultant marketing senior pour une PME suisse. "
-            f"Faits de la semaine : dépense pub {float(df_camp['spend'].sum()) if not df_camp.empty else 0:.0f} CHF, "
-            f"engagement Instagram {avg_engagement:.1f} %, CTR pub {avg_ctr:.2f} %. "
-            f"Campagnes : {' | '.join(lines) or 'aucune'}. Thèmes : {th or 'aucun'}. "
-            "Propose UNE idée concrète et actionnable qui NE RÉPÈTE PAS ces conseils déjà "
-            f"donnés cette semaine : {known or 'aucun'}. "
-            'Réponds en JSON strict : {"title": "titre court", '
-            '"observation": "le fait chiffré qui motive cette idée — uniquement des chiffres fournis ci-dessus", '
-            '"pourquoi": "pourquoi ça peut marcher", '
-            '"verifier": "comment la tester à petite échelle avant de généraliser", '
-            '"angle_mort": "ce que cette idée ignore", '
-            '"categorie": "à quelle catégorie ci-dessous cette idée correspond le mieux"}. '
-            '"categorie" = EXACTEMENT une de ces valeurs : ' + categorie_prompt +
-            ' — ou "aucune" si ton idée ne correspond VRAIMENT à aucune d\'elles '
-            "(ne force jamais une correspondance approximative). "
-            "Français, ton direct, ne déforme aucun chiffre."
-        )
-        if ai_raw:
-            txt = ai_raw.strip()
-            if txt.startswith("```"):
-                txt = txt.strip("`")
-                txt = txt[4:] if txt.lower().startswith("json") else txt
-            data = json.loads(txt.strip())
-            _categorie = data.get("categorie")
-            # Une catégorie déjà prise cette semaine par une reco-règle n'est
-            # pas une correspondance utilisable : elle part dans la file,
-            # exactement comme "aucune" (aucun repli sur une clé maison).
-            _cle_prise = any(r.get("key") == _categorie for r in rule_recos)
-            if all(data.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-                if _categorie in CLASSIFIER_CATEGORIES_IA and not _cle_prise:
-                    ai_reco = {
-                        "key": _categorie, "platform": CATEGORY_PLATFORM_IA[_categorie],
-                        "title": str(data["title"])[:90],
-                        "observation": str(data["observation"]),
-                        "pourquoi": str(data["pourquoi"]),
-                        "verifier": str(data["verifier"]),
-                        "repere": "",
-                        "angle_mort": str(data["angle_mort"]),
-                        "confidence": "piste", "priority": 9, "source": "ai",
-                    }
-                elif _categorie == "aucune" or (_categorie in CLASSIFIER_CATEGORIES_IA and _cle_prise):
-                    _queue_reco_news(sb, user_id, week_start_monday, data)
-                # Toute autre valeur (hors liste, ou absente) rejette la piste
-                # entière — jamais un repli par défaut, jamais mise en file.
-    except Exception:
-        ai_reco = None
-
-    # ── recos_compte : la contribution du Graphe A au pool `top_recos` ───────
-    #
-    # `rule_recos` (calculé plus haut, compte entier) n'alimente jusqu'ici que
-    # `reglages` (les 3 clés-socle) et `todo`/le brief — jamais `top_recos`
-    # (« Les 3 du moment »), le seul pool que le Graphe B alimentait jusqu'ici.
-    # `recos_compte` est cette contribution : les recos-règles compte entier
-    # (hors clés-réglages) + la candidate IA libre, si elle vient d'être
-    # classée ci-dessus. `_strip_reco` (même défense que pour `reglages`) :
-    # copies indépendantes, pour que `_attach_metric`/`_attach_effort` (plus
-    # bas) ne mutent jamais les dicts encore lus ailleurs (`todos`, `recos`).
-    recos_compte = [_strip_reco(r) for r in rule_recos if r.get("key") not in SETUP_KEYS]
-    if ai_reco:
-        recos_compte.append(_strip_reco(ai_reco))
-
+    # Le Graphe A (compte entier — classificateur, candidate IA libre,
+    # `recos_compte`, file `reco_news`) a existé, puis a été retiré
+    # (30 août 2026), reconstruit (7 septembre 2026), puis définitivement
+    # retiré (7 septembre 2026, décision de David — « on a pas de recos sur
+    # le compte entier ») : voir `.scratch/recos-generales/map.md`, section
+    # « Out of scope ». Le reste de cette fonction (brief hebdo, réglages,
+    # recos par thème) n'en dépendait pas et reste inchangé.
     _n_done = sum(1 for v in feedback.values() if v == "done")
     _n_useful = sum(1 for v in feedback.values() if v == "useful")
     _n_skip = sum(1 for v in feedback.values() if v == "not_for_me")
@@ -3634,12 +3492,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         # des prérequis du compte, leur mesure l'est aussi.
         _attach_metric(_r)
         _attach_effort(_r)
-    for _r in recos_compte:
-        # Le Graphe A (compte entier) ne porte pas de thème non plus — même
-        # mesure que les réglages, `theme=None` → `_kpis_du_theme` retombe sur
-        # `cur_kpis` (compte entier).
-        _attach_metric(_r)
-        _attach_effort(_r)
 
     # ── LE JUGEMENT DE CHAQUE THÈME, ET SON INFLUENCE SUR LA COMPOSITION ─────
     #
@@ -3820,25 +3672,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             if _est_veille(_r) and not _veille_urgente(_r):
                 continue
             _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
-    # Le Graphe A (compte entier, `recos_compte`) rejoint ce même pool —
-    # `theme=None` : ni `_rang_theme` ni le filtre côté web n'en ont besoin
-    # pour un conseil qui ne porte sur aucun thème en particulier, même
-    # traitement que les réglages, qui n'ont eux non plus jamais eu de thème.
-    for _r in recos_compte:
-        _pool.append(dict(_r, theme=None, is_priority=False))
 
-    # LE RANG D'UN CONSEIL COMPTE ENTIER : `_rang_theme.get(_nrm(theme), 9)`
-    # retomberait sur 9 (le pire rang) pour `theme=None`, alors qu'un conseil
-    # compte entier (ROAS, gaspillage… calculés sur TOUTES les campagnes)
-    # porte, par construction, sur au moins autant d'enjeu que le thème le
-    # plus lourd du compte — jamais moins, puisqu'il l'inclut. Il reçoit donc
-    # le même rang que le thème le plus lourd (rang 0), un « vrai rang » au
-    # sens de `_poids_theme`/`_rang_theme`, pas un repli arbitraire. Il
-    # continue de perdre face à un thème que le CLIENT a désigné prioritaire
-    # (`is_priority`, testé avant `rang` dans `_importance`).
     def _rang_de(r):
-        if r.get("theme") is None:
-            return 0
         return _rang_theme.get(_nrm(r.get("theme")), 9)
 
     top_recos = _diversifier(
@@ -4735,12 +4570,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         "themes_tips": themes_tips,
         "top_recos": top_recos,
         "reglages": reglages,
-        # Graphe A (compte entier) : les recos-règles compte entier (hors
-        # clés-réglages) + la candidate IA classée, si elle existe — la même
-        # liste que celle qui alimente `top_recos` (voir plus haut), exposée
-        # en entier ici pour que le front ait un endroit réel où rendre son
-        # contenu complet.
-        "recos_compte": recos_compte,
         "tracking": tracking,
         "themes": themes,
         "preuve": preuve,

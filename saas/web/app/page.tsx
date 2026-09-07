@@ -27,12 +27,6 @@ import { Triangle } from "@/components/pente";
 
 export const dynamic = "force-dynamic";
 
-// L'ancre de la section « Compte entier » (Graphe A) — le pendant de
-// `ancreTheme` pour un conseil qui n'appartient à AUCUN thème. Une chaîne
-// fixe, pas dérivée d'un label : contrairement à un thème, « le compte
-// entier » n'a ni nom ni renommage possible.
-const ANCRE_COMPTE_ENTIER = "compte-entier";
-
 // Le titre d'une section numérotée. Le second niveau (`tone="discret"`) a été
 // retiré : son seul porteur était le bloc « hors de tes thèmes », qui est
 // devenu un module à part entière avec son propre surtitre. Un habillage sans
@@ -194,10 +188,6 @@ export default async function Page() {
 
   const themesFocus = report?.themes_focus ?? [];
   const reglages = report?.reglages ?? [];
-  // Graphe A (compte entier) — voir `ReportPayload.recos_compte`. C'est
-  // l'endroit RÉEL où « Si tu ne fais que trois choses » pointe pour un
-  // conseil qui n'appartient à aucun thème (voir `ANCRE_COMPTE_ENTIER`).
-  const recosCompte = report?.recos_compte ?? [];
   // On ne peut pas mener 4 chantiers de front : au-delà de 3 actions « à faire »,
   // les autres conseils invitent à en boucler un d'abord.
   //
@@ -249,11 +239,7 @@ export default async function Page() {
   // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
   // elle désignerait le seul thème de la page. Et elle ne renvoie qu'à des
   // cartes qui EXISTENT : un conseil du thème que le garde-fou vient de retirer
-  // pointerait vers une ancre absente du document. Un conseil SANS thème
-  // (`!r.theme`, Graphe A compte entier) vient de `recosCompte` : il pointe
-  // vers la section « Compte entier » plus bas (`ANCRE_COMPTE_ENTIER`), qui
-  // existe forcément dès qu'un tel conseil est sélectionné, puisque c'est la
-  // même liste qui alimente les deux (voir `recosCompte` ci-dessus).
+  // pointerait vers une ancre absente du document.
   const topRecos =
     cartes.length > 1
       ? (report?.top_recos ?? []).filter((r) => !r.theme || themesRendus.has(r.theme))
@@ -593,12 +579,12 @@ export default async function Page() {
                   <li key={r.key} className="text-[12.5px] text-muted leading-snug">
                     <span className="font-mono text-faint">{i + 1}.</span>{" "}
                     <a
-                      href={`#${r.theme ? ancreTheme(r.theme) : ANCRE_COMPTE_ENTIER}`}
+                      href={`#${ancreTheme(r.theme ?? "")}`}
                       className="font-semibold text-ink hover:underline"
                     >
                       {r.title}
                     </a>
-                    <span className="text-faint"> · {r.theme ?? "Compte entier"}</span>
+                    <span className="text-faint"> · {r.theme}</span>
                   </li>
                 ))}
               </ol>
@@ -699,39 +685,6 @@ export default async function Page() {
                 construit thème par thème.
               </p>
             </div>
-          )}
-
-          {/* Compte entier — Graphe A. Le pendant, pour un conseil qui ne
-              porte sur AUCUN thème, de ce que `ThemeCard` rend pour un thème :
-              le contenu COMPLET des recos-règles compte entier et de la
-              candidate IA classée (si elle existe), jamais rendues qu'en
-              lien ailleurs sur la page. `id` posé sur la `<section>`, pas sur
-              `<details>` seule : un lien doit rester valide même quand la
-              section est repliée. */}
-          {recosCompte.length > 0 && (
-            <section id={ANCRE_COMPTE_ENTIER} className="mb-8">
-              <details open>
-                <summary className="text-[14px] font-semibold text-ink cursor-pointer select-none mb-3">
-                  Compte entier ({recosCompte.length}){" "}
-                  <span className="text-faint font-normal">
-                    · ce qui se voit sur TOUT le compte, tous thèmes confondus
-                  </span>
-                </summary>
-                <div className="space-y-3 mt-2">
-                  {recosCompte.map((r) => (
-                    <RecoCard
-                      key={r.key}
-                      r={r}
-                      current={data.feedback[feedbackKey(r.key, null)] ?? data.feedback[r.key] ?? null}
-                      comment={data.comments[feedbackKey(r.key, null)] ?? data.comments[r.key] ?? null}
-                      theme={null}
-                      action={data.suivis[r.key] ?? null}
-                      capReached={capReached}
-                    />
-                  ))}
-                </div>
-              </details>
-            </section>
           )}
 
           {/* Réglages de base — prérequis (GA4, funnel) sortis du flux par thème */}

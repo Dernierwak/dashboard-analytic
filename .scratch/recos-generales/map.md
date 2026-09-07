@@ -1,5 +1,10 @@
 # Recos générales — point de situation (Graphe A)
 
+**RETIRÉ DÉFINITIVEMENT le 7 septembre 2026** — voir « Out of scope ». Cette
+carte reste comme trace : troisième retournement sur le même sujet (construit
+29/08, retiré 30/08, reconstruit 5-6/09, retiré 7/09) — avant de rouvrir CE
+sujet un jour, relire cette carte en entier, pas juste la dernière ligne.
+
 ## Destination
 
 Un état des lieux **vérifié** (code réel, pas la photo du 26 août) du Graphe A —
@@ -98,3 +103,23 @@ est atteinte. Les deux cartes de cette charte sont maintenant terminées.**
   fera plus tard un effort séparé pour repérer les manques des utilisateurs
   et produire des pages lisibles d'aide/actualités — pas un manque de la
   carte actuelle, une extension future à concevoir de zéro.
+
+- **Le Graphe A tout entier — retiré le 7 septembre 2026.** Décision de
+  David : « on a pas de recos sur le compte entier, je veux que ça soit
+  supprimé de partout ». Retiré du code le jour même : classificateur,
+  candidate IA libre (`ai_reco`), `recos_compte`, la file `reco_news`
+  (écriture — la fonction `_queue_reco_news`, `CLASSIFIER_CATEGORIES_IA`,
+  `CATEGORY_PLATFORM_IA`), la section « Compte entier » de `page.tsx`, et
+  `saas/recos_ia/adhesion.py` (déjà mort — jamais importé). `py_compile` +
+  `tsc --noEmit` + `npm run build` verts (16 routes).
+  **Non retiré, volontairement** : la table Supabase `reco_news`
+  (migration) — un `DROP TABLE` est destructeur et irréversible sur de la
+  donnée de prod, ça se signale et se valide séparément (`CLAUDE.md` §7),
+  ça ne se glisse pas dans le même geste que le retrait de code. La table
+  reste juste orpheline (plus aucune écriture, plus aucune lecture).
+  Ce que Graphe A gardait — le brief hebdo narratif (« voici ce qui s'est
+  passé ») et `reglages` (GA4/funnel) — n'en dépendait pas et reste
+  inchangé : ce n'est pas ce que David a désigné comme « recos générale ».
+  Tous les tickets ci-dessus (01 à 05) restent VALIDES comme réponses aux
+  questions qu'ils posaient — ce n'est pas leur contenu qui est faux,
+  c'est la décision produit qui a changé après coup.
