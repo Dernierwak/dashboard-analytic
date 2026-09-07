@@ -51,7 +51,8 @@ qualité des agents qui le construisent.**
 1. **David formule une demande.** Je la reformule dans `PROJECT_STATUS.html`
    sous forme de tâche — `{ id, category, title, description, priority, status }`
    — dans le même registre que les tâches existantes.
-2. **Je travaille sur UNE tâche à la fois**, jusqu'au bout.
+2. **Je peux mener plusieurs tâches de front**, mais chacune se suit jusqu'au
+   bout — pas de détour silencieux qui en laisse une à moitié faite.
 3. **Une fois réalisée et vérifiée**, je la passe à `status: "done"` avec
    `verifiedBy: "llm"`. Jamais avant la vérification.
 4. **Ce qui n'était pas demandé et que je découvre** devient une tâche, pas un

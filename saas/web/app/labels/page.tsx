@@ -83,7 +83,11 @@ export default async function LabelsPage() {
           Le bloc n'est PAS une rangée flex — le pavé d'annulation qu'il déplie
           fait 320 px et ne tiendrait pas à côté d'un texte sur un téléphone. */}
       <div className="mb-5">
-        <ClassifyButton libelle="✨ Étiqueter tout via l'IA" avecAnnulation />
+        <ClassifyButton
+          libelle="✨ Étiqueter tout via l'IA"
+          avecAnnulation
+          themes={etiquetage.labels}
+        />
         <p className="text-[11.5px] text-faint mt-2 leading-relaxed max-w-2xl">
           L&apos;IA lit tes légendes et tes noms de campagne, et pose un thème sur tout ce
           qui n&apos;en a pas. Elle applique directement — mais elle ne remplit que le

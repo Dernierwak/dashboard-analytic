@@ -640,17 +640,7 @@ export default async function Page() {
       {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
       <SetupWizard
         onboarded={data.onboarded}
-        toLabel={
-          report?.matrice?.coverage
-            ? {
-                posts:
-                  report.matrice.coverage.posts_total - report.matrice.coverage.posts_labeled,
-                camps:
-                  report.matrice.coverage.campaigns_total -
-                  report.matrice.coverage.campaigns_labeled,
-              }
-            : null
-        }
+        couverture={couverture}
         themes={data.labels}
         priorities={priorities}
       />

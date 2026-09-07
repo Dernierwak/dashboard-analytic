@@ -7,6 +7,7 @@ import {
   checkFetchStatus,
   compterEtiquettesIA,
   annulerEtiquettesIA,
+  deleteLabel,
 } from "@/app/actions";
 
 type Phase = "idle" | "running" | "ready" | "failed" | "error";
@@ -26,6 +27,11 @@ type Phase = "idle" | "running" | "ready" | "failed" | "error";
 //      `label_source='ai'` de l'annulation).
 //   2. TOUT EST ANNULABLE EN BLOC, tant qu'on est sur la page. C'est ce que ce
 //      composant ajoute.
+//   3. LES NOUVEAUX THÈMES SE REVOIENT UN PAR UN, APRÈS COUP (prop `themes`).
+//      Poser un thème existant sur un item s'annule en bloc (garantie 2) ;
+//      inventer un nouveau mot du vocabulaire est plus engageant, et se
+//      garde/supprime individuellement — voir
+//      `docs/adr/0001-revue-apres-coup-nouveaux-themes.md`.
 //
 // POURQUOI `sessionStorage` ET PAS UN ÉTAT REACT.
 // Le classement dure une minute et l'utilisateur recharge, change d'onglet,
@@ -39,21 +45,38 @@ type Phase = "idle" | "running" | "ready" | "failed" | "error";
 // c'est Postgres qui horodate les étiquettes.
 const CLE_DEPUIS = "pulse.labels.ia.depuis";
 
+// Instantané du VOCABULAIRE (pas des assignations) au moment du lancement —
+// voir `docs/adr/0001-revue-apres-coup-nouveaux-themes.md` pour pourquoi ce
+// n'est pas la même revue que `annulables` ci-dessus. Le job tourne en tâche
+// de fond (GitHub Actions) : impossible de le mettre en pause pour demander
+// « je crée ce thème, d'accord ? » en plein vol. On compare donc la liste des
+// thèmes d'AVANT (ici) à celle d'APRÈS (la prop `themes`, qui se rafraîchit
+// via `router.refresh()`) plutôt que de faire porter à la base une métadonnée
+// de provenance qui n'existe nulle part ailleurs.
+const CLE_THEMES_AVANT = "pulse.labels.ia.themes_avant";
+
 export function ClassifyButton({
   libelle = "✨ Classer mes contenus",
   /** true sur la page Thèmes : le bloc « annuler ces N étiquettes » apparaît
    *  sous le bouton. Ailleurs (l'assistant de mise en route), le geste est un
    *  pas du parcours et n'a rien à défaire — on ne l'encombre pas. */
   avecAnnulation = false,
+  /** Le vocabulaire ACTUEL (`profiles.labels`), pour repérer ce que l'IA
+   *  vient d'y ajouter. Sans cette prop, aucune revue ne s'affiche — un
+   *  appelant qui ne suit pas les thèmes (il n'y en a pas aujourd'hui) n'a
+   *  simplement rien à comparer. */
+  themes,
 }: {
   libelle?: string;
   avecAnnulation?: boolean;
+  themes?: string[];
 } = {}) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [annulables, setAnnulables] = useState<number>(0);
   const [annulMessage, setAnnulMessage] = useState<string | null>(null);
+  const [nouveaux, setNouveaux] = useState<string[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const router = useRouter();
 
@@ -71,6 +94,44 @@ export function ClassifyButton({
       /* rien à faire */
     }
   };
+  const oublierThemesAvant = () => {
+    try {
+      sessionStorage.removeItem(CLE_THEMES_AVANT);
+    } catch {
+      /* rien à faire */
+    }
+  };
+
+  // Recalcule les « nouveaux » à chaque fois que `themes` change — c'est-à-dire
+  // à chaque rendu serveur frais (`router.refresh()`), le seul moment où la
+  // liste peut avoir grandi. Un instantané absent (rien de lancé depuis cet
+  // onglet, ou déjà résolu) laisse `nouveaux` vide, sans effet de bord.
+  useEffect(() => {
+    if (!themes) return;
+    let avant: string[] = [];
+    try {
+      const brut = sessionStorage.getItem(CLE_THEMES_AVANT);
+      if (!brut) return;
+      avant = JSON.parse(brut);
+    } catch {
+      return;
+    }
+    const connus = new Set(avant);
+    const diff = themes.filter((t) => !connus.has(t));
+    setNouveaux(diff);
+    if (diff.length === 0) oublierThemesAvant();
+  }, [themes]);
+
+  const supprimerNouveau = (name: string) =>
+    startTransition(async () => {
+      await deleteLabel(name);
+      setNouveaux((cur) => {
+        const suite = cur.filter((t) => t !== name);
+        if (suite.length === 0) oublierThemesAvant();
+        return suite;
+      });
+      router.refresh();
+    });
 
   const recompter = useCallback(async () => {
     const depuis = lireDepuis();
@@ -147,6 +208,13 @@ export function ClassifyButton({
           /* pas d'annulation possible dans cet onglet — le bloc ne s'affichera pas */
         }
       }
+      if (themes) {
+        try {
+          sessionStorage.setItem(CLE_THEMES_AVANT, JSON.stringify(themes));
+        } catch {
+          /* pas de revue possible dans cet onglet — le bloc ne s'affichera pas */
+        }
+      }
       setPhase("running");
       setMessage(null);
       startPolling();
@@ -212,6 +280,45 @@ export function ClassifyButton({
             fermer
           </button>
         </p>
+      )}
+      {/* La revue des NOUVEAUX thèmes — distincte du bloc d'annulation
+          au-dessus (qui porte les ASSIGNATIONS). Garder ou supprimer touche
+          au vocabulaire du compte, pas à un item : ça se décide un par un,
+          pas en bloc. Voir `docs/adr/0001-revue-apres-coup-nouveaux-themes.md`. */}
+      {nouveaux.length > 0 && (
+        <div className="mt-2 rounded-lg border border-brand/25 bg-brand/[0.04] px-3 py-2 max-w-sm">
+          <p className="text-[11.5px] text-ink leading-relaxed mb-1.5">
+            L&apos;IA a proposé {nouveaux.length} nouveau{nouveaux.length > 1 ? "x" : ""} thème
+            {nouveaux.length > 1 ? "s" : ""} — tu gardes lesquels ?
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {nouveaux.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white pl-3 pr-1.5 py-1 text-[11.5px] font-medium text-ink"
+              >
+                {t}
+                <button
+                  disabled={pending}
+                  onClick={() => supprimerNouveau(t)}
+                  title={`Supprimer « ${t} »`}
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-faint hover:text-neg hover:bg-neg/[0.08] disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              setNouveaux([]);
+              oublierThemesAvant();
+            }}
+            className="mt-1.5 text-[11px] font-semibold text-faint hover:text-muted"
+          >
+            Je garde tout
+          </button>
+        </div>
       )}
     </>
   );
