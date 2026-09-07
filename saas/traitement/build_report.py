@@ -1384,7 +1384,8 @@ def _theme_conversions_txt(g4t: dict | None) -> str:
 
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                     obj_txt: str, g4t: dict | None = None, want: int = 3,
-                    eviter: list | None = None, deja_fait: list | None = None) -> list[dict]:
+                    eviter: list | None = None, deja_fait: list | None = None,
+                    sem: dict | None = None, hebdo: list | None = None) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
     (léger, thinking off). [] si Gemini échoue → jamais bloquant.
 
@@ -1413,7 +1414,14 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
     objet publicitaire à nommer. Le filtre `cible` ne s'y applique pas : ses
     pistes portent sur autre chose (cadence, format de publication) sans
     campagne ciblée, et `cible` vaut `None`. Pour un thème qui A des
-    campagnes, rien ne change : le filtre reste strict."""
+    campagnes, rien ne change : le filtre reste strict.
+
+    `sem`/`hebdo` (diagnostic `recos`, 7 septembre 2026) : `tsummary` est un
+    CUMUL sur tout l'historique du thème — mesuré, deux prompts consécutifs
+    avec de vrais nouveaux chiffres étaient identiques à 99,7 %. `sem`
+    (`_semaine_theme` de la semaine en cours) et `hebdo` (les semaines
+    précédentes) sont les seuls chiffres qui changent réellement chaque
+    rapport ; sans eux le prompt n'a concrètement rien de neuf à raconter."""
     import json as _json
     if want <= 0:
         return []
@@ -1423,6 +1431,31 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         for c in camps[:12]) or "aucune campagne pub sur ce thème"
     s = tsummary or {}
     roas_txt = f", ROAS {s['roas']:.1f}" if s.get("roas") is not None else ""
+    # CE QUI A RÉELLEMENT BOUGÉ CETTE SEMAINE — voir la docstring. `tsummary`
+    # (cumul) reste dans le prompt pour la taille du thème, mais c'est `sem`
+    # qui doit porter la nouveauté d'un rapport à l'autre.
+    semaine_prompt = ""
+    if sem:
+        _sem_bits = [f"{sem.get('spend', 0):.0f} CHF dépensés"]
+        if sem.get("clics"):
+            _sem_bits.append(f"{sem['clics']} clics")
+        if sem.get("posts"):
+            _sem_bits.append(f"{sem['posts']} posts publiés")
+        if sem.get("reach") is not None:
+            _sem_bits.append(f"portée moyenne {sem['reach']:.0f}")
+        _hebdo_vals = [h for h in (hebdo or [])[:4] if h]
+        _hist_txt = ""
+        if _hebdo_vals:
+            _hist_txt = (" Les semaines précédentes, dans l'ordre du plus récent au "
+                         "plus ancien : " + " / ".join(
+                             f"{h.get('spend', 0):.0f} CHF, {h.get('posts', 0)} posts"
+                             for h in _hebdo_vals) + ".")
+        semaine_prompt = (
+            f" CETTE SEMAINE précisément sur ce thème : {', '.join(_sem_bits)}."
+            f"{_hist_txt} Base tes idées sur ce qui a CHANGÉ ou PAS BOUGÉ cette "
+            "semaine par rapport aux précédentes — pas seulement sur le cumul "
+            "de tout l'historique ci-dessus."
+        )
     conv_txt = _theme_conversions_txt(g4t)
     conv_prompt = (
         f" Conversions Google Analytics désignées pour ce thème : {conv_txt}. "
@@ -1470,6 +1503,7 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
         f"{roas_txt}, {s.get('posts', 0)} posts. "
         f"Ses campagnes : {facts}."
+        f"{semaine_prompt}"
         f"{conv_prompt}{feedback_prompt} "
         f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
         "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
@@ -2817,6 +2851,10 @@ def build_payload(sb, user_id: str) -> dict | None:
             # façon jamais rédigées par Gemini sur ce chemin). `reco_ctx` est
             # déjà trié du plus récent au plus ancien : la première occurrence
             # d'un texte est la plus récente.
+            # Lu ici (avant `_ai_eviter`) plutôt qu'après `t_recos` — voir plus
+            # bas pour le blocage de fenêtre, et juste en dessous pour
+            # pourquoi son titre doit aussi entrer dans `eviter`.
+            _plan = theme_plan_by.get(nlbl)
             _ai_eviter, _ai_fait = [], []
             for _row in (reco_ctx or []):
                 if not str(_row.get("reco_key") or "").startswith("ai_"):
@@ -2830,12 +2868,24 @@ def build_payload(sb, user_id: str) -> dict | None:
                     _ai_eviter.append(_txt)
                 elif _row.get("reaction") == "done" and _txt not in _ai_fait:
                     _ai_fait.append(_txt)
+            # L'HYPOTHÈSE ÉPINGLÉE N'EST PAS UN RETOUR CLIENT (diagnostic
+            # `recos`, 7 septembre 2026) : sans son titre dans `eviter`, les 2
+            # pistes "generale" pouvaient reformuler l'idée déjà suivie par la
+            # 3e carte — 3 emplacements, une seule idée en pratique.
+            if _plan and _plan.get("snapshot") and _plan["snapshot"].get("title"):
+                _plan_title = str(_plan["snapshot"]["title"])
+                if _plan_title not in _ai_eviter:
+                    # En tête, pas à la suite : `eviter=_ai_eviter[:5]` plus
+                    # bas ne doit jamais le couper au profit d'un retour
+                    # "not_for_me" plus ancien.
+                    _ai_eviter = [_plan_title] + _ai_eviter
             t_recos: list[dict] = []
             for _essai in range(2):
                 try:
                     _cand = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl),
                                             _obj_txt_lbl, g4t=_g4t_lbl, want=3,
-                                            eviter=_ai_eviter[:5], deja_fait=_ai_fait[:5])
+                                            eviter=_ai_eviter[:5], deja_fait=_ai_fait[:5],
+                                            sem=_sem_theme, hebdo=_hebdo_theme)
                 except Exception:
                     _cand = []
                 # Filet : on écarte tout conseil qui OPPOSE Meta et Google (le
@@ -2862,7 +2912,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             # on réaffiche la carte déjà suivie (même `reco_key`, donc mêmes
             # retours client / mêmes verdicts) plutôt que la nouvelle proposée
             # par Gemini cette semaine — celle-ci est simplement écartée.
-            _plan = theme_plan_by.get(nlbl)
+            # (`_plan` déjà lu plus haut, avant `_ai_eviter`.)
             if _plan and _plan.get("decided_at") and _plan.get("snapshot"):
                 try:
                     _decided = date.fromisoformat(str(_plan["decided_at"])[:10])
@@ -3530,8 +3580,20 @@ def build_payload(sb, user_id: str) -> dict | None:
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
-        base = _kpis_du_theme(theme).get(kpi)
         r["metric"], r["metric_label"], r["direction"] = kpi, lbl_k, direction
+        # LA CARTE D'HYPOTHÈSE RÉAFFICHÉE (diagnostic `recos`, 7 septembre
+        # 2026, blocage de fenêtre plus haut, `t_recos[_i] = dict(_plan[...])`)
+        # NE RECALCULE PAS SA BASELINE ICI. `suivi_actions`, qui rend le
+        # verdict, ne la recalcule pas non plus (son propre `continue` : la
+        # ligne garde la baseline posée le jour du pin). Sans cette garde, le
+        # chiffre affiché sur la carte divergeait chaque semaine de celui sur
+        # lequel portera le verdict — deux photos différentes de la même
+        # décision.
+        _plan = theme_plan_by.get(_nrm(theme)) if theme else None
+        if (_plan and _plan.get("reco_key") == r.get("key")
+                and r.get("baseline") is not None):
+            return
+        base = _kpis_du_theme(theme).get(kpi)
         r["baseline"] = round(base, 4) if base is not None else None
 
     def _attach_effort(r):
