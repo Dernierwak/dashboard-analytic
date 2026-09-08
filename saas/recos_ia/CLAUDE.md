@@ -21,6 +21,7 @@ pas propres à ce dossier — voir `CLAUDE.md` § 7.
 | `labeling.py` | Oui — Gemini | Pose un thème sur chaque post/campagne qui n'en a pas. |
 | `categorizing.py` | Oui — Gemini | Catégorise chaque événement GA4 du catalogue qui n'en a pas. |
 | `user_persona.py` | Oui — IA injectée (`call_ai`, pas un import direct de Gemini) | Le **profil client vivant** : synthétise un profil pour personnaliser le TON et le NIVEAU des recos. |
+| `theme_memoire.py` | Oui — IA injectée (même patron que `user_persona.py`) | La **mémoire d'un thème** : condense ce qu'il a déjà tenté et ce que ça a donné, pour le prompt qui rédige ses pistes. |
 
 Le nom du dossier dit « recos IA » au sens large : *tout ce qui fabrique la
 recommandation*, pas seulement ce qui appelle un modèle. `reco_engine.py` et
@@ -94,10 +95,39 @@ c'est `_call_gemini`) — aucun import de Gemini ici, module headless.
 semaine (le rythme d'appel du module EST le rythme de mise à jour — pas de
 cache interne séparé).
 
+## `theme_memoire.py` — la mémoire d'un thème
+
+La **seconde couche** du Plan de thème. La première (`theme_plan.reco_key/
+levier/decided_at/snapshot`, déterministe) dit quelle hypothèse tourne en ce
+moment ; celle-ci dit ce que le thème a **déjà tenté**, sur quels leviers, et
+ce que ça a donné — une à deux phrases stockées dans `theme_plan.resume`,
+injectées dans le prompt de `_theme_ai_recos`. Sans elle, Pulse pouvait
+proposer une troisième hypothèse « argent » là où les deux premières avaient
+été mesurées `worse`.
+
+**Même patron que `user_persona.py`** (module headless, `call_ai` injecté,
+repli sur la valeur stockée si l'IA échoue) mais **PAS la même cadence**, et
+c'est la différence à ne pas rater : le profil client vivant est recalculé à
+CHAQUE rapport ; la mémoire d'un thème ne l'est qu'à la chute d'un **nouveau
+verdict** — le seul instant où elle change. Zéro verdict cette semaine, zéro
+appel IA.
+
+**L'IA reformule, elle ne calcule pas** : `build_prompt` ne reçoit que des
+valeurs déjà calculées par `build_report.py` (verdict, baseline, valeur
+constatée, variation), jamais de données brutes à agréger. C'est ce qui rend
+vérifiable par simple lecture qu'aucun chiffre n'est fabriqué.
+
+Deux conséquences à connaître avant d'y toucher : la mémoire écrite cette
+semaine est lue par le rapport **suivant** (la rédaction des pistes s'exécute
+avant la boucle de verdict — voir le commentaire au branchement, ce n'est pas
+un bug d'ordonnancement) ; et une hypothèse `archived`/`dropped` sort de la
+mémoire, faute de verdict à raconter.
+
 ## Qui appelle ce dossier
 
 `saas/collecte/automatisation/fetch_all.py` déclenche `labeling.py` et
 `categorizing.py` en fin de récolte (imports locaux, pour éviter un cycle).
 `saas/traitement/build_report.py` appelle `reco_engine.py` et `insights.py`
-pour construire le payload du rapport, et `user_persona.py` pour calibrer le
-brief IA sur le profil client vivant.
+pour construire le payload du rapport, `user_persona.py` pour calibrer le
+brief IA sur le profil client vivant, et `theme_memoire.py` depuis sa boucle
+de verdict, une fois par thème dont un verdict vient de tomber.

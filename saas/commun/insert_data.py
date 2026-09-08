@@ -682,6 +682,16 @@ def upsert_theme_plan(
     réaffichée pendant sa fenêtre d'attente (voir `fetch_theme_plan`).
     Défensif : une écriture ratée (table pas encore migrée) n'interrompt
     jamais la publication du rapport.
+
+    N'ÉCRIT QUE LA COUCHE ÉTAT. `resume`/`resume_at` (la couche mémoire, voir
+    `save_theme_resume` juste en dessous) sont absents de ce payload EXPRÈS :
+    la mémoire doit survivre au remplacement d'une hypothèse par la suivante,
+    c'est sa raison d'être. Ça repose sur le fait qu'un upsert PostgREST ne
+    met à jour que les colonnes présentes dans le corps de la requête — À
+    CONSTATER sur la base réelle une fois la migration jouée (spec
+    `.scratch/theme-memoire/spec.md`), pas à supposer : si l'observation
+    contredisait ça, il faudrait relire `resume`/`resume_at` ici et les
+    recopier dans le payload.
     """
     try:
         supabase.table("theme_plan").upsert(
@@ -697,3 +707,53 @@ def upsert_theme_plan(
         ).execute()
     except Exception:
         pass
+
+
+def save_theme_resume(
+    supabase: Client, user_id: str, theme: str, resume: str | None,
+) -> bool:
+    """Écrit la MÉMOIRE d'un thème (`theme_plan.resume/resume_at`), la seconde
+    couche du Plan de thème — voir `saas/recos_ia/theme_memoire.py`.
+
+    UN `update` CIBLÉ, PAS UN UPSERT, et c'est délibéré : deux écritures visent
+    la même ligne à deux moments différents du rapport — `upsert_theme_plan`
+    (couche état : reco_key/levier/decided_at/snapshot) puis celle-ci (couche
+    mémoire). Un upsert de ligne partielle pourrait effacer l'état ; un
+    `update` sur les deux seules colonnes de la mémoire ne le peut pas.
+
+    Returns True seulement si une ligne a réellement été touchée. Un refus RLS
+    sur un `update` ne lève AUCUNE erreur — il touche zéro ligne
+    (`CLAUDE.md` § 8) : sans ce retour, l'appelant croirait avoir écrit. Rend
+    False aussi quand les colonnes n'existent pas encore (migration pas jouée),
+    sans jamais interrompre la publication du rapport.
+
+    DEUX CAS OÙ ÇA REND `False` SANS QUE RIEN NE SOIT CASSÉ, et c'est assumé :
+    · aucune ligne `theme_plan` pour ce thème (aucune hypothèse n'y a jamais
+      démarré) — la mémoire n'a pas de plan où se poser ;
+    · le client a RENOMMÉ le thème : `suivi_actions` garde l'ancien libellé,
+      `theme_plan` porte le nouveau, le `.eq("theme", …)` ne matche plus. C'est
+      la conséquence directe d'une décision de la spec — la mémoire suit le NOM
+      du thème, comme tout le reste de Pulse l'identifie —, pas un oubli.
+    Dans les deux cas `build_report.py` repassera : tant que `resume` est vide
+    et que le thème a de la matière mesurée, il retente au rapport suivant.
+
+    PAS D'UPSERT ICI, même « ne portant que les deux colonnes mémoire » : ce
+    serait reprendre le risque que la spec demande justement d'écarter tant
+    qu'on n'a pas CONSTATÉ qu'un upsert partiel laisse les autres colonnes
+    intactes. Un `update` ne peut pas effacer l'état, un upsert peut.
+    """
+    from datetime import datetime, timezone
+    try:
+        res = (
+            supabase.table("theme_plan")
+            .update({
+                "resume": (resume or "").strip() or None,
+                "resume_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("user_id", user_id)
+            .eq("theme", theme)
+            .execute()
+        )
+        return bool(res.data)
+    except Exception:
+        return False

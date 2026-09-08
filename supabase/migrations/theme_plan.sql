@@ -39,6 +39,29 @@ CREATE TABLE IF NOT EXISTS public.theme_plan (
     CONSTRAINT theme_plan_uq UNIQUE (user_id, theme)
 );
 
+-- ── La SECONDE couche : la mémoire narrative du thème ──────────────────────
+-- Les colonnes ci-dessus disent QUELLE hypothèse tourne en ce moment (l'état).
+-- Celles-ci disent ce que le thème a DÉJÀ TENTÉ et ce que ça a donné, en une
+-- à deux phrases — la seule chose qui remontait jusqu'ici à l'IA qui rédige
+-- les pistes était la semaine en cours : Pulse pouvait proposer une troisième
+-- hypothèse « argent » là où les deux premières avaient été mesurées `worse`
+-- (spec `.scratch/theme-memoire/spec.md`).
+--
+-- `resume`    : le texte condensé, réécrit par `saas/recos_ia/theme_memoire.py`
+--               UNIQUEMENT à la chute d'un nouveau verdict — jamais à chaque
+--               rapport. Survit au remplacement d'une hypothèse par la
+--               suivante (`upsert_theme_plan` ne touche pas ces deux
+--               colonnes), c'est toute sa raison d'être : raconter une
+--               tendance sur plusieurs cycles, pas le dernier coup joué.
+-- `resume_at` : quand il a été écrit — savoir qu'une mémoire existe et depuis
+--               quand sans avoir à interpréter le texte.
+--
+-- Mémoire INTERNE : elle nourrit un prompt, elle n'est affichée nulle part
+-- dans `saas/web/`. Ajout pur, idempotent, aucun DROP, aucun DELETE.
+ALTER TABLE public.theme_plan
+    ADD COLUMN IF NOT EXISTS resume     text,
+    ADD COLUMN IF NOT EXISTS resume_at  timestamptz;
+
 CREATE INDEX IF NOT EXISTS idx_theme_plan_user
     ON public.theme_plan (user_id, theme);
 

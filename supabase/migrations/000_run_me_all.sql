@@ -55,7 +55,8 @@
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
 --   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
---          raison qu'au-dessus (elle CRÉE une table).
+--          raison qu'au-dessus (elle CRÉE une table) — plus ses colonnes
+--          `resume`/`resume_at`, la mémoire narrative du thème.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1460,6 +1461,13 @@ DROP TABLE IF EXISTS public.reco_news;
 --     Une ligne par (user_id, theme) : une nouvelle hypothèse REMPLACE la
 --     ligne du thème plutôt que d'empiler un historique — ce n'est pas un
 --     journal, c'est l'état courant.
+--
+--     SECONDE COUCHE, `resume`/`resume_at` : la mémoire narrative du thème
+--     (ce qu'il a déjà tenté, sur quels leviers, ce que ça a donné), réécrite
+--     à la chute d'un nouveau verdict par `saas/recos_ia/theme_memoire.py` et
+--     injectée dans le prompt qui rédige ses pistes. Elle SURVIT au
+--     remplacement d'une hypothèse par la suivante — c'est sa raison d'être.
+--     Mémoire interne, jamais affichée dans `saas/web/`.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.theme_plan (
@@ -1474,6 +1482,11 @@ CREATE TABLE IF NOT EXISTS public.theme_plan (
     updated_at  timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT theme_plan_uq UNIQUE (user_id, theme)
 );
+
+-- Ajout pur pour une base déjà créée par une version antérieure de ce fichier.
+ALTER TABLE public.theme_plan
+    ADD COLUMN IF NOT EXISTS resume     text,
+    ADD COLUMN IF NOT EXISTS resume_at  timestamptz;
 
 CREATE INDEX IF NOT EXISTS idx_theme_plan_user
     ON public.theme_plan (user_id, theme);

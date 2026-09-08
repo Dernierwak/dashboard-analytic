@@ -520,19 +520,40 @@ def fetch_theme_plan(supabase: Client, user_id: str) -> dict[str, dict]:
     chaque semaine et « suivre une théorie » resterait une façade (wayfinder
     `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
 
+    Ramène AUSSI la seconde couche du plan, la mémoire narrative du thème
+    (`resume`, voir `saas/recos_ia/theme_memoire.py`) : une seule lecture pour
+    l'état et la mémoire, celle-ci n'étant déjà faite qu'une fois par rapport.
+
     Returns: {thème normalisé (minuscules) : {reco_key, levier, decided_at,
-    snapshot}}. {} si la table n'est pas encore migrée ou si rien n'est suivi.
+    snapshot, resume}}. {} si la table n'est pas encore migrée ou si rien
+    n'est suivi.
     """
-    try:
-        res = (
-            supabase.table("theme_plan")
-            .select("theme, reco_key, levier, decided_at, snapshot")
-            .eq("user_id", user_id)
-            .execute()
-        )
+    # `resume` est arrivé après la table : demander une colonne absente fait
+    # échouer la requête ENTIÈRE côté PostgREST, pas seulement la colonne. Sans
+    # ce repli, un déploiement du code en avance sur la migration ferait perdre
+    # aussi l'ÉTAT — donc le blocage d'une nouvelle hypothèse.
+    #
+    # LE REPLI NE VAUT QUE POUR UNE COLONNE INCONNUE (42703), pas pour
+    # n'importe quel échec : sur un timeout ou un 5xx, retenter sans `resume`
+    # peut réussir et publier un rapport SANS mémoire alors que la base en a
+    # une — indiscernable d'un thème qui n'en a pas encore. Une vraie panne
+    # doit rendre {} comme avant, pas une demi-lecture silencieuse.
+    for cols in ("theme, reco_key, levier, decided_at, snapshot, resume",
+                 "theme, reco_key, levier, decided_at, snapshot"):
+        try:
+            res = (
+                supabase.table("theme_plan")
+                .select(cols)
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except Exception as err:
+            _msg = str(err).lower()
+            if "42703" in _msg or "does not exist" in _msg:
+                continue
+            return {}
         return {str(r["theme"]).strip().lower(): r for r in (res.data or []) if r.get("theme")}
-    except Exception:
-        return {}
+    return {}
 
 
 def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:

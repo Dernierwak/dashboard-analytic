@@ -44,6 +44,7 @@ from saas.recos_ia.reco_engine import (  # noqa: E402
 )
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
 from saas.recos_ia.user_persona import build_user_persona  # noqa: E402
+from saas.recos_ia.theme_memoire import condense_theme_memoire  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -1338,7 +1339,8 @@ def _theme_conversions_txt(g4t: dict | None) -> str:
 def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
                     obj_txt: str, g4t: dict | None = None, want: int = 3,
                     eviter: list | None = None, deja_fait: list | None = None,
-                    sem: dict | None = None, hebdo: list | None = None) -> list[dict]:
+                    sem: dict | None = None, hebdo: list | None = None,
+                    memoire: str | None = None) -> list[dict]:
     """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
     (léger, thinking off). [] si Gemini échoue → jamais bloquant.
 
@@ -1374,7 +1376,14 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
     avec de vrais nouveaux chiffres étaient identiques à 99,7 %. `sem`
     (`_semaine_theme` de la semaine en cours) et `hebdo` (les semaines
     précédentes) sont les seuls chiffres qui changent réellement chaque
-    rapport ; sans eux le prompt n'a concrètement rien de neuf à raconter."""
+    rapport ; sans eux le prompt n'a concrètement rien de neuf à raconter.
+
+    `memoire` (spec `.scratch/theme-memoire/spec.md`) : le résumé narratif de
+    ce que ce thème a déjà TENTÉ et de ce que ça a donné, rédigé à la chute du
+    dernier verdict (`saas/recos_ia/theme_memoire.py`) et lu ici tel quel.
+    Passé en texte libre, jamais en contrainte : aucune règle n'interdit un
+    levier déjà échoué (décision du ticket 02 — l'IA reste libre, c'est
+    l'absence d'historique qui était le manque)."""
     import json as _json
     if want <= 0:
         return []
@@ -1409,6 +1418,14 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
             "semaine par rapport aux précédentes — pas seulement sur le cumul "
             "de tout l'historique ci-dessus."
         )
+    # CE QUE CE THÈME A DÉJÀ TENTÉ — du contexte, à côté des chiffres de la
+    # semaine, jamais une contrainte de format (voir la docstring).
+    memoire_prompt = (
+        " MÉMOIRE DE CE THÈME (ce qui a déjà été tenté et ce que ça a donné) : "
+        f"{(memoire or '').strip()} Tiens-en compte pour ne pas reproposer ce "
+        "qui a déjà échoué ici — tu restes libre du levier que tu choisis."
+        if (memoire or "").strip() else ""
+    )
     conv_txt = _theme_conversions_txt(g4t)
     conv_prompt = (
         f" Conversions Google Analytics désignées pour ce thème : {conv_txt}. "
@@ -1457,6 +1474,7 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
         f"{roas_txt}, {s.get('posts', 0)} posts. "
         f"Ses campagnes : {facts}."
         f"{semaine_prompt}"
+        f"{memoire_prompt}"
         f"{conv_prompt}{feedback_prompt} "
         f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
         "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
@@ -2831,13 +2849,23 @@ def build_payload(sb, user_id: str) -> dict | None:
                     # bas ne doit jamais le couper au profit d'un retour
                     # "not_for_me" plus ancien.
                     _ai_eviter = [_plan_title] + _ai_eviter
+            # LA MÉMOIRE PASSÉE JUSTE EN DESSOUS DATE DU RAPPORT PRÉCÉDENT, ET
+            # C'EST VOULU (spec `.scratch/theme-memoire/spec.md`).
+            # `_plan["resume"]` est réécrit à la chute d'un verdict, dans la
+            # boucle de verdict qui s'exécute BIEN PLUS BAS dans
+            # `build_payload` — un résumé écrit aujourd'hui est donc lu par la
+            # rédaction du rapport SUIVANT. Ce n'est PAS un bug d'ordonnancement
+            # à « corriger » en remontant l'appel de condensation : la mémoire
+            # décrit un cycle qui vient de se clore, et c'est le cycle suivant
+            # qui doit en tenir compte.
             t_recos: list[dict] = []
             for _essai in range(2):
                 try:
                     _cand = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl),
                                             _obj_txt_lbl, g4t=_g4t_lbl, want=3,
                                             eviter=_ai_eviter[:5], deja_fait=_ai_fait[:5],
-                                            sem=_sem_theme, hebdo=_hebdo_theme)
+                                            sem=_sem_theme, hebdo=_hebdo_theme,
+                                            memoire=(_plan or {}).get("resume"))
                 except Exception:
                     _cand = []
                 # Filet : on écarte tout conseil qui OPPOSE Meta et Google (le
@@ -3629,6 +3657,16 @@ def build_payload(sb, user_id: str) -> dict | None:
                 # confirmation manuelle) puisque `resolveAction` ne réécrit
                 # jamais `detail`.
                 "origin": "auto",
+                # LE LEVIER, POUR QUE LA MÉMOIRE DU THÈME LE MESURE AU LIEU DE
+                # LE DEVINER (spec `.scratch/theme-memoire/spec.md`).
+                # `suivi_actions` n'a pas de colonne `levier` : sans ce champ,
+                # « trois hypothèses argent d'affilée » serait inféré depuis
+                # l'indicateur — donc fabriqué (`CLAUDE.md` § 7). Il survit
+                # aux gestes client pour la même raison qu'`origin`.
+                # Les hypothèses écrites AVANT ce champ n'en ont pas : la
+                # condensation les traite en « levier inconnu », jamais en
+                # levier deviné.
+                "levier": _hyp.get("levier"),
             },
         }
         try:
@@ -3695,6 +3733,19 @@ def build_payload(sb, user_id: str) -> dict | None:
         _sa = []
     if _sa:
         running, verified = [], []
+        # ── LA MÉMOIRE DES THÈMES SE CONSTRUIT DANS CETTE BOUCLE ─────────────
+        # (spec `.scratch/theme-memoire/spec.md`). `_sa` porte déjà tout ce
+        # qu'il faut — aucune requête supplémentaire : les hypothèses passées
+        # d'un thème, c'est ces mêmes lignes filtrées sur `theme` et sur
+        # `detail.origin == "auto"`.
+        #
+        # LIMITE ASSUMÉE : une hypothèse que le client a rangée (`archived`)
+        # ou abandonnée (`dropped`) n'est pas dans `_sa` — elle sort donc de
+        # la mémoire. C'est cohérent (une hypothèse abandonnée n'a pas de
+        # verdict à raconter), mais ce n'est pas neutre, d'où cette ligne.
+        _mem_hist: dict[str, list[dict]] = {}   # thème normalisé → hypothèses mesurées
+        _mem_labels: dict[str, str] = {}        # thème normalisé → son libellé réel
+        _mem_nouveaux: set[str] = set()         # thèmes dont un verdict vient de tomber
         for a in _sa:
             metric = a.get("metric")
             base = a.get("baseline")
@@ -3741,6 +3792,53 @@ def build_payload(sb, user_id: str) -> dict | None:
                     "verdict": _verdict,
                 })
                 verified.append(entry)
+                # LA MÉMOIRE DU THÈME SE NOURRIT ICI, ET LE TEST « CE VERDICT
+                # EST-IL NOUVEAU ? » DOIT PASSER AVANT L'ÉCRITURE JUSTE EN
+                # DESSOUS : `_sa` a été lu avant toute écriture de verdict de ce
+                # rapport, donc `a["verdict"]` porte encore la valeur d'AVANT.
+                # Une ligne qui n'en avait pas et qui vient d'en recevoir un,
+                # c'est exactement l'instant — le seul — où la mémoire du thème
+                # change réellement : pas besoin d'une colonne « dernière
+                # condensation » ni d'une comparaison de dates.
+                _det = a.get("detail") if isinstance(a.get("detail"), dict) else {}
+                if _det.get("origin") == "auto" and a.get("theme"):
+                    _mk = _nrm(a["theme"])
+                    _mem_labels[_mk] = a["theme"]
+                    # UNE LIGNE `auto` RESTE « due » POUR TOUJOURS : passé son
+                    # `check_at`, elle est remesurée à CHAQUE rapport contre le
+                    # KPI du jour. `then/now/delta` d'une hypothèse de trois
+                    # mois ne mesurent donc plus cette hypothèse — ils mesurent
+                    # trois mois de dérive du compte. Les donner à la
+                    # condensation reviendrait à attribuer à une idée un
+                    # mouvement qui ne lui appartient pas : un chiffre non
+                    # mérité, exactement ce que `CLAUDE.md` § 7 interdit.
+                    #
+                    # On ne garde donc le triplet mesuré que le jour où le
+                    # verdict tombe VRAIMENT (première mesure à l'échéance) ;
+                    # ensuite, seul le verdict PERSISTÉ subsiste — lui n'a pas
+                    # dérivé, il a été figé à sa date. La mémoire garde ainsi
+                    # « trois hypothèses argent, deux worse une stable » sans
+                    # jamais rattacher un pourcentage à la mauvaise cause.
+                    _verdict_fige = a.get("verdict")
+                    _mem_item = {
+                        "titre": a.get("title"),
+                        # Absent des hypothèses écrites avant que `detail` le
+                        # porte → « levier inconnu », jamais un levier déduit
+                        # de l'indicateur.
+                        "levier": _det.get("levier"),
+                        "decided_at": entry["decided_at"],
+                        "check_at": entry["check_at"],
+                        "verdict": _verdict_fige or _verdict,
+                    }
+                    if not _verdict_fige:
+                        _mem_item.update({
+                            "depart": entry["then"],
+                            "constate": entry["now"],
+                            "variation": entry["delta"],
+                            "indicateur": a.get("metric_label"),
+                        })
+                        _mem_nouveaux.add(_mk)
+                    _mem_hist.setdefault(_mk, []).append(_mem_item)
                 # PERSISTE LE VERDICT (TASK-025, migration `suivi_actions_verdict.sql`)
                 # — sans ça, il n'existait qu'à la volée, dans CE rapport, et
                 # redevenait introuvable la semaine suivante : `build_recos`
@@ -3800,6 +3898,40 @@ def build_payload(sb, user_id: str) -> dict | None:
                             }
                 running.append(entry)
         tracking = {"running": running, "verified": verified}
+
+        # ── RÉÉCRITURE DE LA MÉMOIRE — UN APPEL PAR THÈME, ET SEULEMENT LÀ ───
+        # Un appel IA par THÈME dont un verdict vient de tomber, jamais un par
+        # LIGNE : deux hypothèses du même thème arrivées à échéance le même
+        # jour donnent un seul appel, avec l'historique complet du thème.
+        # Aucun verdict nouveau cette semaine ⇒ zéro appel IA ⇒ le `resume`
+        # stocké est relu inchangé au rapport suivant.
+        #
+        # PLUS UN RATTRAPAGE, et il n'est pas décoratif : un verdict n'est
+        # « nouveau » qu'une seule fois dans la vie d'une hypothèse (le test
+        # porte sur la colonne `verdict`, écrite juste après). Sans rattrapage,
+        # un seul timeout Gemini ce jour-là laissait le thème SANS AUCUNE
+        # mémoire pour toujours. On repasse donc aussi sur les thèmes qui ont
+        # de la matière mesurée mais rien de stocké — borné par construction :
+        # dès qu'une condensation réussit, `resume` cesse d'être vide et ce
+        # second déclencheur s'éteint.
+        _mem_a_faire = set(_mem_nouveaux)
+        for _mk in _mem_hist:
+            if not (theme_plan_by.get(_mk) or {}).get("resume"):
+                _mem_a_faire.add(_mk)
+        # LIMITE CONNUE, à ne pas confondre avec un bug : si l'écriture du
+        # verdict ci-dessus échoue en silence (refus RLS — zéro ligne touchée,
+        # aucune erreur, `CLAUDE.md` § 8 — ou colonne pas encore migrée), la
+        # ligne se represente comme « nouvelle » à chaque rapport. Le coût est
+        # alors d'un appel Gemini léger par thème et par semaine. C'est le
+        # symptôme d'une panne qui casse DÉJÀ `fetch_reco_verdicts` et la
+        # repondération des conseils : le corriger se fait là-bas, pas ici.
+        for _mk in sorted(_mem_a_faire):
+            try:
+                condense_theme_memoire(
+                    sb, user_id, _mem_labels[_mk], _call_gemini, _mem_hist.get(_mk),
+                )
+            except Exception:
+                pass  # une panne de mémoire ne prive jamais le client du rapport
 
     # ── Vision + matrice compacte pour le payload ────────────────────────────
     vision = None
