@@ -135,6 +135,20 @@ lieu d'être figé — il fait dire à Gemini qu'une hypothèse ratée a réussi
 par identifiant, son revenu par nom — **une question pour David, pas une
 correction**).
 
+**[02 · La garde de collision](issues/02-garde-de-collision-resolveaction.md)** —
+« le premier verdict tient » existe maintenant en code. `resolveAction`
+conditionne son `update` au statut de départ **et** lit les lignes touchées
+(`.in("status", …)` + `.select("id")` : l'un sans l'autre remplace un écrasement
+silencieux par un refus silencieux). Sur zéro ligne, le statut réel est **relu**
+avant qu'un message soit écrit — on nomme l'état, jamais une personne (ADR 0004),
+et on ne l'affirme pas sans l'avoir lu (§7). `reco_feedback` n'est plus écrit sur
+un geste refusé. **Repli appliqué** : la suppression d'une note par son auteur
+attend `author_id`, que [05](issues/05-migration-deux-colonnes.md) n'a pas encore
+posé. **Non vérifié en base** — aucune collision réelle jouée ; le projet Supabase
+de `saas/web/.env.local` répond mais ne donne que la clé anon. La revue des
+voisines a ouvert
+[19 · Trente écritures qui ne se relisent pas](issues/19-ecritures-qui-ne-se-relisent-pas.md).
+
 **Un seizième ticket est né hors des quinze** :
 [16 · Le seam du payload](issues/16-le-seam-du-payload.md). C'est **le seul que
 la refonte n'a pas tranché** — il vient de la session `/to-spec` du 2026-09-11,

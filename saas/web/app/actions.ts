@@ -105,6 +105,51 @@ export async function startTracking(a: {
   return { ok: true };
 }
 
+// LE PREMIER VERDICT TIENT — les départs admis pour chaque geste.
+//
+// Un compte Pulse appartient à une entreprise : deux membres « Peut agir »
+// peuvent juger la même action à deux minutes d'intervalle. Le statut n'a pas
+// d'auteur et ne peut pas porter deux verdicts (ADR 0004) — le premier écrit,
+// le second est refusé et on le lui dit.
+//
+// Ces ensembles sont exactement les états depuis lesquels le rail PROPOSE le
+// geste (`rail-actions.tsx` : `vivantes` = running|done|auto, et
+// `action-vivante.tsx` pour le bouton « ✓ Vu », réservé à ce qui a déjà un
+// verdict à voir). Élargir un ensemble ne rend pas l'app plus tolérante : ça
+// rétablit le dernier-arrivé-gagne que l'ADR interdit.
+const DEPART_ADMIS: Record<"done" | "seen" | "drop", string[]> = {
+  done: ["running", "auto"],
+  seen: ["done", "auto"],
+  drop: ["running", "done", "auto"],
+};
+
+// Le statut où l'action a été trouvée, dit à la 2ᵉ personne. On nomme l'ÉTAT,
+// jamais quelqu'un : un statut n'a pas d'auteur, il n'y a rien à nommer
+// (ADR 0004, prix accepté — on ne saura jamais qui a jugé quoi).
+//
+// La table couvre les CINQ valeurs que `status` peut prendre, pas seulement
+// celles qui collisionnent aujourd'hui : `auto` est un départ admis pour les
+// trois gestes, donc injoignable ici tant que `DEPART_ADMIS` ne bouge pas.
+// Resserrer un ensemble plus tard ne doit pas ouvrir un trou dans le message.
+const DEJA: Record<string, string> = {
+  // Aucun geste ne ramène une action à `running` : ce cas ne se produit que si
+  // l'écran est en retard sur la base. On dit donc l'état lu, sans raconter une
+  // transition qui n'existe pas.
+  running: "encore en cours",
+  // « faite » mentirait : `auto` est l'hypothèse posée par le worker SANS clic
+  // du client (même précaution que le libellé de `reco-actions.tsx`).
+  auto: "suivie automatiquement",
+  done: "déjà marquée faite",
+  archived: "déjà rangée",
+  dropped: "déjà abandonnée",
+};
+
+const ECHEC_MAJ: Record<"done" | "seen" | "drop", string> = {
+  done: "Enregistrement impossible — rejoue le SQL Supabase (suivi_actions).",
+  seen: "Impossible de ranger cette action — réessaie.",
+  drop: "Impossible de retirer cette action — réessaie.",
+};
+
 // Cycle de vie d'une action, écrit dans Supabase à chaque étape :
 //   « ✓ C'est fait »  → status='done' + done_at=aujourd'hui, et l'échéance du
 //                       verdict repart de CE jour (+14 j) : on mesure l'effet
@@ -132,69 +177,99 @@ export async function resolveAction(
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  if (action === "drop") {
-    const r = await supabase
+  const today = new Date();
+  const check = new Date(today);
+  check.setDate(check.getDate() + 14);
+
+  // `.in("status", …)` est la garde de collision ; `.select("id")` est ce qui
+  // la rend visible. Sans `returning=representation`, PostgREST ne dit pas
+  // combien de lignes il a touchées, et un `update` qui n'en touche AUCUNE
+  // ressort SANS erreur (`CLAUDE.md` §8) — l'écran répondrait « enregistré »
+  // en ayant écrasé, ou rien écrit du tout. Les deux vont ensemble.
+  const majSiStatut = (valeurs: Record<string, unknown>) =>
+    supabase
       .from("suivi_actions")
-      .update({ status: "dropped" })
+      .update(valeurs)
       .eq("id", id)
-      .eq("user_id", user.id);
-    if (r.error) return { ok: false, message: "Impossible de retirer cette action — réessaie." };
-  } else if (action === "seen") {
-    const r = await supabase
+      .eq("user_id", user.id)
+      .in("status", DEPART_ADMIS[action])
+      .select("id");
+
+  let maj =
+    action === "drop"
+      ? await majSiStatut({ status: "dropped" })
+      : action === "seen"
+        ? await majSiStatut({ status: "archived" })
+        : await majSiStatut({
+            status: "done",
+            done_at: isoDate(today),
+            check_at: isoDate(check),
+          });
+  // Repli si la colonne done_at n'existe pas encore (migration §10 pas passée).
+  if (maj.error && action === "done")
+    maj = await majSiStatut({ status: "done", check_at: isoDate(check) });
+  if (maj.error) return { ok: false, message: ECHEC_MAJ[action] };
+
+  if ((maj.data ?? []).length === 0) {
+    // Zéro ligne : personne n'a levé d'erreur, et pourtant rien n'est écrit.
+    // On relit le statut réel pour DIRE lequel — annoncer « déjà faite » sans
+    // l'avoir lu serait un fait fabriqué (`CLAUDE.md` §7), et la ligne peut
+    // aussi avoir été retirée entre-temps (`startTracking` la supprime).
+    const { data: ligne } = await supabase
       .from("suivi_actions")
-      .update({ status: "archived" })
+      .select("status")
       .eq("id", id)
-      .eq("user_id", user.id);
-    if (r.error) return { ok: false, message: "Impossible de ranger cette action — réessaie." };
-  } else {
-    const today = new Date();
-    const check = new Date(today);
-    check.setDate(check.getDate() + 14);
-    const r = await supabase
-      .from("suivi_actions")
-      .update({ status: "done", done_at: isoDate(today), check_at: isoDate(check) })
-      .eq("id", id)
-      .eq("user_id", user.id);
-    // Repli si la colonne done_at n'existe pas encore (migration §10 pas passée).
-    if (r.error) {
-      const r2 = await supabase
-        .from("suivi_actions")
-        .update({ status: "done", check_at: isoDate(check) })
-        .eq("id", id)
-        .eq("user_id", user.id);
-      if (r2.error)
-        return { ok: false, message: "Enregistrement impossible — rejoue le SQL Supabase (suivi_actions)." };
-    }
-    // Un seul geste, deux tables : le conseil est aussi marqué « appliqué »
-    // côté reco_feedback → l'IA sait ce que tu as réellement mis en place.
-    if (recoKey) {
-      // `theme` vaut `""` (jamais `null`) : c'est le sentinel « pas de
-      // thème » posé dans la clé d'unicité `reco_feedback_uq2` (migration
-      // reco_feedback_contexte.sql) — un `not_for_me`/`done` sur le thème A
-      // et un autre sur le thème B, la même semaine, doivent produire deux
-      // LIGNES distinctes, pas écraser l'une l'autre (rejet du checker, 2e
-      // passe : `null` aurait laissé passer plusieurs lignes « réglages »
-      // pour la même clé/semaine, `""` est une vraie valeur comparable).
-      const fb = await supabase.from("reco_feedback").upsert(
-        {
-          user_id: user.id,
-          reco_key: recoKey,
-          reaction: "done",
-          week_start: mondayISO(),
-          theme: theme ?? "",
-          title: title ?? null,
-        },
-        { onConflict: "user_id,reco_key,week_start,theme" }
+      .eq("user_id", user.id)
+      .maybeSingle();
+    // PAS de `revalidatePath` ici, et c'est délibéré : `ActionVivante` est
+    // montée avec `key={id:status}` (`rail-entree.tsx`) pour que son état
+    // local ne survive pas à un rafraîchissement. Rafraîchir maintenant la
+    // remonterait à neuf et EFFACERAIT le message qu'on vient d'écrire — le
+    // client verrait la ligne basculer sans savoir que son clic a été refusé,
+    // c'est-à-dire exactement le « enregistré » silencieux qu'on corrige. Le
+    // message dit donc l'état réel et demande le rechargement.
+    if (!ligne)
+      return { ok: false, message: "Cette action n'est plus dans ton suivi — recharge la page." };
+    const etat = DEJA[String(ligne.status)] ?? `déjà dans l'état « ${ligne.status} »`;
+    return {
+      ok: false,
+      message:
+        `Rien enregistré : cette action est ${etat} — le premier verdict l'emporte. ` +
+        `Recharge la page pour voir où elle en est.`,
+    };
+  }
+
+  // Un seul geste, deux tables : le conseil est aussi marqué « appliqué »
+  // côté reco_feedback → l'IA sait ce que tu as réellement mis en place. On
+  // n'y arrive qu'après une ligne réellement touchée plus haut : sans ça, une
+  // collision aurait quand même écrit « appliqué » pour un geste refusé.
+  if (action === "done" && recoKey) {
+    // `theme` vaut `""` (jamais `null`) : c'est le sentinel « pas de
+    // thème » posé dans la clé d'unicité `reco_feedback_uq2` (migration
+    // reco_feedback_contexte.sql) — un `not_for_me`/`done` sur le thème A
+    // et un autre sur le thème B, la même semaine, doivent produire deux
+    // LIGNES distinctes, pas écraser l'une l'autre (rejet du checker, 2e
+    // passe : `null` aurait laissé passer plusieurs lignes « réglages »
+    // pour la même clé/semaine, `""` est une vraie valeur comparable).
+    const fb = await supabase.from("reco_feedback").upsert(
+      {
+        user_id: user.id,
+        reco_key: recoKey,
+        reaction: "done",
+        week_start: mondayISO(),
+        theme: theme ?? "",
+        title: title ?? null,
+      },
+      { onConflict: "user_id,reco_key,week_start,theme" }
+    );
+    // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
+    // n'existent pas encore (migration reco_feedback_contexte.sql pas
+    // passée) — même patron que done_at plus haut, sur l'ANCIENNE clé.
+    if (fb.error) {
+      await supabase.from("reco_feedback").upsert(
+        { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
+        { onConflict: "user_id,reco_key,week_start" }
       );
-      // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
-      // n'existent pas encore (migration reco_feedback_contexte.sql pas
-      // passée) — même patron que done_at plus haut, sur l'ANCIENNE clé.
-      if (fb.error) {
-        await supabase.from("reco_feedback").upsert(
-          { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
-          { onConflict: "user_id,reco_key,week_start" }
-        );
-      }
     }
   }
   revalidatePath("/");
