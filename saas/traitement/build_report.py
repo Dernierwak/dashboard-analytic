@@ -2593,14 +2593,19 @@ def build_payload(sb, user_id: str) -> dict | None:
     # additionne des dépenses et des clics — deux grandeurs que chaque régie
     # mesure elle-même, comme le fait déjà `_rule_roas`. C'est le REVENU qu'on
     # ne saurait pas ventiler entre les deux, jamais le coût.
-    def _pub_theme(lbl, d1, d2):
+    #
+    # `lbl=None` NE FILTRE RIEN : c'est toute la pub du compte sur la fenêtre.
+    # Ce cas existe pour `_kpis_window`, qui mesure aussi bien un thème que le
+    # compte entier et qui doit lire le même périmètre dans les deux cas.
+    def _pub_fenetre(lbl, d1, d2):
         sp = im = 0.0
         cl = 0
         canaux = set()
         if df_meta_raw is not None and not df_meta_raw.empty:
             _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
                              & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
-            _m = _m[_m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
+            if lbl is not None:
+                _m = _m[_m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
             if not _m.empty:
                 sp += float(_m["spend"].sum())
                 cl += int(_m["clicks"].sum())
@@ -2613,13 +2618,15 @@ def build_payload(sb, user_id: str) -> dict | None:
             # L'identifiant de campagne prime sur le nom : c'est lui que porte
             # `google_campaign_config`, et deux campagnes Google peuvent
             # partager un nom.
-            if "campaign_id" in _g.columns:
-                _g = _g[_g["campaign_id"].astype(str).map(
-                    lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
-            elif "campaign_name" in _g.columns:
-                _g = _g[_g["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
-            else:
-                _g = _g.iloc[0:0]
+            if lbl is not None:
+                if "campaign_id" in _g.columns:
+                    _g = _g[_g["campaign_id"].astype(str).map(
+                        lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
+                elif "campaign_name" in _g.columns:
+                    _g = _g[_g["campaign_name"].map(
+                        lambda n: name2label.get(_nrm(n)) == lbl)]
+                else:
+                    _g = _g.iloc[0:0]
             if not _g.empty:
                 sp += float(_g["cost_micros"].sum()) / 1e6
                 cl += int(_g["clicks"].sum())
@@ -2642,7 +2649,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         }
 
     def _semaine_theme(lbl, d1, d2):
-        _p = _pub_theme(lbl, d1, d2)
+        _p = _pub_fenetre(lbl, d1, d2)
         _p.update(_posts_theme(lbl, d1, d2))
         return _p
 
@@ -2764,8 +2771,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             pass
         try:
             _prec = _hebdo_theme[0]
-            _ref = _pub_theme(lbl, cur_since - timedelta(days=_CALME_REF),
-                              cur_since - timedelta(days=1))
+            _ref = _pub_fenetre(lbl, cur_since - timedelta(days=_CALME_REF),
+                                cur_since - timedelta(days=1))
             _frais = all((_couv_regie.get(_c) or date.min) >= last_full_day
                          for _c in (_ref["canaux"] or ()))
             _a = _reco_theme_arret(lbl, _sem_theme, _prec, _ref,
@@ -3284,6 +3291,35 @@ def build_payload(sb, user_id: str) -> dict | None:
     # action antérieure garde la mesure sur laquelle elle a été photographiée.
     _BASCULE_THEME = "2026-08-12"
 
+    # Le jour où la dépense payante est passée de Meta seul aux deux régies
+    # (ticket 01). Une action photographiée avant porte une baseline `cpc` ou
+    # `roas` prise sur la dépense Meta SEULE : lui opposer la mesure
+    # d'aujourd'hui comparerait deux périmètres, et un verdict pris sur deux
+    # périmètres est faux — puis il repondère les conseils (`_DONE_W`,
+    # `saas/recos_ia/reco_engine.py`). Ces actions-là finissent donc SANS
+    # verdict automatique : elles retombent dans « échéance atteinte, à juger
+    # soi-même », comme une action dont l'indicateur n'est pas mesurable.
+    # On ne rejoue pas l'historique et on n'invente pas de delta.
+    #
+    # POURQUOI CE N'EST PAS LE 2026-09-11, JOUR DE LA CORRECTION. La seule date
+    # que porte une action est `decided_at`, et `startTracking`
+    # (`saas/web/app/actions.ts` l. 84) y écrit le jour du CLIC, alors que
+    # `baseline` (l. 83) est recopiée telle quelle du payload affiché — donc
+    # photographiée au dernier rapport construit, jusqu'à une semaine plus tôt.
+    # Un clic du 2026-09-13 sur un rapport du 2026-09-08 porterait une baseline
+    # Meta seule tout en passant le test. La bascule prend donc la marge d'un
+    # cycle hebdomadaire complet. Ce que ça coûte : les actions décidées
+    # pendant cette semaine de transition partent sans verdict automatique,
+    # même celles dont la baseline était déjà bonne. C'est le sens sûr.
+    #
+    # LIMITE QUI RESTE, et qui ne se corrige pas ici : si aucun rapport n'est
+    # construit pendant plus d'une semaine, un payload plus vieux que la marge
+    # survit à l'écran et son clic repasserait le test. Aucune colonne de
+    # `suivi_actions` ne dit sur quel périmètre sa baseline a été prise — la
+    # réparer demande une colonne, pas une constante.
+    _BASCULE_PUB = "2026-09-19"
+    _METRICS_PERIMETRE_PUB = ("cpc", "roas")
+
     # PROOF_KPI ne couvre que les recos-règles : leur `key` est stable d'une
     # semaine à l'autre (ex. "gaspillage"), donc une clé fixe suffit à
     # retrouver leur indicateur. Une piste IA (`_theme_ai_recos`) a une clé
@@ -3320,13 +3356,14 @@ def build_payload(sb, user_id: str) -> dict | None:
         # une mesure dans quatorze jours sur une décision qu'on n'a pas prise.
         #
         # C'est ce qui a décidé de la FORME des deux objets ajoutés en août 2026
-        # pour les thèmes muets (`veille_theme_…`). Le thème qui s'arrête
-        # demanderait `spend`, celui qui tient demanderait `cpc` — or les deux
-        # sont ici calculés sur Meta SEUL (voir `_kpis_window`), alors que ces
-        # deux objets lisent Meta + Google. Une baseline et un verdict pris sur
-        # deux périmètres différents, c'est un verdict faux, et un verdict faux
-        # repondère ensuite les conseils. On les a donc écrits en veille, sans
-        # promesse de mesure, plutôt que de leur inventer un indicateur.
+        # pour les thèmes muets (`veille_theme_…`). Leur seconde raison a expiré
+        # le 2026-09-11 : `_kpis_window` ne mesurait alors que Meta, quand ces
+        # deux objets lisent Meta + Google, et une baseline prise sur un autre
+        # périmètre que son verdict est un verdict faux. Le ticket 01 a réparé
+        # ce périmètre, l'écart n'existe plus — mais la première raison tient
+        # toujours, et c'est elle qui les garde ici : une veille n'a pas de
+        # verdict à mériter. Leur donner une baseline maintenant serait un
+        # changement de produit, pas une conséquence de cette réparation.
     }
 
     # MESURER UNE ACTION LÀ OÙ ELLE A EU LIEU.
@@ -3341,14 +3378,28 @@ def build_payload(sb, user_id: str) -> dict | None:
     # campagnes du theme. Le verdict devient enfin une mesure de l'action.
     def _kpis_window(w_since, w_until, theme=None):
         k = {}
-        if df_meta_raw is not None and not df_meta_raw.empty:
-            m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(w_since))
-                            & (df_meta_raw["date_start"] <= pd.Timestamp(w_until))]
-            if theme:
-                m = m[m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == theme)]
-            sp, cl = float(m["spend"].sum()), int(m["clicks"].sum())
-            k["spend"] = sp
-            k["cpc"] = (sp / cl) if cl > 0 else None
+        # LE NUMÉRATEUR ET LE DÉNOMINATEUR COUVRENT LE MÊME PÉRIMÈTRE.
+        #
+        # Jusqu'au 2026-09-11, `spend` et `cpc` ne lisaient QUE `df_meta_raw`
+        # pendant que `roas` divisait par eux le revenu GA4 de `by_campaign`,
+        # qui agrège Meta ET Google : tout thème tournant sur les deux régies
+        # affichait revenu(Meta+Google) ÷ dépense(Meta), donc un ROAS gonflé —
+        # et le Verdict rendu sur ce chiffre disait « ça a marché » plus souvent
+        # que la réalité. Mesuré par le ticket 24 de la refonte, réparé par le
+        # ticket 01 de la construction.
+        #
+        # AUCUNE RÈGLE D'ATTRIBUTION NEUVE N'EST CHOISIE ICI. Additionner la
+        # dépense des deux régies est déjà la convention du rapport :
+        # `build_matrix` calcule le ROAS d'un thème sur cette somme
+        # (`saas/recos_ia/insights.py`), les KPI du compte fusionnent Meta et
+        # Google dans `df_camp`, et `_pub_fenetre` juste au-dessus porte la
+        # raison — on additionne des dépenses et des clics, deux grandeurs que
+        # chaque régie mesure elle-même ; c'est le REVENU qu'on ne saurait pas
+        # ventiler entre les deux. Séparer un ROAS par canal reste, lui, une
+        # décision produit non prise (`docs/mesures-impossibles.md`).
+        _pub = _pub_fenetre(theme, w_since, w_until)
+        k["spend"] = _pub["spend"]
+        k["cpc"] = (_pub["spend"] / _pub["clics"]) if _pub["clics"] > 0 else None
         if not df_insta.empty and "date" in df_insta.columns and "eng" in df_insta.columns:
             dtp = pd.to_datetime(df_insta["date"], errors="coerce")
             p = df_insta[(dtp.dt.date >= w_since) & (dtp.dt.date <= w_until)]
@@ -3760,6 +3811,10 @@ def build_payload(sb, user_id: str) -> dict | None:
             _sur_theme = bool(a.get("theme")) and _dec >= _BASCULE_THEME
             _k = _kpis_du_theme(a.get("theme")) if _sur_theme else cur_kpis
             now = _k.get(metric) if metric else None
+            # Même principe que `_sur_theme`, sur l'autre bascule : voir
+            # `_BASCULE_PUB` plus haut.
+            _meme_perimetre = not (metric in _METRICS_PERIMETRE_PUB
+                                   and _dec < _BASCULE_PUB)
             try:
                 chk = date.fromisoformat(str(a.get("check_at"))[:10])
             except Exception:
@@ -3779,7 +3834,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 "decided_at": str(a.get("decided_at"))[:10],
                 "check_at": str(a.get("check_at"))[:10],
             }
-            if due and metric and base is not None and now is not None:
+            if due and _meme_perimetre and metric and base is not None and now is not None:
                 b = float(base)
                 delta = ((now - b) / b * 100) if abs(b) > 1e-9 else None
                 direction = a.get("direction") or "up"
@@ -3879,6 +3934,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 )
                 if (
                     status in ("done", "auto") and not due and _origine
+                    and _meme_perimetre
                     and metric and base is not None and now is not None
                 ):
                     try:
