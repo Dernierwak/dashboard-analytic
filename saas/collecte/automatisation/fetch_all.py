@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -166,7 +167,7 @@ _CHANGES_JOURS_META = 180
 # quelqu'un voudra le « corriger » un jour, alors autant l'écrire ici : on ne
 # compare RIEN avec la plateforme, on redemande la plage et on la réécrit.
 # Les trois tables portent une clé d'unicité — meta_ads_insights
-# (user_id, date_start, ad_name), google_ads_insights (user_id, date_start,
+# (user_id, date_start, ad_id), google_ads_insights (user_id, date_start,
 # campaign_id), instagram_organic_posts (user_id, post_id) — et les écritures
 # sont des upserts sur ces clés exactes. Réécrire un jour connu REMPLACE donc
 # la ligne, il n'en ajoute pas une. Une comparaison ligne à ligne coûterait de
@@ -246,6 +247,42 @@ def _depart_recolte(latest: str | None, today: date, recouvrement: int) -> date:
     return date.fromisoformat(latest) - timedelta(days=recouvrement)
 
 
+# Meta : « the start date of the time range cannot be beyond 37 months from the
+# current date ». 1 126 jours, et pas `37 * 30` : trente-sept mois de 30 jours
+# font 1 110 jours, soit 36,5 mois — on refuserait des dates que l'API accepte,
+# en affichant « dépasse les 37 mois ». Le chiffre est celui de la note
+# PROFONDEUR D'HISTORIQUE juste en dessous.
+_PROFONDEUR_META_JOURS = 1126
+
+
+def _date_forcee(valeur: str, today: date) -> date:
+    """La date de départ imposée à la main, validée AVANT le premier appel.
+
+    Elle existe pour rejouer un historique — typiquement après le passage à
+    `ad_id`, où les lignes anciennes n'en portent pas. Le rejeu se fait par
+    cette date, JAMAIS par un DELETE : `upsert_meta_ads` efface les lignes
+    `ad_id IS NULL` des seules dates qu'il réécrit, donc la table n'est jamais
+    vide et une récolte interrompue ne laisse aucune fenêtre sans donnée.
+
+    Les deux bornes sont vérifiées ici plutôt que subies plus loin, parce que
+    `_meta_chunk` avale ses erreurs et rend une liste vide : une date refusée
+    par Meta ne se lirait pas comme un refus, elle se lirait comme « ce compte
+    n'a rien dépensé ».
+    """
+    try:
+        jour = date.fromisoformat(valeur)
+    except ValueError:
+        raise ValueError(f"--meta-since : date illisible « {valeur} », attendu AAAA-MM-JJ.")
+    if jour > today:
+        raise ValueError(f"--meta-since : {jour} est dans le futur, rien à récolter.")
+    plancher = today - timedelta(days=_PROFONDEUR_META_JOURS)
+    if jour < plancher:
+        raise ValueError(
+            f"--meta-since : {jour} dépasse les 37 mois que l'API Meta accepte "
+            f"(pas avant {plancher}).")
+    return jour
+
+
 # ── PROFONDEUR D'HISTORIQUE — chiffré, PAS appliqué ───────────────────────────
 #
 # La première récolte part du 1er janvier de l'année en cours. Un client qui
@@ -293,28 +330,47 @@ def _due_today(fetch_schedule: str | None) -> bool:
 
 # ── Meta Ads (token utilisateur) ──────────────────────────────────────────────
 
-def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> list:
+def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, str | None]:
     params = {
         "access_token": token, "level": "ad",
-        "fields": "campaign_name,adset_name,ad_name,impressions,clicks,reach,spend,actions,date_start",
+        # `ad_id` porte l'identité de l'annonce ; `ad_name` n'est qu'une
+        # étiquette que l'annonceur peut réutiliser à volonté. Sans lui, deux
+        # annonces homonymes se confondent et la dépense de la seconde n'entre
+        # jamais en base (voir `upsert_meta_ads` et la section ad_id de
+        # 000_run_me_all.sql).
+        "fields": "campaign_name,adset_name,ad_name,ad_id,impressions,clicks,"
+                  "reach,spend,actions,date_start",
         "time_increment": 1,
         "time_range": json.dumps({"since": since_iso, "until": until_iso}),
         "limit": 500,
     }
+    # LA TRANCHE DIT SI ELLE EST COMPLÈTE — elle ne rend plus une liste vide
+    # pour « échec » ET pour « ce compte n'a rien dépensé ». Les deux se
+    # confondaient, et le rejeu d'historique rend la confusion coûteuse : une
+    # limite de débit Meta au milieu d'un rejeu de treize tranches en perdait
+    # quatre-vingt-dix jours, sans un mot, sur une run verte.
+    # Retour : (lignes, erreur) — `erreur` à None quand la tranche est entière.
     try:
         data = requests.get(f"{_GRAPH}/{ad_account_id}/insights", params=params, timeout=60).json()
-    except Exception:
-        return []
+    except Exception as e:
+        return [], f"{since_iso}→{until_iso} : {type(e).__name__}: {e}"
+    if isinstance(data, dict) and data.get("error"):
+        # Meta répond 200 avec un objet `error` : le message porte la cause
+        # (limite de débit, jeton expiré). On ne montre jamais les params —
+        # ils portent le jeton.
+        return [], f"{since_iso}→{until_iso} : {data['error'].get('message', 'erreur Meta')}"
     rows = data.get("data", [])
     nxt = data.get("paging", {}).get("next")
     while nxt:
         try:
             resp = requests.get(nxt, timeout=60).json()
-        except Exception:
-            break
+        except Exception as e:
+            # Une pagination interrompue rend une tranche TRONQUÉE, pas vide :
+            # c'est le cas le plus traître, il faut le dire aussi.
+            return rows, f"{since_iso}→{until_iso} : pagination interrompue ({type(e).__name__}: {e})"
         rows += resp.get("data", [])
         nxt = resp.get("paging", {}).get("next")
-    return rows
+    return rows, None
 
 
 def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
@@ -356,7 +412,59 @@ def _rien(_etape: str) -> None:
     return None
 
 
-def _fetch_meta(sb, uid, token, note=_rien) -> str:
+# UNE RUN VERTE SANS META EST PIRE QU'UNE RUN ROUGE. Si la colonne `ad_id`
+# manque — SQL pas encore joué, code neuf déjà déployé — la récolte Meta ne
+# peut pas écrire. Laisser la run finir au vert, c'est une semaine de dépense
+# publicitaire absente que personne ne voit passer, et que le rapport de la
+# semaine suivante lirait comme une BAISSE : un faux verdict, pas un trou
+# visible.
+#
+# ON RETIENT LES UTILISATEURS, PAS UN SIMPLE OUI/NON, et c'est ce qui permet
+# les deux usages : `run()` sait QUI n'a pas de rapport publiable, et
+# `__main__` sait qu'il reste au moins un cas pour finir en rouge. Les fils
+# Meta de plusieurs utilisateurs n'écrivent jamais en même temps (les profils
+# se suivent en série), mais l'ensemble est quand même verrouillé — il coûte
+# trois lignes et se relit sans avoir à vérifier cette hypothèse.
+_ECRITURES_SAUTEES: set[str] = set()
+_VERROU_SAUTEES = threading.Lock()
+
+
+def _note_ecriture_sautee(uid: str) -> None:
+    with _VERROU_SAUTEES:
+        _ECRITURES_SAUTEES.add(uid)
+
+
+class SchemaEnRetard(RuntimeError):
+    """Le schéma en base est en retard sur le code — colonne absente (42703) ou
+    contrainte d'unicité pas encore déplacée (42P10). Rattrapable en jouant la
+    migration ; jamais silencieux, parce qu'un silence ici se lit comme une
+    baisse de dépense."""
+
+
+def _colonne_ad_id_presente(sb) -> bool:
+    """La colonne `ad_id` existe-t-elle dans meta_ads_insights ?
+
+    Un `select` d'une seule ligne suffit : PostgREST refuse la requête entière
+    avec le code Postgres `42703` (« undefined_column ») quand la colonne
+    n'existe pas, et rend `data: []` sans erreur quand la table est simplement
+    vide. Les deux cas ne se confondent donc pas.
+
+    SEUL 42703 rend False. Un `except Exception` large lirait une coupure
+    réseau comme une colonne manquante : on sauterait la récolte Meta d'une
+    semaine sur un hoquet, et on la rendrait rouge pour rien. Tout autre échec
+    remonte donc tel quel — le fil l'attrape déjà et marque le canal en échec,
+    sans prétendre en connaître la cause.
+    """
+    try:
+        sb.table("meta_ads_insights").select("ad_id").limit(1).execute()
+        return True
+    except Exception as e:
+        if getattr(e, "code", None) == "42703":
+            return False
+        raise
+
+
+def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) -> str:
     # `note` marque une étape FRANCHIE, pas un pourcentage : la séquence est
     # écrite ici, mais le nombre d'appels de chacune ne l'est pas.
     note("comptes")
@@ -376,17 +484,55 @@ def _fetch_meta(sb, uid, token, note=_rien) -> str:
         token, ad_account_id,
         (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat()))
     note("insights")
-    latest = fetch_meta_ads_latest_date(sb, uid)
-    since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_META)
+    # LE GARDE-FOU SE POSE AVANT LA PREMIÈRE REQUÊTE D'INSIGHTS, pas juste
+    # avant l'écriture : sans colonne `ad_id`, ces appels ne servent à rien et
+    # `upsert_meta_ads` upserterait sur une clé de conflit inexistante. Les
+    # budgets et le journal des changements, eux, sont déjà passés — ils ne
+    # touchent pas cette table et n'ont pas à être punis.
+    if not _colonne_ad_id_presente(sb):
+        _note_ecriture_sautee(uid)
+        raise SchemaEnRetard(
+            "colonne ad_id absente de meta_ads_insights — écriture Meta Ads sautée. "
+            "Jouer supabase/migrations/000_run_me_all.sql (section ad_id), puis relancer. "
+            "La run finit ROUGE exprès : sans ça, cette semaine de dépense manquerait "
+            "en silence et le rapport la lirait comme une baisse.")
+    if since_forcee:
+        # La date imposée REMPLACE le point de reprise, elle ne s'y ajoute pas :
+        # inutile d'aller lire la dernière date connue, on repart d'où on a dit.
+        since = since_forcee
+        print(f"    meta: départ forcé au {since} (rejeu d'historique)")
+    else:
+        since = _depart_recolte(fetch_meta_ads_latest_date(sb, uid),
+                                today, _RECOUVREMENT_JOURS_META)
     # Le raccourci « meta: à jour » a disparu, et pas par distraction : avec un
     # recouvrement il ne pouvait plus se déclencher (`latest - 7` est toujours
     # antérieur à aujourd'hui), et surtout il n'a plus de sens. Il n'y a plus de
     # « à jour » — il y a une fenêtre qu'on relit à chaque passage.
-    rows, cur = [], since
+    rows, trous, cur = [], [], since
     while cur <= today:
         end = min(cur + timedelta(days=_CHUNK - 1), today)
-        rows += _meta_chunk(token, ad_account_id, cur.isoformat(), end.isoformat())
+        lignes, err = _meta_chunk(token, ad_account_id, cur.isoformat(), end.isoformat())
+        rows += lignes
+        if err:
+            trous.append(err)
         cur = end + timedelta(days=1)
+    if trous:
+        # UN REJEU INCOMPLET NE S'ÉCRIT PAS. Sur un rejeu, chaque tranche
+        # manquante est une période dont les lignes gardent leur `ad_id` à
+        # NULL : écrire le reste donnerait une base à moitié réparée qu'aucune
+        # trace ne distingue d'une base réparée. On préfère ne rien écrire et
+        # redemander le même rejeu.
+        # Sur une récolte de ROUTINE, au contraire, on écrit ce qu'on a : la
+        # fenêtre de recouvrement de sept jours redemandera les dates manquées
+        # au prochain passage, et refuser d'écrire perdrait aussi les tranches
+        # réussies.
+        if since_forcee:
+            raise RuntimeError(
+                f"rejeu depuis {since_forcee} INCOMPLET, rien n'a été écrit — "
+                f"{len(trous)} tranche(s) refusée(s) par Meta : {' | '.join(trous)}. "
+                f"Relancer le même --meta-since.")
+        print(f"    meta: {len(trous)} tranche(s) incomplète(s), "
+              f"reprises au prochain recouvrement : {' | '.join(trous)}")
     # On demande aussi les dates DECLAREES. Elles ne se deduisent pas de la
     # depense : une campagne programmee jusqu'en decembre et une campagne
     # arretee hier laissent exactement la meme trace dans les insights.
@@ -417,7 +563,25 @@ def _fetch_meta(sb, uid, token, note=_rien) -> str:
             status_map.get(row.get("campaign_name", ""), {}).get("status") or "UNKNOWN"
         )
     if rows:
-        upsert_meta_ads(sb, uid, rows)
+        # LA MIGRATION A DEUX MOITIÉS, ET LA SECONDE NE SE VOIT QU'ICI. Le
+        # garde-fou plus haut prouve que la COLONNE existe ; il ne prouve pas
+        # que la CONTRAINTE d'unicité a été déplacée sur `ad_id`. Une base où
+        # seul l'`ADD COLUMN` a été joué laisse passer le garde-fou, puis fait
+        # échouer l'upsert sur `42P10` (« no unique constraint matching the ON
+        # CONFLICT specification »). Sans ce rattrapage, cet échec-là ne serait
+        # qu'un canal en erreur : run verte, rapport publié, email parti sur
+        # une semaine sans dépense Meta.
+        try:
+            upsert_meta_ads(sb, uid, rows)
+        except Exception as e:
+            if getattr(e, "code", None) == "42P10":
+                _note_ecriture_sautee(uid)
+                raise SchemaEnRetard(
+                    "la contrainte d'unicité de meta_ads_insights ne porte pas encore "
+                    "sur ad_id (42P10) — migration jouée à moitié, écriture Meta Ads "
+                    "sautée. Rejouer supabase/migrations/000_run_me_all.sql en ENTIER "
+                    "(section ad_id), puis relancer.") from e
+            raise
         upsert_campaign_statuses(sb, uid, status_map)
     return f"meta: {len(rows)} lignes"
 
@@ -536,7 +700,7 @@ def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
 
 def run(force: bool = False, only_user: str | None = None,
         label_only: bool = False, categorize_only: bool = False,
-        report_only: bool = False) -> None:
+        report_only: bool = False, meta_since: date | None = None) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
                 .select("id, fetch_schedule")
@@ -660,8 +824,14 @@ def run(force: bool = False, only_user: str | None = None,
             if not token:
                 continue
             _meta_vu = True
+            # LE REJEU NE TOUCHE QUE META, et ce n'est pas une commodité. Un
+            # `--since` global atteindrait Google, où `change_event` plafonne à
+            # 30 jours et où une fenêtre plus large fait REJETER LA REQUÊTE
+            # ENTIÈRE au lieu de la tronquer : un drapeau global fabriquerait
+            # la panne que la constante _CHANGES_JOURS_GOOGLE raconte déjà.
             fil_meta.append(("meta",
-                             lambda sb_f, note, t=token: _fetch_meta(sb_f, uid, t, note=note)))
+                             lambda sb_f, note, t=token, s=meta_since:
+                             _fetch_meta(sb_f, uid, t, note=note, since_forcee=s)))
             biz = a.get("instagram_business_id")
             if biz:
                 fil_meta.append(("instagram",
@@ -781,7 +951,24 @@ def run(force: bool = False, only_user: str | None = None,
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
         # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
         # RESEND_API_KEY, send_email passe en dry-run (aucun envoi).
-        if a_tente:
+        # LE RAPPORT NE PART PAS SUR UN TROU CONNU. Si l'écriture Meta a été
+        # sautée, la fenêtre de cette semaine n'a pas la dépense publicitaire —
+        # et un rapport qui la publie quand même la présente comme une BAISSE,
+        # avec un email au client derrière. C'est exactement le faux verdict que
+        # le garde-fou existe pour éviter ; le rendre visible à David (run
+        # rouge) ne suffit pas si le client, lui, a déjà reçu le chiffre faux.
+        # On ne publie donc rien pour CET utilisateur — les autres ne sont pas
+        # concernés — et le journal dit pourquoi.
+        # `saute` et pas `echec` : rien n'a été tenté et rien n'a raté — la
+        # publication a été RETENUE, et ça ne se répare pas au même endroit
+        # (une migration à jouer, pas une API qui refuse).
+        if a_tente and uid in _ECRITURES_SAUTEES:
+            _mot = ("rapport NON PUBLIÉ : la dépense Meta de la semaine manque "
+                    "(colonne ad_id absente) — un rapport publié dessus lirait "
+                    "un trou comme une baisse. Jouer la migration, puis relancer.")
+            journal.append((_rang["rapport"], _mot))
+            suivi.saute(sb, "rapport", _mot)
+        elif a_tente:
             suivi.commence(sb, "rapport")
             try:
                 from saas.traitement.build_report import publish_weekly_report
@@ -827,9 +1014,42 @@ if __name__ == "__main__":
     if "--report-only" in sys.argv:  # republie juste le rapport (conseils), ~30 s
         only_user = sys.argv[sys.argv.index("--report-only") + 1]
         report_only = True
+    meta_since = None
+    if "--meta-since" in sys.argv:   # rejeu d'historique Meta SEUL, depuis cette date
+        try:
+            meta_since = _date_forcee(
+                sys.argv[sys.argv.index("--meta-since") + 1], date.today())
+        except (IndexError, ValueError) as e:
+            print(f"!! {e}" if isinstance(e, ValueError)
+                  else "!! --meta-since attend une date AAAA-MM-JJ.")
+            sys.exit(1)
+        # UN REJEU VISE UN COMPTE, ET LE REFUS N'EST PAS UNE COQUETTERIE.
+        # `--meta-since` force le passage (sinon il ne rendrait rien hors du
+        # jour planifié) — mais sans `--user`, ce forçage vaut pour TOUS les
+        # profils : chacun recevrait son rapport ET son email hebdo un jour qui
+        # n'est le jour de personne, `publish_weekly_report` envoyant dès qu'il
+        # a une adresse, sans contrôle de jour. Un rejeu d'historique ne doit
+        # pas pouvoir écrire à toute la clientèle.
+        if not only_user:
+            print("!! --meta-since exige --user <uid> : sans lui, le rejeu forcerait "
+                  "le passage de TOUS les comptes et leur enverrait l'email hebdo "
+                  "hors de leur jour.")
+            sys.exit(1)
+        force = True
     try:
         run(force=force, only_user=only_user, label_only=label_only,
-            categorize_only=categorize_only, report_only=report_only)
+            categorize_only=categorize_only, report_only=report_only,
+            meta_since=meta_since)
     except Exception:
         traceback.print_exc()
+        sys.exit(1)
+    # LE ROUGE TOMBE ICI, APRÈS TOUT LE RESTE. Google, GA4, Instagram, les
+    # labels et le rapport ont fini leur travail — on ne perd pas une récolte
+    # entière parce qu'une colonne Meta manque. Mais la run ne ment pas sur ce
+    # qu'elle a écrit.
+    if _ECRITURES_SAUTEES:
+        print(f"!! ÉCHEC : écriture Meta Ads sautée pour {len(_ECRITURES_SAUTEES)} "
+              f"utilisateur(s) — colonne ad_id absente de meta_ads_insights. "
+              f"Leur rapport n'a PAS été publié. Le reste de la récolte a bien tourné. "
+              f"Jouer supabase/migrations/000_run_me_all.sql, puis relancer.")
         sys.exit(1)

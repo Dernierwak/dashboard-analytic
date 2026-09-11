@@ -27,23 +27,93 @@ def insert_schedule_data(supabase:Client, user_id, fetch_schedule):
     supabase.table("profiles").update({"fetch_schedule": fetch_schedule}).eq("id", user_id).execute()
 
 
+# CE QUI BORNE UN LOT, ET POURQUOI IL Y A DEUX BORNES.
+#
+# Une récolte de routine ne demande que 7 jours : elle tient dans un lot et ces
+# bornes ne se voient jamais. C'est le REJEU D'HISTORIQUE (`--meta-since`) qui
+# les rend nécessaires, et l'avertissement était écrit d'avance dans la note
+# PROFONDEUR D'HISTORIQUE de `fetch_all.py` : « upsert_meta_ads envoie TOUT en
+# un seul appel PostgREST, et 22 500 lignes d'un coup n'ont jamais été
+# essayées. À découper avant d'élargir quoi que ce soit. »
+#
+#  · les DATES, parce que le DELETE les met dans l'URL. `.in_("date_start", …)`
+#    est un filtre de query-string : 1 100 dates font ~16 Ko d'URL, au-delà du
+#    tampon d'en-têtes habituel (8 Ko) — le serveur répond 414 et l'effacement
+#    échoue, donc RIEN n'est écrit après des minutes d'appels à Meta.
+#  · les LIGNES, parce que l'upsert les met dans le corps. Un compte à 500
+#    annonces × 90 jours ferait 45 000 lignes en un seul envoi.
+#
+# Les deux plafonds sont volontairement bas : un lot de plus coûte un
+# aller-retour, une requête refusée coûte la récolte.
+_LOT_DATES_MAX = 90
+_LOT_LIGNES_MAX = 5000
+
+
+def _lots_par_date(records: list[dict]) -> list[list[dict]]:
+    """Découpe les lignes en lots, sans jamais séparer une même date.
+
+    Une date doit rester entière dans son lot : son effacement et sa réécriture
+    sont une paire (voir `upsert_meta_ads`), et une date à cheval sur deux lots
+    verrait ses lignes sans `ad_id` effacées par le premier et une partie
+    seulement réécrite.
+    """
+    par_date: dict[str, list[dict]] = {}
+    for r in records:
+        par_date.setdefault(r.get("date_start"), []).append(r)
+
+    lots, lot, lignes = [], [], 0
+    for jour in sorted(par_date, key=lambda d: (d is None, d)):
+        du_jour = par_date[jour]
+        trop_de_dates = len(lot) and len({r.get("date_start") for r in lot}) >= _LOT_DATES_MAX
+        trop_de_lignes = lignes and lignes + len(du_jour) > _LOT_LIGNES_MAX
+        if trop_de_dates or trop_de_lignes:
+            lots.append(lot)
+            lot, lignes = [], 0
+        lot += du_jour
+        lignes += len(du_jour)
+    if lot:
+        lots.append(lot)
+    return lots
+
+
 def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
     """Upsert des données Meta Ads dans meta_ads_insights.
-    Conflict sur (user_id, date_start, ad_name) — une ligne par pub par jour.
+    Conflict sur (user_id, date_start, ad_id) — une ligne par annonce par jour.
+
+    LA CLÉ EST `ad_id`, PAS `ad_name`, ET ÇA A COÛTÉ DE LA DÉPENSE RÉELLE.
+    `ad_name` est l'étiquette lisible que l'annonceur choisit : rien n'interdit
+    deux annonces « Video 1 » dans deux Groupes, et c'est le montage courant.
+    Tant que la déduplication portait sur le nom, la seconde annonce n'était
+    pas mal attribuée — elle n'entrait jamais en base. Mesuré sur le compte de
+    test au 19-20/08/2026 : ~17 € puis ~15 €, environ 40 % de la dépense Meta
+    de ces jours-là. `ad_id` est le numéro que Meta attribue à la création, il
+    n'est jamais dupliqué.
     """
     if not rows:
         return
 
     seen = set()
     records = []
+    sans_id = 0
     for row in rows:
-        key = (row.get("date_start"), row.get("ad_name", ""))
+        ad_id = row.get("ad_id")
+        # Une ligne sans ad_id ne peut pas être dédupliquée : elle n'entrerait
+        # en conflit avec rien (Postgres ne rapproche jamais deux NULL sous une
+        # contrainte UNIQUE) et se réinsèrerait à chaque récolte, doublant la
+        # dépense du jour. Meta renvoie toujours ad_id au niveau `ad` ; si ça
+        # change un jour, on veut le voir dans le journal, pas le découvrir
+        # dans un total qui enfle.
+        if not ad_id:
+            sans_id += 1
+            continue
+        key = (row.get("date_start"), ad_id)
         if key in seen:
             continue
         seen.add(key)
         records.append({
             "user_id": user_id,
             "date_start": row.get("date_start"),
+            "ad_id": str(ad_id),
             "campaign_name": row.get("campaign_name", ""),
             "adset_name": row.get("adset_name", ""),
             "ad_name": row.get("ad_name", ""),
@@ -54,10 +124,37 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
             "spend": float(row.get("spend") or 0),
         })
 
-    supabase.table("meta_ads_insights").upsert(
-        records,
-        on_conflict="user_id,date_start,ad_name"
-    ).execute()
+    if sans_id:
+        print(f"meta_ads: {sans_id} ligne(s) sans ad_id, ignorées")
+
+    if not records:
+        return
+
+    for lot in _lots_par_date(records):
+        # LE DOUBLE COMPTAGE QU'IL FAUT ÉCARTER AVANT D'ÉCRIRE. Les lignes
+        # antérieures au passage à `ad_id` le portent à NULL. Un upsert sur
+        # (user_id, date_start, ad_id) ne les reconnaît pas — il ajouterait la
+        # ligne neuve À CÔTÉ de l'ancienne, et la dépense de ces journées
+        # compterait double, durablement. On efface donc les lignes sans ad_id
+        # des SEULES dates qu'on s'apprête à réécrire, pour ce SEUL
+        # utilisateur : ce sont exactement les lignes que l'upsert remplace.
+        #
+        # L'EFFACEMENT ET L'ÉCRITURE VONT PAR PAIRE, LOT PAR LOT. Les séparer
+        # (tout effacer, puis tout écrire) rouvrirait la fenêtre sans donnée
+        # qu'on a justement refusée en écartant le DELETE global.
+        dates = sorted({r["date_start"] for r in lot if r.get("date_start")})
+        if dates:
+            (supabase.table("meta_ads_insights")
+             .delete()
+             .eq("user_id", user_id)
+             .is_("ad_id", "null")
+             .in_("date_start", dates)
+             .execute())
+
+        supabase.table("meta_ads_insights").upsert(
+            lot,
+            on_conflict="user_id,date_start,ad_id"
+        ).execute()
 
 
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
