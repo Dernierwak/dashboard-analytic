@@ -96,3 +96,25 @@ dans `build_payload` — elle porte ses mots exacts.
 Rendre la mesure et rien d'autre : **ce que reçoit aujourd'hui un compte à une
 étoile, à deux, à trois et à quatre**, ligne par ligne, sur le compte de David.
 Un compte mesuré vaut mieux qu'une restructuration proposée.
+
+## Comments
+
+**2026-09-12, ce ticket est répondu par construction — par
+[08](08-filtre-dur-et-plafond-de-cinq.md), qui n'a pas rouvert sa question.**
+
+08 a exécuté une décision déjà prise par David
+([refonte 11](../../refonte/issues/11-d-ou-viennent-les-conseils.md)) : **les
+pistes rédigées par Gemini sont coupées.** `_theme_ai_recos` n'existe plus, et
+le chemin `_ia_redigee == True` avec elle. **Il n'y a donc plus de porte à
+arbitrer** : les trois places d'un thème appartiennent aux règles, pour tout
+thème conseillé — dès la PREMIÈRE étoile. Le fait que ce ticket relevait est
+corrigé : `roas`, les quatre `orga_*`, `theme_event_*` et les quatre règles
+payantes du ticket 07 atteignent le rapport d'un compte à une, deux ou trois
+étoiles.
+
+La troisième option que ce ticket proposait — « les deux, mais pas aux mêmes
+places », un partage par RÔLE — est sans objet : il n'y a plus qu'un auteur.
+
+**Ce ticket reste `open` exprès.** Il est HITL et sa question était pour David ;
+une session ne ferme pas un ticket qui lui était adressé, même quand le code a
+fini par lui donner une réponse. À lire, puis à fermer par lui.

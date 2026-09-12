@@ -22,6 +22,7 @@ import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
 import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { RecoCard } from "@/components/reco-card";
+import { PourAllerPlusLoin } from "@/components/pour-aller-plus-loin";
 import { Triangle } from "@/components/pente";
 
 
@@ -181,7 +182,7 @@ export default async function Page() {
 
   // Thèmes prioritaires — le fil qui relie la vision aux conseils. Plus de
   // plafond depuis le 14 août 2026 ; seules les trois premières étoiles ont des
-  // pistes IA, et l'ordre est celui de l'étoilage.
+  // conseils, et l'ordre est celui de l'étoilage.
   const priorities = Object.keys(data.insightFeedback)
     .filter((k) => k.startsWith("priority_label:"))
     .map((k) => k.split(":").slice(1).join(":"));
@@ -235,15 +236,6 @@ export default async function Page() {
   const cartes = etoiles.size > 0 && etoilees.length > 0 ? etoilees : themesFocus;
   const gardeAJoue = cartes.length < themesFocus.length;
   const themesRendus = new Set(cartes.map((t) => t.label));
-
-  // La sélection n'a de sens que si elle SÉLECTIONNE : avec un seul thème,
-  // elle désignerait le seul thème de la page. Et elle ne renvoie qu'à des
-  // cartes qui EXISTENT : un conseil du thème que le garde-fou vient de retirer
-  // pointerait vers une ancre absente du document.
-  const topRecos =
-    cartes.length > 1
-      ? (report?.top_recos ?? []).filter((r) => !r.theme || themesRendus.has(r.theme))
-      : [];
 
   const avecCourbe = cartes.filter((t) => t.series && t.series.points.length > 1);
   // Le classement entre thèmes n'a de sens que s'ils suivent LE MÊME
@@ -565,31 +557,17 @@ export default async function Page() {
               C'était déjà la liste des noms de tous les thèmes : en faire la
               navigation évitait d'ajouter un troisième dispositif à côté. */}
 
-          {/* « Si tu ne fais que trois choses » — la sélection cross-thème.
-              Des LIENS, pas des cartes : les mêmes conseils sont rendus en
-              entier dans leur thème juste dessous, et rendre deux fois le même
-              composant sur une page est ce que la grammaire interdit. */}
-          {topRecos.length > 0 && (
-            <div className="mb-4 rounded-xl border border-brand/[0.18] bg-brand/[0.03] px-4 py-3">
-              <div className="text-[10px] uppercase tracking-widest text-brand font-bold mb-1.5">
-                Si tu ne fais que trois choses
-              </div>
-              <ol className="space-y-1">
-                {topRecos.map((r, i) => (
-                  <li key={r.key} className="text-[12.5px] text-muted leading-snug">
-                    <span className="font-mono text-faint">{i + 1}.</span>{" "}
-                    <a
-                      href={`#${ancreTheme(r.theme ?? "")}`}
-                      className="font-semibold text-ink hover:underline"
-                    >
-                      {r.title}
-                    </a>
-                    <span className="text-faint"> · {r.theme}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
+          {/* « SI TU NE FAIS QUE TROIS CHOSES » N'EST PLUS ICI.
+              C'était une sélection cross-thème rendue en tête, qui pointait vers
+              les cartes. Elle en désignait trois quand douze conseils sortaient ;
+              il y en a CINQ au maximum depuis le plafond de semaine
+              (`saas/recos_ia/composition.py`), sur trois thèmes au maximum — un
+              renvoi vers cinq choses qui tiennent dans le même écran n'aide
+              plus, il double. David a déplacé l'objet, il ne l'a pas supprimé :
+              « cela devrait être plus une notification "tu as encore X recos" ;
+              cette notification peut vivre sur l'app, elle ne doit pas être
+              rattachée à la page hebdomadaire ». C'est le module de commandes,
+              `.scratch/refonte/issues/12-module-de-commandes.md`. */}
 
           {/* L'OBJECTIF DU COMPTE ET L'OBJECTIF PAR THÈME NE SE RÈGLENT PLUS ICI.
               La carte globale (`ObjectifTheme`) qui vivait à cet endroit — un
@@ -626,6 +604,7 @@ export default async function Page() {
                 capReached={capReached}
                 conversionsTheme={conversionsParTheme.get(t.label) ?? []}
                 objectifEffectif={t.objectif ?? data.objectif ?? null}
+                aucunePriorite={priorities.length === 0}
               />
             ))}
           </ThemesCarrousel>
@@ -676,6 +655,14 @@ export default async function Page() {
               </p>
             </div>
           )}
+
+          {/* POUR ALLER PLUS LOIN — le savoir-faire de fond, par thème.
+              Publié par le worker depuis des mois (`themes_tips`) et rendu par
+              AUCUN composant, pendant que `reco-actions.tsx` promettait par
+              écrit que « ◇ Trop compliqué » y remonterait la semaine suivante.
+              Les deux bouts sont raccordés : le worker passe maintenant les
+              conseils marqués trop compliqués au prompt (`bloques`). */}
+          <PourAllerPlusLoin themes={report?.themes_tips ?? []} />
 
           {/* Réglages de base — prérequis (GA4, funnel) sortis du flux par thème */}
           {reglages.length > 0 && (

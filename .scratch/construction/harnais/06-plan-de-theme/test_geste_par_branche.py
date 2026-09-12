@@ -12,7 +12,7 @@ import pulse  # noqa: F401
 from t import ok, egal, bilan
 
 from saas.traitement.build_report import (
-    EFFORTS, LEVIERS_IA, METRICS_IA, NATURES_IA, ROLES_IA,
+    EFFORTS, LEVIERS, METRICS_MESURABLES, NATURES, ROLES,
     _METRIC_REGLE, _attach_grammaire, _effort_de, _est_conseil, _spec_mesure,
 )
 from saas.recos_ia.reco_engine import _rule_gaspillage, _rule_roas
@@ -36,12 +36,12 @@ def ga4(revenu=None, conversions=None):
 def cinq_colonnes(nom, r):
     """Une reco sortie d'une règle porte bien ses cinq colonnes après la pose."""
     _attach_grammaire(r)
-    ok(f"{nom} · levier", r.get("levier") in LEVIERS_IA, r.get("levier"))
-    ok(f"{nom} · geste", r.get("nature") in NATURES_IA, r.get("nature"))
-    ok(f"{nom} · preuve", r.get("role") in ROLES_IA, r.get("role"))
+    ok(f"{nom} · levier", r.get("levier") in LEVIERS, r.get("levier"))
+    ok(f"{nom} · geste", r.get("nature") in NATURES, r.get("nature"))
+    ok(f"{nom} · preuve", r.get("role") in ROLES, r.get("role"))
     ok(f"{nom} · durée", _effort_de(r) in EFFORTS, _effort_de(r))
     spec = _spec_mesure(_METRIC_REGLE.get(r.get("key")))
-    ok(f"{nom} · indicateur", spec is not None and spec[0] in METRICS_IA)
+    ok(f"{nom} · indicateur", spec is not None and spec[0] in METRICS_MESURABLES)
     ok(f"{nom} · servi", _est_conseil(r))
 
 
@@ -103,9 +103,9 @@ def test_aucune_branche_ne_reclame_un_sixieme_geste():
     # commence par « vérifie le tracking », déclare bien `corriger`.
     r = _rule_roas(campagnes(), ga4(revenu=0.0, conversions=0.0))
     ok("la branche existe", r is not None)
-    ok("le sixième geste n'existe pas", r is not None and r["nature"] in NATURES_IA,
+    ok("le sixième geste n'existe pas", r is not None and r["nature"] in NATURES,
        (r or {}).get("nature"))
-    ok("« vérifier » n'est pas dans la liste", "vérifier" not in NATURES_IA)
+    ok("« vérifier » n'est pas dans la liste", "vérifier" not in NATURES)
 
 
 if __name__ == "__main__":

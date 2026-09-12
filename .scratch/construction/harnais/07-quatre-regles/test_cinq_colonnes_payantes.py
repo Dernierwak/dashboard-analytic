@@ -12,8 +12,8 @@ from t import ok, egal, bilan
 from fixtures import annonce
 
 from saas.traitement.build_report import (
-    EFFORTS, EFFORT_BY_KEY, LEVIERS_IA, METRICS_IA, METRIC_INFO_IA,
-    NATURES_IA, ROLES_IA, _GESTE_REGLE, _LEVIER_REGLE, _METRIC_REGLE,
+    EFFORTS, EFFORT_BY_KEY, LEVIERS, METRICS_MESURABLES, METRIC_INFO,
+    NATURES, ROLES, _GESTE_REGLE, _LEVIER_REGLE, _METRIC_REGLE,
     _attach_grammaire, _effort_de, _est_conseil, _spec_mesure,
 )
 from saas.recos_ia.reco_engine import KEY_LABELS
@@ -29,13 +29,13 @@ QUATRE = ("annonce_sans_conversion", "annonce_locomotive",
 def test_les_quatre_cles_portent_les_cinq_colonnes():
     for cle in QUATRE:
         r = _attach_grammaire({"key": cle, "source": "rule"})
-        ok(f"{cle} · levier", r.get("levier") in LEVIERS_IA, r.get("levier"))
-        ok(f"{cle} · geste", r.get("nature") in NATURES_IA, r.get("nature"))
-        ok(f"{cle} · preuve", r.get("role") in ROLES_IA, r.get("role"))
+        ok(f"{cle} · levier", r.get("levier") in LEVIERS, r.get("levier"))
+        ok(f"{cle} · geste", r.get("nature") in NATURES, r.get("nature"))
+        ok(f"{cle} · preuve", r.get("role") in ROLES, r.get("role"))
         ok(f"{cle} · durée", _effort_de(r) in EFFORTS, _effort_de(r))
         spec = _spec_mesure(_METRIC_REGLE.get(cle))
         ok(f"{cle} · indicateur mesurable",
-           spec is not None and spec[0] in METRICS_IA, _METRIC_REGLE.get(cle))
+           spec is not None and spec[0] in METRICS_MESURABLES, _METRIC_REGLE.get(cle))
         ok(f"{cle} · servi (un conseil, pas un constat)", _est_conseil(r))
 
 
@@ -58,9 +58,9 @@ def test_spend_est_un_indicateur_mesurable():
     egal("l'indicateur", spec[0], "spend")
     egal("le sens d'amélioration", spec[3], "down")
     egal("l'unité", spec[2], "CHF")
-    ok("et il est dans la liste fermée", "spend" in METRICS_IA)
+    ok("et il est dans la liste fermée", "spend" in METRICS_MESURABLES)
     ok("sessions n'y est PAS (non mesurable par `_kpis_window`)",
-       "sessions" not in METRICS_IA and "sessions" not in METRIC_INFO_IA)
+       "sessions" not in METRICS_MESURABLES and "sessions" not in METRIC_INFO)
 
 
 def _sorties_reelles():

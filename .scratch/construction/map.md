@@ -247,6 +247,40 @@ semaine en affirmant « elles partagent la même audience ». **188 vérificatio
 plus les 302 du harnais 06 rejouées. **Rien n'est joué en
 base, aucune migration, aucune récolte nouvelle.**
 
+**[08 · Le filtre dur et le plafond de cinq](issues/08-filtre-dur-et-plafond-de-cinq.md)** —
+**la phrase du produit est en code.** Un conseil ne naît que sur un thème que le
+client a désigné : `_conseille` garde les quatre familles de règles, il se lit
+sur `priority_labels[:3]` et **il n'a pas de `else`** — un plafond qui n'est pas
+un quota ne se complète pas. `is_priority` **sort d'`_importance`** : un filtre
+ne se double pas d'un critère de tri, et c'est très exactement le défaut que le
+ticket dénonçait. Cinq conseils au maximum sur tout le compte
+(`saas/recos_ia/composition.py`, pur), **≤ 2 Marches** et **≤ 2 fabrications à
+une heure ou plus** ; il s'applique après la pose des efforts et **avant
+`upsert_theme_plan`**, pour qu'une Marche non retenue n'ouvre aucune Stratégie.
+L'**empreinte = clé + cible** filtre **avant** la coupe à trois d'un thème,
+sinon le thème sortait muet avec un conseil frais derrière ; horizon assumé de
+huit rapports. **Les pistes rédigées par Gemini sont coupées** — `_theme_ai_recos`
+et `_forcer_une_hypothese` supprimées, le second chemin par thème avec elles,
+cinq constantes renommées sans qu'une valeur bouge. Le blocage de la Marche a
+été **porté**, avec une seule différence : un `snapshot` en `ai_` ne se
+réaffiche jamais. **Deux tuyaux morts raccordés** : `too_hard` arrive enfin dans
+`_themes_tips(bloques=…)`, et `themes_tips` — publié depuis des mois, rendu par
+aucun composant — s'affiche dans « Pour aller plus loin ». Le renvoi « Si tu ne
+fais que trois choses » **sort du rapport** (sa notification est
+[refonte 12](../refonte/issues/12-module-de-commandes.md), hors carte) et
+`_diversifier` meurt avec lui. **83 vérifications neuves**, 570 rejouées, 19
+routes. **Le filtre n'a jamais tourné sur un vrai payload** — c'est le ticket
+16, et ça se voit après un « ↻ Recharger mes conseils ».
+
+**Il répond [26](issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md)
+par construction, sans rouvrir sa question** : les pistes coupées, il n'y a plus
+de porte à arbitrer, et les quatre règles payantes du ticket 07 sortent dès la
+première étoile. **À fermer par David.** Deux autres faits remontés :
+`CONTEXT.md` place le cas « zéro priorité » sur le module À faire
+([11](issues/11-module-a-faire-et-date-libre.md)), qui n'existe pas encore — la
+phrase vit donc sur la carte du thème en attendant, l'écart est écrit dans le
+composant ; et le renvoi est retiré **sans que son remplaçant existe**.
+
 **Et une prémisse fausse, la plus lourde de la carte jusqu'ici** →
 [26 · Les règles payantes n'atteignent pas le rapport](issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md).
 Un thème rédigé par Gemini ne reçoit **aucun** conseil-règle, et `_THEMES_IA = 3`

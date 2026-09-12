@@ -9,8 +9,8 @@ import pulse  # noqa: F401  (pose `saas/` sur le chemin d'import)
 from t import ok, egal, bilan
 
 from saas.traitement.build_report import (
-    EFFORTS, EFFORT_BY_KEY, LEVIERS_IA, METRICS_IA, METRIC_INFO_IA,
-    NATURES_IA, ROLES_IA, SETUP_KEYS,
+    EFFORTS, EFFORT_BY_KEY, LEVIERS, METRICS_MESURABLES, METRIC_INFO,
+    NATURES, ROLES, SETUP_KEYS,
     _GESTE_REGLE, _LEVIER_REGLE, _METRIC_REGLE,
     _attach_grammaire, _effort_de, _est_conseil, _spec_mesure,
 )
@@ -33,12 +33,12 @@ def test_chaque_conseil_porte_les_cinq_colonnes():
         # Une reco telle que la rendrait sa règle quand le geste ne dépend pas
         # du chiffre du jour : rien de déclaré, tout à poser.
         r = _attach_grammaire({"key": cle, "source": "rule"})
-        ok(f"{cle} · levier posé", r.get("levier") in LEVIERS_IA, r.get("levier"))
-        ok(f"{cle} · geste posé", r.get("nature") in NATURES_IA, r.get("nature"))
-        ok(f"{cle} · preuve posée", r.get("role") in ROLES_IA, r.get("role"))
+        ok(f"{cle} · levier posé", r.get("levier") in LEVIERS, r.get("levier"))
+        ok(f"{cle} · geste posé", r.get("nature") in NATURES, r.get("nature"))
+        ok(f"{cle} · preuve posée", r.get("role") in ROLES, r.get("role"))
         ok(f"{cle} · durée posée", _effort_de(r) in EFFORTS, _effort_de(r))
         spec = _spec_mesure(_METRIC_REGLE.get(cle))
-        ok(f"{cle} · indicateur mesurable", spec is not None and spec[0] in METRICS_IA,
+        ok(f"{cle} · indicateur mesurable", spec is not None and spec[0] in METRICS_MESURABLES,
            _METRIC_REGLE.get(cle))
         ok(f"{cle} · servi", _est_conseil(r))
 
@@ -82,10 +82,10 @@ def test_les_tables_couvrent_les_memes_cles():
     for cle in CONSEILS:
         ok(f"{cle} · a un indicateur", cle in _METRIC_REGLE)
     for cle, metric in _METRIC_REGLE.items():
-        ok(f"{cle} · indicateur connu de METRIC_INFO_IA", metric in METRIC_INFO_IA)
+        ok(f"{cle} · indicateur connu de METRIC_INFO", metric in METRIC_INFO)
     for cle, (nature, role) in _GESTE_REGLE.items():
-        ok(f"{cle} · geste dans la liste fermée", nature in NATURES_IA, nature)
-        ok(f"{cle} · preuve dans la liste fermée", role in ROLES_IA, role)
+        ok(f"{cle} · geste dans la liste fermée", nature in NATURES, nature)
+        ok(f"{cle} · preuve dans la liste fermée", role in ROLES, role)
         ok(f"{cle} · la table ne double pas une branche",
            cle not in DECLARENT_PAR_BRANCHE)
 

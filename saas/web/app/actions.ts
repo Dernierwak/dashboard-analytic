@@ -44,6 +44,11 @@ export async function startTracking(a: {
     pourquoi?: string;
     verifier?: string;
     effort?: string | null;
+    /** Le levier (argent / contenu / tempo / audience / socle). `suivi_actions`
+     *  n'a pas de colonne pour lui, et la mémoire d'un thème en a besoin pour
+     *  dire « trois hypothèses argent d'affilée » sans le déduire de
+     *  l'indicateur — ce qui serait un chiffre fabriqué (`CLAUDE.md` §7). */
+    levier?: string | null;
   } | null;
 }): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
@@ -499,11 +504,17 @@ export async function togglePriorityLabel(
       .eq("user_id", user.id)
       .like("insight_key", "priority_label:%");
     const rang = (existing.data ?? []).length + 1;
+    // AU-DELÀ DE TROIS, PLUS AUCUN CONSEIL — ET C'EST UN AVERTISSEMENT, PAS UN
+    // REFUS. Pulse conseille sur les trois thèmes que le client désigne, dans
+    // l'ordre où il les a désignés (`_THEMES_CONSEILLES`, `build_report.py` ;
+    // `CLAUDE.md` §1). Le message disait « pas de pistes rédigées par l'IA » :
+    // les pistes n'existent plus, et ce qui se perd maintenant est TOUT le
+    // conseil. Dire le contraire promettrait des conseils qui ne viendront pas.
     if (rang > 3) {
       message =
-        `${rang}ᵉ étoile : ce thème aura sa carte, ses chiffres et ses conseils ` +
-        `calculés, mais pas de pistes rédigées par l'IA — elles vont aux ` +
-        `3 étoiles posées en premier. Retires-en une pour lui faire de la place.`;
+        `${rang}ᵉ étoile : ce thème aura sa carte et ses chiffres, mais aucun ` +
+        `conseil — Pulse travaille sur tes 3 premières étoiles, et seulement ` +
+        `elles. Retires-en une pour lui faire de la place.`;
     }
     const r = await supabase.from("insight_feedback").upsert(
       { user_id: user.id, insight_key: key, verdict: "agree" },

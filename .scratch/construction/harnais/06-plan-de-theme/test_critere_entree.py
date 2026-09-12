@@ -9,7 +9,7 @@ import pulse  # noqa: F401
 from t import ok, egal, bilan
 
 from saas.traitement.build_report import (
-    NATURES_IA, _GESTE_REGLE, _LEVIER_REGLE, _attach_grammaire, _est_conseil,
+    NATURES, _GESTE_REGLE, _LEVIER_REGLE, _attach_grammaire, _est_conseil,
 )
 
 
@@ -55,9 +55,9 @@ def test_une_regle_muette_sur_son_geste_n_est_jamais_servie():
 
 
 def test_les_cinq_gestes_et_pas_un_de_plus():
-    egal("les cinq gestes", NATURES_IA,
+    egal("les cinq gestes", NATURES,
          ("couper", "augmenter", "tester", "créer", "corriger"))
-    ok("pas de geste « vérifier »", "vérifier" not in NATURES_IA)
+    ok("pas de geste « vérifier »", "vérifier" not in NATURES)
 
 
 if __name__ == "__main__":

@@ -39,17 +39,26 @@ export type PayloadReco = {
   baseline?: number | null;
   // Temps à prévoir pour l'appliquer (« 10 min », « 30 min », « 1 h », « 2 h+ »).
   effort?: string | null;
-  // Le rôle qu'une piste IA se déclare elle-même (voir `ROLES_IA`,
-  // `build_report.py`) — absent des recos-règles, jamais rendu par elles.
+  // LA PREUVE : le délai auquel on saura (voir `ROLES`, `build_report.py`).
   //   generale  — un geste, constatable demain à l'œil dans la plateforme.
   //   hypothese — une hypothèse, dont le verdict tombe à 14 jours.
+  // Portée par TOUTES les règles depuis le ticket 06 de la construction
+  // (`_GESTE_REGLE`) — avant, seule une piste IA se le déclarait, et les
+  // pistes sont coupées depuis le ticket 08.
   role?: "generale" | "hypothese" | null;
-  // Le type de geste qu'une piste IA se déclare (voir `NATURES_IA`) — même
-  // portée que `role` : absent des recos-règles.
+  // LE GESTE : couper, augmenter, tester, créer, corriger (voir `NATURES`).
+  // Même portée que `role`. Un conseil sans geste n'existe pas — c'est un
+  // constat, et il n'est jamais servi (`_est_conseil`, `build_report.py`).
   nature?: "couper" | "augmenter" | "tester" | "créer" | "corriger" | null;
-  // Le nom exact de la campagne visée par une piste IA, recopié tel quel
-  // depuis les campagnes du thème — `null` quand le thème n'a aucune
-  // campagne pub (organique uniquement) ou pour une reco-règle.
+  // LE LEVIER : sur quoi le conseil demande d'agir — argent, contenu, tempo,
+  // audience, ou `socle` pour un prérequis de mesure. Il sert à ne pas servir
+  // trois conseils qui disent la même chose, et il repart avec le clic
+  // « ▶ Je le teste » pour nourrir la mémoire du thème.
+  levier?: string | null;
+  // L'objet NOMMÉ que le conseil vise — une campagne, une annonce, un
+  // groupe d'annonces. `null` quand le conseil porte sur le thème entier.
+  // C'est la moitié de l'empreinte qui l'empêche de revenir à l'identique
+  // (`saas/recos_ia/composition.py`).
   cible?: string | null;
 };
 
@@ -121,12 +130,15 @@ export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolea
 // Une action décidée depuis un conseil. Cinq états :
 //   running  = à faire (elle vit en haut du rapport) — un clic client
 //   done     = faite le done_at, on observe 14 jours à partir de ce jour — un clic client
-//   auto     = l'hypothèse d'un thème (voir `build_report.py`, `_theme_ai_recos`
-//              `role="hypothese"`) : posée par le WORKER à la publication, sans
-//              aucun clic. Reçoit un verdict à l'échéance exactement comme
-//              `done`, mais ne compte PAS dans le plafond de 3 chantiers
-//              (`capReached`, `app/page.tsx`) et ne bloque jamais « ▶ Je le
-//              teste » sur les autres conseils.
+//   auto     = STATUT HÉRITÉ, plus jamais écrit ni relu (ticket 06 de la
+//              construction). C'était l'Hypothèse d'un thème posée par le
+//              WORKER à la publication, sans aucun clic, qui recevait un
+//              verdict à l'échéance que le client l'ait faite ou non — un
+//              mouvement de chiffres attribué à un geste que personne n'a
+//              confirmé (`CLAUDE.md` §7). `build_report.py` ne lit plus ces
+//              lignes : elles restent en base, elles n'arrivent plus ici. Les
+//              branches qui les gèrent encore (ci-dessous et dans les
+//              composants) sont donc inertes, pas actives.
 //   archived = verdict vu, rangée dans l'historique
 //   dropped  = abandonnée — elle quitte la liste mais reste dans l'historique
 export type TrackedAction = {
@@ -262,7 +274,7 @@ export type VisionBlock = {
   generated_at: string;
   period_label: string; // « depuis le 1 jan »
   // Thèmes étoilés page Thèmes, dans l'ORDRE D'ÉTOILAGE — plus de plafond
-  // depuis le 14 août 2026. Les trois premiers seuls reçoivent des pistes IA.
+  // depuis le 14 août 2026. Les trois premiers seuls reçoivent des conseils.
   priorities?: string[];
   constats: VisionConstat[];
 };
@@ -336,6 +348,20 @@ export type ThemeFocus = {
   label: string;
   is_priority: boolean;
   /**
+   * CE THÈME REÇOIT-IL DES CONSEILS ?
+   *
+   * Le filtre dur : Pulse conseille sur les trois thèmes que le client a
+   * désignés, et seulement sur eux (`_THEMES_CONSEILLES`, `build_report.py` —
+   * `CLAUDE.md` §1, ADR 0003). Un thème `conseille: false` garde sa carte, ses
+   * chiffres, sa courbe et sa veille ; à la place de ses conseils, la carte
+   * affiche un module VERROUILLÉ qui dit ce qui le déverrouille.
+   *
+   * ABSENT VAUT « OUI ». Les payloads publiés avant ce filtre ne le portent
+   * pas, et leurs cartes avaient bien des conseils : traiter l'absence comme un
+   * « non » verrouillerait rétroactivement des dizaines d'anciens rapports.
+   */
+  conseille?: boolean;
+  /**
    * L'objectif EFFECTIF de ce thème — celui qui pilote réellement sa courbe
    * (`series.metric_label`) et l'ordre de ses conseils, PAS forcément celui du
    * compte. Absent des payloads publiés avant cette fonctionnalité : le front
@@ -408,7 +434,20 @@ export type ReportPayload = {
   themes_intro?: string | null;
   // Savoir-faire de fond par thématique — durable, pas lié à la semaine.
   themes_tips?: { theme: string; tips: { titre: string; texte: string }[] }[] | null;
-  // Sélection cross-thème : les 3 conseils du moment, en tête des conseils.
+  /**
+   * HISTORIQUE — plus jamais écrit, encore lu.
+   *
+   * C'était « Si tu ne fais que trois choses », une sélection cross-thème en
+   * tête des conseils. Elle avait un sens quand douze conseils sortaient ; il y
+   * en a cinq au maximum depuis le plafond de semaine, sur trois thèmes au
+   * maximum. David a déplacé l'objet plutôt que de le supprimer : « cette
+   * notification peut vivre sur l'app, elle ne doit pas être rattachée à la
+   * page hebdomadaire » — c'est le module de commandes
+   * (`.scratch/refonte/issues/12-module-de-commandes.md`).
+   *
+   * Le champ reste lu pour une seule chose : retrouver la photo d'un conseil
+   * (`recoDetail`) dans un payload déjà publié.
+   */
   top_recos?: TopReco[] | null;
   reglages?: PayloadReco[] | null;
   tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;

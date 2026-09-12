@@ -19,10 +19,19 @@ pas propres à ce dossier — voir `CLAUDE.md` § 7.
 | `reco_engine.py` | **Non** — déterministe | Le moteur de recos : dix règles sur les chiffres, zéro modèle de langage. |
 | `regles_payantes.py` | **Non** — déterministe | Les quatre règles qui descendent **sous la campagne** : Annonce, Groupe d'annonces, budget posé d'un thème. |
 | `insights.py` | **Non** — déterministe | La matrice full-history + les constats (« Ce qui fonctionne pour toi »). |
+| `composition.py` | **Non** — pur, zéro I/O | **Ce qui sort de la semaine** : cinq conseils au maximum sur tout le compte, ≤ 2 Marches, ≤ 2 fabrications à une heure ou plus, et l'**empreinte** (clé + cible) qui empêche la même instruction de revenir. Il coupe, il ne trie pas. |
 | `labeling.py` | Oui — Gemini | Pose un thème sur chaque post/campagne qui n'en a pas. |
 | `categorizing.py` | Oui — Gemini | Catégorise chaque événement GA4 du catalogue qui n'en a pas. |
 | `user_persona.py` | Oui — IA injectée (`call_ai`, pas un import direct de Gemini) | Le **profil client vivant** : synthétise un profil pour personnaliser le TON et le NIVEAU des recos. |
-| `theme_memoire.py` | Oui — IA injectée (même patron que `user_persona.py`) | La **mémoire d'un thème** : condense ce qu'il a déjà tenté et ce que ça a donné, pour le prompt qui rédige ses pistes. |
+| `theme_memoire.py` | Oui — IA injectée (même patron que `user_persona.py`) | La **mémoire d'un thème** : condense ce qu'il a déjà tenté et ce que ça a donné. |
+
+**Plus aucun conseil n'est rédigé par un modèle de langage.** Les « pistes » de
+thème — un appel Gemini par thème, trois idées écrites à partir de ses chiffres —
+sont coupées depuis le ticket 08 de la construction : c'était le seul endroit où
+Pulse disait quelque chose que **rien ne pouvait vérifier**, ni un chiffre du
+compte ni une règle. **Le moteur trie, l'IA explique** — elle garde le ton
+(`user_persona.py`), le savoir-faire de fond (`_themes_tips`, dans
+`saas/traitement/`), le résumé de la semaine et la mémoire d'un thème.
 
 Le nom du dossier dit « recos IA » au sens large : *tout ce qui fabrique la
 recommandation*, pas seulement ce qui appelle un modèle. `reco_engine.py` et

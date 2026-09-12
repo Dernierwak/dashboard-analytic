@@ -17,6 +17,7 @@ import { dateCourte, marqueursCourbe } from "@/components/etat-action";
 import { RailActions } from "@/components/rail-actions";
 import { NoteAjout } from "@/components/note-ajout";
 import { RecoCard } from "@/components/reco-card";
+import { ConseilsVerrouilles } from "@/components/conseils-verrouilles";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
@@ -120,19 +121,15 @@ export function ecartTheme(vals: number[]): number | null {
 }
 
 /**
- * L'IA A-T-ELLE RÉDIGÉ POUR CE THÈME ?
+ * CE THÈME REÇOIT-IL DES CONSEILS ?
  *
- * Le champ est écrit par le worker (`ia_redigee`, voir `_THEMES_IA` dans
- * `saas/traitement/build_report.py`) et n'existe pas dans `ThemeFocus` : ce type
- * décrit ce qu'un payload est GARANTI de porter, or les rapports publiés avant
- * août 2026 ne le portent pas. On le lit donc ici, en local et en optionnel.
- *
- * ABSENT VAUT « OUI », et c'est le point important : traiter l'absence comme un
- * « non » collerait rétroactivement, sur des dizaines d'anciens rapports, une
- * explication qui n'a rien à y faire — ces thèmes-là ONT été rédigés par l'IA.
+ * Le filtre dur du worker (`conseille`, voir `_THEMES_CONSEILLES` dans
+ * `saas/traitement/build_report.py`). ABSENT VAUT « OUI » : les payloads
+ * publiés avant ce filtre avaient bien des conseils sur toutes leurs cartes,
+ * et les verrouiller rétroactivement serait mentir sur ce qu'ils contiennent.
  */
-function iaARedige(theme: ThemeFocus): boolean {
-  return (theme as ThemeFocus & { ia_redigee?: boolean }).ia_redigee !== false;
+function recoitDesConseils(theme: ThemeFocus): boolean {
+  return theme.conseille !== false;
 }
 
 export function ThemeCard({
@@ -151,6 +148,7 @@ export function ThemeCard({
   capReached = false,
   conversionsTheme = [],
   objectifEffectif = null,
+  aucunePriorite = false,
 }: {
   theme: ThemeFocus;
   actions: TrackedAction[];
@@ -180,6 +178,11 @@ export function ThemeCard({
    *  reproduire le repli lui-même — même raison que `objectif-theme.tsx` avant
    *  lui, qui recevait `objectifEffectif` tout calculé pour la même raison. */
   objectifEffectif?: string | null;
+  /** Le COMPTE n'a aucune étoile — distinct de « ce thème-ci n'en a pas ». Les
+   *  deux verrouillent les conseils, mais la phrase qui déverrouille n'est pas
+   *  la même : poser une première étoile, ou en échanger une des trois. Une
+   *  carte ne peut pas trancher seule, elle ne voit que son propre thème. */
+  aucunePriorite?: boolean;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
   const vals = s ? s.points.map((p) => p.value) : [];
@@ -447,70 +450,33 @@ export function ThemeCard({
                     ))}
                 </div>
               </div>
-            ) : (
+            ) : recoitDesConseils(theme) ? (
               <p className="text-[12.5px] text-faint">
                 Rien d&apos;urgent sur ce thème cette semaine — il tourne dans ses normes.
               </p>
-            )}
+            ) : null}
 
-            {/* ── LE THÈME QUE L'IA N'A PAS TRAVAILLÉ ─────────────────────────
-                Ce bloc occupe EXACTEMENT la place où les pistes rédigées
-                auraient été : sous les conseils-règles, dans la colonne des
-                conseils. C'est la seule position qui réponde à la question au
-                moment où elle se pose — un lecteur qui compare deux cartes voit
-                d'abord qu'il y a moins de choses ici, et il le voit ICI.
+            {/* LE MODULE VERROUILLÉ PREND EXACTEMENT LA PLACE DES CONSEILS.
+                C'est la seule position qui réponde à la question au moment où
+                elle se pose : un lecteur qui compare deux cartes voit d'abord
+                qu'il n'y a rien à faire ici, et il le voit ICI.
 
-                POURQUOI IL EXISTE. Une carte plus courte que sa voisine, sans
-                un mot, se lit de deux façons et les deux sont fausses : « Pulse
-                est cassé sur ce thème », ou « ce thème n'a aucun problème ». Le
-                vide non expliqué est une règle connue de ce projet ; c'est
-                pourquoi la phrase dit à la fois POURQUOI et QUOI FAIRE.
+                IL NE MANGE PAS LA VEILLE. Une carte hors priorités peut quand
+                même porter une veille — une campagne lancée il y a trois jours,
+                un thème qui s'est arrêté net. Ça ne demande aucun geste, donc ce
+                n'est pas un conseil, donc le filtre dur ne la retire pas : elle
+                reste au-dessus, et le cadenas se lit comme ce qu'il est, une
+                explication de ce qui manque.
 
-                ET IL N'EST PAS UNE ALERTE. Pas de rouge, pas d'orange : rien
-                n'a échoué, un budget a été tenu. Cadre gris, texte `muted`,
-                sous les conseils — le poids visuel d'une note de bas de bloc.
-                Le seul mot en gras est le fait lui-même. */}
-            {!iaARedige(theme) && (
-              <div className="mt-3 rounded-lg border border-line bg-black/[0.02] px-3 py-2.5 max-w-[68ch]">
-                <p className="text-[11.5px] text-muted leading-relaxed">
-                  <span className="font-semibold text-ink">
-                    Pas de pistes rédigées par l&apos;IA sur ce thème.
-                  </span>{" "}
-                  Elle n&apos;en écrit que pour tes <span className="font-semibold">3
-                  premières étoiles</span>, et celui-ci vient après.
-                  {theme.recos.length > 0 ? (
-                    <>
-                      {" "}Les conseils ci-dessus sortent des règles, calculées sur tes
-                      propres chiffres : plus sûrs qu&apos;une piste, mais moins nombreux.
-                    </>
-                  ) : (
-                    /* La ligne au-dessus dit déjà « rien d'urgent » ; la répéter
-                       ici serait la même explication deux fois. Ce qu'elle ne dit
-                       pas, en revanche, c'est QUI a conclu ça — et c'est
-                       justement ce qu'un lecteur pourrait mettre sur le dos de
-                       l'IA absente. */
-                    <> Ce &laquo;&nbsp;rien d&apos;urgent&nbsp;&raquo; est donc le
-                      verdict des règles, pas un silence de l&apos;IA.
-                    </>
-                  )}{" "}
-                  {theme.is_priority ? (
-                    <>
-                      Pour qu&apos;elle le travaille aussi, retire sur{" "}
-                      <Link href="/labels" className="text-brand font-semibold hover:underline">
-                        ◫ Thèmes
-                      </Link>{" "}
-                      une des trois étoiles posées avant lui.
-                    </>
-                  ) : (
-                    <>
-                      Pour qu&apos;elle le travaille aussi, étoile-le sur{" "}
-                      <Link href="/labels" className="text-brand font-semibold hover:underline">
-                        ◫ Thèmes
-                      </Link>{" "}
-                      et retire une des trois étoiles les plus anciennes.
-                    </>
-                  )}
-                </p>
+                ET « RIEN D'URGENT » NE S'AFFICHE PLUS ICI, c'est la condition
+                juste au-dessus : cette phrase est le verdict des règles, et sur
+                un thème hors priorités aucune règle n'a tourné. L'écrire quand
+                même ferait dire à Pulse qu'il a regardé. */}
+            {!recoitDesConseils(theme) && (
+              <div className="mt-3">
+                <ConseilsVerrouilles
+                  etat={aucunePriorite ? "aucune-priorite" : "hors-priorites"}
+                />
               </div>
             )}
           </div>
@@ -564,13 +530,22 @@ export function ThemeCard({
                 themeCourant={theme.label}
               />
             )}
+            {/* « PRENDS UN CONSEIL À GAUCHE » NE SE DIT QUE S'IL Y EN A UN.
+                Sur un thème hors priorités, la colonne de gauche porte un
+                cadenas : envoyer le lecteur y chercher un conseil lui ferait
+                traverser la carte pour rien, et lui ferait croire à une panne.
+                On garde le fait — rien n'a été tenté — et on le laisse sans
+                consigne : la consigne est déjà écrite sur le cadenas. */}
             {miennesManuelles.length === 0 &&
               changements.length === 0 &&
               changementsApi.length === 0 && (
                 <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
                   Rien n&apos;a encore été tenté sur ce thème
-                  {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}. Prends
-                  un conseil à gauche : tu sauras dans deux semaines ce qu&apos;il a donné.
+                  {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}.
+                  {recoitDesConseils(theme) && (
+                    <> Prends un conseil à gauche : tu sauras dans deux semaines ce
+                    qu&apos;il a donné.</>
+                  )}
                 </p>
               )}
 

@@ -44,6 +44,9 @@ from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
 from saas.recos_ia.regles_payantes import regles_payantes  # noqa: E402
+from saas.recos_ia.composition import (  # noqa: E402
+    composer_la_semaine, empreinte as empreinte_conseil,
+)
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
 from saas.recos_ia.user_persona import build_user_persona  # noqa: E402
 from saas.recos_ia.theme_memoire import condense_theme_memoire  # noqa: E402
@@ -70,12 +73,12 @@ def _call_gemini(prompt: str) -> str | None:
 # Champs d'une reco tels que stockés dans le payload (miroir du dict _reco()).
 # metric/metric_label/direction/baseline : indicateur-cible + sa valeur du moment,
 # pour le suivi « ▶ Je le teste » (photographie de la décision).
-# `role` (depuis le 27 août 2026) : le rôle que se déclare une piste IA sur un
-# thème rédigé par Gemini — voir `ROLES_IA` plus bas et `_theme_ai_recos`.
-# `nature`/`cible` (redesign du 27 août 2026, diagnostic `vision-produit`) : le
-# TYPE de geste (voir `NATURES_IA`) et l'objet NOMMÉ qu'il vise (une campagne
-# ou un post, recopié tel quel depuis `facts`) — sans eux, une piste IA ne
-# nomme jamais ce qu'elle demande de faire concrètement.
+# `role` : le DÉLAI auquel on saura (voir `ROLES` plus bas).
+# `nature`/`cible` : le TYPE de geste (voir `NATURES`) et l'objet NOMMÉ qu'il
+# vise — une campagne, une annonce, un groupe d'annonces. Sans eux, un conseil
+# ne nomme jamais ce qu'il demande de faire concrètement, et `cible` est la
+# moitié de l'empreinte qui l'empêche de revenir à l'identique
+# (`saas/recos_ia/composition.py`).
 RECO_FIELDS = ("key", "platform", "title", "observation", "pourquoi", "verifier",
                "repere", "angle_mort", "confidence", "priority", "source",
                "metric", "metric_label", "direction", "baseline", "effort",
@@ -116,12 +119,10 @@ EFFORT_BY_KEY = {
     "theme_hors_budget": "30 min",
 }
 
-# Le LEVIER et la MÉTRIQUE qu'une piste IA (`_theme_ai_recos`) doit déclarer
-# elle-même — deux listes fermées, même principe que `EFFORTS` ci-dessus.
-# Une valeur hors liste fait rejeter la piste entière (elle n'est jamais
-# affichée) : un levier ou une métrique devinés après coup ne seraient ni
-# l'un ni l'autre.
-LEVIERS_IA = ("argent", "contenu", "tempo", "audience")
+# LES QUATRE LEVIERS, liste fermée. Un conseil-règle déclare le sien par clé
+# (`_LEVIER_REGLE`, plus bas) et ne le devine jamais. `FENETRE_LEVIER` et
+# `ATTENTE_MIN_NOUVELLE_HYPOTHESE`, juste en dessous, sont indexées dessus.
+LEVIERS = ("argent", "contenu", "tempo", "audience")
 
 # Fenêtre de vérification d'une hypothèse, PAR LEVIER — décision wayfinder
 # (`.scratch/recos-labels/issues/03-suivi-hypothese.md`) : un levier
@@ -174,32 +175,26 @@ JUGEMENT_SEUIL_DEGRADATION = -10.0
 # levier le plus proche de l'indicateur qui s'est dégradé.
 JUGEMENT_LEVIER_PAR_METRIC = {"roas": "argent", "eng": "contenu", "reach": "audience"}
 # Le vocabulaire exact que `_kpis_window` (plus bas, dans `build_payload`)
-# sait mesurer — une piste qui déclarerait une métrique hors de cette liste
+# sait mesurer — un conseil qui déclarerait une métrique hors de cette liste
 # ne pourrait de toute façon jamais recevoir de verdict à 14 jours.
 # `spend` est entré avec les quatre règles payantes : `theme_hors_budget` vise
 # une dépense qui REDESCEND sous le budget posé, et c'est le seul indicateur qui
 # dise ça. `_kpis_window` le calculait déjà (et le calcule sur les deux régies
 # depuis le ticket 01) — aucune mesure neuve, juste une déclaration qui manquait.
 #
-# CE N'EST PAS PROPOSÉ À GEMINI, et c'est volontaire : le prompt de
-# `_theme_ai_recos` énumère ses six indicateurs et n'a pas celui-ci. « Dépenser
-# moins » n'est un succès que comparé à un budget POSÉ — c'est tout le travail
-# de `theme_hors_budget`. Offerte seule à une piste libre, la baisse de dépense
-# se lirait comme une réussite même quand le revenu s'est effondré avec elle.
-#
 # `sessions`, proposé au même moment par
 # `.scratch/refonte/issues/24-conseils-payants-manquants.md`, n'est PAS ajouté :
 # `_kpis_window` ne sait pas le mesurer, et un indicateur qu'on ne sait pas
 # remesurer à l'échéance ne rend pas un verdict — il en fabrique un.
-METRICS_IA = ("cpc", "roas", "posts", "reach", "eng", "purchases", "spend")
+METRICS_MESURABLES = ("cpc", "roas", "posts", "reach", "eng", "purchases", "spend")
 # Libellé, unité, sens d'amélioration et format d'affichage de chaque
 # métrique déclarable. Source UNIQUE depuis le ticket 06 de la construction :
 # la table `PROOF_KPI` qui vivait dans `build_payload` répétait ces six lignes
 # valeur pour valeur, une fois par clé-règle, et deux tables qui disent la même
-# chose finissent par ne plus la dire pareil. Une règle déclare maintenant son
-# INDICATEUR (`_METRIC_REGLE`, juste en dessous) et une piste IA déclare le sien
-# (`METRICS_IA`) : les deux lisent leur libellé ici.
-METRIC_INFO_IA = {
+# chose finissent par ne plus la dire pareil. Une règle déclare son INDICATEUR
+# par clé (`_METRIC_REGLE`, juste en dessous), et c'est ici qu'il trouve son
+# libellé, son unité et son sens d'amélioration.
+METRIC_INFO = {
     "cpc":       ("CPC moyen", "CHF", "down", "{:.2f}"),
     "roas":      ("ROAS", "", "up", "{:.1f}"),
     "posts":     ("posts publiés", "", "up", "{:.0f}"),
@@ -257,75 +252,37 @@ def _spec_mesure(metric: str | None) -> tuple | None:
     """(indicateur, libellé, unité, sens, format) — ou `None` si l'indicateur
     n'est pas mesurable. Le seul endroit qui assemble cette spec, pour une règle
     comme pour une piste IA."""
-    info = METRIC_INFO_IA.get(metric or "")
+    info = METRIC_INFO.get(metric or "")
     return ((metric,) + info) if info else None
 
 
-# Le TYPE de geste qu'une piste IA se déclare elle-même (redesign du 27 août
-# 2026, diagnostic `vision-produit`) — cinq natures, parce que sans elles seul
-# `levier` forçait la variété : trois pistes pouvaient toutes dire « ajuste un
-# budget » (même levier « argent », trois natures différentes : couper ce
-# budget, l'augmenter, ou en tester un nouveau). `_theme_ai_recos` exige les 3
-# idées d'un thème sur 3 natures DISTINCTES, même mécanique de rejet que pour
-# `LEVIERS_IA`/`METRICS_IA`.
-NATURES_IA = ("couper", "augmenter", "tester", "créer", "corriger")
+# LES CINQ GESTES, liste fermée. Sans eux, seul `levier` forçait la variété :
+# trois conseils pouvaient tous dire « ajuste un budget » (même levier
+# « argent », trois gestes différents — couper ce budget, l'augmenter, ou en
+# tester un nouveau). Une règle déclare le sien par clé (`_GESTE_REGLE`) ou
+# branche par branche quand il dépend du chiffre du jour ; `_est_conseil` rejette
+# tout ce qui sort de cette liste, parce qu'un geste deviné n'en est pas un.
+NATURES = ("couper", "augmenter", "tester", "créer", "corriger")
 
-# Le RÔLE qu'une piste IA se déclare elle-même, depuis que la composition par
-# thème est passée à 100 % Gemini (décision de David, 27 août 2026) : plus
-# aucun conseil-règle (`saas/recos_ia/reco_engine.py`, `_orga_recos`,
-# `_reco_evenements`) ne participe aux 3 recos d'un thème rédigé par Gemini —
-# les 3 places sont TOUJOURS 2 « générale » + 1 « hypothèse ».
+# LE RÔLE, c'est-à-dire LE DÉLAI AUQUEL ON SAURA. Liste fermée de deux :
+#   generale  — une modification précise sur un élément NOMMÉ (une campagne, un
+#               post, une ligne de budget), dont on peut CONSTATER DEMAIN, à
+#               l'œil, dans la plateforme, qu'elle a été faite — un état, jamais
+#               un KPI ;
+#   hypothese — une théorie dont rien ne se voit demain et qui a besoin d'une
+#               mesure. C'est la MARCHE d'une Stratégie : elle ouvre le plan du
+#               thème (`theme_plan`) et attend son Verdict.
 #
-# Redéfini le 27 août 2026 (diagnostic `vision-produit`) : l'ancienne
-# définition de « generale » disait « valable sur n'importe quel canal, sans
-# rien à vérifier dans le temps » — ça condamnait 2 pistes sur 3 à être
-# génériques AVANT même que Gemini écrive un mot, et ça contredisait le champ
-# `verifier` (obligatoire) qu'on lui demandait quand même de remplir pour ces
-# pistes. Le nouvel axe n'oppose plus général/spécifique mais le DÉLAI DE LA
-# PREUVE — la clé JSON « generale » ne change pas (aucune migration), sa
-# définition oui :
-#   generale  — alias « geste » dans le prompt : une modification précise sur
-#               un élément NOMMÉ (une campagne, un post, une ligne de budget),
-#               dont on peut CONSTATER DEMAIN, à l'œil, dans la plateforme,
-#               qu'elle a été faite — un état, jamais un KPI ;
-#   hypothese — une idée moins sûre : elle entre automatiquement dans
-#               `suivi_actions` à la publication (voir plus bas dans
-#               `build_payload`) et reçoit un verdict mesuré à 14 jours, que le
-#               client l'ait cliquée ou non.
-# Une valeur hors liste fait rejeter la piste entière, même principe que
-# `LEVIERS_IA`/`METRICS_IA` — mais le DÉCOMPTE (exactement 1 hypothèse) n'est
-# jamais laissé au texte libre de Gemini : `_theme_ai_recos` le force lui-même
-# après coup (voir plus bas), parce qu'un prompt ne peut pas GARANTIR un compte
-# exact sur trois objets indépendants.
-ROLES_IA = ("generale", "hypothese")
+# Le DÉCOMPTE des Marches n'est plus une garantie par thème (« toujours 1 sur 3 »,
+# du temps où Gemini rédigeait) mais un PLAFOND sur la semaine entière, tenu par
+# `saas/recos_ia/composition.py` : une à deux, jamais trois théories en vol.
+ROLES = ("generale", "hypothese")
 
 
 # `SETUP_KEYS` (GA4 muet, connecter GA4, funnel) reste le socle d'un circuit
 # d'affichage séparé, sorti du flux normal des recos-thème/recos-règles
 # (voir ses usages plus bas).
 SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
-
-
-def _forcer_une_hypothese(pool: list[dict]) -> None:
-    """Garantit qu'AU PLUS une piste porte `role="hypothese"` dans `pool`,
-    et exactement une s'il y en a au moins une — mute `pool` sur place.
-
-    Appelée deux fois : une fois dans `_theme_ai_recos` juste après avoir reçu
-    Gemini (il peut mal compter sur un texte libre), et une seconde fois sur le
-    résultat retenu dans `build_payload` — le rejet d'une piste au levier ou à
-    l'indicateur hors liste peut écarter PILE celle que Gemini avait désignée
-    comme hypothèse, et la garantie « toujours 2 générale + 1 hypothèse » doit
-    survivre aux deux. Ne fait rien sur une liste vide : rien à désigner.
-    """
-    if not pool:
-        return
-    if sum(1 for d in pool if d.get("role") == "hypothese") == 1:
-        return
-    # Règle déterministe et stable : la DERNIÈRE piste de la liste porte
-    # l'hypothèse, les autres sont générales — reproductible, jamais un choix
-    # aléatoire qui changerait de piste sans que rien n'ait changé.
-    for i, d in enumerate(pool):
-        d["role"] = "hypothese" if i == len(pool) - 1 else "generale"
 
 
 def _effort_de(reco: dict) -> str:
@@ -406,7 +363,7 @@ _LEVIER_REGLE = {
 
 # LE GESTE ET LA PREUVE — les deux dernières des cinq colonnes d'une règle.
 #
-# Le GESTE (`nature`, dans `NATURES_IA`) existe pour une seule raison, la même
+# Le GESTE (`nature`, dans `NATURES`) existe pour une seule raison, la même
 # que le levier juste au-dessus : empêcher que les conseils de la semaine se
 # ressemblent. C'est pour ça qu'il n'y a **pas de sixième geste « vérifier »** —
 # il rendrait admissible tout ce qui ne demande rien, et brouillerait exactement
@@ -414,7 +371,7 @@ _LEVIER_REGLE = {
 # et que `_est_conseil` applique : **un conseil sans geste est un constat**, et
 # un constat n'occupe pas une des places de la semaine.
 #
-# La PREUVE (`role`, dans `ROLES_IA`) est le DÉLAI auquel on saura :
+# La PREUVE (`role`, dans `ROLES`) est le DÉLAI auquel on saura :
 #   · `generale`  — un geste dont on constate DEMAIN, à l'œil, dans la
 #                   plateforme, qu'il a été fait (un budget monté, une campagne
 #                   coupée, un post publié) ;
@@ -466,11 +423,9 @@ _GESTE_REGLE = {
     "theme_hors_budget":       ("corriger", "generale"),
 }
 
-# Depuis août 2026, une piste IA declare directement son levier (voir
-# `_theme_ai_recos` et `LEVIERS_IA`) : `_levier()` ne devine plus jamais le
-# sien par mots-cles. Cette table ne sert donc plus qu'a un conseil qui ne
-# serait ni une regle (cle dans `_LEVIER_REGLE`), ni une veille, ni issu de
-# l'IA — gardee en repli defensif, pas en usage courant. Ordre volontaire —
+# Chaque regle declare son levier par cle (`_LEVIER_REGLE`) : cette table ne
+# sert donc plus qu'a un conseil qui ne serait ni une regle, ni une veille —
+# gardee en repli defensif, pas en usage courant. Ordre volontaire —
 # « budget » l'emporte sur « visuel » quand les deux mots sont la, parce que
 # c'est le geste qui coute.
 _LEVIER_MOTS = (
@@ -497,11 +452,6 @@ def _levier(reco: dict) -> str:
         return "veille"
     if cle in _LEVIER_REGLE:
         return _LEVIER_REGLE[cle]
-    if reco.get("source") == "ai":
-        # `_theme_ai_recos` rejette déjà toute piste dont le `levier` déclaré
-        # n'est pas dans `LEVIERS_IA` (jamais affichée) : ici, `levier` est
-        # donc garanti présent et valide — on le lit, on ne le devine plus.
-        return reco.get("levier")
     txt = f"{reco.get('title', '')} {reco.get('observation', '')}".lower()
     for nom, mots in _LEVIER_MOTS:
         if any(m in txt for m in mots):
@@ -524,6 +474,10 @@ def _attach_grammaire(reco: dict) -> dict:
     """
     if not reco.get("levier"):
         reco["levier"] = _levier(reco)
+    if reco.get("role") not in ROLES:
+        # Un rôle hors liste ne se corrige pas, il se retire : c'est le délai
+        # auquel on saura, et le deviner reviendrait à promettre une preuve.
+        reco.pop("role", None)
     defaut = _GESTE_REGLE.get(reco.get("key") or "")
     if defaut:
         if not reco.get("nature"):
@@ -545,49 +499,11 @@ def _est_conseil(reco: dict) -> bool:
         conseils vivent dans le bloc « réglages », pas dans les places de la
         semaine.
     Le reste — une règle qui ne sait pas dire quel geste elle demande — n'est
-    jamais servi. Même mécanique de rejet que `LEVIERS_IA`/`METRICS_IA` : jamais
-    un geste deviné.
+    jamais servi : un geste hors de `NATURES` n'est pas un geste, c'est un mot.
     """
     if _est_veille(reco) or _levier(reco) == "socle":
         return True
-    return bool(reco.get("nature"))
-
-
-def _diversifier(pool: list, n: int = 3) -> list:
-    """Choisit `n` conseils aussi differents que possible, sans jamais en rendre
-    moins que ce que le tri simple aurait rendu.
-
-    Cinq passes de plus en plus permissives. La premiere exige trois cles, trois
-    themes et trois leviers distincts ; la derniere n'exige rien. On ne descend
-    d'un cran que si le cran du dessus n'a pas rempli les trois places.
-
-    La derniere passe n'est pas un detail : deux themes qui gaspillent, ce SONT
-    deux problemes, pas un doublon — les campagnes concernees ne sont pas les
-    memes. Quand il n'y a rien d'autre a montrer, on remontre la meme regle
-    plutot que de rendre deux conseils au lieu de trois. La variete passe avant
-    la repetition, jamais avant l'information.
-    """
-    exigences = (("cle", "theme", "levier"), ("cle", "theme"),
-                 ("cle", "levier"), ("cle",), ())
-    choisis: list = []
-    vus: set = set()
-    for exig in exigences:
-        for r in pool:
-            if len(choisis) >= n:
-                break
-            if id(r) in vus:
-                continue
-            if "cle" in exig and any(c.get("key") == r.get("key") for c in choisis):
-                continue
-            if "theme" in exig and any(c.get("theme") == r.get("theme") for c in choisis):
-                continue
-            if "levier" in exig and any(_levier(c) == _levier(r) for c in choisis):
-                continue
-            choisis.append(r)
-            vus.add(id(r))
-        if len(choisis) >= n:
-            break
-    return choisis
+    return reco.get("nature") in NATURES
 
 
 # ── L'IMPORTANCE D'UN CONSEIL ────────────────────────────────────────────────
@@ -601,21 +517,28 @@ def _diversifier(pool: list, n: int = 3) -> list:
 #     de petites taches, et une liste de petites taches n'est pas une liste des
 #     choses importantes — c'est l'inverse.
 #
-# Les trois criteres retenus, dans l'ordre, et pourquoi cet ordre :
+# CE QUE LE CLIENT A DÉSIGNÉ N'EST PLUS UN CRITÈRE DE TRI, ET C'EST LE POINT DU
+# TICKET 08 DE LA CONSTRUCTION. C'était le premier élément du tuple : un thème
+# prioritaire passait devant, et les conseils des autres thèmes sortaient quand
+# même, simplement plus bas. Ce n'est pas ce que le produit dit. Les conseils
+# ne portent QUE sur les thèmes prioritaires — c'est un filtre dur, appliqué à
+# la source (`_conseille`, dans `build_payload`), et un filtre ne se double pas
+# d'un critère de tri : il ne reste rien à départager sur cet axe.
 #
-#   1. CE QUE LE CLIENT A DESIGNE. Il choisit jusqu'a trois themes prioritaires
-#      sur la page Themes. On ne le corrige pas.
-#   2. CE QUI PESE LE PLUS. `rang` est le rang du theme du conseil dans le
+# Les criteres retenus, dans l'ordre, et pourquoi cet ordre :
+#
+#   1. CE QUI PESE LE PLUS. `rang` est le rang du theme du conseil dans le
 #      compte — voir `_poids_theme` dans build_payload. C'est le seul critere
 #      qui parle d'enjeu, il passe donc avant tous les autres.
-#   3. CE QUI SE PERD PENDANT QU'ON LIT. Une campagne déclarée qui ne dépense
+#   2. CE QUI SE PERD PENDANT QU'ON LIT. Une campagne déclarée qui ne dépense
 #      rien perd un jour par jour, et elle n'est dans aucun chiffre du rapport.
 #      C'est le seul conseil dont le coût augmente tant qu'on ne l'a pas lu.
-#   4. CE QUI EST LE PLUS SÛR. La confiance, une fois l'enjeu tranché. Elle
-#      tient aussi les pistes IA derrière les constats mesurés sans qu'on ait
-#      besoin d'un critère pour ça : `_theme_ai_recos` les sort toutes en
-#      « piste ».
-#   5. Puis seulement la facilité, et la priorité du moteur, pour départager.
+#   3. CE QUI EST LE PLUS SÛR. La confiance, une fois l'enjeu tranché.
+#   4. Puis seulement la facilité, et la priorité du moteur, pour départager.
+#      `priority` est le POIDS D'IMPACT déclaré par la règle qui écrit le
+#      conseil : changer un CPC cible ne pèse pas ce que pèse une légende. Il
+#      pondère le tri et ne sort jamais d'ici — un « impact élevé » montré au
+#      client serait un chiffre fabriqué (`CLAUDE.md` §7).
 #
 # Et une veille ordinaire FERME LA MARCHE de son thème. Elle dit « il n'y a
 # rien à faire, attends le 24 » : c'est utile à lire, ça n'a rien à faire en
@@ -636,7 +559,6 @@ def _importance(reco: dict, rang: int = 0) -> tuple:
     """
     veille, urgente = _est_veille(reco), _veille_urgente(reco)
     return (
-        0 if reco.get("is_priority") else 1,
         rang,
         0 if urgente else 1,
         1 if (veille and not urgente) else 0,
@@ -891,41 +813,39 @@ def _orga_recos(theme, posts_theme, posts_compte, jusqu_au) -> list[dict]:
 # bouton « Je le teste » — une veille n'a pas de verdict à mériter.
 _VEILLE_JOURS = 14
 
-# ── COMBIEN DE THÈMES L'IA RÉDIGE ────────────────────────────────────────────
+# ── COMBIEN DE THÈMES REÇOIVENT DES CONSEILS ─────────────────────────────────
 #
-# Ce n'est PAS le nombre de thèmes du rapport. Le rapport en porte autant que le
-# client en a étoilés ; celui-ci ne compte que ceux qui passent par Gemini.
+# TROIS, ET C'EST LA PHRASE DU PRODUIT. Pulse n'arbitre pas entre les thèmes :
+# le client désigne ses priorités — trois au maximum — et Pulse conseille
+# DEDANS. Un thème que le client n'a pas mis en priorité reçoit sa carte, ses
+# chiffres, sa courbe et sa veille, mais **aucun conseil**. Tranché par
+# `.scratch/refonte/issues/21-le-document-de-refonte.md`, David mot pour mot :
+# « Les labels sont les recos pour les labels prio. Fin. »
 #
-# Les deux nombres étaient confondus, et c'est ce qui plafonnait le produit à
-# trois thèmes. Un thème coûte tout le moteur de règles (gratuit, déterministe,
-# quelques millisecondes) PUIS jusqu'à deux appels `_theme_ai_recos` — plus un
-# `_themes_tips` commun. Quinze thèmes étoilés, c'étaient trente appels par
-# rapport et par compte, chaque semaine : le plafond protégeait la facture, pas
-# la lecture.
+# C'EST UN FILTRE DUR, PAS UN TRI. Le code d'avant mettait `is_priority` en tête
+# d'`_importance` et laissait les autres sortir plus bas : le client voyait donc
+# des conseils sur des thèmes qu'il n'avait pas désignés, simplement rangés
+# après. Ici, ils n'existent pas.
 #
-# On sépare donc ce qui coûte de ce qui ne coûte pas. Tous les thèmes étoilés
-# reçoivent leur carte entière — chiffres, courbe, campagnes, conseils calculés
-# par les règles. Seuls les `_THEMES_IA` premiers reçoivent en plus des pistes
-# rédigées. Le nombre d'appels Gemini ne dépend plus du nombre d'étoiles.
+# CE NOMBRE NE PROTÈGE PLUS UNE FACTURE. Il a porté ce rôle : il s'appelait
+# `_THEMES_IA` et comptait les thèmes que Gemini rédigeait (jusqu'à deux appels
+# chacun). Les pistes rédigées sont coupées — c'était le seul endroit où Pulse
+# disait quelque chose que rien ne peut vérifier — et le nombre est redevenu ce
+# qu'il dit : le nombre de thèmes sur lesquels on travaille.
 #
-# TROIS, ET « LES PREMIERS » AU SENS DE L'ÉTOILAGE — voir `_labels_prioritaires`
-# juste dessous pour le pourquoi de cet ordre-là plutôt qu'un autre.
-#
-# Ce plafond est passé de 4 à 3. Avant, un thème pouvait entrer par la porte des
-# nouveautés (une campagne lancée cette semaine) et recevoir lui aussi ses
-# pistes IA : quatre thèmes rédigés au maximum. On y renonce pour que la règle
-# tienne en une phrase — « l'IA rédige tes trois premières étoiles » — parce
-# qu'une carte doit pouvoir DIRE au lecteur pourquoi elle n'a pas de pistes, et
-# qu'une règle à deux portes ne s'écrit pas sur une carte. Le coût ne monte donc
-# jamais, et baisse d'un appel dans le cas sans priorités.
-_THEMES_IA = 3
+# « LES TROIS PREMIERS » AU SENS DE L'ÉTOILAGE — voir `_labels_prioritaires`
+# juste dessous pour le pourquoi de cet ordre-là plutôt qu'un autre. C'est le
+# seul critère sur lequel le client peut agir : pour faire monter un thème, il
+# retire une étoile posée avant.
+_THEMES_CONSEILLES = 3
 
 
 def _labels_prioritaires(sb, user_id: str, ins_fb: dict) -> list:
     """Les thèmes étoilés par le client, DU PLUS ANCIEN ÉTOILAGE AU PLUS RÉCENT.
 
-    L'ordre n'est pas décoratif : c'est lui qui décide des `_THEMES_IA` thèmes
-    que Gemini rédige. Trois candidats se présentaient, et deux ont été écartés.
+    L'ordre n'est pas décoratif : c'est lui qui décide des `_THEMES_CONSEILLES`
+    thèmes qui reçoivent des conseils. Trois candidats se présentaient, et deux
+    ont été écartés.
 
     L'ALPHABÉTIQUE — ce qu'on faisait — ne veut rien dire, et le fichier le dit
     déjà ailleurs (`_rang_theme` : « les thèmes prioritaires arrivent triés par
@@ -936,7 +856,7 @@ def _labels_prioritaires(sb, user_id: str, ins_fb: dict) -> list:
     LE POIDS (dépense + publications, `_poids_theme`) est le critère que le
     produit utilise partout ailleurs pour classer, et il serait défendable —
     sauf sur le seul point qui compte ici : le client ne peut pas AGIR dessus.
-    La carte d'un thème sans pistes IA doit dire ce qu'il faut faire pour en
+    La carte d'un thème sans conseils doit dire ce qu'il faut faire pour en
     avoir ; sous le poids, la réponse serait « dépense plus sur ce thème », ce
     qui est un conseil absurde et, pire, un conseil qui nous arrange.
 
@@ -1351,8 +1271,8 @@ def _reco_theme_calme(theme, sem, hebdo, calmes, aveugle, silence_sem) -> dict:
             "Aucune de mes règles ne s'est déclenchée ici : pas d'écart de coût "
             "entre tes campagnes, pas de format qui décroche, pas de semaine "
             "vide. Le geste de la semaine, c'est de ne pas y toucher et de "
-            "mettre ton temps sur un thème qui bouge — les trois conseils du "
-            "haut de ce rapport te disent lequel."
+            "mettre ton temps sur un thème qui bouge — les conseils des autres "
+            "cartes te disent lequel."
         )
 
     if aveugle:
@@ -1510,289 +1430,35 @@ def _strip_reco(r: dict) -> dict:
 # (`.scratch/refonte/issues/24-conseils-payants-manquants.md`, décision 2).
 # Règles ET IA : plus aucun conseil n'est écarté pour avoir comparé les régies.
 #
-# CE QUI EN DÉCOULE ET QU'IL FAUT SAVOIR : les deux tentatives de Gemini
-# (`_ia_redigee`, plus bas) existaient en partie parce que ce filtre pouvait
-# faire tomber un thème de 3 pistes à 1. Elles restent — une piste dont le
-# levier ou l'indicateur sort de sa liste fermée est toujours rejetée, et
-# c'était l'autre moitié de la raison.
+# CE QUI EN DÉCOULAIT ET QUI N'EXISTE PLUS : ce filtre pouvait faire tomber un
+# thème de 3 pistes à 1, d'où les deux tentatives d'appel à Gemini. Les pistes
+# sont coupées, les deux tentatives avec elles.
 
 
-def _theme_conversions_txt(g4t: dict | None) -> str:
-    """Les événements GA4 désignés sur un thème, en une phrase pour un prompt IA.
-
-    Reprend EXACTEMENT ce que `_theme_ga4` a mesuré (ou pas) — jamais un zéro
-    inventé pour un événement absent. « mesuré » et « absent » sont dits comme
-    tels, pour que l'IA ne les confonde pas dans ses pistes.
-    """
-    if not g4t:
-        return ""
-    evs = g4t.get("evenements") or {}
-    absents = g4t.get("mesure_absente") or []
-    princ_absents = set(g4t.get("principaux_absents") or [])
-    if not evs and not absents:
-        return ""
-    parts = []
-    for nom, d in evs.items():
-        val_txt = f", valeur {d['value']:.0f} CHF" if d.get("value") else ""
-        parts.append(f"{d['rang']} « {nom} » mesuré {d['count']} fois{val_txt}")
-    for nom in absents:
-        rang = "principal" if nom in princ_absents else "secondaire"
-        parts.append(f"{rang} « {nom} » : aucune ligne mesurée sur la période (pas forcément zéro)")
-    return "; ".join(parts)
-
-
-def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
-                    obj_txt: str, g4t: dict | None = None, want: int = 3,
-                    eviter: list | None = None, deja_fait: list | None = None,
-                    sem: dict | None = None, hebdo: list | None = None,
-                    memoire: str | None = None) -> list[dict]:
-    """Jusqu'à `want` pistes IA DISTINCTES pour un thème, en UN seul appel Gemini
-    (léger, thinking off). [] si Gemini échoue → jamais bloquant.
-
-    `eviter`/`deja_fait` (TASK-025) : le TEXTE (`title`) des pistes IA que le
-    client a récemment marquées « pas pour moi »/« fait » SUR CE THÈME (voir
-    `reco_ctx` dans `build_payload`) — les retours client entrent ainsi
-    directement dans la composition, pas seulement en boucle après coup. Les
-    clés `ai_<theme>_<i>` étant positionnelles, ce texte est la SEULE chose qui
-    identifie une piste passée de façon stable ; sans lui, Gemini ne peut pas
-    savoir qu'il repropose une idée déjà écartée ou déjà en place.
-
-    Depuis le 27 août 2026 (composition par thème 100 % Gemini), chaque piste
-    porte aussi un `role` ("generale" ou "hypothese", voir `ROLES_IA`) —
-    toujours exactement 1 "hypothese" parmi les pistes rendues, garanti par le
-    code et non par le prompt (voir le décompte forcé plus bas).
-
-    Redesign du 27 août 2026 (diagnostic `vision-produit`) : chaque piste
-    déclare aussi une `nature` (voir `NATURES_IA`, 3 valeurs distinctes exigées
-    sur les 3 idées d'un thème) et une `cible` — le nom exact de la campagne
-    visée, recopié dans `facts` ci-dessous. Une piste dont la `cible`
-    n'apparaît pas mot pour mot dans `facts` est rejetée : un objet visé qu'on
-    ne retrouve pas dans les campagnes du thème n'est pas un objet réel.
-
-    EXCEPTION tranchée par David (27 août 2026) : un thème SANS AUCUNE
-    campagne pub (`camps` vide — thème purement organique) n'a justement AUCUN
-    objet publicitaire à nommer. Le filtre `cible` ne s'y applique pas : ses
-    pistes portent sur autre chose (cadence, format de publication) sans
-    campagne ciblée, et `cible` vaut `None`. Pour un thème qui A des
-    campagnes, rien ne change : le filtre reste strict.
-
-    `sem`/`hebdo` (diagnostic `recos`, 7 septembre 2026) : `tsummary` est un
-    CUMUL sur tout l'historique du thème — mesuré, deux prompts consécutifs
-    avec de vrais nouveaux chiffres étaient identiques à 99,7 %. `sem`
-    (`_semaine_theme` de la semaine en cours) et `hebdo` (les semaines
-    précédentes) sont les seuls chiffres qui changent réellement chaque
-    rapport ; sans eux le prompt n'a concrètement rien de neuf à raconter.
-
-    `memoire` (spec `.scratch/theme-memoire/spec.md`) : le résumé narratif de
-    ce que ce thème a déjà TENTÉ et de ce que ça a donné, rédigé à la chute du
-    dernier verdict (`saas/recos_ia/theme_memoire.py`) et lu ici tel quel.
-    Passé en texte libre, jamais en contrainte : aucune règle n'interdit un
-    levier déjà échoué (décision du ticket 02 — l'IA reste libre, c'est
-    l'absence d'historique qui était le manque)."""
-    import json as _json
-    if want <= 0:
-        return []
-    facts = "; ".join(
-        f"{c['name']} [{c['channel']}] {c['spend']:.0f} CHF, CTR {c.get('ctr', 0):.1f} %"
-        + (f", revenu {c['revenue']:.0f} CHF" if c.get("revenue") is not None else "")
-        for c in camps[:12]) or "aucune campagne pub sur ce thème"
-    s = tsummary or {}
-    roas_txt = f", ROAS {s['roas']:.1f}" if s.get("roas") is not None else ""
-    # CE QUI A RÉELLEMENT BOUGÉ CETTE SEMAINE — voir la docstring. `tsummary`
-    # (cumul) reste dans le prompt pour la taille du thème, mais c'est `sem`
-    # qui doit porter la nouveauté d'un rapport à l'autre.
-    semaine_prompt = ""
-    if sem:
-        _sem_bits = [f"{sem.get('spend', 0):.0f} CHF dépensés"]
-        if sem.get("clics"):
-            _sem_bits.append(f"{sem['clics']} clics")
-        if sem.get("posts"):
-            _sem_bits.append(f"{sem['posts']} posts publiés")
-        if sem.get("reach") is not None:
-            _sem_bits.append(f"portée moyenne {sem['reach']:.0f}")
-        _hebdo_vals = [h for h in (hebdo or [])[:4] if h]
-        _hist_txt = ""
-        if _hebdo_vals:
-            _hist_txt = (" Les semaines précédentes, dans l'ordre du plus récent au "
-                         "plus ancien : " + " / ".join(
-                             f"{h.get('spend', 0):.0f} CHF, {h.get('posts', 0)} posts"
-                             for h in _hebdo_vals) + ".")
-        semaine_prompt = (
-            f" CETTE SEMAINE précisément sur ce thème : {', '.join(_sem_bits)}."
-            f"{_hist_txt} Base tes idées sur ce qui a CHANGÉ ou PAS BOUGÉ cette "
-            "semaine par rapport aux précédentes — pas seulement sur le cumul "
-            "de tout l'historique ci-dessus."
-        )
-    # CE QUE CE THÈME A DÉJÀ TENTÉ — du contexte, à côté des chiffres de la
-    # semaine, jamais une contrainte de format (voir la docstring).
-    memoire_prompt = (
-        " MÉMOIRE DE CE THÈME (ce qui a déjà été tenté et ce que ça a donné) : "
-        f"{(memoire or '').strip()} Tiens-en compte pour ne pas reproposer ce "
-        "qui a déjà échoué ici — tu restes libre du levier que tu choisis."
-        if (memoire or "").strip() else ""
-    )
-    conv_txt = _theme_conversions_txt(g4t)
-    conv_prompt = (
-        f" Conversions Google Analytics désignées pour ce thème : {conv_txt}. "
-        "Un événement dit « absent » n'a produit aucune ligne mesurée sur la "
-        "période — ça ne veut PAS dire qu'il vaut zéro, ne l'affirme jamais. "
-        "Utilise ces conversions quand elles éclairent une piste (funnel, coût "
-        "par conversion, quel événement suivre) — sans les répéter si elles "
-        "n'apportent rien à l'idée."
-        if conv_txt else ""
-    )
-    # Le filtre déterministe `cible` (plus bas) exige un nom recopié mot pour
-    # mot dans `facts` — impossible pour un thème purement organique, où
-    # `facts` ne contient aucune campagne à nommer (voir la docstring, David,
-    # 27 août 2026). Le prompt doit donc ne PAS exiger `cible` dans ce cas,
-    # sinon Gemini en invente un qui ne matchera jamais.
-    cible_prompt = (
-        '"cible" = le nom EXACT, recopié mot pour mot depuis « Ses campagnes » '
-        "ci-dessus, de LA campagne visée par cette idée — jamais un nom reformulé, "
-        "raccourci ou traduit. "
-        if camps else
-        "Ce thème n'a AUCUNE campagne publicitaire (organique uniquement) : "
-        'mets "cible": "" pour les 3 idées — elles portent sur la cadence, le '
-        "format ou le contenu des publications, jamais sur une campagne qui "
-        "n'existe pas. "
-    )
-    # LES RETOURS CLIENT DANS LA COMPOSITION, PAS SEULEMENT EN BOUCLE APRÈS
-    # COUP (TASK-025) — voir la docstring pour pourquoi c'est le TEXTE, jamais
-    # la clé, qui identifie une piste passée.
-    feedback_prompt = ""
-    if eviter:
-        feedback_prompt += (
-            " Le client a déjà dit « pas pour moi » récemment sur ces idées-là : "
-            + " / ".join(eviter) +
-            " — ne repropose pas une idée proche de celles-ci."
-        )
-    if deja_fait:
-        feedback_prompt += (
-            " Il a récemment mis en place ces idées-là : "
-            + " / ".join(deja_fait) +
-            " — ne les répète pas à l'identique (tu peux t'appuyer dessus pour la suite)."
-        )
-    raw = _call_gemini(
-        "Tu es un consultant marketing senior pour une PME suisse. "
-        f"On travaille UNIQUEMENT sur le thème « {theme} » (objectif de ce thème : {obj_txt}). "
-        f"Ce thème sur tout l'historique : {s.get('spend', 0):.0f} CHF dépensés"
-        f"{roas_txt}, {s.get('posts', 0)} posts. "
-        f"Ses campagnes : {facts}."
-        f"{semaine_prompt}"
-        f"{memoire_prompt}"
-        f"{conv_prompt}{feedback_prompt} "
-        f"Propose {want} idées DISTINCTES et concrètes pour améliorer CE thème cette "
-        "semaine (chacune sur un levier différent : cible, créa, budget, canal, format…). "
-        "RÈGLE ABSOLUE : ne compare JAMAIS Meta et Google entre eux, ne dis jamais "
-        "« Meta fait mieux que Google » ni l'inverse — chaque conseil porte sur UN levier, "
-        "pas sur un arbitrage entre les deux régies. "
-        "Parmi ces idées : 2 doivent être des GESTES — une modification précise à "
-        "faire sur un élément NOMMÉ du compte ci-dessus (une campagne, un post, une "
-        "ligne de budget), dont on peut CONSTATER DEMAIN, à l'œil, dans la plateforme, "
-        "qu'elle a été faite. Leur champ \"verifier\" décrit exactement ce qu'on doit "
-        "VOIR demain pour savoir que c'est fait (un état, pas un KPI) — par exemple "
-        "« demain, le budget de X affiche 40 CHF/j au lieu de 25 ». Un geste dont on "
-        "ne peut pas constater l'exécution en un coup d'œil n'est pas un geste : "
-        "reformule-le. "
-        "Et 1 doit être une HYPOTHÈSE : une idée moins sûre dont on ne saura qu'au "
-        "bout de 14 jours si elle a marché. Son champ \"verifier\" nomme l'indicateur "
-        "à comparer à aujourd'hui, et dans quel sens il doit bouger. "
-        "Réponds UNIQUEMENT avec un tableau JSON de "
-        f"{want} objets, chacun avec ces clés : "
-        '{"title","observation","pourquoi","verifier","angle_mort","effort","levier",'
-        '"metric","role","nature","cible"}. '
-        '"effort" = le temps qu\'il faut pour le mettre en place, EXACTEMENT une '
-        'de ces valeurs : "10 min", "30 min", "1 h", "2 h+". '
-        '"levier" = sur quoi agit cette idée, EXACTEMENT une de ces valeurs : '
-        '"argent" (combien on met et où), "contenu" (ce qu\'on montre), '
-        '"tempo" (quand et à quelle fréquence on publie), "audience" (à qui on parle). '
-        '"metric" = l\'indicateur chiffré que cette idée doit faire bouger, EXACTEMENT '
-        'une de ces valeurs : "cpc" (coût par clic pub), "roas" (retour sur dépense pub), '
-        '"posts" (nombre de publications), "reach" (portée moyenne des posts), '
-        '"eng" (engagement moyen des posts), "purchases" (achats mesurés par GA4). '
-        '"role" = EXACTEMENT une de ces valeurs : "generale" (un geste, constatable '
-        'demain) ou "hypothese" (une hypothèse, mesurée à 14 jours) — au total sur les '
-        f"idées que tu proposes, {max(0, want - 1)} en \"generale\" et 1 en \"hypothese\". "
-        '"nature" = le TYPE de geste, EXACTEMENT une de ces valeurs : "couper" '
-        '(arrêter ou réduire quelque chose), "augmenter" (mettre plus de budget ou de '
-        'fréquence sur ce qui marche), "tester" (essayer une variante nouvelle), '
-        '"créer" (produire un contenu ou une campagne qui n\'existe pas encore), '
-        '"corriger" (réparer quelque chose qui ne fonctionne pas) — les '
-        f"{want} idées que tu proposes doivent porter {want} valeurs de \"nature\" "
-        "TOUTES DIFFÉRENTES entre elles. "
-        f"{cible_prompt}"
-        "Titres courts. Français, ton direct, ne déforme aucun chiffre fourni."
-    )
-    if not raw:
-        return []
-    try:
-        txt = raw.strip()
-        if txt.startswith("```"):
-            txt = txt.strip("`")
-            txt = txt[4:] if txt.lower().startswith("json") else txt
-        arr = _json.loads(txt.strip())
-        if isinstance(arr, dict):  # tolérance : un seul objet renvoyé
-            arr = [arr]
-        out = []
-        for i, d in enumerate(arr[:want]):
-            if not isinstance(d, dict):
-                continue
-            if not all(d.get(k) for k in ("title", "observation", "pourquoi", "verifier", "angle_mort")):
-                continue
-            # `levier`, `metric` et `role` sont des listes fermées, comme `effort`
-            # — mais contrairement à `effort`, une valeur hors liste REJETTE la
-            # piste entière au lieu de retomber sur une valeur par défaut : un
-            # levier ou une métrique devinés casseraient respectivement la
-            # diversité de `_diversifier` et la promesse de verdict à 14 jours
-            # (`_METRIC_REGLE`) ; un rôle deviné romprait la garantie « au plus
-            # une Hypothèse par thème » que `theme_plan` tient pour acquise.
-            if (d.get("levier") not in LEVIERS_IA or d.get("metric") not in METRICS_IA
-                    or d.get("role") not in ROLES_IA):
-                continue
-            # `nature` : même mécanique de rejet — hors liste, ou en doublon
-            # d'une piste DÉJÀ retenue de ce thème (`out`), casserait la
-            # promesse « 3 natures différentes » qui remplace ici `levier`
-            # comme garde-fou contre 3 pistes qui disent toutes « ajuste un
-            # budget ».
-            _nature = d.get("nature")
-            if _nature not in NATURES_IA or any(o.get("nature") == _nature for o in out):
-                continue
-            # `cible` : le nom exact d'une campagne du thème, recopié dans
-            # `facts` plus haut — jamais deviné après coup. Absente ou non
-            # retrouvée mot pour mot dans `facts`, la piste ne vise aucun objet
-            # réel : ce n'est pas un geste valide — on rejette la piste entière
-            # après réception plutôt que de la corriger, comme pour un levier ou
-            # un indicateur hors liste.
-            #
-            # EXCEPTION (David, 27 août 2026) : `camps` vide → thème purement
-            # organique, aucune campagne à nommer — le filtre ne s'applique
-            # pas, et `cible` reste `None` (rien à vérifier, donc rien à
-            # afficher). Pour un thème qui A des campagnes, rien ne change.
-            if camps:
-                _cible = str(d.get("cible") or "").strip()
-                if not _cible or _cible not in facts:
-                    continue
-            else:
-                _cible = None
-            out.append({
-                "key": f"ai_{theme}_{i + 1}", "platform": "ia",
-                "title": str(d["title"])[:90],
-                "observation": str(d["observation"]), "pourquoi": str(d["pourquoi"]),
-                "verifier": str(d["verifier"]), "repere": "",
-                "angle_mort": str(d["angle_mort"]),
-                "confidence": "piste", "priority": 9 + i, "source": "ai",
-                "effort": d.get("effort") if d.get("effort") in EFFORTS else "30 min",
-                "levier": d["levier"], "metric": d["metric"], "role": d["role"],
-                "nature": _nature, "cible": _cible,
-            })
-        # LE DÉCOMPTE DES RÔLES NE SE FIE JAMAIS AU TEXTE LIBRE DE GEMINI — voir
-        # `_forcer_une_hypothese`. La garantie « toujours 2 générale + 1
-        # hypothèse » pilote l'entrée automatique dans `suivi_actions` (voir
-        # `build_payload`), elle est donc absolue, pas une préférence.
-        _forcer_une_hypothese(out)
-        return out
-    except Exception:
-        return []
+# ── LES PISTES RÉDIGÉES PAR GEMINI SONT COUPÉES ──────────────────────────────
+#
+# `_theme_ai_recos` vivait ici : un appel Gemini par thème, qui rendait trois
+# « pistes » occupant les trois places de sa carte. Elle est supprimée, et ce
+# n'est pas une économie — c'est
+# `.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md` : sur les cinq
+# sites d'appel de ce fichier, celui-ci était **le seul endroit où Pulse disait
+# quelque chose que rien ne peut vérifier** — ni un chiffre du compte, ni une
+# règle — et ces pistes occupaient la place des cinq conseils qu'on vient de
+# plafonner.
+#
+# LES QUATRE AUTRES APPELS RESTENT, et la raison tient en une phrase chacun :
+# les astuces (`_themes_tips`, juste en dessous) et le ton (`build_user_persona`)
+# ne touchent aucun chiffre du compte ; le résumé de la semaine reformule ce
+# qu'on lui donne, il lui est interdit de calculer ; la mémoire d'un thème
+# condense des verdicts déjà mesurés. **Le moteur trie, l'IA explique.**
+#
+# CE QUE ÇA SUPPRIME AUSSI : le thème n'a plus deux chemins. Il n'y avait de
+# conseils-règles que pour les thèmes qu'aucun appel Gemini ne couvrait, et
+# comme la porte s'ouvrait à la QUATRIÈME étoile, un compte à trois étoiles ou
+# moins n'en recevait aucun — ni `roas`, ni les quatre `orga_*`, ni les quatre
+# règles payantes du ticket 07 de la construction. C'était le ticket
+# [26](../../.scratch/construction/issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md) :
+# la porte disparaît avec le chemin qu'elle gardait.
 
 
 def _themes_tips(labels: list, obj_txt: str, business: str = "",
@@ -2107,8 +1773,8 @@ def build_payload(sb, user_id: str) -> dict | None:
     verdicts: dict = {}
     # Le contexte par thème d'un feedback (colonnes `theme`/`title`, migration
     # `reco_feedback_contexte.sql`) — sert à museler `not_for_me` PAR THÈME
-    # (pas tout le compte, voir `feedback_theme` plus bas) et à donner à
-    # `_theme_ai_recos` le texte des pistes IA récemment écartées/appliquées.
+    # (pas tout le compte, voir `feedback_theme` plus bas) et à retrouver le
+    # TEXTE des conseils marqués « ◇ Trop compliqué » — voir `_bloques` plus bas.
     reco_ctx: list | None = None
     try:
         objectif = fetch_objectif(sb, user_id)
@@ -2260,9 +1926,9 @@ def build_payload(sb, user_id: str) -> dict | None:
         # étoilés — stockés dans insight_feedback sous la clé
         # priority_label:<nom>. Le `[:3]` qui coupait ici jetait la quatrième
         # étoile en silence : elle s'affichait sur la page Thèmes et le rapport
-        # l'ignorait. Le plafond n'était pas un plafond de lecture, c'était un
-        # plafond de coût — il vit maintenant dans `_THEMES_IA`, et il ne
-        # concerne plus que les pistes rédigées par Gemini.
+        # l'ignorait. Le plafond de LECTURE n'existe donc plus ici : toutes les
+        # étoiles sont lues, et c'est `_THEMES_CONSEILLES` qui décide, plus bas,
+        # lesquelles reçoivent des conseils.
         priority_labels = _labels_prioritaires(sb, user_id, ins_fb)
         constats = build_constats(matrix, ins_fb, priority_labels)
     except Exception:
@@ -2304,12 +1970,12 @@ def build_payload(sb, user_id: str) -> dict | None:
     )
 
     # ── Recos PAR THÈME : le client travaille label par label, cross-canal ────
-    # Chaque thème étoilé (tous ; sinon les 3 plus gros) reçoit ses propres
-    # conseils, calculés sur SES campagnes (Meta+Google) et SES posts seulement.
-    # Ces conseils-là sont GRATUITS : ce sont les règles du moteur. Seuls les
-    # `_THEMES_IA` premiers thèmes y ajoutent des pistes rédigées par Gemini.
-    # Les conseils « réglages » (GA4, funnel) sont sortis dans un bloc à part —
-    # `SETUP_KEYS`, définie au niveau module.
+    # Chaque thème reçoit sa carte, calculée sur SES campagnes (Meta+Google) et
+    # SES posts seulement. Seules les `_THEMES_CONSEILLES` premières étoiles y
+    # reçoivent des CONSEILS — les autres cartes portent leurs chiffres, leur
+    # courbe et leur veille, rien de plus. Ces conseils sont tous GRATUITS : ce
+    # sont les règles du moteur. Les conseils « réglages » (GA4, funnel) sont
+    # sortis dans un bloc à part — `SETUP_KEYS`, définie au niveau module.
     _obj_txt0 = OBJECTIFS[objectif]["label"] if objectif in OBJECTIFS else "non défini"
 
     def _nrm(s):
@@ -3125,23 +2791,57 @@ def build_payload(sb, user_id: str) -> dict | None:
             n += 1
         return n
 
-    # LES THÈMES QUE GEMINI RÉDIGE — la seule ligne qui coûte de l'argent.
+    # LES THÈMES QUI REÇOIVENT DES CONSEILS — le filtre dur, en une ligne.
     #
     # `theme_list` peut porter quinze thèmes ; ce jeu-ci en porte trois au
-    # maximum, toujours les mêmes trois dans un rapport donné, et c'est lui qui
-    # fixe la facture. Les douze autres traversent exactement le même code, à
-    # deux appels réseau près.
-    _themes_ia = {_nrm(_l) for _l in theme_list[:_THEMES_IA]}
+    # maximum, et ce sont les trois premières ÉTOILES du client. Les douze
+    # autres traversent le même code et ressortent avec leur carte, leurs
+    # chiffres et leur courbe — sans un seul conseil.
+    #
+    # IL SE LIT SUR `priority_labels`, PAS SUR `theme_list` : les deux sont la
+    # même liste quand le client a étoilé quelque chose, mais `theme_list`
+    # retombe sur les trois plus gros thèmes quand il n'a rien étoilé (voir son
+    # calcul plus haut). Ce repli donne des CARTES par défaut, jamais des
+    # priorités — un compte qui ne classe rien ne reçoit aucun conseil, et c'est
+    # exactement ce qu'on veut qu'il constate.
+    _themes_conseilles = {_nrm(_l) for _l in priority_labels[:_THEMES_CONSEILLES]}
+
+    # Les empreintes (clé + cible) qu'on s'autorise à répéter : les Marches
+    # d'une Stratégie en cours, réaffichées exprès tant que leur Verdict n'est
+    # pas tombé. Remplie dans la boucle ci-dessous, lue par le plafond de cinq.
+    _epingles: set = set()
+
+    # ── CE QUI A DÉJÀ ÉTÉ DEMANDÉ, CLÉ ET CIBLE ──────────────────────────────
+    #
+    # « On ne fait pas revenir la même reco qui change exactement la même chose »
+    # (David, `.scratch/refonte/issues/14-le-conseil-facile-et-la-degradation.md`,
+    # décision 10). La même clé sur une AUTRE cible repasse : c'est une nouvelle
+    # Marche, le chiffre n'est pas le même.
+    #
+    # LU AVANT LA BOUCLE, ET PAS SEULEMENT AU PLAFOND. Filtrer seulement à la
+    # fin laisserait la coupe à trois d'un thème se remplir de conseils déjà
+    # servis, qui seraient écartés juste après : le thème sortirait muet alors
+    # qu'un quatrième conseil, frais, attendait derrière.
+    #
+    # HORIZON : les huit derniers rapports publiés, ceux que `_rapports_publies`
+    # relit déjà (la semaine en cours est exclue, sinon un « ↻ Recharger mes
+    # conseils » se muselerait lui-même). Au-delà de huit semaines, une
+    # instruction identique peut donc revenir — c'est une borne, elle est
+    # assumée et elle se dit.
+    _deja_servies: set = set()
+    for _pl in _rapports_publies:
+        for _tf0 in (_pl.get("themes_focus") or []):
+            for _r0 in (_tf0.get("recos") or []):
+                _deja_servies.add(empreinte_conseil(_r0))
 
     themes_focus = []
     for lbl in theme_list:
         nlbl = _nrm(lbl)
         t_camps = [c for c in matrix_campaigns if _nrm(c.get("label")) == nlbl]
         # L'objectif EFFECTIF de ce thème (le sien, sinon celui du compte) —
-        # il pilote à la fois les règles gratuites (`build_recos` ci-dessous)
-        # et les pistes rédigées par Gemini (`_theme_ai_recos`, plus bas).
+        # il pilote les règles (`build_recos`, plus bas) et l'indicateur de sa
+        # courbe.
         _obj_lbl = _obj_theme(lbl)
-        _obj_txt_lbl = OBJECTIFS[_obj_lbl]["label"] if _obj_lbl in OBJECTIFS else _obj_txt0
         # Écrit dans le payload (voir `themes_focus.append` plus bas) pour que
         # le module du rapport (`objectif-theme.tsx`) puisse dire la vérité :
         # « propre à ce thème » seulement quand c'est vraiment le cas — jamais
@@ -3164,11 +2864,10 @@ def build_payload(sb, user_id: str) -> dict | None:
         if df_week_posts is not None and not df_week_posts.empty and "labels" in df_week_posts.columns:
             tw = df_week_posts[df_week_posts["labels"].map(_has)]
 
-        # AU-DELÀ DES `_THEMES_IA` PREMIERS ÉTOILAGES, Gemini ne rédige pas pour
-        # ce thème (garde-fou de coût, voir `_THEMES_IA`) — inchangé par cette
-        # décision. Elle ne concerne QUE les thèmes qu'il rédige : `_ia_redigee`
-        # décide donc dès ici lequel des deux chemins ce thème emprunte.
-        _ia_redigee = nlbl in _themes_ia
+        # LE FILTRE DUR, POSÉ DÈS ICI. Hors des trois premières étoiles, aucune
+        # règle ne tourne sur ce thème : « les labels sont les recos pour les
+        # labels prio, fin » (David, `.scratch/refonte/issues/21`).
+        _conseille = nlbl in _themes_conseilles
 
         # LE THÈME CONTRE LUI-MÊME. Quatre fenêtres, calculées une fois : elles
         # servent la règle de l'arrêt ci-dessous et le filet tout en bas.
@@ -3179,9 +2878,8 @@ def build_payload(sb, user_id: str) -> dict | None:
             for _k in range(1, 9)
         ]
 
-        # Calculé une fois, pour les deux chemins : `_theme_ai_recos` s'en sert
-        # comme contexte de prompt, `_reco_evenements` (chemin règles) en fait
-        # des conseils.
+        # Les conversions GA4 désignées sur ce thème : `_reco_evenements` en
+        # fait des conseils, `build_recos` s'en sert pour mesurer.
         _g4t_lbl = None
         try:
             _g4t_lbl = _theme_ga4(lbl)
@@ -3216,209 +2914,36 @@ def build_payload(sb, user_id: str) -> dict | None:
         except Exception:
             pass
 
-        if _ia_redigee:
-            # ── COMPOSITION 100 % GEMINI (décision de David, 27 août 2026) ───
-            #
-            # Plus aucun conseil-règle (`build_recos`, `_orga_recos`,
-            # `_reco_evenements`) ne participe aux 3 recos de ce thème — David,
-            # mot pour mot : « jamais de code fixe, c'est des recos qui sont
-            # faites par l'IA, qui dit je vais les classer là — mais c'est
-            # jamais un code fixe ». Les 3 places VISENT TOUJOURS 2 « générale »
-            # + 1 « hypothèse » (voir `ROLES_IA`, `_theme_ai_recos`) : la garde
-            # de coût conditionnelle qui existait ici (`_need = max(0, 3 -
-            # len(t_recos))`) disparaît, puisque plus rien d'autre ne remplit
-            # ces 3 places — Gemini est donc appelé à chaque fois pour ce
-            # thème, pas seulement pour compléter.
-            #
-            # DEUX TENTATIVES, PAS UNE SEULE — corrigé après un rejet du
-            # checker : la 1re version ne retentait QUE si Gemini rendait 0
-            # piste, alors qu'une piste dont `levier`/`metric`/`role`/`cible`
-            # est hors liste (voir `_theme_ai_recos`) peut faire tomber le
-            # thème à 2, voire 1 reco, SANS jamais relancer Gemini. On garde
-            # maintenant la MEILLEURE des deux tentatives (celle qui rend le
-            # plus de pistes), et on s'arrête dès qu'une tentative rend déjà
-            # 3 pistes valides.
-            #
-            # CE N'EST PAS UNE GARANTIE MATHÉMATIQUE ABSOLUE : si Gemini rend
-            # moins de 3 pistes valides sur les DEUX tentatives, la carte sort
-            # avec moins de 3 recos plutôt que de compléter avec un texte
-            # template — la décision de David l'interdit explicitement pour ce
-            # flux. C'est rare (mesuré : la quasi-totalité des générations
-            # rendent 3 pistes valides du premier coup), mais possible, et ce
-            # commentaire ne prétend pas le contraire.
-            #
-            # La veille (campagne neuve, thème à l'arrêt), elle, reste HORS
-            # QUOTA : elle s'affiche EN PLUS des recos, jamais à leur place.
-            #
-            # LES RETOURS CLIENT ENTRENT DANS LA COMPOSITION (TASK-025) — pas
-            # seulement en boucle après coup. Les clés des pistes IA
-            # (`ai_<theme>_<i>`) sont POSITIONNELLES : l'ordre de réponse de
-            # Gemini change d'une semaine à l'autre, un `reco_key` d'une
-            # semaine passée ne dit donc rien d'une piste précise la semaine
-            # suivante. Seul le TEXTE (`title`, colonne posée par la migration
-            # `reco_feedback_contexte.sql`) survit — on le retrouve ici pour
-            # CE thème, filtré aux clés `ai_` (les clés-règles ne sont de toute
-            # façon jamais rédigées par Gemini sur ce chemin). `reco_ctx` est
-            # déjà trié du plus récent au plus ancien : la première occurrence
-            # d'un texte est la plus récente.
-            # Lu ici (avant `_ai_eviter`) plutôt qu'après `t_recos` — voir plus
-            # bas pour le blocage de fenêtre, et juste en dessous pour
-            # pourquoi son titre doit aussi entrer dans `eviter`.
-            _plan = theme_plan_by.get(nlbl)
-            _ai_eviter, _ai_fait = [], []
-            for _row in (reco_ctx or []):
-                if not str(_row.get("reco_key") or "").startswith("ai_"):
-                    continue
-                if str(_row.get("theme") or "").strip().lower() != nlbl:
-                    continue
-                _txt = str(_row.get("title") or "").strip()
-                if not _txt:
-                    continue
-                if _row.get("reaction") == "not_for_me" and _txt not in _ai_eviter:
-                    _ai_eviter.append(_txt)
-                elif _row.get("reaction") == "done" and _txt not in _ai_fait:
-                    _ai_fait.append(_txt)
-            # L'HYPOTHÈSE ÉPINGLÉE N'EST PAS UN RETOUR CLIENT (diagnostic
-            # `recos`, 7 septembre 2026) : sans son titre dans `eviter`, les 2
-            # pistes "generale" pouvaient reformuler l'idée déjà suivie par la
-            # 3e carte — 3 emplacements, une seule idée en pratique.
-            if _plan and _plan.get("snapshot") and _plan["snapshot"].get("title"):
-                _plan_title = str(_plan["snapshot"]["title"])
-                if _plan_title not in _ai_eviter:
-                    # En tête, pas à la suite : `eviter=_ai_eviter[:5]` plus
-                    # bas ne doit jamais le couper au profit d'un retour
-                    # "not_for_me" plus ancien.
-                    _ai_eviter = [_plan_title] + _ai_eviter
-            # LA MÉMOIRE PASSÉE JUSTE EN DESSOUS DATE DU RAPPORT PRÉCÉDENT, ET
-            # C'EST VOULU (spec `.scratch/theme-memoire/spec.md`).
-            # `_plan["resume"]` est réécrit à la chute d'un verdict, dans la
-            # boucle de verdict qui s'exécute BIEN PLUS BAS dans
-            # `build_payload` — un résumé écrit aujourd'hui est donc lu par la
-            # rédaction du rapport SUIVANT. Ce n'est PAS un bug d'ordonnancement
-            # à « corriger » en remontant l'appel de condensation : la mémoire
-            # décrit un cycle qui vient de se clore, et c'est le cycle suivant
-            # qui doit en tenir compte.
-            t_recos: list[dict] = []
-            for _essai in range(2):
-                try:
-                    _cand = _theme_ai_recos(lbl, t_camps, matrix_themes_by.get(nlbl),
-                                            _obj_txt_lbl, g4t=_g4t_lbl, want=3,
-                                            eviter=_ai_eviter[:5], deja_fait=_ai_fait[:5],
-                                            sem=_sem_theme, hebdo=_hebdo_theme,
-                                            memoire=(_plan or {}).get("resume"))
-                except Exception:
-                    _cand = []
-                if len(_cand) > len(t_recos):
-                    t_recos = _cand
-                if len(t_recos) >= 3:
-                    break
-            # Le rejet d'une piste invalide peut emporter PILE celle que
-            # Gemini avait désignée comme hypothèse : on réapplique donc
-            # `_forcer_une_hypothese` sur le résultat final, pas seulement à
-            # la sortie de `_theme_ai_recos`.
-            _forcer_une_hypothese(t_recos)
-
-            # ── BLOCAGE : PAS DE NOUVELLE HYPOTHÈSE AVANT SON VERDICT ────────
-            #
-            # Sans ce garde, Gemini rédige une hypothèse FRAÎCHE à chaque
-            # rapport, sans jamais savoir qu'une précédente est encore en
-            # cours de vérification — « suivre une théorie » resterait une
-            # façade (wayfinder `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
-            # On réaffiche la carte déjà suivie (même `reco_key`, donc mêmes
-            # retours client / mêmes verdicts) plutôt que la nouvelle proposée
-            # par Gemini cette semaine — celle-ci est simplement écartée.
-            #
-            # DÉBLOQUÉ PAR LE VERDICT, PAS SEULEMENT PAR LE CALENDRIER
-            # (wayfinder ticket 06, 7 septembre 2026, `.scratch/recos-labels/
-            # issues/06-fenetre-verdict.md`) : `ATTENTE_MIN_NOUVELLE_HYPOTHESE`
-            # ne borne plus que le cas où AUCUN verdict n'est encore tombé —
-            # dès que `suivi_actions` a un verdict pour ce `reco_key`
-            # (`verdicts`, voir `fetch_reco_verdicts`), l'hypothèse suivante de
-            # Gemini n'est plus écartée, quel que soit le nombre de jours
-            # écoulés.
-            # (`_plan` déjà lu plus haut, avant `_ai_eviter`.)
-            if _plan and _plan.get("decided_at") and _plan.get("snapshot"):
-                try:
-                    _decided = date.fromisoformat(str(_plan["decided_at"])[:10])
-                except Exception:
-                    _decided = None
-                _attente = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
-                _verdict_tombe = bool(verdicts.get(_plan.get("reco_key")))
-                if _decided and not _verdict_tombe and (today - _decided).days < _attente:
-                    for _i, _r in enumerate(t_recos):
-                        if _r.get("role") == "hypothese":
-                            t_recos[_i] = dict(_plan["snapshot"])
-                            break
-
-            # ── LE FILET : AUCUNE CARTE NE SORT MUETTE ───────────────────────
-            #
-            # Ne se déclenche que si Gemini n'a RIEN rendu du tout (échec des
-            # deux tentatives) ET qu'il n'y a aucune veille à montrer non plus
-            # — sinon la carte aurait bien quelque chose à dire. Le résultat
-            # est lui-même une veille (`veille_theme_…`), donc rangé avec les
-            # autres, jamais à la place des 2+1.
-            if not t_recos and not t_veille:
-                try:
-                    _aveugle = (_sem_theme["spend"] > 0
-                                and not (_g4t_lbl or {}).get("paid_revenue"))
-                    _sil = 1
-                    for _h in _hebdo_theme:
-                        if _h["spend"] > 0 or _h["posts"] > 0:
-                            break
-                        _sil += 1
-                    t_veille = [_reco_theme_calme(
-                        lbl, _sem_theme, _hebdo_theme,
-                        _semaines_sans_conseil(nlbl), _aveugle, _sil)]
-                except Exception:
-                    pass
-        else:
-            # ── CE THÈME N'EST PAS RÉDIGÉ PAR GEMINI ─────────────────────────
-            #
-            # `_THEMES_IA` protège la facture (voir sa note) : au-delà des
-            # premiers étoilages, ce thème garde ses conseils-règles (moteur +
-            # organique + événements + veille), mélangés et coupés à 3 comme
-            # avant cette tâche — TASK-023 ne change QUE la composition des
-            # thèmes que Gemini rédige. Le RÉSULTAT est le même qu'avant pour
-            # ce chemin, mais PAS le code ligne à ligne — 3 divergences
-            # relevées par le checker, toutes bénignes, aucune corrigée (elles
-            # viennent du partage de `_g4t_lbl`/`_sem_theme`/`_hebdo_theme`
-            # entre les deux chemins, nécessaire à la restructuration) :
-            #   · `_theme_ga4(lbl)` est appelée deux fois au lieu de trois
-            #     (`_g4t_lbl` plus haut dans la boucle, partagé avec le chemin
-            #     Gemini, et ici pour `ga4=`) — sans coût réseau, cette
-            #     fonction ne fait que lire des lignes déjà en mémoire ;
-            #   · si `_g4t_lbl` a levé une exception plus haut, il vaut `None`
-            #     ici, et `_reco_evenements(lbl, None, ...)` est quand même
-            #     appelée (elle rend `[]`, comme pour tout thème sans
-            #     conversion désignée) — avant, le `try` unique qui entourait
-            #     l'appel à `_theme_ga4` ET `_reco_evenements` sautait les deux
-            #     d'un coup, sans jamais appeler la seconde ;
-            #   · le filet final RÉUTILISE `_g4t_lbl` au lieu de rappeler
-            #     `_theme_ga4(lbl)` une 3e fois : si CET appel-là avait été
-            #     celui qui échouait (transitoire, le même thème sur la même
-            #     donnée échoue en général de façon reproductible), le code
-            #     d'origine abandonnait tout le filet (`except: t_recos = []`,
-            #     carte muette) — ici, en réutilisant une valeur déjà résolue
-            #     (fût-elle `None`), le filet ne peut plus échouer sur CET
-            #     appel précis et retombe de façon fiable sur
-            #     `_reco_theme_calme(...)` plutôt que sur une carte muette.
+        # ── UN SEUL CHEMIN, ET IL COMMENCE PAR LE FILTRE DUR ─────────────
+        #
+        # Il y en avait deux — un thème « rédigé par Gemini » recevait trois
+        # pistes et AUCUN conseil-règle, les autres recevaient les règles. Les
+        # pistes sont coupées (voir la note à la place de `_theme_ai_recos`),
+        # donc il ne reste qu'un chemin : les règles, pour tout le monde.
+        #
+        # ET SEULEMENT POUR LES THÈMES QUE LE CLIENT A DÉSIGNÉS. `_conseille`
+        # est le filtre dur : hors priorités, aucune règle ne tourne, donc rien
+        # à trier, rien à couper et rien à ranger plus bas. Un thème non
+        # prioritaire garde sa carte, ses chiffres, sa courbe et sa veille —
+        # c'est le point de vue de la semaine, un constat, pas un conseil.
+        t_recos: list[dict] = []
+        if _conseille:
             t_recos = build_recos(
                 df_camp=tc, avg_ctr=avg_ctr,
                 df_insta=ti if not ti.empty else None,
                 df_week_posts=tw, followers_current=followers_current,
-                ga4=_theme_ga4(lbl), objectif=_obj_lbl, feedback=feedback, vision=constats,
+                ga4=_g4t_lbl, objectif=_obj_lbl, feedback=feedback, vision=constats,
                 # Appel PAR THÈME (TASK-025) : `not_for_me` ne se fie qu'à
                 # `feedback_theme` (un refus sur un AUTRE thème ne muselle plus
                 # celui-ci) ; `verdicts` fait dépendre le poids de `done` du
                 # résultat réel, comme pour `rule_recos` plus haut.
                 #
-                # `_theme_ctx_ok` (rejet du checker, 2e passe) : tant que la
-                # migration `reco_feedback_contexte.sql` n'est pas jouée,
-                # `theme`/`feedback_theme` retombent à `None` — `build_recos`
-                # retrouve alors l'ANCIEN museau compte entier (`feedback`
-                # seul), pour ne jamais faire perdre tout effet à
-                # `not_for_me` sur les cartes de thème en attendant que la
-                # migration soit jouée.
+                # `_theme_ctx_ok` : tant que la migration
+                # `reco_feedback_contexte.sql` n'est pas jouée, `theme`/
+                # `feedback_theme` retombent à `None` — `build_recos` retrouve
+                # alors l'ANCIEN museau compte entier (`feedback` seul), pour ne
+                # jamais faire perdre tout effet à `not_for_me` sur les cartes de
+                # thème en attendant que la migration soit jouée.
                 theme=(nlbl if _theme_ctx_ok else None),
                 feedback_theme=(feedback_theme if _theme_ctx_ok else None),
                 verdicts=verdicts,
@@ -3428,11 +2953,6 @@ def build_payload(sb, user_id: str) -> dict | None:
                 t_recos += _orga_recos(lbl, ti, df_insta, last_full_day)
             except Exception:
                 pass
-            # Ici, la veille N'EST PAS hors quota : elle rentre dans le même
-            # mélange qu'avant cette tâche, exactement comme du temps où ce
-            # thème n'était de toute façon jamais rédigé par Gemini.
-            t_recos += t_veille
-            t_veille = []
             try:
                 t_recos += _reco_evenements(lbl, _g4t_lbl, _sem_theme)
             except Exception:
@@ -3452,30 +2972,99 @@ def build_payload(sb, user_id: str) -> dict | None:
                 )
             except Exception:
                 pass
-            # LE CONSTAT SORT AVANT LA COUPE À TROIS, PAS APRÈS. `_importance`
-            # ne sait pas qu'un conseil sans geste n'en est pas un : le laisser
-            # concourir lui ferait prendre une des trois places, dont le filtre
-            # de sortie le chasserait ensuite — la carte tomberait à deux alors
-            # qu'un vrai conseil attendait derrière.
+            # LE CONSTAT SORT AVANT LA COUPE, PAS APRÈS. `_importance` ne sait
+            # pas qu'un conseil sans geste n'en est pas un : le laisser concourir
+            # lui ferait prendre une des places, dont le filtre de sortie le
+            # chasserait ensuite — la carte tomberait à deux alors qu'un vrai
+            # conseil attendait derrière.
+            #
+            # LA COUPE À TROIS RESTE, ET CE N'EST PLUS LE PLAFOND. Le plafond de
+            # la semaine est de cinq sur TOUT le compte et il s'applique plus bas
+            # (`composer_la_semaine`). Celle-ci ne fait qu'une chose : empêcher
+            # qu'un seul thème présente les cinq. Avec trois thèmes conseillés au
+            # maximum, elle garantit qu'au moins deux d'entre eux sont
+            # représentés quand ils ont de quoi parler.
             t_recos = sorted(
                 [r for r in (_attach_grammaire(x) for x in t_recos)
-                 if _est_conseil(r)],
+                 if _est_conseil(r)
+                 and empreinte_conseil(r) not in _deja_servies],
                 key=_importance)[:3]
 
-            if not t_recos:
+            # ── PAS DE NOUVELLE MARCHE AVANT LE VERDICT DE LA PRÉCÉDENTE ─────
+            #
+            # Une Stratégie qui change de théorie toutes les semaines n'est pas
+            # une Stratégie (wayfinder `.scratch/recos-labels/issues/
+            # 03-suivi-hypothese.md`). Tant que la Marche en cours n'a pas rendu
+            # son Verdict, on RÉAFFICHE sa carte — même `reco_key`, donc mêmes
+            # retours client et même baseline — plutôt que celle qu'une autre
+            # règle propose cette semaine.
+            #
+            # DÉBLOQUÉ PAR LE VERDICT, PAS SEULEMENT PAR LE CALENDRIER
+            # (wayfinder ticket 06) : `ATTENTE_MIN_NOUVELLE_HYPOTHESE` ne borne
+            # que le cas où aucun verdict n'est encore tombé.
+            #
+            # UNE SEULE CHOSE A CHANGÉ EN PASSANT DES PISTES AUX RÈGLES : on
+            # refuse de réafficher un `snapshot` dont la clé commence par `ai_`.
+            # C'est une piste rédigée par Gemini, épinglée avant que ce ticket
+            # les coupe ; la réafficher aujourd'hui remettrait à l'écran
+            # exactement ce que la décision retire. Elle reste en base, elle ne
+            # revient pas dans un rapport.
+            _plan = theme_plan_by.get(nlbl)
+            _epingle = None
+            if (_plan and _plan.get("decided_at") and _plan.get("snapshot")
+                    and not str(_plan.get("reco_key") or "").startswith("ai_")):
                 try:
-                    _aveugle = (_sem_theme["spend"] > 0
-                                and not (_g4t_lbl or {}).get("paid_revenue"))
-                    _sil = 1
-                    for _h in _hebdo_theme:
-                        if _h["spend"] > 0 or _h["posts"] > 0:
-                            break
-                        _sil += 1
-                    t_recos = [_reco_theme_calme(
-                        lbl, _sem_theme, _hebdo_theme,
-                        _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+                    _decided = date.fromisoformat(str(_plan["decided_at"])[:10])
                 except Exception:
-                    t_recos = []
+                    _decided = None
+                _attente = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(
+                    _plan.get("levier"), _ATTENTE_DEFAUT)
+                _verdict_tombe = bool(verdicts.get(_plan.get("reco_key")))
+                if _decided and not _verdict_tombe and (today - _decided).days < _attente:
+                    _epingle = dict(_plan["snapshot"])
+            if _epingle:
+                _i_hyp = next((i for i, r in enumerate(t_recos)
+                               if r.get("role") == "hypothese"), None)
+                if _i_hyp is None:
+                    # Aucune règle n'ouvre de Marche sur ce thème cette semaine.
+                    # La Stratégie en cours ne disparaît pas pour autant : elle
+                    # reprend la dernière place, et la carte reste à trois — une
+                    # Marche épinglée ne fabrique pas une quatrième place.
+                    t_recos = t_recos[:2] + [_epingle]
+                else:
+                    t_recos[_i_hyp] = _epingle
+                _epingles.add(empreinte_conseil(_epingle))
+
+        if _conseille and not t_recos and not t_veille:
+            # ── LE FILET : AUCUNE CARTE CONSEILLÉE NE SORT MUETTE ────────────
+            # Le résultat est lui-même une VEILLE (`veille_theme_…`) : elle dit
+            # ce qu'on surveille et à partir de quand ce sera lisible, elle ne
+            # conseille rien.
+            #
+            # ET IL NE SE DÉCLENCHE QUE SOUS LE GARDE, C'EST NOUVEAU. Ses mots
+            # sont ceux d'un thème qu'on a REGARDÉ — « aucune de mes règles ne
+            # s'est déclenchée ici », « rends son étoile à un thème sur lequel
+            # tu as encore des décisions à prendre ». Sur un thème hors
+            # priorités, aucune règle n'a tourné et il n'y a pas d'étoile à
+            # rendre : les écrire quand même ferait dire à Pulse qu'il a
+            # travaillé un thème qu'il a laissé de côté (`CLAUDE.md` §7). Une
+            # carte hors priorités n'est pas muette pour autant — elle porte le
+            # module VERROUILLÉ, qui dit exactement pourquoi elle est vide et ce
+            # qui la remplit (`components/conseils-verrouilles.tsx`).
+            try:
+                _aveugle = (_sem_theme["spend"] > 0
+                            and not (_g4t_lbl or {}).get("paid_revenue"))
+                _sil = 1
+                for _h in _hebdo_theme:
+                    if _h["spend"] > 0 or _h["posts"] > 0:
+                        break
+                    _sil += 1
+                t_veille = [_reco_theme_calme(
+                    lbl, _sem_theme, _hebdo_theme,
+                    _semaines_sans_conseil(nlbl), _aveugle, _sil)]
+            except Exception:
+                pass
+
 
         # LES CINQ COLONNES SE POSENT ICI, AVANT QUE LA CARTE SE FERME — et le
         # critère d'entrée trie juste après : ce qui ne demande aucun geste est
@@ -3502,13 +3091,13 @@ def build_payload(sb, user_id: str) -> dict | None:
         themes_focus.append({
             "label": lbl,
             "is_priority": lbl in priority_labels,
-            # Ce thème a-t-il été soumis à Gemini ? Le front en a besoin pour
-            # écrire, à l'endroit exact où les pistes rédigées auraient été,
-            # pourquoi elles n'y sont pas — un vide non expliqué se lit comme
-            # une panne. Absent des payloads publiés avant août 2026 : le front
-            # traite l'absence comme un « oui », pour ne pas coller
-            # rétroactivement une explication sur d'anciens rapports.
-            "ia_redigee": _ia_redigee,
+            # CE THÈME REÇOIT-IL DES CONSEILS ? C'est le filtre dur, écrit dans
+            # le payload : le rapport doit pouvoir dire qu'une carte sans conseil
+            # est une carte hors priorités, et non une panne. Absent des payloads
+            # publiés avant ce ticket — le front traite alors l'absence comme un
+            # « oui », pour ne pas coller rétroactivement une explication sur
+            # d'anciens rapports.
+            "conseille": _conseille,
             # L'objectif EFFECTIF de ce thème (celui qui pilote réellement sa
             # courbe et ses conseils ci-dessus), et s'il lui est PROPRE ou
             # hérité du compte. Absent des payloads publiés avant cette
@@ -3786,7 +3375,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # L'INDICATEUR D'UN CONSEIL SE DÉCLARE, IL NE SE RETROUVE PLUS ICI.
     #
     # `PROOF_KPI` vivait à cet endroit : dix-sept lignes qui répétaient
-    # `METRIC_INFO_IA` valeur pour valeur, une fois par clé-règle. Elle est
+    # `METRIC_INFO` valeur pour valeur, une fois par clé-règle. Elle est
     # remplacée par `_METRIC_REGLE` + `_spec_mesure` (haut de fichier), qui
     # donnent la même spec à une règle (par sa clé stable) et à une piste IA
     # (par la `metric` qu'elle déclare, sa clé `ai_<theme>_<n>` changeant chaque
@@ -3933,7 +3522,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         if now is None or then is None or abs(then) < 1e-9:
             return None
         variation = round((now - then) / then * 100, 1)
-        info = METRIC_INFO_IA.get(metric, (metric, "", "up", "{:.1f}"))
+        info = METRIC_INFO.get(metric, (metric, "", "up", "{:.1f}"))
         metric_label = info[0]
         mode = "cible" if variation <= JUGEMENT_SEUIL_DEGRADATION else "tout"
         if variation >= 5:
@@ -3951,20 +3540,17 @@ def build_payload(sb, user_id: str) -> dict | None:
 
     def _attach_metric(r, theme=None):
         # Une règle porte une clé STABLE (« gaspillage »), qui suffit à
-        # retrouver son indicateur. Une piste IA a une clé dynamique
-        # (`ai_<theme>_<n>`, différente chaque semaine) et ne peut donc jamais
-        # être retrouvée par clé — mais elle a déclaré elle-même sa `metric`
-        # (`_theme_ai_recos`, toujours une valeur de `METRICS_IA`). Les deux
-        # chemins finissent sur la même spec, donc la même baseline et le même
-        # verdict à 14 jours.
-        spec = _spec_mesure(_METRIC_REGLE.get(r.get("key"))
-                            or (r.get("metric") if r.get("source") == "ai" else None))
+        # retrouver son indicateur — `_METRIC_REGLE`. Un conseil qui déclare
+        # lui-même sa `metric` (la carte d'une Marche réaffichée, relue de
+        # `theme_plan`) la garde : elle est déjà passée par cette même spec, donc
+        # par la même baseline et le même verdict.
+        spec = _spec_mesure(_METRIC_REGLE.get(r.get("key")) or r.get("metric"))
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
         r["metric"], r["metric_label"], r["direction"] = kpi, lbl_k, direction
-        # LA CARTE D'HYPOTHÈSE RÉAFFICHÉE (diagnostic `recos`, 7 septembre
-        # 2026, blocage de fenêtre plus haut, `t_recos[_i] = dict(_plan[...])`)
+        # LA CARTE D'UNE MARCHE RÉAFFICHÉE (blocage de fenêtre plus haut,
+        # `t_recos[_i_hyp] = _epingle`)
         # NE RECALCULE PAS SA BASELINE ICI. `suivi_actions`, qui rend le
         # verdict, ne la recalcule pas non plus (son propre `continue` : la
         # ligne garde la baseline posée le jour du pin). Sans cette garde, le
@@ -4000,19 +3586,59 @@ def build_payload(sb, user_id: str) -> dict | None:
     #
     # `_jugement_theme` a besoin de `_kpis_du_theme`/`_kpis_window`, définies
     # juste au-dessus — d'où ce passage séparé, après coup, plutôt que dans la
-    # boucle par thème (qui appelle `_theme_ai_recos` bien plus haut dans ce
-    # fichier, avant que ces fonctions n'existent).
+    # boucle par thème, bien plus haut dans ce fichier, avant que ces fonctions
+    # n'existent.
     #
-    # « Influence la composition » (décision de David) : en mode "cible", on
-    # ne fabrique JAMAIS de piste en plus — on réordonne les pistes déjà
-    # écrites par Gemini pour que celle dont le `levier` correspond à
-    # l'indicateur dégradé passe en tête (elle reste affichée même sans
-    # correspondance, juste pas en premier).
+    # « Influence la composition » (décision de David) : en mode "cible", on ne
+    # fabrique JAMAIS de conseil en plus — on réordonne ceux qui sont déjà là
+    # pour que celui dont le `levier` correspond à l'indicateur dégradé passe en
+    # tête (les autres restent affichés, juste pas en premier).
     for _tf in themes_focus:
         _jug = _jugement_theme(_tf["label"])
         _tf["jugement"] = _jug
         if _jug and _jug.get("mode") == "cible" and _jug.get("levier_impactant"):
             _tf["recos"].sort(key=lambda r, _lv=_jug["levier_impactant"]: r.get("levier") != _lv)
+
+    # ── LE PLAFOND DE CINQ, SUR TOUT LE COMPTE ───────────────────────────────
+    #
+    # C'était trois par thème sur un nombre de thèmes ILLIMITÉ : six thèmes
+    # étoilés donnaient jusqu'à dix-huit conseils. Ce n'était pas un plafond.
+    # David : « faire simple au début » — et dix minutes le lundi matin ne
+    # tiennent pas dix-huit conseils
+    # (`.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md`).
+    #
+    # IL S'APPLIQUE ICI, ET PAS AILLEURS, POUR TROIS RAISONS :
+    #   · APRÈS `_attach_effort` — la composition lit l'effort, qui n'est posé
+    #     qu'à ce moment-là ; avant, tous les conseils se seraient valus ;
+    #   · APRÈS le jugement de thème, qui réordonne les conseils d'un thème qui
+    #     se dégrade : c'est un ordre qu'on veut voir respecté par la coupe ;
+    #   · AVANT `upsert_theme_plan`, juste en dessous — une Marche que le
+    #     plafond n'a pas retenue n'ouvre AUCUNE Stratégie. L'inverse écrirait
+    #     dans la mémoire de Pulse une théorie que le client n'a jamais lue.
+    #
+    # LES VEILLES NE SONT PAS DEDANS. Une veille dit « attends, ce sera lisible
+    # le 24 » : elle ne demande aucun geste, elle ne prend donc aucune des cinq
+    # places — elle reste sur la carte de son thème, en plus.
+    _conseils_semaine = []
+    for _tf in themes_focus:
+        for _r in _tf["recos"]:
+            if _est_veille(_r):
+                continue
+            _conseils_semaine.append((_tf, _r))
+
+    def _rang_de(tf):
+        return _rang_theme.get(_nrm(tf["label"]), 9)
+
+    _conseils_semaine.sort(key=lambda c: _importance(c[1], _rang_de(c[0])))
+    # `_deja_servies` est repassé ici alors que la boucle a déjà filtré dessus :
+    # le module doit pouvoir tenir sa règle tout seul, sans supposer qu'un
+    # appelant l'a fait pour lui. `_epingles` est ce qui l'en dispense — une
+    # Marche en cours se réaffiche exprès, à l'identique.
+    _retenus = {id(_r) for _r in composer_la_semaine(
+        [_r for _, _r in _conseils_semaine], _deja_servies, _epingles)}
+    for _tf in themes_focus:
+        _tf["recos"] = [_r for _r in _tf["recos"]
+                        if _est_veille(_r) or id(_r) in _retenus]
 
     # ── LA MARCHE DE LA SEMAINE ENTRE DANS LA MÉMOIRE DE PULSE, PAS AU CARNET ─
     #
@@ -4069,31 +3695,22 @@ def build_payload(sb, user_id: str) -> dict | None:
             today.isoformat(), dict(_hyp),
         )
 
-    # ── Les 3 du moment ──────────────────────────────────────────────────────
-    # Jusqu'a 12 conseils repartis en 4 themes, personne ne choisit dans 12. Une
-    # seule selection en tete, tous themes confondus, classee par IMPORTANCE
-    # (voir `_importance` : ce que le client a designe, ce qui pese le plus, ce
-    # qui bouge le plus vite, ce qui est le plus sur) puis diversifiee.
+    # ── « SI TU NE FAIS QUE TROIS CHOSES » N'EST PLUS DANS LE RAPPORT ────────
     #
-    # Une veille ordinaire n'entre PAS dans cette liste-là. « Si tu ne fais que
-    # trois choses » est une liste de choses à faire, et son contenu est
-    # « attends le 24 » : elle reste lisible sur sa carte de thème, à sa place.
-    # La veille d'une campagne déclarée et muette, elle, y a toute sa place —
-    # c'est la seule qui demande un geste, et tout de suite.
-    _pool = []
-    for _tf in themes_focus:
-        for _r in _tf["recos"]:
-            if _est_veille(_r) and not _veille_urgente(_r):
-                continue
-            _pool.append(dict(_r, theme=_tf["label"], is_priority=_tf["is_priority"]))
-
-    def _rang_de(r):
-        return _rang_theme.get(_nrm(r.get("theme")), 9)
-
-    top_recos = _diversifier(
-        sorted(_pool, key=lambda r: _importance(r, _rang_de(r))),
-        3,
-    )
+    # C'était une sélection cross-thème rendue en tête des conseils, qui
+    # pointait vers les cartes. Elle avait un sens quand douze conseils
+    # sortaient : elle en désignait trois. Il y en a cinq au maximum, sur trois
+    # thèmes au maximum — un renvoi vers cinq choses qui tiennent dans le même
+    # écran n'aide plus, il double.
+    #
+    # David a déplacé l'objet, il ne l'a pas supprimé : « cela devrait être plus
+    # une notification "tu as encore X recos" ; cette notification peut vivre
+    # sur l'app, elle ne doit pas être rattachée à la page hebdomadaire »
+    # (`.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md`). Cette
+    # notification est le module de commandes,
+    # `.scratch/refonte/issues/12-module-de-commandes.md` — hors de cette carte.
+    # Le champ `top_recos` reste LU côté web pour les payloads déjà publiés ; il
+    # n'est simplement plus écrit.
 
     # 2) Les actions déjà lancées restent EN COURS jusqu'à être faites/vérifiées ;
     #    à l'échéance (check_at), on remesure l'indicateur → verdict.
@@ -4740,20 +4357,52 @@ def build_payload(sb, user_id: str) -> dict | None:
         # Le verdict peut compter plusieurs phrases : on ne reprend que la
         # premiere, sinon la phrase de passage devient un pave.
         _tete = (verdict or "").split(".")[0].strip()
-        _quoi = "le levier" if sum(len(t["recos"]) for t in themes_focus) <= 1 else "les leviers"
-        themes_intro = (f"{_tete} — voilà {_quoi} sur {_sur}."
-                        if _tete else f"Voilà {_quoi} sur {_sur}.")
+        # ELLE COMPTE LES CONSEILS, PAS LES CARTES. Une veille n'est pas un
+        # levier : elle dit « attends ». Un compte sans thème prioritaire n'a
+        # que des veilles, et « voilà les leviers sur A, B et C » y annoncerait
+        # des conseils que la page ne contient pas — la phrase de passage
+        # mentirait sur ce qu'elle relie (`CLAUDE.md` §7).
+        _n_conseils = sum(1 for t in themes_focus for r in t["recos"]
+                          if not _est_veille(r))
+        if _n_conseils == 0:
+            _corps = f"voilà où en sont {_sur}"
+        else:
+            _corps = ("voilà le levier" if _n_conseils == 1 else "voilà les leviers")
+            _corps += f" sur {_sur}"
+        themes_intro = (f"{_tete} — {_corps}." if _tete
+                        else f"{_corps[0].upper()}{_corps[1:]}.")
 
+    # ── « POUR ALLER PLUS LOIN », ET LE RETOUR QUI LE COMMANDE ───────────────
+    #
+    # « ◇ Trop compliqué » est à l'écran depuis le début et il était collecté
+    # depuis toujours ; son consommateur — le paramètre `bloques` de
+    # `_themes_tips`, avec le prompt exact déjà écrit — n'a jamais reçu
+    # d'argument. Pendant ce temps `components/reco-actions.tsx` promettait par
+    # écrit que ce retour « remonte dans "Pour aller plus loin" la semaine
+    # suivante ». Tuyau posé, raccordé au mauvais bout, documenté comme s'il
+    # coulait (`.scratch/refonte/issues/14-le-conseil-facile-et-la-degradation.md`).
+    #
+    # DEUX DESTINATAIRES SÉPARÉS, PAS DEUX MOTEURS. `too_hard` NE VA PAS AU
+    # TRI — il va au savoir-faire : c'est le seul signal qui dise *quel*
+    # savoir-faire manque. Le moteur, lui, ne fait que trier. Et le silence ne
+    # dit rien du tout : deux semaines sans réponse mettent un conseil en veille,
+    # elles ne le déclarent pas trop dur (`CLAUDE.md` §7 — lire une absence,
+    # c'est inventer une intention).
+    #
+    # SUR LES THÈMES CONSEILLÉS. Un mode d'emploi pour un thème dont on ne dit
+    # rien cette semaine serait du décor.
+    _bloques = []
+    for _row in (reco_ctx or []):
+        if _row.get("reaction") != "too_hard":
+            continue
+        _txt = str(_row.get("title") or "").strip()
+        if _txt and _txt not in _bloques:
+            _bloques.append(_txt)
     try:
-        # LES MÊMES TROIS QUE LES PISTES, jamais un autre découpage. C'était
-        # `themes_focus[:3]`, ce qui donnait le même résultat tant que la liste
-        # faisait trois ; avec six thèmes, deux coupes indépendantes finiraient
-        # par désigner deux trios différents, et la carte d'un thème dirait
-        # « pas de conseils IA ici » pendant qu'un savoir-faire IA sur ce même
-        # thème s'afficherait deux blocs plus bas. Un seul appel Gemini, quel
-        # que soit le nombre de thèmes.
-        themes_tips = _themes_tips([t["label"] for t in themes_focus if t["ia_redigee"]],
-                                   _obj_txt0)
+        themes_tips = _themes_tips(
+            [t["label"] for t in themes_focus if t.get("conseille")],
+            _obj_txt0, bloques=_bloques,
+        )
     except Exception:
         themes_tips = []
 
@@ -5090,7 +4739,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         "themes_focus": themes_focus,
         "themes_intro": themes_intro,
         "themes_tips": themes_tips,
-        "top_recos": top_recos,
         "reglages": reglages,
         "tracking": tracking,
         "themes": themes,

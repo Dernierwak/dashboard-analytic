@@ -73,22 +73,23 @@ export function LabelRow({
   const [pending, startTransition] = useTransition();
 
   const total = row.meta + row.google + row.instagram;
-  // Étoilé, mais après les trois premières : la carte du thème existera, ses
-  // conseils calculés aussi, ses pistes IA non.
-  const horsIa = priority && rang !== null && rang > 3;
+  // Étoilé, mais après les trois premières : la carte du thème existera avec
+  // ses chiffres, ses conseils non — Pulse conseille dans les trois thèmes
+  // désignés, et seulement eux (`_THEMES_CONSEILLES`, `build_report.py`).
+  const horsConseils = priority && rang !== null && rang > 3;
 
   return (
     <div className="flex items-center gap-2 px-3 sm:px-5 py-2.5 flex-wrap">
-      {/* ★ Prioritaire — le moteur concentre ses conseils dessus, et l'IA
-          n'en rédige que pour les trois premières. Le message rendu par
-          `togglePriorityLabel` s'affiche que l'action ait réussi ou non : ce
-          n'est plus un refus, c'est un avertissement. */}
+      {/* ★ Prioritaire — c'est CE choix qui ouvre les conseils, et il n'en
+          ouvre que trois. Le message rendu par `togglePriorityLabel` s'affiche
+          que l'action ait réussi ou non : ce n'est pas un refus, c'est un
+          avertissement. */}
       <button
         disabled={pending}
         title={
           priority
             ? `Retirer des priorités${rang !== null ? ` (★${rang})` : ""}`
-            : "Marquer prioritaire — l'IA rédige les 3 premières"
+            : "Marquer prioritaire — Pulse conseille les 3 premières"
         }
         onClick={() =>
           startTransition(async () => {
@@ -98,7 +99,7 @@ export function LabelRow({
           })
         }
         className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full leading-none transition-colors disabled:opacity-50 ${
-          horsIa
+          horsConseils
             ? "text-warn/45"
             : priority
               ? "text-warn"

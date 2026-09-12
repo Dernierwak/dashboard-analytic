@@ -1,6 +1,6 @@
 """`PROOF_KPI` est retirée sans qu'aucune valeur ne bouge.
 
-La table dupliquait `METRIC_INFO_IA` valeur pour valeur : dix-sept lignes qui
+La table dupliquait `METRIC_INFO` valeur pour valeur : dix-sept lignes qui
 disaient deux fois la même chose, et deux tables qui disent la même chose
 finissent par ne plus la dire pareil. Ce fichier recopie la table TELLE QU'ELLE
 ÉTAIT le jour de sa suppression et exige que `_METRIC_REGLE` + `_spec_mesure`

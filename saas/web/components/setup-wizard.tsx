@@ -194,7 +194,7 @@ export function SetupWizard({
           const active = rang >= 0;
           // Au-delà du troisième, la pastille reste cochable mais s'affiche en
           // creux : c'est le seul endroit où l'ordre des clics se voit.
-          const horsIa = rang >= 3;
+          const horsConseils = rang >= 3;
           // `undefined` (thème jamais assigné) n'affiche rien — un « 0 CHF »
           // écrit là où rien n'a été mesuré serait un chiffre faux (§7, CLAUDE.md).
           const depense = depenseParTheme.get(t);
@@ -204,7 +204,7 @@ export function SetupWizard({
               disabled={pending}
               onClick={() => toggle(t)}
               className={`text-[13.5px] font-semibold rounded-full border px-4 py-2.5 transition-colors disabled:opacity-40 ${
-                horsIa
+                horsConseils
                   ? "bg-white text-brand border-brand"
                   : active
                     ? "bg-brand text-white border-brand"
@@ -223,9 +223,8 @@ export function SetupWizard({
       </div>
       {picked.length > 3 && (
         <p className="text-[11.5px] text-muted leading-relaxed mb-4 max-w-[62ch]">
-          Les {picked.length - 3} derniers cochés auront leur carte et leurs conseils
-          calculés, mais pas de pistes rédigées par l&apos;IA — elle travaille les
-          3 premiers.
+          Les {picked.length - 3} derniers cochés auront leur carte et leurs chiffres,
+          mais aucun conseil — Pulse travaille sur les 3 premiers, et seulement eux.
         </p>
       )}
       <div className="flex items-center gap-3 flex-wrap">
