@@ -37,11 +37,13 @@ from saas.commun.fetch_data import (  # noqa: E402
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
     fetch_theme_plan, fetch_theme_regroupement,
+    fetch_google_ads_ad_insights, fetch_platform_budgets,
 )
 from saas.commun.insert_data import upsert_weekly_report, upsert_theme_plan  # noqa: E402
 from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
+from saas.recos_ia.regles_payantes import regles_payantes  # noqa: E402
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
 from saas.recos_ia.user_persona import build_user_persona  # noqa: E402
 from saas.recos_ia.theme_memoire import condense_theme_memoire  # noqa: E402
@@ -103,6 +105,15 @@ EFFORT_BY_KEY = {
     # Comparer un coût par conversion à sa propre marge ne se fait pas dans
     # l'outil : on sort sa calculette, et c'est vite fait.
     "theme_event_cout": "10 min",
+    # LES QUATRE RÈGLES PAYANTES (`saas/recos_ia/regles_payantes.py`). Trois
+    # tiennent en un geste dans le gestionnaire de publicités — mettre une
+    # annonce en pause, monter un budget de +20 % : c'est un clic et une
+    # confirmation. La quatrième demande d'ouvrir les campagnes du thème une
+    # par une pour comparer leur budget posé à leur dépense réelle.
+    "annonce_sans_conversion": "10 min",
+    "annonce_locomotive": "10 min",
+    "annonce_chere": "10 min",
+    "theme_hors_budget": "30 min",
 }
 
 # Le LEVIER et la MÉTRIQUE qu'une piste IA (`_theme_ai_recos`) doit déclarer
@@ -165,11 +176,29 @@ JUGEMENT_LEVIER_PAR_METRIC = {"roas": "argent", "eng": "contenu", "reach": "audi
 # Le vocabulaire exact que `_kpis_window` (plus bas, dans `build_payload`)
 # sait mesurer — une piste qui déclarerait une métrique hors de cette liste
 # ne pourrait de toute façon jamais recevoir de verdict à 14 jours.
-METRICS_IA = ("cpc", "roas", "posts", "reach", "eng", "purchases")
+# `spend` est entré avec les quatre règles payantes : `theme_hors_budget` vise
+# une dépense qui REDESCEND sous le budget posé, et c'est le seul indicateur qui
+# dise ça. `_kpis_window` le calculait déjà (et le calcule sur les deux régies
+# depuis le ticket 01) — aucune mesure neuve, juste une déclaration qui manquait.
+#
+# CE N'EST PAS PROPOSÉ À GEMINI, et c'est volontaire : le prompt de
+# `_theme_ai_recos` énumère ses six indicateurs et n'a pas celui-ci. « Dépenser
+# moins » n'est un succès que comparé à un budget POSÉ — c'est tout le travail
+# de `theme_hors_budget`. Offerte seule à une piste libre, la baisse de dépense
+# se lirait comme une réussite même quand le revenu s'est effondré avec elle.
+#
+# `sessions`, proposé au même moment par
+# `.scratch/refonte/issues/24-conseils-payants-manquants.md`, n'est PAS ajouté :
+# `_kpis_window` ne sait pas le mesurer, et un indicateur qu'on ne sait pas
+# remesurer à l'échéance ne rend pas un verdict — il en fabrique un.
+METRICS_IA = ("cpc", "roas", "posts", "reach", "eng", "purchases", "spend")
 # Libellé, unité, sens d'amélioration et format d'affichage de chaque
-# métrique déclarable — mêmes valeurs que les entrées correspondantes de
-# `PROOF_KPI` (plus bas), factorisées ici pour qu'une piste IA reçoive la
-# même mesure qu'une reco-règle sans avoir besoin d'une clé stable.
+# métrique déclarable. Source UNIQUE depuis le ticket 06 de la construction :
+# la table `PROOF_KPI` qui vivait dans `build_payload` répétait ces six lignes
+# valeur pour valeur, une fois par clé-règle, et deux tables qui disent la même
+# chose finissent par ne plus la dire pareil. Une règle déclare maintenant son
+# INDICATEUR (`_METRIC_REGLE`, juste en dessous) et une piste IA déclare le sien
+# (`METRICS_IA`) : les deux lisent leur libellé ici.
 METRIC_INFO_IA = {
     "cpc":       ("CPC moyen", "CHF", "down", "{:.2f}"),
     "roas":      ("ROAS", "", "up", "{:.1f}"),
@@ -177,7 +206,60 @@ METRIC_INFO_IA = {
     "reach":     ("portée moyenne", "", "up", "{:,.0f}"),
     "eng":       ("engagement moyen", "%", "up", "{:.1f}"),
     "purchases": ("achats (GA4)", "", "up", "{:.0f}"),
+    "spend":     ("dépense pub", "CHF", "down", "{:,.0f}"),
 }
+
+# L'INDICATEUR d'une règle — la 3ᵉ des cinq colonnes (durée · levier ·
+# indicateur · geste · preuve), et celle qui rend un Verdict possible : c'est le
+# chiffre photographié au moment de la décision, puis remesuré à l'échéance.
+#
+# Chaque conseil vise l'indicateur QU'IL fait bouger : le nombre de posts pour
+# un rythme retombé, la portée pour tout le reste de l'organique.
+#
+# CE QUI N'Y EST PAS, ET POURQUOI :
+#   · les `veille_*` — une veille n'a pas de verdict à mériter. Lui donner un
+#     indicateur reviendrait à promettre une mesure dans quatorze jours sur une
+#     décision qu'on n'a pas prise ;
+#   · les `theme_event_*` — `_kpis_window` sait mesurer un CPC, un ROAS, des
+#     posts, une portée, pas un coût par événement choisi. Leur donner `cpc` ou
+#     `roas` ferait juger « chaque purchase t'a coûté 42 CHF » sur un indicateur
+#     qui n'est pas le leur, et un verdict pris sur la mauvaise mesure repondère
+#     ensuite tous les autres conseils (`reco_engine.py`, `_DONE_W`) ;
+#   · `connecter_ga4` et `ga4_muet` — ce sont des prérequis de mesure (`socle`),
+#     hors du flux des conseils ; ce qu'ils réparent, c'est la mesure elle-même.
+_METRIC_REGLE = {
+    "gaspillage":         "cpc",
+    "roas":               "roas",
+    "scaler":             "roas",
+    "funnel":             "purchases",
+    "silence":            "posts",
+    "creneau":            "eng",
+    "format_gagnant":     "eng",
+    "page_endormie":      "reach",
+    "orga_rythme":        "posts",
+    "orga_essoufflement": "reach",
+    "orga_format":        "reach",
+    "orga_reaction":      "reach",
+    # Les quatre règles payantes. `annonce_chere` vise le prix du clic du thème,
+    # qui est exactement ce qu'elle accuse une annonce de tirer vers le haut.
+    # Les deux autres règles d'annonce déplacent de l'argent d'une créa vers une
+    # autre : ce qui doit bouger, c'est le RETOUR du thème, pas son coût par
+    # clic — même indicateur que `scaler`, qui demande le même genre de geste.
+    "annonce_chere":           "cpc",
+    "annonce_locomotive":      "roas",
+    "annonce_sans_conversion": "roas",
+    # Le seul conseil dont la réussite est une dépense qui redescend.
+    "theme_hors_budget":       "spend",
+}
+
+
+def _spec_mesure(metric: str | None) -> tuple | None:
+    """(indicateur, libellé, unité, sens, format) — ou `None` si l'indicateur
+    n'est pas mesurable. Le seul endroit qui assemble cette spec, pour une règle
+    comme pour une piste IA."""
+    info = METRIC_INFO_IA.get(metric or "")
+    return ((metric,) + info) if info else None
+
 
 # Le TYPE de geste qu'une piste IA se déclare elle-même (redesign du 27 août
 # 2026, diagnostic `vision-produit`) — cinq natures, parce que sans elles seul
@@ -229,11 +311,11 @@ def _forcer_une_hypothese(pool: list[dict]) -> None:
     et exactement une s'il y en a au moins une — mute `pool` sur place.
 
     Appelée deux fois : une fois dans `_theme_ai_recos` juste après avoir reçu
-    Gemini (il peut mal compter sur un texte libre), et une seconde fois après
-    le filtre `_compares_channels` dans `build_payload` — ce filtre peut
-    justement écarter LA piste que Gemini avait désignée comme hypothèse, et
-    la garantie « toujours 2 générale + 1 hypothèse » doit survivre aux deux.
-    Ne fait rien sur une liste vide : rien à désigner.
+    Gemini (il peut mal compter sur un texte libre), et une seconde fois sur le
+    résultat retenu dans `build_payload` — le rejet d'une piste au levier ou à
+    l'indicateur hors liste peut écarter PILE celle que Gemini avait désignée
+    comme hypothèse, et la garantie « toujours 2 générale + 1 hypothèse » doit
+    survivre aux deux. Ne fait rien sur une liste vide : rien à désigner.
     """
     if not pool:
         return
@@ -312,7 +394,78 @@ _LEVIER_REGLE = {
     # Le cout par conversion se juge contre une marge, et ce qu'il fait bouger
     # c'est le budget du theme.
     "theme_event_cout": "argent",
+    # LES QUATRE RÈGLES PAYANTES. `annonce_sans_conversion` est la seule des
+    # quatre qui ne parle pas d'argent : deux annonces du même thème partagent
+    # l'audience et le budget, ce qui les sépare est ce qu'elles MONTRENT —
+    # d'où `contenu`, alors même que son geste est de couper.
+    "annonce_sans_conversion": "contenu",
+    "annonce_locomotive": "argent",
+    "annonce_chere": "argent",
+    "theme_hors_budget": "argent",
 }
+
+# LE GESTE ET LA PREUVE — les deux dernières des cinq colonnes d'une règle.
+#
+# Le GESTE (`nature`, dans `NATURES_IA`) existe pour une seule raison, la même
+# que le levier juste au-dessus : empêcher que les conseils de la semaine se
+# ressemblent. C'est pour ça qu'il n'y a **pas de sixième geste « vérifier »** —
+# il rendrait admissible tout ce qui ne demande rien, et brouillerait exactement
+# ce que les cinq servent à distinguer. D'où le critère d'entrée qui en découle
+# et que `_est_conseil` applique : **un conseil sans geste est un constat**, et
+# un constat n'occupe pas une des places de la semaine.
+#
+# La PREUVE (`role`, dans `ROLES_IA`) est le DÉLAI auquel on saura :
+#   · `generale`  — un geste dont on constate DEMAIN, à l'œil, dans la
+#                   plateforme, qu'il a été fait (un budget monté, une campagne
+#                   coupée, un post publié) ;
+#   · `hypothese` — une théorie dont rien ne se voit demain et qui a besoin
+#                   d'une mesure : elle ouvre une Stratégie sur son thème
+#                   (`theme_plan`) et attend son Verdict.
+#
+# Les deux colonnes de chaque ligne sont recopiées du champ `verifier` de la
+# règle, jamais devinées : `orga_essoufflement` dit « reviens à ta cadence
+# d'avant pendant 4 semaines » (donc couper, et rien à constater demain),
+# `page_endormie` dit « teste les Reels sur 2 semaines » (donc tester, et rien
+# à constater demain non plus).
+#
+# CE QUI N'Y EST PAS, ET POURQUOI :
+#   · `roas` et `gaspillage` — leur geste dépend du CHIFFRE DU JOUR, pas de leur
+#     clé : elles le déclarent branche par branche dans `_reco()`
+#     (`saas/recos_ia/reco_engine.py`). La table n'est qu'un défaut ;
+#   · les quatre réparations de la mesure (`connecter_ga4`, `ga4_muet`,
+#     `funnel`, `theme_event_muet`) — toutes `socle` dans `_LEVIER_REGLE` : elles
+#     gardent leur circuit à part (`SETUP_KEYS`, bloc « réglages »), hors des
+#     places de la semaine, et `_est_conseil` ne leur demande donc aucun geste ;
+#   · `theme_event_cout` — il ne demande AUCUN geste : il demande de comparer un
+#     coût à sa marge. C'est un constat, et sa place est parmi les constats ;
+#   · les `veille_*` — une veille dit « attends », c'est-à-dire l'absence de
+#     geste. Elle est déjà hors quota partout où elle passe.
+#
+# Décidé dans `.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`.
+_GESTE_REGLE = {
+    "scaler":             ("augmenter", "generale"),
+    "silence":            ("créer", "generale"),
+    "orga_rythme":        ("créer", "generale"),
+    "format_gagnant":     ("tester", "generale"),
+    "creneau":            ("tester", "generale"),
+    "orga_format":        ("tester", "generale"),
+    "orga_reaction":      ("tester", "generale"),
+    "orga_essoufflement": ("couper", "hypothese"),
+    "page_endormie":      ("tester", "hypothese"),
+    # LES QUATRE RÈGLES PAYANTES. Leur geste ne dépend PAS du chiffre du jour —
+    # une annonce chère se coupe, une locomotive se finance — elles ont donc
+    # leur ligne ici. Elles le déclarent AUSSI dans `_reco()`, à côté du texte
+    # qui le justifie, exactement comme `scaler` : la table ne remplace jamais
+    # ce qu'une règle a déclaré, elle garantit qu'aucune clé ne sorte sans
+    # geste si la déclaration disparaissait un jour.
+    # Les quatre sont « constatables » : une pause, un budget monté, un budget
+    # corrigé se voient DEMAIN dans le gestionnaire, à l'œil.
+    "annonce_sans_conversion": ("couper", "generale"),
+    "annonce_locomotive":      ("augmenter", "generale"),
+    "annonce_chere":           ("couper", "generale"),
+    "theme_hors_budget":       ("corriger", "generale"),
+}
+
 # Depuis août 2026, une piste IA declare directement son levier (voir
 # `_theme_ai_recos` et `LEVIERS_IA`) : `_levier()` ne devine plus jamais le
 # sien par mots-cles. Cette table ne sert donc plus qu'a un conseil qui ne
@@ -354,6 +507,50 @@ def _levier(reco: dict) -> str:
         if any(m in txt for m in mots):
             return nom
     return "autre"
+
+
+def _attach_grammaire(reco: dict) -> dict:
+    """Pose sur un conseil les colonnes qu'il n'a pas déclarées lui-même :
+    le levier, le geste et la preuve. Mute `reco` et le rend.
+
+    Le patron est celui d'`_attach_effort`/`_attach_metric` — déclarer par clé,
+    poser après coup — et c'est ce qui rendait le plan de thème orphelin : les
+    tables existaient, personne ne les posait sur une reco-règle. `theme_plan`
+    recevait donc `levier=None` et `FENETRE_LEVIER` retombait sur son défaut.
+
+    Ne REMPLACE jamais une valeur déjà là : une piste IA déclare ses trois
+    colonnes elle-même (et se fait rejeter si elles sortent des listes fermées),
+    une branche de règle déclare son geste quand il dépend du chiffre du jour.
+    """
+    if not reco.get("levier"):
+        reco["levier"] = _levier(reco)
+    defaut = _GESTE_REGLE.get(reco.get("key") or "")
+    if defaut:
+        if not reco.get("nature"):
+            reco["nature"] = defaut[0]
+        if not reco.get("role"):
+            reco["role"] = defaut[1]
+    return reco
+
+
+def _est_conseil(reco: dict) -> bool:
+    """Un conseil demande un GESTE. Sans geste, c'est un constat — et un constat
+    n'occupe aucune des places de la semaine.
+
+    Deux circuits restent dehors, et ce n'est pas une exception de confort :
+      · la VEILLE dit « attends, ce sera lisible le 24 » — l'absence de geste
+        est tout son contenu, et elle s'affiche déjà hors quota ;
+      · le SOCLE (GA4, funnel, événement muet) est un prérequis de MESURE. Tant
+        qu'on ne sait pas si le tag marche, il n'y a rien à arbitrer : ces
+        conseils vivent dans le bloc « réglages », pas dans les places de la
+        semaine.
+    Le reste — une règle qui ne sait pas dire quel geste elle demande — n'est
+    jamais servi. Même mécanique de rejet que `LEVIERS_IA`/`METRICS_IA` : jamais
+    un geste deviné.
+    """
+    if _est_veille(reco) or _levier(reco) == "socle":
+        return True
+    return bool(reco.get("nature"))
 
 
 def _diversifier(pool: list, n: int = 3) -> list:
@@ -1299,17 +1496,25 @@ def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
 
-def _compares_channels(reco: dict) -> bool:
-    """True si le conseil OPPOSE Meta et Google (comparaison des deux régies) —
-    à écarter. Permissif : cite les deux ET un mot de comparaison/opposition."""
-    txt = f"{reco.get('title', '')} {reco.get('observation', '')} {reco.get('pourquoi', '')}".lower()
-    if "meta" not in txt or "google" not in txt:
-        return False
-    cmp_words = ("plutôt que", "au lieu de", "mieux que", "moins que", "vs", "versus",
-                 "comparé", "par rapport", "davantage que", "plus que google",
-                 "plus que meta", "au détriment", "surperforme", "sous-performe",
-                 "bat ", "dépasse google", "dépasse meta")
-    return any(w in txt for w in cmp_words)
+# `_compares_channels` VIVAIT ICI, ET ELLE EST MORTE LE 2026-09-12.
+#
+# Elle écartait tout conseil qui nommait Meta ET Google avec un mot de
+# comparaison, à la génération comme avant le tri. Son commentaire d'origine
+# disait « le client n'en veut pas » — il précédait
+# `.scratch/refonte/issues/02-sur-quoi-se-differencient-les-autres.md`, qui a
+# mesuré sur dix produits que le thème traversant les deux régies est le SEUL
+# axe encore libre, et l'ADR 0003 qui le revendique. Le filtre écartait donc
+# exactement ce que le produit a décidé de dire.
+#
+# David, mot pour mot : « filtre à la poubelle, on verra si ça pose problème »
+# (`.scratch/refonte/issues/24-conseils-payants-manquants.md`, décision 2).
+# Règles ET IA : plus aucun conseil n'est écarté pour avoir comparé les régies.
+#
+# CE QUI EN DÉCOULE ET QU'IL FAUT SAVOIR : les deux tentatives de Gemini
+# (`_ia_redigee`, plus bas) existaient en partie parce que ce filtre pouvait
+# faire tomber un thème de 3 pistes à 1. Elles restent — une piste dont le
+# levier ou l'indicateur sort de sa liste fermée est toujours rejetée, et
+# c'était l'autre moitié de la raison.
 
 
 def _theme_conversions_txt(g4t: dict | None) -> str:
@@ -1539,8 +1744,8 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
             # piste entière au lieu de retomber sur une valeur par défaut : un
             # levier ou une métrique devinés casseraient respectivement la
             # diversité de `_diversifier` et la promesse de verdict à 14 jours
-            # (`PROOF_KPI`) ; un rôle deviné romprait la garantie « 2 générale +
-            # 1 hypothèse » que le reste du produit tient pour acquise.
+            # (`_METRIC_REGLE`) ; un rôle deviné romprait la garantie « au plus
+            # une Hypothèse par thème » que `theme_plan` tient pour acquise.
             if (d.get("levier") not in LEVIERS_IA or d.get("metric") not in METRICS_IA
                     or d.get("role") not in ROLES_IA):
                 continue
@@ -1555,9 +1760,9 @@ def _theme_ai_recos(theme: str, camps: list, tsummary: dict | None,
             # `cible` : le nom exact d'une campagne du thème, recopié dans
             # `facts` plus haut — jamais deviné après coup. Absente ou non
             # retrouvée mot pour mot dans `facts`, la piste ne vise aucun objet
-            # réel : ce n'est pas un geste valide (même esprit que le filtre
-            # `_compares_channels`, qui rejette lui aussi une piste entière
-            # après réception plutôt que de la corriger).
+            # réel : ce n'est pas un geste valide — on rejette la piste entière
+            # après réception plutôt que de la corriger, comme pour un levier ou
+            # un indicateur hors liste.
             #
             # EXCEPTION (David, 27 août 2026) : `camps` vide → thème purement
             # organique, aucune campagne à nommer — le filtre ne s'applique
@@ -1716,6 +1921,27 @@ def build_payload(sb, user_id: str) -> dict | None:
         df_google = pd.DataFrame(fetch_google_ads(sb, user_id) or [])
     except Exception:
         pass
+    # LE DÉTAIL ANNONCE PAR ANNONCE, CÔTÉ GOOGLE. Récolté chaque jour depuis
+    # toujours, affiché par les pages web depuis toujours, et jamais lu par le
+    # moteur de conseils : c'est le gisement qu'a trouvé
+    # `.scratch/refonte/issues/24-conseils-payants-manquants.md`. Il porte la
+    # seule mesure de CONVERSION disponible au niveau de l'Annonce — Meta n'en
+    # a pas dans `meta_ads_insights`.
+    df_gads = pd.DataFrame()
+    try:
+        df_gads = pd.DataFrame(fetch_google_ads_ad_insights(sb, user_id) or [])
+        if not df_gads.empty and "date_start" in df_gads.columns:
+            # Converti UNE fois ici, pas une fois par thème : `_annonces_theme`
+            # est appelée pour chacun, et un compte à quinze étoiles aurait
+            # reconverti tout l'historique quinze fois.
+            df_gads["date_start"] = pd.to_datetime(df_gads["date_start"],
+                                                   errors="coerce")
+            for _c in ("impressions", "clicks", "cost_micros", "conversions"):
+                if _c in df_gads.columns:
+                    df_gads[_c] = pd.to_numeric(df_gads[_c],
+                                                errors="coerce").fillna(0)
+    except Exception:
+        df_gads = pd.DataFrame()
 
     # ── Fenêtre : 7 jours pleins ancrés sur la dernière donnée (jamais aujourd'hui)
     yesterday = today - timedelta(days=1)
@@ -2302,9 +2528,10 @@ def build_payload(sb, user_id: str) -> dict | None:
         # On garde son TITRE avec sa date : un pointille muet ne relie rien, et
         # l'index de semaine seul ne permet pas d'ecrire ce qu'on a fait.
         #
-        # UNE HYPOTHÈSE AUTO (`detail.origin == "auto"`, voir plus bas dans
-        # cette fonction) EST EXCLUE tant qu'elle n'a jamais reçu de vraie
-        # décision client. Un repère ▲ signifie « le client a décidé ceci, et
+        # UNE HYPOTHÈSE AUTO (`detail.origin == "auto"`) EST EXCLUE tant
+        # qu'elle n'a jamais reçu de vraie décision client. Plus rien n'en
+        # écrit depuis le ticket 06 — le garde reste pour les lignes déjà en
+        # base, qui elles ne disparaissent pas. Un repère ▲ signifie « le client a décidé ceci, et
         # ça sera jugé » (voir `etat-action.tsx`, la distinction pastille
         # ronde / glyphe de plateforme) — en poser un pour une décision que
         # personne n'a prise fabrique un fait, ce que ce produit interdit
@@ -2667,6 +2894,199 @@ def build_payload(sb, user_id: str) -> dict | None:
         _p.update(_posts_theme(lbl, d1, d2))
         return _p
 
+    # ── LES ANNONCES D'UN THÈME, ET LE BUDGET POSÉ SUR SES CAMPAGNES ─────────
+    #
+    # Ce que lisent les quatre règles payantes
+    # (`saas/recos_ia/regles_payantes.py`). Rien n'est récolté de neuf : Meta
+    # arrive déjà annonce par annonce dans `df_meta_raw` (`meta_ads_insights`
+    # porte `ad_name` et `adset_name`), Google dans `df_gads`, et les budgets
+    # posés sont photographiés chaque semaine par `saas/collecte/`.
+
+    # Une campagne est JEUNE quand son premier jour de dépense tient dans les
+    # `_VEILLE_JOURS` derniers jours — c'est `_camp_recentes`, déjà calculé
+    # pour la veille. C'est le seul proxy honnête de « campagne en test » :
+    # rien en base ne dit qu'une campagne EST un test
+    # (`.scratch/refonte/issues/24-conseils-payants-manquants.md`, décision 4).
+    _camp_jeunes = {(_c["canal"], _c["nom"]) for _c in _camp_recentes}
+
+    def _annonces_theme(lbl, d1, d2):
+        """Une ligne par Annonce du thème sur la fenêtre, les deux régies.
+
+        MÉTA N'ENTRE QUE SI `ad_id` EST EN BASE. `meta_ads_insights` a longtemps
+        été unique sur `(user_id, date_start, ad_name)`, et deux annonces
+        homonymes dans deux Groupes différents fusionnaient à l'insertion — la
+        dépense de la seconde disparaissait (~40 % d'une journée mesurée, voir
+        `upsert_meta_ads`). Le ticket 03 de la construction pose la colonne ;
+        tant que sa migration n'est pas jouée, regrouper par nom rejouerait le
+        bug des homonymes DANS LE MOTEUR DE CONSEILS, en comparant une annonce
+        fantôme à ses voisines. On préfère se taire côté Meta.
+        """
+        out = {}
+
+        def _pose(cle, canal, nom, groupe, campagne, impr, clics, depense, conv):
+            a = out.setdefault(cle, {
+                "cle": cle, "canal": canal, "nom": nom, "groupe": groupe,
+                "campagne": campagne, "impressions": 0, "clics": 0,
+                "depense": 0.0, "conversions": None,
+                "jeune": (canal, str(campagne or "")[:60]) in _camp_jeunes,
+            })
+            a["impressions"] += int(impr or 0)
+            a["clics"] += int(clics or 0)
+            a["depense"] += float(depense or 0)
+            if conv is not None:
+                a["conversions"] = float(a["conversions"] or 0) + float(conv)
+
+        if (df_meta_raw is not None and not df_meta_raw.empty
+                and "ad_id" in df_meta_raw.columns):
+            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+            _m = _m[_m["campaign_name"].map(lambda x: name2label.get(_nrm(x)) == lbl)]
+            for _r in _m.itertuples():
+                _aid = str(getattr(_r, "ad_id", "") or "")
+                if not _aid:
+                    continue   # ligne antérieure à la migration : pas d'identité
+                _pose(f"meta:{_aid}", "meta",
+                      getattr(_r, "ad_name", None), getattr(_r, "adset_name", None),
+                      getattr(_r, "campaign_name", None),
+                      getattr(_r, "impressions", 0), getattr(_r, "clicks", 0),
+                      getattr(_r, "spend", 0),
+                      # Meta ne remonte pas la conversion au niveau de l'annonce
+                      # dans cette table. Une absence de mesure n'est pas un
+                      # zéro (`CLAUDE.md` §7) : `None`, et la règle qui compte
+                      # les conversions écarte ces lignes au lieu de les compter
+                      # à zéro et de conclure qu'elles ne vendent rien.
+                      None)
+
+        if not df_gads.empty and "date_start" in df_gads.columns:
+            _g = df_gads[(df_gads["date_start"] >= pd.Timestamp(d1))
+                         & (df_gads["date_start"] <= pd.Timestamp(d2))]
+            if "campaign_id" in _g.columns:
+                # L'identifiant prime sur le nom : c'est lui que porte
+                # `google_campaign_config`, et deux campagnes Google peuvent
+                # partager un nom (même raison que dans `_pub_fenetre`).
+                _g = _g[_g["campaign_id"].astype(str).map(
+                    lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
+            else:
+                _g = _g.iloc[0:0]
+            # Une colonne `conversions` ABSENTE n'est pas une colonne à zéro :
+            # sans elle on ne MESURE pas, et `annonce_sans_conversion` doit
+            # écarter ces lignes au lieu de conclure qu'aucune ne vend
+            # (`CLAUDE.md` §7). Elle est au schéma, mais une base plus ancienne
+            # ne la porterait pas.
+            _conv_mesuree = "conversions" in _g.columns
+            for _r in _g.itertuples():
+                _aid = str(getattr(_r, "ad_id", "") or "")
+                if not _aid:
+                    continue
+                _pose(f"google:{_aid}", "google",
+                      getattr(_r, "ad_name", None), getattr(_r, "ad_group_name", None),
+                      getattr(_r, "campaign_name", None),
+                      getattr(_r, "impressions", 0), getattr(_r, "clicks", 0),
+                      float(getattr(_r, "cost_micros", 0) or 0) / 1e6,
+                      getattr(_r, "conversions", 0) if _conv_mesuree else None)
+
+        # Une annonce sans nom lisible ne peut être ni nommée dans un conseil,
+        # ni retrouvée par le client dans son gestionnaire : elle ne sert qu'à
+        # fausser une médiane.
+        return [a for a in out.values() if str(a.get("nom") or "").strip()]
+
+    # LES BUDGETS POSÉS — une photo hebdomadaire, jamais un historique.
+    # Lus une seule fois pour tout le rapport. `[]` quand la table n'existe pas
+    # ou qu'aucun relevé n'a encore été pris : `theme_hors_budget` se tait
+    # alors, elle n'invente pas un budget de zéro.
+    try:
+        _budgets_poses = fetch_platform_budgets(sb, user_id) or []
+    except Exception:
+        _budgets_poses = []
+
+    # Une campagne SUPPRIMÉE reste dans la réponse de Google et garde son budget
+    # d'origine. La compter serait promettre de l'argent sur une campagne qui
+    # n'existe plus. Même liste que `saas/web/lib/budgets.ts`.
+    _BUDGET_MORTES = {"REMOVED", "DELETED", "ARCHIVED"}
+
+    def _montant_sur_fenetre(ligne, d1, d2):
+        """Ce qu'une ligne de budget posé pèse sur [d1, d2], en CHF.
+
+        Portage exact de `montantSurFenetre` (`saas/web/lib/budgets.ts`) : la
+        page Coûts et le conseil hebdo doivent dire le même nombre, sinon le
+        client lit deux budgets prévus différents sur le même thème.
+        """
+        def _d(v):
+            try:
+                return date.fromisoformat(str(v)[:10]) if v else None
+            except ValueError:
+                return None
+
+        deb_dec, fin_dec = _d(ligne.get("start_date")), _d(ligne.get("end_date"))
+        # Sans date de début, la campagne est réputée courir depuis le début de
+        # la fenêtre ; sans date de fin, jusqu'à sa borne droite — « sans fin
+        # déclarée » ne veut pas dire « jamais diffusée ».
+        deb, fin = (deb_dec or d1), (fin_dec or d2)
+        if fin < d1 or deb > d2:
+            return 0.0
+        jours = (min(fin, d2) - max(deb, d1)).days + 1
+        if jours <= 0:
+            return 0.0
+
+        _t = ligne.get("total_budget")
+        total = float(_t) if _t is not None else None
+        if total and total > 0:
+            # UN BUDGET TOTAL SANS SES DEUX DATES N'EST PAS PRORATISABLE : les
+            # bornes par défaut ci-dessus sont celles de la FENÊTRE, les
+            # appliquer ici rendrait l'enveloppe entière. On préfère ne rien
+            # compter plutôt qu'inventer une durée.
+            if not (deb_dec and fin_dec):
+                return 0.0
+            duree = max(1, (fin_dec - deb_dec).days + 1)
+            return total * jours / duree
+        _j = ligne.get("daily_budget")
+        jour = float(_j) if _j is not None else None
+        return jour * jours if jour and jour > 0 else 0.0
+
+    def _budget_theme(lbl, sem_theme):
+        """Ce que les campagnes du thème ont POSÉ ce mois, et où va leur dépense.
+
+        Le passé est MESURÉ (`depense_mois`), seul l'avenir est projeté, et au
+        rythme que le rapport mesure déjà — sa fenêtre de sept jours pleins.
+        C'est `regle_theme_hors_budget` qui fait la projection ; ici on ne rend
+        que des faits datés.
+        """
+        _1er = last_full_day.replace(day=1)
+        _mois_suivant = (_1er + timedelta(days=32)).replace(day=1)
+        _fin_mois = _mois_suivant - timedelta(days=1)
+
+        prevu, releve = 0.0, None
+        for _l in _budgets_poses:
+            if str(_l.get("status") or "").upper() in _BUDGET_MORTES:
+                continue
+            _canal = _l.get("channel")
+            if _canal == "meta":
+                _lb = name2label.get(_nrm(_l.get("campaign_name")))
+            elif _canal == "google":
+                _lb = (goog_cfg.get(str(_l.get("campaign_id")), {}) or {}).get("label")
+            else:
+                continue
+            if _lb != lbl:
+                continue
+            _chf = _montant_sur_fenetre(_l, _1er, _fin_mois)
+            if _chf <= 0:
+                continue
+            prevu += _chf
+            _r = str(_l.get("captured_on") or "")[:10]
+            if _r and (releve is None or _r < releve):
+                # La date annoncée est la PLUS ANCIENNE des relevés retenus :
+                # c'est à partir d'elle que l'ensemble du chiffre est vrai.
+                releve = _r
+
+        return {
+            "prevu_mois": prevu,
+            "depense_mois": _pub_fenetre(lbl, _1er, last_full_day)["spend"],
+            "depense_semaine": float((sem_theme or {}).get("spend") or 0),
+            "jours_restants": (_fin_mois - last_full_day).days,
+            "jours_fenetre": (last_full_day - cur_since).days + 1,
+            "releve_le": releve,
+        }
+
     # JUSQU'OÙ CHAQUE RÉGIE EST À JOUR. Une récolte en retard et une campagne
     # coupée produisent le même zéro ; sans cette borne, « ce thème s'est
     # arrêté » se déclencherait sur un fetch en panne. Même raisonnement que
@@ -2812,13 +3232,12 @@ def build_payload(sb, user_id: str) -> dict | None:
             #
             # DEUX TENTATIVES, PAS UNE SEULE — corrigé après un rejet du
             # checker : la 1re version ne retentait QUE si Gemini rendait 0
-            # piste, alors qu'une piste dont `levier`/`metric`/`role` est hors
-            # liste (voir `_theme_ai_recos`) ou qui compare Meta/Google
-            # (`_compares_channels`, juste en dessous) peut faire tomber le
+            # piste, alors qu'une piste dont `levier`/`metric`/`role`/`cible`
+            # est hors liste (voir `_theme_ai_recos`) peut faire tomber le
             # thème à 2, voire 1 reco, SANS jamais relancer Gemini. On garde
             # maintenant la MEILLEURE des deux tentatives (celle qui rend le
-            # plus de pistes, filtre anti-comparaison appliqué), et on
-            # s'arrête dès qu'une tentative rend déjà 3 pistes valides.
+            # plus de pistes), et on s'arrête dès qu'une tentative rend déjà
+            # 3 pistes valides.
             #
             # CE N'EST PAS UNE GARANTIE MATHÉMATIQUE ABSOLUE : si Gemini rend
             # moins de 3 pistes valides sur les DEUX tentatives, la carte sort
@@ -2889,18 +3308,14 @@ def build_payload(sb, user_id: str) -> dict | None:
                                             memoire=(_plan or {}).get("resume"))
                 except Exception:
                     _cand = []
-                # Filet : on écarte tout conseil qui OPPOSE Meta et Google (le
-                # client n'en veut pas — filtre à la génération, pas qu'à
-                # l'affichage), AVANT de comparer les deux tentatives entre elles.
-                _cand = [r for r in _cand if not _compares_channels(r)]
                 if len(_cand) > len(t_recos):
                     t_recos = _cand
                 if len(t_recos) >= 3:
                     break
-            # Ce filtre peut écarter PILE la piste que Gemini avait désignée
-            # comme hypothèse : on réapplique donc `_forcer_une_hypothese`
-            # sur le résultat final, pas seulement à la sortie de
-            # `_theme_ai_recos`.
+            # Le rejet d'une piste invalide peut emporter PILE celle que
+            # Gemini avait désignée comme hypothèse : on réapplique donc
+            # `_forcer_une_hypothese` sur le résultat final, pas seulement à
+            # la sortie de `_theme_ai_recos`.
             _forcer_une_hypothese(t_recos)
 
             # ── BLOCAGE : PAS DE NOUVELLE HYPOTHÈSE AVANT SON VERDICT ────────
@@ -3022,8 +3437,30 @@ def build_payload(sb, user_id: str) -> dict | None:
                 t_recos += _reco_evenements(lbl, _g4t_lbl, _sem_theme)
             except Exception:
                 pass
-            t_recos = sorted([r for r in t_recos if not _compares_channels(r)],
-                             key=_importance)[:3]
+            # LES QUATRE RÈGLES PAYANTES — le trou que ce thème avait sans
+            # Instagram. Avant elles, un compte qui ne fait que de la publicité
+            # n'avait qu'UNE clé déterministe à lui, `roas`
+            # (`.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`).
+            # Elles descendent sous la campagne — Annonce et Groupe d'annonces —
+            # parce qu'à l'intérieur d'un thème une campagne n'a plus personne à
+            # qui se comparer.
+            try:
+                t_recos += regles_payantes(
+                    lbl,
+                    _annonces_theme(lbl, cur_since, last_full_day),
+                    _budget_theme(lbl, _sem_theme),
+                )
+            except Exception:
+                pass
+            # LE CONSTAT SORT AVANT LA COUPE À TROIS, PAS APRÈS. `_importance`
+            # ne sait pas qu'un conseil sans geste n'en est pas un : le laisser
+            # concourir lui ferait prendre une des trois places, dont le filtre
+            # de sortie le chasserait ensuite — la carte tomberait à deux alors
+            # qu'un vrai conseil attendait derrière.
+            t_recos = sorted(
+                [r for r in (_attach_grammaire(x) for x in t_recos)
+                 if _est_conseil(r)],
+                key=_importance)[:3]
 
             if not t_recos:
                 try:
@@ -3039,6 +3476,15 @@ def build_payload(sb, user_id: str) -> dict | None:
                         _semaines_sans_conseil(nlbl), _aveugle, _sil)]
                 except Exception:
                     t_recos = []
+
+        # LES CINQ COLONNES SE POSENT ICI, AVANT QUE LA CARTE SE FERME — et le
+        # critère d'entrée trie juste après : ce qui ne demande aucun geste est
+        # un constat, et un constat ne prend pas une des places de la semaine.
+        # Les deux dans cet ordre : `_est_conseil` juge le geste POSÉ, pas le
+        # geste déclaré, sinon toute règle qui s'en remet à `_GESTE_REGLE`
+        # tomberait.
+        _cartes = [r for r in (_attach_grammaire(x) for x in (t_recos + t_veille))
+                   if _est_conseil(r)]
 
         tt = matrix_themes_by.get(nlbl, {})
         summary = {
@@ -3081,12 +3527,15 @@ def build_payload(sb, user_id: str) -> dict | None:
             # 2+1 (thèmes rédigés par Gemini) ni comptée dans les 3 (thèmes
             # règles, où elle est déjà dans `t_recos` — voir plus haut, elle
             # y est vidée après fusion pour ne pas doublonner ici).
-            "recos": [_strip_reco(r) for r in (t_recos + t_veille)],
+            "recos": [_strip_reco(r) for r in _cartes],
         })
 
     # Réglages de base : les conseils « socle » (GA4 muet, connexion, funnel),
     # sortis du flux par thème — ce sont des prérequis, pas du pilotage hebdo.
-    reglages = [_strip_reco(r) for r in sorted(rule_recos, key=lambda r: r["priority"])
+    # Ils passent par la même pose que les autres : c'est ce qui leur donne le
+    # levier `socle`, donc leur dispense de geste (voir `_est_conseil`).
+    reglages = [_strip_reco(_attach_grammaire(r))
+                for r in sorted(rule_recos, key=lambda r: r["priority"])
                 if r.get("key") in SETUP_KEYS][:3]
 
     # ── Verdict déterministe (même logique que le rapport) ───────────────────
@@ -3334,51 +3783,15 @@ def build_payload(sb, user_id: str) -> dict | None:
     _BASCULE_PUB = "2026-09-19"
     _METRICS_PERIMETRE_PUB = ("cpc", "roas")
 
-    # PROOF_KPI ne couvre que les recos-règles : leur `key` est stable d'une
-    # semaine à l'autre (ex. "gaspillage"), donc une clé fixe suffit à
-    # retrouver leur indicateur. Une piste IA (`_theme_ai_recos`) a une clé
-    # dynamique (`ai_<theme>_<n>`, différente chaque semaine) — elle ne peut
-    # donc jamais être ajoutée ici par clé. C'est `METRIC_INFO_IA` (plus haut
-    # dans ce fichier) + `_attach_metric` (plus bas) qui lui donnent le même
-    # verdict à 14 jours, à partir de la `metric` qu'elle a déclarée elle-même.
-    PROOF_KPI = {
-        "gaspillage":     ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
-        "roas":           ("roas", "ROAS", "", "up", "{:.1f}"),
-        "scaler":         ("roas", "ROAS", "", "up", "{:.1f}"),
-        "funnel":         ("purchases", "achats (GA4)", "", "up", "{:.0f}"),
-        "silence":        ("posts", "posts publiés", "", "up", "{:.0f}"),
-        "creneau":        ("eng", "engagement moyen", "%", "up", "{:.1f}"),
-        "format_gagnant": ("eng", "engagement moyen", "%", "up", "{:.1f}"),
-        "page_endormie":  ("reach", "portée moyenne", "", "up", "{:,.0f}"),
-        # L'organique. Chaque conseil vise l'indicateur QU'IL fait bouger : le
-        # nombre de posts pour un rythme retombé, la portée pour tout le reste.
-        "orga_rythme":        ("posts", "posts publiés", "", "up", "{:.0f}"),
-        "orga_essoufflement": ("reach", "portée moyenne", "", "up", "{:,.0f}"),
-        "orga_format":        ("reach", "portée moyenne", "", "up", "{:,.0f}"),
-        "orga_reaction":      ("reach", "portée moyenne", "", "up", "{:,.0f}"),
-        # Rien non plus pour les `theme_event_*`, et pour la même raison de
-        # fond : `_kpis_window` sait mesurer un CPC, un ROAS, des posts, une
-        # portée — pas un coût par événement choisi. Lui donner ici la clé
-        # `cpc` ou `roas` ferait juger « chaque purchase t'a coûté 42 CHF » sur
-        # un indicateur qui n'est pas celui du conseil, et un verdict pris sur
-        # la mauvaise mesure repondère ensuite tous les autres conseils. Ces
-        # deux-là partent donc sans baseline — visibles, suivables, mais sans
-        # promesse de verdict à quatorze jours.
-        #
-        # Rien pour les `veille_*`, et c'est délibéré : une veille n'a pas de
-        # verdict à mériter. Lui donner une baseline reviendrait à promettre
-        # une mesure dans quatorze jours sur une décision qu'on n'a pas prise.
-        #
-        # C'est ce qui a décidé de la FORME des deux objets ajoutés en août 2026
-        # pour les thèmes muets (`veille_theme_…`). Leur seconde raison a expiré
-        # le 2026-09-11 : `_kpis_window` ne mesurait alors que Meta, quand ces
-        # deux objets lisent Meta + Google, et une baseline prise sur un autre
-        # périmètre que son verdict est un verdict faux. Le ticket 01 a réparé
-        # ce périmètre, l'écart n'existe plus — mais la première raison tient
-        # toujours, et c'est elle qui les garde ici : une veille n'a pas de
-        # verdict à mériter. Leur donner une baseline maintenant serait un
-        # changement de produit, pas une conséquence de cette réparation.
-    }
+    # L'INDICATEUR D'UN CONSEIL SE DÉCLARE, IL NE SE RETROUVE PLUS ICI.
+    #
+    # `PROOF_KPI` vivait à cet endroit : dix-sept lignes qui répétaient
+    # `METRIC_INFO_IA` valeur pour valeur, une fois par clé-règle. Elle est
+    # remplacée par `_METRIC_REGLE` + `_spec_mesure` (haut de fichier), qui
+    # donnent la même spec à une règle (par sa clé stable) et à une piste IA
+    # (par la `metric` qu'elle déclare, sa clé `ai_<theme>_<n>` changeant chaque
+    # semaine). Les raisons qui excluaient les `veille_*` et les `theme_event_*`
+    # de cette table sont écrites là-bas, avec la table.
 
     # MESURER UNE ACTION LÀ OÙ ELLE A EU LIEU.
     #
@@ -3451,7 +3864,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     outcomes, pending = [], []
     cur_kpis = None
     for dec in decisions[:4]:
-        spec = PROOF_KPI.get(dec["reco_key"])
+        spec = _spec_mesure(_METRIC_REGLE.get(dec["reco_key"]))
         if not spec:
             continue
         try:
@@ -3537,18 +3950,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         }
 
     def _attach_metric(r, theme=None):
-        spec = PROOF_KPI.get(r.get("key"))
-        if not spec and r.get("source") == "ai":
-            # Une piste IA n'a pas de clé stable (`ai_<theme>_<n>`, différente
-            # chaque semaine) : impossible de la trouver dans `PROOF_KPI` par
-            # sa clé. Elle a en revanche déclaré elle-même sa `metric` (voir
-            # `_theme_ai_recos`, toujours une valeur de `METRICS_IA`) — on
-            # construit donc le même genre de spec à partir de `METRIC_INFO_IA`,
-            # pour qu'elle reçoive la même baseline et le même verdict à 14
-            # jours (« ▶ Je le teste ») qu'une reco-règle.
-            _info = METRIC_INFO_IA.get(r.get("metric"))
-            if _info:
-                spec = (r["metric"],) + _info
+        # Une règle porte une clé STABLE (« gaspillage »), qui suffit à
+        # retrouver son indicateur. Une piste IA a une clé dynamique
+        # (`ai_<theme>_<n>`, différente chaque semaine) et ne peut donc jamais
+        # être retrouvée par clé — mais elle a déclaré elle-même sa `metric`
+        # (`_theme_ai_recos`, toujours une valeur de `METRICS_IA`). Les deux
+        # chemins finissent sur la même spec, donc la même baseline et le même
+        # verdict à 14 jours.
+        spec = _spec_mesure(_METRIC_REGLE.get(r.get("key"))
+                            or (r.get("metric") if r.get("source") == "ai" else None))
         if not spec:
             return
         kpi, lbl_k, _unit, direction, _fmt = spec
@@ -3604,85 +4014,42 @@ def build_payload(sb, user_id: str) -> dict | None:
         if _jug and _jug.get("mode") == "cible" and _jug.get("levier_impactant"):
             _tf["recos"].sort(key=lambda r, _lv=_jug["levier_impactant"]: r.get("levier") != _lv)
 
-    # ── L'HYPOTHÈSE DE LA SEMAINE ENTRE AUTOMATIQUEMENT EN SUIVI ─────────────
+    # ── LA MARCHE DE LA SEMAINE ENTRE DANS LA MÉMOIRE DE PULSE, PAS AU CARNET ─
     #
-    # Décision de David (27 août 2026) : « suivie dans le temps » ne veut pas
-    # dire une carte affichée cette semaine sans lendemain — la piste que
-    # Gemini désigne `role="hypothese"` (voir `_theme_ai_recos`, `ROLES_IA`)
-    # doit recevoir un verdict mesuré à 14 jours, SANS attendre que le client
-    # clique « ▶ Je le teste » NI « ✓ Je l'ai fait ».
+    # PLUS RIEN N'ENTRE AU CARNET SANS UN CLIC (ticket 06 de la construction,
+    # tranché par `.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`,
+    # décision 7). Jusqu'ici, l'Hypothèse d'un thème s'écrivait dans
+    # `suivi_actions` à la publication, `status="auto"`, et recevait un verdict à
+    # quatorze jours QUE LE CLIENT L'AIT FAITE OU NON. Un Verdict rendu sur un
+    # geste que personne n'a confirmé attribue un mouvement de chiffres à une
+    # action qui n'a peut-être jamais eu lieu : c'est `CLAUDE.md` § 7, et c'est
+    # la raison pour laquelle ces dix-huit champs ont disparu d'ici.
     #
-    # STATUT DÉDIÉ `"auto"` — PAS `"running"` (rejet du checker, 1re passe de
-    # vérification). `"running"` est le statut du suivi MANUEL, et deux
-    # mécanismes du produit lisent SPÉCIFIQUEMENT `status == "done"` pour
-    # déclencher un verdict :
-    #   · le gate `due` de la boucle de mesure juste en dessous (avant ce
-    #     correctif : `due = status == "done" and today >= chk`) ;
-    #   · côté web, `resolveAction(..., "done")` (`saas/web/app/actions.ts`)
-    #     est le SEUL endroit du dépôt qui écrit `status="done"` — geste
-    #     exclusivement client (« ✓ Je l'ai fait »).
-    # Une ligne posée `"running"` restait donc `"running"` pour toujours,
-    # verdict structurellement inatteignable sans ce clic — l'inverse de ce
-    # que David a demandé. `"auto"` est un troisième statut, propre à ce
-    # mécanisme, que la boucle de mesure traite comme équivalent à `"done"`
-    # (verdict à l'échéance) SANS jamais dépendre d'un `done_at` posé par un
-    # clic. Il n'est CHOISI PAR AUCUN CHECK SQL (colonne `status` libre, sans
-    # contrainte — vérifié dans `supabase/migrations/000_run_me_all.sql`),
-    # donc aucune migration n'est nécessaire pour l'introduire.
+    # LA SÉPARATION QUI REND ÇA POSSIBLE EXISTAIT DÉJÀ :
+    #   · `theme_plan` est la mémoire de PULSE — quelle Hypothèse tourne sur ce
+    #     thème, depuis quand. Elle continue de s'écrire À LA PUBLICATION, sinon
+    #     un thème changerait de théorie chaque semaine, ce que la fenêtre
+    #     d'attente (`ATTENTE_MIN_NOUVELLE_HYPOTHESE`) existe précisément pour
+    #     empêcher ;
+    #   · `suivi_actions` est le carnet du CLIENT, et il ne reçoit qu'au clic
+    #     (`startTracking` / `resolveAction`, `saas/web/app/actions.ts`).
+    # Conséquence directe : l'échéance du Verdict se calcule depuis la date du
+    # clic, jamais depuis la publication. Le cas « jamais cliqué » a sa sortie
+    # ailleurs — la Mise en veille à deux semaines de silence.
     #
-    # HORS DU PLAFOND DE 3 CHANTIERS ET DE « ▶ JE LE TESTE » (rejet du checker) :
-    # `saas/web/app/page.tsx` calcule `capReached` sur les actions dont le
-    # statut n'est PAS `"done"` — avec `"running"` seul, les 3 hypothèses
-    # auto-créées (une par thème rédigé par Gemini) saturaient ce plafond et
-    # désactivaient le bouton partout. `capReached` exclut maintenant aussi
-    # `"auto"` (voir la modification de `page.tsx`).
-    #
-    # PAS DE DOUBLON SUR UN RE-RUN LE MÊME JOUR (rejet du checker) : la clé
-    # d'une piste IA (`ai_<theme>_<i>`) dépend de sa POSITION dans la réponse
-    # de Gemini, qui peut varier d'un appel à l'autre (« ↻ Recharger mes
-    # conseils » relance `_theme_ai_recos`). `on_conflict` seul ne suffit donc
-    # pas à retrouver l'ancienne ligne : on purge d'abord toute ligne encore
-    # `"auto"` de CE thème et CE jour avant d'écrire la nouvelle — ne touche
-    # jamais une ligne que le client a reprise à son compte (`status`
-    # basculé sur `"running"`/`"done"` par un clic, donc plus `"auto"`).
-    #
-    # `detail.origin = "auto"` — MARQUEUR D'ORIGINE DURABLE (rejet du checker,
-    # 3e passe). `status` porte DEUX rôles à la fois : l'origine (auto/manuel)
-    # ET le cycle de vie (running/done/archived/dropped). Deux gestes client
-    # normaux écrasent `status="auto"` sans jamais toucher un client réel :
-    # « ✓ Vu — je range » (`resolveAction(id,"seen")` → `status="archived"`)
-    # et « × j'abandonne » (`resolveAction(id,"drop")` → `status="dropped"`),
-    # tous deux disponibles directement depuis l'état `"auto"` — dès que l'un
-    # des deux se produit, plus aucun filtre sur `status == "auto"` ne
-    # retrouve la ligne, qui redevient indiscernable d'une décision manuelle
-    # (repère ▲ fantôme sur les courbes, ratio « ce que tu as tenté » faussé —
-    # voir `_markers` plus bas et `theme-card.tsx`).
-    #
-    # `detail` est un jsonb NULLABLE déjà en place (migration §11, AUCUNE
-    # migration supplémentaire nécessaire) et n'est JAMAIS réécrit par
-    # `resolveAction` (`saas/web/app/actions.ts` — ses trois branches ne
-    # touchent que `status`/`done_at`/`check_at`) : `origin` y survit à
-    # n'importe quel geste client ultérieur. La règle de lecture, partout où
-    # elle compte encore une fois `status` transitionné : une ligne
-    # `detail.origin == "auto"` reste une hypothèse auto tant qu'aucun
-    # `done_at` n'a été posé — un `done_at` ne peut venir QUE d'un clic
-    # « ✓ Je l'ai fait » (`resolveAction(id,"done")`), donc SA présence est
-    # elle-même la preuve d'une vraie décision client, quelle que soit
-    # l'origine de la ligne.
-    #
-    # `baseline`/`metric`/`metric_label`/`direction` viennent d'ÊTRE posés par
-    # `_attach_metric` juste au-dessus : c'est la même photo de la décision
-    # qu'aurait prise un clic client aujourd'hui.
-    _hyp_today = today.isoformat()
+    # L'Hypothèse d'un thème peut maintenant venir d'une RÈGLE et plus seulement
+    # de Gemini : c'est `_GESTE_REGLE` (et les branches qui déclarent leur geste)
+    # qui posent `role="hypothese"`. `next(...)` en retient une seule par thème,
+    # ce que la contrainte `UNIQUE (user_id, theme)` de `theme_plan` exige de
+    # toute façon.
     for _tf in themes_focus:
         _hyp = next((r for r in _tf["recos"] if r.get("role") == "hypothese"), None)
         if not _hyp:
             continue
-        # L'hypothèse a-t-elle simplement été RÉAFFICHÉE (blocage plus haut,
+        # L'Hypothèse a-t-elle simplement été RÉAFFICHÉE (blocage plus haut,
         # même `reco_key` que le plan actif, fenêtre d'attente pas écoulée) ?
-        # Si oui, ne pas réécrire `suivi_actions`/`theme_plan` : le compteur
-        # doit continuer sur SA date de décision d'origine, pas repartir sur
-        # `today`.
+        # Si oui, ne pas réécrire `theme_plan` : le compteur doit continuer sur
+        # SA date de décision d'origine, pas repartir sur `today`.
         _nlbl = _nrm(_tf["label"])
         _plan = theme_plan_by.get(_nlbl)
         if _plan and _plan.get("reco_key") == _hyp.get("key") and _plan.get("decided_at"):
@@ -3693,69 +4060,13 @@ def build_payload(sb, user_id: str) -> dict | None:
             _attente0 = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
             if _decided0 and (today - _decided0).days < _attente0:
                 continue  # déjà suivie, rien à réécrire cette semaine
-        _hyp_check = (today + timedelta(days=FENETRE_LEVIER.get(_hyp.get("levier"), _ATTENTE_DEFAUT))).isoformat()
-        try:
-            sb.table("suivi_actions").delete().eq("user_id", user_id).eq(
-                "theme", _tf["label"]
-            ).eq("decided_at", _hyp_today).eq("status", "auto").execute()
-        except Exception:
-            pass
-        _row = {
-            "user_id": user_id,
-            "reco_key": _hyp["key"],
-            "title": _hyp["title"],
-            "theme": _tf["label"],
-            "metric": _hyp.get("metric"),
-            "metric_label": _hyp.get("metric_label"),
-            "direction": _hyp.get("direction"),
-            "baseline": _hyp.get("baseline"),
-            "decided_at": _hyp_today,
-            "check_at": _hyp_check,
-            "status": "auto",
-            "detail": {
-                "observation": _hyp.get("observation"),
-                "pourquoi": _hyp.get("pourquoi"),
-                "verifier": _hyp.get("verifier"),
-                "effort": _hyp.get("effort"),
-                # Marqueur d'origine DURABLE — voir le commentaire au-dessus.
-                # Survit à tout changement de `status` (archivage, abandon,
-                # confirmation manuelle) puisque `resolveAction` ne réécrit
-                # jamais `detail`.
-                "origin": "auto",
-                # LE LEVIER, POUR QUE LA MÉMOIRE DU THÈME LE MESURE AU LIEU DE
-                # LE DEVINER (spec `.scratch/theme-memoire/spec.md`).
-                # `suivi_actions` n'a pas de colonne `levier` : sans ce champ,
-                # « trois hypothèses argent d'affilée » serait inféré depuis
-                # l'indicateur — donc fabriqué (`CLAUDE.md` § 7). Il survit
-                # aux gestes client pour la même raison qu'`origin`.
-                # Les hypothèses écrites AVANT ce champ n'en ont pas : la
-                # condensation les traite en « levier inconnu », jamais en
-                # levier deviné.
-                "levier": _hyp.get("levier"),
-            },
-        }
-        try:
-            sb.table("suivi_actions").upsert(
-                _row, on_conflict="user_id,reco_key,decided_at"
-            ).execute()
-        except Exception:
-            # Repli si la colonne `detail` n'existe pas encore (migration pas
-            # passée) — même repli que côté web (`actions.ts`, `startTracking`).
-            try:
-                _row.pop("detail", None)
-                sb.table("suivi_actions").upsert(
-                    _row, on_conflict="user_id,reco_key,decided_at"
-                ).execute()
-            except Exception:
-                pass
-        # Cette hypothèse est NOUVELLE (sinon la garde plus haut aurait fait
-        # `continue`) : elle devient le plan actif du thème, avec sa carte
-        # complète (déjà enrichie de metric/effort par la boucle
-        # `_attach_metric`/`_attach_effort` plus haut) pour pouvoir la
+        # Cette Hypothèse est NOUVELLE : elle devient la Marche courante du
+        # thème, avec sa carte complète (déjà enrichie de metric/effort par la
+        # boucle `_attach_metric`/`_attach_effort` plus haut) pour pouvoir la
         # réafficher fidèlement les semaines suivantes si elle est bloquée.
         upsert_theme_plan(
             sb, user_id, _tf["label"], _hyp["key"], _hyp.get("levier"),
-            _hyp_today, dict(_hyp),
+            today.isoformat(), dict(_hyp),
         )
 
     # ── Les 3 du moment ──────────────────────────────────────────────────────
@@ -3788,11 +4099,14 @@ def build_payload(sb, user_id: str) -> dict | None:
     #    à l'échéance (check_at), on remesure l'indicateur → verdict.
     tracking = None
     try:
-        # `"auto"` (voir plus haut, l'hypothèse auto-suivie) entre dans LA MÊME
-        # boucle de mesure que `"running"`/`"done"` — son verdict tombe à
-        # l'échéance, comme `"done"`, mais sans jamais dépendre d'un clic.
+        # `"auto"` A DISPARU DE CETTE LECTURE (ticket 06 de la construction).
+        # C'était le statut de l'Hypothèse posée par le worker sans clic : plus
+        # rien n'en écrit, et les lignes déjà en base ne sont plus relues — leur
+        # rendre un verdict aujourd'hui reviendrait à mesurer l'effet d'un geste
+        # que personne n'a confirmé (`CLAUDE.md` § 7). Elles restent en base,
+        # reconnaissables à `detail.origin == "auto"` : rien n'est effacé ici.
         _sa = (sb.table("suivi_actions").select("*")
-               .eq("user_id", user_id).in_("status", ["running", "done", "auto"])
+               .eq("user_id", user_id).in_("status", ["running", "done"])
                .order("check_at").execute().data) or []
     except Exception:
         _sa = []
@@ -3800,14 +4114,20 @@ def build_payload(sb, user_id: str) -> dict | None:
         running, verified = [], []
         # ── LA MÉMOIRE DES THÈMES SE CONSTRUIT DANS CETTE BOUCLE ─────────────
         # (spec `.scratch/theme-memoire/spec.md`). `_sa` porte déjà tout ce
-        # qu'il faut — aucune requête supplémentaire : les hypothèses passées
-        # d'un thème, c'est ces mêmes lignes filtrées sur `theme` et sur
-        # `detail.origin == "auto"`.
+        # qu'il faut — aucune requête supplémentaire : ce qu'un thème a déjà
+        # tenté, c'est ces mêmes lignes, celles qui portent un thème.
         #
-        # LIMITE ASSUMÉE : une hypothèse que le client a rangée (`archived`)
-        # ou abandonnée (`dropped`) n'est pas dans `_sa` — elle sort donc de
-        # la mémoire. C'est cohérent (une hypothèse abandonnée n'a pas de
-        # verdict à raconter), mais ce n'est pas neutre, d'où cette ligne.
+        # ELLE SE NOURRIT MAINTENANT DE CE QUE LE CLIENT A FAIT, PAS DE CE QUE
+        # PULSE AVAIT POSÉ (ticket 06). Le filtre était `detail.origin == "auto"`
+        # — l'Hypothèse écrite à la publication, sans clic. Cette écriture est
+        # morte : la mémoire garde donc les Marches que le client a réellement
+        # prises et dont un verdict est tombé. C'est la même mémoire, sur une
+        # matière plus sûre : ce qui n'a pas été fait ne raconte rien.
+        #
+        # LIMITE ASSUMÉE : une action que le client a rangée (`archived`) ou
+        # abandonnée (`dropped`) n'est pas dans `_sa` — elle sort donc de la
+        # mémoire. C'est cohérent (une action abandonnée n'a pas de verdict à
+        # raconter), mais ce n'est pas neutre, d'où cette ligne.
         _mem_hist: dict[str, list[dict]] = {}   # thème normalisé → hypothèses mesurées
         _mem_labels: dict[str, str] = {}        # thème normalisé → son libellé réel
         _mem_nouveaux: set[str] = set()         # thèmes dont un verdict vient de tomber
@@ -3835,11 +4155,12 @@ def build_payload(sb, user_id: str) -> dict | None:
                 chk = today
             status = str(a.get("status") or "running")
             done_at = str(a.get("done_at"))[:10] if a.get("done_at") else None
-            # Le compteur des 2 semaines ne tourne que sur une action FAITE
-            # (`"done"`, un clic client) OU auto-suivie (`"auto"`, l'hypothèse
-            # du thème — voir plus haut) : tant qu'elle est encore `"running"`
-            # (à faire, jamais cliquée), il n'y a rien à mesurer.
-            due = status in ("done", "auto") and today >= chk
+            # Le compteur des 2 semaines ne tourne que sur une action FAITE —
+            # `"done"`, c'est-à-dire un clic « ✓ Je l'ai fait ». Tant qu'elle est
+            # `"running"` (décidée, pas encore faite), il n'y a rien à mesurer :
+            # mesurer l'effet d'un geste que personne n'a posé, c'est attribuer
+            # un mouvement de chiffres au hasard (`CLAUDE.md` § 7).
+            due = status == "done" and today >= chk
             entry = {
                 "id": a.get("id"), "title": a.get("title"), "theme": a.get("theme"),
                 "reco_key": a.get("reco_key"),
@@ -3870,14 +4191,14 @@ def build_payload(sb, user_id: str) -> dict | None:
                 # change réellement : pas besoin d'une colonne « dernière
                 # condensation » ni d'une comparaison de dates.
                 _det = a.get("detail") if isinstance(a.get("detail"), dict) else {}
-                if _det.get("origin") == "auto" and a.get("theme"):
+                if a.get("theme"):
                     _mk = _nrm(a["theme"])
                     _mem_labels[_mk] = a["theme"]
-                    # UNE LIGNE `auto` RESTE « due » POUR TOUJOURS : passé son
+                    # UNE LIGNE FAITE RESTE « due » POUR TOUJOURS : passé son
                     # `check_at`, elle est remesurée à CHAQUE rapport contre le
-                    # KPI du jour. `then/now/delta` d'une hypothèse de trois
-                    # mois ne mesurent donc plus cette hypothèse — ils mesurent
-                    # trois mois de dérive du compte. Les donner à la
+                    # KPI du jour. `then/now/delta` d'une action de trois mois
+                    # ne mesurent donc plus cette action — ils mesurent trois
+                    # mois de dérive du compte. Les donner à la
                     # condensation reviendrait à attribuer à une idée un
                     # mouvement qui ne lui appartient pas : un chiffre non
                     # mérité, exactement ce que `CLAUDE.md` § 7 interdit.
@@ -3891,9 +4212,9 @@ def build_payload(sb, user_id: str) -> dict | None:
                     _verdict_fige = a.get("verdict")
                     _mem_item = {
                         "titre": a.get("title"),
-                        # Absent des hypothèses écrites avant que `detail` le
-                        # porte → « levier inconnu », jamais un levier déduit
-                        # de l'indicateur.
+                        # Écrit par `startTracking` au clic (`actions.ts`).
+                        # Absent des lignes posées avant ce champ → « levier
+                        # inconnu », jamais un levier déduit de l'indicateur.
                         "levier": _det.get("levier"),
                         "decided_at": entry["decided_at"],
                         "check_at": entry["check_at"],
@@ -3933,21 +4254,20 @@ def build_payload(sb, user_id: str) -> dict | None:
                 #
                 # Trois conditions, et elles sont strictes, parce qu'un signal
                 # précoce qui contredit le verdict final ruine le verdict :
-                #   · l'action est FAITE (ou auto-suivie) depuis au moins 7
-                #     jours pleins ;
+                #   · l'action est FAITE depuis au moins 7 jours pleins ;
                 #   · le mouvement dépasse 10 % — sous ce seuil, sept jours de
                 #     données ne distinguent pas un effet d'un lundi calme ;
                 #   · on ne prononce jamais « ça a marché », seulement un sens.
                 #
-                # L'ORIGINE DU COMPTE À REBOURS n'est pas la même pour les deux
-                # statuts : un « done » redémarre son horloge le jour du clic
-                # (`done_at`) ; un « auto » n'a pas ce clic, son horloge part de
-                # `decided_at` (le jour de la photo, `check_at = decided_at+14`).
-                _origine = done_at if status == "done" else (
-                    str(a.get("decided_at"))[:10] if status == "auto" else None
-                )
+                # L'ORIGINE DU COMPTE À REBOURS est le jour du clic « ✓ Je l'ai
+                # fait » (`done_at`), jamais la publication : c'est à partir du
+                # moment où le changement existe vraiment qu'il y a un effet à
+                # lire. Une ligne `"done"` d'avant la migration `done_at` n'en a
+                # pas — elle n'aura pas de point d'étape, plutôt qu'un point
+                # d'étape compté depuis une date qui n'est pas la bonne.
+                _origine = done_at if status == "done" else None
                 if (
-                    status in ("done", "auto") and not due and _origine
+                    status == "done" and not due and _origine
                     and _meme_perimetre
                     and metric and base is not None and now is not None
                 ):

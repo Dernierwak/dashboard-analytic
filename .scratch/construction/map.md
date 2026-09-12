@@ -198,6 +198,68 @@ la colonne est figée après coup, mais la politique d'insertion contrôle le
 compte et jamais la personne — une règle sur ce qu'un Membre a le droit
 d'écrire, donc elle se propose.
 
+**[06 · Rebrancher le plan de thème](issues/06-rebrancher-le-plan-de-theme.md)** —
+les cinq colonnes d'une règle sont posées, et l'entrée automatique au carnet est
+morte. La panne était plus bête que prévu : `_LEVIER_REGLE` et `EFFORT_BY_KEY`
+existaient, mais **aucun poseur ne mettait le levier sur une reco-règle** —
+`upsert_theme_plan` recevait `levier=None` et `FENETRE_LEVIER` retombait sur son
+défaut pour tout le monde. `PROOF_KPI` est **retirée** (17 lignes, zéro valeur
+changée, prouvé table contre table). La table des gestes n'est qu'un **défaut** :
+`roas` écrit augmenter / couper / couper / corriger sous **une seule clé**, et la
+découper aurait effacé `reco_feedback`. **Un conseil sans geste est un constat**
+et n'est jamais servi — filtre appliqué **avant** la coupe à trois, veille et
+socle exemptés. Plus aucun `status="auto"` écrit ni relu, plus aucun verdict sur
+un geste que personne n'a confirmé ; `theme_plan` reste écrit à la publication.
+**Deux conséquences qui n'étaient pas dans le ticket** : la mémoire d'un thème,
+qui se nourrissait de ces lignes `auto`, lit maintenant les actions confirmées
+(et `startTracking` emporte le levier, sinon elle ne verrait que des « levier
+inconnu ») ; et `theme_event_cout` **disparaît des cartes** jusqu'à ce que 09 lui
+donne sa place dans les constats. **257 vérifications**, aucune base ni secret.
+**`build_payload` n'a pas tourné** — c'est le ticket 16. Repli appliqué : la
+Marche suivante écrite par Gemini part en [24](issues/24-marche-suivante-ecrite-par-gemini.md),
+parce qu'après ce ticket **seules deux règles ouvrent une Stratégie, les deux
+organiques** — Gemini n'aurait rien à continuer chez un compte sans Instagram.
+Sa revue a ouvert [25 · Le statut `auto` et ses branches inertes](issues/25-le-statut-auto-et-ses-branches-inertes.md).
+
+**[07 · Les quatre règles payantes](issues/07-quatre-regles-payantes.md)** — le
+moteur descend enfin sous la campagne. `annonce_sans_conversion`,
+`annonce_locomotive`, `annonce_chere` et `theme_hors_budget` vivent dans un
+module neuf et **pur** (`saas/recos_ia/regles_payantes.py`), leurs seuils
+sortent tous de `SEUILS` et les tests se placent **pile dessus**. Les deux
+garde-fous du geste « couper » tiennent, et le second va plus loin que la lettre
+du ticket : une annonce de campagne jeune n'est ni dénoncée **ni comptée dans la
+médiane**. Deux lectures branchées — `fetch_google_ads_ad_insights` **paginée**
+(elle tronquait à 1 000 lignes en silence) et `fetch_platform_budgets` écrite,
+relevé choisi **par canal**, prorata porté tel quel depuis `lib/budgets.ts`.
+`_compares_channels` est **morte entièrement**, définition, appels et
+commentaires. `spend` entre dans les indicateurs, `sessions` non — `_kpis_window`
+ne sait pas le mesurer. **Deux faits imposés par la donnée** : Meta n'a pas la
+conversion au niveau de l'Annonce (`conversions=None`, jamais zéro), et Meta
+sort des comparaisons d'Annonces tant que le SQL du ticket 03 n'est pas joué —
+Google tourne dès aujourd'hui et Meta arrive sans une ligne de code ce jour-là.
+Trois règles peuvent tomber sur la même Annonce : un **arbitre** les
+départage — deux conseils qui disent de couper la même n'en font qu'un, deux qui
+se contredisent sur la même n'en font aucun. La revue de code a imposé le
+point le plus important : **la comparaison se fait dans un Groupe d'annonces**,
+jamais sur tout le thème — un clic Search et un clic social n'ont pas le même
+prix, et la première version aurait désigné la même annonce Search chaque
+semaine en affirmant « elles partagent la même audience ». **188 vérifications**,
+plus les 302 du harnais 06 rejouées. **Rien n'est joué en
+base, aucune migration, aucune récolte nouvelle.**
+
+**Et une prémisse fausse, la plus lourde de la carte jusqu'ici** →
+[26 · Les règles payantes n'atteignent pas le rapport](issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md).
+Un thème rédigé par Gemini ne reçoit **aucun** conseil-règle, et `_THEMES_IA = 3`
+couvre **toute** la liste des thèmes d'un client à trois étoiles ou moins : le
+chemin des règles ne s'ouvre qu'à la **quatrième étoile**. Ça ne vaut pas que
+pour ces quatre-là — `roas`, le « un conseil par semaine » que 22 a mesuré, ne
+sort pas non plus. Les quatre règles sont livrées **au bon endroit** ; c'est une
+porte en amont qui décide qui les verra, et c'est une décision de David du
+27 août 2026 qu'on ne rouvre pas soi-même. Sa revue a aussi ouvert
+[27 · L'Hypothèse d'une règle peut changer de théorie toutes les semaines](issues/27-l-hypothese-d-une-regle-peut-changer-chaque-semaine.md),
+qui vient de 06 et non de 07 — les quatre règles payantes sont toutes
+« constatable » et n'ouvrent aucune Stratégie.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la
@@ -205,9 +267,11 @@ d'écrire, donc elle se propose.
   s'est trompée. Ce qu'il en sortira — un module qui ne sert pas, un ordre à
   refaire, un conseil qui tombe à plat — ne se charte pas d'avance.
 - **Ce que les quatre premières règles payantes donneront sur de vraies
-  données.** 24 a livré leurs seuils depuis `SEUILS`, aucun n'est inventé ; reste
-  qu'aucune n'a jamais tourné. Si elles se taisent ou se répètent, c'est un
-  ticket, pas une retouche silencieuse.
+  données.** Écrites et vérifiées par 07, seuils issus de `SEUILS`, aucun
+  inventé — mais aucune n'a jamais tourné, et le ticket 26 dit qu'aucune ne
+  tournera chez un client à trois étoiles tant que la porte de Gemini n'est pas
+  tranchée. Quand elles tourneront : si elles se taisent ou se répètent, c'est
+  un ticket, pas une retouche silencieuse.
 - **La doc du produit.** Table des matières au §6 du plan, décision dans
   [05](../refonte/issues/05-carte-du-savoir.md) : elle s'écrit **thématique par
   thématique, quand la brique est construite** — c'est le produit qui dicte la

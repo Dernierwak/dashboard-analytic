@@ -17,6 +17,7 @@ pas propres à ce dossier — voir `CLAUDE.md` § 7.
 | Fichier | Appelle l'IA ? | Rôle |
 |---|---|---|
 | `reco_engine.py` | **Non** — déterministe | Le moteur de recos : dix règles sur les chiffres, zéro modèle de langage. |
+| `regles_payantes.py` | **Non** — déterministe | Les quatre règles qui descendent **sous la campagne** : Annonce, Groupe d'annonces, budget posé d'un thème. |
 | `insights.py` | **Non** — déterministe | La matrice full-history + les constats (« Ce qui fonctionne pour toi »). |
 | `labeling.py` | Oui — Gemini | Pose un thème sur chaque post/campagne qui n'en a pas. |
 | `categorizing.py` | Oui — Gemini | Catégorise chaque événement GA4 du catalogue qui n'en a pas. |
@@ -48,6 +49,33 @@ dates déclarées — ça reste hors de sa portée.
 Les recos pub sont **plafonnées à « creuser »** tant que GA4 n'est pas
 connecté : on voit le coût, jamais le retour, donc jamais de certitude du
 type « coupe cette campagne ».
+
+## `regles_payantes.py` — sous la campagne
+
+Quatre règles, et un périmètre que `reco_engine.py` n'a pas :
+`annonce_sans_conversion`, `annonce_locomotive`, `annonce_chere`,
+`theme_hors_budget`. À l'intérieur d'un thème, une campagne n'a plus personne à
+qui se comparer — on l'a justement filtrée : **l'unité de comparaison devient
+l'Annonce et le Groupe d'annonces** (`CONTEXT.md`). C'est pour ça que
+`_rule_gaspillage` et `_rule_scaler`, qui comparent des campagnes à leur
+médiane, ne pouvaient pas simplement être rebranchés par thème.
+
+**Aucun seuil n'y est inventé** : tous sortent de `SEUILS` (`reco_engine.py`).
+Le module est **pur** — listes de dicts en entrée, dicts en sortie, ni base, ni
+réseau, ni pandas. Il ne sait pas rattacher une Annonce à un thème : c'est
+`build_report.py` qui le fait et lui passe la liste (même partage que
+`_orga_recos` et `_reco_evenements`, qui vivent là-bas pour la même raison).
+
+**Deux choses à savoir avant d'y toucher** :
+
+- **Le geste « couper » a deux garde-fous**, posés par David : jamais sur une
+  campagne **jeune** (rien en base ne dit qu'une campagne est un test, l'âge est
+  le seul proxy honnête) et jamais fondé sur une **part de budget** — seulement
+  sur un résultat mesuré.
+- **`conversions=None` n'est pas `conversions=0`.** `meta_ads_insights` ne porte
+  pas la conversion au niveau de l'Annonce, `google_ads_ad_insights` si. Une
+  annonce non mesurée n'est ni dénoncée ni utilisée comme preuve — la compter à
+  zéro ferait couper une annonce Meta qui vend très bien (`CLAUDE.md` § 7).
 
 ## `insights.py` — les constats
 
@@ -126,17 +154,29 @@ valeurs déjà calculées par `build_report.py` (verdict, baseline, valeur
 constatée, variation), jamais de données brutes à agréger. C'est ce qui rend
 vérifiable par simple lecture qu'aucun chiffre n'est fabriqué.
 
+**Ce qu'elle lit a changé** (ticket 06 de la construction) : elle se nourrissait
+des hypothèses que le worker posait tout seul dans `suivi_actions`
+(`detail.origin == "auto"`). Cette écriture automatique est morte — un verdict
+rendu sur un geste que personne n'a confirmé attribue un mouvement de chiffres à
+une action qui n'a peut-être jamais eu lieu (`CLAUDE.md` § 7). La mémoire lit
+maintenant **les actions que le client a confirmées** et dont un verdict est
+tombé. Le `levier` continue d'arriver par `detail`, écrit cette fois au clic
+(`startTracking`, `saas/web/app/actions.ts`) : sans lui, la mémoire ne saurait
+plus dire « trois hypothèses argent d'affilée » sans le déduire de l'indicateur,
+c'est-à-dire sans le fabriquer.
+
 Deux conséquences à connaître avant d'y toucher : la mémoire écrite cette
 semaine est lue par le rapport **suivant** (la rédaction des pistes s'exécute
 avant la boucle de verdict — voir le commentaire au branchement, ce n'est pas
-un bug d'ordonnancement) ; et une hypothèse `archived`/`dropped` sort de la
+un bug d'ordonnancement) ; et une action `archived`/`dropped` sort de la
 mémoire, faute de verdict à raconter.
 
 ## Qui appelle ce dossier
 
 `saas/collecte/automatisation/fetch_all.py` déclenche `labeling.py` et
 `categorizing.py` en fin de récolte (imports locaux, pour éviter un cycle).
-`saas/traitement/build_report.py` appelle `reco_engine.py` et `insights.py`
-pour construire le payload du rapport, `user_persona.py` pour calibrer le
+`saas/traitement/build_report.py` appelle `reco_engine.py`,
+`regles_payantes.py` (une fois par thème, sur le chemin des conseils-règles) et
+`insights.py` pour construire le payload du rapport, `user_persona.py` pour calibrer le
 brief IA sur le profil client vivant, et `theme_memoire.py` depuis sa boucle
 de verdict, une fois par thème dont un verdict vient de tomber.

@@ -50,6 +50,14 @@ KEY_LABELS = {
     "page_endormie": "réveiller la portée de la page",
     "creneau": "publier au bon créneau",
     "ai": "suggestion IA",
+    # Les quatre règles payantes (`regles_payantes.py`). Ces libellés sont lus
+    # par l'humain ET par Gemini (« déjà traité récemment », « jugé non
+    # pertinent ») : ils disent le SUJET du conseil, jamais son geste — un
+    # client qui a refusé « l'annonce qui coûte cher » n'a pas refusé de couper.
+    "annonce_sans_conversion": "une annonce qui dépense sans convertir",
+    "annonce_locomotive": "amplifier l'annonce qui accroche le mieux",
+    "annonce_chere": "le prix du clic d'une annonce",
+    "theme_hors_budget": "le budget d'un thème qui va être dépassé",
 }
 
 SEUILS = {
@@ -72,7 +80,23 @@ SEUILS = {
 
 
 def _reco(key, platform, title, observation, pourquoi, verifier, angle_mort,
-          confidence, priority, repere=""):
+          confidence, priority, repere="", nature=None, role=None):
+    """`nature` (le Geste) et `role` (la Preuve) — les deux colonnes qu'une
+    règle déclare ELLE-MÊME quand elles dépendent du chiffre du jour.
+
+    Une même clé peut écrire plusieurs gestes : `roas` dit « augmente » au-dessus
+    de 3 et « coupe » en dessous de 1. Le geste est donc une propriété de la
+    BRANCHE, pas de la clé. Découper `roas` en trois clés était l'autre option,
+    refusée : la clé est ce qui porte l'historique des retours du client
+    (`reco_feedback`), la découper efface cet historique
+    (`.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`, décision 3).
+
+    Laissés à `None` par les règles dont le geste ne varie pas : c'est alors la
+    table `_GESTE_REGLE` (`saas/traitement/build_report.py`) qui les pose, au
+    même endroit que le levier et la durée. Jamais deviné après coup : une règle
+    qui ne sait pas déclarer son geste n'est pas un conseil, c'est un constat, et
+    elle n'est jamais servie.
+    """
     return {
         "key": key,            # clé stable du type de conseil (persiste le feedback)
         "platform": platform,
@@ -85,6 +109,8 @@ def _reco(key, platform, title, observation, pourquoi, verifier, angle_mort,
         "confidence": confidence,
         "source": "rule",
         "priority": priority,
+        "nature": nature,
+        "role": role,
     }
 
 
@@ -155,6 +181,9 @@ def _rule_gaspillage(df_camp, ga4):
                 "solide", 1,
                 repere="Un repère simple : une campagne qui dépasse ton budget mensuel "
                        "moyen sans aucune conversion sur 7 jours mérite d'être arrêtée ou refaite.",
+                # « Mets-la en pause » : le geste est d'arrêter, et la pause se
+                # voit demain à l'œil dans le gestionnaire de publicités.
+                nature="couper", role="generale",
             )
         if conv is not None and conv > 0:
             # Elle convertit malgré un clic cher → on nuance, on ne diabolise pas
@@ -172,6 +201,9 @@ def _rule_gaspillage(df_camp, ga4):
                 "creuser", 2,
                 repere="Le repère clé, c'est le ROAS : vise au moins 2-3 CHF de revenu "
                        "pour 1 CHF dépensé. En dessous de 1, la campagne te coûte de l'argent.",
+                # Elle convertit : on ne coupe pas, on essaie une audience plus
+                # serrée. Le geste est un test, et l'audience posée se constate.
+                nature="tester", role="generale",
             )
 
     # Sans preuve de conversion → on guide, on ne tranche pas
@@ -188,6 +220,9 @@ def _rule_gaspillage(df_camp, ga4):
         "creuser", 1,
         repere="Le repère : laisse-lui au moins 50 clics avant de juger. En dessous, "
                "l'écart de CPC est souvent juste du hasard, pas un vrai problème.",
+        # Sans GA4 on ne sait pas si elle vend : le conseil refuse explicitement
+        # de couper d'un coup et demande une nouvelle audience — donc un test.
+        nature="tester", role="generale",
     )
 
 
@@ -226,6 +261,10 @@ def _rule_scaler(df_camp, avg_ctr, ga4):
         conf, 2,
         repere="Le repère pour scaler sans casser : +20 % de budget max par palier, "
                "tous les 3-4 jours. Au-delà, Meta refait son apprentissage et la perf chute.",
+        # Geste unique et invariable — il pourrait vivre dans `_GESTE_REGLE`,
+        # mais la règle voisine (`_rule_gaspillage`) déclare déjà les siens :
+        # les deux se lisent mieux côte à côte qu'à deux fichiers d'écart.
+        nature="augmenter", role="generale",
     )
 
 
@@ -297,6 +336,9 @@ def _rule_roas(df_camp, ga4):
                 angle, "solide", 1,
                 repere="Repère ROAS : < 1 tu perds, 1-2 fragile (pense aux marges), "
                        "2-3 sain, > 3 tu peux scaler.",
+                # Au-dessus de 3 : « monte SON budget de +20 % ». Le budget monté
+                # se constate demain, il ne se mesure pas dans quatorze jours.
+                nature="augmenter", role="generale",
             )
         if roas >= SEUILS["roas_fragile"]:
             return _reco(
@@ -311,6 +353,8 @@ def _rule_roas(df_camp, ga4):
                 angle, "solide", 1,
                 repere="Repère : ROAS minimum viable ≈ 1 / ta marge. Marge 50 % → il "
                        "te faut au moins un ROAS de 2.",
+                # Entre 1 et 2 : « coupe la campagne au CPC le plus cher ».
+                nature="couper", role="generale",
             )
         return _reco(
             "roas", "pub",
@@ -325,6 +369,8 @@ def _rule_roas(df_camp, ga4):
             angle, "solide", 1,
             repere="Repère : sous ROAS 1 pendant 2 semaines consécutives → stop et "
                    "retravaille l'offre avant de remettre du budget.",
+            # Sous 1 : « coupe ou réduis la campagne la plus chère au clic ».
+            nature="couper", role="generale",
         )
 
     # Pas de revenu suivi, mais des conversions (lead gen / tracking sans valeur)
@@ -345,6 +391,9 @@ def _rule_roas(df_camp, ga4):
             "creuser", 2,
             repere="Repère : ton CPA doit rester sous 1/3 de la valeur d'un client "
                    "pour financer le reste du funnel.",
+            # Sans revenu suivi : « configure la valeur dans GA4 ». Ce n'est pas
+            # une vérification, c'est un réglage manquant à poser — donc corriger.
+            nature="corriger", role="generale",
         )
 
     # GA4 OK, dépense réelle, zéro conversion payante → signal fort
@@ -363,6 +412,11 @@ def _rule_roas(df_camp, ga4):
         "solide", 1,
         repere="Repère : après ~100 clics payants sans aucune conversion, le problème "
                "est en aval de la pub (page, offre, tracking).",
+        # Le conseil demande de réparer : le tracking s'il est cassé, l'offre ou
+        # la page s'il est bon. Pas de sixième geste « vérifier » — la
+        # vérification est le premier pas de la correction, pas un geste à part
+        # (`.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`, décision 4).
+        nature="corriger", role="generale",
     )
 
 

@@ -230,18 +230,82 @@ def fetch_google_ads(supabase: Client, user_id: str) -> list[dict]:
 def fetch_google_ads_ad_insights(supabase: Client, user_id: str) -> list[dict]:
     """Détail annonce × jour (drill-down Campagne → Groupe d'annonces → Annonce).
     [] si la table n'existe pas encore (migration non passée) → l'UI dégrade proprement.
+
+    PAGINÉ DEPUIS QUE LE RAPPORT LA LIT. Un seul `.execute()` s'arrête au
+    plafond PostgREST de 1 000 lignes, et il s'y arrête EN SILENCE : un compte à
+    40 annonces perd tout ce qui précède les 25 derniers jours, et les règles
+    qui comparent des Annonces (`saas/recos_ia/regles_payantes.py`) auraient
+    comparé un échantillon tronqué sans que rien ne le dise (`CLAUDE.md` §8).
     """
     try:
-        return (
-            supabase.table("google_ads_ad_insights")
+        return _all_pages(
+            lambda: supabase.table("google_ads_ad_insights")
             .select("*")
             .eq("user_id", user_id)
             .order("date_start", desc=True)
-            .execute()
-            .data
-        ) or []
+        )
     except Exception:
         return []
+
+
+def fetch_platform_budgets(supabase: Client, user_id: str) -> list[dict]:
+    """Le budget POSÉ sur chaque campagne, au dernier relevé connu de son canal.
+
+    `platform_budgets` est une suite de PHOTOS hebdomadaires : aucune API ne dit
+    ce qu'un budget valait il y a trois semaines, on ne connaît que sa valeur au
+    moment du relevé (voir `upsert_platform_budgets`). On rend donc le relevé le
+    plus récent, et la date de ce relevé avec — un conseil qui s'appuie dessus
+    doit pouvoir dire de quand il parle.
+
+    LE RELEVÉ EST CHOISI PAR CANAL, jamais un seul pour les deux. Même raison
+    que `getBudgetPlanifie` (`saas/web/lib/budgets.ts`) : le jour où le jeton
+    Google expire, seul Meta est photographié — un relevé commun ferait
+    s'effondrer le budget posé, puis doubler la semaine suivante, sans que rien
+    n'ait bougé chez le client.
+
+    [] si la table n'existe pas encore : la règle qui la lit se tait, elle
+    n'invente pas un budget de zéro.
+    """
+    lignes: list[dict] = []
+    for canal in ("meta", "google"):
+        try:
+            dernier = (
+                supabase.table("platform_budgets")
+                .select("captured_on")
+                .eq("user_id", user_id)
+                .eq("channel", canal)
+                .order("captured_on", desc=True)
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+        except Exception:
+            # `continue`, PAS `return []` : une panne sur la requête Google ne
+            # doit pas jeter les lignes Meta déjà lues (relevé du repost de la
+            # revue de code). Si c'est la table qui manque, les deux canaux
+            # échouent de la même façon et la fonction rend `[]` toute seule —
+            # `theme_hors_budget` se tait alors, elle n'invente pas un zéro.
+            continue
+        if not dernier:
+            continue
+        jour = str(dernier[0].get("captured_on") or "")[:10]
+        if not jour:
+            continue
+        try:
+            lignes += _all_pages(
+                lambda _c=canal, _j=jour: supabase.table("platform_budgets")
+                .select("channel, campaign_id, campaign_name, daily_budget, "
+                        "total_budget, start_date, end_date, status, captured_on")
+                .eq("user_id", user_id)
+                .eq("channel", _c)
+                .eq("captured_on", _j)
+                # Pagination sans ordre stable = lignes répétées ou sautées :
+                # PostgREST ne garantit rien sur l'ordre par défaut.
+                .order("campaign_id", desc=False)
+            )
+        except Exception:
+            continue
+    return lignes
 
 
 def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
