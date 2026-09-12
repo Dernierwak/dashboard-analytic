@@ -157,6 +157,43 @@ unique**, et **aucun runner de test dans `saas/web`**. Conséquence assumée, à
 écrire dans les rapports de vérification concernés : la garde de collision (02)
 et la date libre (11) ne seront couvertes par aucun test automatisé.
 
+**[03 · L'identifiant d'annonce Meta](issues/03-identifiant-annonce-meta.md)** —
+une Annonce s'identifie par son `ad_id`, jamais par son nom. Le rejeu
+d'historique passe par `--meta-since` (Meta seul : un `--since` global ferait
+rejeter la requête Google `change_event`), jamais par un `DELETE` ; le code se
+défend si la colonne manque et la run finit rouge, l'utilisateur concerné ne
+recevant ni rapport ni email — un trou lu comme une baisse est un faux verdict.
+28 vérifications ciblées. **Le SQL n'est PAS joué** : son `DROP CONSTRAINT`
+attend le feu vert de David, et le code déployé et la migration doivent partir
+dans la même fenêtre. La migration est entrée dans le dépôt le 2026-09-12
+(`03aa183`) — elle y était restée non commitée.
+
+**[04 · La vue SQL du regroupement](issues/04-vue-sql-du-regroupement.md)** — le
+regroupement par thème descend en base : `theme_regroupement`, une seule
+implémentation, `security_invoker`, seuil des 100 CHF compris (`juge`), lecture
+paginée et bornée au compte. `C_SEUILS["theme_spend_min"]` a disparu de Python
+et `build_matrix` ne calcule plus les thèmes, elle les reçoit. **Trois chiffres
+bougeront en service, tous dans le sens du §7** : le revenu GA4 ne se compte plus
+une fois par campagne homonyme (1 560 CHF affichés pour 520 réels sur le jeu de
+vérification), deux orthographes d'un nom ne s'écrasent plus, dépense et revenu
+couvrent enfin le même périmètre. **103 vérifications** sur un PostgreSQL 16 réel.
+**Le SQL n'est PAS joué**, et ce code déployé sans la vue ne publie plus aucun
+rapport — c'est volontaire. La moitié web est [22](issues/22-pulse-lit-la-vue.md).
+
+**[05 · La migration, deux colonnes](issues/05-migration-deux-colonnes.md)** —
+`suivi_actions` gagne `author_id` (posé à la création, **figé par un déclencheur**
+et non par une politique : une politique ne voit que la ligne d'arrivée) et la
+campagne qu'une ligne désigne. **Aucun backfill** : une note sans auteur est une
+note ancienne, pas une note cassée (ADR 0004). **Écart assumé avec la lettre du
+ticket** : la campagne prend DEUX colonnes (`campaign_channel` + `campaign_key`),
+parce que dans ce code l'identité d'une campagne est une paire — Meta par le nom,
+Google par l'identifiant — et que deviner la régie rejouerait le bug du ticket 03.
+42 vérifications sur un PostgreSQL 16 réel, dont le cas qui casse un garde-fou
+trop zélé : supprimer un membre passe par le même UPDATE que le déclencheur
+surveille. **Le SQL n'est PAS joué.** Les écritures TypeScript qui s'en servent
+sont [12](issues/12-le-carnet-et-la-mort-de-preuve.md) et
+[19](issues/19-ecritures-qui-ne-se-relisent-pas.md).
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la

@@ -1,10 +1,17 @@
 """LA vérification qui compte : la vue rend EXACTEMENT ce que `build_matrix`
 rendait, sur les mêmes lignes.
 
-`build_matrix` est chargée depuis le COMMIT D'ORIGINE (git show HEAD), pas
-depuis le fichier de travail : comparer la vue au code qu'on vient de modifier
-ne prouverait rien.
+`build_matrix` est chargée depuis le COMMIT D'ORIGINE, pas depuis le fichier de
+travail : comparer la vue au code qu'on vient de modifier ne prouverait rien.
+
+Ce commit est NOMMÉ, il n'est plus `HEAD`. Tant que le ticket 04 n'était pas
+commité, `HEAD` PORTAIT la version d'origine ; depuis `319dca0`, `HEAD` porte la
+nouvelle — le harnais se comparait donc à lui-même et tombait sur
+`TypeError: build_matrix() got an unexpected keyword argument 'theme_events'`.
+La référence est le parent de ce commit, et elle ne bougera plus.
 """
+
+ORIGINE = "319dca0~1"   # le dernier état de `insights.py` AVANT que la vue existe
 import importlib.util, json, subprocess, sys, tempfile, pathlib, types
 from datetime import date, timedelta
 
@@ -27,7 +34,7 @@ sys.modules.setdefault("supabase", _faux)
 def build_matrix_d_origine():
     """La version de `build_matrix` telle qu'elle était AVANT ce ticket."""
     src = subprocess.check_output(
-        ["git", "show", "HEAD:saas/recos_ia/insights.py"], cwd=RACINE).decode()
+        ["git", "show", f"{ORIGINE}:saas/recos_ia/insights.py"], cwd=RACINE).decode()
     d = pathlib.Path(tempfile.mkdtemp())
     f = d / "insights_origine.py"
     f.write_text(src)

@@ -1,7 +1,7 @@
 # La vue SQL du regroupement par thème — le socle du reste
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03
 
 ## Question
@@ -216,3 +216,20 @@ Corrigé par `NOT MATERIALIZED` et par un `UNION` des clés à la place du
   mais la vue livrée est au grain du thème, pas de la semaine : lui donner un
   second grain aujourd'hui serait bâtir pour un consommateur qui n'existe pas.
   Écrit dans [22](22-pulse-lit-la-vue.md), à rouvrir quand la carte lira la vue.
+
+
+## Contrôle du 2026-09-12 — le harnais rejoué, et une référence qui avait bougé
+
+Rejoué en entier avant de clore le ticket : **103 vérifications passent**
+(58 vue vs `build_matrix`, 19 règles propres, 18 « Python lit la vue »,
+4 isolement, 2 copie non dérivée, 2 coût d'une lecture).
+
+**Une correction du harnais, pas du produit.** `test_vue_vs_build_matrix.py`
+lisait la version d'origine de `build_matrix` avec `git show HEAD`. C'était juste
+tant que le ticket n'était pas commité — mais depuis `319dca0`, `HEAD` porte la
+NOUVELLE version : le harnais se comparait à lui-même et tombait sur
+`TypeError: build_matrix() got an unexpected keyword argument 'theme_events'`.
+La référence est maintenant **nommée** (`319dca0~1`, le dernier état avant que la
+vue existe) et ne bougera plus. Rien du produit n'a changé.
+
+Le reste du ticket est inchangé : **le SQL n'est toujours pas joué.**

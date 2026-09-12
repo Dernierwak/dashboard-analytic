@@ -56,6 +56,9 @@
 --          section 15 : `security_invoker` la fait lire avec les droits de
 --          l'appelant, donc elle n'a de sens qu'une fois les politiques de
 --          partage posées sur les tables qu'elle agrège.
+--   25)    suivi_actions.author_id — qui a écrit la ligne, posé à la création
+--          et figé par déclencheur — plus campaign_channel/campaign_key, la
+--          campagne qu'une note ou une action désigne.
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
 --   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
@@ -2414,6 +2417,112 @@ END $$;
 
 
 -- ============================================================================
+-- 25) suivi_actions — L'AUTEUR D'UNE NOTE, ET LA CAMPAGNE QU'ELLE DÉSIGNE.
+--     Voir suivi_actions_auteur_campagne.sql (SOURCE DE VÉRITÉ) : le bloc
+--     ci-dessous en est la copie mot pour mot, et tout le POURQUOI y est écrit
+--     — la fiche ADR 0004 et le prix accepté (on ne saura jamais qui a jugé
+--     quoi), l'absence de backfill, pourquoi c'est un DÉCLENCHEUR et pas une
+--     politique RLS, et pourquoi la campagne demande deux colonnes.
+--
+--     APRÈS les sections 9→11, 19 et 23, qui créent et complètent la table.
+--     Additive : aucun DROP TABLE, aucun DELETE, aucun TRUNCATE, aucun UPDATE
+--     sur l'existant. Les `DROP TRIGGER IF EXISTS` et `CREATE OR REPLACE
+--     FUNCTION` ne servent qu'à la rejouabilité.
+-- ============================================================================
+
+-- ── 1 · L'auteur ────────────────────────────────────────────────────────────
+ALTER TABLE public.suivi_actions
+    ADD COLUMN IF NOT EXISTS author_id uuid
+        REFERENCES auth.users(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.suivi_actions.author_id IS
+    'Qui a ÉCRIT la ligne. Posé à la création, jamais réécrit (déclencheur '
+    'trg_suivi_actions_auteur_fige). NULL = ligne antérieure à cette migration, '
+    'ou auteur parti : aucun backfill, voir ADR 0004.';
+
+CREATE OR REPLACE FUNCTION public.suivi_actions_auteur_fige()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    -- `IS DISTINCT FROM` et non `<>` : le cas qui compte ici est justement
+    -- OLD NULL (une ligne d'avant la migration) et NEW non nul — le backfill à
+    -- la main que l'ADR 0004 refuse. `NEW <> OLD` y rendrait NULL, donc la
+    -- condition serait fausse et le garde-fou muet pile là où il sert.
+    IF NEW.author_id IS NOT NULL AND NEW.author_id IS DISTINCT FROM OLD.author_id THEN
+        RAISE EXCEPTION
+            'suivi_actions.author_id est posé à la création et ne se réécrit pas (id = %)',
+            OLD.id
+            USING ERRCODE = '23514';   -- check_violation : c'est bien une contrainte
+                                       -- que la table ne peut pas porter elle-même.
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_suivi_actions_auteur_fige ON public.suivi_actions;
+-- `UPDATE OF author_id` : le déclencheur ne se réveille que si la colonne
+-- figure dans le SET. Marquer une action « faite » ne le paie donc jamais.
+CREATE TRIGGER trg_suivi_actions_auteur_fige
+    BEFORE UPDATE OF author_id ON public.suivi_actions
+    FOR EACH ROW EXECUTE FUNCTION public.suivi_actions_auteur_fige();
+
+-- Le `ON DELETE SET NULL` doit RETROUVER les lignes d'un membre supprimé :
+-- sans index, chaque suppression de compte balaie toute la table. Partiel,
+-- parce que la grande majorité des lignes n'a pas d'auteur (aucun backfill).
+CREATE INDEX IF NOT EXISTS idx_suivi_actions_author
+    ON public.suivi_actions (author_id)
+    WHERE author_id IS NOT NULL;
+
+-- ── 2 · La campagne ─────────────────────────────────────────────────────────
+ALTER TABLE public.suivi_actions
+    ADD COLUMN IF NOT EXISTS campaign_channel text,
+    ADD COLUMN IF NOT EXISTS campaign_key     text;
+
+COMMENT ON COLUMN public.suivi_actions.campaign_channel IS
+    'La régie de la campagne désignée : ''meta'' ou ''google''. NULL avec '
+    'campaign_key NULL = la ligne ne désigne aucune campagne.';
+COMMENT ON COLUMN public.suivi_actions.campaign_key IS
+    'La clé de la campagne dans sa régie : campaign_name (Meta) | campaign_id '
+    '(Google) — la même paire que ThemeCampaign côté web. Aucune clé étrangère : '
+    'une note survit à la campagne qu''elle raconte.';
+
+-- Les deux colonnes vont ensemble ou pas du tout : une clé sans régie ne
+-- désigne rien de lisible, et une régie sans clé ne désigne rien tout court.
+--
+-- ⚠ LES `IS NOT NULL` NE SONT PAS REDONDANTS, et le harnais l'a prouvé : UN
+-- CHECK LAISSE PASSER CE QUI S'ÉVALUE À NULL, pas seulement ce qui est vrai.
+-- Écrit sans eux, `campaign_channel IN ('meta','google')` rendait NULL sur une
+-- régie absente, donc `FAUX OR NULL` = NULL, donc la ligne PASSAIT : une clé
+-- orpheline entrait en base, et le carnet aurait dû deviner sa régie.
+--
+-- `ADD CONSTRAINT IF NOT EXISTS` n'existe pas pour un CHECK — on rattrape le
+-- doublon plutôt que de le deviner (même patron que campagne_landing.sql).
+DO $$
+BEGIN
+    ALTER TABLE public.suivi_actions
+        ADD CONSTRAINT suivi_actions_campaign_ck
+        CHECK (
+            (campaign_channel IS NULL AND campaign_key IS NULL)
+            OR (campaign_channel IS NOT NULL
+                AND campaign_channel IN ('meta', 'google')
+                AND campaign_key IS NOT NULL
+                AND btrim(campaign_key) <> '')
+        );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+-- La question que le carnet pose : « tout ce que j'ai fait pour CETTE
+-- campagne », du plus récent au plus ancien. Partiel : une ligne sans campagne
+-- n'a rien à faire dans cet index — la plupart des notes n'en désignent pas.
+CREATE INDEX IF NOT EXISTS idx_suivi_actions_campagne
+    ON public.suivi_actions (user_id, campaign_channel, campaign_key, decided_at DESC)
+    WHERE campaign_key IS NOT NULL;
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -2504,12 +2613,16 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'reco_feedback',            'theme'),                -- §22
     ('c', 'reco_feedback',            'title'),                -- §22
     ('c', 'suivi_actions',            'verdict'),              -- §23
+    ('c', 'suivi_actions',            'author_id'),            -- §25
+    ('c', 'suivi_actions',            'campaign_channel'),     -- §25
+    ('c', 'suivi_actions',            'campaign_key'),         -- §25
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
     ('f', 'public.peut_editer(uuid)',      NULL),   -- §12
     ('f', 'public.stamp_label_at()',       NULL),   -- §20
-    ('f', 'public.stamp_label_at_posts()', NULL)    -- §20
+    ('f', 'public.stamp_label_at_posts()', NULL),   -- §20
+    ('f', 'public.suivi_actions_auteur_fige()', NULL)   -- §25
 ),
 catalogue AS (
     SELECT
