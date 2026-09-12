@@ -45,10 +45,8 @@ KEY_LABELS = {
     "funnel": "où le funnel de vente casse",
     "ga4_muet": "données GA4 manquantes",
     "connecter_ga4": "connecter Google Analytics",
-    "format_gagnant": "reproduire un format gagnant",
     "silence": "reprendre la cadence de publication",
     "page_endormie": "réveiller la portée de la page",
-    "creneau": "publier au bon créneau",
     "ai": "suggestion IA",
     # Les quatre règles payantes (`regles_payantes.py`). Ces libellés sont lus
     # par l'humain ET par Gemini (« déjà traité récemment », « jugé non
@@ -71,8 +69,6 @@ SEUILS = {
     "funnel_cart_rate_min": 0.03, # < 3 % vues→panier = fiche produit à revoir
     "ctr_ratio": 1.5,             # CTR > 1.5× ta moyenne = candidat à amplifier
     "ctr_impressions_min": 1000,  # plancher d'impressions (évite le bruit)
-    "format_reach_pct": 15.0,     # posts semaine ≥ +15 % vs ton post moyen
-    "format_sample_solide": 3,    # ≥ 3 posts la semaine = signal moins fragile
     "reach_rate_min": 10.0,       # portée/abonné < 10 % = page qui s'endort
     "slot_cell_min": 3,           # ≥ 3 posts dans la case gagnante (cohérent heatmap)
     "slot_total_min": 20,         # ≥ 20 posts au total (cohérent heatmap)
@@ -125,12 +121,18 @@ OBJECTIFS = {
     "notoriete": {
         "label": "Plus de notoriété / portée",
         "boost_platforms": {"instagram"},
-        "boost_keys": {"silence", "page_endormie", "creneau"},
+        "boost_keys": {"silence", "page_endormie"},
     },
     "engagement": {
         "label": "Plus d'engagement",
         "boost_platforms": {"instagram"},
-        "boost_keys": {"format_gagnant", "creneau"},
+        # SANS CLÉ DEPUIS LA MORT DE `format_gagnant` ET `creneau` : c'étaient
+        # les deux seules, et l'objectif tient encore par sa plateforme
+        # (`instagram`). Leurs remplaçantes à l'échelle du thème (`orga_format`,
+        # `orga_reaction`) ne passent PAS par cette table — elles sont ajoutées
+        # après `build_recos` dans `build_report.py`, donc y écrire leur nom
+        # n'aurait aucun effet et promettrait une pondération qui n'existe pas.
+        "boost_keys": set(),
     },
 }
 
@@ -527,51 +529,31 @@ def _rule_connecter_ga4(df_camp, ga4):
 
 
 # ── Règles Instagram organique ───────────────────────────────────────────────
-
-def _rule_format_gagnant(df_week_posts, df_insta):
-    """Posts de la semaine nettement au-dessus de ton post moyen → reproduire."""
-    if df_week_posts is None or len(df_week_posts) == 0:
-        return None
-    if df_insta is None or df_insta.empty or "reach" not in df_insta.columns:
-        return None
-    if "reach" not in df_week_posts.columns:
-        return None
-    hist_reach = float(df_insta["reach"].mean())
-    week_reach = float(df_week_posts["reach"].mean())
-    if hist_reach <= 0:
-        return None
-    diff_pct = (week_reach - hist_reach) / hist_reach * 100
-    if diff_pct < SEUILS["format_reach_pct"]:
-        return None
-
-    n = len(df_week_posts)
-    fmt_note = ""
-    if "type" in df_week_posts.columns:
-        try:
-            top = str(df_week_posts["type"].value_counts().idxmax()).upper()
-            fmt_note = f", surtout en {FORMAT_LABELS.get(top, top)}"
-        except Exception:
-            pass
-    # Confiance selon l'échantillon : 1-2 posts = piste, 3+ = on creuse
-    solide_enough = n >= SEUILS["format_sample_solide"]
-    return _reco(
-        "format_gagnant", "instagram",
-        f"Tes posts de la semaine portent +{diff_pct:.0f} % de plus que d'habitude",
-        f"Tes {n} post{'s' if n > 1 else ''} de la semaine font {week_reach:,.0f} de "
-        f"portée moyenne, contre {hist_reach:,.0f} sur ton historique{fmt_note}.",
-        "Quand un format décolle, c'est que le sujet, le ton ou le moment ont touché "
-        "juste. Ça vaut la peine de comprendre quoi, pour le refaire.",
-        "Reprends ce qui a marché — même format, même angle — sur 1 ou 2 prochains "
-        "posts et regarde si l'effet se confirme.",
-        ("" if solide_enough else
-         f"Sur seulement {n} post{'s' if n > 1 else ''}, ça peut être un coup de "
-         "chance. Attends d'en avoir publié quelques-uns avant d'en faire une règle."),
-        "creuser" if solide_enough else "piste",
-        3,
-        repere="Le repère : un post qui dépasse +20 % de ta portée moyenne vaut d'être "
-               "décliné. À +50 %, c'est un format à industrialiser (série, rubrique récurrente).",
-    )
-
+#
+# `_rule_format_gagnant` ET `_rule_creneau` VIVAIENT ICI, ET ELLES SONT MORTES
+# LE 2026-09-12.
+#
+# Elles répondaient à « qu'est-ce qui marche chez toi » — la même question que
+# `insights.py` (`format_best`, `slot_best`) et que le recalcul TypeScript de
+# `/instagram`. Trois moteurs, deux langages, trois jeux de seuils qui pouvaient
+# se contredire le même lundi : `_rule_format_gagnant` jugeait la SEMAINE contre
+# l'historique (`SEUILS["format_reach_pct"]`, +15 %), `build_constats` juge un
+# FORMAT sur tout l'historique contre la portée moyenne du compte
+# (`C_SEUILS["format_reach_boost"]`, +20 %). Deux réponses, deux périmètres, un
+# seul écran.
+#
+# `insights.py` gagne : il croise tout l'historique quand les deux autres
+# regardent une fenêtre, il est déterministe, et ses clés stables portent déjà
+# le verdict du client (`insight_feedback`). Ces deux règles redeviennent donc
+# ce qu'elles étaient : des CONSTATS, pas des conseils.
+# Tranché par `.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md`, bâti
+# par `.scratch/construction/issues/09-trois-moteurs-un-seul.md`.
+#
+# CE QUI RESTE POUR CONSEILLER L'ORGANIQUE : les quatre règles `orga_*` de
+# `saas/traitement/build_report.py`, qui raisonnent à l'échelle d'UN THÈME —
+# `orga_format` pour le contenu, `orga_rythme` pour le tempo. Les deux mortes
+# raisonnaient sur le compte entier et ne se déclenchaient presque jamais depuis
+# le passage au rapport par thème.
 
 def _rule_silence(df_insta, df_week_posts):
     """0 post cette semaine alors que le compte a une cadence → relancer (doux)."""
@@ -626,51 +608,6 @@ def _rule_page_endormie(df_insta, followers_current):
         "creuser", 3,
         repere="Le repère de portée sur tes abonnés : 30 %+ = sain, 50 %+ = l'algo te "
                "pousse fort. Sous 10 %, ta page est en sommeil — c'est là qu'il faut réagir.",
-    )
-
-
-def _rule_creneau(df_insta):
-    """Meilleur créneau fiable (mêmes seuils que la heatmap) → planifier dessus."""
-    if df_insta is None or df_insta.empty:
-        return None
-    if "date" not in df_insta.columns or "reach" not in df_insta.columns:
-        return None
-    d = df_insta.copy()
-    d["_dt"] = pd.to_datetime(d["date"], errors="coerce", utc=True)
-    try:
-        d["_dt"] = d["_dt"].dt.tz_convert("Europe/Zurich")
-    except Exception:
-        pass
-    d = d.dropna(subset=["_dt"])
-    if len(d) < SEUILS["slot_total_min"]:
-        return None
-    d["_dow"] = d["_dt"].dt.dayofweek
-    d["_hour"] = d["_dt"].dt.hour
-    if not any(int(h) > 0 for h in d["_hour"].dropna().unique()):
-        return None  # heures non stockées (backfill) → créneau non fiable
-    bins = [0, 7, 10, 13, 16, 19, 24]
-    d["_slot"] = pd.cut(d["_hour"], bins=bins, labels=range(6), right=False)
-    g = d.groupby(["_dow", "_slot"], observed=True)["reach"].agg(["count", "mean"])
-    g = g[g["count"] >= SEUILS["slot_cell_min"]]
-    if g.empty:
-        return None
-    best_key = g["mean"].idxmax()
-    row = g.loc[best_key]
-    dow, slot = int(best_key[0]), int(best_key[1])
-    return _reco(
-        "creneau", "instagram",
-        f"Ton meilleur créneau : {DAYS[dow]} entre {HOURS[slot]}",
-        f"Sur {int(row['count'])} posts publiés à ce moment, tu fais {row['mean']:,.0f} "
-        "de portée moyenne — ton créneau le plus régulier.",
-        "Publier quand ton audience est active donne un coup de pouce de départ que "
-        "l'algorithme amplifie ensuite.",
-        "Programme ton prochain post important sur ce créneau et compare-le à tes "
-        "publications hors créneau.",
-        "C'est une tendance sur ton historique, pas une garantie : le contenu compte "
-        "toujours plus que l'heure.",
-        "solide", 4,
-        repere="Le repère : publie quand TON audience à toi est active (ce créneau), pas "
-               "selon les « meilleures heures » génériques d'Internet — elles ne valent rien pour ton compte.",
     )
 
 
@@ -746,9 +683,7 @@ def build_recos(
         lambda: _rule_gaspillage(df_camp, ga4),
         lambda: _rule_scaler(df_camp, avg_ctr, ga4),
         lambda: _rule_silence(df_insta, df_week_posts),
-        lambda: _rule_format_gagnant(df_week_posts, df_insta),
         lambda: _rule_page_endormie(df_insta, followers_current),
-        lambda: _rule_creneau(df_insta),
         lambda: _rule_funnel(ga4),                 # où le funnel casse (GA4 events)
         lambda: _rule_ga4_muet(df_camp, ga4),      # GA4 connecté mais fenêtre vide
         lambda: _rule_connecter_ga4(df_camp, ga4),
@@ -787,12 +722,15 @@ def build_recos(
 
     # Vision globale : les règles hebdo qui PROLONGENT un constat validé remontent,
     # celles qui s'appuient sur un constat rejeté reculent (sans jamais disparaître).
+    #
+    # `format_best` et `slot_best` N'Y SONT PLUS : les deux seules règles
+    # qu'elles prolongeaient (`format_gagnant`, `creneau`) sont mortes, et un
+    # constat ne se pondère pas lui-même. Les deux constats, eux, vivent
+    # toujours — ils s'affichent maintenant (« Ce qui marche pour toi »).
     VISION_RULES = {
         "theme_best": {"roas", "scaler"},
         "campagne_locomotive": {"roas", "scaler"},
         "theme_worst": {"roas", "gaspillage"},
-        "format_best": {"format_gagnant"},
-        "slot_best": {"creneau"},
     }
     for c in (vision or []):
         keys = VISION_RULES.get(c.get("kind"))
@@ -805,7 +743,9 @@ def build_recos(
             if status in ("agree", "new"):
                 r["priority"] -= 1
             elif status == "reject":
-                r["priority"] += 4 if c["kind"] in ("format_best", "slot_best") else 2
+                # Le +4 qui distinguait `format_best`/`slot_best` part avec
+                # elles : les trois constats qui restent reculent tous pareil.
+                r["priority"] += 2
 
     recos.sort(key=lambda r: r["priority"])
     return recos

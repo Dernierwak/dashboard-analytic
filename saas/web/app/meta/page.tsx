@@ -1,19 +1,25 @@
-// Dashboard Meta Ads — même base que l'onglet Streamlit : périodes 7→Tout,
-// filtres statut/campagne/thème, hero impressions, KPIs perf + coût,
-// évolution quotidienne à métrique au choix, campagnes → adsets → annonces.
+// Dashboard Meta Ads — même base que l'onglet Streamlit : hero impressions,
+// KPIs perf + coût, évolution quotidienne à métrique au choix, campagnes →
+// adsets → annonces. La période et les filtres sont portés par le bandeau de
+// commandes, pas par la page (`components/bandeau-commandes.tsx`).
 import { getMetaDash, type DashParams } from "@/lib/channels";
-import { FilterBar } from "@/components/filter-bar";
-import { DateRange } from "@/components/date-range";
 import {
-  PeriodPills,
   AdsKpis,
   CampaignTable,
   MetricChart,
   MoyennesAds,
   ByLabelTable,
 } from "@/components/channel-dash";
-
-import { getCompteActif } from "@/lib/account";
+import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { themesChoisis } from "@/lib/commandes";
+// PROTOTYPE, À RETIRER — quatre façons de poser tes notes sur la courbe
+// (`?variant=A|B|C|D`). Sans le paramètre, la page est exactement celle
+// d'avant. Ticket 19 de `.scratch/refonte/`.
+import { Suspense } from "react";
+import { VARIANTES_NOTES, getNotesCourbe } from "@/lib/proto-notes";
+import { ProtoNotesModule } from "@/components/proto-notes-module";
+import { PrototypeSwitcher } from "@/components/prototype-switcher";
 
 export const dynamic = "force-dynamic";
 
@@ -23,50 +29,67 @@ export default async function MetaPage({
   searchParams: DashParams;
 }) {
   const d = await getMetaDash(searchParams);
-  const compte = await getCompteActif();
+
+  // PROTOTYPE — la variante remplace `MetricChart`, elle ne s'ajoute pas à lui :
+  // deux fois la même courbe sur un écran est exactement ce que le ticket
+  // interdit de produire.
+  const brut = (searchParams as Record<string, unknown>)?.variant;
+  const variante =
+    typeof brut === "string" && VARIANTES_NOTES.some((v) => v.cle === brut) ? brut : null;
+  const notes = variante ? await getNotesCourbe(d.daily, searchParams) : null;
 
   return (
     // Pas de `max-w-*` : le conteneur prend toute la largeur laissée par la
-    // colonne latérale — voir la note dans `app/page.tsx` pour le
-    // raisonnement (un plafond fixe finit toujours par redevenir trop
-    // étroit dès que l'écran ou la colonne change). `CampaignTable` en
-    // profite le premier : sa largeur minimale (`largeurMin` dans
-    // `channel-dash.tsx`) monte à 1 088 px dès qu'une comparaison ajoute sa
-    // colonne d'écart, et ne tenait dans AUCUN plafond fixe testé.
+    // colonne latérale — voir la note dans `app/page.tsx` pour le raisonnement
+    // (un plafond fixe finit toujours par redevenir trop étroit dès que l'écran
+    // ou la colonne change). `CampaignTable` en profite le premier : sa largeur
+    // minimale (`largeurMin` dans `channel-dash.tsx`) monte à 1 088 px dès
+    // qu'une comparaison ajoute sa colonne d'écart, et ne tenait dans AUCUN
+    // plafond fixe testé.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-
-      <div className="mb-5">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          {d.periodLabel}
-        </p>
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
-            <span style={{ color: "#1a56ff" }}>▣</span> Meta Ads.
-          </h1>
-          <div className="flex items-center gap-3 flex-wrap">
-            <PeriodPills path="/meta" d={d} />
-            <DateRange from={searchParams?.from} to={searchParams?.to} />
-          </div>
-        </div>
-      </div>
-
-      <FilterBar
-        statusOptions={d.statusOptions}
-        campOptions={d.campOptions}
-        labels={d.labels}
-        current={d.filters}
+      {/* Le bandeau EST le titre de la page : il l'absorbe, il ne se pose pas
+          au-dessus. Voir l'en-tête de `bandeau-commandes.tsx`. */}
+      <BandeauCommandes
+        titre="Meta Ads."
+        glyphe="▣"
+        couleur="#1a56ff"
+        periode={{
+          fenetre: d.periodLabel,
+          jours: d.days,
+          from: searchParams?.from,
+          to: searchParams?.to,
+        }}
+        themes={d.labels}
+        themesActifs={themesChoisis(searchParams)}
+        statuts={d.statusOptions}
+        statutActif={d.filters.status}
+        campagnes={d.campOptions}
+        campActive={d.filters.camp}
       />
 
-      <AdsKpis d={d} />
+      <div className="mt-5">
+        <AdsKpis d={d} />
+      </div>
       {/* Le rythme d'un mois AVANT la forme du jour : ce qu'un mois coûte et
           rapporte se compare d'un mois à l'autre, la courbe ne dit que la
           silhouette de la fenêtre affichée. */}
       <MoyennesAds d={d} path="/meta" />
-      <MetricChart d={d} path="/meta" />
+      {variante && notes ? (
+        <ProtoNotesModule d={d} path="/meta" variante={variante} notes={notes} canal="Meta" />
+      ) : (
+        <MetricChart d={d} path="/meta" />
+      )}
       {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
           qu'une comparaison, dès qu'elle est posée — et rien de plus quand
           elle ne l'est pas. */}
       <ByLabelTable d={d} path="/meta" />
+
+      {/* ── CE QUI MARCHE POUR TOI (rang 4) — le bloc qui CONCLUT, entre le
+          thème (rang 3) et le détail ligne par ligne (rang 5). Il ne calcule
+          rien : il lit les constats de `insights.py`, tirés de tout
+          l'historique. Meta et Google ne concluaient rien jusqu'ici — seul
+          Instagram le faisait, et il le faisait avec ses propres seuils. */}
+      <CeQuiMarche page="meta" />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé, et son
           titre dit son classement — promettre ici un dépliage ou un tri que la
@@ -76,6 +99,13 @@ export default async function MetaPage({
         Le thème relie tes campagnes cross-canal (page Labels) — c&apos;est lui qui permet
         le « ce que chaque thème rapporte » du rapport.
       </p>
+
+      {/* PROTOTYPE — la barre de comparaison, invisible en production. */}
+      {variante && (
+        <Suspense fallback={null}>
+          <PrototypeSwitcher variantes={VARIANTES_NOTES} courant={variante} />
+        </Suspense>
+      )}
     </main>
   );
 }

@@ -90,13 +90,11 @@ EFFORTS = ("10 min", "30 min", "1 h", "2 h+")
 EFFORT_BY_KEY = {
     "gaspillage": "10 min",
     "scaler": "10 min",
-    "creneau": "10 min",
     "connecter_ga4": "10 min",
     "roas": "30 min",
     "funnel": "30 min",
     "ga4_muet": "30 min",
     "silence": "1 h",
-    "format_gagnant": "1 h",
     "page_endormie": "1 h",
     "orga_rythme": "30 min",
     "orga_essoufflement": "1 h",
@@ -228,8 +226,6 @@ _METRIC_REGLE = {
     "scaler":             "roas",
     "funnel":             "purchases",
     "silence":            "posts",
-    "creneau":            "eng",
-    "format_gagnant":     "eng",
     "page_endormie":      "reach",
     "orga_rythme":        "posts",
     "orga_essoufflement": "reach",
@@ -330,9 +326,7 @@ _LEVIER_REGLE = {
     "gaspillage": "argent",
     "scaler": "argent",
     "roas": "argent",
-    "creneau": "tempo",
     "silence": "tempo",
-    "format_gagnant": "contenu",
     "page_endormie": "contenu",
     "funnel": "socle",
     "connecter_ga4": "socle",
@@ -403,8 +397,6 @@ _GESTE_REGLE = {
     "scaler":             ("augmenter", "generale"),
     "silence":            ("créer", "generale"),
     "orga_rythme":        ("créer", "generale"),
-    "format_gagnant":     ("tester", "generale"),
-    "creneau":            ("tester", "generale"),
     "orga_format":        ("tester", "generale"),
     "orga_reaction":      ("tester", "generale"),
     "orga_essoufflement": ("couper", "hypothese"),
@@ -506,6 +498,44 @@ def _est_conseil(reco: dict) -> bool:
     return reco.get("nature") in NATURES
 
 
+def _slug_constat(valeur) -> str:
+    """La normalisation des clés de constat — la même qu'`insights.py::_slug`,
+    et pour la même raison : une clé qui change de casse ou d'espace change
+    d'identité, et le verdict du client la suit (`insight_feedback`)."""
+    return str(valeur or "").strip().lower().replace(" ", "-")
+
+
+def _constat_cout(reco: dict, theme: str, feedback: dict) -> dict:
+    """Transforme `theme_event_cout` en CONSTAT, la place qu'il aurait dû avoir.
+
+    Il ne demande aucun geste : il demande de comparer un coût par conversion à
+    sa propre marge, ce qui se fait hors de l'outil et ne se vérifie nulle part
+    ici. `_est_conseil` le jetait donc en silence depuis le ticket 06 — calculé
+    chaque semaine, publié nulle part. Le ticket 09 lui rend sa place parmi les
+    constats, avec le reste de « ce qui marche chez toi ».
+
+    LA CLÉ PORTE LE THÈME **ET** L'ÉVÉNEMENT, et c'est ce qui la rend stable au
+    sens d'`insight_feedback` : un client qui change d'événement principal ne
+    parle plus du même chiffre, et un « ✗ pas d'accord » posé sur l'ancien ne
+    doit pas museler le nouveau. Même raisonnement que les clés d'`insights.py`.
+
+    `angle_mort` VOYAGE AVEC LE CONSTAT — c'est la phrase qui dit ce que ce coût
+    NE compte pas (ce qui arrive sans campagne n'y entre pas). Un coût par
+    conversion sans elle se lit comme une mesure complète alors qu'il est une
+    borne haute (`CLAUDE.md` §7).
+    """
+    cle = f"cout_conversion:{_slug_constat(theme)}:{_slug_constat(reco.get('cible'))}"
+    return {
+        "key": cle,
+        "kind": "cout_conversion",
+        "title": reco.get("title") or "",
+        "detail": reco.get("observation") or "",
+        "angle_mort": reco.get("angle_mort") or None,
+        "status": feedback.get(cle, "new"),
+        "platform": "pub",
+    }
+
+
 # ── L'IMPORTANCE D'UN CONSEIL ────────────────────────────────────────────────
 #
 # Le tri qui existait classait par (theme prioritaire, confiance, facilite).
@@ -570,14 +600,16 @@ def _importance(reco: dict, rang: int = 0) -> tuple:
 
 # ── L'ORGANIQUE A DROIT À SES PROPRES CONSEILS ───────────────────────────────
 #
-# `saas/recos_ia/reco_engine.py` porte bien quatre règles Instagram, mais elles
-# sont taillées pour le COMPTE ENTIER : `_rule_creneau` demande 20 posts,
-# `_rule_page_endormie` en demande 5 plus 100 abonnés, `_rule_silence` ne parle
-# que d'une semaine restée vide. Depuis le passage au rapport par thème, elles
-# tournent sur les posts D'UN SEUL THÈME — et à cette échelle elles ne se
-# déclenchent presque jamais. Les trois places du thème partaient donc à l'IA,
-# nourrie d'un prompt qui ne parle que de campagnes : l'organique n'avait pas
-# de conseils, il avait des suppositions.
+# `saas/recos_ia/reco_engine.py` portait quatre règles Instagram, mais elles
+# sont taillées pour le COMPTE ENTIER : `_rule_page_endormie` demande 5 posts
+# plus 100 abonnés, `_rule_silence` ne parle que d'une semaine restée vide, et
+# les deux autres (`_rule_creneau`, 20 posts ; `_rule_format_gagnant`) sont
+# mortes au ticket 09 — elles répondaient à la question des constats. Depuis le
+# passage au rapport par thème, celles qui restent tournent sur les posts D'UN
+# SEUL THÈME, et à cette échelle elles ne se déclenchent presque jamais. Les
+# trois places du thème partaient donc à l'IA, nourrie d'un prompt qui ne parle
+# que de campagnes : l'organique n'avait pas de conseils, il avait des
+# suppositions.
 #
 # Les quatre règles ci-dessous raisonnent à l'échelle d'un thème et ne lisent
 # que ce qui est déjà en base (`instagram_organic_posts`) : la date, le format,
@@ -1391,7 +1423,12 @@ def _reco_evenements(theme, g4t, sem) -> list[dict]:
                 _s_nom, _s = max(secondaires.items(), key=lambda kv: kv[1]["count"])
                 _ctx = (f" Pour situer : « {_s_nom} », que tu suis en secondaire, "
                         f"s'est produit {_s['count']} fois sur la même période.")
-            out.append(_reco_dict(
+            # `cible` = L'ÉVÉNEMENT MESURÉ, et il entre dans la clé du constat
+            # (`_constat_cout`) : changer d'événement principal change le
+            # chiffre dont on parle, donc la clé, donc le verdict qui s'y
+            # rattache. Sans elle, un « ✗ pas d'accord » posé sur le coût d'un
+            # ancien événement muselait celui du nouveau.
+            _cout_reco = _reco_dict(
                 "theme_event_cout", "pub",
                 f"Sur « {theme} », chaque « {_p} » t'a coûté {_cout:.2f} CHF",
                 f"{_dep:.0f} CHF dépensés sur les campagnes de ce thème, "
@@ -1408,7 +1445,9 @@ def _reco_evenements(theme, g4t, sem) -> list[dict]:
                 "voie, ne rentre pas dans ce calcul. Le vrai coût est donc au plus "
                 "égal à celui-ci, jamais supérieur.",
                 _conf, 2,
-            ))
+            )
+            _cout_reco["cible"] = _p
+            out.append(_cout_reco)
     return out
 
 
@@ -2972,6 +3011,20 @@ def build_payload(sb, user_id: str) -> dict | None:
                 )
             except Exception:
                 pass
+            # LE COÛT PAR CONVERSION REJOINT LES CONSTATS AU LIEU D'ÊTRE JETÉ.
+            # `theme_event_cout` ne demande aucun geste : `_est_conseil` le
+            # refusait deux lignes plus bas, en silence, depuis le ticket 06 —
+            # calculé chaque semaine, publié nulle part. Il est récolté ICI,
+            # avant le filtre qui le jette, et part dans `vision.constats` avec
+            # le reste de « ce qui marche chez toi » (ticket 09).
+            #
+            # Il ne sort donc que pour un thème CONSEILLÉ : tout ce bloc vit
+            # sous `if _conseille`, et c'est voulu — les constats se concentrent
+            # sur ce que le client a désigné, comme les conseils.
+            for _r_cout in t_recos:
+                if _r_cout.get("key") == "theme_event_cout":
+                    constats.append(_constat_cout(_r_cout, lbl, ins_fb))
+
             # LE CONSTAT SORT AVANT LA COUPE, PAS APRÈS. `_importance` ne sait
             # pas qu'un conseil sans geste n'en est pas un : le laisser concourir
             # lui ferait prendre une des places, dont le filtre de sortie le

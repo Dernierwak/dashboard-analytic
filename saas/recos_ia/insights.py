@@ -10,6 +10,16 @@ Les constats (« Ce qui fonctionne pour toi ») en tirent 3-5 phrases chiffrées
 à clés STABLES : un constat rejeté par le client (insight_feedback) reste
 écarté quand il se régénère à l'identique.
 
+CE MODULE EST LA SEULE RÉPONSE À « QU'EST-CE QUI MARCHE CHEZ TOI » DEPUIS LE
+2026-09-12. Elle se calculait TROIS fois, dans deux langages, avec trois jeux de
+seuils qui pouvaient se contredire : ici, dans deux règles de `reco_engine.py`
+(`format_gagnant`, `creneau`, sur une fenêtre courte), et une troisième fois en
+TypeScript sur la page `/instagram`. Les deux autres sont mortes ; les constats
+d'ici s'affichent — rang 4 du gabarit de plateforme — sur `/meta`, `/google`,
+`/instagram` et `/labels`. Tranché par
+`.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md`, bâti par
+`.scratch/construction/issues/09-trois-moteurs-un-seul.md`.
+
 L'IA ne formule PAS les constats — pas d'hallucination sur des chiffres que
 le client va valider. Elle les reçoit ensuite comme contexte (brief + reco IA).
 """
@@ -167,7 +177,9 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
                     "eng_avg": round(float(r["eng_avg"]), 2) if "eng" in p.columns else None,
                 })
             formats.sort(key=lambda f: -f["posts"])
-        # Créneaux (même logique que la heatmap / _rule_creneau)
+        # Créneaux — la SEULE implémentation depuis que `_rule_creneau` est
+        # morte (ticket 09) : mêmes seuils que la heatmap de `/instagram`,
+        # qui ne les recalcule plus mais lit le constat qui en sort.
         try:
             d = p.dropna(subset=["_dt"]).copy()
             d["_dt"] = d["_dt"].dt.tz_convert("Europe/Zurich")
@@ -233,9 +245,19 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
 
 # ── Constats (« Ce qui fonctionne pour toi ») ────────────────────────────────
 
-def _constat(key, kind, title, detail, feedback) -> dict:
+def _constat(key, kind, title, detail, feedback, platform=None) -> dict:
+    """`platform` dit SUR QUELLE PAGE ce constat conclut — c'est le rang 4 du
+    gabarit de plateforme (`.scratch/refonte/issues/07-gabarit-de-plateforme.md`).
+
+    `None` veut dire « toutes » : un constat de THÈME traverse les régies et
+    l'organique, c'est même la seule chose qu'aucune régie ne sait dire
+    (`.scratch/refonte/issues/02-sur-quoi-se-differencient-les-autres.md`). Une
+    campagne locomotive, elle, appartient à la régie qui l'héberge, et un format
+    ou un créneau n'existent que sur Instagram : les afficher ailleurs ferait
+    conclure une page sur des chiffres qui ne sont pas les siens.
+    """
     return {"key": key, "kind": kind, "title": title, "detail": detail,
-            "status": feedback.get(key, "new")}
+            "status": feedback.get(key, "new"), "platform": platform}
 
 
 def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
@@ -243,7 +265,11 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
     """3-5 constats déterministes tirés de la matrice, clés stables normalisées.
     Le verdict du client (agree/reject) est réappliqué à chaque régénération.
     priority_labels : les ≤ 3 thèmes choisis par le client — quand ils existent,
-    les constats thèmes/campagnes se concentrent dessus (on ne travaille pas tout)."""
+    les constats thèmes/campagnes se concentrent dessus (on ne travaille pas tout).
+
+    Chaque constat porte sa `platform` (voir `_constat`) : c'est elle qui décide
+    sur quelle page de plateforme il conclut. L'angle mort de couverture reste
+    sans plateforme et ne se lit que là où on le répare — la page Thèmes."""
     if not matrix:
         return []
     fb = insight_feedback or {}
@@ -349,7 +375,7 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
                 f"Le format {f['format']} porte plus loin",
                 f"{f['reach_avg']:,.0f} de portée moyenne sur {f['posts']} posts, contre "
                 f"{avg_reach:,.0f} pour ton post moyen ({(f['reach_avg'] / avg_reach - 1) * 100:+.0f} %).",
-                fb))
+                fb, "instagram"))
 
     # 4) Créneau en or (la meilleure case fiable de la heatmap)
     if matrix["slots"]:
@@ -358,7 +384,7 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
             f"slot_best:{s['dow']}_{s['slot']}", "slot_best",
             f"Ton créneau en or : {DAYS[s['dow']]} {HOURS[s['slot']]}",
             f"{s['reach_avg']:,.0f} de portée moyenne sur {s['posts']} posts publiés à ce "
-            "moment — ton créneau le plus régulier.", fb))
+            "moment — ton créneau le plus régulier.", fb, "instagram"))
 
     # 5) Campagne locomotive (revenu max avec GA4, sinon CTR nettement au-dessus)
     # — dans les thèmes prioritaires si le client en a choisi
@@ -387,7 +413,8 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
     if loco is not None:
         out.append(_constat(
             f"campagne_locomotive:{_slug(loco['name'])}", "campagne_locomotive",
-            f"« {loco['name']} » est ta campagne locomotive", det, fb))
+            f"« {loco['name']} » est ta campagne locomotive", det, fb,
+            loco["channel"]))
 
     out = out[:5]
 

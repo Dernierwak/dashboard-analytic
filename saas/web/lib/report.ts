@@ -262,11 +262,30 @@ export function noteSerie(
 
 // Constat de la vision globale (« Ce qui fonctionne pour toi ») — clé stable,
 // verdict du client persistant (insight_feedback).
+//
+// C'EST LA SEULE RÉPONSE À « QU'EST-CE QUI MARCHE CHEZ TOI » DEPUIS LE
+// 2026-09-12. Elle se calculait trois fois : ici (`saas/recos_ia/insights.py`),
+// dans deux règles du moteur, et une troisième fois EN TYPESCRIPT sur
+// `/instagram` — trois jeux de seuils qui pouvaient se contredire le même
+// lundi. Les deux autres sont mortes ; cette page ne recalcule plus rien, elle
+// lit (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
 export type VisionConstat = {
   key: string;
-  kind: string; // theme_best | theme_worst | format_best | slot_best | campagne_locomotive | angle_mort
+  // theme_best | theme_worst | format_best | slot_best | campagne_locomotive
+  // | cout_conversion | angle_mort
+  kind: string;
   title: string;
   detail: string;
+  /** La page de plateforme où ce constat CONCLUT (rang 4 du gabarit) :
+   *  « instagram », « meta », « google », « pub » (les deux régies), ou absent
+   *  quand il parle d'un THÈME — un thème traverse les régies et l'organique,
+   *  c'est même ce qu'aucune régie ne sait dire. */
+  platform?: string | null;
+  /** Ce que le chiffre NE compte pas. Un seul genre le porte aujourd'hui
+   *  (`cout_conversion`) : son coût par conversion est une borne haute, jamais
+   *  une mesure complète, et l'afficher sans cette phrase le ferait lire comme
+   *  une mesure (`CLAUDE.md` §7). */
+  angle_mort?: string | null;
   status: "new" | "agree" | "reject";
 };
 

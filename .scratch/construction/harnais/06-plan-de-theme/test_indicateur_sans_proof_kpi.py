@@ -14,14 +14,21 @@ from t import egal, ok, bilan
 from saas.traitement.build_report import _METRIC_REGLE, _spec_mesure
 
 # `saas/traitement/build_report.py`, `build_payload`, avant le ticket 06.
+# `creneau` ET `format_gagnant` ONT ÉTÉ RETIRÉES DE CETTE RECOPIE LE 2026-09-12
+# PAR LE TICKET 09, et il faut dire pourquoi : les deux règles n'existent plus.
+# Elles répondaient à « qu'est-ce qui marche chez toi », question qu'`insights.py`
+# traitait déjà sur tout l'historique — trois moteurs, deux langages, trois jeux
+# de seuils. Leurs clés sortent donc des cinq tables de grammaire, indicateur
+# compris. Ce n'est pas une valeur déplacée, c'est une règle morte ; les garder
+# ici ferait échouer ce fichier sur une absence VOULUE, et le ticket 09 vérifie
+# leur mort et leur relève dans son propre harnais
+# (`../09-trois-moteurs/test_moteur_unique.py`).
 PROOF_KPI_AVANT = {
     "gaspillage":         ("cpc", "CPC moyen", "CHF", "down", "{:.2f}"),
     "roas":               ("roas", "ROAS", "", "up", "{:.1f}"),
     "scaler":             ("roas", "ROAS", "", "up", "{:.1f}"),
     "funnel":             ("purchases", "achats (GA4)", "", "up", "{:.0f}"),
     "silence":            ("posts", "posts publiés", "", "up", "{:.0f}"),
-    "creneau":            ("eng", "engagement moyen", "%", "up", "{:.1f}"),
-    "format_gagnant":     ("eng", "engagement moyen", "%", "up", "{:.1f}"),
     "page_endormie":      ("reach", "portée moyenne", "", "up", "{:,.0f}"),
     "orga_rythme":        ("posts", "posts publiés", "", "up", "{:.0f}"),
     "orga_essoufflement": ("reach", "portée moyenne", "", "up", "{:,.0f}"),
@@ -49,6 +56,11 @@ def test_aucune_cle_n_a_ete_ajoutee_ni_perdue():
     # AUCUNE de leurs valeurs n'a bougé.
     manquantes = sorted(set(PROOF_KPI_AVANT) - set(_METRIC_REGLE))
     egal("aucune clé de PROOF_KPI n'a été perdue", manquantes, [])
+    # Et les deux qui SONT parties le sont vraiment — sans ça, les retirer de
+    # la recopie ci-dessus suffirait à faire passer le test en les laissant
+    # vivre à moitié dans le code.
+    for cle in ("creneau", "format_gagnant"):
+        ok(f"{cle} · règle morte (ticket 09)", cle not in _METRIC_REGLE)
     # Les clés neuves sont nommées ici plutôt que tolérées en silence : une
     # cinquième qui apparaîtrait sans ticket ferait tomber ce test.
     egal("les seules clés ajoutées depuis sont celles du ticket 07",

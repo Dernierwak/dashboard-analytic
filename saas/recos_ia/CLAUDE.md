@@ -40,15 +40,20 @@ IA ») — c'est assumé, pas une erreur de rangement.
 
 ## `reco_engine.py` — le moteur
 
-Dix règles déterministes : `_rule_roas`, `_rule_gaspillage`, `_rule_scaler`,
-`_rule_silence`, `_rule_format_gagnant`, `_rule_page_endormie`,
-`_rule_creneau`, `_rule_funnel`, `_rule_ga4_muet`, `_rule_connecter_ga4`.
+Huit règles déterministes : `_rule_roas`, `_rule_gaspillage`, `_rule_scaler`,
+`_rule_silence`, `_rule_page_endormie`, `_rule_funnel`, `_rule_ga4_muet`,
+`_rule_connecter_ga4`.
+
+**Elles étaient dix.** `_rule_format_gagnant` et `_rule_creneau` sont mortes le
+2026-09-12 : elles répondaient à « qu'est-ce qui marche chez toi », la question
+d'`insights.py`, sur une fenêtre plus courte et avec d'autres seuils. Ce sont des
+CONSTATS, pas des conseils — voir la pierre tombale dans le fichier.
 Chacune passe par `_reco()`, qui impose la grammaire à quatre champs. Chaque
 conseil porte aussi un niveau de confiance (**solide / creuser / piste**), qui
 dépend de la taille de l'échantillon, de la complétude de la vue (a-t-on GA4
 ou juste le coût ?) et de la franchise du signal.
 
-`build_recos()` évalue les dix règles, applique `OBJECTIFS` (l'objectif du
+`build_recos()` évalue les huit règles, applique `OBJECTIFS` (l'objectif du
 compte remonte les conseils qui le servent), le `feedback` (`not_for_me`
 recule de 6, `done` de 2) et les constats de `vision` (venus d'`insights.py`)
 — puis trie par priorité. **Une règle qui plante est ignorée : le rapport ne
@@ -95,6 +100,14 @@ phrases chiffrées à **clés stables** : un constat rejeté par le client
 (`insight_feedback`) reste écarté quand il se régénère à l'identique. L'IA ne
 formule jamais ces phrases — elle les reçoit ensuite comme contexte pour le
 brief.
+
+**C'est la SEULE réponse à « qu'est-ce qui marche chez toi » depuis le
+2026-09-12**, et elle s'AFFICHE enfin : chaque constat porte sa `platform`, et
+Pulse le rend au rang 4 de `/meta`, `/google`, `/instagram` et `/labels`
+(`components/ce-qui-marche.tsx`). Elle se calculait avant trois fois, dans deux
+langages — ici, dans deux règles du moteur, et en TypeScript sur `/instagram`.
+Un cinquième genre de constat vient d'ailleurs : `cout_conversion`, que
+`build_report.py` récolte sur la carte d'un thème (`_constat_cout`).
 
 **Le croisement par THÈME ne se calcule plus ici.** Il vit dans la vue
 `theme_regroupement` (`supabase/migrations/theme_regroupement.sql`), que

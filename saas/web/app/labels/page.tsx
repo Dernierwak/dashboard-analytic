@@ -17,6 +17,11 @@
 //   4. DÉJÀ ÉTIQUETÉ — la vérification, repliée.
 //   5. TES THÈMES — le vocabulaire, qui n'est plus le sujet mais reste
 //      nécessaire : c'est là qu'on crée, renomme, et marque les priorités.
+//   6. CE QUI MARCHE POUR TOI — ce que l'étoile a produit. La page PROMETTAIT
+//      ces constats (« les constats… se concentrent dessus ») alors que
+//      `vision.constats` n'était rendu par aucun composant : publié chaque
+//      semaine par le worker, lu nulle part. Raccordé par le ticket 09
+//      (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
 //
 // « L'OBJECTIF PAR THÈME » ET « CE QUE CHAQUE THÈME COMPTE » (les blocs 5bis
 // et 6 qui vivaient ici) SONT PARTIS SUR /conversions. Cette page ne doit
@@ -47,26 +52,44 @@ import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
+import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { themesChoisis } from "@/lib/commandes";
 
 export const dynamic = "force-dynamic";
 
-export default async function LabelsPage() {
+export default async function LabelsPage({
+  searchParams,
+}: {
+  searchParams?: { [k: string]: string | string[] | undefined };
+}) {
   const [data, etiquetage] = await Promise.all([
     getLabelsData(),
     getEtiquetage(),
   ]);
 
+  // LE BANDEAU NE PORTE QUE LES THÈMES ICI, et pas de période : cette page
+  // règle le VOCABULAIRE, elle ne lit aucune fenêtre (ticket 12 §6). Le thème
+  // choisi resserre « Déjà étiqueté » — le seul module de la page qui soit une
+  // liste de travail à parcourir. La couverture, le geste de masse et le
+  // vocabulaire restent ceux du compte entier, et on l'écrit plutôt que de
+  // laisser croire à un filtre global.
+  const themes = themesChoisis(searchParams);
+  const deja = themes.length
+    ? etiquetage.deja.filter((e) => e.label && themes.includes(e.label))
+    : etiquetage.deja;
+
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-      <div className="mb-6">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          Une liste, trois canaux
-        </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
-          Tes thèmes.
-        </h1>
-        <p className="text-[13px] text-muted mt-2 leading-relaxed">
+      <BandeauCommandes
+        titre="Tes thèmes."
+        themes={etiquetage.labels}
+        themesActifs={themes}
+      />
+
+      <div className="mb-6 mt-3">
+        <p className="text-[13px] text-muted leading-relaxed">
           Un thème regroupe campagnes Meta <span style={{ color: "#1a56ff" }}>▣</span>, Google{" "}
           <span style={{ color: "#1a7a4a" }}>◆</span> et posts Instagram{" "}
           <span style={{ color: "#7b4fff" }}>◎</span> — le rapport peut alors dire ce que
@@ -97,11 +120,19 @@ export default async function LabelsPage() {
         </p>
       </div>
 
-      {/* 3 — LE TRAVAIL. */}
+      {/* 3 — LE TRAVAIL. Il ne se filtre pas : une campagne sans thème
+          n'appartient à aucun des thèmes cochés, la masquer reviendrait à
+          cacher le travail restant au moment où on le regarde. */}
       <ListeSansTheme elements={etiquetage.sansTheme} labels={etiquetage.labels} />
 
-      {/* 4 — LA VÉRIFICATION. */}
-      <ListeDeja elements={etiquetage.deja} labels={etiquetage.labels} />
+      {/* 4 — LA VÉRIFICATION, resserrée sur les thèmes cochés s'il y en a. */}
+      {themes.length > 0 && deja.length === 0 ? (
+        <p className="text-[12.5px] text-muted mb-5">
+          Rien n&apos;est encore étiqueté « {themes.join(" » ni « ")} ».
+        </p>
+      ) : (
+        <ListeDeja elements={deja} labels={etiquetage.labels} />
+      )}
 
       {/* 5 — LE VOCABULAIRE, ET L'ORDRE DES ÉTOILES.
           « Marque jusqu'à 3 thèmes prioritaires » annonçait un plafond qui
@@ -113,7 +144,7 @@ export default async function LabelsPage() {
       <div className="border-t border-line pt-5">
         <p className="text-[11.5px] text-faint mb-3 leading-relaxed max-w-3xl">
           ★ Étoile les thèmes sur lesquels tu veux qu&apos;on travaille — les constats
-          et les conseils se concentrent dessus. Tu peux en marquer autant que tu
+          (en bas de cette page) et les conseils se concentrent dessus. Tu peux en marquer autant que tu
           veux : chacun aura sa carte, ses chiffres et ses conseils calculés.{" "}
           <span className="font-semibold text-ink">L&apos;IA, elle, en rédige 3</span> —
           les 3 premières étoiles posées, numérotées ci-dessous. Pour faire monter un
@@ -155,6 +186,13 @@ export default async function LabelsPage() {
             })}
           </ScrollList>
         )}
+      </div>
+
+      {/* 6 — CE QUE L'ÉTOILE A PRODUIT. Le bloc est le même que sur les pages
+          de plateforme ; ici il les montre TOUS, angle mort de couverture
+          compris — c'est la seule page où il se répare. */}
+      <div className="border-t border-line pt-5 mt-6">
+        <CeQuiMarche page="themes" />
       </div>
     </main>
   );

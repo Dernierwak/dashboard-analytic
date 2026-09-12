@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { themesChoisis } from "@/lib/commandes";
 import { getCompteActif } from "@/lib/account";
 
 // Couche données des dashboards par canal — mêmes règles que le Streamlit :
@@ -28,7 +29,13 @@ export type DashParams = {
   m?: string;       // métrique du graphe
   status?: string;  // filtre statut
   camp?: string;    // filtre campagne (key)
-  label?: string;   // filtre thème
+  label?: string;   // filtre thème — ANCIEN NOM, encore lu, plus jamais écrit
+  /** Filtre thème, PLUSIEURS et répété (`?l=a&l=b`). Le vocabulaire tranché par
+   *  le ticket 12 de la refonte : un seul nom de filtre sur toutes les pages,
+   *  et celui-là est déjà celui de `/couts`. Répété plutôt que séparé par des
+   *  virgules parce qu'un thème peut en contenir une — voir l'en-tête de
+   *  `lib/commandes.ts`. */
+  l?: string | string[];
   from?: string;    // période custom : YYYY-MM-DD
   to?: string;
   s?: string;       // tri des tables (Instagram)
@@ -485,7 +492,10 @@ export type ChannelDash = {
   windowFin: string;
   days: Days;
   metric: string;
-  filters: { status: string; camp: string; label: string };
+  /** Ce que la page filtre, tel que le bandeau doit le réafficher. Le THÈME
+   *  n'y est pas : il vit dans l'URL (`l`, répété) et se lit avec
+   *  `themesChoisis` — le mettre ici en aurait fait une seconde source. */
+  filters: { status: string; camp: string };
   statusOptions: string[];
   campOptions: { key: string; name: string }[];
   activeCampaigns: number;
@@ -552,12 +562,15 @@ function buildDash(
 
   const fStatus = sp?.status ?? "";
   const fCamp = sp?.camp ?? "";
-  const fLabel = sp?.label ?? "";
+  // Cocher deux thèmes veut dire « cache-moi le reste », pas « compare-les » :
+  // la comparaison côte à côte a son lieu à elle (la table Par thème), et deux
+  // lieux pour une même lecture est exactement ce qu'on est en train de défaire.
+  const themesRetenus = themesChoisis(sp);
   const keep = (campKey: string): boolean => {
     const c = cfg.get(campKey);
     if (fStatus && (c?.status ?? "") !== fStatus) return false;
     if (fCamp && campKey !== fCamp) return false;
-    if (fLabel && (c?.label ?? "") !== fLabel) return false;
+    if (themesRetenus.length && !themesRetenus.includes(c?.label ?? "")) return false;
     return true;
   };
 
@@ -758,7 +771,7 @@ function buildDash(
     windowFin: iso(w.until),
     days,
     metric,
-    filters: { status: fStatus, camp: fCamp, label: fLabel },
+    filters: { status: fStatus, camp: fCamp },
     statusOptions: [...statusSet].sort(),
     campOptions: [...campSet.entries()].map(([key, name]) => ({ key, name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -903,10 +916,7 @@ export type InstaPost = {
   labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
 };
 
-// avgReach = moyenne de la MÉTRIQUE CHOISIE (pas forcément la portée).
-export type FormatStat = { type: string; count: number; avgReach: number; avgEng: number };
 export type FollowerPoint = { date: string; followers: number };
-export type SlotCell = { count: number; avgReach: number };
 export type PostLabelAgg = {
   label: string;
   count: number;
@@ -915,9 +925,6 @@ export type PostLabelAgg = {
   // Toutes les moyennes par post, pour la table complète.
   mReach: number; mViews: number; mLikes: number; mComments: number; mSaved: number;
 };
-
-export const INSTA_DAYS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
-export const INSTA_SLOTS = ["0-7h", "7-10h", "10-13h", "13-16h", "16-19h", "19-24h"];
 
 export type InstaDash = {
   email: string;
@@ -932,7 +939,7 @@ export type InstaDash = {
   windowFin: string;
   days: Days;
   labels: string[]; // liste maîtresse (assignation de thème par post)
-  // Périmètre réellement utilisé pour formats / créneaux / top 3 / thèmes :
+  // Périmètre réellement utilisé pour le top 3 et la performance par thème :
   // « periode » sauf si la fenêtre compte moins de 2 posts.
   scope: "periode" | "historique";
   followers: number;
@@ -948,11 +955,16 @@ export type InstaDash = {
   // restent : ils servent le seuil « au-dessus de ton post moyen » et la tuile
   // « Engagement du compte », deux lectures d'HISTORIQUE assumées.
   followersSeries: FollowerPoint[];
-  formats: FormatStat[];
-  heatmap: SlotCell[][];   // [jour 0-6][créneau 0-5] — sur la période retenue
-  bestSlot: { day: number; slot: number; avgReach: number; count: number } | null;
+  // `formats`, `heatmap` et `bestSlot` VIVAIENT ICI, ET ILS SONT MORTS LE
+  // 2026-09-12. Ils répondaient en TypeScript, sur la fenêtre affichée, à la
+  // question que `saas/recos_ia/insights.py` traite sur TOUT l'historique avec
+  // ses propres seuils : « quel format marche », « quel créneau porte ». Deux
+  // moteurs pour une question, donc deux réponses possibles le même lundi —
+  // la page affiche maintenant les constats du rapport (`<CeQuiMarche />`) au
+  // lieu de les recalculer
+  // (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
-  topMetric: string;       // métrique qui pilote formats, heatmap, top 3 et thèmes
+  topMetric: string;       // métrique qui pilote le top 3 et les thèmes
   byLabel: PostLabelAgg[];
   posts: InstaPost[];
   allPosts: InstaPost[];
@@ -987,7 +999,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
   ]);
   const masterLabels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
-  const all: InstaPost[] = (postsRes.data ?? []).map((p) => {
+  const tous: InstaPost[] = (postsRes.data ?? []).map((p) => {
     const reach = Number(p.reach) || 0;
     const likes = Number(p.likes) || 0;
     const comments = Number(p.comments) || 0;
@@ -1008,7 +1020,23 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   });
   const follows = followsRes.data ?? [];
 
-  const w = customWindow(sp) ?? makeWindow(all[0]?.date ?? null, all.length ? all[all.length - 1].date : null, days);
+  // LA FENÊTRE SE CALCULE SUR LES POSTS NON FILTRÉS. Sinon « 30 j » désignerait
+  // trente jours différents selon le thème coché — l'ancre est la date du
+  // dernier post du COMPTE, pas celle du dernier post du thème.
+  const w = customWindow(sp) ?? makeWindow(tous[0]?.date ?? null, tous.length ? tous[tous.length - 1].date : null, days);
+
+  // LE THÈME FILTRE, IL NE COMPARE PAS : cocher deux thèmes veut dire
+  // « cache-moi le reste » (ticket 12 §4). Un post porte PLUSIEURS thèmes
+  // (`instagram_organic_posts.labels`), là où une campagne n'en porte qu'un —
+  // il suffit donc qu'un seul corresponde. Le filtre s'applique à `all` et pas
+  // seulement à la fenêtre : les modules qui retombent sur l'historique quand
+  // la période est vide (top 3, performance par thème — voir `scope`) doivent
+  // parler du même périmètre que les autres, sinon la page mélange deux
+  // périmètres sans le dire.
+  const themesRetenus = themesChoisis(sp);
+  const all = themesRetenus.length
+    ? tous.filter((p) => p.labels.some((l) => themesRetenus.includes(l)))
+    : tous;
   const posts = all.filter((p) => inWin(p.date, w.since, w.until));
 
   const followers = follows.length ? Number(follows[0].followers) || 0 : 0;
@@ -1033,9 +1061,9 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     .map((f) => ({ date: String(f.fetched_at).slice(0, 10), followers: Number(f.followers) || 0 }))
     .reverse();
 
-  // La métrique choisie en haut de page pilote TOUTE la page : formats,
-  // heatmap, top 3 et performance par thème. Filtrer sur les vues et voir
-  // ensuite des classements par portée, c'est répondre à côté de la question.
+  // La métrique choisie en haut de page pilote TOUTE la page : top 3 et
+  // performance par thème. Filtrer sur les vues et voir ensuite des classements
+  // par portée, c'est répondre à côté de la question.
   const _METRICS = ["reach", "views", "likes", "comments", "saved", "eng"] as const;
   const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
     ? String(sp!.m)
@@ -1049,56 +1077,17 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     : p.reach;
 
   // LA PÉRIODE PILOTE AUSSI TOUTE LA PAGE. C'est le pendant de la règle
-  // ci-dessus, et il manquait : les formats et la performance par thème se
-  // calculaient sur tout l'historique, si bien que changer la période ne
-  // bougeait rien à l'écran — le filtre avait l'air cassé parce qu'il l'était.
-  // Une seule réserve, déjà appliquée à la carte des créneaux : sous 2 posts
+  // ci-dessus, et il manquait : la performance par thème se calculait sur tout
+  // l'historique, si bien que changer la période ne bougeait rien à l'écran —
+  // le filtre avait l'air cassé parce qu'il l'était.
+  // Une seule réserve : sous 2 posts
   // dans la fenêtre, aucune moyenne ne veut rien dire, alors on retombe sur
   // l'historique — et on le DIT, au lieu de laisser croire au contraire.
   const pool = posts.length >= 2 ? posts : all;
   const scope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
 
-  const fmtMap = new Map<string, { count: number; reach: number; eng: number }>();
-  for (const p of pool) {
-    const f = fmtMap.get(p.type) ?? { count: 0, reach: 0, eng: 0 };
-    f.count += 1; f.reach += _mval(p); f.eng += p.eng;
-    fmtMap.set(p.type, f);
-  }
-  const formats: FormatStat[] = [...fmtMap.entries()]
-    .map(([type, f]) => ({
-      type,
-      count: f.count,
-      avgReach: f.count ? f.reach / f.count : 0,
-      avgEng: f.count ? f.eng / f.count : 0,
-    }))
-    .sort((a, b) => b.avgReach - a.avgReach);
-
-  const heatPool = pool;
-  const slotOf = (h: number) => (h < 7 ? 0 : h < 10 ? 1 : h < 13 ? 2 : h < 16 ? 3 : h < 19 ? 4 : 5);
-  const acc: { count: number; reach: number }[][] = Array.from({ length: 7 }, () =>
-    Array.from({ length: 6 }, () => ({ count: 0, reach: 0 }))
-  );
-  for (const p of heatPool) {
-    const d = new Date(p.date);
-    if (isNaN(d.getTime())) continue;
-    const day = (d.getDay() + 6) % 7; // lundi = 0
-    const slot = slotOf(d.getHours());
-    acc[day][slot].count += 1;
-    acc[day][slot].reach += _mval(p);
-  }
-  const heatmap: SlotCell[][] = acc.map((row) =>
-    row.map((c) => ({ count: c.count, avgReach: c.count ? c.reach / c.count : 0 }))
-  );
-  let bestSlot: InstaDash["bestSlot"] = null;
-  for (let day = 0; day < 7; day++)
-    for (let slot = 0; slot < 6; slot++) {
-      const c = heatmap[day][slot];
-      if (c.count >= 2 && (!bestSlot || c.avgReach > bestSlot.avgReach))
-        bestSlot = { day, slot, avgReach: c.avgReach, count: c.count };
-    }
-
   // Top 3 posts de la période filtrée (fallback historique, même signal).
-  const topPosts = [...heatPool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
+  const topPosts = [...pool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
 
   // Performance par thème, sur la période retenue — TOUTES les métriques,
   // triées sur celle qui pilote la page.
@@ -1236,9 +1225,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     avgEng: mean(all.map((p) => p.eng)),
     histReach: mean(all.map((p) => p.reach)),
     followersSeries,
-    formats,
-    heatmap,
-    bestSlot,
     topPosts,
     topMetric,
     byLabel,

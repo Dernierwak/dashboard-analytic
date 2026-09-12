@@ -294,6 +294,29 @@ porte en amont qui décide qui les verra, et c'est une décision de David du
 qui vient de 06 et non de 07 — les quatre règles payantes sont toutes
 « constatable » et n'ouvrent aucune Stratégie.
 
+**[09 · Trois moteurs, un seul](issues/09-trois-moteurs-un-seul.md)** — « qu'est-ce
+qui marche chez toi » ne se calcule plus qu'UNE fois. Les deux règles du moteur
+(`format_gagnant`, `creneau`) sont mortes — fonction, cinq tables de grammaire,
+`OBJECTIFS`, `VISION_RULES`, et les deux seuils qui ne servaient qu'à elles — et
+le recalcul TypeScript de `/instagram` avec (`formats`, `heatmap`, `bestSlot`).
+**Les constats d'`insights.py` s'affichent enfin** : publiés depuis des mois,
+rendus par aucun composant, ils remplissent maintenant le **rang 4** de `/meta`,
+`/google`, `/instagram` **et** `/labels` — sans une ligne de calcul nouvelle,
+exactement le bénéfice que 11 avait prévu. Chaque constat porte sa `platform` et
+`constatsDeLaPage` est le seul endroit qui décide où il se lit ; un repli par
+genre couvre les payloads d'avant, sans jamais deviner la régie d'une campagne.
+**Deux promesses écrites deviennent vraies** : `/labels` annonçait ces constats,
+et `saveInsightFeedback` attendait depuis des mois qu'un écran l'appelle
+(« ✓ ça me parle » / « ✗ pas d'accord »). **`theme_event_cout` a la place que 06
+lui devait** : calculé chaque semaine et jeté en silence, il devient un constat
+`cout_conversion`, clé portant le thème ET l'événement, angle mort collé au
+chiffre. **`gaspillage` et `scaler` restent vivantes** — le ticket voulait les
+tuer, [24](../refonte/issues/24-conseils-payants-manquants.md) les a
+réhabilitées et il est plus récent ; dit, pas tranché en silence. **102
+vérifications neuves**, 694 rejouées, 19 routes. **`build_payload` n'a pas
+tourné** (ticket 16) et **rien du rendu web n'est testé** — aucun runner dans
+`saas/web`, décision de David. Ça se voit après un « ↻ Recharger mes conseils ».
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la
