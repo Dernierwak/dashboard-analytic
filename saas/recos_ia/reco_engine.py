@@ -56,6 +56,15 @@ KEY_LABELS = {
     "annonce_locomotive": "amplifier l'annonce qui accroche le mieux",
     "annonce_chere": "le prix du clic d'une annonce",
     "theme_hors_budget": "le budget d'un thème qui va être dépassé",
+    # Les six règles payantes restantes (ticket 10). Même consigne : le SUJET,
+    # jamais le geste — un client qui a refusé « l'usure d'une annonce » n'a pas
+    # refusé de créer.
+    "adset_inegal": "l'écart de coût entre deux Groupes d'annonces",
+    "theme_deux_regies": "la répartition d'un thème entre Meta et Google",
+    "budget_non_depense": "un budget posé que la campagne ne dépense pas",
+    "annonce_usee": "l'usure d'une annonce à force d'être revue",
+    "page_arrivee_muette": "les clics payés que Google Analytics ne voit pas",
+    "creneau_pub": "le jour de la semaine où la pub coûte le plus cher",
 }
 
 SEUILS = {
@@ -72,6 +81,70 @@ SEUILS = {
     "reach_rate_min": 10.0,       # portée/abonné < 10 % = page qui s'endort
     "slot_cell_min": 3,           # ≥ 3 posts dans la case gagnante (cohérent heatmap)
     "slot_total_min": 20,         # ≥ 20 posts au total (cohérent heatmap)
+
+    # ── LES SEUILS DES SIX RÈGLES PAYANTES RESTANTES ────────────────────────
+    #
+    # POURQUOI CE BLOC EXISTE ALORS QUE LE TICKET 07 N'EN A AJOUTÉ AUCUN.
+    # `.scratch/refonte/issues/24-conseils-payants-manquants.md` a livré quatre
+    # règles d'abord précisément parce qu'elles n'avaient besoin d'aucun nombre
+    # neuf ; les six restantes en demandent, et c'est ce qui les a reportées.
+    # Chacun de ceux-ci porte donc sa SOURCE, et aucun ne sort d'une mémoire.
+    #
+    # CE QU'IL FAUT SAVOIR AVANT DE S'APPUYER DESSUS : aucune règle payante n'a
+    # jamais tourné sur un vrai compte (ticket 16, le seam du payload, n'est pas
+    # ouvert). Ces quatre nombres sont donc des points de départ argumentés, pas
+    # des valeurs calibrées — les changer est une ligne, et le jour où un vrai
+    # compte parlera, c'est ici qu'on viendra.
+    #
+    # LES QUATRE COMPARAISONS DE COÛT DES SIX RÈGLES N'AJOUTENT RIEN : elles
+    # réutilisent `cpc_ratio` ci-dessus. « 2× » est l'écart que David a accepté
+    # comme « ce n'est plus du bruit » sur de l'argent, et c'est exactement ce
+    # qu'un Groupe d'annonces, un jour de semaine ou un budget posé comparent.
+    # Les « 3× » et « 2× » des exemples de 24 décrivent CE QUE LE CLIENT LIT,
+    # pas le seuil qui déclenche.
+
+    # Fréquence hebdomadaire à partir de laquelle une créa Meta décroche. C'est
+    # la convention du métier (Meta prospection : la performance baisse au-delà
+    # de ~2,5 vues par personne et par semaine, et s'effondre au-delà de 4).
+    # À SAVOIR, et c'est la recherche elle-même qui le dit : l'origine de ce 2,5
+    # ne se retrouve dans aucune étude ni aucune documentation de plateforme —
+    # c'est une convention d'agences répétée jusqu'à faire règle. On s'en sert
+    # parce qu'il n'y a pas mieux, et parce que la règle qui le lit ne compare
+    # PAS une fréquence exacte mais un PLANCHER de fréquence (voir
+    # `regle_annonce_usee`) : elle se tait donc plus souvent que ce seuil ne le
+    # voudrait, jamais plus.
+    "freq_plancher": 2.5,
+    # ...et le prix du clic qui monte AVEC elle, d'une semaine sur l'autre. La
+    # fatigue publicitaire est mesurée à ~+20 % de CPC ; sans cette seconde
+    # condition, une fréquence haute sur une audience volontairement étroite
+    # (du retargeting) se ferait dénoncer alors qu'elle marche.
+    "freq_cpc_hausse": 1.2,
+
+    # L'écart entre les clics qu'une régie facture et les sessions que GA4
+    # compte. Google documente 10 à 20 % comme normal (bouton retour, double
+    # clic, bloqueurs, page quittée avant chargement) et « au-dessus de 30 % »
+    # comme le signe d'un problème technique. On parle à 50 % — deux fois plus
+    # prudent — parce que la règle additionne Meta ET Google : un clic Meta perd
+    # plus de monde qu'un clic Google (navigateur intégré, App Tracking
+    # Transparency), et un seuil de 30 % ferait parler cette règle toutes les
+    # semaines sur un compte parfaitement taggé.
+    "arrivee_perte_max": 0.5,
+
+    # Un jour de la semaine ne se juge pas sur une seule occurrence. Quatre, sur
+    # la fenêtre de 28 jours qui sert déjà de « norme » à un thème
+    # (`_CALME_REF`, build_report.py) : c'est le plus grand nombre que cette
+    # fenêtre permette, et en dessous on compare un dimanche à un autre dimanche.
+    "creneau_jours_min": 4,
+
+    # L'écart de retour entre les deux régies à partir duquel un thème mérite
+    # qu'on teste un transfert. 4×, et pas le 2× des comparaisons de coût : le
+    # revenu GA4 est attribué au DERNIER clic, ce qui déplace mécaniquement du
+    # revenu de Meta vers Google (une campagne Meta de prospection qui déclenche
+    # une recherche de marque est comptée pour Google). Un écart de 2× entre les
+    # deux régies peut n'être que ce biais ; le 4× est le nombre que
+    # `.scratch/refonte/issues/24-conseils-payants-manquants.md` a écrit pour
+    # cette règle, et il laisse au biais la place qu'il prend.
+    "regie_roas_ratio": 4.0,
 }
 
 

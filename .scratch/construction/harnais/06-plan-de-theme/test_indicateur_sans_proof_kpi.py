@@ -47,8 +47,9 @@ def test_aucune_cle_n_a_ete_ajoutee_ni_perdue():
     # test exigeait l'égalité stricte des deux jeux de clés — c'était la bonne
     # forme tant que `_METRIC_REGLE` n'était QUE la recopie de `PROOF_KPI`.
     # Le ticket 07 y ajoute quatre conseils payants qui n'existaient pas quand
-    # `PROOF_KPI` a été retirée ; l'égalité stricte ferait donc échouer ce
-    # fichier sur une clé neuve au lieu d'une valeur déplacée.
+    # `PROOF_KPI` a été retirée, et le ticket 10 cinq de plus ; l'égalité
+    # stricte ferait donc échouer ce fichier sur une clé neuve au lieu d'une
+    # valeur déplacée.
     #
     # CE QUE LE TEST PROTÉGEAIT RESTE ENTIER, et c'est tout ce qui compte ici :
     # aucune clé de l'ancienne table n'a disparu, et
@@ -58,10 +59,20 @@ def test_aucune_cle_n_a_ete_ajoutee_ni_perdue():
     egal("aucune clé de PROOF_KPI n'a été perdue", manquantes, [])
     # Les clés neuves sont nommées ici plutôt que tolérées en silence : une
     # cinquième qui apparaîtrait sans ticket ferait tomber ce test.
-    egal("les seules clés ajoutées depuis sont celles du ticket 07",
+    egal("les seules clés ajoutées depuis sont celles des tickets 07 et 10",
          sorted(set(_METRIC_REGLE) - set(PROOF_KPI_AVANT)),
-         ["annonce_chere", "annonce_locomotive", "annonce_sans_conversion",
-          "theme_hors_budget"])
+         # Les neuf règles payantes qui déclarent un indicateur : les quatre du
+         # ticket 07 (`annonce_*`, `theme_hors_budget`) et cinq des six du
+         # ticket 10. Triées par le `sorted` ci-dessus, pas par ticket.
+         ["adset_inegal", "annonce_chere", "annonce_locomotive",
+          "annonce_sans_conversion", "annonce_usee", "budget_non_depense",
+          "creneau_pub", "theme_deux_regies", "theme_hors_budget"])
+    # `page_arrivee_muette`, dixième règle payante, N'EST PAS dans cette liste
+    # et c'est le sujet du test juste en dessous : son levier est `socle`, elle
+    # répare la MESURE, et lui donner un indicateur reviendrait à juger sa
+    # réussite avec le chiffre qu'elle vient de déclarer faux.
+    ok("page_arrivee_muette n'a pas d'indicateur, et c'est voulu",
+       "page_arrivee_muette" not in _METRIC_REGLE)
 
 
 def test_ce_qui_n_avait_pas_d_indicateur_n_en_a_toujours_pas():

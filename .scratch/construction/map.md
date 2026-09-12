@@ -336,18 +336,90 @@ non suivis par git, donc le commit ne construit pas depuis un checkout neuf —
 **rien ne doit être poussé avant que le travail du bandeau soit commité**, Vercel
 déploie depuis `main`.
 
+**[10 · Les six règles payantes restantes](issues/10-six-regles-payantes-restantes.md)** —
+le moteur payant passe de **quatre règles à dix**, et le repli n'a pas eu à
+s'appliquer : 06 étant en service, les deux règles « à mesurer » sont parties
+avec les quatre autres. **Un compte qui ne fait que de la publicité ouvre enfin
+une Stratégie** (`adset_inegal`, `theme_deux_regies`) — c'était l'exigence n° 4
+de [24](../refonte/issues/24-conseils-payants-manquants.md), et avant elles les
+deux seules clés à Hypothèse étaient organiques. **Quatre seuils neufs
+seulement, pas six** : les comparaisons de coût réutilisent `cpc_ratio`, et pour
+`budget_non_depense` ce « 2× » est littéralement le nombre de David. Chacun des
+quatre porte sa source dans `SEUILS`, **avec l'avertissement** : aucune règle
+payante n'a jamais tourné sur un vrai compte, ce sont des points de départ
+argumentés, pas des valeurs observées. **Les deux pièges du ticket sont tenus** :
+`annonce_usee` ne calcule pas une fréquence mais un **plancher** de fréquence
+(impressions ÷ somme des portées quotidiennes — les personnes ne se somment pas,
+donc le rapport est toujours plus petit que la vraie fréquence, et la règle se
+tait plus souvent qu'elle ne le devrait, jamais l'inverse) ; `page_arrivee_muette`
+**ne nomme jamais une page**, et un test vérifie qu'aucune URL ne sort de son
+texte. Elle ne prend pas non plus une des trois places d'un thème — levier
+`socle`, elle rejoint le bloc « réglages », **une seule par rapport**, celle qui
+perd le plus de clics. L'arbitre des collisions passe de deux cas à six, **et une
+seule Stratégie par thème** — ce qui augmente l'exposition au ticket 27 : il n'y
+avait que deux clés à Hypothèse, il y en a quatre. **343 vérifications**, plus
+189 (harnais 07) et 342 (harnais 06) rejouées.
+
+**Deux faits imposés par la donnée, et le second est le plus lourd.**
+`adset_inegal` comparait d'abord à une **médiane** : sur une campagne à deux
+Groupes, la médiane vaut leur moyenne et la condition devient « a ≥ a + b » —
+**la règle n'aurait jamais parlé sur le cas le plus courant**. Le repère est
+maintenant celui des voisins, comme `annonce_locomotive`. Le même défaut vit
+encore dans `regle_annonce_chere` → [30](issues/30-la-mediane-sur-deux-valeurs-ne-parle-jamais.md).
+Et `theme_deux_regies` **se tait dès que l'attribution d'un canal est trouée** :
+sans ça, une campagne dont l'`utm_campaign` ne correspond plus verserait sa
+dépense sans son revenu et la règle dirait « l'autre rend quatre fois mieux »
+(le fait de [18](issues/18-revenu-google-non-rattachable.md)). Ce lecteur **ne
+tranche pas la question de 18** — il ne change rien à la dépense comptée
+ailleurs, il refuse seulement de faire parler UNE règle neuve sur une
+attribution trouée. En chemin : **aucune règle du dépôt sauf `theme_event_cout`
+ne pose de `cible`**, donc son empreinte est `(clé, "")` et une clé servie une
+fois est consommée pour tous les thèmes et toutes les semaines →
+[31](issues/31-un-conseil-sans-cible-ne-sort-qu-une-fois.md). **Rien n'est joué
+en base, aucune migration, aucune récolte nouvelle.**
+
+**Sa revue de code a trouvé six défauts, tous corrigés**, et les trois premiers
+étaient des chiffres faux au sens du §7 — exactement ce que ces règles existent
+pour ne pas produire. `page_arrivee_muette` **comparait deux populations
+différentes** (tous les clics du thème contre les seules sessions que GA4
+rattache, et **Meta ne pose aucun paramètre de campagne tout seul**) : un thème
+Meta sans UTM affichait « 100 % des clics n'arrivent nulle part » et accusait
+une balise qui marche. Le « plancher » de fréquence **pouvait dépasser la vraie
+fréquence** quand la portée manquait sur certains jours — l'invariant que le
+module promet noir sur blanc était faux ; une seule journée sans portée et
+l'annonce sort. Et `theme_deux_regies` écrivait *« Meta rapporte, l'autre pas
+que Google »* quand une régie ne rapportait rien. Les trois autres : deux
+`cible` qui n'étaient pas propres au thème (un conseil servi sur « Été »
+musellerait « Hiver » huit semaines), et `creneau_jours_min = 4` exigé sur une
+fenêtre de 28 jours qui en donne exactement quatre — elle passe à cinq semaines.
+
+**Et un conflit qui va à David, HITL.** `docs/mesures-impossibles.md` dit qu'un
+**ROAS affiché par canal serait une invention** tant que la règle d'attribution
+n'est pas choisie ; `theme_deux_regies` en affiche un. Les deux phrases ont été
+écrites le même jour par le même ticket de la refonte (24) — c'est un écart
+interne à la décision, pas une désobéissance à elle. La règle est livrée sous
+ses gardes, la lecture retenue étant qu'**un conseil qui porte son angle mort
+n'est pas un KPI posé sur un tableau de bord**, et la question part telle quelle →
+[32](issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md).
+`CONTEXT.md` gagne **Vues par personne** (et déconseille « fréquence », le nom de
+la valeur qu'on ne sait PAS calculer) ; `docs/mesures-impossibles.md` gagne
+**« Quelle page d'arrivée perd les gens »**.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la
   destination, et c'est le seul endroit où cette carte peut découvrir qu'elle
   s'est trompée. Ce qu'il en sortira — un module qui ne sert pas, un ordre à
   refaire, un conseil qui tombe à plat — ne se charte pas d'avance.
-- **Ce que les quatre premières règles payantes donneront sur de vraies
-  données.** Écrites et vérifiées par 07, seuils issus de `SEUILS`, aucun
-  inventé — mais aucune n'a jamais tourné, et le ticket 26 dit qu'aucune ne
-  tournera chez un client à trois étoiles tant que la porte de Gemini n'est pas
-  tranchée. Quand elles tourneront : si elles se taisent ou se répètent, c'est
-  un ticket, pas une retouche silencieuse.
+- **Ce que les DIX règles payantes donneront sur de vraies données.** Écrites et
+  vérifiées par [07](issues/07-quatre-regles-payantes.md) et
+  [10](issues/10-six-regles-payantes-restantes.md) ; la porte que 26 nommait est
+  tombée avec 08, elles atteignent donc le rapport dès la première étoile. Mais
+  **aucune n'a jamais tourné**, et c'est plus lourd pour les six de 10 : quatre
+  de leurs seuils sont neufs, et 24 les avait reportées exactement pour ça
+  (« au moins un seuil à calibrer sur données réelles »). Quand elles
+  tourneront : si elles se taisent ou se répètent, c'est un ticket, pas une
+  retouche silencieuse.
 - **La doc du produit.** Table des matières au §6 du plan, décision dans
   [05](../refonte/issues/05-carte-du-savoir.md) : elle s'écrit **thématique par
   thématique, quand la brique est construite** — c'est le produit qui dicte la

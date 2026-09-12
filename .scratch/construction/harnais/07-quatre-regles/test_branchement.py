@@ -29,7 +29,18 @@ def test_le_filtre_qui_opposait_meta_et_google_est_mort():
 
 def test_les_quatre_regles_sont_appelees_par_le_rapport():
     ok("le module est importé", "from saas.recos_ia.regles_payantes import" in SOURCE)
-    ok("l'orchestrateur est appelé", "t_recos += regles_payantes(" in SOURCE)
+    # ASSERTION ASSOUPLIE PAR LE TICKET 10, et voici exactement quoi. Elle
+    # exigeait le texte `t_recos += regles_payantes(`. Le ticket 10 a dû ouvrir
+    # la sortie de l'orchestrateur pour en router UNE clé ailleurs
+    # (`page_arrivee_muette` est un prérequis de mesure, elle rejoint le bloc
+    # « réglages » au lieu de prendre une des trois places du thème) : l'appel
+    # s'écrit désormais `_payantes = regles_payantes(` suivi d'une boucle. Ce
+    # que l'assertion protégeait — l'orchestrateur est bien appelé dans la
+    # boucle des thèmes — est vérifié ici ET par les deux lignes en dessous, qui
+    # nomment ses arguments.
+    ok("l'orchestrateur est appelé", "= regles_payantes(" in SOURCE)
+    ok("et sa sortie alimente les conseils du thème",
+       "t_recos.append(_r_pay)" in SOURCE)
     ok("avec les Annonces du thème", "_annonces_theme(lbl, cur_since, last_full_day)" in SOURCE)
     ok("et le budget du thème", "_budget_theme(lbl, _sem_theme)" in SOURCE)
 

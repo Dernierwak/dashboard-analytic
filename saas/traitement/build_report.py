@@ -115,6 +115,26 @@ EFFORT_BY_KEY = {
     "annonce_locomotive": "10 min",
     "annonce_chere": "10 min",
     "theme_hors_budget": "30 min",
+    # LES SIX RÈGLES PAYANTES RESTANTES (ticket 10). Baisser un budget posé est
+    # un champ à corriger ; déplacer du budget entre deux Groupes ou deux
+    # régies, comparer les campagnes d'un thème, ou aller vérifier une balise
+    # dans Google Analytics → Temps réel demandent d'ouvrir l'outil et de
+    # comparer — une demi-heure, pas un chantier.
+    "adset_inegal": "30 min",
+    "theme_deux_regies": "30 min",
+    "budget_non_depense": "10 min",
+    "page_arrivee_muette": "30 min",
+    "creneau_pub": "30 min",
+    # `annonce_usee` EST LA SEULE À DÉPASSER LA DEMI-HEURE, et c'est un écart
+    # assumé avec `.scratch/refonte/issues/24-conseils-payants-manquants.md`
+    # (décision 8 : « aucune règle payante au-dessus de 30 min d'effort »).
+    # Elle demande de FABRIQUER une créa — un visuel neuf ou une autre accroche.
+    # Ses voisines organiques qui demandent la même chose sont toutes à « 1 h »
+    # (`silence`, `orga_format`, `orga_essoufflement`) : lui coller « 30 min »
+    # pour tenir une estimation écrite avant la règle ferait mentir la pastille
+    # sur ce qu'elle coûte vraiment. Le bac « 2 h+ » reste vide côté pub, lui,
+    # et c'est bien ce que la décision 8 protégeait.
+    "annonce_usee": "1 h",
 }
 
 # LES QUATRE LEVIERS, liste fermée. Un conseil-règle déclare le sien par clé
@@ -255,6 +275,31 @@ _METRIC_REGLE = {
     "annonce_sans_conversion": "roas",
     # Le seul conseil dont la réussite est une dépense qui redescend.
     "theme_hors_budget":       "spend",
+    # LES SIX RÈGLES PAYANTES RESTANTES (ticket 10). Chacune vise l'indicateur
+    # QU'ELLE fait bouger :
+    #   · `adset_inegal`, `annonce_usee` et `creneau_pub` accusent toutes les
+    #     trois un PRIX DU CLIC trop haut — une audience trop disputée, une créa
+    #     usée, un jour trop cher — et c'est lui qui doit redescendre ;
+    #   · `theme_deux_regies` déplace du budget vers ce qui rend le mieux : ce
+    #     qui doit bouger, c'est le RETOUR du thème ;
+    #   · `budget_non_depense` aussi, et c'est le seul point qui demande une
+    #     explication. Son geste est de corriger un budget qui dort — soit en
+    #     débridant la campagne, soit en remettant l'argent là où il part.
+    #     `spend` aurait été le réflexe, mais son sens d'amélioration est
+    #     « down » (`METRIC_INFO`) : une dépense qui REMONTE vers le budget posé
+    #     se serait lue comme un échec. L'argent qui dort ne coûte rien, il ne
+    #     rapporte rien non plus — ce qu'on remesure est ce que le thème rend
+    #     une fois cet argent remis en circulation.
+    "adset_inegal":            "cpc",
+    "annonce_usee":            "cpc",
+    "creneau_pub":             "cpc",
+    "theme_deux_regies":       "roas",
+    "budget_non_depense":      "roas",
+    # `page_arrivee_muette` N'EST PAS ICI, ET C'EST LA MÊME RAISON QUE
+    # `connecter_ga4` ET `ga4_muet` juste au-dessus de cette table : c'est un
+    # prérequis de MESURE (levier `socle`). Ce qu'elle répare, c'est la mesure
+    # elle-même — lui donner `roas` ou `purchases` reviendrait à juger sa
+    # réussite avec le chiffre qu'elle vient justement de déclarer faux.
 }
 
 
@@ -367,6 +412,23 @@ _LEVIER_REGLE = {
     "annonce_locomotive": "argent",
     "annonce_chere": "argent",
     "theme_hors_budget": "argent",
+    # LES SIX RÈGLES PAYANTES RESTANTES (ticket 10), et elles etendent la
+    # couverture des leviers la ou le payant n'allait pas :
+    #   · `adset_inegal` est le PREMIER conseil payant sur l'axe `audience` —
+    #     deux Groupes d'une meme campagne partagent objectif et enchere, ce qui
+    #     les separe est a QUI ils parlent ;
+    #   · `creneau_pub` est le premier conseil payant sur l'axe `tempo` ;
+    #   · `annonce_usee` met en cause la CREA, pas le montant : une annonce usee
+    #     ne se repare pas avec du budget, elle se remplace ;
+    #   · `page_arrivee_muette` est un prerequis de MESURE, comme GA4 et le
+    #     funnel — tant qu'on ne sait pas ou passent les clics payes, tout ce
+    #     qu'on dit du retour du theme est bati sur un revenu partiel.
+    "adset_inegal": "audience",
+    "theme_deux_regies": "argent",
+    "budget_non_depense": "argent",
+    "annonce_usee": "contenu",
+    "page_arrivee_muette": "socle",
+    "creneau_pub": "tempo",
 }
 
 # LE GESTE ET LA PREUVE — les deux dernières des cinq colonnes d'une règle.
@@ -427,6 +489,24 @@ _GESTE_REGLE = {
     "annonce_locomotive":      ("augmenter", "generale"),
     "annonce_chere":           ("couper", "generale"),
     "theme_hors_budget":       ("corriger", "generale"),
+    # LES SIX RÈGLES PAYANTES RESTANTES (ticket 10). Quatre sont
+    # « constatables » — un budget corrigé, une créa remplacée, une balise
+    # réparée, un jour bridé se voient DEMAIN dans l'outil, à l'œil.
+    "budget_non_depense":      ("corriger", "generale"),
+    "annonce_usee":            ("créer", "generale"),
+    "page_arrivee_muette":     ("corriger", "generale"),
+    "creneau_pub":             ("corriger", "generale"),
+    # ET LES DEUX PREMIÈRES STRATÉGIES D'UN COMPTE QUI NE FAIT QUE DE LA PUB.
+    # Avant elles, les deux seules clés dont la preuve était « à mesurer »
+    # étaient organiques (`orga_essoufflement`, `page_endormie`) : un compte
+    # sans Instagram n'ouvrait jamais de Stratégie, et Gemini n'avait donc
+    # aucune Marche suivante à écrire chez lui
+    # (`.scratch/refonte/issues/24-conseils-payants-manquants.md`, exigence 4).
+    # Leur geste est `tester` et rien ne se constate demain : un Groupe cher
+    # n'est pas forcément un mauvais Groupe, une régie qui rend moins n'est pas
+    # forcément la mauvaise — on déplace une part du budget et on REGARDE.
+    "adset_inegal":            ("tester", "hypothese"),
+    "theme_deux_regies":       ("tester", "hypothese"),
 }
 
 # Chaque regle declare son levier par cle (`_LEVIER_REGLE`) : cette table ne
@@ -2815,6 +2895,410 @@ def build_payload(sb, user_id: str) -> dict | None:
             "releve_le": releve,
         }
 
+    # ── CE QUE LES SIX RÈGLES PAYANTES RESTANTES ONT DEMANDÉ EN PLUS ─────────
+    #
+    # Ticket `.scratch/construction/issues/10-six-regles-payantes-restantes.md`.
+    # Comme les deux lecteurs au-dessus : AUCUNE RÉCOLTE NOUVELLE, aucune
+    # migration. Tout est déjà en base — la portée par annonce et par jour est
+    # dans `meta_ads_insights` depuis toujours, le budget posé par campagne dans
+    # `platform_budgets`, les sessions par campagne dans `ga4_insights`.
+
+    # CINQ SEMAINES POUR EN EXIGER QUATRE. `creneau_pub` demande quatre lundis
+    # avant de parler d'un lundi (`SEUILS["creneau_jours_min"]`), et
+    # `_creneaux_theme` ne compte que les jours qui ont vraiment une ligne. Sur
+    # 28 jours il y a EXACTEMENT quatre lundis : une campagne en pause un jour,
+    # une journée sans diffusion ou un trou de récolte ferait tomber ce jour à
+    # trois et la règle se tairait pour une raison qui n'a rien à voir avec son
+    # prix. Trente-cinq jours en donnent cinq — de quoi en perdre un.
+    _CRENEAU_JOURS = 35
+
+    # Une campagne VIVANTE au dernier relevé. `_BUDGET_MORTES` (juste au-dessus)
+    # retire ce qui n'existe plus ; ici on veut en plus écarter ce qui est
+    # simplement EN PAUSE : une campagne en pause ne dépense pas son budget, et
+    # c'est normal — `budget_non_depense` la dénoncerait toutes les semaines.
+    _BUDGET_VIVES = {"ACTIVE", "ENABLED"}
+
+    def _canal_de_campagne(nom_ou_id, canal):
+        """Le thème d'une ligne de budget, par la clé propre à son canal."""
+        if canal == "meta":
+            return name2label.get(_nrm(nom_ou_id))
+        return (goog_cfg.get(str(nom_ou_id), {}) or {}).get("label")
+
+    def _depense_par_campagne(d1, d2):
+        """{(canal, clé de campagne): dépense} sur [d1, d2], les deux régies.
+
+        CALCULÉ UNE FOIS POUR TOUTES LES CAMPAGNES, pas une fois par campagne :
+        `_budget_campagnes_theme` tourne pour chaque thème conseillé, et un
+        compte à cinquante campagnes aurait relu tout l'historique cent
+        cinquante fois. Même raison que la conversion de `df_gads` faite une
+        seule fois au chargement.
+
+        La clé est le NOM côté Meta (c'est celle de `meta_campaign_config`) et
+        l'IDENTIFIANT côté Google — deux campagnes Google peuvent partager un
+        nom, et c'est l'identifiant que porte `google_campaign_config`.
+        """
+        par_campagne = {}
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+            for _r in _m.itertuples():
+                _k = ("meta", _nrm(getattr(_r, "campaign_name", "")))
+                par_campagne[_k] = (par_campagne.get(_k, 0.0)
+                                    + float(getattr(_r, "spend", 0) or 0))
+        if (df_google is not None and not df_google.empty
+                and "campaign_id" in df_google.columns):
+            _g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
+                           & (df_google["date_start"] <= pd.Timestamp(d2))]
+            for _r in _g.itertuples():
+                _k = ("google", str(getattr(_r, "campaign_id", "") or ""))
+                par_campagne[_k] = (par_campagne.get(_k, 0.0)
+                                    + float(getattr(_r, "cost_micros", 0) or 0) / 1e6)
+        return par_campagne
+
+    _depenses_fenetre = _depense_par_campagne(cur_since, last_full_day)
+
+    def _jour_iso(v):
+        """La date d'une colonne `date` de PostgREST, ou `None`."""
+        try:
+            return date.fromisoformat(str(v)[:10]) if v else None
+        except ValueError:
+            return None
+
+    def _budget_campagnes_theme(lbl):
+        """Le budget POSÉ par jour contre la dépense RÉELLE par jour, campagne
+        par campagne — ce que lit `budget_non_depense`.
+
+        SUR LA FENÊTRE DU RAPPORT, et elle n'est pas un paramètre : la dépense
+        vient de `_depenses_fenetre`, calculée une seule fois pour toutes les
+        campagnes. Une signature qui accepterait d'autres bornes promettrait de
+        les respecter, et elle ne le ferait pas.
+
+        `_budget_theme` juste au-dessus répond à une autre question : ce que le
+        THÈME ENTIER va dépenser sur le MOIS. Celle-ci descend à la campagne, sur
+        la fenêtre du rapport, parce que c'est une campagne qu'on ouvre pour
+        corriger un budget — pas un thème.
+
+        Les jours comptés sont ceux où la campagne AVAIT LE DROIT de dépenser :
+        une campagne déclarée du 20 au 30 ne se juge pas sur les sept jours de la
+        fenêtre, mais sur ceux qu'elle en couvre. Sans ça, une campagne qui
+        démarre en milieu de semaine se ferait dénoncer pour n'avoir pas dépensé
+        les jours d'avant sa naissance.
+        """
+        d1, d2 = cur_since, last_full_day
+        out = []
+        for _l in _budgets_poses:
+            _st = str(_l.get("status") or "").upper()
+            if _st and _st not in _BUDGET_VIVES:
+                continue
+            _canal = _l.get("channel")
+            if _canal == "meta":
+                _cle, _nom = _l.get("campaign_name"), _l.get("campaign_name")
+            elif _canal == "google":
+                _cle, _nom = _l.get("campaign_id"), _l.get("campaign_name")
+            else:
+                continue
+            if _canal_de_campagne(_cle, _canal) != lbl:
+                continue
+            if (_canal, str(_nom or "")[:60]) in _camp_jeunes:
+                continue   # une campagne en rodage consomme mal, et c'est normal
+            _pose_fenetre = _montant_sur_fenetre(_l, d1, d2)
+            if _pose_fenetre <= 0:
+                continue
+            # Les jours que la campagne couvre DANS la fenêtre — les mêmes
+            # bornes que `_montant_sur_fenetre`, qui vient de les appliquer.
+            _deb = _jour_iso(_l.get("start_date")) or d1
+            _fin = _jour_iso(_l.get("end_date")) or d2
+            _jours = (min(_fin, d2) - max(_deb, d1)).days + 1
+            if _jours <= 0:
+                continue
+            out.append({
+                "canal": _canal,
+                "nom": _nom,
+                "pose_jour": _pose_fenetre / _jours,
+                "depense_jour": _depenses_fenetre.get(
+                    (_canal, _nrm(_cle) if _canal == "meta" else str(_cle)),
+                    0.0) / _jours,
+                "jours": _jours,
+                "releve_le": str(_l.get("captured_on") or "")[:10] or None,
+            })
+        return out
+
+    def _usure_theme(lbl, d1, d2):
+        """Une ligne par Annonce META du thème : impressions, SOMME des portées
+        quotidiennes, clics, dépense, et le prix du clic de la semaine d'avant.
+
+        MÉTA SEULEMENT, et ce n'est pas un choix : `google_ads_ad_insights` ne
+        porte pas de portée. Sans portée, pas de fréquence — et une fréquence
+        supposée serait un chiffre fabriqué (`CLAUDE.md` §7).
+
+        LA SOMME DES PORTÉES N'EST PAS LA PORTÉE DE LA SEMAINE, et c'est écrit
+        ici autant que dans la règle : `reach` compte des personnes
+        dédoublonnées, quelqu'un touché lundi et mardi apparaît dans les deux
+        lignes. La somme est donc toujours PLUS GRANDE que la portée unique, et
+        le rapport impressions/somme toujours PLUS PETIT que la vraie fréquence.
+        C'est exactement ce que `regle_annonce_usee` en fait : un PLANCHER.
+
+        Même garde qu'`_annonces_theme` : sans `ad_id` en base, Meta sort
+        entièrement — regrouper par nom rejouerait le bug des homonymes.
+        """
+        if (df_meta_raw is None or df_meta_raw.empty
+                or "ad_id" not in df_meta_raw.columns
+                or "reach" not in df_meta_raw.columns):
+            return []
+
+        def _cumul(a, b):
+            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(a))
+                             & (df_meta_raw["date_start"] <= pd.Timestamp(b))]
+            _m = _m[_m["campaign_name"].map(lambda x: name2label.get(_nrm(x)) == lbl)]
+            agg = {}
+            for _r in _m.itertuples():
+                _aid = str(getattr(_r, "ad_id", "") or "")
+                if not _aid:
+                    continue
+                _a = agg.setdefault(_aid, {
+                    "cle": f"meta:{_aid}", "canal": "meta",
+                    "nom": getattr(_r, "ad_name", None),
+                    "groupe": getattr(_r, "adset_name", None),
+                    "campagne": getattr(_r, "campaign_name", None),
+                    "impressions": 0, "portee_cumul": 0.0, "clics": 0,
+                    "depense": 0.0, "portee_complete": True,
+                    "jeune": ("meta", str(getattr(_r, "campaign_name", "") or "")[:60])
+                             in _camp_jeunes,
+                })
+                _a["impressions"] += int(getattr(_r, "impressions", 0) or 0)
+                _a["clics"] += int(getattr(_r, "clicks", 0) or 0)
+                _a["depense"] += float(getattr(_r, "spend", 0) or 0)
+                # UNE SEULE JOURNÉE SANS PORTÉE ET L'ANNONCE SORT. On serait
+                # tenté de simplement ne pas ajouter cette portée-là ; ce serait
+                # casser l'invariant qui fait toute l'honnêteté de la règle.
+                # `plancher = impressions ÷ somme des portées` n'est un PLANCHER
+                # de la fréquence que si les deux termes couvrent LES MÊMES
+                # JOURS : une annonce diffusée sept jours dont deux seulement ont
+                # une portée enregistrée verrait sept jours d'impressions
+                # divisés par deux jours de portée — un nombre trois fois trop
+                # GRAND, affiché sous la mention « au moins ». `regle_annonce_usee`
+                # promet de se taire plus souvent qu'elle ne le devrait, jamais
+                # l'inverse (`CLAUDE.md` §7) : on préfère donc perdre l'annonce.
+                _reach = getattr(_r, "reach", None)
+                if _reach is None or pd.isna(_reach):
+                    _a["portee_complete"] = False
+                else:
+                    try:
+                        _a["portee_cumul"] += float(_reach)
+                    except (TypeError, ValueError):
+                        _a["portee_complete"] = False
+            return agg
+
+        avant = _cumul(prev_since, prev_until)
+        out = []
+        for _cle, _a in _cumul(d1, d2).items():
+            if not _a.pop("portee_complete", False):
+                # Une portée trouée ne rend pas un plancher, elle rend un nombre
+                # trop grand — voir la note dans `_cumul`.
+                continue
+            _av = avant.get(_cle)
+            _clics_av = int((_av or {}).get("clics") or 0)
+            _a["cpc_avant"] = (float(_av["depense"]) / _clics_av
+                               if _av and _clics_av > 0 else None)
+            if str(_a.get("nom") or "").strip():
+                out.append(_a)
+        return out
+
+    def _creneaux_theme(lbl, d1, d2):
+        """La dépense et les clics META du thème, rangés par JOUR DE LA SEMAINE.
+
+        Meta seulement — condition posée par
+        `.scratch/refonte/issues/24-conseils-payants-manquants.md` : on ne
+        récolte pas la stratégie d'enchère d'une campagne Google, et brider les
+        horaires d'une enchère automatique la dégrade au lieu de l'aider.
+
+        La fenêtre est celle de `_CALME_REF` (28 jours), pas les sept du
+        rapport : sept jours ne contiennent qu'UN lundi, et un lundi ne se juge
+        pas contre lui-même. `occurrences` compte les jours réellement présents
+        dans les données — c'est lui que la règle exige à quatre.
+        """
+        if df_meta_raw is None or df_meta_raw.empty:
+            return []
+        _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                         & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+        _m = _m[_m["campaign_name"].map(lambda x: name2label.get(_nrm(x)) == lbl)]
+        if _m.empty:
+            return []
+        par_jour = {}
+        for _r in _m.itertuples():
+            _d = getattr(_r, "date_start", None)
+            if _d is None or pd.isna(_d):
+                continue
+            _d = pd.Timestamp(_d).date()
+            _c = par_jour.setdefault(_d.weekday(), {
+                "jour": _d.weekday(), "dates": set(), "depense": 0.0, "clics": 0})
+            _c["dates"].add(_d)
+            _c["depense"] += float(getattr(_r, "spend", 0) or 0)
+            _c["clics"] += int(getattr(_r, "clicks", 0) or 0)
+        return [{"jour": _c["jour"], "occurrences": len(_c["dates"]),
+                 "depense": _c["depense"], "clics": _c["clics"]}
+                for _c in par_jour.values()]
+
+    def _campagnes_ga4_theme(lbl):
+        """{nom de campagne normalisé: {sessions, revenue}} pour les campagnes de
+        ce thème que GA4 a su rattacher. `{}` quand GA4 n'est pas connecté.
+
+        CE QUI N'Y EST PAS EST AUSSI IMPORTANT QUE CE QUI Y EST. `by_campaign`
+        n'est rempli que pour les lignes dont le `medium` contient cpc/ppc/paid
+        ET qui portent un `utm_campaign` non vide qu'on retrouve dans
+        `name2label` (`saas/collecte/ga4/ga4.py`). Une campagne dont les liens
+        n'ont pas de paramètres de campagne — Meta n'en pose aucun tout seul —
+        n'y apparaît jamais. Ses visites ont bien eu lieu ; elles ne sont
+        attribuables à personne.
+        """
+        by = (ga4_ctx or {}).get("by_campaign") or {}
+        return {_nrm(_n): _d for _n, _d in by.items()
+                if name2label.get(_nrm(_n)) == lbl}
+
+    def _pub_par_campagne_theme(lbl, d1, d2):
+        """{(canal, nom normalisé): {spend, clics}} pour les campagnes du thème.
+
+        LA CLÉ PORTE LE NOM parce que c'est la SEULE que GA4 partage : il indexe
+        par `utm_campaign`. Côté Google on passe par l'identifiant pour
+        retrouver la campagne — c'est lui que porte `google_campaign_config` —
+        puis on prend son nom stocké. Une campagne dont ce nom est vide ne sera
+        jamais retrouvée côté GA4, et c'est exactement ce que les deux lecteurs
+        en dessous doivent savoir.
+        """
+        out = {}
+        if df_meta_raw is not None and not df_meta_raw.empty:
+            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
+                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
+            _m = _m[_m["campaign_name"].map(lambda x: name2label.get(_nrm(x)) == lbl)]
+            for _r in _m.itertuples():
+                _k = ("meta", _nrm(getattr(_r, "campaign_name", "")))
+                _c = out.setdefault(_k, {"spend": 0.0, "clics": 0})
+                _c["spend"] += float(getattr(_r, "spend", 0) or 0)
+                _c["clics"] += int(getattr(_r, "clicks", 0) or 0)
+        if (df_google is not None and not df_google.empty
+                and "campaign_id" in df_google.columns):
+            _g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
+                           & (df_google["date_start"] <= pd.Timestamp(d2))]
+            _g = _g[_g["campaign_id"].astype(str).map(
+                lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
+            for _r in _g.itertuples():
+                _cid = str(getattr(_r, "campaign_id", "") or "")
+                _k = ("google", _nrm((goog_cfg.get(_cid, {}) or {}).get("campaign_name")))
+                _c = out.setdefault(_k, {"spend": 0.0, "clics": 0})
+                _c["spend"] += float(getattr(_r, "cost_micros", 0) or 0) / 1e6
+                _c["clics"] += int(getattr(_r, "clicks", 0) or 0)
+        return {_k: _v for _k, _v in out.items() if _v["spend"] > 0 or _v["clics"] > 0}
+
+    def _arrivee_theme(lbl, d1, d2):
+        """Les clics que les régies facturent contre les visites que GA4 compte —
+        ce que lit `page_arrivee_muette`.
+
+        LES DEUX CÔTÉS COMPTENT LES MÊMES CAMPAGNES, et c'est tout l'enjeu de ce
+        lecteur. La version naïve comparait TOUS les clics du thème aux sessions
+        que GA4 sait rattacher : une campagne Meta sans paramètres de campagne
+        dans ses liens (Meta n'en pose aucun tout seul) n'apparaît jamais dans
+        `by_campaign`, donc ses visites valaient zéro pendant que ses clics
+        comptaient — et la règle publiait « 2 000 clics n'arrivent nulle part »
+        en accusant la balise d'une page qui marche très bien. C'était un chiffre
+        fabriqué (`CLAUDE.md` §7).
+
+        On ne compare donc QUE les campagnes que GA4 rattache déjà. Ce que ça
+        laisse dehors — une campagne dont les liens ne portent aucun paramètre —
+        est un vrai problème, mais ce n'est pas celui de cette règle, et il
+        demande une mesure qu'on n'a pas (distinguer « pas de tag » de « pas de
+        trafic »).
+
+        `sessions=None` veut dire « on n'a rien à comparer » : la règle se tait
+        plutôt que d'accuser un tracking qu'elle n'a pas pu interroger.
+        """
+        if not ga4_ctx:
+            return {"clics": 0, "depense": 0.0, "sessions": None}
+        _ga4 = _campagnes_ga4_theme(lbl)
+        _pub = _pub_par_campagne_theme(lbl, d1, d2)
+        _communes = [(_k, _v) for _k, _v in _pub.items() if _k[1] in _ga4]
+        if not _communes:
+            return {"clics": 0, "depense": 0.0, "sessions": None}
+        # Un nom vu des deux côtés (même campagne sur les deux régies) ne compte
+        # ses sessions qu'UNE fois : elles sont indexées par le nom, pas par la
+        # régie, et les additionner doublerait le dénominateur.
+        _noms = {_k[1] for _k, _ in _communes}
+        return {
+            "clics": sum(int(_v["clics"]) for _, _v in _communes),
+            "depense": sum(float(_v["spend"]) for _, _v in _communes),
+            "sessions": sum(int((_ga4.get(_n) or {}).get("sessions") or 0)
+                            for _n in _noms),
+        }
+
+    def _regies_theme(lbl, d1, d2):
+        """Ce que le thème a coûté et rapporté, RÉGIE PAR RÉGIE — ce que lit
+        `theme_deux_regies`.
+
+        `complet` EST LE CŒUR DE CE LECTEUR, pas un détail. Le revenu d'une
+        campagne n'entre que si GA4 la retrouve par son nom ; une campagne
+        étiquetée dont l'`utm_campaign` ne correspond plus verse sa dépense sans
+        jamais verser son revenu
+        (`.scratch/construction/issues/18-revenu-google-non-rattachable.md`).
+        Une règle qui compare deux régies là-dessus dirait « l'autre rend quatre
+        fois mieux » alors qu'on a simplement perdu le revenu d'une campagne.
+        `complet` vaut donc `True` seulement quand TOUTE campagne de ce thème
+        qui a dépensé sur ce canal a été retrouvée côté GA4.
+
+        CE LECTEUR NE TRANCHE PAS LA QUESTION DU TICKET 18 et ne la contourne
+        pas : il ne change rien à la façon dont la dépense est comptée ailleurs,
+        il refuse seulement de faire parler UNE règle sur une attribution dont
+        il sait qu'elle est trouée.
+        """
+        if not ga4_ctx:
+            return {}
+        _ga4 = _campagnes_ga4_theme(lbl)
+        depenses = {}
+        for (_canal, _nom), _v in _pub_par_campagne_theme(lbl, d1, d2).items():
+            if _v["spend"] > 0:
+                depenses.setdefault(_canal, {})[_nom] = _v["spend"]
+
+        # UN NOM PORTÉ PAR LES DEUX RÉGIES LES REND TOUTES DEUX INCOMPLÈTES. GA4
+        # indexe par `utm_campaign`, c'est-à-dire par un NOM : si la même chaîne
+        # existe des deux côtés, le même revenu serait versé aux deux
+        # numérateurs et la comparaison compterait deux fois ce qui n'est arrivé
+        # qu'une. On ne sait pas départager, donc on ne parle pas.
+        ambigu = (len(depenses) == 2
+                  and bool(set(depenses["meta"]) & set(depenses["google"])))
+
+        return {
+            _canal: {
+                "spend": sum(_par_nom.values()),
+                "revenue": sum(float((_ga4.get(_n) or {}).get("revenue") or 0)
+                               for _n in _par_nom),
+                # Une campagne sans nom stocké ne peut PAS être retrouvée côté
+                # GA4 : elle rend l'attribution de ce canal incomplète, par
+                # construction.
+                "complet": (not ambigu) and all(_n and _n in _ga4 for _n in _par_nom),
+            }
+            for _canal, _par_nom in depenses.items()
+        }
+
+    def _faits_payants(lbl):
+        """Les cinq lectures neuves du ticket 10, assemblées pour un thème.
+
+        Chaque lecture est protégée séparément : une table absente ou une
+        colonne qui manque fait taire SA règle, pas les cinq autres.
+        """
+        faits = {}
+        for _nom, _lire in (
+            ("campagnes", lambda: _budget_campagnes_theme(lbl)),
+            ("usure", lambda: _usure_theme(lbl, cur_since, last_full_day)),
+            ("creneaux", lambda: _creneaux_theme(
+                lbl, last_full_day - timedelta(days=_CRENEAU_JOURS - 1),
+                last_full_day)),
+            ("arrivee", lambda: _arrivee_theme(lbl, cur_since, last_full_day)),
+            ("regies", lambda: _regies_theme(lbl, cur_since, last_full_day)),
+        ):
+            try:
+                faits[_nom] = _lire()
+            except Exception:
+                pass   # clé absente = « on n'a pas lu ça », la règle se tait
+        return faits
+
     # JUSQU'OÙ CHAQUE RÉGIE EST À JOUR. Une récolte en retard et une campagne
     # coupée produisent le même zéro ; sans cette borne, « ce thème s'est
     # arrêté » se déclencherait sur un fetch en panne. Même raisonnement que
@@ -2895,6 +3379,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         for _tf0 in (_pl.get("themes_focus") or []):
             for _r0 in (_tf0.get("recos") or []):
                 _deja_servies.add(empreinte_conseil(_r0))
+
+    # LES CONSEILS « SOCLE » NÉS D'UN THÈME. `reglages` (plus bas) ne se
+    # nourrissait que de `rule_recos`, qui sont des conseils de COMPTE. Le
+    # ticket 10 en apporte un qui naît dans la boucle des thèmes
+    # (`page_arrivee_muette`) et qui a la même nature : un prérequis de mesure,
+    # pas du pilotage hebdomadaire. Il se récolte ici et rejoint le bloc
+    # « réglages » — même patron que `_constat_cout`, qui sort de cette boucle
+    # pour rejoindre les constats.
+    _socle_themes: list[dict] = []
 
     themes_focus = []
     for lbl in theme_list:
@@ -3027,11 +3520,24 @@ def build_payload(sb, user_id: str) -> dict | None:
             # parce qu'à l'intérieur d'un thème une campagne n'a plus personne à
             # qui se comparer.
             try:
-                t_recos += regles_payantes(
+                _payantes = regles_payantes(
                     lbl,
                     _annonces_theme(lbl, cur_since, last_full_day),
                     _budget_theme(lbl, _sem_theme),
+                    _faits_payants(lbl),
                 )
+                # `page_arrivee_muette` NE PREND PAS UNE DES TROIS PLACES DU
+                # THÈME. C'est un prérequis de MESURE (levier `socle`) : tant
+                # qu'on ne sait pas où passent les clics payés, tout ce qu'on
+                # dit du retour de ce thème est bâti sur un revenu partiel —
+                # elle répare la mesure dont les autres conseils dépendent, elle
+                # ne se met pas en concurrence avec eux
+                # (`.scratch/refonte/issues/24-conseils-payants-manquants.md`).
+                for _r_pay in _payantes:
+                    if _r_pay.get("key") == "page_arrivee_muette":
+                        _socle_themes.append(_r_pay)
+                    else:
+                        t_recos.append(_r_pay)
             except Exception:
                 pass
             # LE COÛT PAR CONVERSION REJOINT LES CONSTATS AU LIEU D'ÊTRE JETÉ.
@@ -3201,9 +3707,21 @@ def build_payload(sb, user_id: str) -> dict | None:
     # sortis du flux par thème — ce sont des prérequis, pas du pilotage hebdo.
     # Ils passent par la même pose que les autres : c'est ce qui leur donne le
     # levier `socle`, donc leur dispense de geste (voir `_est_conseil`).
+    # UN SEUL `page_arrivee_muette`, CELUI QUI PERD LE PLUS DE CLICS. Un tag
+    # absent d'une page d'arrivée ne se produit pas « par thème » : trois thèmes
+    # prioritaires afficheraient trois fois la même réparation. On garde l'écart
+    # le plus gros — c'est celui dont la réparation rapporte le plus.
+    _socle_uniques, _vus = [], set()
+    for _r_s in sorted(_socle_themes, key=lambda r: -(r.get("_enjeu") or 0)):
+        if _r_s.get("key") in _vus:
+            continue
+        _vus.add(_r_s.get("key"))
+        _socle_uniques.append(_r_s)
+
     reglages = [_strip_reco(_attach_grammaire(r))
-                for r in sorted(rule_recos, key=lambda r: r["priority"])
-                if r.get("key") in SETUP_KEYS][:3]
+                for r in ([r for r in sorted(rule_recos, key=lambda r: r["priority"])
+                           if r.get("key") in SETUP_KEYS]
+                          + _socle_uniques)][:3]
 
     # ── Verdict déterministe (même logique que le rapport) ───────────────────
     _signals = []
