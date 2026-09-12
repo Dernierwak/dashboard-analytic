@@ -1,7 +1,7 @@
 # L'identifiant d'annonce Meta : la migration livrée est un piège armé
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 

@@ -178,6 +178,44 @@ CREATE POLICY "meta_ads_update_own" ON public.meta_ads_insights
 CREATE POLICY "meta_ads_delete_own" ON public.meta_ads_insights
     FOR DELETE USING (auth.uid() = user_id);
 
+-- ── Meta Ads : ad_id, l'identifiant vraiment unique (voir meta_ads_ad_id.sql) ─
+--
+-- POURQUOI. `ad_name` est le nom LISIBLE que l'annonceur choisit librement :
+-- rien dans Meta Ads Manager n'interdit deux annonces « fr_awarness » côte à
+-- côte, et c'est le cas courant dès qu'on réutilise « Video 1 » dans deux
+-- Groupes. La clé d'unicité portait dessus — donc l'une des deux écrasait
+-- l'autre en silence, et sa dépense ne disparaissait pas du dashboard : elle
+-- n'entrait jamais en base. Mesuré sur le compte de test au 19-20/08/2026 :
+-- ~17 € puis ~15 €, environ 40 % de la dépense Meta de ces jours-là.
+-- `ad_id` est le numéro que Meta attribue à la création — jamais dupliqué.
+-- C'est déjà le principe de `google_ads_ad_insights` côté Google (§3bis).
+--
+-- LA COLONNE EST NULLABLE ET SANS DEFAULT, exprès. Les lignes déjà en base
+-- n'ont pas d'ad_id ; leur donner une valeur commune ('') les ferait toutes
+-- entrer en collision sous la nouvelle contrainte, et l'ADD CONSTRAINT
+-- échouerait. Postgres ne considère jamais deux NULL comme égaux dans une
+-- contrainte UNIQUE, donc l'ALTER passe même avec des homonymes déjà stockés.
+--
+-- ⚠ CE FICHIER NE SUFFIT PAS SEUL. Une fois la contrainte déplacée, la récolte
+-- suivante réécrit une date déjà connue (recouvrement de 7 jours) avec un
+-- ad_id réel qui n'entre en conflit avec rien : la vieille ligne NULL et la
+-- neuve cohabiteraient, et la dépense de cette date serait comptée DEUX FOIS.
+-- Ce qui l'empêche vit dans `upsert_meta_ads` (`saas/commun/insert_data.py`),
+-- qui efface les lignes `ad_id IS NULL` des dates qu'il s'apprête à réécrire,
+-- bornées à l'utilisateur et au lot en cours. Jouer ce fichier sur une base
+-- dont le code Python n'est PAS à cette révision laisse le double comptage
+-- ouvert.
+--
+-- ⚠ OPÉRATION SENSIBLE, signalée comme l'exige CLAUDE.md §7 : le DROP
+-- CONSTRAINT ci-dessous remplace une contrainte d'unicité existante. Aucune
+-- ligne n'est effacée ici. Même patron que `ga4_insights_uq` en section 2.
+ALTER TABLE public.meta_ads_insights
+    ADD COLUMN IF NOT EXISTS ad_id text;
+ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights_uq;
+ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights_uq2;
+ALTER TABLE public.meta_ads_insights
+    ADD CONSTRAINT meta_ads_insights_uq2 UNIQUE (user_id, date_start, ad_id);
+
 -- ── Meta : la config par campagne (étiquette, budget, statut) ───────────────
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS campaign_labels    text[] NOT NULL DEFAULT '{}',

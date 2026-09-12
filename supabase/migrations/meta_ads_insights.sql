@@ -18,7 +18,12 @@ CREATE TABLE IF NOT EXISTS public.meta_ads_insights (
     created_at   timestamptz NOT NULL DEFAULT now(),
     updated_at   timestamptz NOT NULL DEFAULT now(),
 
-    -- Une ligne par pub par jour par utilisateur
+    -- Une ligne par pub par jour par utilisateur.
+    -- ⚠ CETTE CLÉ EST PÉRIMÉE — `ad_name` est réutilisable, donc deux annonces
+    -- homonymes n'en faisaient qu'une et la dépense de la seconde n'entrait
+    -- jamais en base. Elle est remplacée par (user_id, date_start, ad_id) :
+    -- voir `meta_ads_ad_id.sql`, replié dans `000_run_me_all.sql` juste après
+    -- ce bloc. Jouer CE fichier seul laisse le bug en place.
     CONSTRAINT meta_ads_insights_uq UNIQUE (user_id, date_start, ad_name)
 );
 

@@ -1,7 +1,8 @@
 -- ============================================================================
 -- META ADS — ad_id, l'identifiant VRAIMENT unique d'une annonce (TASK-018)
--- (copie autonome de la section 22 de 000_run_me_all.sql —
---  exécuter l'un OU l'autre, jamais les deux dans la même session)
+-- (copie autonome — le fix est REPLIÉ dans 000_run_me_all.sql depuis le
+--  2026-09-11, juste après le bloc meta_ads_insights. Jouer l'un OU
+--  l'autre ; 000 suffit, et c'est le fichier que CLAUDE.md §2 désigne.)
 --
 -- LE BUG, MESURÉ EN CONDITIONS RÉELLES (trouvé et chiffré par le checker de
 -- TASK-017). Deux annonces DISTINCTES peuvent porter le même `ad_name` dans
@@ -10,7 +11,7 @@
 -- de test : la campagne BW_Sommer_Traffic_2026 porte deux annonces
 -- "fr_awarness" avec des ad_id différents.
 --
--- `upsert_meta_ads` (scripts/insert_data.py) dédupliquait les lignes reçues
+-- `upsert_meta_ads` (saas/commun/insert_data.py) dédupliquait les lignes reçues
 -- de l'API sur (date_start, ad_name), et la contrainte d'unicité en base
 -- portait la même clé (`meta_ads_insights_uq`). Résultat : l'une des deux
 -- annonces écrasait SILENCIEUSEMENT l'autre à chaque récolte — la dépense de
@@ -44,12 +45,12 @@
 -- `_RECOUVREMENT_JOURS_META = 7` jours) upserte un ad_id RÉEL qui n'entre en
 -- conflit avec RIEN — la vieille ligne NULL et la nouvelle ligne cohabitent
 -- dans la table, et la dépense de cette date serait comptée DEUX FOIS,
--- durablement. C'est `upsert_meta_ads` (scripts/insert_data.py) qui répare
+-- durablement. C'est `upsert_meta_ads` (saas/commun/insert_data.py) qui répare
 -- ça : avant chaque upsert, il supprime explicitement les lignes
 -- `ad_id IS NULL` restantes pour les dates qu'il s'apprête à réécrire (portée
 -- strictement bornée à l'utilisateur et aux dates du lot en cours). C'EST
 -- CETTE PARTIE-LÀ, PAS CETTE MIGRATION SEULE, QUI ÉVITE LE DOUBLE COMPTAGE —
--- jouer cette migration sans le code à jour (scripts/insert_data.py à cette
+-- jouer cette migration sans le code à jour (saas/commun/insert_data.py à cette
 -- révision ou plus récente) laisse le risque ouvert.
 --
 -- CE QUE CE FIX NE RÉPARE PAS RÉTROACTIVEMENT. Les lignes déjà écrasées avant
