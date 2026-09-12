@@ -52,12 +52,21 @@ type « coupe cette campagne ».
 ## `insights.py` — les constats
 
 Croise TOUT l'historique disponible (Ads depuis le 1er janvier, posts
-Instagram stockés) par thème / format / campagne / créneau, avec le revenu
-GA4 quand il existe. `build_matrix` construit la matrice, `build_constats` en
-tire 3-5 phrases chiffrées à **clés stables** : un constat rejeté par le
-client (`insight_feedback`) reste écarté quand il se régénère à l'identique.
-L'IA ne formule jamais ces phrases — elle les reçoit ensuite comme contexte
-pour le brief.
+Instagram stockés) par format / campagne / créneau, avec le revenu GA4 quand
+il existe. `build_matrix` construit la matrice, `build_constats` en tire 3-5
+phrases chiffrées à **clés stables** : un constat rejeté par le client
+(`insight_feedback`) reste écarté quand il se régénère à l'identique. L'IA ne
+formule jamais ces phrases — elle les reçoit ensuite comme contexte pour le
+brief.
+
+**Le croisement par THÈME ne se calcule plus ici.** Il vit dans la vue
+`theme_regroupement` (`supabase/migrations/theme_regroupement.sql`), que
+`build_matrix` reçoit toute lue. C'est le seul endroit où Python et TypeScript
+partagent une implémentation au lieu d'en entretenir deux qui dérivent : un
+Thème ne produit aucune donnée, son total se recalcule à la lecture
+(`CONTEXT.md`, « Regroupement »). Le seuil des 100 CHF qui autorise à juger un
+thème y vit aussi, rendu avec la ligne sous le nom `juge` — il ne s'écrit plus
+en clair dans `C_SEUILS`.
 
 ## `labeling.py` et `categorizing.py` — même patron, et c'est voulu
 

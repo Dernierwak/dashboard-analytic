@@ -53,6 +53,62 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) ->
     return _all_pages(q)
 
 
+# ── Le regroupement par thème — la vue SQL ────────────────────────────────────
+
+class VueRegroupementAbsente(RuntimeError):
+    """La vue `theme_regroupement` n'est pas en base : la migration
+    `supabase/migrations/theme_regroupement.sql` n'a pas été jouée.
+
+    ELLE NE SE RATTRAPE PAS PAR UN REPLI. Recalculer les thèmes en Python
+    ressusciterait la seconde implémentation que la vue existe pour supprimer —
+    et elle dériverait en silence, parce qu'un repli qui marche ne se remarque
+    pas. Le rapport ne se publie donc pas : une carte de thème vide se lit comme
+    un compte qui n'a rien fait, pas comme une migration qui manque.
+    """
+
+
+def fetch_theme_regroupement(supabase: Client, user_id: str) -> list[dict]:
+    """Le total de chaque thème, recalculé en base à la lecture.
+
+    Une ligne par thème : dépense, clics, impressions, CTR, revenu attribué,
+    publications, portée et engagement moyens, le drapeau `juge` (assez de
+    dépense pour qu'on se prononce) et le `roas` qu'il autorise. Voir
+    `supabase/migrations/theme_regroupement.sql` pour la règle exacte.
+
+    LE FILTRE `user_id` N'EST PAS DÉCORATIF. La vue est `security_invoker` :
+    elle protège l'appelant qui passe par un jeton d'utilisateur (Pulse), pas
+    celui qui passe par la clé de service (le worker), pour qui la RLS ne
+    s'applique pas. Sans ce filtre, le worker lirait les thèmes de tous les
+    comptes et les attribuerait à un seul.
+
+    PAGINÉE, et l'ordre est posé AVANT la pagination : PostgREST plafonne à
+    1 000 lignes et tronque en silence (CLAUDE.md §8), et sans ordre stable deux
+    pages successives peuvent répéter ou sauter des lignes. Un compte n'a pas
+    mille thèmes aujourd'hui — la pagination coûte trois lignes et évite d'avoir
+    à le vérifier.
+    """
+    try:
+        return _all_pages(
+            lambda: supabase.table("theme_regroupement")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("label")
+        )
+    except Exception as e:
+        # 42P01 = « undefined_table » côté Postgres ; PGRST205 = « la table est
+        # introuvable dans le cache de schéma » côté PostgREST, ce qu'il rend
+        # quand la vue vient d'être créée ou n'existe pas. Toute autre panne
+        # remonte telle quelle : une coupure réseau n'est pas une migration
+        # manquante, et la traiter comme telle enverrait David jouer du SQL
+        # pour rien.
+        if getattr(e, "code", None) in ("42P01", "PGRST205"):
+            raise VueRegroupementAbsente(
+                "vue theme_regroupement absente — jouer "
+                "supabase/migrations/theme_regroupement.sql (ou "
+                "000_run_me_all.sql), puis relancer.") from e
+        raise
+
+
 # ── Tab Coût — labels & budgets ────────────────────────────────────────────────
 
 def fetch_labels(supabase: Client, user_id: str) -> list[str]:

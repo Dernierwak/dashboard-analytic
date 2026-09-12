@@ -1,10 +1,14 @@
 """Matrice full-history + constats de la vision globale — déterministe, zéro IA.
 
 La matrice croise TOUT l'historique disponible (Ads depuis le 1er janvier,
-posts Instagram stockés) par thème / format / campagne / créneau, avec le
-revenu GA4 quand il existe. Les constats (« Ce qui fonctionne pour toi »)
-en tirent 3-5 phrases chiffrées à clés STABLES : un constat rejeté par le
-client (insight_feedback) reste écarté quand il se régénère à l'identique.
+posts Instagram stockés) par format / campagne / créneau, avec le revenu GA4
+quand il existe. LE CROISEMENT PAR THÈME, LUI, VIENT DE LA BASE : la vue
+`theme_regroupement` est la seule implémentation du regroupement, lue aussi bien
+par ce module que par Pulse (`supabase/migrations/theme_regroupement.sql`).
+
+Les constats (« Ce qui fonctionne pour toi ») en tirent 3-5 phrases chiffrées
+à clés STABLES : un constat rejeté par le client (insight_feedback) reste
+écarté quand il se régénère à l'identique.
 
 L'IA ne formule PAS les constats — pas d'hallucination sur des chiffres que
 le client va valider. Elle les reçoit ensuite comme contexte (brief + reco IA).
@@ -21,9 +25,16 @@ import pandas as pd  # noqa: E402
 from saas.recos_ia.reco_engine import DAYS, HOURS, FORMAT_LABELS, SEUILS  # noqa: E402
 
 # Seuils anti-bruit des constats (cohérents avec SEUILS du moteur)
+#
+# `theme_spend_min` N'EST PLUS ICI : les 100 CHF qui autorisent à juger un thème
+# vivent dans la vue `theme_regroupement`, avec le chiffre qu'ils autorisent.
+# Un seuil est une règle de jugement ; le laisser en Python obligeait chaque
+# appelant à savoir interpréter une somme, et garantissait deux seuils qui
+# dérivent le jour où TypeScript en aurait eu besoin. Les constats lisent
+# maintenant le drapeau `juge` que la vue rend avec la ligne. Décidé par
+# .scratch/refonte/issues/17-ce-qui-se-regroupe-et-ce-qui-est-mesure.md.
 C_SEUILS = {
-    "theme_spend_min": 100.0,   # un thème jugé sur ≥ 100 CHF dépensés
-    "theme_posts_min": 5,       # ...ou ≥ 5 posts (thème organique)
+    "theme_posts_min": 5,       # un thème organique jugé sur ≥ 5 posts
     "format_posts_min": 5,      # format jugé sur ≥ 5 posts
     "format_reach_boost": 1.2,  # ≥ +20 % vs la portée moyenne du compte
     "camp_spend_min": 50.0,     # locomotive : ≥ 50 CHF dépensés
@@ -44,7 +55,7 @@ def _slug(s) -> str:
 # ── Matrice ──────────────────────────────────────────────────────────────────
 
 def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
-                 ga4_full, last_full_day, theme_events=None) -> dict | None:
+                 ga4_full, last_full_day, themes) -> dict | None:
     """Vue agrégée de tout l'historique. None si aucune donnée exploitable.
 
     df_meta_raw   : meta_ads_insights complet (date_start, campaign_name, spend, …)
@@ -52,20 +63,21 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
     df_insta      : instagram_organic_posts complet (date, type, reach, eng, labels, …)
     meta_cfg      : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
     ga4_full      : build_ga4_context sur TOUT l'historique (ou None)
-    theme_events  : {label: [{event_name, rang}]} — la conversion que le client a
-                    désignée par thème (page Thèmes). Quand un thème a un événement
-                    « principal » MESURÉ ET DOTÉ D'UNE VALEUR MONÉTAIRE, cette valeur
-                    (`events_by_campaign`) remplace le revenu GA4 générique du compte
-                    pour ce thème — sinon la même campagne « achat » gonflait le ROAS
-                    d'un thème « newsletter » qui n'a jamais vendu.
-                    UN PRINCIPAL MESURÉ MAIS SANS VALEUR (generate_lead, sign_up,
-                    contact…) NE REMPLACE RIEN : il n'a pas de CHF à donner, et
-                    écrire 0 CHF affirmerait un revenu nul alors que GA4 attribue
-                    peut-être un vrai revenu à ces mêmes campagnes (bug constaté :
-                    « ROAS 0.0 » publié pour un thème dont les 40 leads mesurés
-                    prouvent au contraire que la conversion fonctionne). Sans thème
-                    choisi, ou principal jamais mesuré, ou mesuré sans valeur, le
-                    comportement d'avant reste identique (revenu GA4 générique).
+    themes        : les lignes de la vue `theme_regroupement`, déjà lues et déjà
+                    filtrées sur ce compte (`fetch_theme_regroupement`).
+
+    LE TOTAL PAR THÈME NE SE CALCULE PLUS ICI, ET C'EST LE CŒUR DU TICKET 04.
+    Un Thème ne produit aucune donnée : il change par quoi des chiffres déjà en
+    base sont additionnés, donc son total se recalcule À LA LECTURE, tout de
+    suite, sur tout l'historique — y compris les semaines passées (CONTEXT.md,
+    « Regroupement »). Pulse doit savoir le faire aussi, et l'écrire une seconde
+    fois en TypeScript aurait donné deux jeux de seuils qui dérivent. Une seule
+    implémentation existe désormais, en SQL, et les deux langages la lisent :
+    `supabase/migrations/theme_regroupement.sql`.
+
+    Ce qui reste ici — campagnes, formats, créneaux, couverture — n'alimente que
+    des constats RÉDIGÉS, qui attendent le Jour de travail de toute façon : les
+    descendre en SQL serait un gros refactor pour zéro fraîcheur gagnée.
     """
     campaigns: list[dict] = []
     dates: list = []
@@ -121,30 +133,15 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         rev_by_name = {_norm(k): float((v or {}).get("revenue") or 0)
                        for k, v in ga4_full["by_campaign"].items()}
 
-    # Événements GA4 par campagne (même pont, même normalisation) — sert plus
-    # bas à remplacer le revenu générique d'un thème par SA conversion choisie.
-    events_by_name = {}
-    if has_ga4:
-        events_by_name = {_norm(k): (v or {})
-                          for k, v in (ga4_full.get("events_by_campaign") or {}).items()}
-    # L'événement principal par thème (page Thèmes). Un thème sans principal
-    # choisi n'entre pas dans ce dict et garde le revenu générique ci-dessous.
-    princ_by_label: dict[str, set] = {}
-    for lbl, evs in (theme_events or {}).items():
-        noms = {e["event_name"] for e in (evs or []) if e.get("rang") == "principal"}
-        if noms:
-            princ_by_label[lbl] = noms
-
     for c in campaigns:
         c["ctr"] = c["clicks"] / c["impressions"] * 100 if c["impressions"] > 0 else 0.0
         c["cpc"] = c["spend"] / c["clicks"] if c["clicks"] > 0 else 0.0
         c["revenue"] = rev_by_name.get(_norm(c["name"])) if has_ga4 else None
     campaigns.sort(key=lambda c: -c["spend"])
 
-    # Instagram : formats, créneaux, posts par thème
+    # Instagram : formats, créneaux, couverture
     formats: list[dict] = []
     slots: list[dict] = []
-    posts_by_label: dict[str, dict] = {}
     posts_total = 0
     posts_labeled = 0
     account_reach_avg = 0.0
@@ -185,90 +182,25 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
                                   "posts": int(r["count"]), "reach_avg": round(float(r["mean"]), 1)})
         except Exception:
             pass
-        # Posts par thème
+        # Combien de publications portent au moins un thème — la couverture,
+        # pas leur bilan : celui-là vient de la vue.
         if "labels" in p.columns:
-            for _, r in p.iterrows():
-                lbls = r.get("labels") or []
-                if len(lbls) > 0:
-                    posts_labeled += 1
-                for lbl in lbls:
-                    a = posts_by_label.setdefault(lbl, {"posts": 0, "reach": 0.0, "eng": 0.0})
-                    a["posts"] += 1
-                    a["reach"] += float(r.get("reach") or 0)
-                    a["eng"] += float(r.get("eng") or 0)
+            posts_labeled = int(sum(1 for _, r in p.iterrows() if len(r.get("labels") or []) > 0))
 
     if not campaigns and posts_total == 0:
         return None
 
-    # Thèmes : dépense/clics/revenu (campagnes) + posts/portée/engagement (Instagram)
-    themes_map: dict[str, dict] = {}
-    # Revenu de LA conversion choisie, cumulé campagne par campagne — seulement
-    # pour les thèmes qui ont un événement principal (voir princ_by_label).
-    theme_event_acc: dict[str, dict] = {}
-    for c in campaigns:
-        if not c["label"]:
-            continue
-        t = themes_map.setdefault(c["label"], {
-            "label": c["label"], "spend": 0.0, "clicks": 0, "revenue": 0.0 if has_ga4 else None,
-            "posts": 0, "reach_avg": None, "eng_avg": None, "_impr": 0})
-        t["spend"] += c["spend"]
-        t["clicks"] += c["clicks"]
-        t["_impr"] += c["impressions"]
-        if has_ga4 and c["revenue"] is not None:
-            t["revenue"] = (t["revenue"] or 0.0) + c["revenue"]
-        if has_ga4 and c["label"] in princ_by_label:
-            cev = events_by_name.get(_norm(c["name"])) or {}
-            acc = theme_event_acc.setdefault(c["label"], {"count": 0, "value": 0.0})
-            for nom in princ_by_label[c["label"]]:
-                d = cev.get(nom)
-                if d:
-                    acc["count"] += int(d.get("count") or 0)
-                    acc["value"] += float(d.get("value") or 0)
-    for lbl, a in posts_by_label.items():
-        t = themes_map.setdefault(lbl, {
-            "label": lbl, "spend": 0.0, "clicks": 0, "revenue": 0.0 if has_ga4 else None,
-            "posts": 0, "reach_avg": None, "eng_avg": None, "_impr": 0})
-        t["posts"] = a["posts"]
-        t["reach_avg"] = round(a["reach"] / a["posts"], 1) if a["posts"] else None
-        t["eng_avg"] = round(a["eng"] / a["posts"], 2) if a["posts"] else None
-    themes = []
-    for t in themes_map.values():
-        impr = t.pop("_impr")
-        t["ctr"] = round(t["clicks"] / impr * 100, 2) if impr > 0 else None
-        t["spend"] = round(t["spend"], 2)
-        # Le thème a un événement principal mesuré ET DOTÉ D'UNE VALEUR (> 0) :
-        # sa conversion choisie remplace le revenu générique du compte — c'est
-        # elle, et pas le fourre-tout GA4, que le client a désigné pour juger
-        # ce thème.
-        #
-        # LA CONDITION PORTE SUR LA VALEUR, PAS SUR LE COMPTE. Un principal
-        # mesuré mais sans valeur (generate_lead, sign_up, contact…) — le cas
-        # majoritaire hors e-commerce — ne remplace RIEN : il n'a aucun CHF à
-        # donner, et écrire 0 CHF affirmerait un revenu nul alors que GA4 peut
-        # très bien attribuer un vrai revenu à ces mêmes campagnes. `acc["count"]
-        # > 0` seul avait ce bug : il gardait la condition sur le nombre de
-        # conversions mais écrivait `acc["value"]`, donc 0 CHF, pour tout
-        # événement non monétaire mesuré — un thème qui convertit bien se
-        # voyait alors étiqueté « dépense sans vente attribuée ».
-        #
-        # Sans principal choisi, choisi mais jamais mesuré, ou mesuré sans
-        # valeur, on garde le revenu générique déjà calculé ci-dessus
-        # (comportement inchangé, cf. angle mort « thème sans conversion
-        # choisie »). Le NOMBRE de conversions mesurées (ex. « 40 leads »)
-        # reste disponible ailleurs, au niveau hebdomadaire par thème
-        # (`_theme_ga4` → `_reco_evenements` et `_theme_ai_recos` dans
-        # build_report.py) : ce n'est pas ce chiffre de revenu qui doit le
-        # porter.
-        acc = theme_event_acc.get(t["label"])
-        if acc and acc["value"] > 0:
-            t["revenue"] = acc["value"]
-        t["roas"] = (round(t["revenue"] / t["spend"], 2)
-                     if has_ga4 and t["revenue"] is not None and t["spend"] >= C_SEUILS["theme_spend_min"]
-                     else None)
-        if t["revenue"] is not None:
-            t["revenue"] = round(t["revenue"], 2)
-        themes.append(t)
-    themes.sort(key=lambda t: -(t["spend"] or 0))
+    # LES THÈMES VIENNENT DE LA VUE, pas d'ici (voir le docstring). L'ordre
+    # reste le contrat de cette fonction : `build_report` s'appuie sur
+    # « trié par dépense décroissante ».
+    #
+    # `user_id` REPART : la matrice est déjà l'objet d'UN compte, et ses six
+    # premiers thèmes finissent tels quels dans le payload publié, donc dans
+    # l'écran et dans l'email. Un identifiant qui n'y sert à rien n'a rien à
+    # faire dans ce qu'on expédie.
+    themes = sorted(({k: v for k, v in (t or {}).items() if k != "user_id"}
+                     for t in (themes or [])),
+                    key=lambda t: -(t.get("spend") or 0))
 
     for c in campaigns:
         c["spend"] = round(c["spend"], 2)
@@ -334,27 +266,46 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
     themes = _focus(matrix["themes"], lambda t: t["label"])
     # Un thème dont on SAIT qu'il ne rapporte rien ne peut pas être « ton moteur »
     # (sinon theme_best et theme_worst couronnent le même thème).
+    #
+    # `juge` REMPLACE LE SEUIL ÉCRIT EN CLAIR (les trois occurrences de ce
+    # fichier). Il vient de la vue avec le chiffre qu'il autorise : impossible
+    # désormais qu'un constat se prononce sur un thème que le ROAS, lui, refuse
+    # de juger.
+    #
+    # ET C'EST LA VUE QUI DIT SI ON CONNAÎT LE REVENU D'UN THÈME, pas
+    # `coverage.ga4`. Les deux ne répondent pas sur le même périmètre :
+    # `coverage.ga4` regarde la fenêtre du rapport (depuis le 1er janvier),
+    # la vue regarde tout l'historique. Début janvier, ou sur un compte dont
+    # l'attribution s'est arrêtée, `coverage.ga4` dit « je ne sais pas » pendant
+    # que la vue affiche un revenu sur la carte du thème : les constats
+    # diraient alors « revenu inconnu » sous un chiffre de revenu. `revenue`
+    # à NULL est la seule réponse qui parle du thème dont on parle.
+    def _revenu_connu(t):
+        return t.get("revenue") is not None
+
     def _proven_zero(t):
-        return has_ga4 and t["spend"] >= C_SEUILS["theme_spend_min"] and (t.get("revenue") or 0) == 0
+        return _revenu_connu(t) and t.get("juge") and (t.get("revenue") or 0) == 0
     best_t = None
-    if has_ga4:
-        cands = [t for t in themes
-                 if t.get("roas") is not None and (t.get("revenue") or 0) > 0
-                 and t["roas"] >= C_SEUILS["theme_best_roas_min"]]
-        if cands:
-            best_t = max(cands, key=lambda t: t["roas"])
-            out.append(_constat(
-                f"theme_best:{_slug(best_t['label'])}", "theme_best",
-                f"Le thème « {best_t['label']} » est ton moteur",
-                f"{best_t['spend']:.0f} CHF investis → {best_t['revenue']:.0f} CHF attribués "
-                f"(ROAS {best_t['roas']:.1f}) {period_txt}.", fb))
+    # Pas de garde `has_ga4` : un `roas` non nul EST la réponse de la vue, qui
+    # ne le calcule que sur un revenu connu et une dépense jugée.
+    cands = [t for t in themes
+             if t.get("roas") is not None and (t.get("revenue") or 0) > 0
+             and t["roas"] >= C_SEUILS["theme_best_roas_min"]]
+    if cands:
+        best_t = max(cands, key=lambda t: t["roas"])
+        out.append(_constat(
+            f"theme_best:{_slug(best_t['label'])}", "theme_best",
+            f"Le thème « {best_t['label']} » est ton moteur",
+            f"{best_t['spend']:.0f} CHF investis → {best_t['revenue']:.0f} CHF attribués "
+            f"(ROAS {best_t['roas']:.1f}) {period_txt}.", fb))
     if best_t is None:
         cands = [t for t in themes
-                 if t["spend"] >= C_SEUILS["theme_spend_min"] and t.get("ctr")
+                 if t.get("juge") and t.get("ctr")
                  and not _proven_zero(t)]
         if cands:
             best_t = max(cands, key=lambda t: t["ctr"])
-            _why = ("(pas assez de revenu attribué pour juger au ROAS)" if has_ga4
+            _why = ("(pas assez de revenu attribué pour juger au ROAS)"
+                    if _revenu_connu(best_t)
                     else "(revenu inconnu tant que Google Analytics est muet)")
             out.append(_constat(
                 f"theme_best:{_slug(best_t['label'])}", "theme_best",
@@ -373,17 +324,17 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
                 f"{best_t['eng_avg']:.1f} % d'engagement moyen sur {best_t['posts']} posts {period_txt}.",
                 fb))
 
-    # 2) Thème qui dépense sans rien rapporter (GA4 seulement — sinon on ne sait pas)
-    if has_ga4:
-        worst = [t for t in themes
-                 if t["spend"] >= C_SEUILS["theme_spend_min"] and (t.get("revenue") or 0) == 0]
-        if worst:
-            w = max(worst, key=lambda t: t["spend"])
-            out.append(_constat(
-                f"theme_worst:{_slug(w['label'])}", "theme_worst",
-                f"Le thème « {w['label']} » dépense sans vente attribuée",
-                f"{w['spend']:.0f} CHF investis {period_txt}, 0 CHF de revenu attribué — "
-                "à challenger en priorité.", fb))
+    # 2) Thème qui dépense sans rien rapporter — seulement si la vue SAIT que
+    #    ce thème n'a rien rapporté. Un revenu inconnu n'est pas un revenu nul.
+    worst = [t for t in themes
+             if _revenu_connu(t) and t.get("juge") and (t.get("revenue") or 0) == 0]
+    if worst:
+        w = max(worst, key=lambda t: t["spend"])
+        out.append(_constat(
+            f"theme_worst:{_slug(w['label'])}", "theme_worst",
+            f"Le thème « {w['label']} » dépense sans vente attribuée",
+            f"{w['spend']:.0f} CHF investis {period_txt}, 0 CHF de revenu attribué — "
+            "à challenger en priorité.", fb))
 
     # 3) Format gagnant (≥ 5 posts, ≥ +20 % vs la portée moyenne du compte)
     avg_reach = matrix.get("account_reach_avg") or 0

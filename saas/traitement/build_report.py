@@ -36,7 +36,7 @@ from saas.commun.fetch_data import (  # noqa: E402
     fetch_reco_feedback, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
-    fetch_theme_plan,
+    fetch_theme_plan, fetch_theme_regroupement,
 )
 from saas.commun.insert_data import upsert_weekly_report, upsert_theme_plan  # noqa: E402
 from saas.recos_ia.reco_engine import (  # noqa: E402
@@ -1665,7 +1665,8 @@ def build_payload(sb, user_id: str) -> dict | None:
       7.  Configs campagnes    — labels, sert matrice + bloc thèmes
       8.  Événements par thème — ceux rattachés par le client
       9.  Objectif par thème   — quand il diffère de celui du compte
-      10. Vision globale       — matrice full-history + constats validables
+      10. Vision globale       — thèmes lus dans la vue `theme_regroupement`,
+                                  matrice full-history + constats validables
       11. Recos PAR THÈME      — label par label, cross-canal
       12. Poids d'un thème     — part du compte
       13. Dates déclarées      — par les plateformes
@@ -1680,7 +1681,7 @@ def build_payload(sb, user_id: str) -> dict | None:
       18. Verdict déterministe — même logique que le rapport
       19. Sélection            — 2 insta + 3 pub, digest 3
       20. Brief IA             — sans persona en headless + fallback
-      21. Thèmes               — dépense par label × revenu GA4
+      21. Thèmes               — dépense par label × revenu GA4 (la vue)
       22. Boucle de la preuve  — les « Fait » des semaines passées, re-mesurés
       23. Suivi des actions    — « Je le teste »
       24. Hypothèse de la semaine — entre automatiquement en suivi
@@ -2000,6 +2001,19 @@ def build_payload(sb, user_id: str) -> dict | None:
     # Toute la profondeur disponible (Ads depuis le 1er janvier, posts stockés),
     # pas la fenêtre 7 jours. Les verdicts du client (insight_feedback) sont
     # réappliqués à chaque régénération — un constat rejeté reste écarté.
+    #
+    # LE TOTAL PAR THÈME SE LIT, IL NE SE CALCULE PLUS ICI. La vue
+    # `theme_regroupement` est la seule implémentation du regroupement — Pulse
+    # lit la même, ce qui est tout l'objet du ticket 04.
+    #
+    # CETTE LECTURE EST HORS DU `try` QUI SUIT, EXPRÈS. La vue absente est une
+    # migration qui manque, pas un compte sans données : l'avaler donnerait un
+    # rapport SANS AUCUNE CARTE DE THÈME, publié et envoyé par email, qui se
+    # lirait comme un compte qui n'a rien fait. `publish_weekly_report` la
+    # laisse remonter, le canal « rapport » finit en échec, et le journal dit
+    # quelle migration jouer.
+    themes_regroupes = fetch_theme_regroupement(sb, user_id)
+
     matrix = None
     constats: list = []
     priority_labels: list = []
@@ -2014,7 +2028,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         matrix = build_matrix(df_meta_raw, df_google,
                               df_insta if not df_insta.empty else None,
                               meta_cfg, goog_cfg, ga4_full, last_full_day,
-                              theme_events=theme_events)
+                              themes_regroupes)
         ins_fb = fetch_insight_feedback(sb, user_id)
         # TOUS les thèmes étoilés (page Thèmes), dans l'ordre où ils ont été
         # étoilés — stockés dans insight_feedback sous la clé
@@ -3389,9 +3403,9 @@ def build_payload(sb, user_id: str) -> dict | None:
         # ticket 01 de la construction.
         #
         # AUCUNE RÈGLE D'ATTRIBUTION NEUVE N'EST CHOISIE ICI. Additionner la
-        # dépense des deux régies est déjà la convention du rapport :
-        # `build_matrix` calcule le ROAS d'un thème sur cette somme
-        # (`saas/recos_ia/insights.py`), les KPI du compte fusionnent Meta et
+        # dépense des deux régies est déjà la convention du rapport : la vue
+        # `theme_regroupement` calcule le ROAS d'un thème sur cette somme
+        # (`supabase/migrations/`), les KPI du compte fusionnent Meta et
         # Google dans `df_camp`, et `_pub_fenetre` juste au-dessus porte la
         # raison — on additionne des dépenses et des clics, deux grandeurs que
         # chaque régie mesure elle-même ; c'est le REVENU qu'on ne saurait pas
