@@ -174,6 +174,13 @@ existantes ne peut être donné.**
       une campagne. C'est [12](12-le-carnet-et-la-mort-de-preuve.md), avec
       [19](19-ecritures-qui-ne-se-relisent-pas.md) pour la relecture des
       écritures.
+- [ ] **Un défaut trouvé en chemin, devenu un ticket plutôt qu'un détour** :
+      `author_id` est figé après coup, mais **rien ne l'empêche d'être faux dès
+      l'insertion** — la politique d'insertion contrôle le compte
+      (`peut_editer(user_id)`), jamais la personne, et un `BEFORE UPDATE` ne voit
+      pas les insertions. →
+      [23](23-auteur-forge-a-l-insertion.md). Ça se propose, ça ne se glisse pas :
+      c'est une règle sur ce qu'un Membre a le droit d'écrire.
 - [ ] **La règle « une note ne s'efface que par son auteur » reste applicative.**
       Ce fichier n'ajoute aucune politique RLS : ça changerait ce qu'un membre a
       le droit de faire, et ça se propose au lieu de se glisser.

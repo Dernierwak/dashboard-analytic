@@ -192,7 +192,11 @@ Google par l'identifiant — et que deviner la régie rejouerait le bug du ticke
 trop zélé : supprimer un membre passe par le même UPDATE que le déclencheur
 surveille. **Le SQL n'est PAS joué.** Les écritures TypeScript qui s'en servent
 sont [12](issues/12-le-carnet-et-la-mort-de-preuve.md) et
-[19](issues/19-ecritures-qui-ne-se-relisent-pas.md).
+[19](issues/19-ecritures-qui-ne-se-relisent-pas.md). Sa revue a ouvert
+[23 · L'auteur peut être FAUX dès l'écriture](issues/23-auteur-forge-a-l-insertion.md) :
+la colonne est figée après coup, mais la politique d'insertion contrôle le
+compte et jamais la personne — une règle sur ce qu'un Membre a le droit
+d'écrire, donc elle se propose.
 
 ## Not yet specified
 
