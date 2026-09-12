@@ -26,6 +26,9 @@ RECO = {
 }
 
 
+FENETRE = "la semaine du 5 sep au 11 sep"
+
+
 def test_ce_n_est_toujours_pas_un_conseil():
     r = _attach_grammaire(dict(RECO, source="rule"))
     egal("aucun geste posé", r.get("nature"), None)
@@ -33,28 +36,48 @@ def test_ce_n_est_toujours_pas_un_conseil():
 
 
 def test_il_devient_un_constat_complet():
-    c = _constat_cout(RECO, "e-bike", {})
+    c = _constat_cout(RECO, "e-bike", {}, FENETRE)
     egal("son genre", c["kind"], "cout_conversion")
     egal("il conclut sur la pub", c["platform"], "pub")
     egal("le titre est celui de la règle", c["title"], RECO["title"])
-    egal("le détail est son observation", c["detail"], RECO["observation"])
+    ok("le détail part de son observation", c["detail"].startswith(RECO["observation"]))
     egal("l'angle mort voyage avec le chiffre", c["angle_mort"], RECO["angle_mort"])
     egal("neuf par défaut", c["status"], "new")
 
 
+def test_il_dit_sa_fenetre_parce_qu_il_est_le_seul_a_en_avoir_une():
+    """Tous les autres constats croisent tout l'historique, et le bloc l'annonce.
+    Celui-ci porte SEPT JOURS : sans sa fenêtre écrite, une dépense de semaine se
+    lirait comme un total depuis janvier (`CLAUDE.md` §7)."""
+    c = _constat_cout(RECO, "e-bike", {}, FENETRE)
+    ok("la fenêtre est dans le détail", FENETRE in c["detail"], c["detail"])
+    ok("et il dit qu'il n'est pas comme les autres",
+       "pas sur tout l'historique" in c["detail"], c["detail"])
+
+
+def test_l_angle_mort_atteint_l_ia_avec_le_chiffre():
+    """Le brief dit à Gemini « appuie-toi dessus » : lui donner une borne haute
+    sans sa réserve, c'est lui demander de la présenter comme une mesure."""
+    src = pulse.SOURCE_RAPPORT.read_text(encoding="utf-8")
+    i = src.index("Vision long terme du compte (validée, appuie-toi dessus)")
+    debut = src.rindex("def _pour_ia", 0, i)
+    ok("le brief pose la limite à côté du chiffre",
+       "[limite : {c['angle_mort']}]" in src[debut:i])
+
+
 def test_la_cle_porte_le_theme_ET_l_evenement():
-    c = _constat_cout(RECO, "E-Bike", {})
+    c = _constat_cout(RECO, "E-Bike", {}, FENETRE)
     egal("clé normalisée", c["key"], "cout_conversion:e-bike:purchase")
     # Deux thèmes, deux clés : un verdict ne traverse pas les thèmes.
-    autre = _constat_cout(RECO, "promo été", {})
+    autre = _constat_cout(RECO, "promo été", {}, FENETRE)
     ok("un autre thème, une autre clé", autre["key"] != c["key"])
     # Changer d'événement principal change le chiffre dont on parle.
-    c2 = _constat_cout(dict(RECO, cible="add_to_cart"), "e-bike", {})
+    c2 = _constat_cout(dict(RECO, cible="add_to_cart"), "e-bike", {}, FENETRE)
     ok("un autre événement, une autre clé", c2["key"] != c["key"])
 
 
 def test_le_verdict_du_client_se_reapplique():
-    c = _constat_cout(RECO, "e-bike", {"cout_conversion:e-bike:purchase": "reject"})
+    c = _constat_cout(RECO, "e-bike", {"cout_conversion:e-bike:purchase": "reject"}, FENETRE)
     egal("le refus tient", c["status"], "reject")
 
 
@@ -82,6 +105,8 @@ def test_la_recolte_est_bien_avant_le_filtre_qui_le_jette():
 if __name__ == "__main__":
     test_ce_n_est_toujours_pas_un_conseil()
     test_il_devient_un_constat_complet()
+    test_il_dit_sa_fenetre_parce_qu_il_est_le_seul_a_en_avoir_une()
+    test_l_angle_mort_atteint_l_ia_avec_le_chiffre()
     test_la_cle_porte_le_theme_ET_l_evenement()
     test_le_verdict_du_client_se_reapplique()
     test_la_normalisation_est_celle_des_autres_cles()

@@ -120,7 +120,7 @@ motif et David les a réhabilitées ; **24 est plus récent, il gagne**. Rien n'
 
 ### Vérifications
 
-- **102 vérifications neuves** dans `../harnais/09-trois-moteurs/` (voir son
+- **107 vérifications neuves** dans `../harnais/09-trois-moteurs/` (voir son
   `LISEZMOI.md`), **694 rejouées** sur les harnais 04 à 08, aucune régression.
 - `python3.12 -m py_compile` vert sur `insights.py`, `reco_engine.py`,
   `build_report.py`.
@@ -155,3 +155,50 @@ du traitement.
 promet un conseil que plus personne n'écrit. Ce n'est pas dans le périmètre de
 ce ticket-ci et ça touche à la porte de
 [26](26-les-regles-payantes-n-atteignent-pas-le-rapport.md), qui attend David.
+
+## Comments
+
+**2026-09-12 — la revue de code, et les quatre défauts qu'elle a trouvés dans ce
+ticket.** Lancée sur le commit `96457f8` à la demande de David. Sept constats,
+dont quatre imputables à ce ticket, tous corrigés :
+
+1. **Un Verdict promis, puis perdu en silence.** Retirer `creneau` et
+   `format_gagnant` de `_METRIC_REGLE` ne coupait pas que la règle : la boucle du
+   Verdict (`_spec_mesure` → `if not spec: continue`) écarte une décision
+   **avant** la branche « en attente ». Un client qui avait cliqué « ▶ Je le
+   teste » sur le créneau la semaine d'avant n'aurait eu ni résultat ni ligne
+   d'attente — la décision disparaissait, **en consommant quand même une des
+   quatre places** de `decisions[:4]`. Les deux clés reviennent dans
+   `_METRIC_REGLE`, **en lecture seule**, et la recopie du harnais 06 est
+   rétablie. Leur mort se vérifie désormais sur les **quatre autres** tables.
+2. **Un chiffre de sept jours sous un en-tête « tout l'historique ».** Le constat
+   de coût naît de `_semaine_theme(lbl, cur_since, last_full_day)` — une semaine
+   — quand tous les autres croisent tout l'historique. Son détail **nomme
+   maintenant sa fenêtre** et dit qu'il est le seul dans ce cas ; le pied du bloc
+   l'annonce aussi. C'était `CLAUDE.md` §7 et je l'avais introduit.
+3. **L'angle mort n'atteignait pas Gemini.** `_v_ok` sert le constat de coût au
+   brief sous « appuie-toi dessus », mais ne sérialisait que `title — detail` :
+   la borne haute partait sans sa réserve, à l'endroit le plus exposé. La limite
+   voyage maintenant avec le chiffre (`[limite : …]`).
+4. **Un verdict qu'on ne pouvait plus retirer.** Le repli sur le statut du
+   payload se déclenchait sur l'**absence** d'une ligne, alors que
+   `saveInsightFeedback` SUPPRIME la ligne quand on re-clique. Un refus déjà figé
+   dans un rapport publié se réaffichait donc aussitôt, et le client ne pouvait
+   plus se déjuger avant le rapport suivant. Le repli se décide maintenant sur la
+   **panne** de la table (`verdictRes.error`).
+
+**Deux autres constats ne viennent pas de ce ticket** — ils sortent du travail du
+bandeau de commandes, non commité, que le commit de 09 a emporté avec lui. Ils
+sont ouverts en tickets plutôt que corrigés en douce :
+[28](28-engagement-du-compte-filtre-par-theme.md) (« Engagement du compte » est
+filtré par thème alors que la page jure le contraire — §7, et c'est le plus
+urgent des deux) et
+[29](29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md).
+
+**Le septième constat est la conséquence assumée du commit partiel** : à
+`96457f8`, quatre pages et `lib/channels.ts` importent cinq modules encore non
+suivis par git (`bandeau-commandes.tsx`, `commandes.ts`, `proto-notes.ts`,
+`proto-notes-module.tsx`, `prototype-switcher.tsx`). Le commit **ne construit pas
+depuis un checkout neuf**, et Vercel déploie depuis `main` : **rien ne doit être
+poussé avant que ce travail soit commité**. Choix de David, fait en connaissance
+de cause ; le fait est écrit ici pour qu'il ne se perde pas.

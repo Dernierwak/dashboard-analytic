@@ -227,6 +227,20 @@ _METRIC_REGLE = {
     "funnel":             "purchases",
     "silence":            "posts",
     "page_endormie":      "reach",
+    # DEUX RÈGLES MORTES QUI GARDENT LEUR INDICATEUR, ET C'EST VOULU.
+    # `creneau` et `format_gagnant` n'existent plus (ticket 09, elles
+    # répondaient à la question des constats) : elles ont quitté les quatre
+    # autres tables de grammaire, plus rien ne les produit. Mais un client a pu
+    # cliquer « ▶ Je le teste » dessus la semaine d'avant, et cette décision est
+    # en base (`suivi_actions`). Sans son indicateur, `_spec_mesure` rend `None`
+    # et la boucle du Verdict fait `continue` AVANT la branche « en attente » :
+    # la décision disparaîtrait sans un mot, tout en consommant une des quatre
+    # places de `decisions[:4]`. Pulse promet de dire si ce qui a été fait a
+    # marché (`CLAUDE.md` §1) — la promesse vaut pour ce qui a DÉJÀ été décidé.
+    # Ces deux lignes sont donc en LECTURE SEULE : elles ne servent plus qu'aux
+    # décisions passées, et elles partiront quand la dernière sera close.
+    "creneau":            "eng",
+    "format_gagnant":     "eng",
     "orga_rythme":        "posts",
     "orga_essoufflement": "reach",
     "orga_format":        "reach",
@@ -505,7 +519,7 @@ def _slug_constat(valeur) -> str:
     return str(valeur or "").strip().lower().replace(" ", "-")
 
 
-def _constat_cout(reco: dict, theme: str, feedback: dict) -> dict:
+def _constat_cout(reco: dict, theme: str, feedback: dict, fenetre: str) -> dict:
     """Transforme `theme_event_cout` en CONSTAT, la place qu'il aurait dû avoir.
 
     Il ne demande aucun geste : il demande de comparer un coût par conversion à
@@ -523,13 +537,22 @@ def _constat_cout(reco: dict, theme: str, feedback: dict) -> dict:
     NE compte pas (ce qui arrive sans campagne n'y entre pas). Un coût par
     conversion sans elle se lit comme une mesure complète alors qu'il est une
     borne haute (`CLAUDE.md` §7).
+
+    `fenetre` EST OBLIGATOIRE, ET C'EST LE MÊME §7. Ce constat est le SEUL du
+    bloc à porter une semaine : il naît de `_reco_evenements`, nourrie de
+    `_semaine_theme(lbl, cur_since, last_full_day)`, quand tous les autres
+    sortent de `build_constats` qui croise tout l'historique. Le bloc qui les
+    affiche annonce « tout ton historique » — sans sa fenêtre écrite dans son
+    détail, une dépense de sept jours se lirait comme un total depuis janvier.
     """
     cle = f"cout_conversion:{_slug_constat(theme)}:{_slug_constat(reco.get('cible'))}"
+    detail = (reco.get("observation") or "").rstrip()
     return {
         "key": cle,
         "kind": "cout_conversion",
         "title": reco.get("title") or "",
-        "detail": reco.get("observation") or "",
+        "detail": f"{detail} Ce constat-ci porte sur {fenetre}, pas sur tout "
+                  "l'historique comme les autres.",
         "angle_mort": reco.get("angle_mort") or None,
         "status": feedback.get(cle, "new"),
         "platform": "pub",
@@ -3021,9 +3044,11 @@ def build_payload(sb, user_id: str) -> dict | None:
             # Il ne sort donc que pour un thème CONSEILLÉ : tout ce bloc vit
             # sous `if _conseille`, et c'est voulu — les constats se concentrent
             # sur ce que le client a désigné, comme les conseils.
+            _fen_cout = (f"la semaine du {cur_since.day} {MONTHS_FR[cur_since.month]} "
+                         f"au {last_full_day.day} {MONTHS_FR[last_full_day.month]}")
             for _r_cout in t_recos:
                 if _r_cout.get("key") == "theme_event_cout":
-                    constats.append(_constat_cout(_r_cout, lbl, ins_fb))
+                    constats.append(_constat_cout(_r_cout, lbl, ins_fb, _fen_cout))
 
             # LE CONSTAT SORT AVANT LA COUPE, PAS APRÈS. `_importance` ne sait
             # pas qu'un conseil sans geste n'en est pas un : le laisser concourir
@@ -3262,8 +3287,18 @@ def build_payload(sb, user_id: str) -> dict | None:
         vision_txt += (" Thèmes PRIORITAIRES choisis par le client (concentre tes conseils "
                        f"dessus, ignore le reste sauf urgence) : {', '.join(priority_labels)}.")
     if _v_ok:
+        # L'ANGLE MORT PART AVEC LE CHIFFRE, PAS APRÈS LUI. Un constat qui en
+        # porte un est une borne haute, pas une mesure (`cout_conversion` : ce
+        # qui arrive sans campagne n'entre pas dans ce coût). Le donner à Gemini
+        # sans sa réserve, sous un « appuie-toi dessus », c'est lui demander de
+        # présenter une borne comme un fait — exactement ce que `CLAUDE.md` §7
+        # interdit, et à l'endroit le plus exposé.
+        def _pour_ia(c):
+            txt = f"{c['title']} — {c['detail']}"
+            return f"{txt} [limite : {c['angle_mort']}]" if c.get("angle_mort") else txt
+
         vision_txt += (" Vision long terme du compte (validée, appuie-toi dessus) : "
-                       + " | ".join(f"{c['title']} — {c['detail']}" for c in _v_ok) + ".")
+                       + " | ".join(_pour_ia(c) for c in _v_ok) + ".")
     if _v_no:
         vision_txt += (" Constats REJETÉS par le client (ne t'appuie JAMAIS dessus) : "
                        + " | ".join(c["title"] for c in _v_no) + ".")

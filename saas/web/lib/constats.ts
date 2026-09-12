@@ -92,10 +92,24 @@ export const getVision = cache(async function getVision(): Promise<VisionLue> {
       verdicts.set(cle, row.verdict);
   }
 
+  // LE REPLI SE DÉCIDE SUR LA PANNE, PAS SUR L'ABSENCE — et la nuance est tout
+  // ce qui permet de RETIRER un verdict. `saveInsightFeedback` supprime la ligne
+  // quand on re-clique le même bouton ; si l'absence de ligne faisait retomber
+  // sur le statut du payload, un « ✗ pas d'accord » figé dans un rapport déjà
+  // publié se réafficherait aussitôt, le bouton resterait allumé, et les clics
+  // suivants ne feraient que re-supprimer une ligne déjà absente. Le client ne
+  // pourrait plus se déjuger avant le rapport suivant. Le payload ne sert donc
+  // de repli que quand la table N'A PAS RÉPONDU (migration absente) : là, aucune
+  // ligne n'est lisible et son statut est la seule chose qu'on ait.
+  const tableLisible = !verdictRes.error;
   const constats = (vision?.constats ?? []).map((c) => ({
     ...c,
     platform: c.platform ?? PLATEFORME_PAR_GENRE[c.kind] ?? null,
-    verdict: verdicts.get(c.key) ?? (c.status === "new" ? null : c.status),
+    verdict: tableLisible
+      ? verdicts.get(c.key) ?? null
+      : c.status === "new"
+        ? null
+        : c.status,
   })) as ConstatAffiche[];
 
   return {

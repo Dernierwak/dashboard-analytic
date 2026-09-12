@@ -312,10 +312,29 @@ lui devait** : calculé chaque semaine et jeté en silence, il devient un consta
 `cout_conversion`, clé portant le thème ET l'événement, angle mort collé au
 chiffre. **`gaspillage` et `scaler` restent vivantes** — le ticket voulait les
 tuer, [24](../refonte/issues/24-conseils-payants-manquants.md) les a
-réhabilitées et il est plus récent ; dit, pas tranché en silence. **102
-vérifications neuves**, 694 rejouées, 19 routes. **`build_payload` n'a pas
+réhabilitées et il est plus récent ; dit, pas tranché en silence. **107
+vérifications neuves**, 696 rejouées, 19 routes. **`build_payload` n'a pas
 tourné** (ticket 16) et **rien du rendu web n'est testé** — aucun runner dans
 `saas/web`, décision de David. Ça se voit après un « ↻ Recharger mes conseils ».
+
+**Sa revue de code a trouvé quatre défauts dans le ticket, tous corrigés**, et le
+plus grave n'était pas dans le neuf mais dans ce qu'on retirait : sortir
+`creneau` et `format_gagnant` de `_METRIC_REGLE` faisait **disparaître sans un
+mot le Verdict d'une décision déjà prise** — la boucle écarte sur un indicateur
+absent AVANT la branche « en attente », tout en consommant une des quatre places.
+Les deux clés reviennent en lecture seule. Les trois autres : le constat de coût
+portait sept jours sous un en-tête « tout l'historique », son angle mort
+n'atteignait pas Gemini là où on dit au modèle de s'appuyer sur le chiffre, et un
+verdict **ne pouvait plus se retirer** (le repli se déclenchait sur l'absence
+d'une ligne, alors que se déjuger SUPPRIME la ligne). **Deux autres constats ne
+viennent pas de ce ticket** mais du travail du bandeau que son commit a emporté →
+[28](issues/28-engagement-du-compte-filtre-par-theme.md) (« Engagement du compte »
+filtré par thème sous une phrase qui jure le contraire — §7) et
+[29](issues/29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md).
+**Et un fait qui mord** : à `96457f8` quatre pages importent cinq modules encore
+non suivis par git, donc le commit ne construit pas depuis un checkout neuf —
+**rien ne doit être poussé avant que le travail du bandeau soit commité**, Vercel
+déploie depuis `main`.
 
 ## Not yet specified
 

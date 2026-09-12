@@ -66,6 +66,19 @@ def test_la_promesse_de_labels_est_tenue():
     ok("et elle dit où les lire", "en bas de cette page" in src)
 
 
+def test_un_verdict_se_retire():
+    """`saveInsightFeedback` SUPPRIME la ligne quand on re-clique le même bouton.
+    Si l'absence de ligne faisait retomber sur le statut du payload, un refus
+    figé dans un rapport déjà publié se réafficherait aussitôt : le bouton
+    resterait allumé et le client ne pourrait plus se déjuger avant le rapport
+    suivant. Le repli se décide donc sur la PANNE de la table, pas sur l'absence
+    d'une ligne."""
+    src = (RACINE / "saas" / "web" / "lib" / "constats.ts").read_text(encoding="utf-8")
+    ok("le repli lit l'erreur de la requête", "const tableLisible = !verdictRes.error;" in src)
+    ok("table lisible ⇒ la ligne fait foi, sans repli",
+       "? verdicts.get(c.key) ?? null" in src)
+
+
 def test_le_filtre_par_page_vit_a_UN_seul_endroit():
     src = (RACINE / "saas" / "web" / "lib" / "constats.ts").read_text(encoding="utf-8")
     egal("une seule fonction de placement", src.count("export function constatsDeLaPage"), 1)
@@ -94,5 +107,6 @@ if __name__ == "__main__":
     test_la_page_instagram_affiche_au_lieu_de_recalculer()
     test_les_quatre_pages_le_montrent_et_disent_laquelle_elles_sont()
     test_la_promesse_de_labels_est_tenue()
+    test_un_verdict_se_retire()
     test_le_filtre_par_page_vit_a_UN_seul_endroit()
     raise SystemExit(0 if bilan("Le web n'a plus de moteur") else 1)

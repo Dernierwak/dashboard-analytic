@@ -92,7 +92,8 @@ export async function CeQuiMarche({
       </h2>
       <p className="text-[11px] text-faint mb-3 leading-relaxed">
         Calculé une fois par semaine sur tout ton historique — ce bloc ne suit ni la
-        période ni le thème choisis en haut de page.
+        période ni le thème choisis en haut de page. Un constat qui porte sur une
+        fenêtre plus courte le dit dans son texte.
       </p>
       {miens.length === 0 ? (
         <div className="bg-white border border-line rounded-xl shadow-card px-5 py-4">
