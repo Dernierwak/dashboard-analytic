@@ -40,9 +40,19 @@ def test_le_decompte_force_d_une_hypothese_meurt_avec_elles():
 
 
 def test_les_quatre_autres_appels_gemini_restent():
-    """Le moteur trie, l'IA explique : seules les pistes sont coupées."""
-    for nom in ("_themes_tips", "build_user_persona", "condense_theme_memoire"):
-        ok(f"{nom} est toujours appelé", f"{nom}(" in SOURCE)
+    """Le moteur trie, l'IA explique : seules les pistes sont coupées.
+
+    Deux des quatre entrent PAR LE LECTEUR depuis le ticket 16 — le worker
+    demande `lecteur.persona(…)` et `lecteur.memoire_theme(…)`, et c'est
+    `saas/traitement/lecteur.py` qui appelle Gemini. Ce qui est vérifié reste le
+    même : ces appels n'ont pas été coupés avec les pistes."""
+    LECTEUR = (pulse.RACINE / "saas" / "traitement"
+               / "lecteur.py").read_text(encoding="utf-8")
+    ok("_themes_tips est toujours appelé", "_themes_tips(" in SOURCE)
+    ok("le persona est toujours demandé", "lecteur.persona(" in SOURCE)
+    ok("et le lecteur l'appelle", "build_user_persona(" in LECTEUR)
+    ok("la mémoire de thème est toujours demandée", "lecteur.memoire_theme(" in SOURCE)
+    ok("et le lecteur l'appelle", "condense_theme_memoire(" in LECTEUR)
 
 
 def test_il_n_y_a_plus_qu_un_chemin_par_theme():
@@ -132,7 +142,9 @@ def test_le_plafond_s_applique_avant_l_ecriture_du_plan_de_theme():
     """Une Marche que le plafond n'a pas retenue n'ouvre AUCUNE Stratégie :
     sinon la mémoire de Pulse porterait une théorie que personne n'a lue."""
     plafond = SOURCE.index("LE PLAFOND DE CINQ, SUR TOUT LE COMPTE")
-    plan = SOURCE.index("upsert_theme_plan(", plafond)
+    # L'écriture passe par le lecteur depuis le ticket 16 ; sa PLACE dans la
+    # fonction, la seule chose que ce test mesure, n'a pas bougé.
+    plan = SOURCE.index("lecteur.ecrire_plan_de_theme(", plafond)
     ok("le plafond précède l'écriture du plan", plafond < plan)
 
 

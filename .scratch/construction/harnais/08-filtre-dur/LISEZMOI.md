@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 08, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -23,11 +25,14 @@ perdu leur suffixe en perdant Gemini — `LEVIERS`, `METRICS_MESURABLES`,
 
 ## Ce qu'il ne prouve pas
 
-`build_payload` prend un client Supabase vivant : **le filtre dur et le plafond
-n'ont jamais tourné sur un vrai payload.** `test_filtre_dur.py` lit l'arbre et le
-texte source pour ce qui vit à l'intérieur de cette fonction — un test de
-structure prouve qu'un appel est sous un garde, jamais que le garde est vrai au
-bon moment. C'est exactement le seam que le ticket 16 doit ouvrir.
+~~`build_payload` prend un client Supabase vivant : le filtre dur et le plafond
+n'ont jamais tourné sur un vrai payload.~~ **LEVÉ par le ticket 16**, et c'était
+la limite la plus lourde du dépôt. `test_filtre_dur.py` lit toujours l'arbre —
+un test de structure prouve qu'un appel est sous un garde, jamais que le garde
+est vrai au bon moment — mais le garde, lui, est maintenant EXÉCUTÉ : le
+harnais [16](../16-le-seam-du-payload/LISEZMOI.md) construit un payload sur cinq
+étoiles et lit que les deux thèmes au-delà de la troisième portent
+`conseille: false` et pas un conseil.
 
 ## Le jouer
 

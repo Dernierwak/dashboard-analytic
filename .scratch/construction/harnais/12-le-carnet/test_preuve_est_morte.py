@@ -13,6 +13,10 @@ import pulse
 from t import ok, egal, bilan
 
 RAPPORT = pulse.SOURCE_RAPPORT.read_text(encoding="utf-8")
+# Depuis le ticket 16, ce que le worker touche dehors passe par le lecteur :
+# les requêtes Supabase se lisent donc dans `saas/traitement/lecteur.py`.
+LECTEUR = (pulse.RACINE / "saas" / "traitement" / "lecteur.py").read_text(encoding="utf-8")
+
 FETCH = pulse.SOURCE_FETCH.read_text(encoding="utf-8")
 REPORT_TS = pulse.SOURCE_REPORT_TS.read_text(encoding="utf-8")
 
@@ -83,12 +87,17 @@ def test_le_type_a_disparu_du_web():
 def test_la_releve_est_intacte_le_rail_mesure_toujours():
     """On a retiré un moteur, pas la mesure."""
     for vivante in ("_METRIC_REGLE", "def _spec_mesure(", "cur_kpis = _kpis_window(",
-                    "def _kpis_window(", "\"verdict\": _verdict", "tracking = {"):
+                    "def _kpis_window(", "tracking = {"):
         ok(f"« {vivante} » est toujours là", vivante in RAPPORT, vivante)
     # Le verdict continue d'être PERSISTÉ : c'est lui que le bilan compte
     # désormais, et sans écriture il n'y aurait rien à compter.
+    # L'écriture passe par le lecteur depuis le ticket 16 : le worker la
+    # DEMANDE, `saas/traitement/lecteur.py` la joue. Elle est vérifiée à
+    # l'exécution par `harnais/16-le-seam-du-payload/test_le_seam.py`.
     ok("le verdict s'écrit toujours en base",
-       'sb.table("suivi_actions").update(' in RAPPORT and '{"verdict": _verdict}' in RAPPORT)
+       "lecteur.ecrire_verdict(a.get(\"id\"), _verdict)" in RAPPORT
+       and 'self.sb.table("suivi_actions").update(' in LECTEUR
+       and '{"verdict": verdict}' in LECTEUR)
 
 
 def test_le_rapport_reste_importable():

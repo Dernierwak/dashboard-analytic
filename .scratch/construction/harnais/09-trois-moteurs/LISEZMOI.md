@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 09, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -27,9 +29,12 @@ test en les laissant vivre à moitié dans le code.
 
 ## Ce qu'il ne prouve pas
 
-- **`build_payload` n'a pas tourné.** Elle prend un client Supabase vivant : le
-  constat de coût n'a jamais été récolté sur un vrai rapport, et `_constat_cout`
-  est vérifiée sur un dict écrit à la main. C'est le seam du ticket 16.
+- **`build_payload` tourne depuis le ticket 16**
+  ([16](../16-le-seam-du-payload/LISEZMOI.md)), mais **pas sur le
+  constat de coût** : le faux lecteur ne grée aucun événement GA4 rattaché à un
+  thème, donc `_constat_cout` reste vérifiée ici sur un dict écrit à la main.
+  La limite a changé de nature — elle n'est plus « la fonction est inappelable »
+  mais « ce jeu de lignes-là n'a pas encore été gréé ».
 - **Rien du rendu web.** `test_le_web_ne_recalcule_plus.py` lit du **texte**
   TypeScript, il ne l'exécute pas — aucun runner dans `saas/web`, décision de
   David. Un test de texte prouve qu'un calcul a disparu et qu'un composant est

@@ -152,12 +152,13 @@ voisines a ouvert
 [19 · Trente écritures qui ne se relisent pas](issues/19-ecritures-qui-ne-se-relisent-pas.md).
 
 **Un seizième ticket est né hors des quinze** :
-[16 · Le seam du payload](issues/16-le-seam-du-payload.md). C'est **le seul que
-la refonte n'a pas tranché** — il vient de la session `/to-spec` du 2026-09-11,
-où David a choisi le seam de test de la v1 : **le payload du rapport, seam
-unique**, et **aucun runner de test dans `saas/web`**. Conséquence assumée, à
-écrire dans les rapports de vérification concernés : la garde de collision (02)
-et la date libre (11) ne seront couvertes par aucun test automatisé.
+[16 · Le seam du payload](issues/16-le-seam-du-payload.md), **résolu** — voir son
+entrée en fin d'index. C'est **le seul que la refonte n'a pas tranché** : il
+vient de la session `/to-spec` du 2026-09-11, où David a choisi le seam de test
+de la v1 — **le payload du rapport, seam unique**, et **aucun runner de test dans
+`saas/web`**. Conséquence assumée, à écrire dans les rapports de vérification
+concernés : la garde de collision (02) et la date libre (11) ne sont couvertes
+par aucun test automatisé.
 
 **[03 · L'identifiant d'annonce Meta](issues/03-identifiant-annonce-meta.md)** —
 une Annonce s'identifie par son `ad_id`, jamais par son nom. Le rejeu
@@ -503,6 +504,58 @@ ticket a fait naître
 les garanties 2 et 3 de l'ADR 0001 tenaient à un `depuis` gardé dans le
 `sessionStorage` de l'onglet qui cliquait — sans clic, plus rien à annuler,
 alors que le besoin grandit (l'IA classe maintenant sans qu'on le demande).
+
+**[16 · Le seam du payload](issues/16-le-seam-du-payload.md)** — **`build_payload`
+tourne hors ligne, pour la première fois du dépôt.** Elle prend un `Lecteur`
+(`saas/traitement/lecteur.py`) au lieu d'un client Supabase : trente méthodes,
+une par source, dont **les quatre fenêtres GA4, les six requêtes qui passaient
+par `sb.table(...)` en clair, les trois appels Gemini, les deux ÉCRITURES et
+l'horloge** — les deux dernières ne sont pas dans le mot « lecteur », et sans
+elles un test hors ligne écrirait en base et lirait la vraie date. **Trente-six
+points d'appel** réécrits, tous mécaniques ; les **sept `from saas.collecte…`
+cachés au milieu de la fonction** disparaissent, chacun étant un point de sortie
+qu'aucune signature n'annonçait. Les `try/except` restent chez l'appelant, et
+`themes_regroupes()` laisse toujours remonter `VueRegroupementAbsente`. **Aucun
+découpage** des 3 775 lignes : le ticket lève l'interdiction du docstring, il ne
+l'utilise pas.
+
+**Le « rapport identique avant/après » demandé par le repli n'existe pas**, et pas
+pour la raison attendue : avant l'injection la fonction ne pouvait pas tourner
+hors ligne du tout, donc il n'y a pas de « avant » à comparer. Ce qui le remplace
+est une **équivalence de routage** — chaque méthode jouée contre un espion doit
+atteindre la même fonction, la même chaîne PostgREST et les mêmes arguments qu'à
+`git show HEAD:…`, écritures comprises. **298 vérifications neuves**, dont la
+première est la phrase du produit : **aucun conseil ne porte un thème non
+étoilé**, par ses DEUX portes (un thème classé sans étoile n'a pas de carte ; au
+delà de la troisième étoile la carte porte `conseille: false` et zéro conseil).
+Le plafond de cinq tient, une semaine calme rend moins de cinq sans remplissage,
+zéro étoile rend zéro conseil, le ROAS bi-régie couvre le même périmètre des deux
+côtés, deux Annonces homonymes restent deux, et **la publication est idempotente**
+— rejouée trois semaines plus tard elle retombe sur la même ligne (13 l'avait
+démontré sur un calcul recopié). **1 326 vérifications rejouées**, et **seize
+assertions réécrites** dans six harnais : elles cherchaient dans le TEXTE des
+appels qui ont changé de point d'entrée, pas de destination — c'étaient
+exactement les substituts que ce seam remplace par une exécution.
+
+**Sa revue de code a trouvé un trou dans le seam**, et la leçon vaut plus que le
+trou : `_themes_tips`, fonction du module **appelée depuis** `build_payload`,
+appelait `_call_gemini` directement — la construction partait sur le réseau dès
+qu'une clé Gemini existait dans l'environnement, et un test « hors ligne »
+dépendait de la machine qui le joue. La vérification ne regardait que le CORPS
+de la fonction ; elle est maintenant **transitive** et suit les appels. **Deux
+prémisses du ticket étaient fausses** : « aucune suite de tests n'existe »
+(neuf harnais existaient, ~1 300 vérifications) et « les dix règles neuves se
+vérifient une par une » (déjà fait par 07 et 10 ; rejoués, pas refaits). **Et
+deux défauts trouvés en faisant tourner la fonction, aucun corrigé** —
+[40](issues/40-un-theme-sans-revenu-confirme-est-publie-a-zero.md)
+(`themes.rows[].rev` publie `0.0` là où la carte publie `null` ; **aucun écran ne
+le montre aujourd'hui**, et le ticket le dit) et
+[41](issues/41-la-fenetre-ne-s-ancre-pas-sur-google.md), le plus lourd :
+**l'ancre de la fenêtre ne lit pas Google**, donc un compte Google seul mesure
+des jours vides — mêmes lignes, **210 CHF en Meta contre 90 CHF en Google**, et
+c'est exactement le compte que la v1 promet de servir. **Rien n'est joué en
+base** et **rien ne se voit à l'écran** : ce ticket ne change aucun rendu et ne
+demande aucun passage du worker.
 
 ## Not yet specified
 

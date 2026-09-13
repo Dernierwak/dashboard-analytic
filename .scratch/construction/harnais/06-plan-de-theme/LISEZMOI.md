@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 06, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -36,11 +38,11 @@ indépendants valent mieux qu'un module partagé qu'aucun ticket ne possède.
 
 ## Ce qu'il ne prouve pas
 
-- **Rien ne fait tourner `build_payload`.** Elle prend un client Supabase vivant
-  et va chercher ses données elle-même ; la rendre appelable hors ligne est le
-  ticket 16. Tant qu'il n'est pas fait, l'assemblage du payload — le filtre des
-  constats appliqué à une vraie liste de recos, l'écriture de `theme_plan` sur un
-  vrai thème — n'est vérifié que par lecture.
+- ~~**Rien ne fait tourner `build_payload`.**~~ **LEVÉ par le ticket 16.** Elle
+  prenait un client Supabase vivant ; elle prend maintenant un *lecteur*, et le
+  harnais [16](../16-le-seam-du-payload/LISEZMOI.md) la fait tourner hors ligne.
+  L'écriture de `theme_plan` y est vérifiée à l'exécution — le faux lecteur
+  ENREGISTRE les écritures au lieu de les jouer. Ce qui suit n'a pas bougé.
 - **Rien n'a été joué sur la base de David.** Aucune ligne `suivi_actions`
   `status="auto"` n'a été relue, comptée ni effacée : elles restent en base,
   reconnaissables à `detail.origin == "auto"`.

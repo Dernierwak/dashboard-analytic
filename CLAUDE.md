@@ -171,6 +171,12 @@ tout son échafaudage. `git grep` doit être propre.
   `npm run build` verts, **19 routes** (un écart signale une page de contrôle
   oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
+- **Le rapport se construit hors ligne** : `build_payload` prend un `Lecteur`
+  (`saas/traitement/lecteur.py`), donc une propriété du payload **s'exécute au
+  lieu de se lire dans le texte**. Le faux lecteur et les harnais vivent dans
+  `.scratch/construction/harnais/` — un dossier par ticket, `python3.12
+  test_x.py`, ni base, ni secret, ni réseau. Toucher au traitement sans les
+  rejouer, c'est se priver du seul filet qu'on ait.
 - **Le client ne déclenche rien, donc rien ne se vérifie en cliquant.** Une
   correction du traitement ou de la récolte **ne se voit qu'après un passage du
   worker** — le cron du Jour de travail (07:00 UTC), ou un lancement à la main

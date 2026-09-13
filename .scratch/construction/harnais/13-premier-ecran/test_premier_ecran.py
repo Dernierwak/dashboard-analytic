@@ -120,8 +120,12 @@ t.ok("la clé d'écriture voyage dans le payload",
      '"week_start": week_start_rapport.isoformat()' in W)
 t.ok("la publication lit la clé du payload",
      'week_start = (payload.get("week_start")' in W)
+# La borne voyage maintenant en ARGUMENT jusqu'au lecteur (ticket 16) : c'est
+# lui qui pose le `.lt(…)`. Ce que la ligne prouve est inchangé.
+LECTEUR = (pulse.RACINE / "saas" / "traitement" / "lecteur.py").read_text(encoding="utf-8")
 t.ok("le rapport ne se relit plus lui-même dans son propre historique",
-     '.lt("week_start", week_start_rapport.isoformat())' in W)
+     "lecteur.rapports_publies(week_start_rapport.isoformat())" in W
+     and '.lt("week_start", avant)' in LECTEUR)
 t.ok("plus aucune borne d'historique tirée d'aujourd'hui",
      "week_start_monday" not in W)
 

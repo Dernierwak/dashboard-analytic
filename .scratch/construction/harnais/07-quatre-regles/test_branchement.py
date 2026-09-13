@@ -15,6 +15,8 @@ from t import ok, egal, bilan
 import saas.traitement.build_report as rapport
 
 SOURCE = pulse.SOURCE_RAPPORT.read_text(encoding="utf-8")
+# Le lecteur du ticket 16 : les lectures Supabase du worker y vivent désormais.
+LECTEUR = (pulse.RACINE / "saas" / "traitement" / "lecteur.py").read_text(encoding="utf-8")
 
 
 def test_le_filtre_qui_opposait_meta_et_google_est_mort():
@@ -46,10 +48,16 @@ def test_les_quatre_regles_sont_appelees_par_le_rapport():
 
 
 def test_le_detail_par_annonce_google_est_charge():
-    ok("la lecture est importée", "fetch_google_ads_ad_insights," in SOURCE)
-    ok("et appelée", "fetch_google_ads_ad_insights(sb, user_id)" in SOURCE)
-    ok("le budget posé est importé", "fetch_platform_budgets," in SOURCE)
-    ok("et appelé", "fetch_platform_budgets(sb, user_id)" in SOURCE)
+    """Depuis le ticket 16, ces deux lectures entrent PAR LE LECTEUR : le worker
+    demande `lecteur.google_annonces()`, et c'est `saas/traitement/lecteur.py`
+    qui appelle le `fetch_*`. Même destination, autre point d'entrée — et
+    `harnais/16-le-seam-du-payload/test_le_seam.py` le prouve à l'exécution."""
+    ok("la lecture est demandée au lecteur", "lecteur.google_annonces()" in SOURCE)
+    ok("et le lecteur va bien la chercher",
+       "fetch_google_ads_ad_insights(self.sb, self.user_id)" in LECTEUR)
+    ok("le budget posé est demandé au lecteur", "lecteur.budgets_poses()" in SOURCE)
+    ok("et le lecteur va bien le chercher",
+       "fetch_platform_budgets(self.sb, self.user_id)" in LECTEUR)
 
 
 def test_meta_n_entre_pas_sans_ad_id():

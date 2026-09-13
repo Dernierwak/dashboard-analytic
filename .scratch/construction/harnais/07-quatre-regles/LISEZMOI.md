@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 07, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -45,11 +47,14 @@ possède.
 ## Ce qu'il ne prouve pas
 
 - **`_annonces_theme` et `_budget_theme` n'ont jamais tourné.** Ce sont des
-  closures de `build_payload`, qui prend un client Supabase vivant. C'est là
-  que se fait le rattachement d'une Annonce à son thème, la garde sur `ad_id`
-  et le prorata des budgets posés — vérifié par **lecture seule**. Les rendre
-  appelables hors ligne est le ticket
-  [16](../../issues/16-le-seam-du-payload.md).
+  closures de `build_payload`. C'est là que se fait le rattachement d'une
+  Annonce à son thème, la garde sur `ad_id` et le prorata des budgets posés.
+  **Partiellement LEVÉ par le ticket 16** : la fonction tourne maintenant hors
+  ligne et le harnais [16](../16-le-seam-du-payload/LISEZMOI.md) exécute le
+  rattachement d'une Annonce à son thème — deux Annonces homonymes d'un même
+  Groupe font bien parler
+  `annonce_sans_conversion`. Les closures restent vérifiées par lecture pour le
+  reste.
 - **Aucune règle n'a tourné sur de vraies données.** Les quatre seuils sortent
   de `SEUILS`, aucun n'est inventé, mais personne ne sait encore ce qu'elles
   diront chez un vrai compte — si elles se taisent ou se répètent, c'est un

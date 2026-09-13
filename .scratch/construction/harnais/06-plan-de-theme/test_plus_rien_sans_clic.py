@@ -18,6 +18,9 @@ import pulse
 from t import ok, bilan
 
 SOURCE = pulse.SOURCE_RAPPORT.read_text(encoding="utf-8")
+# Depuis le ticket 16, tout ce que le worker touche dehors passe par le lecteur :
+# les lectures et les écritures Supabase se lisent donc dans les DEUX fichiers.
+LECTEUR = (pulse.RACINE / "saas" / "traitement" / "lecteur.py").read_text(encoding="utf-8")
 ACTIONS_TS = (pulse.RACINE / "saas" / "web" / "app" / "actions.ts").read_text(encoding="utf-8")
 
 
@@ -31,7 +34,10 @@ def test_le_worker_n_ecrit_plus_aucune_ligne_auto():
 
 
 def test_le_worker_ne_relit_plus_les_lignes_auto():
-    lectures = re.findall(r'in_\("status", (\[[^\]]*\])\)', SOURCE)
+    # La lecture a DÉMÉNAGÉ au ticket 16 : elle vit dans `suivi_en_cours`
+    # (`saas/traitement/lecteur.py`), plus dans le corps du worker. Ce qu'elle
+    # prouve ne change pas — le statut `auto` n'est relu nulle part.
+    lectures = re.findall(r'in_\("status", (\[[^\]]*\])\)', SOURCE + LECTEUR)
     ok("une seule lecture par statut", len(lectures) == 1, lectures)
     for liste in lectures:
         ok(f"la lecture exclut auto — {liste}", '"auto"' not in liste)
@@ -48,7 +54,12 @@ def test_le_plan_de_theme_reste_ecrit_a_la_publication():
     # C'est la mémoire de Pulse, pas le carnet du client : elle continue de
     # s'écrire chaque semaine, sinon un thème changerait de théorie à chaque
     # rapport — ce que la fenêtre d'attente existe précisément pour empêcher.
-    ok("theme_plan toujours écrit", "upsert_theme_plan(" in SOURCE)
+    # Le worker passe désormais par `lecteur.ecrire_plan_de_theme` (ticket 16),
+    # qui appelle `upsert_theme_plan` — l'écriture est la même, son point
+    # d'entrée a changé de nom.
+    ok("theme_plan toujours écrit",
+       "lecteur.ecrire_plan_de_theme(" in SOURCE
+       and "upsert_theme_plan(" in LECTEUR)
     ok("la fenêtre d'attente est toujours lue",
        "ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get(\"levier\")" in SOURCE)
 

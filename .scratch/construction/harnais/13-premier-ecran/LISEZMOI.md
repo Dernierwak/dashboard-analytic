@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 13, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -57,10 +59,13 @@ Total : **77 vérifications** (34 + 43).
 - **Rien n'a été vu à l'écran.** La page d'accueil est derrière `middleware.ts`
   et lit un vrai compte : ni l'ordre des blocs à 390 px, ni le repli du résumé,
   ni la ligne des trois dates n'ont été regardés dans un navigateur.
-- **`build_payload` n'a pas tourné.** Elle prend un client Supabase vivant. La
-  dérivation de `week_start` est vérifiée sur le **texte** du worker, et sa
-  **propriété** sur un calcul de trois lignes recopié dans le test — pas à
-  l'exécution. C'est le seam du ticket 16.
+- ~~**`build_payload` n'a pas tourné.**~~ **LEVÉ par le ticket 16**
+  ([16](../16-le-seam-du-payload/LISEZMOI.md)). La
+  dérivation de `week_start` n'est plus vérifiée sur un calcul recopié : la
+  construction est **rejouée pour de bon** sur les mêmes lignes, trois jours de
+  fabrication différents (le jour même, trois jours après, trois semaines
+  après), et elle retombe sur la même ligne d'écriture. L'idempotence de la
+  publication est donc mesurée, plus racontée.
 - **Aucune republication réelle.** Que deux publications de la même fenêtre
   écrivent la même ligne est démontré sur les dates, pas sur la base : aucun
   `upsert` n'a été joué.

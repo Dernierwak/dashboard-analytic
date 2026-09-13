@@ -16,6 +16,10 @@ from t import ok, egal, bilan
 from saas.recos_ia.theme_memoire import build_prompt, condense_theme_memoire
 
 RAPPORT = pulse.SOURCE_RAPPORT.read_text(encoding="utf-8")
+# Depuis le ticket 16, ce que le worker touche dehors passe par le lecteur :
+# les requêtes Supabase se lisent donc dans `saas/traitement/lecteur.py`.
+LECTEUR = (pulse.RACINE / "saas" / "traitement" / "lecteur.py").read_text(encoding="utf-8")
+
 
 HIST = [
     {"titre": "Monter le budget de 20 %", "levier": "argent",
@@ -115,11 +119,13 @@ def test_le_worker_lit_les_notes_a_part_et_ne_les_juge_pas():
     notes dans la boucle qui ÉCRIT `verdict` en base — exactement ce que la
     décision interdit."""
     ok("la boucle de verdict ne lit toujours que running/done",
-       'in_("status", ["running", "done"])' in RAPPORT)
+       'in_("status", ["running", "done"])' in LECTEUR
+       and "_sa = lecteur.suivi_en_cours()" in RAPPORT)
     ok("les notes sont toujours exclues de cette boucle",
        '_sa = [a for a in _sa if a.get("kind") != "note"]' in RAPPORT)
     ok("une lecture de notes à part existe",
-       '.eq("kind", "note")' in RAPPORT and '.eq("status", "archived")' in RAPPORT)
+       '.eq("kind", "note")' in LECTEUR and '.eq("status", "archived")' in LECTEUR
+       and "_notes_rows = lecteur.notes_archivees()" in RAPPORT)
     ok("elle est passée à la condensation",
        "_notes_par_theme.get(_mk)" in RAPPORT)
     ok("la raison est écrite au-dessus",
@@ -136,9 +142,10 @@ def test_la_lecture_des_notes_est_bornee_et_ne_lit_pas_les_running():
     source_notes = [n for n in ast.walk(arbre)
                     if isinstance(n, ast.Name) and n.id == "_notes_rows"]
     ok("`_notes_rows` existe dans l'arbre", len(source_notes) > 0)
-    ok("la lecture est bornée", '.order("decided_at").limit(200)' in RAPPORT)
+    ok("la lecture est bornée", '.order("decided_at").limit(limite)' in LECTEUR
+       and "def notes_archivees(self, limite: int = 200)" in LECTEUR)
     ok("elle exclut les notes pas encore cochées",
-       '.eq("kind", "note")\n                       .eq("status", "archived")' in RAPPORT)
+       '.eq("kind", "note")\n                .eq("status", "archived")' in LECTEUR)
 
 
 if __name__ == "__main__":

@@ -731,12 +731,20 @@ suivie** (perd son plafond de trois, précise que son statut n'a pas d'auteur),
 
 ### L'état réel du dépôt, à ne pas maquiller
 
-**Il n'existe aujourd'hui aucune suite de tests automatisés** — aucun fichier de
-test hors `.venv/`, et **aucun runner de test dans `saas/web`**. `pytest` est
-présent dans l'environnement virtuel et n'a jamais servi. Il n'y a donc pas de
-prior art à imiter dans ce dépôt : le seul précédent est la spec
-[`../theme-memoire/spec.md`](../theme-memoire/spec.md), qui a fait le même constat
-et a livré sans suite.
+*(Écrit le 2026-09-11. La construction l'a déplacé — mis à jour le 2026-09-13
+par le ticket [16](issues/16-le-seam-du-payload.md), dans son propre passage.)*
+
+**Il n'existe toujours aucune suite de tests INSTALLÉE** — aucun runner, `pytest`
+présent dans l'environnement virtuel et jamais servi, et **aucun runner de test
+dans `saas/web`**. Ce qui a changé : les tickets de cette carte ont laissé
+derrière eux **dix harnais** sous `.scratch/construction/harnais/`, un dossier
+par ticket, lancés à la main (`python3.12 test_x.py`), sans base, sans secret,
+sans réseau — **1 769 vérifications**, dont 145 (harnais 04 et 05) demandent un
+PostgreSQL et ne se rejouent pas à sec. C'est la forme qu'a prise le
+« prior art » qui manquait, et le harnais 16 la suit.
+
+Le seam lui-même est **ouvert** : `build_payload` prend un `Lecteur`
+(`saas/traitement/lecteur.py`) et tourne hors ligne.
 
 La vérification en vigueur reste celle de `CLAUDE.md` §9, et elle ne se remplace
 pas :
@@ -778,7 +786,8 @@ appelable, on ne la réécrit pas.
 
 Sous ce seam, **la couche de règles est déjà pure** — elle prend des DataFrames
 et ne fait aucune I/O. Elle se teste sans rien construire, et c'est là que les
-dix règles neuves se vérifient une par une.
+dix règles neuves se vérifient une par une. *(Fait : harnais 07, 189
+vérifications, et harnais 10, 347.)*
 
 **Aucun runner de test n'entre dans `saas/web`.** Décision de David : le web
 reste vérifié par `tsc`, `npm run build`, le compte de routes, et le fil parcouru

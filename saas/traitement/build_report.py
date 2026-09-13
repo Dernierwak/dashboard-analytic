@@ -30,16 +30,8 @@ import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
 from saas.commun.app_secrets import secret  # noqa: E402
-from saas.commun.fetch_data import (  # noqa: E402
-    fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_onboarding_profile, fetch_theme_objectifs,
-    fetch_reco_feedback, fetch_google_ads,
-    fetch_campaign_config, fetch_google_campaign_config,
-    fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
-    fetch_theme_plan, fetch_theme_regroupement,
-    fetch_google_ads_ad_insights, fetch_platform_budgets,
-)
-from saas.commun.insert_data import upsert_weekly_report, upsert_theme_plan  # noqa: E402
+from saas.commun.insert_data import upsert_weekly_report  # noqa: E402
+from saas.traitement.lecteur import Lecteur, LecteurSupabase  # noqa: E402
 from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
 )
@@ -48,8 +40,6 @@ from saas.recos_ia.composition import (  # noqa: E402
     composer_la_semaine, empreinte as empreinte_conseil,
 )
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
-from saas.recos_ia.user_persona import build_user_persona  # noqa: E402
-from saas.recos_ia.theme_memoire import condense_theme_memoire  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -975,7 +965,7 @@ _VEILLE_JOURS = 14
 _THEMES_CONSEILLES = 3
 
 
-def _labels_prioritaires(sb, user_id: str, ins_fb: dict) -> list:
+def _labels_prioritaires(lecteur, ins_fb: dict) -> list:
     """Les thèmes étoilés par le client, DU PLUS ANCIEN ÉTOILAGE AU PLUS RÉCENT.
 
     L'ordre n'est pas décoratif : c'est lui qui décide des `_THEMES_CONSEILLES`
@@ -1011,12 +1001,7 @@ def _labels_prioritaires(sb, user_id: str, ins_fb: dict) -> list:
         return []
     ordre: list = []
     try:
-        rows = (sb.table("insight_feedback")
-                .select("insight_key, created_at")
-                .eq("user_id", user_id)
-                .like("insight_key", "priority_label:%")
-                .order("created_at")
-                .execute().data) or []
+        rows = lecteur.priorites_datees()
         for r in rows:
             nom = str(r.get("insight_key") or "").split(":", 1)[-1]
             if nom in noms and nom not in ordre:
@@ -1603,7 +1588,7 @@ def _strip_reco(r: dict) -> dict:
 # la porte disparaît avec le chemin qu'elle gardait.
 
 
-def _themes_tips(labels: list, obj_txt: str, business: str = "",
+def _themes_tips(redige, labels: list, obj_txt: str, business: str = "",
                  bloques: list | None = None) -> list:
     """Savoir-faire de fond par thematique — PAS lie aux chiffres de la semaine.
 
@@ -1611,6 +1596,14 @@ def _themes_tips(labels: list, obj_txt: str, business: str = "",
     « comment on fait bien ce genre de contenu, en general ». Ils changent peu et
     se lisent quand on a cinq minutes. Un seul appel Gemini pour tous les themes.
     [] si Gemini echoue — jamais bloquant.
+
+    `redige` ARRIVE PAR PARAMÈTRE, et c'est le seam du ticket 16 qui déborde
+    jusqu'ici : cette fonction est appelée DEPUIS `build_payload`, donc un appel
+    direct à Gemini y ouvrait un trou — la construction partait sur le réseau dès
+    qu'une clé existait dans l'environnement, et un test hors ligne devenait
+    dépendant de la machine qui le joue. Trouvé par la revue de code du
+    ticket 16, qui l'a vu parce que la vérification d'alors ne regardait que le
+    corps de `build_payload` et pas les fonctions qu'il appelle.
     """
     import json as _json
     if not labels:
@@ -1622,7 +1615,7 @@ def _themes_tips(labels: list, obj_txt: str, business: str = "",
                  + " ; ".join(f'"{b}"' for b in bloques[:6])
                  + ". Traite ces sujets EN PRIORITE, en expliquant le "
                    "savoir-faire qui manque, pas en repetant le conseil.")
-    raw = _call_gemini(
+    raw = redige(
         "Tu es un consultant marketing senior pour une PME suisse"
         + (f" ({business})" if business else "")
         + f". Objectif du compte : {obj_txt}.{_bloc} "
@@ -1661,7 +1654,7 @@ def _themes_tips(labels: list, obj_txt: str, business: str = "",
         return []
 
 
-def build_payload(sb, user_id: str) -> dict | None:
+def build_payload(lecteur: Lecteur) -> dict | None:
     """Prépare le payload du rapport hebdo. None si pas assez de données.
 
     2700+ lignes, ~30 sections marquées `# ── ... ──`, variables partagées
@@ -1703,29 +1696,29 @@ def build_payload(sb, user_id: str) -> dict | None:
       27. Frise                — ce qui tournait pendant ces semaines, dates
                                   déclarées, ce qui a bougé sur les plateformes
     """
-    today = date.today()
+    today = lecteur.aujourd_hui()
 
     # ── Chargement (mêmes fetchers que le rapport) ────────────────────────────
     df_meta_raw = None
     df_insta = pd.DataFrame()
     df_follows = pd.DataFrame()
     try:
-        meta_data = fetch_meta_ads(sb, user_id)
+        meta_data = lecteur.meta_ads()
         if meta_data:
             df_meta_raw = pd.DataFrame(meta_data)
     except Exception:
         pass
     try:
-        df_insta = pd.DataFrame(fetch_post_metrics(sb, user_id) or [])
+        df_insta = pd.DataFrame(lecteur.publications() or [])
     except Exception:
         pass
     try:
-        df_follows = pd.DataFrame(fetch_daily_followers(sb, user_id) or [])
+        df_follows = pd.DataFrame(lecteur.abonnes() or [])
     except Exception:
         pass
     df_google = pd.DataFrame()
     try:
-        df_google = pd.DataFrame(fetch_google_ads(sb, user_id) or [])
+        df_google = pd.DataFrame(lecteur.google_ads() or [])
     except Exception:
         pass
     # LE DÉTAIL ANNONCE PAR ANNONCE, CÔTÉ GOOGLE. Récolté chaque jour depuis
@@ -1736,7 +1729,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # a pas dans `meta_ads_insights`.
     df_gads = pd.DataFrame()
     try:
-        df_gads = pd.DataFrame(fetch_google_ads_ad_insights(sb, user_id) or [])
+        df_gads = pd.DataFrame(lecteur.google_annonces() or [])
         if not df_gads.empty and "date_start" in df_gads.columns:
             # Converti UNE fois ici, pas une fois par thème : `_annonces_theme`
             # est appelée pour chacun, et un compte à quinze étoiles aurait
@@ -1871,7 +1864,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             if "campaign_id" in df_g.columns:
                 try:
                     gnames = {str(k): (v or {}).get("campaign_name") or f"Campagne {k}"
-                              for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
+                              for k, v in (lecteur.config_google() or {}).items()}
                 except Exception:
                     gnames = {}
                 df_g["_cid"] = df_g["campaign_id"].astype(str)
@@ -1948,10 +1941,10 @@ def build_payload(sb, user_id: str) -> dict | None:
     # TEXTE des conseils marqués « ◇ Trop compliqué » — voir `_bloques` plus bas.
     reco_ctx: list | None = None
     try:
-        objectif = fetch_objectif(sb, user_id)
-        feedback = fetch_reco_feedback(sb, user_id)
-        verdicts = fetch_reco_verdicts(sb, user_id)
-        reco_ctx = fetch_reco_theme_context(sb, user_id)
+        objectif = lecteur.objectif()
+        feedback = lecteur.reco_feedback()
+        verdicts = lecteur.verdicts()
+        reco_ctx = lecteur.contexte_theme()
     except Exception:
         pass
     # `reco_ctx` vaut `None` quand la requête a échoué (migration
@@ -1980,25 +1973,23 @@ def build_payload(sb, user_id: str) -> dict | None:
     # que la fenêtre d'attente de la précédente n'est pas écoulée (voir
     # `ATTENTE_MIN_NOUVELLE_HYPOTHESE` plus haut).
     try:
-        theme_plan_by = fetch_theme_plan(sb, user_id)
+        theme_plan_by = lecteur.plan_de_theme()
     except Exception:
         theme_plan_by = {}
     try:
-        from saas.collecte.ga4.ga4 import build_ga4_context
-        ga4_ctx = build_ga4_context(sb, user_id, cur_since, last_full_day)
+        ga4_ctx = lecteur.ga4_contexte(cur_since, last_full_day)
     except Exception:
         ga4_ctx = None
     # Meme contexte sur la fenetre precedente — sert le repere du bloc metriques.
     try:
-        from saas.collecte.ga4.ga4 import build_ga4_context as _bgc_prev
-        ga4_prev = _bgc_prev(sb, user_id, prev_since, prev_until)
+        ga4_prev = lecteur.ga4_contexte(prev_since, prev_until)
     except Exception:
         ga4_prev = None
 
     # ── Configs campagnes (labels) — servent la matrice ET le bloc thèmes ─────
     try:
-        meta_cfg = fetch_campaign_config(sb, user_id) or {}
-        goog_cfg = {str(k): v for k, v in (fetch_google_campaign_config(sb, user_id) or {}).items()}
+        meta_cfg = lecteur.config_meta() or {}
+        goog_cfg = {str(k): v for k, v in (lecteur.config_google() or {}).items()}
     except Exception:
         meta_cfg, goog_cfg = {}, {}
 
@@ -2011,8 +2002,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # propriété qui rend cette fonctionnalité non bloquante pour les comptes
     # existants.
     try:
-        from saas.collecte.ga4.ga4 import fetch_theme_ga4_events
-        theme_events = fetch_theme_ga4_events(sb, user_id) or {}
+        theme_events = lecteur.ga4_evenements_par_theme() or {}
     except Exception:
         theme_events = {}
 
@@ -2025,7 +2015,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # bloquante pour les comptes existants : un thème sans réglage propre se
     # comporte exactement comme avant elle.
     try:
-        theme_objectifs = fetch_theme_objectifs(sb, user_id) or {}
+        theme_objectifs = lecteur.objectifs_par_theme() or {}
     except Exception:
         theme_objectifs = {}
 
@@ -2055,8 +2045,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # revenu (voir la note de `_theme_series` : « by_campaign donne un revenu
     # total par campagne, sans dates »). Un événement choisi n'a pas ce défaut.
     try:
-        from saas.commun.fetch_data import fetch_ga4_events as _db_ga4_ev
-        ga4_event_rows = _db_ga4_ev(sb, user_id) or []
+        ga4_event_rows = lecteur.ga4_lignes() or []
     except Exception:
         ga4_event_rows = []
 
@@ -2075,7 +2064,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # lirait comme un compte qui n'a rien fait. `publish_weekly_report` la
     # laisse remonter, le canal « rapport » finit en échec, et le journal dit
     # quelle migration jouer.
-    themes_regroupes = fetch_theme_regroupement(sb, user_id)
+    themes_regroupes = lecteur.themes_regroupes()
 
     matrix = None
     constats: list = []
@@ -2084,15 +2073,14 @@ def build_payload(sb, user_id: str) -> dict | None:
     try:
         hist_since = date(today.year, 1, 1)
         try:
-            from saas.collecte.ga4.ga4 import build_ga4_context as _bgc_full
-            ga4_full = _bgc_full(sb, user_id, hist_since, last_full_day)
+            ga4_full = lecteur.ga4_contexte(hist_since, last_full_day)
         except Exception:
             ga4_full = None
         matrix = build_matrix(df_meta_raw, df_google,
                               df_insta if not df_insta.empty else None,
                               meta_cfg, goog_cfg, ga4_full, last_full_day,
                               themes_regroupes)
-        ins_fb = fetch_insight_feedback(sb, user_id)
+        ins_fb = lecteur.insight_feedback()
         # TOUS les thèmes étoilés (page Thèmes), dans l'ordre où ils ont été
         # étoilés — stockés dans insight_feedback sous la clé
         # priority_label:<nom>. Le `[:3]` qui coupait ici jetait la quatrième
@@ -2100,7 +2088,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # l'ignorait. Le plafond de LECTURE n'existe donc plus ici : toutes les
         # étoiles sont lues, et c'est `_THEMES_CONSEILLES` qui décide, plus bas,
         # lesquelles reçoivent des conseils.
-        priority_labels = _labels_prioritaires(sb, user_id, ins_fb)
+        priority_labels = _labels_prioritaires(lecteur, ins_fb)
         constats = build_constats(matrix, ins_fb, priority_labels)
     except Exception:
         matrix, constats = None, []
@@ -2110,12 +2098,12 @@ def build_payload(sb, user_id: str) -> dict | None:
     # ne se génère pas plus souvent) — pas de boucle de mise à jour séparée à
     # maintenir. Voir la décision : `.scratch/recos-generales/issues/05-profil-client-vivant.md`.
     try:
-        onboarding = fetch_onboarding_profile(sb, user_id)
+        onboarding = lecteur.profil_onboarding()
     except Exception:
         onboarding = {}
     try:
-        client_profile = build_user_persona(
-            sb, user_id, _call_gemini, objectif=objectif,
+        client_profile = lecteur.persona(
+            objectif=objectif,
             onboarding=onboarding, feedback=feedback, verdicts=verdicts,
             insight_feedback=ins_fb, theme_feedback=feedback_theme,
         )
@@ -2208,9 +2196,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         for _table, _canal in (("meta_campaign_config", "meta"),
                                ("google_campaign_config", "google")):
             try:
-                _rows = (sb.table(_table)
-                         .select("campaign_name, start_date, end_date")
-                         .eq("user_id", user_id).execute().data) or []
+                _rows = lecteur.dates_declarees(_table)
             except Exception:
                 _rows = []   # migration pas encore passée — on reste muet
             for _row in _rows:
@@ -2248,11 +2234,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     try:
         _rapports_publies = [
             (_h.get("payload") or {})
-            for _h in ((sb.table("weekly_reports").select("week_start, payload")
-                        .eq("user_id", user_id)
-                        .lt("week_start", week_start_rapport.isoformat())
-                        .order("week_start", desc=True)
-                        .limit(8).execute().data) or [])
+            for _h in lecteur.rapports_publies(week_start_rapport.isoformat())
         ]
     except Exception:
         _rapports_publies = []
@@ -2389,8 +2371,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # (seul `resolveAction(id,"done")` l'écrit) : dès qu'il existe, la
         # ligne devient une vraie décision client, quelle que soit son
         # origine, et mérite son repère.
-        for _a in (sb.table("suivi_actions").select("*")
-                   .eq("user_id", user_id).execute().data or []):
+        for _a in lecteur.suivi_actions():
             _det = _a.get("detail")
             _origine_auto = isinstance(_det, dict) and _det.get("origin") == "auto"
             if _origine_auto and not _a.get("done_at"):
@@ -2837,7 +2818,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     # ou qu'aucun relevé n'a encore été pris : `theme_hors_budget` se tait
     # alors, elle n'invente pas un budget de zéro.
     try:
-        _budgets_poses = fetch_platform_budgets(sb, user_id) or []
+        _budgets_poses = lecteur.budgets_poses() or []
     except Exception:
         _budgets_poses = []
 
@@ -3874,7 +3855,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         _wk.append("aucune campagne pub active")
     week_digest = " · ".join(_wk)
 
-    brief = _call_gemini(
+    brief = lecteur.redige(
         "Tu es un consultant marketing pour une PME. Écris un VRAI résumé de la semaine "
         "en 4 à 6 phrases (français, ton concret et direct, pas de guillemets) qui couvre "
         "À LA FOIS tous les posts ET toutes les campagnes de la semaine : "
@@ -4066,8 +4047,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             k["eng"] = float(p["eng"].mean()) if len(p) else None
             k["reach"] = float(p["reach"].mean()) if len(p) and "reach" in p.columns else None
         try:
-            from saas.collecte.ga4.ga4 import build_ga4_context as _bgc
-            g = _bgc(sb, user_id, w_since, w_until)
+            g = lecteur.ga4_contexte(w_since, w_until)
         except Exception:
             g = None
         _rev = (g or {}).get("paid_revenue")
@@ -4309,8 +4289,8 @@ def build_payload(sb, user_id: str) -> dict | None:
         # thème, avec sa carte complète (déjà enrichie de metric/effort par la
         # boucle `_attach_metric`/`_attach_effort` plus haut) pour pouvoir la
         # réafficher fidèlement les semaines suivantes si elle est bloquée.
-        upsert_theme_plan(
-            sb, user_id, _tf["label"], _hyp["key"], _hyp.get("levier"),
+        lecteur.ecrire_plan_de_theme(
+            _tf["label"], _hyp["key"], _hyp.get("levier"),
             today.isoformat(), dict(_hyp),
         )
 
@@ -4341,9 +4321,7 @@ def build_payload(sb, user_id: str) -> dict | None:
         # rendre un verdict aujourd'hui reviendrait à mesurer l'effet d'un geste
         # que personne n'a confirmé (`CLAUDE.md` § 7). Elles restent en base,
         # reconnaissables à `detail.origin == "auto"` : rien n'est effacé ici.
-        _sa = (sb.table("suivi_actions").select("*")
-               .eq("user_id", user_id).in_("status", ["running", "done"])
-               .order("check_at").execute().data) or []
+        _sa = lecteur.suivi_en_cours()
     except Exception:
         _sa = []
     # UNE NOTE N'EST PAS UNE ACTION SUIVIE. Depuis que le module « À faire » sait
@@ -4380,11 +4358,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     _notes_par_theme: dict[str, list[dict]] = {}
     _notes_labels: dict[str, str] = {}
     try:
-        _notes_rows = (sb.table("suivi_actions")
-                       .select("title, theme, decided_at")
-                       .eq("user_id", user_id).eq("kind", "note")
-                       .eq("status", "archived")
-                       .order("decided_at").limit(200).execute().data) or []
+        _notes_rows = lecteur.notes_archivees()
     except Exception:
         _notes_rows = []  # colonne `kind` absente : aucune note, aucun fait
     for _n in _notes_rows:
@@ -4526,9 +4500,7 @@ def build_payload(sb, user_id: str) -> dict | None:
                 # que rien ne bouge) — sans effet si la colonne n'existe pas
                 # encore (migration pas jouée).
                 try:
-                    sb.table("suivi_actions").update(
-                        {"verdict": _verdict}
-                    ).eq("id", a.get("id")).execute()
+                    lecteur.ecrire_verdict(a.get("id"), _verdict)
                 except Exception:
                     pass
             else:
@@ -4615,10 +4587,8 @@ def build_payload(sb, user_id: str) -> dict | None:
         # repondération des conseils : le corriger se fait là-bas, pas ici.
         for _mk in sorted(_mem_a_faire):
             try:
-                condense_theme_memoire(
-                    sb, user_id,
+                lecteur.memoire_theme(
                     _mem_labels.get(_mk) or _notes_labels.get(_mk, ""),
-                    _call_gemini,
                     _mem_hist.get(_mk),
                     _notes_par_theme.get(_mk),
                 )
@@ -4743,8 +4713,7 @@ def build_payload(sb, user_id: str) -> dict | None:
     _rev_par_sem = {}
     _sess_par_jour = {}
     try:
-        from saas.commun.fetch_data import fetch_ga4_insights as _fga4
-        for _r in (_fga4(sb, user_id) or []):
+        for _r in (lecteur.ga4_insights() or []):
             _d = str(_r.get("date") or "")[:10]
             if not _d:
                 continue
@@ -5085,6 +5054,7 @@ def build_payload(sb, user_id: str) -> dict | None:
             _bloques.append(_txt)
     try:
         themes_tips = _themes_tips(
+            lecteur.redige,
             [t["label"] for t in themes_focus if t.get("conseille")],
             _obj_txt0, bloques=_bloques,
         )
@@ -5457,7 +5427,7 @@ def publish_weekly_report(sb, user_id: str, email_to: str | None = None) -> str:
     L'email lit le MÊME payload que Pulse (une seule source de vérité).
     Sans RESEND_API_KEY, send_email passe en dry-run → aucun envoi, juste un log.
     """
-    payload = build_payload(sb, user_id)
+    payload = build_payload(LecteurSupabase(sb, user_id, _call_gemini))
     if payload is None:
         return "rapport: pas de données"
     # LA SEMAINE VIENT DU PAYLOAD, donc de la FENÊTRE MESURÉE : republier ne
@@ -5503,7 +5473,7 @@ if __name__ == "__main__":
     elif "--user" in args:
         uid = args[args.index("--user") + 1]
         if "--print" in args:
-            payload = build_payload(sb, uid)
+            payload = build_payload(LecteurSupabase(sb, uid, _call_gemini))
             print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
         else:
             print(publish_weekly_report(sb, uid))

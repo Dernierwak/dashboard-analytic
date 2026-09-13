@@ -2,7 +2,9 @@
 
 **Ce n'est pas une suite de tests installée.** Le dépôt n'en a aucune, et le
 ticket [16](../../issues/16-le-seam-du-payload.md) a tranché que le seul seam de
-test de la v1 serait le payload du rapport — il n'est pas encore ouvert. Ce
+test de la v1 serait le payload du rapport — **il est ouvert depuis le
+2026-09-13**, et son harnais est
+[16-le-seam-du-payload](../16-le-seam-du-payload/). Ce
 dossier est ce qui a servi à vérifier le ticket 12, gardé pour qu'il soit
 rejouable plutôt que raconté.
 
@@ -33,9 +35,11 @@ prouvait plus rien depuis `618b950`, elle vise maintenant le jour **choisi**
 
 ## Ce qu'il ne prouve pas
 
-- **`build_payload` n'a pas tourné.** Elle prend un client Supabase vivant :
-  la lecture des notes du thème et la mort de `preuve` sont vérifiées sur le
-  texte et sur l'arbre, jamais à l'exécution. C'est le seam du ticket 16.
+- **`build_payload` tourne depuis le ticket 16**
+  ([16](../16-le-seam-du-payload/LISEZMOI.md)). La mort de `preuve` se
+  lit maintenant sur un payload réellement construit — le champ n'y est pas. La
+  lecture des notes du thème reste vérifiée sur le texte : le faux lecteur sert
+  une liste de notes vide, ce jeu de lignes-là n'a pas encore été gréé.
 - **Rien du rendu web.** Ces tests lisent du **texte** TypeScript, ils ne
   l'exécutent pas — aucun runner dans `saas/web`, décision de David. Ce que la
   page rend se vérifie par `npx tsc --noEmit`, `npm run build`, les **19

@@ -149,9 +149,17 @@ def test_aucune_recolte_nouvelle_aucune_migration():
     """Le ticket 10 ne touche ni `saas/collecte/` ni `supabase/migrations/` : ce
     qu'il lit était déjà en base. Les trois lectures qu'il utilise sont celles
     que le ticket 07 avait déjà branchées, plus `by_campaign` de GA4."""
-    for lecture in ("fetch_meta_ads", "fetch_google_ads_ad_insights",
-                    "fetch_platform_budgets", "build_ga4_context"):
-        ok(f"{lecture} était déjà là", f"{lecture}(" in SOURCE)
+    # Les quatre entrent PAR LE LECTEUR depuis le ticket 16 : le worker les
+    # DEMANDE, `saas/traitement/lecteur.py` va les chercher. Ce que ce test
+    # prouve ne change pas — aucune lecture nouvelle n'a été ajoutée pour 10.
+    LECTEUR = (pulse.RACINE / "saas" / "traitement"
+               / "lecteur.py").read_text(encoding="utf-8")
+    for demande, lecture in (("lecteur.meta_ads()", "fetch_meta_ads"),
+                             ("lecteur.google_annonces()", "fetch_google_ads_ad_insights"),
+                             ("lecteur.budgets_poses()", "fetch_platform_budgets"),
+                             ("lecteur.ga4_contexte(", "build_ga4_context")):
+        ok(f"{demande} est demandé par le worker", demande in SOURCE)
+        ok(f"{lecture} était déjà là", f"{lecture}(" in LECTEUR)
     ok("aucun nouveau fetcher n'est importé pour ce ticket",
        "fetch_ga4_sessions" not in SOURCE and "fetch_meta_reach" not in SOURCE)
 

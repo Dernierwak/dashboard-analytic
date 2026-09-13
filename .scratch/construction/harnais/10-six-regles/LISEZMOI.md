@@ -47,11 +47,13 @@ possède.
 
 - **Les cinq lectures n'ont jamais tourné.** `_budget_campagnes_theme`,
   `_usure_theme`, `_creneaux_theme`, `_arrivee_theme` et `_regies_theme` sont des
-  closures de `build_payload`, qui prend un client Supabase vivant. C'est là que
-  se fait le rattachement d'une campagne à son thème, la somme des portées
-  quotidiennes et le drapeau `complet` — vérifié par **lecture seule** et par
-  texte source. Les rendre appelables hors ligne est le ticket
-  [16](../../issues/16-le-seam-du-payload.md).
+  closures de `build_payload`. C'est là que se fait le rattachement d'une
+  campagne à son thème, la somme des portées quotidiennes et le drapeau
+  `complet`. **Partiellement LEVÉ par le ticket 16** : la fonction tourne hors
+  ligne ([16](../16-le-seam-du-payload/LISEZMOI.md)) et le rattachement d'une
+  campagne à son thème y est exécuté. La
+  somme des portées et le drapeau `complet` restent vérifiés par lecture — le
+  faux lecteur ne grée pas encore de portée quotidienne Meta.
 - **Aucune règle n'a tourné sur de vraies données**, et c'est plus lourd ici que
   pour le ticket 07 : quatre des seuils sont **neufs**, et
   [24](../../../refonte/issues/24-conseils-payants-manquants.md) avait reporté
