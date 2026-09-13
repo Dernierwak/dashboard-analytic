@@ -41,11 +41,28 @@ def _fonction(arbre, nom):
     return None
 
 
+# LE COMMIT D'AVANT L'INJECTION, ÉPINGLÉ — et pas `HEAD`.
+#
+# La première version lisait `HEAD`, ce qui marchait exactement une fois : au
+# commit suivant, `HEAD` EST la version injectée et le « avant » disparaît. Un
+# test qui se compare à un point mouvant ne compare rien. Cette référence est
+# donc le dernier commit de la carte avant le ticket 16 — elle ne bouge plus.
+AVANT_INJECTION = "674737c"
+
+
 def _source_avant() -> str:
-    """`build_report.py` au dernier commit — le « avant » de l'injection."""
-    return subprocess.run(
-        ["git", "show", "HEAD:saas/traitement/build_report.py"],
-        cwd=pulse.RACINE, capture_output=True, text=True, check=True).stdout
+    """`build_report.py` juste avant l'injection du lecteur."""
+    fait = subprocess.run(
+        ["git", "show", f"{AVANT_INJECTION}:saas/traitement/build_report.py"],
+        cwd=pulse.RACINE, capture_output=True, text=True)
+    if fait.returncode != 0:
+        # Clone superficiel, ou historique réécrit : on le DIT plutôt que de
+        # comparer à du vide et de tout faire passer.
+        raise SystemExit(
+            f"Le commit {AVANT_INJECTION} est introuvable dans ce dépôt — "
+            "la moitié « rien n'a été déplacé » de ce test ne peut pas être "
+            "jouée. Récupérer l'historique complet, puis relancer.")
+    return fait.stdout
 
 
 AVANT = _source_avant()
