@@ -20,6 +20,7 @@ import {
 import { fmtCHF } from "@/lib/report";
 import { PostLabelSelect } from "@/components/post-label-select";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { RetourRapport } from "@/components/retour-rapport";
 import { themesChoisis } from "@/lib/commandes";
 import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
@@ -332,6 +333,10 @@ export default async function InstagramPage({
         themes={d.labels}
         themesActifs={themes}
       />
+
+      {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
+          et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
+      <RetourRapport de={searchParams?.de} />
 
       {/* ── TA PAGE ──
           LES TROIS TUILES CI-DESSOUS SONT CELLES DU COMPTE, jamais celles d'un

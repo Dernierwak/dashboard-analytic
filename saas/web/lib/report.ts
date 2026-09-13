@@ -446,7 +446,18 @@ export type ReportPayload = {
   changements?: ChangementPlateforme[] | null;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
   vision?: VisionBlock | null;
-  matrice?: { coverage?: MatriceCoverage } | null;
+  /** `period` EST LA FENÊTRE DU BILAN DE CHAQUE CARTE DE THÈME : les chiffres
+   *  de `ThemeFocus.summary` sortent tous de cette matrice
+   *  (`matrix_themes_by`, `build_report.py`), et `vision.period_label`
+   *  — « depuis le 1 jan » — n'est que son `since` mis en français. Le champ
+   *  était calculé et publié depuis toujours (`insights.py`) mais n'était pas
+   *  déclaré ici ; il l'est parce que la porte vers la plateforme emporte
+   *  cette fenêtre-là, et aucune autre. Absent des payloads v1 : sans lui la
+   *  porte ne s'ouvre pas, plutôt que de s'ouvrir sur une autre période. */
+  matrice?: {
+    coverage?: MatriceCoverage;
+    period?: { since: string; until: string; days: number } | null;
+  } | null;
   themes_focus?: ThemeFocus[] | null;
   // Phrase de passage : relie le constat de la semaine aux conseils qui suivent.
   themes_intro?: string | null;

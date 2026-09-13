@@ -43,6 +43,12 @@ export type DashParams = {
   cfrom?: string;   // plage de référence choisie : YYYY-MM-DD
   cto?: string;
   tri?: string;     // tri des tables comparables : "ecart" | absent (la période affichée)
+  /** D'OÙ ON VIENT — le thème de la carte du rapport qui a ouvert cette page.
+   *  Un fil d'Ariane, pas un filtre : AUCUN calcul ne le lit, seul
+   *  `components/retour-rapport.tsx` l'affiche. Distinct de `l`, qui filtre :
+   *  `l` est un réglage que la personne change en arrivant, `de` reste vrai
+   *  quand elle le change. Posé par `porteVersCanal` (`lib/liens.ts`). */
+  de?: string;
 };
 
 export function periodDays(sp: DashParams | undefined): Days {

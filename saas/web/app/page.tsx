@@ -17,7 +17,8 @@ import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
 import { SetupWizard } from "@/components/setup-wizard";
-import { ThemeCard, ancreTheme, ecartTheme, penteNeutre } from "@/components/theme-card";
+import { ThemeCard, ecartTheme, penteNeutre } from "@/components/theme-card";
+import { ancreTheme } from "@/lib/liens";
 import { ThemesCarrousel } from "@/components/themes-carrousel";
 import { KpiFocusCard } from "@/components/kpi-focus";
 import { HorsTheme } from "@/components/hors-theme";
@@ -152,6 +153,15 @@ export default async function Page() {
     getThemeEvenements(),
   ]);
   const report = data.report;
+  // LA FENÊTRE DU BILAN DES CARTES, EN DATES — celle que la porte vers la
+  // plateforme emporte. C'est la période de la matrice, d'où sortent tous les
+  // chiffres de `summary` ; `vision.period_label` n'en est que la version
+  // française (« depuis le 1 jan »). Les deux bornes ou rien : une porte qui
+  // n'emporte qu'une moitié de fenêtre ouvre sur une autre période que celle
+  // affichée, et l'écart au clic se lit comme un bug (ticket 14).
+  const periode = report?.matrice?.period ?? null;
+  const fenetreBilan =
+    periode?.since && periode?.until ? { from: periode.since, to: periode.until } : null;
   const conversionsParTheme = new Map(evenements.themes.map((t) => [t.label, t.principaux]));
 
   // Thèmes prioritaires — le fil qui relie la vision aux conseils. Plus de
@@ -621,6 +631,7 @@ export default async function Page() {
                 changementsApi={apiParTheme(t.label)}
                 rows={report?.themes?.rows ?? null}
                 fenetre={report?.vision?.period_label || null}
+                fenetreDates={fenetreBilan}
                 decroche={pire?.label === t.label}
                 labels={data.labels}
                 feedback={data.feedback}

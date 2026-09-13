@@ -21,6 +21,8 @@ import { ConseilsVerrouilles } from "@/components/conseils-verrouilles";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
+import { CANAUX, PorteCanal } from "@/components/porte-canal";
+import { ancreTheme } from "@/lib/liens";
 
 // UNE SEULE CARTE PAR THÈME, ET ELLE PORTE TOUT.
 //
@@ -83,11 +85,6 @@ const PAR_DEFAUT: Cadre = {
   neutre: false,
 };
 
-const CH_ICON: Record<string, { icon: string; color: string }> = {
-  meta: { icon: "▣", color: "#1a56ff" },
-  google: { icon: "◆", color: "#1a7a4a" },
-};
-
 /**
  * Vrai quand la pente de cet indicateur ne se juge pas. Dépenser moins n'est ni
  * une victoire ni un échec tant qu'on ne sait pas ce que ça rapporte : classer
@@ -96,19 +93,6 @@ const CH_ICON: Record<string, { icon: string; color: string }> = {
  */
 export function penteNeutre(metricLabel: string): boolean {
   return (CADRES[metricLabel] ?? PAR_DEFAUT).neutre;
-}
-
-/** L'ancre de la carte d'un thème, pour y renvoyer d'ailleurs sur la page. */
-export function ancreTheme(label: string): string {
-  return (
-    "theme-" +
-    label
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-  );
 }
 
 /** Moyenne des 4 dernières semaines contre les 4 précédentes — une semaine
@@ -140,6 +124,7 @@ export function ThemeCard({
   changementsApi = [],
   rows,
   fenetre,
+  fenetreDates = null,
   decroche = false,
   labels,
   feedback,
@@ -161,6 +146,12 @@ export function ThemeCard({
   rows?: ThemeRow[] | null;
   /** « depuis le 1 jan » — la fenêtre du bilan, qui n'est PAS celle de la courbe. */
   fenetre: string | null;
+  /** LES MÊMES BORNES QUE `fenetre`, EN DATES — `matrice.period`, la fenêtre
+   *  d'où sortent tous les chiffres du bilan. `fenetre` les dit au lecteur
+   *  (« depuis le 1 jan »), celles-ci les disent à la page canal : la porte les
+   *  emporte pour que le chiffre affiché là-bas soit celui qu'on vient de lire
+   *  ici. Absentes des payloads v1 — la porte ne s'ouvre alors pas. */
+  fenetreDates?: { from: string; to: string } | null;
   decroche?: boolean;
   labels: string[];
   feedback: Record<string, string>;
@@ -566,6 +557,15 @@ export function ThemeCard({
           </div>
         </div>
 
+        {/* LA SORTIE, ET ELLE EST EN PIED — c'est-à-dire à la fin de ce qu'on
+            vient de lire. Le profil qu'elle sert est celui qui prend l'hebdo
+            comme du travail prémâché PUIS va creuser seul : la porte se
+            présente donc après le bilan, la courbe, les conseils et les
+            actions, pas avant. Elle ne rapporte rien — la page d'arrivée dit
+            seulement d'où l'on vient et propose d'y revenir
+            (`components/retour-rapport.tsx`). */}
+        <PorteCanal theme={theme} fenetre={fenetreDates} />
+
         {/* Les campagnes du thème — c'est ici qu'on répare une étiquette. En
             pied, replié : on ne vient pas sur cette carte pour ça. */}
         {theme.campaigns.length > 0 && (
@@ -584,12 +584,12 @@ export function ThemeCard({
             <div className="px-4 pb-4">
               <ScrollList title="" maxH="max-h-[40vh]">
                 {theme.campaigns.map((c) => {
-                  const ch = CH_ICON[c.channel] ?? CH_ICON.meta;
+                  const ch = CANAUX[c.channel] ?? CANAUX.meta;
                   return (
                     <div key={`${c.channel}:${c.key}`} className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-[15px]" style={{ color: ch.color }}>
-                          {ch.icon}
+                        <span className="text-[15px]" style={{ color: ch.couleur }}>
+                          {ch.glyphe}
                         </span>
                         <span className="text-[13.5px] text-ink truncate flex-1" title={c.name}>
                           {c.name}

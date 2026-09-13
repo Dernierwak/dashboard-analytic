@@ -510,3 +510,35 @@ naître `running`.
 - **Le nettoyage pour le nettoyage.** Garde-fou posé en 04 : il est interdit de
   répondre « il faut d'abord tout nettoyer ». Un chantier de propreté ne valide
   aucune hypothèse. Les 32 worktrees et 8,6 Go relevés en 01 restent où ils sont.
+
+**[14 · La porte vers la plateforme](issues/14-la-porte-vers-la-plateforme.md)** —
+le cul-de-sac est fermé. Une porte en pied de chaque carte de thème
+(`components/porte-canal.tsx`) ouvre `/meta`, `/google` ou `/instagram` **sur le
+thème ET sur la fenêtre du bilan** — `matrice.period`, et pas `since`/`until` du
+payload, qui sont ceux de la semaine et auraient reproduit l'écart « 4 520 CHF →
+103 CHF » que le ticket interdit. **Pas de fenêtre, pas de porte.** Le retour
+(`components/retour-rapport.tsx`) survit à l'exploration parce que tous les liens
+de ces pages énumèrent ce qu'ils CHANGENT. **Deux prémisses du ticket étaient
+fausses** : `/instagram` était déjà filtrable par thème (le bandeau l'a apporté),
+et le vocabulaire d'URL est `l`, pas `label` — `label` ne s'écrit plus nulle
+part. **Aucun compte affiché sur la porte** : `theme.campaigns` est plafonné à
+huit, d'où [34](issues/34-ses-campagnes-plafonnees-a-huit.md), qui est le même
+plafond en train de mentir trente pixels plus bas (« Ses campagnes (8) » sur
+douze). Vérifié `tsc` + `build` verts, 19 routes, et les deux constructeurs de
+liens exécutés sous node ; **jamais vu à l'écran** — ces pages demandent une
+session.
+
+**Cinq tickets nés de la revue de 14**, aucun dans son périmètre :
+[34](issues/34-ses-campagnes-plafonnees-a-huit.md) (« Ses campagnes (8) » sur un
+thème qui en porte douze), [35](issues/35-la-periode-de-couts-ne-repond-plus.md)
+(sur `/couts`, `p=mois` rend les présélections inertes, et `from` n'est pas borné
+à l'ancre — la fenêtre peut s'afficher à l'envers),
+[36](issues/36-le-carnet-a-trois-silences.md) (un zéro fabriqué, une panne de
+lecture rendue comme « tu n'as rien écrit », 50 notes invisibles au-delà de 200),
+[37](issues/37-la-memoire-de-theme-lit-les-notes-les-plus-vieilles.md) (un
+`.order()` ascendant fait lire à Gemini les notes les plus vieilles du compte) et
+[38](issues/38-le-repli-de-posernote-efface-l-auteur.md) (un repli qui crée une
+note sans auteur sur une base qui sait les signer — ADR 0004). **Tous vérifiés
+ligne à ligne, aucun corrigé** : ils vivent dans du travail non commité qui n'est
+pas celui de 14. Une affirmation de la revue était fausse et n'a pas été reprise
+telle quelle (voir 35 §1).

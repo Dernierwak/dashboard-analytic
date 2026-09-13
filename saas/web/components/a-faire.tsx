@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AFaire as Liste, EtatAFaire } from "@/lib/a-faire";
-import { ancreTheme } from "@/components/theme-card";
+import { ancreTheme } from "@/lib/liens";
 import { ListeAFaire, type ConseilRendu, type VerdictRendu } from "@/components/a-faire-lignes";
 
 // ── LE MODULE « À FAIRE CETTE SEMAINE » ──────────────────────────────────────

@@ -11,6 +11,7 @@ import {
   ByLabelTable,
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { RetourRapport } from "@/components/retour-rapport";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
 import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
@@ -67,6 +68,10 @@ export default async function MetaPage({
         campagnes={d.campOptions}
         campActive={d.filters.camp}
       />
+
+      {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
+          et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
+      <RetourRapport de={searchParams?.de} />
 
       <div className="mt-5">
         <AdsKpis d={d} />
