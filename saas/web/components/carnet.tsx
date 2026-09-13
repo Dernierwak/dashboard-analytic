@@ -69,8 +69,10 @@ function PhraseBilan({ b }: { b: Bilan }) {
  *  avait défait, et que ce ticket a l'ordre de ne pas rejouer.
  *
  *  L'ordre du premier écran est Verdict → **bilan du Carnet** → À faire → rail
- *  → résumé IA replié. Ce composant pose la deuxième marche ; la descente du
- *  résumé et les trois dates sont le ticket 13. */
+ *  → résumé IA replié. Ce composant pose la deuxième marche ; le rail des
+ *  actions en cours, la descente du résumé et les trois dates ont été posés par
+ *  le ticket 13 de la construction. Le rail de la page d'accueil ne montre que
+ *  ce qui COURT — il ne rejoue ni la chronologie d'un thème, ni ce module. */
 export async function BilanDuCarnet() {
   const bilan = await getBilanCarnet();
   // Rien de jugé n'est pas « zéro action jugée » à afficher : un compte qui

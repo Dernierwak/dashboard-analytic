@@ -7,6 +7,14 @@ import { RailFiltre } from "@/components/rail-filtre";
 // LE FIL D'ACTIONS — un rail vertical, une pastille par action, du plus urgent
 // au plus ancien. La forme suit ce que l'objet EST : une chronologie.
 //
+// DEUX MAISONS, UN SEUL MODULE. La carte d'un thème lui donne TOUT ce qui vit
+// sur ce thème — actions, historique, faits de plateforme. La page d'accueil
+// lui donne les seules actions QUI COURENT, tous thèmes confondus et sans
+// aucun fait de plateforme : c'est le rang 4 de son premier écran, et la
+// chronologie complète se lit dans la carte, pas en tête de page. Le tri est
+// fait en amont (`lib/a-faire.ts`, `chantiersEnCours`) ; ce module ne décide
+// jamais de ce qu'on lui donne.
+//
 // UN SEUL RAIL, DEUX RÉGIMES. Pas deux traits côte à côte : la grammaire
 // n'autorise qu'une forme par module, et deux rails dans une colonne de 300 px
 // se liraient comme deux listes sans rapport. Ce qui change entre les deux

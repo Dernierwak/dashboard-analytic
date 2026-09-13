@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
+import { JOUR_DEFAUT } from "@/lib/jour-de-travail";
 
 // Couche données du rapport hebdo.
 // Règles maison (identiques au Streamlit) :
@@ -506,6 +507,12 @@ export type ReportPayload = {
     ctr: number | null;
   } | null;
   week_label: string;
+  /** La ligne sous laquelle le worker a écrit ce payload — le lundi de la
+   *  FENÊTRE MESURÉE, pas celui du jour de fabrication (`build_report.py`).
+   *  Publié depuis le ticket 13 de la construction, absent des payloads
+   *  d'avant. Déclaré ici pour que la clé d'écriture soit lisible côté web ;
+   *  aucun écran ne s'en sert — le rapport se date par les trois dates. */
+  week_start?: string | null;
   since: string;
   until: string;
   verdict: string;
@@ -549,6 +556,14 @@ export type WeeklyData = {
   kpis: Kpi[];
   channels: ChannelSpend[];
   report: ReportPayload | null;
+  /** `weekly_reports.updated_at` — la date de PUBLICATION de ce payload, la
+   *  deuxième des trois dates en tête du rapport. `null` tant qu'aucun rapport
+   *  n'existe (ou si la colonne n'a pas pu être lue) : on n'écrit alors aucune
+   *  date plutôt qu'une date approchée (`CLAUDE.md` §7). */
+  publieLe: string | null;
+  /** Le Jour de travail du compte regardé (`profiles.fetch_schedule`), en
+   *  anglais comme en base. C'est de lui que sort la troisième date. */
+  jourDeTravail: string;
   // Dernière réaction par type de conseil (4 semaines) — live, comme le Streamlit.
   // Deux formats de clé cohabitent (TASK-025, voir `feedbackKey`) : la clé
   // COMPOSITE `${reco_key}::${theme}` (précise, une clé-règle générique porte
@@ -671,14 +686,30 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .order("fetched_at", { ascending: false })
       .limit(40),
+    // `updated_at` EXISTE DEPUIS TOUJOURS ET N'ÉTAIT JAMAIS LU. C'est la
+    // deuxième des trois dates en tête du rapport — « publié le X » — et la
+    // seule qui dise QUAND le worker a écrit ce payload. Sans elle, un lecteur
+    // qui a classé des campagnes un mardi ne peut pas savoir que le texte
+    // qu'il lit est plus vieux que les chiffres regroupés à côté
+    // (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md` §4).
     supabase
       .from("weekly_reports")
-      .select("week_start, payload")
+      .select("week_start, payload, updated_at")
       .eq("user_id", uid)
       .order("week_start", { ascending: false })
       .limit(1),
     fetchRecoFeedbackRows(supabase, uid, fbCutoff),
-    supabase.from("profiles").select("objectif, business_type, labels").eq("id", uid).limit(1),
+    // `fetch_schedule` ENTRE DANS CETTE LECTURE, et c'est sans risque ici : la
+    // colonne est celle que `_due_today` lit pour décider qui est récolté
+    // (`saas/collecte/automatisation/fetch_all.py`). Une base qui ne l'aurait
+    // pas ne publierait aucun rapport — il n'y aurait donc rien à dater. Le
+    // repli ci-dessous (`retry`) ne la redemande pas : dans ce cas on retombe
+    // sur le défaut du worker lui-même, lundi, et pas sur une invention.
+    supabase
+      .from("profiles")
+      .select("objectif, business_type, labels, fetch_schedule")
+      .eq("id", uid)
+      .limit(1),
     // Pour la Vue d'ensemble selon la mission (ventes → revenu, noto/eng → posts)
     supabase
       .from("ga4_insights")
@@ -722,6 +753,12 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // sans distinction, en état vide.
   const report: ReportPayload | null =
     (reportRes.data?.[0]?.payload as ReportPayload | undefined) ?? null;
+  // QUAND CE PAYLOAD A ÉTÉ ÉCRIT — la ligne, pas le payload : le worker n'y
+  // met aucune date de publication, et `updated_at` est la seule qui existe.
+  // Elle bouge à chaque republication, ce qui est exactement ce qu'on veut
+  // dire : « voilà la version que tu lis ».
+  const publieLe: string | null =
+    (reportRes.data?.[0]?.updated_at as string | undefined) ?? null;
 
   const insightFeedback: Record<string, string> = {};
   for (const row of insightRes.data ?? []) {
@@ -853,6 +890,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     objectif?: string | null;
     business_type?: string | null;
     labels?: string[] | null;
+    fetch_schedule?: string | null;
   } | null = profileRes.data?.[0] ?? null;
   let migrated = !profileRes.error;
   if (profileRes.error) {
@@ -861,6 +899,11 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   }
   const objectif: string | null = profRow?.objectif ?? null;
   const labels: string[] = profRow?.labels ?? [];
+  // LE JOUR DE TRAVAIL DU COMPTE REGARDÉ, jamais celui de la personne qui
+  // regarde : un Membre invité lit les dates du compte dont il voit les
+  // chiffres, et c'est `user_id` que le worker compare (`_due_today`). D'où
+  // `uid` et non `compte.moi`.
+  const jourDeTravail: string = profRow?.fetch_schedule || JOUR_DEFAUT;
   // Onboarded si déjà répondu — ou si la migration n'est pas passée (pas de formulaire cassé)
   const onboarded: boolean =
     !migrated || Boolean(objectif) || Boolean(profRow?.business_type);
@@ -1051,6 +1094,8 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     kpis,
     channels,
     report,
+    publieLe,
+    jourDeTravail,
     feedback,
     insightFeedback,
     comments,

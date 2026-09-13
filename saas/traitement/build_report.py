@@ -1772,6 +1772,33 @@ def build_payload(sb, user_id: str) -> dict | None:
     prev_until = cur_since - timedelta(days=1)
     prev_since = prev_until - timedelta(days=6)
 
+    # ── LA SEMAINE DE CE RAPPORT SORT DE LA FENÊTRE MESURÉE, PLUS DE `today` ──
+    #
+    # `week_start` était le lundi d'AUJOURD'HUI, et le numéro de semaine du
+    # libellé aussi. Republier le même rapport dans une semaine calendaire
+    # différente écrivait donc une DEUXIÈME ligne (la clé est
+    # `(user_id, week_start)`) et le renumérotait, alors que les chiffres sont
+    # identiques — deux lignes pour une même semaine, c'est deux vérités.
+    # Le défaut est mesuré dans `.scratch/refonte/issues/13-entre-deux-jours-de-travail.md`
+    # (« le piège à connaître si un rapport est republié à la main »).
+    #
+    # Ancrer sur la fenêtre rend la publication IDEMPOTENTE : tant que la
+    # dernière donnée n'a pas bougé, republier écrase sa propre ligne, quel que
+    # soit le jour où on le fait. C'est le même invariant que la fenêtre
+    # elle-même, qui est ancrée sur la dernière donnée et non sur le jour de
+    # fabrication (l. ci-dessus) — les deux se tenaient déjà, seule la clé
+    # d'écriture ne suivait pas.
+    #
+    # CE QUE ÇA DÉPLACE EN SERVICE, une fois et une seule : pour un compte dont
+    # le Jour de travail est le LUNDI, la fenêtre finit le dimanche, donc dans
+    # la semaine ISO précédente — son `week_start` recule de sept jours. La
+    # publication suivante tombe alors sur la ligne que la précédente occupait
+    # et l'écrase (upsert, aucune suppression) : on perd le payload d'UNE
+    # semaine d'historique, jamais une ligne de suivi ni une décision. Pour tous
+    # les autres jours, hier est dans la même semaine ISO qu'aujourd'hui et
+    # rien ne bouge.
+    week_start_rapport = last_full_day - timedelta(days=last_full_day.weekday())
+
     # ── Meta Ads : agrégats + par campagne ────────────────────────────────────
     total_spend = 0.0
     total_clicks = 0
@@ -1899,7 +1926,10 @@ def build_payload(sb, user_id: str) -> dict | None:
     if not has_data:
         return None
 
-    week_num = today.isocalendar()[1]
+    # Le numéro suit la fenêtre, pas le jour de fabrication : « Semaine 38 ·
+    # 7 → 13 septembre » se contredisait tout seul pour un compte servi le
+    # lundi, et republier un mardi renumérotait le même rapport.
+    week_num = week_start_rapport.isocalendar()[1]
     week_label = (
         f"Semaine {week_num} · {cur_since.day} → {last_full_day.day} "
         f"{MONTHS_FR[last_full_day.month]} · 7 jours pleins"
@@ -2208,14 +2238,19 @@ def build_payload(sb, user_id: str) -> dict | None:
     # par-dessus. Sans ce filtre, un thème calme le matin se serait compté
     # lui-même l'après-midi, et la carte aurait changé de texte à chaque
     # rechargement sans qu'aucune donnée n'ait bougé.
-    week_start_monday = today - timedelta(days=today.weekday())
+    #
+    # LA BORNE EST CELLE DU RAPPORT QU'ON FABRIQUE, pas le lundi d'aujourd'hui :
+    # c'est sous `week_start_rapport` que cette publication va s'écrire, donc
+    # c'est cette ligne-là — et elle seule — qu'il faut tenir hors de son propre
+    # historique. Les deux valeurs ne diffèrent que pour un compte servi le
+    # lundi, mais c'est exactement le compte qui se serait relu lui-même.
     _rapports_publies = []
     try:
         _rapports_publies = [
             (_h.get("payload") or {})
             for _h in ((sb.table("weekly_reports").select("week_start, payload")
                         .eq("user_id", user_id)
-                        .lt("week_start", week_start_monday.isoformat())
+                        .lt("week_start", week_start_rapport.isoformat())
                         .order("week_start", desc=True)
                         .limit(8).execute().data) or [])
         ]
@@ -5364,6 +5399,13 @@ def build_payload(sb, user_id: str) -> dict | None:
             "followers_total": followers_current,
         },
         "week_label": week_label,
+        # LA LIGNE SOUS LAQUELLE CE PAYLOAD DOIT S'ÉCRIRE — dérivée de la
+        # fenêtre mesurée, jamais du jour de fabrication. C'est ce qui rend la
+        # republication idempotente (voir le bloc `week_start_rapport`).
+        # `publish_weekly_report` la lit ; personne d'autre n'en a besoin, mais
+        # elle voyage dans le payload parce que c'est `build_payload` qui
+        # connaît la fenêtre.
+        "week_start": week_start_rapport.isoformat(),
         "since": cur_since.isoformat(),
         "until": last_full_day.isoformat(),
         "verdict": verdict,
@@ -5418,7 +5460,14 @@ def publish_weekly_report(sb, user_id: str, email_to: str | None = None) -> str:
     payload = build_payload(sb, user_id)
     if payload is None:
         return "rapport: pas de données"
-    week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    # LA SEMAINE VIENT DU PAYLOAD, donc de la FENÊTRE MESURÉE : republier ne
+    # doit jamais créer une deuxième ligne pour les mêmes chiffres (la clé est
+    # `(user_id, week_start)`). Le repli sur le lundi d'aujourd'hui ne sert que
+    # si `build_payload` n'a pas posé la clé — il la pose toujours depuis le
+    # ticket 13 de la construction ; garder le repli évite qu'un payload forgé
+    # par un test fasse tomber la publication.
+    week_start = (payload.get("week_start")
+                  or (date.today() - timedelta(days=date.today().weekday())).isoformat())
     upsert_weekly_report(sb, user_id, week_start, payload)
     log = f"rapport publié ({len(payload['recos'])} conseils)"
 

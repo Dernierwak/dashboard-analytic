@@ -542,3 +542,46 @@ note sans auteur sur une base qui sait les signer — ADR 0004). **Tous vérifi�
 ligne à ligne, aucun corrigé** : ils vivent dans du travail non commité qui n'est
 pas celui de 14. Une affirmation de la revue était fausse et n'a pas été reprise
 telle quelle (voir 35 §1).
+
+**[13 · Le premier écran, et les trois dates en tête](issues/13-premier-ecran-et-trois-dates.md)** —
+**le rapport dit enfin de quand il date, et le premier écran est dans son
+ordre.** Les trois dates — *mesuré du X au X · publié le X · mis à jour le X* —
+prennent la place du libellé de semaine au lieu de s'y ajouter : `week_label`
+disait déjà la fenêtre, la relire trente pixels plus bas aurait doublé sur les
+pixels les plus chers. `updated_at`, qui existait depuis toujours et n'était
+jamais lu, est la deuxième ; la troisième sort de `fetch_schedule` **du compte
+regardé** — un Membre invité lit les dates du compte dont il voit les chiffres.
+**Aucune des trois ne juge** : jamais « périmé », jamais « il y a N jours »,
+aucune couleur d'alerte (vieux ≠ faux, §7, refusé deux fois par David), et
+chacune **peut manquer sans s'écrire**. **Le piège du §8 était armé** : le calcul
+du prochain passage vivait dans un module `"use client"` et les trois dates sont
+rendues par le serveur — il a déménagé dans `lib/jour-de-travail.ts`, sans
+directive, et `jour-recolte.tsx` n'en garde aucune copie. **Les cinq marches du
+premier écran sont en place** : `SetupWizard` remonte en tête (défaut de 06 : il
+était sous deux écrans de défilement — **sa place seule bouge**, les quatre
+étapes restent hors v1), le résumé IA descend au dernier rang et se replie dans
+un `<details>` fermé sans état React, et **le rail des chantiers en cours existe
+enfin sur l'accueil** — c'était le rang 4 depuis 10 point 6, confirmé par 20, et
+**la seule marche que personne n'avait construite**. Ce n'est pas un deuxième
+objet : c'est `RailActions` servi sans thème courant et **sans faits de
+plateforme**, et il ne double pas « À faire » — `chantiersEnCours` est le
+complément **exact** du module, calculé au même endroit, et un test l'exécute
+(aucune action des deux côtés, aucune perdue entre les deux).
+
+**Le défaut de publication est réparé** : `week_start` sortait du lundi
+d'**aujourd'hui**, donc republier dans une autre semaine calendaire écrivait une
+deuxième ligne pour les mêmes chiffres et renumérotait « Semaine N ». Il sort
+maintenant de la **fenêtre mesurée**, voyage dans le payload, et la borne qui
+empêche un rapport de se relire dans son propre historique suit. La publication
+devient **idempotente**. **Une conséquence dite d'avance** : pour un compte servi
+le **lundi**, la fenêtre finit le dimanche — semaine ISO précédente — donc la
+première publication après ce ticket écrase la ligne de la semaine d'avant
+(upsert, aucune suppression) et on perd **un** payload d'historique. Les autres
+jours ne bougent pas. **77 vérifications neuves**, harnais 06→12 rejoués (1 244),
+19 routes. **Une nouveauté dans le harnais** : deux modules purs de `saas/web`
+(`lib/jour-de-travail.ts`, `lib/a-faire.ts`) **tournent pour de bon**, importés
+tels quels — node 22+ retire les types lui-même, donc plus aucune copie du code
+à vérifier dans le test. **Rien n'a été vu à l'écran** et **`build_payload` n'a
+pas tourné** (ticket 16) : la dérivation de `week_start` est vérifiée sur le
+texte et sur sa propriété, jamais en base — aucun `upsert` joué. Le `week_start`
+et le numéro de semaine ne se voient qu'après un « ↻ Recharger mes conseils ».

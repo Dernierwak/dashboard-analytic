@@ -71,6 +71,39 @@ export function estNoteOuverte(a: TrackedAction): boolean {
   return a.kind === "note" && a.status === "running";
 }
 
+/**
+ * LE RAIL DES CHANTIERS EN COURS, SUR LA PAGE D'ACCUEIL — le complément EXACT
+ * du module « À faire », et c'est pour ça que le filtre vit ICI.
+ *
+ * L'ordre du premier écran est Verdict → bilan du Carnet → À faire → **rail**
+ * → résumé IA replié (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`
+ * point 6, confirmé par [20] : *« il se pose après le bilan du carnet, dans
+ * l'ordre déjà arrêté par 10 »*). La règle que ce rang applique était tranchée
+ * depuis longtemps sans être appliquée ici : **une action décidée vit en haut
+ * jusqu'à être faite.** Sans lui, ce qu'on a lancé n'existe nulle part sur la
+ * page qu'on ouvre — il fallait entrer dans la carte du thème pour le revoir.
+ *
+ * LA FRONTIÈRE, MOT POUR MOT : le module « À faire » liste ce qui attend une
+ * décision de toi, le rail montre le temps qui passe. On retire donc d'ici
+ * TOUT ce que le module affiche déjà trente pixels plus haut — les Verdicts
+ * tombés (`due`) et les Notes pas encore cochées. Ce qui reste est ce qui court
+ * et n'attend rien de toi : les actions en cours, et celles qu'on observe
+ * avant leur échéance.
+ *
+ * Ce n'est pas une deuxième liste : c'est la PARTITION des actions vivantes en
+ * deux, sans doublon ni trou par construction, calculée au même endroit que
+ * l'autre moitié pour que les deux ne puissent pas diverger.
+ */
+export function chantiersEnCours(actions: TrackedAction[]): TrackedAction[] {
+  return actions.filter((a) => {
+    if (estNoteOuverte(a)) return false;
+    if (a.status === "running") return true;
+    // `"auto"` est un statut hérité, plus jamais écrit (ticket 06) ; la branche
+    // reste pour les lignes déjà en base, et elle suit `"done"` comme partout.
+    return (a.status === "done" || a.status === "auto") && !a.due;
+  });
+}
+
 /** LES TROIS SORTIES D'UN CONSEIL. « Utile » n'en est pas une : c'est une
  *  pondération, pas une décision — le conseil reste à trancher, donc il reste
  *  dans la liste. */

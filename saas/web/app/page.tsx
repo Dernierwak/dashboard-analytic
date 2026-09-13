@@ -10,8 +10,10 @@ import {
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
-import { composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
+import { chantiersEnCours, composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
 import { AFaire } from "@/components/a-faire";
+import { RailActions } from "@/components/rail-actions";
+import { TroisDates } from "@/components/trois-dates";
 import { BilanDuCarnet } from "@/components/carnet";
 import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
@@ -48,6 +50,19 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 // Le résumé de la semaine — sans carte : au milieu de blocs encadrés, un bloc
 // nu attire l'œil plus fort qu'un cadre de plus.
 //
+// IL EST DESCENDU, ET IL EST REPLIÉ. Il vivait collé sous le verdict, en prose
+// nue, et mangeait tout l'écran restant. C'est le dernier rang de l'ordre
+// décidé par la refonte (`10-l-entree-premier-ecran.md` point 6), et la raison
+// n'est pas graphique : **la prose IA est ce qu'il y a de moins vérifiable sur
+// la page, et elle occupait les pixels les plus chers** — ceux où le lecteur
+// cherche « ma semaine a été bonne ? » puis « qu'est-ce que je fais ». Contre
+// la trame du lundi matin, le « pourquoi » ne se lit que si le verdict a
+// inquiété : il descend d'un cran et s'ouvre à la demande.
+//
+// LE REPLI EST UN `<details>`, FERMÉ. Pas d'état React, pas de JavaScript : le
+// texte est dans le document, donc lisible même si rien ne charge, et le geste
+// est celui que le navigateur connaît déjà.
+//
 // Sa première phrase n'est plus mise en avant. Elle l'était, et elle disait la
 // même chose que le verdict juste au-dessus — le worker demande à l'IA « une
 // phrase de synthèse » alors que le verdict EST déjà une phrase de synthèse,
@@ -57,14 +72,20 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 // disputer le niveau 1.
 function ResumeSemaine({ brief }: { brief: string }) {
   return (
-    <div className="mt-5 max-w-[68ch]">
-      <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted whitespace-pre-line">
-        {brief}
-      </p>
-      <p className="text-[10.5px] text-faint mt-2.5">
-        Résumé écrit par l&apos;IA à partir de tous tes posts et campagnes de la semaine.
-      </p>
-    </div>
+    <details className="group mb-9">
+      <summary className="cursor-pointer select-none text-[12.5px] font-semibold text-brand hover:underline">
+        <span className="group-open:hidden">Lire le résumé de la semaine ▾</span>
+        <span className="hidden group-open:inline">Replier le résumé ▴</span>
+      </summary>
+      <div className="mt-3 max-w-[68ch]">
+        <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted whitespace-pre-line">
+          {brief}
+        </p>
+        <p className="text-[10.5px] text-faint mt-2.5">
+          Résumé écrit par l&apos;IA à partir de tous tes posts et campagnes de la semaine.
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -302,6 +323,14 @@ export default async function Page() {
   // numéro.
   const aFaire = composerAFaire(report, data.actions, data.suivis, data.feedback);
   const etatAFaireModule = etatAFaire(aFaire, priorities.length === 0, data.decouvertes);
+  // CE QUI COURT ET N'ATTEND RIEN DE TOI — l'autre moitié exacte des actions
+  // vivantes, calculée par le même module pour que les deux ne divergent pas.
+  const enCours = chantiersEnCours(data.actions);
+
+  // L'HEURE DU RENDU, LUE UNE FOIS. La troisième des trois dates (« mis à jour
+  // le ») se calcule à partir d'elle ; la figer ici garantit que toute la ligne
+  // parle du même instant.
+  const maintenant = new Date();
 
   // Numérotation dynamique : « Ce que tu dois faire » et « Historique »
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
@@ -377,6 +406,27 @@ export default async function Page() {
     // (tableaux, grilles de cartes, courbes) suivent la largeur complète.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
+      {/* LA MISE EN PLACE EST REMONTÉE EN TÊTE, et c'est un défaut mesuré par
+          `.scratch/refonte/issues/06-le-parcours-comment-les-pages-se-parlent.md`
+          qu'on répare ici : le fil de démarrage était rendu tout en bas de la
+          page, sous deux écrans de défilement, alors qu'il porte les seules
+          actions qui débloquent tout le reste. La décision est au point 2 de
+          `10-l-entree-premier-ecran.md` : tant qu'une étape est ouverte, le fil
+          est le PREMIER bloc et le rapport passe dessous ; dès que tout est
+          franchi il s'efface et le verdict reprend la tête. Ce composant décide
+          lui-même s'il a quelque chose à dire — il rend `null` quand il n'y a
+          plus d'étape — donc le déplacer ne change rien pour un compte installé.
+          Ce qu'on ne fait PAS ici : le passage aux quatre étapes avec la
+          connexion en gate (même ticket, point 1). C'est la brique « mise en
+          place », hors v1 : elle ne sert qu'à un client qui n'est pas encore
+          là (`plan-de-refonte.md` §3). */}
+      <SetupWizard
+        onboarded={data.onboarded}
+        couverture={couverture}
+        themes={data.labels}
+        priorities={priorities}
+      />
+
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
           première question du lecteur, elle doit trouver sa réponse avant le
           premier scroll. Une phrase d'accroche à la place ne dit rien. */}
@@ -387,10 +437,27 @@ export default async function Page() {
             par des règles déterministes, le résumé est écrit par une IA. Un
             cadre autour du second lui donnerait l'autorité du premier. */}
         <div className="rounded-2xl border border-line bg-white shadow-card px-5 py-5 sm:px-7 sm:py-6">
-          <div className="flex items-baseline gap-3 flex-wrap mb-2">
-            <p className="text-[11px] uppercase tracking-widest text-faint font-semibold">
-              {report?.week_label ?? data.weekLabel}
-            </p>
+          {/* LES TROIS DATES PRENNENT LA PLACE DU LIBELLÉ DE SEMAINE, elles ne
+              s'ajoutent pas à lui : `week_label` dit déjà « Semaine 37 · 7 → 13
+              septembre · 7 jours pleins », donc la fenêtre mesurée se serait
+              lue deux fois à trente pixels d'écart. La ligne des trois dates
+              dit la même fenêtre et deux choses de plus — quand ce texte a été
+              publié, et quand il changera. Le libellé reste le repli des
+              payloads publiés avant que `since`/`until` existent. */}
+          <div className="mb-2">
+            {report?.since && report?.until ? (
+              <TroisDates
+                since={report.since}
+                until={report.until}
+                publieLe={data.publieLe}
+                jourDeTravail={data.jourDeTravail}
+                maintenant={maintenant}
+              />
+            ) : (
+              <p className="text-[11px] uppercase tracking-widest text-faint font-semibold">
+                {report?.week_label ?? data.weekLabel}
+              </p>
+            )}
           </div>
           {report ? (
             <Verdict report={report} />
@@ -400,11 +467,12 @@ export default async function Page() {
             </h1>
           )}
         </div>
-        {report?.brief && <ResumeSemaine brief={report.brief} />}
-        {/* L'OBJECTIF N'EST PLUS ICI. Il flottait sous le résumé, à 600 px des
-            cartes qu'il pondère : on le lisait comme un réglage de compte, pas
-            comme la cause de ce qu'on allait voir. Il est descendu au-dessus de
-            la première carte de thème (section 2), avec le thème en props. */}
+        {/* LE RÉSUMÉ IA N'EST PLUS ICI — il est descendu au dernier rang du
+            premier écran, replié. Voir `ResumeSemaine` ci-dessus.
+            L'OBJECTIF N'EST PLUS ICI non plus. Il flottait sous le résumé, à
+            600 px des cartes qu'il pondère : on le lisait comme un réglage de
+            compte, pas comme la cause de ce qu'on allait voir. Il est descendu
+            au-dessus de la première carte de thème (section 2). */}
       </div>
 
       {/* LE BILAN DU CARNET — deuxième marche de l'ordre décidé par la refonte :
@@ -421,9 +489,9 @@ export default async function Page() {
       {/* À FAIRE CETTE SEMAINE — POSÉ ICI, ET PAS PLUS HAUT NI PLUS BAS.
           L'ordre décidé par la refonte est : verdict → bilan du Carnet →
           À FAIRE → rail des chantiers → résumé IA replié
-          (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). La descente
-          du résumé IA appartient au ticket 13 de la construction ; le bilan est
-          posé juste au-dessus depuis le ticket 12. Le verdict répond à « ma
+          (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). Les cinq
+          marches sont en place : le bilan depuis le ticket 12, le rail et la
+          descente du résumé depuis le 13. Le verdict répond à « ma
           semaine a été bonne ? » ; ouvrir le rapport sur ce qui reste à faire en
           aurait fait une corvée dès la première ligne, d'où sa place SOUS le
           hero et pas dedans. */}
@@ -448,6 +516,43 @@ export default async function Page() {
           <AjoutAFaire themes={data.labels} />
         </div>
       )}
+
+      {/* LE RAIL DES CHANTIERS EN COURS — quatrième marche de l'ordre décidé
+          par la refonte, et la règle qu'elle applique était tranchée depuis
+          longtemps sans jamais avoir été appliquée ici : **une action décidée
+          vit en haut jusqu'à être faite**. Avant lui, ce qu'on avait lancé
+          n'existait nulle part sur la page qu'on ouvre — il fallait entrer
+          dans la carte de son thème pour le revoir.
+
+          C'EST LE MÊME RAIL, PAS UN DEUXIÈME OBJET. `RailActions` est le module
+          des cartes de thème, servi ici sans thème courant (chaque ligne porte
+          donc le sien) et SANS faits de plateforme : ceux-là racontent ce qui a
+          bougé sur un thème, ils se lisent dans sa carte, et les remonter ici
+          referait la chronologie entière en tête de page.
+
+          CE QU'IL NE MONTRE PAS, ET POURQUOI : les Verdicts tombés et les
+          lignes que tu t'es écrites. Le module « À faire » juste au-dessus les
+          porte déjà — le rail montre le temps qui passe, le module ce qui
+          attend une décision de toi (`lib/a-faire.ts`, `chantiersEnCours`, où
+          la partition est calculée une seule fois pour que les deux moitiés ne
+          puissent pas se contredire). */}
+      {enCours.length > 0 && (
+        <section className="mb-9">
+          <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5">
+            <p className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
+              En cours
+            </p>
+            <RailActions actions={enCours} maxH="max-h-[320px]" />
+          </div>
+        </section>
+      )}
+
+      {/* LE RÉSUMÉ DE LA SEMAINE, DERNIÈRE MARCHE DU PREMIER ÉCRAN ET REPLIÉ.
+          Il était collé sous le verdict : la prose la moins vérifiable de la
+          page occupait les pixels les plus chers. Il se lit maintenant après ce
+          qui est calculé et après ce qu'il y a à faire — le « pourquoi » ne
+          s'ouvre que si le verdict a inquiété. */}
+      {report?.brief && <ResumeSemaine brief={report.brief} />}
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
              indicateur en grand, et où part l'argent. Rien de filtré ici. */}
@@ -651,13 +756,9 @@ export default async function Page() {
           page, après tout le reste, alors qu'il porte les seules actions
           qu'aucune carte de thème ne prend. */}
 
-      {/* Parcours de démarrage — profil → classement IA → priorités (reprenable) */}
-      <SetupWizard
-        onboarded={data.onboarded}
-        couverture={couverture}
-        themes={data.labels}
-        priorities={priorities}
-      />
+      {/* LE PARCOURS DE DÉMARRAGE N'EST PLUS ICI — il est remonté en tête de
+          page, au-dessus du verdict. Il vivait sous deux écrans de défilement
+          alors qu'il porte les seules actions qui débloquent le reste. */}
 
       {!data.hasData ? (
         <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">

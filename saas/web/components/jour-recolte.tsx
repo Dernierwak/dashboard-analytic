@@ -2,6 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { choisirJourRecolte } from "@/app/actions-compte";
+import {
+  JOURS,
+  delai,
+  enFrancais,
+  prochainPassage,
+} from "@/lib/jour-de-travail";
 
 // LE JOUR DE LA RÉCOLTE — `profiles.fetch_schedule`, lu par le worker
 // (`saas/collecte/automatisation/fetch_all.py`, `_due_today`) qui compare au jour courant en
@@ -26,63 +32,13 @@ import { choisirJourRecolte } from "@/app/actions-compte";
 //   rang 9  un seul pied, et il dit la limite réelle : la récolte tourne à
 //           heure fixe, le jour choisi n'est pas une heure garantie.
 
-// L'ordre est celui de la semaine, pas celui de `getUTCDay()` (qui commence le
-// dimanche). L'anglais est la valeur écrite en base ; le français ne sert qu'à
-// l'écran.
-const JOURS = [
-  { en: "Monday", fr: "lundi", court: "lun" },
-  { en: "Tuesday", fr: "mardi", court: "mar" },
-  { en: "Wednesday", fr: "mercredi", court: "mer" },
-  { en: "Thursday", fr: "jeudi", court: "jeu" },
-  { en: "Friday", fr: "vendredi", court: "ven" },
-  { en: "Saturday", fr: "samedi", court: "sam" },
-  { en: "Sunday", fr: "dimanche", court: "dim" },
-];
-
-const MOIS = [
-  "janvier", "février", "mars", "avril", "mai", "juin",
-  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-];
-
-// `.github/workflows/weekly-fetch.yml` : cron « 0 7 * * * ». Le worker compare
-// ensuite `datetime.utcnow().strftime("%A")` — tout se joue donc en UTC, et
-// c'est en UTC qu'on calcule le prochain passage.
-const HEURE_UTC = 7;
-
-/** 0 = lundi (getUTCDay met dimanche en 0). */
-function indexSemaine(d: Date): number {
-  return (d.getUTCDay() + 6) % 7;
-}
-
-function prochainPassage(jourEn: string, maintenant: Date): { date: Date; delta: number } {
-  const i = JOURS.findIndex((j) => j.en === jourEn);
-  const cible = i < 0 ? 0 : i;
-  let delta = (cible - indexSemaine(maintenant) + 7) % 7;
-  // Le passage du jour est déjà parti : le prochain est dans une semaine.
-  if (delta === 0 && maintenant.getUTCHours() >= HEURE_UTC) delta = 7;
-  const date = new Date(
-    Date.UTC(
-      maintenant.getUTCFullYear(),
-      maintenant.getUTCMonth(),
-      maintenant.getUTCDate() + delta,
-      HEURE_UTC
-    )
-  );
-  return { date, delta };
-}
-
-// Les noms sont écrits à la main plutôt que confiés à `Intl` : le serveur (Node)
-// et le navigateur ne portent pas toujours les mêmes données de locale, et deux
-// rendus différents pour la même date, c'est une erreur d'hydratation.
-function enFrancais(d: Date): string {
-  return `${JOURS[indexSemaine(d)].fr} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]}`;
-}
-
-function delai(delta: number): string {
-  if (delta === 0) return "aujourd'hui";
-  if (delta === 1) return "demain";
-  return `dans ${delta} jours`;
-}
+// LES SEPT JOURS, LE CALCUL DU PROCHAIN PASSAGE ET L'ÉCRITURE EN FRANÇAIS ONT
+// DÉMÉNAGÉ dans `lib/jour-de-travail.ts`, un module SANS directive. Les trois
+// dates en tête du rapport (`components/trois-dates.tsx`) ont besoin du même
+// calcul et sont rendues par le serveur : une constante exportée depuis un
+// module `"use client"` y arriverait sous forme de proxy, sans que rien ne lève
+// (`CLAUDE.md` §8). Ce module-ci reste client — il porte l'état des sept
+// boutons — et lit les mêmes valeurs que le serveur.
 
 export function JourRecolte({
   jour,
