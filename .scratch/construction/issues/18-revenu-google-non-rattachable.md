@@ -62,3 +62,69 @@ Une hypothèse `roas` sur ce thème lira `worse` à chaque mesure.
 
 Séparer un ROAS par canal. Ça reste une décision produit non prise, et ce
 ticket ne la rouvre pas.
+
+---
+
+## Avancement 2026-09-13 — le harnais de mesure est prêt, la mesure ne l'est pas
+
+**Le ticket reste `open`, et il doit le rester** : l'étape 1 (mesurer) n'a pas pu
+être faite d'ici, donc l'étape 2 (demander à David) n'est pas mûre. Rien n'a été
+touché dans `build_report.py` ni dans `insights.py` — l'étape 3 tient.
+
+### Ce qui a été vérifié dans le code
+
+L'asymétrie décrite par le ticket est confirmée, aux deux endroits :
+
+- dépense par identifiant — `goog_cfg.get(cid)["label"]`, `build_report.py`
+  l. 2440 / 2688 / 2791 / 3198, et `insights.py` l. 117-137 ;
+- revenu par nom normalisé — `name2label`, `build_report.py` l. 2143-2149
+  (la ligne `if ... and (_c or {}).get("campaign_name")` écarte bien un nom
+  vide), et `rev_by_name`, `insights.py` l. 141-149.
+
+Les deux normalisations sont identiques (`str(s or "").strip().lower()`), donc
+`trim(lower(...))` en SQL reproduit le pont à l'identique.
+
+### Pourquoi la mesure n'a pas pu être faite
+
+Le `.env` de la racine porte bien une `SUPABASE_SERVICE_ROLE_KEY`, mais **son
+hôte ne résout plus** — il se comporte comme une référence de projet morte. Le
+projet vivant est celui de `saas/web/.env.local`, qui ne porte que la clé
+**anon** : sous RLS et sans session, la requête ne rendrait rien. Demander la
+clé `service_role` du projet vivant dans une conversation est exclu (§7).
+
+Au passage, à corriger quand tu passeras par là : **la ligne 5 du `.env` de la
+racine est un `q` isolé**. Sans effet sur le lecteur maison (il saute les lignes
+sans `=`), mais `source .env` meurt dessus.
+
+### Ce qui est livré à la place
+
+`.scratch/construction/harnais/18-revenu-google/` — trois requêtes en lecture
+seule à coller dans l'éditeur SQL Supabase, où la session suffit et où aucun
+secret ne circule. `pglast` a parsé les trois : `SelectStmt` uniquement, aucune
+écriture possible. Voir le `README.md` du dossier.
+
+### Une quatrième option, trouvée en mesurant, à ajouter aux trois du ticket
+
+`google_ads_insights` stocke le nom que la campagne portait **le jour de la
+récolte** (`fetch_google_ads.py` l. 191). Après un renommage, l'historique garde
+donc l'ANCIEN nom — exactement celui que GA4 a enregistré en `utm_campaign` à
+l'époque, et que `google_campaign_config` a perdu en ne gardant que le nom
+courant.
+
+D'où : *rattacher le revenu par n'importe quel nom porté par la campagne dans
+son historique*. Ça ne fabrique aucun chiffre — le lien est attesté par une
+ligne récoltée — et ça ne touche pas au cas « nom vide », qui reste muet.
+`mesure_repli_historique.sql` dit ce que cette option récupérerait, en campagnes
+et en francs, avant qu'on en discute.
+
+**Elle ne se code pas plus que les trois autres tant que David n'a pas tranché.**
+
+### La suite, dans l'ordre
+
+1. David joue les trois requêtes dans l'éditeur SQL Supabase et colle les
+   résultats ici.
+2. Avec le chiffre en main, la question de l'étape 2 se pose — sur quatre
+   options désormais.
+3. Une fois seulement la règle choisie, le code change aux deux endroits à la
+   fois (`build_report.py` ET `insights.py`), sinon l'écran et le rapport
+   diront deux choses différentes.
