@@ -176,7 +176,12 @@ class LecteurFige:
         self.ecrits.append(("plan_de_theme", theme, reco_key, levier, decided_at))
 
     def ecrire_verdict(self, action_id, verdict):
+        """Rend `True` : une base saine touche bien la ligne. Le vrai lecteur
+        rend `False` quand l'`update` n'atteint personne (refus RLS, colonne
+        pas migrée) et l'appelant en dépend — la mémoire du thème ne se nourrit
+        que d'un verdict réellement figé."""
         self.ecrits.append(("verdict", action_id, verdict))
+        return True
 
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self): return self._aujourd_hui

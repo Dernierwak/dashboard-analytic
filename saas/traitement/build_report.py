@@ -4396,19 +4396,9 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         for a in _sa:
             metric = a.get("metric")
             base = a.get("baseline")
-            # LE VERDICT SE MESURE SUR LE MÊME TERRAIN QUE LA BASELINE.
-            #
-            # Les actions décidées AVANT la bascule ont leur baseline prise sur
-            # le compte entier : les mesurer aujourd'hui sur leur thème
-            # comparerait deux échelles différentes et rendrait un verdict faux
-            # — puis repondérerait les conseils sur ce faux. Elles finissent
-            # donc comme elles ont commencé.
             _dec = str(a.get("decided_at"))[:10]
-            _sur_theme = bool(a.get("theme")) and _dec >= _BASCULE_THEME
-            _k = _kpis_du_theme(a.get("theme")) if _sur_theme else cur_kpis
-            now = _k.get(metric) if metric else None
-            # Même principe que `_sur_theme`, sur l'autre bascule : voir
-            # `_BASCULE_PUB` plus haut.
+            # Même principe que `_sur_theme` plus bas, sur l'autre bascule :
+            # voir `_BASCULE_PUB` en tête de section.
             _meme_perimetre = not (metric in _METRICS_PERIMETRE_PUB
                                    and _dec < _BASCULE_PUB)
             try:
@@ -4431,6 +4421,72 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 "decided_at": str(a.get("decided_at"))[:10],
                 "check_at": str(a.get("check_at"))[:10],
             }
+            _det = a.get("detail") if isinstance(a.get("detail"), dict) else {}
+            _mk = _nrm(a["theme"]) if a.get("theme") else None
+
+            # UN VERDICT SE REND UNE FOIS, ET IL NE SE REVOTE PLUS.
+            #
+            # UNE LIGNE FAITE RESTE `due` POUR TOUJOURS : passé son `check_at`,
+            # rien ne la fait sortir de `_sa` tant que le client ne la range pas.
+            # Tant que cette branche remesurait, `verdict` était RECALCULÉ contre
+            # le KPI du jour puis RÉÉCRIT à chaque rapport — un `worse` d'un
+            # 1er juin redevenait `better` en septembre parce que le compte avait
+            # bougé, pas parce que l'hypothèse avait marché. La mémoire du thème
+            # racontait alors à Gemini que le levier « argent » avait réussi, et
+            # `fetch_reco_verdicts` → `_DONE_W` (`saas/recos_ia/reco_engine.py`)
+            # repondérait les conseils sur ce retournement. C'est exactement le
+            # mensonge que la colonne existait pour empêcher : sa migration
+            # (`supabase/migrations/suivi_actions_verdict.sql`) écrit « écrite
+            # UNE FOIS … au moment précis où le verdict est calculé », et c'est
+            # cette ligne-ci qui l'applique. Mesuré par le ticket 17 de la
+            # construction, à partir de la revue de code du ticket 01.
+            #
+            # CE QUE LE GARDE COÛTE, ET POURQUOI C'EST LE BON PRIX : le
+            # `then/now/delta` n'est SERVI QUE LA SEMAINE DE LA CHUTE. Ensuite
+            # l'écran écrit « on suit le CPC » plutôt que « CPC 1,2 → 0,9 »
+            # (`Effet`, `saas/web/components/etat-action.tsx`). Ce n'est pas une
+            # perte : ce `now`-là ne mesurait plus l'action, il mesurait les
+            # trois mois de dérive du compte depuis. Aucune colonne ne garde la
+            # valeur constatée le jour du verdict — la rendre à l'écran plus
+            # tard demanderait deux colonnes, pas une constante.
+            #
+            # ET LA MÉMOIRE DU THÈME SE NOURRIT ICI, PAS SEULEMENT DANS LA
+            # BRANCHE MESURÉE. Une hypothèse dont le verdict est déjà rendu n'a
+            # besoin d'AUCUNE mesure fraîche pour faire partie du récit. Tant
+            # qu'elle passait par la branche d'en dessous, elle disparaissait du
+            # prompt dès que `now` valait `None` cette semaine (un `cpc` sans
+            # clic, un `roas` sans revenu GA4 rattachable) ou dès que son
+            # périmètre n'était plus le nôtre — et `condense_theme_memoire`
+            # RÉÉCRIT `resume` en entier, ce n'est pas une fusion : le récit
+            # passait de trois hypothèses à deux, définitivement.
+            _verdict_fige = a.get("verdict")
+            if _verdict_fige:
+                entry["verdict"] = _verdict_fige
+                verified.append(entry)
+                if _mk:
+                    _mem_labels[_mk] = a["theme"]
+                    _mem_hist.setdefault(_mk, []).append({
+                        "titre": a.get("title"),
+                        # Écrit par `startTracking` au clic (`actions.ts`).
+                        # Absent des lignes posées avant ce champ → « levier
+                        # inconnu », jamais un levier déduit de l'indicateur.
+                        "levier": _det.get("levier"),
+                        "decided_at": entry["decided_at"],
+                        "check_at": entry["check_at"],
+                        "verdict": _verdict_fige,
+                    })
+                continue
+
+            # LE VERDICT SE MESURE SUR LE MÊME TERRAIN QUE LA BASELINE.
+            #
+            # Les actions décidées AVANT la bascule ont leur baseline prise sur
+            # le compte entier : les mesurer aujourd'hui sur leur thème
+            # comparerait deux échelles différentes et rendrait un verdict faux
+            # — puis repondérerait les conseils sur ce faux. Elles finissent
+            # donc comme elles ont commencé.
+            _sur_theme = bool(a.get("theme")) and _dec >= _BASCULE_THEME
+            _k = _kpis_du_theme(a.get("theme")) if _sur_theme else cur_kpis
+            now = _k.get(metric) if metric else None
             if due and _meme_perimetre and metric and base is not None and now is not None:
                 b = float(base)
                 delta = ((now - b) / b * 100) if abs(b) > 1e-9 else None
@@ -4444,65 +4500,56 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                     "verdict": _verdict,
                 })
                 verified.append(entry)
-                # LA MÉMOIRE DU THÈME SE NOURRIT ICI, ET LE TEST « CE VERDICT
-                # EST-IL NOUVEAU ? » DOIT PASSER AVANT L'ÉCRITURE JUSTE EN
-                # DESSOUS : `_sa` a été lu avant toute écriture de verdict de ce
-                # rapport, donc `a["verdict"]` porte encore la valeur d'AVANT.
-                # Une ligne qui n'en avait pas et qui vient d'en recevoir un,
-                # c'est exactement l'instant — le seul — où la mémoire du thème
-                # change réellement : pas besoin d'une colonne « dernière
-                # condensation » ni d'une comparaison de dates.
-                _det = a.get("detail") if isinstance(a.get("detail"), dict) else {}
-                if a.get("theme"):
-                    _mk = _nrm(a["theme"])
-                    _mem_labels[_mk] = a["theme"]
-                    # UNE LIGNE FAITE RESTE « due » POUR TOUJOURS : passé son
-                    # `check_at`, elle est remesurée à CHAQUE rapport contre le
-                    # KPI du jour. `then/now/delta` d'une action de trois mois
-                    # ne mesurent donc plus cette action — ils mesurent trois
-                    # mois de dérive du compte. Les donner à la
-                    # condensation reviendrait à attribuer à une idée un
-                    # mouvement qui ne lui appartient pas : un chiffre non
-                    # mérité, exactement ce que `CLAUDE.md` § 7 interdit.
-                    #
-                    # On ne garde donc le triplet mesuré que le jour où le
-                    # verdict tombe VRAIMENT (première mesure à l'échéance) ;
-                    # ensuite, seul le verdict PERSISTÉ subsiste — lui n'a pas
-                    # dérivé, il a été figé à sa date. La mémoire garde ainsi
-                    # « trois hypothèses argent, deux worse une stable » sans
-                    # jamais rattacher un pourcentage à la mauvaise cause.
-                    _verdict_fige = a.get("verdict")
-                    _mem_item = {
-                        "titre": a.get("title"),
-                        # Écrit par `startTracking` au clic (`actions.ts`).
-                        # Absent des lignes posées avant ce champ → « levier
-                        # inconnu », jamais un levier déduit de l'indicateur.
-                        "levier": _det.get("levier"),
-                        "decided_at": entry["decided_at"],
-                        "check_at": entry["check_at"],
-                        "verdict": _verdict_fige or _verdict,
-                    }
-                    if not _verdict_fige:
-                        _mem_item.update({
-                            "depart": entry["then"],
-                            "constate": entry["now"],
-                            "variation": entry["delta"],
-                            "indicateur": a.get("metric_label"),
-                        })
-                        _mem_nouveaux.add(_mk)
-                    _mem_hist.setdefault(_mk, []).append(_mem_item)
                 # PERSISTE LE VERDICT (TASK-025, migration `suivi_actions_verdict.sql`)
                 # — sans ça, il n'existait qu'à la volée, dans CE rapport, et
                 # redevenait introuvable la semaine suivante : `build_recos`
                 # (`saas/recos_ia/reco_engine.py`) ne pouvait donc jamais faire
                 # dépendre le poids de `done` de ce que l'action a réellement
-                # donné. Écrit à chaque passage (idempotent, même valeur tant
-                # que rien ne bouge) — sans effet si la colonne n'existe pas
-                # encore (migration pas jouée).
+                # donné. Écrit UNE SEULE FOIS dans la vie de la ligne : le garde
+                # est ici (on n'arrive ici que la colonne vide) ET dans
+                # `ecrire_verdict`, qui filtre `verdict IS NULL` côté base.
+                _fige = False
                 try:
-                    lecteur.ecrire_verdict(a.get("id"), _verdict)
+                    _fige = bool(lecteur.ecrire_verdict(a.get("id"), _verdict))
                 except Exception:
                     pass
+                # ET LA MÉMOIRE NE SE NOURRIT QU'APRÈS, ET QUE SI L'ÉCRITURE A
+                # PRIS. L'ordre n'est pas cosmétique. Une écriture peut échouer
+                # sans rien dire — colonne pas encore migrée, ou refus RLS, qui
+                # ne lève aucune erreur et touche zéro ligne (`CLAUDE.md` § 8).
+                # La colonne reste alors vide, la ligne repasse ici au rapport
+                # suivant, et son triplet est REMESURÉ contre le KPI du jour.
+                # Verser ce triplet dans la mémoire sans savoir si le verdict
+                # est réellement figé remettrait donc en place, dans le prompt
+                # de Gemini, le chiffre qui dérive de semaine en semaine —
+                # exactement ce que ce ticket retire, déplacé d'un cran. On se
+                # tait plutôt que de raconter un mouvement non mérité (§ 7) :
+                # la mémoire de ce thème attend que le verdict tienne.
+                #
+                # C'EST AUSSI LE JOUR DE LA CHUTE, ET IL N'ARRIVE QU'UNE FOIS :
+                # la branche `_verdict_fige` plus haut a déjà détourné toutes
+                # les lignes déjà jugées, et `_sa` a été lu avant toute écriture
+                # de ce rapport. Arriver ici veut dire que la colonne était
+                # vide — pas besoin d'une colonne « dernière condensation » ni
+                # d'une comparaison de dates.
+                if _mk and _fige:
+                    _mem_labels[_mk] = a["theme"]
+                    _mem_hist.setdefault(_mk, []).append({
+                        "titre": a.get("title"),
+                        "levier": _det.get("levier"),
+                        "decided_at": entry["decided_at"],
+                        "check_at": entry["check_at"],
+                        "verdict": _verdict,
+                        # Le triplet ne part qu'AUJOURD'HUI, avec le verdict
+                        # qu'il a produit. Rattaché plus tard à la même idée, il
+                        # lui attribuerait un mouvement qui ne lui appartient
+                        # pas — un chiffre non mérité (`CLAUDE.md` § 7).
+                        "depart": entry["then"],
+                        "constate": entry["now"],
+                        "variation": entry["delta"],
+                        "indicateur": a.get("metric_label"),
+                    })
+                    _mem_nouveaux.add(_mk)
             else:
                 entry["due"] = due  # échéance atteinte mais pas de chiffre auto → à juger soi-même
                 # LE POINT D'ÉTAPE À SEPT JOURS.
@@ -4565,13 +4612,48 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         # porte sur la colonne `verdict`, écrite juste après). Sans rattrapage,
         # un seul timeout Gemini ce jour-là laissait le thème SANS AUCUNE
         # mémoire pour toujours. On repasse donc aussi sur les thèmes qui ont
-        # de la matière mesurée mais rien de stocké — borné par construction :
-        # dès qu'une condensation réussit, `resume` cesse d'être vide et ce
-        # second déclencheur s'éteint.
+        # de la matière mesurée mais rien de stocké.
         _mem_a_faire = set(_mem_nouveaux)
         for _mk in list(_mem_hist) + list(_notes_par_theme):
             if not (theme_plan_by.get(_mk) or {}).get("resume"):
                 _mem_a_faire.add(_mk)
+        # ON N'APPELLE L'IA QUE SI LA MÉMOIRE A UN ENDROIT OÙ SE POSER.
+        #
+        # Le rattrapage se disait « borné par construction : dès qu'une
+        # condensation réussit, `resume` cesse d'être vide ». C'était faux dans
+        # les trois cas où l'écriture ne peut JAMAIS réussir — et
+        # `save_theme_resume` (`saas/commun/insert_data.py`) les nomme
+        # elle-même, puisque c'est un `update` ciblé sur `(user_id, theme)` :
+        #   · aucune ligne `theme_plan` pour ce thème — rien à mettre à jour ;
+        #   · le client a RENOMMÉ le thème : `_mem_labels` vient de
+        #     `suivi_actions`, qui garde l'ancien libellé, pendant que
+        #     `theme_plan` porte le nouveau. Le `.eq("theme", …)` ne matche
+        #     plus, et il ne matchera plus jamais ;
+        #   · la colonne `resume` n'est pas encore migrée — `fetch_theme_plan`
+        #     est alors retombé sur son `select` sans elle, donc AUCUNE ligne
+        #     ne porte la clé et `.get("resume")` rend `None` pour tout le
+        #     monde.
+        # Dans les trois, le thème restait éligible à chaque rapport : un appel
+        # Gemini par thème et par semaine, pour une écriture qui touche zéro
+        # ligne. Invisible du client (l'exception est avalée), mais c'est un
+        # coût IA récurrent — ticket 17 de la construction.
+        #
+        # DEUX CONDITIONS COUVRENT LES TROIS CAS — une ligne `theme_plan` à ce
+        # nom, et la colonne `resume` réellement présente — et toutes deux se
+        # lisent dans `theme_plan_by`, déjà en main : aucune requête de plus,
+        # aucune colonne de plus.
+        #
+        # CE QUE ÇA DÉCALE, ET CE N'EST PAS UNE PERTE : `theme_plan_by` est lu
+        # en tête de rapport, AVANT les `upsert_theme_plan` de celui-ci. Un
+        # thème dont la toute première Stratégie s'ouvre aujourd'hui n'a donc
+        # pas encore de ligne visible d'ici et attend le rapport suivant, où le
+        # rattrapage le reprendra — sa ligne existera, son `resume` sera vide.
+        # Une semaine de retard sur une mémoire qui n'existait pas encore, au
+        # lieu d'un appel IA par semaine pour toujours.
+        _memoire_ecrivable = any("resume" in (_p or {})
+                                 for _p in theme_plan_by.values())
+        _mem_a_faire = {_mk for _mk in _mem_a_faire
+                        if _memoire_ecrivable and theme_plan_by.get(_mk)}
         # LIMITE ÉCRITE, PAS UN OUBLI : une note écrite sur un thème qui a DÉJÀ
         # une mémoire n'y entre qu'à la prochaine condensation, c'est-à-dire à la
         # chute du prochain verdict de ce thème. La cadence est événementielle
@@ -4585,10 +4667,24 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         # alors d'un appel Gemini léger par thème et par semaine. C'est le
         # symptôme d'une panne qui casse DÉJÀ `fetch_reco_verdicts` et la
         # repondération des conseils : le corriger se fait là-bas, pas ici.
+        # LE NOM QU'ON PASSE EST CELUI DU PLAN, PAS CELUI DU CARNET.
+        #
+        # Le garde juste au-dessus compare des clés NORMALISÉES (`_nrm` :
+        # `strip().lower()`), alors que `save_theme_resume` écrit avec un
+        # `.eq("theme", …)` — sensible à la casse et aux espaces. Un thème
+        # renommé « été » → « Été » passe donc le garde (même clé) et rate
+        # l'écriture (libellé différent) : un appel Gemini par semaine, pour
+        # toujours, masqué par un garde qui a l'air de couvrir le cas.
+        # On prend donc le libellé de la ligne `theme_plan` dont on vient de
+        # prouver l'existence : c'est celui, et le seul, sur lequel l'écriture
+        # retombera. Les deux replis restent pour un thème qui n'a que des
+        # notes — mais le garde les a déjà écartés, ils ne servent qu'à ne pas
+        # dépendre de cet ordre-là.
         for _mk in sorted(_mem_a_faire):
             try:
                 lecteur.memoire_theme(
-                    _mem_labels.get(_mk) or _notes_labels.get(_mk, ""),
+                    (theme_plan_by.get(_mk) or {}).get("theme")
+                    or _mem_labels.get(_mk) or _notes_labels.get(_mk, ""),
                     _mem_hist.get(_mk),
                     _notes_par_theme.get(_mk),
                 )

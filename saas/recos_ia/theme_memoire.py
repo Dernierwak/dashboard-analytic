@@ -160,9 +160,21 @@ def condense_theme_memoire(client, user_id, theme: str, call_ai,
 
     Appelée à la chute d'un nouveau verdict (voir la boucle de verdict de
     `build_report.py`), une fois par thème concerné — jamais une fois par
-    ligne, jamais à chaque rapport. Plus un rattrapage, borné : un thème qui a
-    de la matière (une hypothèse mesurée, ou une note du client) et aucun
-    `resume` stocké est repris, jusqu'à ce qu'une condensation réussisse.
+    ligne, jamais à chaque rapport. Plus un rattrapage : un thème qui a de la
+    matière (une hypothèse mesurée, ou une note du client) et aucun `resume`
+    stocké est repris, jusqu'à ce qu'une condensation réussisse — mais
+    UNIQUEMENT s'il a une ligne `theme_plan` à ce nom. Sans elle, `update`
+    ciblé oblige, aucune condensation ne pourrait jamais aboutir : l'appelant
+    ne rappelle donc pas (ticket 17 de la construction, et `save_theme_resume`
+    pour les cas exacts).
+
+    CE QUI ENTRE ICI EST LE VERDICT FIGÉ, PAS UNE REMESURE. `build_report.py`
+    ne rattache le triplet (départ / constaté / variation) qu'à la SEMAINE où
+    le verdict tombe ; les hypothèses plus anciennes arrivent avec leur seul
+    verdict, celui qui a été persisté à leur date. Une hypothèse déjà jugée
+    n'a besoin d'aucune mesure fraîche pour rester dans le récit, et elle ne
+    doit surtout pas en recevoir une : elle mesurerait la dérive du compte
+    depuis, pas l'idée (`CLAUDE.md` § 7).
 
     Trois replis, alignés sur le reste du produit — une panne de mémoire ne
     prive jamais le client de son rapport :

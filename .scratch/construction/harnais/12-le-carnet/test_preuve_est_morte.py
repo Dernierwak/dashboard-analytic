@@ -94,9 +94,16 @@ def test_la_releve_est_intacte_le_rail_mesure_toujours():
     # L'écriture passe par le lecteur depuis le ticket 16 : le worker la
     # DEMANDE, `saas/traitement/lecteur.py` la joue. Elle est vérifiée à
     # l'exécution par `harnais/16-le-seam-du-payload/test_le_seam.py`.
+    # La CHAÎNE du lecteur n'est plus épelée ici : le ticket 17 l'a coupée sur
+    # plusieurs lignes pour y ajouter son garde `verdict IS NULL`, et un test
+    # qui lit une mise en forme casse au premier reformatage sans que rien de
+    # ce qu'il protège n'ait bougé. On lit les trois pièces qui portent le
+    # sens : le worker DEMANDE, le lecteur écrit dans `suivi_actions`, et ce
+    # qu'il écrit est le verdict. La chaîne exacte est vérifiée à l'exécution
+    # par `harnais/16-le-seam-du-payload/test_le_seam.py`.
     ok("le verdict s'écrit toujours en base",
        "lecteur.ecrire_verdict(a.get(\"id\"), _verdict)" in RAPPORT
-       and 'self.sb.table("suivi_actions").update(' in LECTEUR
+       and 'table("suivi_actions")' in LECTEUR
        and '{"verdict": verdict}' in LECTEUR)
 
 

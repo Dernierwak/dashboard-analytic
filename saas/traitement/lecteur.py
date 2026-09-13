@@ -113,7 +113,7 @@ class Lecteur(Protocol):
     def ecrire_plan_de_theme(self, theme: str, reco_key: str,
                              levier: str | None, decided_at: str,
                              carte: dict) -> None: ...
-    def ecrire_verdict(self, action_id, verdict: str) -> None: ...
+    def ecrire_verdict(self, action_id, verdict: str) -> bool: ...
 
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self) -> date: ...
@@ -299,12 +299,38 @@ class LecteurSupabase:
         upsert_theme_plan(self.sb, self.user_id, theme, reco_key, levier,
                           decided_at, carte)
 
-    def ecrire_verdict(self, action_id, verdict: str) -> None:
-        """Le verdict persisté. Sans effet si la colonne n'existe pas encore
-        (migration pas jouée) — l'appelant avale la panne, comme avant."""
-        self.sb.table("suivi_actions").update(
-            {"verdict": verdict}
-        ).eq("id", action_id).execute()
+    def ecrire_verdict(self, action_id, verdict: str) -> bool:
+        """Le verdict persisté, ÉCRIT UNE SEULE FOIS. Sans effet si la colonne
+        n'existe pas encore (migration pas jouée) — l'appelant avale la panne,
+        comme avant.
+
+        REND `True` SEULEMENT SI UNE LIGNE A ÉTÉ TOUCHÉE, comme
+        `save_theme_resume` et pour la même raison : un refus RLS sur un
+        `update` ne lève AUCUNE erreur, il touche zéro ligne (`CLAUDE.md` § 8).
+        Sans ce retour, l'appelant croirait avoir figé un verdict et verserait
+        dans la mémoire du thème un chiffre qu'il remesurerait la semaine
+        suivante — la dérive que ce ticket retire, déplacée d'un cran.
+
+        `.is_("verdict", "null")` N'EST PAS UNE OPTIMISATION. Une ligne faite
+        reste `due` pour toujours : sans ce filtre, chaque rapport réécrivait le
+        verdict avec une valeur recalculée contre le KPI du jour, et un `worse`
+        de juin redevenait `better` en septembre parce que le compte avait bougé
+        (ticket 17 de la construction). L'appelant a déjà son garde — il ne passe
+        ici que sur une colonne vide ; celui-ci tient la même règle côté base,
+        pour le cas où deux constructions se croiseraient sur la même ligne.
+
+        La condition vit dans le `WHERE`, jamais dans une relecture préalable :
+        un `select` puis un `update` laisse la place entre les deux, et un refus
+        RLS sur l'`update` ne lèverait de toute façon rien (`CLAUDE.md` § 8).
+        """
+        res = (
+            self.sb.table("suivi_actions")
+            .update({"verdict": verdict})
+            .eq("id", action_id)
+            .is_("verdict", "null")
+            .execute()
+        )
+        return bool(res.data)
 
     # ── L'horloge ────────────────────────────────────────────────────────────
 

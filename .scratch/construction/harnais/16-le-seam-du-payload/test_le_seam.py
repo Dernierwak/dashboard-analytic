@@ -351,11 +351,17 @@ def test_l_ecriture_du_plan_de_theme_atteint_la_meme_fonction():
 
 
 def test_l_ecriture_du_verdict_rejoue_la_meme_requete():
+    """La chaîne a gagné UN filtre depuis l'injection, et c'est la seule
+    divergence assumée de ce fichier : `verdict IS NULL`, posé par le ticket 17
+    de la construction. Un verdict se rend une fois — sans ce filtre, chaque
+    rapport réécrivait la colonne avec une valeur recalculée contre le KPI du
+    jour. Le reste de la chaîne (table, corps, `eq` sur l'id) est celui d'avant
+    l'injection, et c'est ce que ce test continue de tenir."""
     sb = FauxSb()
     LecteurSupabase(sb, UID).ecrire_verdict("action-1", "better")
-    egal("la chaîne d'écriture est inchangée", sb.chaine,
+    egal("la chaîne d'écriture, plus le garde du ticket 17", sb.chaine,
          [("table", "suivi_actions"), ("update", {"verdict": "better"}),
-          ("eq", "id", "action-1"), ("execute",)])
+          ("eq", "id", "action-1"), ("is_", "verdict", "null"), ("execute",)])
     ok("elle était là avant",
        'sb.table("suivi_actions").update(' in AVANT_PAYLOAD)
 

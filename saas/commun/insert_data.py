@@ -831,8 +831,12 @@ def save_theme_resume(
       `theme_plan` porte le nouveau, le `.eq("theme", …)` ne matche plus. C'est
       la conséquence directe d'une décision de la spec — la mémoire suit le NOM
       du thème, comme tout le reste de Pulse l'identifie —, pas un oubli.
-    Dans les deux cas `build_report.py` repassera : tant que `resume` est vide
-    et que le thème a de la matière mesurée, il retente au rapport suivant.
+    DANS CES DEUX CAS, `build_report.py` NE REPASSE PAS, ET C'EST VOULU. Son
+    rattrapage ne reprend un thème que s'il a une ligne `theme_plan` à ce nom :
+    sans ligne, ou sous un ancien nom, l'écriture ne pourrait jamais aboutir, et
+    retenter reviendrait à payer un appel Gemini par semaine pour rien
+    (ticket 17 de la construction). Le rattrapage reste entier pour ce qu'il
+    visait : une ligne existe, sa mémoire est vide, une panne d'IA se rejoue.
 
     PAS D'UPSERT ICI, même « ne portant que les deux colonnes mémoire » : ce
     serait reprendre le risque que la spec demande justement d'écarter tant
