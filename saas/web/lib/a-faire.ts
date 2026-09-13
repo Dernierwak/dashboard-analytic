@@ -51,21 +51,23 @@ export type AFaire = {
   /** Les Verdicts tombés — en premier, toujours. */
   verdicts: TrackedAction[];
   /** Ce que tu t'es écrit toi-même et qui n'est pas encore coché. */
-  taches: TrackedAction[];
+  notes: TrackedAction[];
   /** Les conseils de la semaine non décidés. */
   conseils: ConseilAFaire[];
 };
 
 /**
- * UNE CHOSE À FAIRE QUE TU T'ES ÉCRITE ET QUI N'EST PAS ENCORE COCHÉE.
+ * UNE NOTE ÉCRITE AVANT LE FAIT, PAS ENCORE COCHÉE.
  *
- * C'est une Note (`kind = "note"`) née `running` — le seul objet qui vit dans
- * ce module et nulle part ailleurs, tant qu'il n'est pas coché : le rail montre
- * le temps qui passe, or une ligne qu'on n'a pas encore faite ne raconte rien
- * et ne marque pas la courbe (`CONTEXT.md`, entrée Note). D'où le même filtre
- * dans `rail-actions.tsx` et dans le filet « hors thème » (`app/page.tsx`).
+ * `kind = "note"` née `running` — le seul objet qui vit dans ce module et nulle
+ * part ailleurs tant qu'il n'est pas coché : le rail montre le temps qui passe,
+ * or une ligne qu'on n'a pas encore faite ne raconte rien et ne marque pas la
+ * courbe (`CONTEXT.md`, entrée Note). D'où le même filtre dans
+ * `rail-actions.tsx` et dans le filet « hors thème » (`app/page.tsx`).
+ *
+ * Le mot « tâche » n'est employé nulle part : `CONTEXT.md` l'écarte deux fois.
  */
-export function estTacheOuverte(a: TrackedAction): boolean {
+export function estNoteOuverte(a: TrackedAction): boolean {
   return a.kind === "note" && a.status === "running";
 }
 
@@ -114,10 +116,10 @@ export function composerAFaire(
     .sort((a, b) => (a.check_at < b.check_at ? -1 : 1));
 
   // Les lignes que le client s'écrit lui-même : une Note née `running`
-  // (`saveTache`). Elle n'a ni indicateur ni verdict — elle se coche, et c'est
-  // en la cochant qu'elle se date.
-  const taches = actions
-    .filter(estTacheOuverte)
+  // (`saveNoteOuverte`). Elle n'a ni indicateur ni verdict — elle se coche, et
+  // c'est en la cochant qu'elle se date.
+  const notes = actions
+    .filter(estNoteOuverte)
     .sort((a, b) => (a.decided_at < b.decided_at ? -1 : 1));
 
   const conseils: ConseilAFaire[] = [];
@@ -146,13 +148,20 @@ export function composerAFaire(
   // la liste.
   for (const r of report?.reglages ?? []) ajouter(r, null, true);
 
-  return { verdicts, taches, conseils };
+  return { verdicts, notes, conseils };
 }
 
 export type Nudge = { texte: string; lien: { href: string; mot: string } | null };
 
-/** UN SEUL À LA FOIS, et seulement dans le module vide. L'ordre est celui-ci :
- *  le premier geste jamais utilisé gagne. */
+/** LE CONSEIL D'USAGE DU MODULE VIDE — un seul à la fois, le premier geste
+ *  jamais utilisé gagne. Éteint POUR TOUJOURS par le premier usage du geste,
+ *  jamais par le temps : un conseil d'usage qui revient chaque semaine devient
+ *  un décor en trois semaines (réserve écrite de la refonte 20).
+ *
+ *  LIMITE CONNUE, non corrigée : `Decouvertes` lit une ligne VIVANTE. Supprimer
+ *  sa dernière note, ou son dernier budget, rallume donc le conseil d'usage.
+ *  Le corriger demanderait de mémoriser « déjà découvert » quelque part —
+ *  c'est-à-dire l'objet neuf que ce ticket s'est interdit. */
 export function nudge(d: Decouvertes): Nudge | null {
   if (!d.note)
     return {
@@ -185,7 +194,7 @@ export function nudge(d: Decouvertes): Nudge | null {
 export function compteursAFaire(a: AFaire): { verdicts: number; decisions: number } {
   return {
     verdicts: a.verdicts.length,
-    decisions: a.taches.length + a.conseils.length,
+    decisions: a.notes.length + a.conseils.length,
   };
 }
 
@@ -213,7 +222,7 @@ export function etatAFaire(
   aucunePriorite: boolean,
   d: Decouvertes
 ): EtatAFaire {
-  const plein = a.verdicts.length + a.taches.length + a.conseils.length > 0;
+  const plein = a.verdicts.length + a.notes.length + a.conseils.length > 0;
   // UN SEUL À LA FOIS, et l'état bloqué compte comme celui-là : sans étoile, le
   // module pousse DÉJÀ vers un geste précis. Y ajouter un conseil d'usage ferait
   // dire deux choses au même endroit au même moment — la réserve écrite de la

@@ -139,7 +139,11 @@ export function RecoActions({
             )}
 
             {action && !fait && (
-              <div className="flex items-stretch gap-1.5 mt-2">
+              /* `flex-wrap` + `min-w-0` : un `input[type="date"]` a une largeur
+                 intrinsèque qui ne se comprime pas, et en flex `min-width` vaut
+                 `auto` — sans les deux, la rangée déborde de la colonne d'une
+                 carte de thème en écran étroit (`CLAUDE.md` §8). */
+              <div className="flex items-stretch gap-1.5 mt-2 flex-wrap">
                 {/* Le calendrier est prérempli sur aujourd'hui : le geste reste
                     un seul clic. Il sert le cas qui arrive tout le temps — le
                     changement fait mardi, le clic vendredi — et c'est LUI qui
@@ -176,7 +180,7 @@ export function RecoActions({
                       }
                     });
                   }}
-                  className="flex-1 text-[12.5px] font-semibold rounded-lg bg-ink text-white px-3 py-2.5 hover:opacity-90 disabled:opacity-60"
+                  className="flex-1 min-w-0 text-[12.5px] font-semibold rounded-lg bg-ink text-white px-3 py-2.5 hover:opacity-90 disabled:opacity-60"
                 >
                   ✓ Je l&apos;ai fait
                 </button>

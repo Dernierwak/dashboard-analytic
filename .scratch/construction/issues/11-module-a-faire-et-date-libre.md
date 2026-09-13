@@ -128,13 +128,15 @@ cycle de vie) ont été réécrits : ils décrivaient un mécanisme qui n'existe
   Carnet qui doit s'intercaler et la descente du résumé IA appartiennent au
   ticket 13.
 
-### 4 · Trois écarts et une décision que le ticket ne portait pas
+### 4 · Les écarts, et ce que la revue en a fait
 
-- **« ✓ C'est fait » dans le module n'offre PAS de calendrier.** La décision et
-  le fait sont le même clic : la borne `decided_at ≤ done_at` d'une ligne née à
-  l'instant ne laisse qu'un jour légal. Antidater demanderait de reculer AUSSI la
-  décision, donc d'affirmer une prise qui n'a pas eu lieu. Le calendrier vit donc
-  là où une ligne existait déjà — le rail, la carte, et la tâche écrite soi-même.
+- ~~**« ✓ C'est fait » dans le module n'offre PAS de calendrier.**~~ **Renversé
+  par la revue**, et elle a raison : l'argument tournait en rond. Si le geste a
+  été fait mardi, la décision l'a été mardi aussi — poser les deux au même jour
+  passé n'affirme aucune prise fictive, et la borne reste entière par égalité.
+  Le refuser laissait survivre le défaut que ce ticket existe pour réparer, à
+  l'endroit même où la refonte 20 veut que les gestes vivent. `markRecoDone`
+  prend donc un jour, et il écrit `decided_at`, `done_at` et `check_at`.
 - **Les réglages de base entrent dans la liste.** Ils attendent une décision
   comme les autres ; les laisser dehors ferait de leur bloc le seul endroit où un
   conseil peut se cacher de la liste.
@@ -205,3 +207,66 @@ geste précis, et la refonte 20 interdit que les deux se doublent.
       IA descend replié — ticket [13](13-premier-ecran-et-trois-dates.md).
 - [ ] **La pastille de la navigation** lit `compteursAFaire` — refonte 12, hors
       de cette carte.
+
+## Revue de code — `/code-review`, deux axes, 2026-09-13
+
+Lancée sur `0e556b5...HEAD`, deux sous-agents en parallèle : **Standards** (les
+règles écrites du dépôt + la ligne de base des smells de Fowler) et **Spec** (le
+ticket et sa décision source). **Quatre violations dures, six jugements, quatre
+défauts de spec.** Tout ce qui suit est corrigé, sauf ce qui est explicitement
+laissé et dit pourquoi.
+
+### Le plus grave, et il venait de l'axe Spec : un cul-de-sac
+
+**Le module emportait la seule porte d'écriture.** Liste vide + deux conseils
+d'usage éteints → le module disparaît → « ✎ Ajouter quelque chose à faire »
+disparaît avec lui → plus rien ne peut entrer, donc plus rien ne peut le faire
+revenir. L'intention centrale de la refonte 20 — *« mon cahier de bord »* — se
+refermait sur un compte à jour, c'est-à-dire sur le bon élève. **Ce qui disparaît
+est le module** (titre, compteurs, cadre) ; **la porte reste**, hors du module,
+dans `app/page.tsx`.
+
+### Les trois autres défauts de spec
+
+- **Le compteur ne descendait pas au moment du clic.** Les lignes étaient
+  optimistes, le compteur rendu côté serveur : pendant un aller-retour, le
+  chiffre contredisait la liste qu'il compte — or ne pas pouvoir se contredire
+  est la SEULE chose que ce module doit garantir. L'état des lignes est monté
+  dans un composant unique (`ListeAFaire`), et le compteur se lit dessus. Ça
+  supprime du même coup le bloc `parti/erreur/rollback` recopié trois fois.
+- **La borne basse sautait en silence.** `if (decidee && …)` : lecture vide —
+  ligne masquée par RLS, ligne disparue — et la borne ne s'appliquait plus. Un
+  refus RLS ne lève aucune erreur (§8). On refuse maintenant sur lecture vide.
+- **« Éteint pour toujours » est faux, et reste faux.** `Decouvertes` lit une
+  ligne VIVANTE : supprimer sa dernière note rallume le conseil d'usage. Le
+  corriger demanderait de mémoriser « déjà découvert » quelque part — l'objet
+  neuf que ce ticket s'interdit. **Limite écrite sur `nudge`**, pas corrigée en
+  silence.
+
+### Les quatre violations de standards
+
+- **Le mot « tâche »**, écarté deux fois par `CONTEXT.md` (entrées *À faire* et
+  *Action suivie*), et l'objet EST une Note. `saveTache` → `saveNoteOuverte`,
+  `estTacheOuverte` → `estNoteOuverte`, `LigneTache` → `LigneNote`, `TacheAjout`
+  → `AjoutAFaire`, le champ `taches` → `notes`.
+- **Un JSDoc orphelin** : `estVeille` s'était inséré entre le bloc « VRAIE
+  DÉCISION CLIENT… » et `estDecisionClient` — le commentaire portait sur la
+  mauvaise fonction. Déplacé.
+- **`min-w-0` manquant** (§8) : `input[type="date"]` a une largeur intrinsèque
+  irréductible à côté d'un bouton `flex-1`, dont le `min-width` vaut `auto`.
+  `min-w-0` + `flex-wrap`.
+- **`completeNote` sans borne basse** — **laissé tel quel, et c'est délibéré** :
+  une Note se date librement vers le passé (`saveNote` ne borne pas non plus), la
+  règle est « jamais dans le futur ». Lui coller la borne d'une Action suivie
+  ferait d'une note une action.
+
+### Ce que la revue a vérifié et trouvé correct
+
+Le plafond de trois a bien disparu partout ; les verdicts s'empilent et rien ne
+les archive seul ; la Note `running` est exclue des quatre lectures (rail, filet
+hors thème, courbe, `_sa`) ; `plusJours` corrige bien le décalage UTC ; une ligne
+décidée ne réapparaît pas.
+
+**Après corrections** : `npx tsc --noEmit` et `npm run build` verts, **19
+routes**, `python3.12 -m py_compile` sur `build_report.py`. Toujours **rien de
+vérifié en service**.

@@ -141,21 +141,35 @@ export async function startTracking(a: Prise & { tracked: boolean }): Promise<{
 // « ✓ C'est fait » POSÉ SUR UN CONSEIL QU'ON N'AVAIT PAS PRIS — la porte du
 // module « À faire » (`components/a-faire.tsx`).
 //
-// La décision et le fait sont le MÊME clic : la ligne naît donc directement
-// `done`, du jour même, et son verdict tombe à +14 j. C'est pour ça qu'aucun
-// calendrier n'est proposé ici alors que « ✓ Je l'ai fait » en propose un : la
-// borne `decided_at ≤ done_at` d'une ligne née à l'instant ne laisse qu'un seul
-// jour légal, aujourd'hui. Antidater demanderait de reculer AUSSI la décision,
-// donc d'affirmer une prise qui n'a pas eu lieu (`CLAUDE.md` §7).
-export async function markRecoDone(a: Prise): Promise<{ ok: boolean; message?: string }> {
+// La décision et le fait sont le MÊME clic : la ligne naît directement `done`,
+// et son verdict tombe à +14 j.
+//
+// LE JOUR EST LIBRE ICI AUSSI, et il écrit LES DEUX dates. La première version
+// n'offrait pas de calendrier, au motif que la borne `decided_at ≤ done_at`
+// d'une ligne née à l'instant ne laisse qu'aujourd'hui — l'argument tournait en
+// rond : si le geste a été fait mardi, la décision l'a été mardi aussi, et poser
+// les deux au même jour passé n'affirme aucune prise fictive. Le refuser
+// laissait survivre le défaut que ce ticket existe pour réparer, à l'endroit
+// même où la refonte 20 veut que les gestes vivent. La borne reste entière
+// (`decided_at ≤ done_at ≤ aujourd'hui`, ici par égalité), et antidater
+// n'avance que le jour du verdict : la baseline vient du rapport publié, pas de
+// l'instant du clic.
+export async function markRecoDone(
+  a: Prise,
+  jour?: string
+): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
+  const aujourdhui = isoDate(new Date());
+  if (jour && (!JOUR.test(jour) || jour > aujourdhui))
+    return { ok: false, message: "Cette date n'existe pas encore — recharge la page." };
+
   const pose = await poserSuivi(supabase, user.id, a, {
-    jour: isoDate(new Date()),
+    jour: jour || aujourdhui,
     statut: "done",
   });
   if (!pose.ok) return pose;
@@ -273,14 +287,19 @@ export async function resolveAction(
     // La borne basse se LIT, elle ne se devine pas : c'est la date de décision
     // de cette ligne-là. Une seule lecture de plus, et seulement quand une date
     // est proposée — le clic du jour même n'en paie pas le prix.
-    const { data: prise } = await supabase
+    const { data: depart } = await supabase
       .from("suivi_actions")
       .select("decided_at")
       .eq("id", id)
       .eq("user_id", user.id)
       .maybeSingle();
-    const decidee = prise?.decided_at ? String(prise.decided_at).slice(0, 10) : null;
-    if (decidee && ctx.doneAt < decidee)
+    // LIGNE ILLISIBLE = ON REFUSE, jamais « borne inconnue, donc on passe ».
+    // Un refus RLS ne lève aucune erreur (`CLAUDE.md` §8) : sans ce garde, une
+    // ligne masquée ou disparue laissait écrire n'importe quelle date passée.
+    const decidee = depart?.decided_at ? String(depart.decided_at).slice(0, 10) : null;
+    if (!decidee)
+      return { ok: false, message: "Cette action n'est plus dans ton suivi — recharge la page." };
+    if (ctx.doneAt < decidee)
       return {
         ok: false,
         message: `Tu as pris cette action le ${decidee} — tu ne peux pas l'avoir faite avant.`,
@@ -430,7 +449,12 @@ export async function saveNote(
   return poserNote(supabase, compte.uid, { titre, theme, jour: quand, statut: "archived" });
 }
 
-// UNE CHOSE À FAIRE QU'ON S'ÉCRIT SOI-MÊME — la ligne que Pulse n'a pas vue.
+// UNE NOTE QUI NAÎT OUVERTE — la ligne que Pulse n'a pas vue, écrite avant le
+// fait plutôt qu'après.
+//
+// Le mot « tâche » n'est pas employé, et ce n'est pas un détail de style :
+// `CONTEXT.md` l'écarte deux fois (entrées « À faire » et « Action suivie »), et
+// l'objet écrit ici EST une Note — même table, même `kind`, mêmes règles.
 //
 // AUCUN OBJET NEUF (décidé par `.scratch/refonte/issues/20-a-faire-cette-semaine.md`) :
 // c'est la même Note, avec le seul changement qui lui manquait — elle naît
@@ -447,7 +471,7 @@ export async function saveNote(
 // de l'écriture, et il sera réécrit à la date choisie par `completeNote`. Tant
 // qu'elle est `running`, rien ne la lit comme un fait — ni le rail
 // (`rail-actions.tsx`), ni la courbe (`lib/proto-notes.ts`).
-export async function saveTache(
+export async function saveNoteOuverte(
   texte: string,
   theme: string | null
 ): Promise<{ ok: boolean; message?: string }> {

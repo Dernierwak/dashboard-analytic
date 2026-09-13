@@ -77,11 +77,11 @@ export function RailActions({
 }) {
   const vivantes = actions
     .filter((a) => a.status === "running" || a.status === "done" || a.status === "auto")
-    // UNE CHOSE À FAIRE QU'ON S'EST ÉCRITE RESTE AU MODULE « À FAIRE » tant
+    // UNE NOTE ÉCRITE AVANT LE FAIT RESTE AU MODULE « À FAIRE » tant
     // qu'elle n'est pas cochée : le module liste ce qui attend une décision de
     // toi, le rail montre le temps qui passe. La montrer aux deux endroits
     // rouvrirait la contradiction que cette frontière ferme (`lib/a-faire.ts`,
-    // `estTacheOuverte` — la règle y est écrite en entier ; ici on ne peut pas
+    // `estNoteOuverte` — la règle y est écrite en entier ; ici on ne peut pas
     // l'importer sans faire entrer `lib/report.ts`, et avec lui `next/headers`,
     // dans un module que des composants clients peuvent charger). Cochée, elle
     // passe `archived` et rejoint « Ce qui s'est passé », à sa date.

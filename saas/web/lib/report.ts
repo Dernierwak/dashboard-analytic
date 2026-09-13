@@ -202,6 +202,10 @@ export type TrackedAction = {
  * « ✓ Je l'ai fait » (`done_at` posé) DEVIENT une vraie décision — c'est
  * justement le seul geste qui écrit `done_at`, et lui seul.
  */
+export function estDecisionClient(a: TrackedAction): boolean {
+  return a.origin !== "auto" || Boolean(a.done_at);
+}
+
 /**
  * UNE VEILLE N'EST PAS UN CONSEIL — c'est un constat qu'on surveille, et il ne
  * demande aucun geste. D'où deux conséquences qui vivent ailleurs : la carte ne
@@ -211,10 +215,6 @@ export type TrackedAction = {
  */
 export function estVeille(key: string): boolean {
   return key.startsWith("veille_");
-}
-
-export function estDecisionClient(a: TrackedAction): boolean {
-  return a.origin !== "auto" || Boolean(a.done_at);
 }
 
 export type ThemeRow = { label: string; spend: number; rev: number };
@@ -569,10 +569,6 @@ export type WeeklyData = {
   actions: TrackedAction[];
   // Actions rangées (verdict vu) — l'historique de la section Suivi.
   actionsArchived: TrackedAction[];
-  // CE QUE LE COMPTE N'A JAMAIS FAIT — ce que le module « À faire » vide peut
-  // encore faire découvrir (`lib/a-faire.ts`). Lu UNE fois en base, jamais dans
-  // le temps : un conseil d'usage éteint par le premier usage du geste ne peut
-  // pas devenir un décor, un conseil d'usage qui revient chaque semaine, si.
   decouvertes: Decouvertes;
 };
 

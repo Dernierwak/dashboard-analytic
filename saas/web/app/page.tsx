@@ -10,8 +10,9 @@ import {
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
-import { composerAFaire, estTacheOuverte, etatAFaire } from "@/lib/a-faire";
+import { composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
 import { AFaire } from "@/components/a-faire";
+import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
 import { SetupWizard } from "@/components/setup-wizard";
@@ -264,12 +265,12 @@ export default async function Page() {
 
   const orphelines = [...data.actions, ...data.actionsArchived]
     .filter((a) => !a.theme || !themesRendus.has(a.theme))
-    // Une chose à faire qu'on s'est écrite sans thème attend une décision, pas
+    // Une ligne qu'on s'est écrite sans thème attend une décision, pas
     // une maison : elle vit au module « À faire ». Sans ce filtre, le filet la
     // COMPTERAIT (`survenusOrphelins`, juste en dessous) sans pouvoir l'afficher
     // — le rail la retire de son côté — et le chiffre du module mentirait sur ce
     // qu'il montre.
-    .filter((a) => !estTacheOuverte(a));
+    .filter((a) => !estNoteOuverte(a));
   // Ce qui s'est RÉELLEMENT passé hors thème, par opposition à ce qui attend.
   // Vingt lignes « est programmée — aucune dépense encore » remplissaient le
   // bloc et noyaient les trois faits qui comptaient : elles ne comptent donc
@@ -405,19 +406,26 @@ export default async function Page() {
           semaine a été bonne ? » ; ouvrir le rapport sur ce qui reste à faire en
           aurait fait une corvée dès la première ligne, d'où sa place SOUS le
           hero et pas dedans. */}
-      {etatAFaireModule.visible && (
+      {etatAFaireModule.visible ? (
         <section id="a-faire" className="mb-9 scroll-mt-4">
           <SectionTitle>
             <span className="text-faint font-mono mr-1.5">{nAFaire}</span> À faire cette
             semaine
           </SectionTitle>
-          <AFaire
-            liste={aFaire}
-            etat={etatAFaireModule}
-            themesRendus={themesRendus}
-            themes={data.labels}
-          />
+          <AFaire liste={aFaire} etat={etatAFaireModule} themesRendus={themesRendus} />
+          <AjoutAFaire themes={data.labels} />
         </section>
+      ) : (
+        /* LE MODULE DISPARAÎT, LA PORTE RESTE. Un compte à jour — rien à
+           décider, plus rien à faire découvrir — n'a pas de module ; mais la
+           porte d'écriture vivait DEDANS, et une fois le module effacé plus rien
+           n'aurait pu le faire revenir : on ne pouvait plus s'écrire une ligne,
+           donc plus rien n'entrait, donc le module restait effacé. C'était un
+           cul-de-sac, et cette carte n'en veut aucun. Ce qui disparaît, c'est le
+           module — son titre, ses compteurs, son cadre ; pas le geste. */
+        <div className="mb-9">
+          <AjoutAFaire themes={data.labels} />
+        </div>
       )}
 
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul

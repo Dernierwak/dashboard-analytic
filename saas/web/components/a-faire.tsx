@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { compteursAFaire, type AFaire as Liste, type EtatAFaire } from "@/lib/a-faire";
+import type { AFaire as Liste, EtatAFaire } from "@/lib/a-faire";
 import { ancreTheme } from "@/components/theme-card";
-import { LigneConseil, LigneTache, LigneVerdict, TacheAjout } from "@/components/a-faire-lignes";
+import { ListeAFaire, type ConseilRendu, type VerdictRendu } from "@/components/a-faire-lignes";
 
 // ── LE MODULE « À FAIRE CETTE SEMAINE » ──────────────────────────────────────
 //
@@ -16,67 +16,51 @@ import { LigneConseil, LigneTache, LigneVerdict, TacheAjout } from "@/components
 // contradiction qu'on passe son temps à éviter. Et ce que TU as accompli passe
 // devant ce que Pulse propose.
 //
-// AUCUN ÉCRAN DE FÉLICITATIONS, aucune barre de complétion, aucune animation.
-// La récompense, c'est la ligne qui s'en va et le compteur qui descend, AU
-// MOMENT DU CLIC. On ne fête que le mesuré — à l'arrivée d'un verdict `better`,
-// et nulle part ailleurs.
+// CE FICHIER NE PORTE AUCUN ÉTAT : il compose ce que la page a lu, calcule les
+// ancres (les seuls liens du module) et laisse la liste — un composant client —
+// se vider sous le doigt.
+
+/** L'ancre de la carte d'un thème, quand ce thème en a une sur cette page. */
+function ancreDuTheme(theme: string | null, themesRendus: Set<string>): string | null {
+  return theme && themesRendus.has(theme) ? `#${ancreTheme(theme)}` : null;
+}
 
 /** Ce que la ligne d'un conseil vise quand on clique son titre : la carte du
  *  thème, où il est EXPLIQUÉ. Un réglage de base n'a pas de carte — il a son
- *  propre bloc en bas de page. */
-function ancre(theme: string | null, reglage: boolean, themesRendus: Set<string>): string {
-  if (reglage) return "#reglages";
-  if (theme && themesRendus.has(theme)) return `#${ancreTheme(theme)}`;
-  // Ni carte ni bloc : le thème a été renommé, ou il est sorti des étoiles
-  // depuis la publication. On renvoie au moins à la section des thèmes plutôt
-  // qu'à une ancre qui n'existe pas.
-  return "#conseils";
+ *  propre bloc en bas de page. Ni l'un ni l'autre (thème renommé, ou sorti des
+ *  étoiles depuis la publication) : on renvoie à la section des thèmes plutôt
+ *  qu'à une ancre qui n'existe pas. */
+function ancreDuConseil(
+  c: { theme: string | null; reglage: boolean },
+  themesRendus: Set<string>
+): string {
+  if (c.reglage) return "#reglages";
+  return ancreDuTheme(c.theme, themesRendus) ?? "#conseils";
 }
 
 export function AFaire({
   liste,
   etat,
   themesRendus,
-  themes,
 }: {
   liste: Liste;
   etat: EtatAFaire;
   /** Les thèmes qui ont réellement une carte sur cette page — c'est ce qui
-   *  décide si le titre d'un conseil peut renvoyer quelque part. */
+   *  décide si le titre d'une ligne peut renvoyer quelque part. */
   themesRendus: Set<string>;
-  /** Le vocabulaire du compte, pour dire sur quoi porte une ligne écrite à la
-   *  main. */
-  themes: string[];
 }) {
-  if (!etat.visible) return null;
-
-  const n = compteursAFaire(liste);
-  const compteurs = [
-    n.verdicts > 0 ? `${n.verdicts} verdict${n.verdicts > 1 ? "s" : ""} à regarder` : null,
-    n.decisions > 0 ? `${n.decisions} à décider` : null,
-  ].filter(Boolean);
+  const verdicts: VerdictRendu[] = liste.verdicts.map((a) => ({
+    a,
+    ancre: ancreDuTheme(a.theme, themesRendus),
+  }));
+  const conseils: ConseilRendu[] = liste.conseils.map((c) => ({
+    c,
+    ancre: ancreDuConseil(c, themesRendus),
+  }));
 
   return (
     <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5">
-      {compteurs.length > 0 && (
-        <div className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1">
-          {compteurs.join(" · ")}
-        </div>
-      )}
-
-      {liste.verdicts.map((a) => (
-        <LigneVerdict
-          key={a.id}
-          a={a}
-          ancre={a.theme && themesRendus.has(a.theme) ? `#${ancreTheme(a.theme)}` : null}
-        />
-      ))}
-      {liste.taches.map((a) => (
-        <LigneTache key={a.id} a={a} />
-      ))}
-      {liste.conseils.map((c) => (
-        <LigneConseil key={`${c.key}:${c.theme ?? ""}`} c={c} ancre={ancre(c.theme, c.reglage, themesRendus)} />
-      ))}
+      <ListeAFaire verdicts={verdicts} notes={liste.notes} conseils={conseils} />
 
       {/* L'ÉTAT BLOQUÉ, ET C'EST CE MODULE QUI LE PORTE. Les conseils sont
           filtrés DUR sur les thèmes prioritaires (ADR 0003) : sans étoile,
@@ -105,10 +89,9 @@ export function AFaire({
       )}
 
       {/* LE CONSEIL D'USAGE NE VIT QUE DANS LE MODULE VIDE, un seul à la fois,
-          et il est éteint POUR TOUJOURS par le premier usage du geste — pas par
-          une semaine qui passe, pas par un clic « j'ai vu ». C'est la seule
-          condition d'extinction qui tienne : un conseil d'usage déclenché par le
-          temps devient un décor en trois semaines. */}
+          et il est éteint par le premier usage du geste — pas par une semaine
+          qui passe, pas par un clic « j'ai vu ». Sa condition et sa limite
+          connue sont écrites sur `nudge` (`lib/a-faire.ts`). */}
       {etat.nudge && (
         <p className="text-[12.5px] text-muted leading-relaxed max-w-[68ch] py-1">
           {etat.nudge.texte}
@@ -125,15 +108,6 @@ export function AFaire({
           )}
         </p>
       )}
-
-      {/* CE QUE PULSE N'A PAS VU ENTRE SANS VERDICT. Aucun objet neuf : c'est une
-          Note (`kind = "note"`), à qui il manquait seulement de pouvoir naître
-          « en cours ». Elle se coche, elle marque la courbe, elle n'a ni
-          indicateur ni baseline ni verdict — juger la note du client obligerait
-          Pulse à choisir le chiffre à sa place, donc à inventer une intention.
-          Conséquence assumée : le compteur peut monter parce que le client l'a
-          fait monter lui-même, et ça, ce n'est pas un reproche. */}
-      <TacheAjout themes={themes} />
     </div>
   );
 }
