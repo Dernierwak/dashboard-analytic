@@ -309,18 +309,6 @@ export type VisionBlock = {
   constats: VisionConstat[];
 };
 
-export type ProofOutcome = {
-  key: string;
-  title: string;
-  week_label: string; // « sem. du 8 jul »
-  kpi: string;
-  unit: string;
-  then: string;
-  now: string;
-  delta: number | null;
-  verdict: "better" | "worse" | "stable";
-};
-
 export type MatriceCoverage = {
   posts_labeled: number;
   posts_total: number;
@@ -520,10 +508,15 @@ export type ReportPayload = {
   todo: { key: string; title: string; platform: string; done: boolean }[];
   recos: PayloadReco[];
   themes?: { rows: ThemeRow[]; orphan: number } | null;
-  preuve?: {
-    outcomes: ProofOutcome[];
-    pending: { key: string; title: string }[];
-  } | null;
+  // `preuve` A ÉTÉ RETIRÉ LE 2026-09-13, avec le moteur qui l'écrivait.
+  //
+  // C'était le bilan des actions AU NIVEAU DU COMPTE, remesuré par un second
+  // moteur du worker pendant que le rail rendait son verdict sur le THÈME de
+  // l'action : deux mesures, deux périmètres, deux verdicts possibles sur la
+  // même décision. Aucun composant ne l'a jamais lu. Le bilan compte-entier est
+  // désormais un COMPTAGE des verdicts déjà persistés (`lib/carnet.ts`), donc
+  // il ne peut plus contredire le rail. Les payloads déjà publiés portent
+  // encore le champ ; rien ne le lit, il s'éteint de lui-même.
 };
 
 /** LE GESTE QUI N'A JAMAIS SERVI — ce que le module « À faire » vide peut

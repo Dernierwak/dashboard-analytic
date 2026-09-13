@@ -20,7 +20,9 @@ import { ConstatVerdict } from "@/components/constat-verdict";
 // thèmes sur lesquels tu veux qu'on travaille — les constats… se concentrent
 // dessus » alors que `vision.constats` n'était rendu par AUCUN composant :
 // publié chaque semaine, lu nulle part. Troisième tuyau mort du produit, après
-// `preuve` et `themes_tips`.
+// `themes_tips` et `preuve` — ce dernier n'a pas été rebranché mais SUPPRIMÉ
+// (ticket 12 de la construction) : il remesurait sur le compte entier ce que le
+// rail mesure sur le thème, donc le brancher aurait mis deux verdicts à l'écran.
 //
 // POURQUOI UN COMPOSANT QUI LIT SES PROPRES DONNÉES : quatre pages l'affichent,
 // et `getVision` est mémoïsée par requête (`cache`). Leur faire porter la

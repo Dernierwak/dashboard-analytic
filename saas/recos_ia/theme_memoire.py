@@ -6,8 +6,8 @@ et sert à bloquer une nouvelle hypothèse tant que la précédente n'a pas rend
 son verdict.
 
 Ce module porte la seconde : un résumé narratif d'une à deux phrases, par
-(user_id, thème), qui dit ce que ce thème a déjà TENTÉ, sur quels leviers, et
-ce que ça a donné. Il est injecté dans le prompt qui rédige les pistes du
+(user_id, thème), qui dit ce que ce thème a déjà TENTÉ, sur quels leviers,
+ce que ça a donné, et ce que le client DÉCLARE avoir fait dessus (ses notes). Il est injecté dans le prompt qui rédige les pistes du
 thème — sans lui, Pulse pouvait proposer une troisième hypothèse « argent »
 sur un thème où les deux premières avaient été mesurées `worse` (spec
 `.scratch/theme-memoire/spec.md`).
@@ -78,25 +78,64 @@ def _mesure_txt(item: dict) -> str:
     return txt
 
 
-def build_prompt(theme: str, historique: list[dict]) -> str:
+def _ligne_fait(note: dict) -> str:
+    """Une note du client, en une ligne de prompt.
+
+    Aucun chiffre, aucun verdict, aucun indicateur : une note n'en porte pas.
+    C'est exactement ce qui la distingue d'une hypothèse, et la raison pour
+    laquelle elle a sa propre fonction plutôt qu'un champ de plus dans
+    `_ligne_historique` — la seule façon de garantir qu'aucune mesure ne peut
+    lui être accrochée est qu'il n'y ait pas de place pour en mettre une."""
+    jour = str(note.get("jour") or "").strip()
+    texte = str(note.get("texte") or "").strip()
+    return f"- {jour} : « {texte} »" if jour else f"- « {texte} »"
+
+
+def build_prompt(theme: str, historique: list[dict],
+                 faits: list[dict] | None = None) -> str:
     """Le prompt de condensation. Pure — aucun accès base, aucun appel IA.
 
     Séparée de `condense_theme_memoire` pour qu'on puisse l'inspecter dans un
     test : la propriété qui protège la règle « aucun chiffre fabriqué » est
-    que la chaîne rendue ne contient aucun nombre absent de `historique`."""
+    que la chaîne rendue ne contient aucun nombre absent de `historique`.
+
+    `faits` porte les NOTES du client sur ce thème — ce qu'il déclare avoir
+    fait, que Pulse ne peut pas deviner. Elles entrent dans la mémoire et
+    JAMAIS dans le repondérage des conseils
+    (`.scratch/refonte/issues/08-la-memoire-du-travail.md` §3) : la mémoire est
+    narrative, elle reformule ; faire peser un texte libre non mesuré comme un
+    verdict serait fabriquer une mesure (`CLAUDE.md` §7)."""
     # LES DOUZE DERNIÈRES, PAS LES DOUZE PREMIÈRES. `historique` arrive dans
     # l'ordre de `suivi_actions` (`.order("check_at")`, croissant) : le plus
     # ancien d'abord. Un `[:12]` aurait gardé les hypothèses les plus VIEILLES
     # et jeté celles dont le verdict vient de tomber — la mémoire aurait décrit
     # exactement ce qui n'intéresse plus personne.
-    lignes = "\n".join(_ligne_historique(h) for h in historique[-12:])
+    lignes = "\n".join(_ligne_historique(h) for h in (historique or [])[-12:])
+    if not lignes:
+        # Un thème peut n'avoir que des notes : aucune hypothèse n'a encore été
+        # testée dessus. On l'ÉCRIT — « rien de testé » et « testé sans effet »
+        # ne sont pas la même chose, et le prompt le répète plus bas.
+        lignes = "- (aucune hypothèse testée sur ce thème)"
+    bloc_faits = ""
+    if faits:
+        # Les huit dernières, même raison que pour les hypothèses.
+        declare = "\n".join(_ligne_fait(f) for f in faits[-8:])
+        bloc_faits = (
+            "\nEt voici ce que le client déclare AVOIR FAIT sur ce thème — ses "
+            "propres notes, écrites à la main. Ce sont des FAITS DÉCLARÉS, pas "
+            "des hypothèses jugées : elles n'ont ni indicateur, ni valeur de "
+            "départ, ni verdict, et tu ne dois leur en attribuer aucun ni "
+            "affirmer qu'elles ont marché ou non :\n"
+            f"{declare}\n"
+        )
     return (
         "Tu tiens la MÉMOIRE d'un thème de communication pour un dashboard "
         f"marketing de PME. Le thème est « {theme} ».\n\n"
         "Voici les hypothèses déjà testées sur ce thème, avec leur verdict "
         "mesuré (better = l'indicateur a bougé dans le bon sens, worse = dans "
         "le mauvais, stable = il n'a pas bougé de façon mesurable) :\n"
-        f"{lignes}\n\n"
+        f"{lignes}\n"
+        f"{bloc_faits}\n"
         "Écris en 1 à 2 phrases où en est ce thème : combien d'hypothèses ont "
         "été tentées, sur quels leviers, et ce que ça a donné. Si un levier "
         "n'a jamais été essayé sur ce thème, tu peux le dire — mais seulement "
@@ -107,24 +146,28 @@ def build_prompt(theme: str, historique: list[dict]) -> str:
         "ces lignes. Ne confonds pas « aucune hypothèse encore testée » et "
         "« des hypothèses testées sans effet mesuré » (verdict stable) — ce "
         "n'est pas la même chose. Une hypothèse dont le levier est inconnu "
-        "reste inconnue, ne lui en attribue aucun.\n"
+        "reste inconnue, ne lui en attribue aucun. Une note du client se "
+        "rapporte telle quelle, sans jugement : Pulse marque, le client juge.\n"
         "Français, ton factuel, pas d'intro, pas de guillemets autour de ta "
         "réponse."
     )
 
 
 def condense_theme_memoire(client, user_id, theme: str, call_ai,
-                           historique: list[dict] | None) -> str | None:
+                           historique: list[dict] | None,
+                           faits: list[dict] | None = None) -> str | None:
     """Réécrit la mémoire du thème et la rend. `None` si rien n'a été écrit.
 
-    Appelée UNIQUEMENT à la chute d'un nouveau verdict (voir la boucle de
-    verdict de `build_report.py`), une fois par thème concerné — jamais une
-    fois par ligne, jamais à chaque rapport.
+    Appelée à la chute d'un nouveau verdict (voir la boucle de verdict de
+    `build_report.py`), une fois par thème concerné — jamais une fois par
+    ligne, jamais à chaque rapport. Plus un rattrapage, borné : un thème qui a
+    de la matière (une hypothèse mesurée, ou une note du client) et aucun
+    `resume` stocké est repris, jusqu'à ce qu'une condensation réussisse.
 
     Trois replis, alignés sur le reste du produit — une panne de mémoire ne
     prive jamais le client de son rapport :
-    · pas de matière (aucune hypothèse passée) → aucun appel IA, `resume`
-      reste tel quel ;
+    · pas de matière (aucune hypothèse passée ET aucune note déclarée) →
+      aucun appel IA, `resume` reste tel quel ;
     · l'IA échoue ou n'a pas de clé → le `resume` précédent est CONSERVÉ,
       jamais écrasé par du vide ;
     · l'écriture échoue (colonnes pas encore migrées, refus RLS) → silencieuse,
@@ -132,9 +175,9 @@ def condense_theme_memoire(client, user_id, theme: str, call_ai,
     """
     if not (client and user_id and theme and callable(call_ai)):
         return None
-    if not historique:
+    if not historique and not faits:
         return None  # rien à raconter — surtout pas un appel IA à vide
-    resume = call_ai(build_prompt(theme, historique))
+    resume = call_ai(build_prompt(theme, historique or [], faits))
     if not resume:
         return None  # l'IA a échoué → on garde la mémoire déjà stockée
     resume = resume.strip()

@@ -54,6 +54,7 @@ import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
 
 export const dynamic = "force-dynamic";
@@ -194,6 +195,11 @@ export default async function LabelsPage({
       <div className="border-t border-line pt-5 mt-6">
         <CeQuiMarche page="themes" />
       </div>
+
+      {/* 7 — TON CARNET. Aucune campagne ici, aucune régie : cette page parle
+          du VOCABULAIRE, et une note y tombe sur le thème coché au bandeau.
+          C'est le même module que sur les trois dashboards. */}
+      <Carnet themes={themes} />
     </main>
   );
 }

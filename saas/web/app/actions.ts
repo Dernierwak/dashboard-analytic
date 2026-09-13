@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
+import type { CampagneNote } from "@/lib/carnet";
 
 // « too_hard » : ni un rejet ni un accord — « je vois l'intérêt mais je ne sais
 // pas le faire ». C'est le retour le plus utile qu'on puisse recevoir : il dit
@@ -430,7 +431,14 @@ async function marquerApplique(
 export async function saveNote(
   texte: string,
   theme: string | null,
-  jour?: string
+  jour?: string,
+  // LA CAMPAGNE VIENT DE L'ÉCRAN, PAS D'UNE DEVINETTE. Une note écrite depuis
+  // une page canal, campagne cochée au bandeau, hérite de la paire (régie, clé)
+  // sans qu'on demande rien à personne — c'est l'argument qui a fait vivre le
+  // Carnet sur les pages plateforme (ticket 19 de la refonte). Rien ne la
+  // déduit d'une date ni d'un thème : ce serait fabriquer le lien qu'on
+  // prétend montrer (`CLAUDE.md` §7).
+  campagne?: CampagneNote | null
 ): Promise<{ ok: boolean; message?: string }> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -446,7 +454,13 @@ export async function saveNote(
     ? jour
     : aujourdhui;
 
-  return poserNote(supabase, compte.uid, { titre, theme, jour: quand, statut: "archived" });
+  return poserNote(supabase, compte, {
+    titre,
+    theme,
+    jour: quand,
+    statut: "archived",
+    campagne: campagne ?? null,
+  });
 }
 
 // UNE NOTE QUI NAÎT OUVERTE — la ligne que Pulse n'a pas vue, écrite avant le
@@ -483,21 +497,46 @@ export async function saveNoteOuverte(
   const titre = texte.trim().slice(0, 180);
   if (!titre) return { ok: false, message: "Écris quelque chose d'abord." };
 
-  return poserNote(supabase, compte.uid, {
+  return poserNote(supabase, compte, {
     titre,
     theme,
     jour: isoDate(new Date()),
     statut: "running",
+    campagne: null,
   });
 }
 
+type Brouillon = {
+  titre: string;
+  theme: string | null;
+  jour: string;
+  statut: "running" | "archived";
+  campagne: CampagneNote | null;
+};
+
+// L'ÉCRITURE D'UNE NOTE, ET SON REPLI.
+//
+// `author_id` prend `compte.moi` — **`moi`, pas `uid`**. C'est le seul endroit
+// de tout ce fichier où la PERSONNE compte et non le COMPTE : partout ailleurs
+// on écrit sous l'identifiant du compte regardé (`const user = { id: compte.uid }`,
+// quarante-trois fois). Une note est un fait déclaré par quelqu'un, et c'est ce
+// quelqu'un qu'on inscrit — la colonne est ensuite FIGÉE par un déclencheur en
+// base (`supabase/migrations/suivi_actions_auteur_campagne.sql`), parce qu'une
+// politique RLS ne voit que la ligne d'arrivée (`CLAUDE.md` §8).
+//
+// LE REPLI NE MENT PAS. Les trois colonnes neuves n'existent pas tant que la
+// migration n'est pas jouée. Sans auteur, on réécrit sans lui : une note sans
+// auteur est une note ancienne, pas une note cassée (ADR 0004). Avec une
+// CAMPAGNE désignée, en revanche, on REFUSE : l'écran vient d'afficher
+// « rattachée à : campagne X », l'enregistrer sans elle tiendrait une promesse
+// à moitié sans le dire.
 async function poserNote(
   supabase: Client,
-  userId: string,
-  n: { titre: string; theme: string | null; jour: string; statut: "running" | "archived" }
+  compte: { uid: string; moi: string },
+  n: Brouillon
 ): Promise<{ ok: boolean; message?: string }> {
-  const r = await supabase.from("suivi_actions").insert({
-    user_id: userId,
+  const ligne = {
+    user_id: compte.uid,
     // Unique par construction : deux notes du même jour ne peuvent pas se
     // heurter sur la contrainte (user_id, reco_key, decided_at).
     reco_key: `note:${crypto.randomUUID()}`,
@@ -508,17 +547,42 @@ async function poserNote(
     // Elle n'attend aucun verdict : son échéance est le jour même.
     check_at: n.jour,
     status: n.statut,
-  });
-  if (r.error) {
-    // La colonne `kind` peut ne pas encore exister (migration pas passée).
-    if (String(r.error.message || "").includes("kind"))
+    author_id: compte.moi,
+    // La paire (régie, clé) ou rien : la contrainte de base refuse une clé sans
+    // régie, et une régie sans clé ne désigne aucune campagne.
+    campaign_channel: n.campagne?.canal ?? null,
+    campaign_key: n.campagne?.cle ?? null,
+  };
+  const r = await supabase.from("suivi_actions").insert(ligne);
+  if (!r.error) return noteEcrite();
+
+  const panne = String(r.error.message || "");
+  if (panne.includes("kind"))
+    return {
+      ok: false,
+      message: "La migration des notes n'est pas encore passée en base.",
+    };
+  if (/author_id|campaign_/.test(panne)) {
+    if (n.campagne)
       return {
         ok: false,
-        message: "La migration des notes n'est pas encore passée en base.",
+        message:
+          "Ta note désigne une campagne, et la base ne sait pas encore la porter" +
+          " — la migration suivi_actions_auteur_campagne.sql n'est pas jouée.",
       };
-    return { ok: false, message: "Ta note n'a pas pu être enregistrée — réessaie." };
+    const { author_id, campaign_channel, campaign_key, ...sansColonnesNeuves } = ligne;
+    const repli = await supabase.from("suivi_actions").insert(sansColonnesNeuves);
+    if (!repli.error) return noteEcrite();
   }
-  revalidatePath("/");
+  return { ok: false, message: "Ta note n'a pas pu être enregistrée — réessaie." };
+}
+
+// LE CARNET EST POSÉ PARTOUT, DONC IL SE RAFRAÎCHIT PARTOUT. Une note écrite
+// depuis `/meta` doit apparaître dans le Carnet de `/meta` — `revalidatePath("/")`
+// seul ne rendait la main qu'à la page d'accueil, la seule qui portait une note
+// avant ce ticket.
+function noteEcrite(): { ok: boolean } {
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -562,7 +626,95 @@ export async function completeNote(
       ok: false,
       message: "Rien enregistré : cette ligne a déjà été cochée — recharge la page.",
     };
-  revalidatePath("/");
+  // Cochée, elle devient un fait : elle quitte le module « À faire » et entre au
+  // Carnet, qui est posé sur plusieurs pages — d'où la portée `layout`.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// ── UNE NOTE NE SE TOUCHE QUE PAR SON AUTEUR ────────────────────────────────
+//
+// Règle de `.scratch/refonte/issues/08-la-memoire-du-travail.md` §5, reprise en
+// user story 51 de la spec : **tout le monde voit une note, personne d'autre
+// n'y touche.** La mémoire de l'entreprise ne doit pas dépendre d'un clic
+// malheureux d'un collègue.
+//
+// LE PROPRIÉTAIRE FAIT EXCEPTION, et ce n'est pas une commodité : sans lui, la
+// note d'un membre parti deviendrait ineffaçable sur un compte qui est le sien.
+//
+// UNE NOTE SANS AUTEUR RESTE À TOUT LE MONDE. Elle est antérieure à la colonne
+// (aucun backfill — ADR 0004 : « une note sans auteur est une note ancienne, pas
+// une note cassée »). La réserver à personne la figerait pour toujours sans que
+// personne l'ait décidé.
+//
+// **CETTE RÈGLE EST APPLICATIVE, PAS RLS.** La migration n'ajoute aucune
+// politique : ça changerait ce qu'un Membre a le droit de faire en base, et ça
+// se propose au lieu de se glisser (ticket 05 de la construction). Quelqu'un qui
+// forge un appel contourne donc cet écran — le trou est connu, écrit, et c'est
+// une décision de David, pas un oubli. Le même fait vit dans
+// `.scratch/construction/issues/23-auteur-forge-a-l-insertion.md`.
+function filtreAuteur<T extends { or: (f: string) => T }>(
+  requete: T,
+  compte: { uid: string; moi: string }
+): T {
+  if (compte.uid === compte.moi) return requete; // Propriétaire : tout son compte
+  return requete.or(`author_id.eq.${compte.moi},author_id.is.null`);
+}
+
+// Pourquoi zéro ligne touchée, dit sans nommer personne (ADR 0004 : un statut
+// n'a pas d'auteur, et on ne raconte pas qui a écrit quoi à qui ne le voit pas).
+// On RELIT avant d'écrire le message : un refus RLS ne lève aucune erreur, il
+// touche zéro ligne (`CLAUDE.md` §8) — « introuvable » et « pas à toi » ne se
+// devinent pas, ils se lisent.
+async function pourquoiRien(
+  supabase: Client,
+  id: string,
+  compte: { uid: string; moi: string }
+): Promise<string> {
+  const r = await supabase
+    .from("suivi_actions")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", compte.uid)
+    .eq("kind", "note")
+    .limit(1);
+  if (r.error || (r.data ?? []).length === 0)
+    return "Cette note n'existe plus — recharge la page.";
+  return "Cette note a été écrite par quelqu'un d'autre : elle ne se corrige et ne s'efface que par son auteur.";
+}
+
+/** Corriger le texte d'une note. Le jour ne bouge pas : il a été choisi, et le
+ *  déplacer déplacerait un fait sur la frise (`CLAUDE.md` §7) — pour raconter
+ *  autre chose, on écrit une autre note. */
+export async function updateNote(
+  id: string,
+  texte: string
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+  const titre = texte.trim().slice(0, 180);
+  if (!titre) return { ok: false, message: "Écris quelque chose d'abord." };
+
+  const cible = () =>
+    supabase
+      .from("suivi_actions")
+      .update({ title: titre })
+      .eq("id", id)
+      .eq("user_id", compte.uid)
+      .eq("kind", "note");
+  // `.select("id")` n'est pas décoratif : sans lui, un refus RLS répondrait
+  // « enregistré » sans avoir rien écrit (`CLAUDE.md` §8).
+  let maj = await filtreAuteur(cible(), compte).select("id");
+  // La colonne `author_id` peut ne pas exister (migration pas jouée) : on
+  // retombe alors sur l'ancien comportement — le compte, sans la personne.
+  if (maj.error && String(maj.error.message || "").includes("author_id"))
+    maj = await cible().select("id");
+  if (maj.error) return { ok: false, message: "Impossible de corriger cette note — réessaie." };
+  if ((maj.data ?? []).length === 0)
+    return { ok: false, message: await pourquoiRien(supabase, id, compte) };
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -571,14 +723,20 @@ export async function deleteNote(id: string): Promise<{ ok: boolean; message?: s
   const compte = await getCompteActif();
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  const r = await supabase
-    .from("suivi_actions")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", compte.uid)
-    .eq("kind", "note");
-  if (r.error) return { ok: false, message: "Impossible de retirer cette note — réessaie." };
-  revalidatePath("/");
+  const cible = () =>
+    supabase
+      .from("suivi_actions")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", compte.uid)
+      .eq("kind", "note");
+  let sup = await filtreAuteur(cible(), compte).select("id");
+  if (sup.error && String(sup.error.message || "").includes("author_id"))
+    sup = await cible().select("id");
+  if (sup.error) return { ok: false, message: "Impossible de retirer cette note — réessaie." };
+  if ((sup.data ?? []).length === 0)
+    return { ok: false, message: await pourquoiRien(supabase, id, compte) };
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

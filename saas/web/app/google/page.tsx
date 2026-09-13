@@ -12,6 +12,7 @@ import {
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,14 @@ export default async function GooglePage({
         Le thème relie tes campagnes cross-canal (page Labels) — même liste que Meta
         et Instagram.
       </p>
+
+      {/* Même module, même place que sur Meta. */}
+      <Carnet
+        canal="google"
+        themes={themesChoisis(searchParams)}
+        campKey={d.filters.camp}
+        campagnes={d.campOptions}
+      />
     </main>
   );
 }

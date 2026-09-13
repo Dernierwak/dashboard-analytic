@@ -719,32 +719,18 @@ def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -
     return out
 
 
-def fetch_reco_decisions(supabase: Client, user_id: str, recent_weeks: int = 5) -> list[dict]:
-    """Décisions « Fait » datées — alimente la boucle de la preuve du rapport
-    (le rapport suivant mesure l'effet de chaque décision sur son KPI).
-    Returns: [{reco_key, week_start}] du plus récent au plus ancien (1 par key).
-    """
-    from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
-    out, seen = [], set()
-    try:
-        res = (
-            supabase.table("reco_feedback")
-            .select("reco_key, reaction, week_start")
-            .eq("user_id", user_id)
-            .eq("reaction", "done")
-            .gte("week_start", cutoff)
-            .order("week_start", desc=True)
-            .execute()
-        )
-        for row in (res.data or []):
-            key = row.get("reco_key")
-            if key and key not in seen:
-                seen.add(key)
-                out.append({"reco_key": key, "week_start": str(row.get("week_start"))[:10]})
-    except Exception:
-        pass
-    return out
+# `fetch_reco_decisions` A ÉTÉ RETIRÉE LE 2026-09-13.
+#
+# Elle n'alimentait que la « boucle de la preuve » de `build_report.py` — un
+# second moteur de verdict qui remesurait sur le compte entier ce que le rail
+# mesure sur le thème, et dont la sortie (`payload.preuve`) n'était lue par
+# aucun écran. Le moteur est mort avec elle : voir la pierre tombale dans
+# `saas/traitement/build_report.py`, et
+# `.scratch/construction/issues/12-le-carnet-et-la-mort-de-preuve.md`.
+#
+# Le bilan au niveau du compte est désormais un COMPTAGE de
+# `suivi_actions.verdict`, fait à la lecture côté web : aucune mesure nouvelle,
+# donc rien à récolter ici.
 
 
 def fetch_insight_feedback(supabase: Client, user_id: str) -> dict[str, str]:

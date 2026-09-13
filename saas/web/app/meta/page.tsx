@@ -12,6 +12,7 @@ import {
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
 // PROTOTYPE, À RETIRER — quatre façons de poser tes notes sur la courbe
 // (`?variant=A|B|C|D`). Sans le paramètre, la page est exactement celle
@@ -99,6 +100,18 @@ export default async function MetaPage({
         Le thème relie tes campagnes cross-canal (page Labels) — c&apos;est lui qui permet
         le « ce que chaque thème rapporte » du rapport.
       </p>
+
+      {/* ── TON CARNET — le même module que sur les quatre autres pages, filtré
+          par ce que le bandeau filtre (thème, campagne). Écrire ici plutôt que
+          de revenir à l'accueil : la note hérite de la campagne cochée et de la
+          régie de la page, donc elle sait de quoi elle parle sans qu'on le lui
+          demande (`lib/carnet.ts`). */}
+      <Carnet
+        canal="meta"
+        themes={themesChoisis(searchParams)}
+        campKey={d.filters.camp}
+        campagnes={d.campOptions}
+      />
 
       {/* PROTOTYPE — la barre de comparaison, invisible en production. */}
       {variante && (

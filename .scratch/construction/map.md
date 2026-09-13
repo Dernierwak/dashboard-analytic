@@ -433,6 +433,41 @@ au ticket 16, que cette carte annonçait pour ce ticket-ci nommément). `tsc` et
 `npm run build` verts, **19 routes**. **Le module se pose sous le hero, là où il
 restera** : le bilan du Carnet qui doit s'intercaler est le ticket 13.
 
+**[12 · Le carnet, et la mort de `preuve`](issues/12-le-carnet-et-la-mort-de-preuve.md)** —
+**le seul mécanisme de rétention de la carte existe, et le moteur concurrent est
+mort.** `preuve` part avec `fetch_reco_decisions`, `ProofOutcome` et
+`payload.preuve` : il remesurait sur le COMPTE ENTIER ce que le rail mesure sur
+le THÈME, et aucun écran ne l'a jamais lu. Ce qui le remplace ne mesure rien —
+un **comptage** des `suivi_actions.verdict` déjà persistés, deux `head` count
+(donc hors du plafond des 1 000 lignes), **aucun taux dérivé** : un pourcentage
+sur quatre actions serait un chiffre juste qui ment. La relève est vérifiée et
+non supposée, l'écriture du verdict comprise — sans elle il n'y aurait plus rien
+à compter. **Le Carnet est un module unique posé sur cinq pages** (`/meta`,
+`/google`, `/instagram`, `/labels`, `/couts`), filtré par **exactement ce que le
+bandeau de la page filtre**. La page n'est pas un filtre, elle est un **contexte
+d'écriture** : une note posée depuis `/meta`, campagne cochée, naît
+`('meta','Été')` sans qu'on demande rien — la colonne réclamée par 08 cesse
+d'être un champ à remplir. **L'accueil ne prend que le BILAN**, entre le hero et
+« À faire » : le rail porte déjà la chronologie avec l'effet chiffré, et le
+relire en liste referait ce que `685a3e9` avait défait. `author_id` prend
+**`compte.moi`** — le seul endroit d'`actions.ts` où la personne compte et non le
+compte ; `updateNote` (neuf) et `deleteNote` filtrent sur l'auteur, Propriétaire
+excepté, lisent les lignes touchées et **relisent** avant de dire pourquoi.
+**Le repli de migration refuse plutôt que de perdre une campagne en silence**, et
+ne dit « migration pas jouée » que si la base l'a dit. **La note entre dans la
+mémoire du thème et jamais dans le repondérage** : lecture séparée de la boucle
+de verdict (l'élargir y aurait fait entrer les notes, et c'est elle qui ÉCRIT
+`verdict`), présentées comme **faits déclarés** dans un prompt où leur ligne n'a
+pas de place pour un chiffre. **Les deux pièges sont tenus** : aucune marque
+rallumée sur une courbe (les quatre variantes de refonte 19 attendent le jugement
+de David), aucune semaine passée rouverte. **179 vérifications**, harnais 06→10
+rejoués, 19 routes. **La migration n'est PAS jouée** : le Carnet s'affiche sans
+auteur ni campagne et le dit. Ça se voit après un « ↻ Recharger mes conseils »
+pour la partie worker, tout de suite pour le Carnet. Sa revue a ouvert
+[33 · Une note pas encore faite marque déjà la frise](issues/33-une-note-pas-encore-faite-marque-la-frise.md) :
+`_markers` est la seule lecture des notes qui n'a pas appris qu'une Note peut
+naître `running`.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la

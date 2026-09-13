@@ -56,8 +56,15 @@ def test_le_plan_de_theme_reste_ecrit_a_la_publication():
 def test_l_echeance_part_du_clic():
     # `resolveAction(id, "done")` repose `check_at` au jour du clic : c'est le
     # seul endroit du dépôt qui fixe l'échéance d'un verdict.
+    # ÉCRITURE MISE À JOUR PAR LE TICKET 11, pas un assouplissement : la date
+    # de réalisation est devenue LIBRE (`done_at` choisi, borné par
+    # `decided_at ≤ done_at ≤ aujourd'hui`), donc l'échéance ne part plus du
+    # jour du clic mais du JOUR CHOISI — `check = plusJours(jourFait, 14)`.
+    # L'assertion visait encore le nom de variable d'avant et ne prouvait donc
+    # plus rien depuis `618b950`.
     ok("l'échéance se repose au clic « fait »",
-       'status: "done",' in ACTIONS_TS and "check_at: isoDate(check)," in ACTIONS_TS)
+       'status: "done",' in ACTIONS_TS and "check_at: check," in ACTIONS_TS
+       and "const check = plusJours(jourFait, 14);" in ACTIONS_TS)
     ok("le levier part avec le clic", "levier?: string | null;" in ACTIONS_TS)
 
 

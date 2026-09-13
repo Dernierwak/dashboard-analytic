@@ -25,6 +25,7 @@ import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
 import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
+import { Carnet } from "@/components/carnet";
 import { lienDash } from "@/lib/liens";
 
 import { Triangle, sensPente } from "@/components/pente";
@@ -529,6 +530,11 @@ export default async function InstagramPage({
           </>
         )}
       </p>
+
+      {/* ── TON CARNET — même module que sur les pages payantes, sans campagne :
+          l'organique n'en a pas. Le thème du bandeau le filtre, et c'est tout ce
+          que cette page peut lui apporter. */}
+      <Carnet themes={themes} />
     </main>
   );
 }

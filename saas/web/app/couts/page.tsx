@@ -12,13 +12,21 @@
 // nombre à taper — l'enveloppe de l'année — fait vivre le mois, le jour, les
 // alertes et toutes les barres de la page.
 //
+// LES COMMANDES NE SONT PLUS SUR LA PAGE, ELLES SONT DANS LE BANDEAU — et il
+// faut savoir ce que ça change, parce que ce n'est pas un déménagement neutre.
+// La période et les thèmes ne gouvernent PAS toute la page : ni l'enveloppe de
+// l'année, ni les cartes par thème ne lisent la période, et l'enveloppe ne lit
+// pas non plus les thèmes. Tant que le filtre était posé DANS la section 2,
+// sa portée se lisait à sa position ; en haut de page, elle doit s'écrire —
+// c'est le rôle de la phrase qui ouvre cette section. Ticket 28.
+//
 // Trois lectures, dans cet ordre, et pas une de plus :
 //   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis DEUX modules côte à
 //       côte : l'enveloppe fixée et sa répartition à gauche (1/3, aucune
 //       forme), la dépense avec sa barre et le trait du calendrier à droite
 //       (2/3). Décider une enveloppe et surveiller une dépense ne se font ni au
 //       même rythme ni dans le même état d'esprit.
-//   2 · OÙ ÇA PART — filtrable par période et par thèmes : deux anneaux (par
+//   2 · OÙ ÇA PART — la SEULE que le bandeau commande : deux anneaux (par
 //       plateforme, par thème) disent la répartition, la courbe dit le rythme.
 //   3 · PAR THÈME — la seule décision de la page, à l'année elle aussi, en
 //       grille de trois colonnes et toujours défilante.
@@ -41,12 +49,13 @@ import {
   EnveloppeAnnee,
   LigneTheme,
 } from "@/components/couts-modules";
-import { FiltreCouts } from "@/components/filtre-couts";
+import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { dateCourte } from "@/components/etat-action";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
+import { Carnet } from "@/components/carnet";
 import { Chiffre } from "@/components/chiffre";
-import { teinteLabel, type Teinte } from "@/lib/palette";
+import { type Teinte } from "@/lib/palette";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +84,8 @@ const SOURCE_MOIS: Record<string, string> = {
 // Les couleurs de canal, forcées sur l'anneau par plateforme. `teinteLabel`
 // indexe sur la liste des THÈMES : Meta et Google y prendraient deux teintes
 // arbitraires, et Google pourrait sortir en bleu — la couleur de Meta dans
-// dix-huit autres endroits de l'application.
+// dix-huit autres endroits de l'application. Les thèmes, eux, gardent leur
+// teinte dans l'anneau ; le bandeau les coche sans couleur, comme partout.
 const TEINTE_CANAL: Record<string, Teinte> = {
   Meta: { nom: "meta", trait: "#1a56ff", aplat: "rgba(26, 86, 255, 0.14)" },
   Google: { nom: "google", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
@@ -95,7 +105,12 @@ export default async function CoutsPage({
   searchParams?: { [k: string]: string | string[] | undefined };
 }) {
   const sp = searchParams ?? {};
+  // `d` absent vaut 7 : le bandeau n'écrit pas sa présélection par défaut. La
+  // page ne décide donc pas de la fenêtre, elle passe ce qui a été demandé —
+  // `resoudrePeriode` tranche, et lit encore l'ancien `p` des favoris.
+  const d = unSeul(sp.d);
   const data = await getCoutsData({
+    jours: d !== undefined && /^\d+$/.test(d) ? Number(d) : undefined,
     p: unSeul(sp.p),
     from: unSeul(sp.from),
     to: unSeul(sp.to),
@@ -120,12 +135,6 @@ export default async function CoutsPage({
     ...data.labels,
     ...data.byTheme.map((t) => t.label).filter((l) => !data.labels.includes(l)),
   ];
-  const teintes = Object.fromEntries(
-    univers.map((l) => {
-      const t = teinteLabel(l, data.labels);
-      return [l, { trait: t.trait, aplat: t.aplat }];
-    })
-  );
 
   const vus: ThemeSpend[] = data.filtreActif
     ? data.byTheme.filter((t) => data.labelsChoisis.includes(t.label))
@@ -143,14 +152,23 @@ export default async function CoutsPage({
     // gagner de la largeur profite aux anneaux et à la liste de thèmes au lieu
     // d'être plafonné avant qu'ils n'en aient besoin.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-      <div className="mb-7">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          {data.monthLabel}
-        </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
-          Où part ton budget.
-        </h1>
-        <p className="text-[13px] text-muted mt-2 leading-relaxed max-w-[68ch]">
+      {/* LE TITRE EST LE BANDEAU. Il ne se pose pas au-dessus, il l'absorbe —
+          la page n'a donc plus de `<h1>` à elle. Le sur-titre du mois est parti
+          avec : il annonçait un horizon que la page ne pilote plus. */}
+      <BandeauCommandes
+        titre="Où part ton budget."
+        periode={{
+          fenetre: data.periode.bornes,
+          jours: data.periode.presetJours,
+          from: data.periode.preset === "custom" ? data.periode.from : undefined,
+          to: data.periode.preset === "custom" ? data.periode.to : undefined,
+        }}
+        themes={univers}
+        themesActifs={data.labelsChoisis}
+      />
+
+      <div className="mb-7 mt-3">
+        <p className="text-[13px] text-muted leading-relaxed max-w-[68ch]">
           Une seule enveloppe publicitaire, fixée pour l&apos;année. Le mois et le jour en
           découlent — et la vraie question est de savoir dans quels thèmes elle part.
         </p>
@@ -239,20 +257,16 @@ export default async function CoutsPage({
       {/* ══ 2 · OÙ ÇA PART ══════════════════════════════════════════════════ */}
       <section className="mb-9">
         <Titre sur="Regarder de près">Où ça part</Titre>
+        {/* LA PHRASE DE PORTÉE. La période vit maintenant en haut de page, et un
+            contrôle posé là annonce qu'il gouverne tout ce qui suit : ici il n'en
+            gouverne qu'un tiers. Ce qui se lisait à la POSITION du filtre doit
+            donc s'écrire — une fois, ici, et pas sous chaque module. */}
         <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
-          Choisis une période et les thèmes qui t&apos;intéressent : les deux anneaux
-          disent la répartition — par plateforme, puis par thème — et la courbe dit le
-          rythme. La liste des thèmes, plus bas, reste sur l&apos;année entière.
+          Le bandeau, en haut de page, commande cette section : les deux anneaux disent
+          la répartition — par plateforme, puis par thème — et la courbe dit le rythme.
+          Les chiffres de l&apos;année, plus haut, et la liste des thèmes, plus bas, ne
+          bougent pas : ils restent sur l&apos;année entière.
         </p>
-
-        <FiltreCouts
-          labels={univers}
-          choisis={data.labelsChoisis}
-          preset={data.periode.preset}
-          from={data.periode.preset === "custom" ? data.periode.from : undefined}
-          to={data.periode.preset === "custom" ? data.periode.to : undefined}
-          teintes={teintes}
-        />
 
         {data.totalPeriode > 0 ? (
           /* DEUX ANNEAUX, PAS UN. « Où ça part » a deux réponses qui ne se
@@ -411,6 +425,12 @@ export default async function CoutsPage({
           `budgetAnnuelHerite` et `ThemeSpend.budgetYearHerite` ne servent qu'à
           écrire « ces montants ne comptent plus », là où le nombre a disparu. Un
           réglage qu'on abandonne se raconte, il ne s'efface pas en silence. */}
+
+      {/* ── TON CARNET — le même module que sur les dashboards. Aucune campagne
+          ici (la page ne descend pas sous le thème), et c'est très bien : ce
+          qu'on écrit en regardant une enveloppe parle d'un budget, donc d'un
+          thème ou de rien. */}
+      <Carnet themes={data.labelsChoisis} />
     </main>
   );
 }

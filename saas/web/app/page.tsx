@@ -12,6 +12,7 @@ import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
 import { composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
 import { AFaire } from "@/components/a-faire";
+import { BilanDuCarnet } from "@/components/carnet";
 import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
@@ -396,13 +397,23 @@ export default async function Page() {
             la première carte de thème (section 2), avec le thème en props. */}
       </div>
 
+      {/* LE BILAN DU CARNET — deuxième marche de l'ordre décidé par la refonte :
+          verdict → BILAN DU CARNET → à faire → rail des chantiers → résumé IA
+          replié (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). C'est
+          un COMPTAGE des verdicts déjà persistés, pas une mesure : le moteur qui
+          remesurait ce bilan sur le compte entier est mort avec ce ticket, parce
+          qu'il pouvait contredire le rail sur la même décision. Le module de
+          Carnet complet, lui, ne monte PAS ici : le rail des cartes de thème
+          porte déjà la chronologie avec l'effet chiffré, et la relire en liste
+          ferait deux lectures du même fil. */}
+      <BilanDuCarnet />
+
       {/* À FAIRE CETTE SEMAINE — POSÉ ICI, ET PAS PLUS HAUT NI PLUS BAS.
           L'ordre décidé par la refonte est : verdict → bilan du Carnet →
           À FAIRE → rail des chantiers → résumé IA replié
-          (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). Le bilan du
-          Carnet et la descente du résumé appartiennent au ticket 13 de la
-          construction : en attendant, le module se pose là où il restera — juste
-          sous le hero, au-dessus de tout ce qui se lit. Le verdict répond à « ma
+          (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). La descente
+          du résumé IA appartient au ticket 13 de la construction ; le bilan est
+          posé juste au-dessus depuis le ticket 12. Le verdict répond à « ma
           semaine a été bonne ? » ; ouvrir le rapport sur ce qui reste à faire en
           aurait fait une corvée dès la première ligne, d'où sa place SOUS le
           hero et pas dedans. */}

@@ -34,7 +34,7 @@ from saas.commun.fetch_data import (  # noqa: E402
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_onboarding_profile, fetch_theme_objectifs,
     fetch_reco_feedback, fetch_google_ads,
-    fetch_campaign_config, fetch_google_campaign_config, fetch_reco_decisions,
+    fetch_campaign_config, fetch_google_campaign_config,
     fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
     fetch_theme_plan, fetch_theme_regroupement,
     fetch_google_ads_ad_insights, fetch_platform_budgets,
@@ -1695,13 +1695,12 @@ def build_payload(sb, user_id: str) -> dict | None:
       19. Sélection            — 2 insta + 3 pub, digest 3
       20. Brief IA             — sans persona en headless + fallback
       21. Thèmes               — dépense par label × revenu GA4 (la vue)
-      22. Boucle de la preuve  — les « Fait » des semaines passées, re-mesurés
-      23. Suivi des actions    — « Je le teste »
-      24. Hypothèse de la semaine — entre automatiquement en suivi
-      25. Les 3 du moment
-      26. Vision + matrice compacte pour le payload
-      27. Boussole             — LE chiffre qui compte, avec son échelle
-      28. Frise                — ce qui tournait pendant ces semaines, dates
+      22. Suivi des actions    — « Je le teste », et le verdict à l'échéance
+      23. Hypothèse de la semaine — entre automatiquement en suivi
+      24. Les 3 du moment
+      25. Vision + matrice compacte pour le payload
+      26. Boussole             — LE chiffre qui compte, avec son échelle
+      27. Frise                — ce qui tournait pendant ces semaines, dates
                                   déclarées, ce qui a bougé sur les plateformes
     """
     today = date.today()
@@ -4052,53 +4051,32 @@ def build_payload(sb, user_id: str) -> dict | None:
         k["purchases"] = float(pu) if pu is not None else None
         return k
 
-    try:
-        decisions = fetch_reco_decisions(sb, user_id)
-    except Exception:
-        decisions = []
-    outcomes, pending = [], []
-    cur_kpis = None
-    for dec in decisions[:4]:
-        spec = _spec_mesure(_METRIC_REGLE.get(dec["reco_key"]))
-        if not spec:
-            continue
-        try:
-            w0 = date.fromisoformat(dec["week_start"])
-        except Exception:
-            continue
-        if w0 >= week_start_monday:
-            pending.append(dec["reco_key"])
-            continue
-        kpi, lbl_k, unit, direction, fmt = spec
-        if cur_kpis is None:
-            cur_kpis = _kpis_window(cur_since, last_full_day)
-        then = _kpis_window(w0, w0 + timedelta(days=6)).get(kpi)
-        now = cur_kpis.get(kpi)
-        if then is None or now is None:
-            continue
-        delta = ((now - then) / then * 100) if abs(then) > 1e-9 else None
-        better = delta is not None and ((delta <= -5) if direction == "down" else (delta >= 5))
-        worse = delta is not None and ((delta >= 5) if direction == "down" else (delta <= -5))
-        outcomes.append({
-            "key": dec["reco_key"],
-            "title": KEY_LABELS.get(dec["reco_key"], dec["reco_key"]).capitalize(),
-            "week_label": f"sem. du {w0.day} {MONTHS_FR[w0.month]}",
-            "kpi": lbl_k, "unit": unit,
-            "then": fmt.format(then), "now": fmt.format(now),
-            "delta": round(delta, 1) if delta is not None else None,
-            "verdict": "better" if better else ("worse" if worse else "stable"),
-        })
-    preuve = (
-        {"outcomes": outcomes[:3],
-         "pending": [{"key": k, "title": KEY_LABELS.get(k, k)} for k in pending[:2]]}
-        if (outcomes or pending) else None
-    )
+    # LE MOTEUR DE PREUVE COMPTE-ENTIER EST MORT ICI, LE 2026-09-13.
+    #
+    # Quarante-deux lignes lisaient `reco_feedback.reaction = 'done'` et
+    # remesuraient ces décisions sur le COMPTE ENTIER (`_kpis_window` sans
+    # `theme`), pour publier `payload.preuve`. Aucun écran ne l'a jamais lu —
+    # `ProofOutcome` n'existait que dans sa déclaration.
+    #
+    # C'ÉTAIT UN SECOND MOTEUR, pas un trou : le rail des actions rend le même
+    # verdict sur le THÈME de l'action depuis le `_BASCULE_THEME`, et les deux
+    # pouvaient répondre l'inverse l'un de l'autre sur la même décision. Motif
+    # du ticket 09 rejoué : quand deux moteurs répondent à la même question
+    # avec des périmètres différents, celui qui mesure au bon endroit reste et
+    # l'autre meurt (`.scratch/refonte/issues/08-la-memoire-du-travail.md` §1,
+    # `.scratch/construction/issues/12-le-carnet-et-la-mort-de-preuve.md`).
+    #
+    # CE QUI LE REMPLACE NE MESURE RIEN : le bilan au niveau du compte est un
+    # COMPTAGE de `suivi_actions.verdict`, déjà persisté par la boucle du rail
+    # juste en dessous — « 30 derniers jours : 6 actions jugées, 4 ont marché ».
+    # Il est compté à la lecture, côté web (`saas/web/lib/carnet.ts`), parce
+    # qu'un comptage de lignes déjà écrites n'a pas besoin d'attendre le Jour
+    # de travail. Aucune mesure nouvelle, donc aucune contradiction possible.
 
     # ── Suivi des actions « ▶ Je le teste » ──────────────────────────────────
     # 1) On attache à chaque conseil son indicateur-cible + sa valeur du moment :
     #    c'est la photo prise si l'utilisateur décide de le tester.
-    if cur_kpis is None:
-        cur_kpis = _kpis_window(cur_since, last_full_day)
+    cur_kpis = _kpis_window(cur_since, last_full_day)
 
     # La baseline d'un conseil se prend sur SON terrain. Un conseil « le CPC de
     # Audio Tour est trop haut » dont la baseline serait le CPC du compte
@@ -4343,7 +4321,49 @@ def build_payload(sb, user_id: str) -> dict | None:
     # base où la colonne n'existe pas encore, et l'`except` juste au-dessus
     # viderait alors TOUT le suivi en silence.
     _sa = [a for a in _sa if a.get("kind") != "note"]
-    if _sa:
+
+    # ── LA NOTE ENTRE DANS LA MÉMOIRE DU THÈME, JAMAIS DANS LE REPONDÉRAGE ───
+    #
+    # Décidé par `.scratch/refonte/issues/08-la-memoire-du-travail.md` §3, bâti
+    # par le ticket 12 de la construction. La limite est nette et tient au
+    # `CLAUDE.md` §7 : la mémoire d'un thème est NARRATIVE — elle reformule, elle
+    # ne calcule pas — donc y verser un fait déclaré ne fabrique aucun chiffre.
+    # Repondérer un conseil sur un texte libre non mesuré, en revanche, ferait
+    # peser une phrase comme un verdict : refusé. Ces lignes ne touchent donc ni
+    # `running`, ni `verified`, ni `suivi_actions.verdict`, et `_DONE_W`
+    # (`saas/recos_ia/reco_engine.py`) ne les voit pas.
+    #
+    # SEULES LES NOTES ARCHIVÉES, ET SEULES CELLES QUI PORTENT UN THÈME. Une
+    # note `running` est ce qu'on COMPTE faire : elle ne se date qu'au moment où
+    # on la coche (`CONTEXT.md`, entrée Note), donc elle ne raconte encore rien.
+    # Une note sans thème ne peut pas nourrir la mémoire d'un thème.
+    #
+    # LA LECTURE EST À PART, ET C'EST VOULU : la lecture ci-dessus filtre sur
+    # `status IN ('running','done')` pour les hypothèses, et l'élargir ferait
+    # entrer les notes dans la boucle de verdict — celle-là même qui écrit
+    # `verdict` en base.
+    _notes_par_theme: dict[str, list[dict]] = {}
+    _notes_labels: dict[str, str] = {}
+    try:
+        _notes_rows = (sb.table("suivi_actions")
+                       .select("title, theme, decided_at")
+                       .eq("user_id", user_id).eq("kind", "note")
+                       .eq("status", "archived")
+                       .order("decided_at").limit(200).execute().data) or []
+    except Exception:
+        _notes_rows = []  # colonne `kind` absente : aucune note, aucun fait
+    for _n in _notes_rows:
+        _t = str(_n.get("theme") or "").strip()
+        _txt = str(_n.get("title") or "").strip()
+        if not _t or not _txt:
+            continue
+        _nk = _nrm(_t)
+        _notes_labels[_nk] = _t
+        _notes_par_theme.setdefault(_nk, []).append(
+            {"jour": str(_n.get("decided_at"))[:10], "texte": _txt}
+        )
+
+    if _sa or _notes_par_theme:
         running, verified = [], []
         # ── LA MÉMOIRE DES THÈMES SE CONSTRUIT DANS CETTE BOUCLE ─────────────
         # (spec `.scratch/theme-memoire/spec.md`). `_sa` porte déjà tout ce
@@ -4520,7 +4540,11 @@ def build_payload(sb, user_id: str) -> dict | None:
                                 "sens": "bon" if ((_d7 <= 0) if _dir == "down" else (_d7 >= 0)) else "mauvais",
                             }
                 running.append(entry)
-        tracking = {"running": running, "verified": verified}
+        # `tracking` reste ABSENT du payload quand aucune action n'est suivie :
+        # un thème qui n'a que des notes fait tourner la mémoire ci-dessous, il
+        # ne fabrique pas un bloc de suivi vide (une absence n'est pas un zéro).
+        if _sa:
+            tracking = {"running": running, "verified": verified}
 
         # ── RÉÉCRITURE DE LA MÉMOIRE — UN APPEL PAR THÈME, ET SEULEMENT LÀ ───
         # Un appel IA par THÈME dont un verdict vient de tomber, jamais un par
@@ -4538,9 +4562,15 @@ def build_payload(sb, user_id: str) -> dict | None:
         # dès qu'une condensation réussit, `resume` cesse d'être vide et ce
         # second déclencheur s'éteint.
         _mem_a_faire = set(_mem_nouveaux)
-        for _mk in _mem_hist:
+        for _mk in list(_mem_hist) + list(_notes_par_theme):
             if not (theme_plan_by.get(_mk) or {}).get("resume"):
                 _mem_a_faire.add(_mk)
+        # LIMITE ÉCRITE, PAS UN OUBLI : une note écrite sur un thème qui a DÉJÀ
+        # une mémoire n'y entre qu'à la prochaine condensation, c'est-à-dire à la
+        # chute du prochain verdict de ce thème. La cadence est événementielle
+        # (voir l'en-tête de `theme_memoire.py`) et rien en base ne dit quand la
+        # mémoire a été écrite pour la dernière fois — la corriger demanderait
+        # une colonne, pas une constante.
         # LIMITE CONNUE, à ne pas confondre avec un bug : si l'écriture du
         # verdict ci-dessus échoue en silence (refus RLS — zéro ligne touchée,
         # aucune erreur, `CLAUDE.md` § 8 — ou colonne pas encore migrée), la
@@ -4551,7 +4581,11 @@ def build_payload(sb, user_id: str) -> dict | None:
         for _mk in sorted(_mem_a_faire):
             try:
                 condense_theme_memoire(
-                    sb, user_id, _mem_labels[_mk], _call_gemini, _mem_hist.get(_mk),
+                    sb, user_id,
+                    _mem_labels.get(_mk) or _notes_labels.get(_mk, ""),
+                    _call_gemini,
+                    _mem_hist.get(_mk),
+                    _notes_par_theme.get(_mk),
                 )
             except Exception:
                 pass  # une panne de mémoire ne prive jamais le client du rapport
@@ -5358,7 +5392,6 @@ def build_payload(sb, user_id: str) -> dict | None:
         "reglages": reglages,
         "tracking": tracking,
         "themes": themes,
-        "preuve": preuve,
     }
 
 
