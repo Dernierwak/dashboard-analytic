@@ -1,5 +1,5 @@
 import { RecoActions } from "@/components/reco-actions";
-import type { PayloadReco, TrackedAction } from "@/lib/report";
+import { estVeille, type PayloadReco, type TrackedAction } from "@/lib/report";
 
 const CONF: Record<string, { symbol: string; label: string }> = {
   solide: { symbol: "●", label: "Solide" },
@@ -28,7 +28,6 @@ const CONF: Record<string, { symbol: string; label: string }> = {
 // ne dépense rien (`…_muette`) demande d'aller regarder le gestionnaire tout de
 // suite : lui écrire « rien à faire » serait faux, et sur la seule carte du
 // rapport où chaque jour perdu ne se rattrape pas.
-const estVeille = (key: string) => key.startsWith("veille_");
 const veilleUrgente = (key: string) => key.endsWith("_muette");
 
 // Carte de reco ALLÉGÉE : par défaut on ne voit que l'essentiel (badge, titre,
@@ -40,7 +39,6 @@ export function RecoCard({
   comment,
   theme = null,
   action = null,
-  capReached = false,
 }: {
   r: PayloadReco;
   current: string | null;
@@ -49,7 +47,6 @@ export function RecoCard({
   /** L'action que ce conseil a produite, si elle existe et court encore. La
    *  carte en est le MIROIR : elle lit l'état, elle ne le détient pas. */
   action?: TrackedAction | null;
-  capReached?: boolean;
 }) {
   const cf = CONF[r.confidence] ?? CONF.piste;
   const veille = estVeille(r.key);
@@ -57,18 +54,26 @@ export function RecoCard({
   // Le libellé du champ `verifier` DÉPEND de ce qu'il promet réellement — trois
   // sens différents cohabitaient dans le dépôt (redesign du 27 août 2026,
   // diagnostic `vision-produit`) : « Avant d'agir » laissait croire à une
-  // précondition à checker AVANT le geste, alors que pour une piste IA
-  // (`r.role`) le champ décrit ce qu'on CONSTATE APRÈS coup — demain pour un
-  // geste (`role === "generale"`), à 14 jours pour une hypothèse. Une
-  // reco-règle (pas de `role`) garde « Avant d'agir » : son `verifier` est
-  // réellement une précondition (voir `saas/recos_ia/reco_engine.py`).
+  // précondition à checker AVANT le geste, alors que pour une piste IA le champ
+  // décrit ce qu'on CONSTATE APRÈS coup — demain pour un geste
+  // (`role === "generale"`), à 14 jours pour une hypothèse.
+  //
+  // LE TEST PORTE SUR L'AUTEUR DU TEXTE (`r.source`), PAS SUR `r.role` : depuis
+  // le ticket 06 de la construction, une reco-RÈGLE porte elle aussi un `role`
+  // (c'est la Preuve, la 5ᵉ de ses cinq colonnes), mais son `verifier` reste ce
+  // qu'il a toujours été — « comment vérifier AVANT d'agir »
+  // (`saas/recos_ia/reco_engine.py`, en-tête). Se fier à `role` ici relabelliserait
+  // une précondition en constat du lendemain, et le texte dirait le contraire du
+  // libellé posé au-dessus de lui.
   const verifierLabel = veille
     ? "Ce qu'on surveille — "
-    : r.role === "hypothese"
-      ? "Dans 14 jours — "
-      : r.role === "generale"
-        ? "À constater demain — "
-        : "Avant d'agir — ";
+    : r.source !== "ai"
+      ? "Avant d'agir — "
+      : r.role === "hypothese"
+        ? "Dans 14 jours — "
+        : r.role === "generale"
+          ? "À constater demain — "
+          : "Avant d'agir — ";
   return (
     <div className="bg-white border border-line rounded-xl shadow-card p-4 flex flex-col">
       <div className="flex items-center gap-2 mb-1.5">
@@ -161,7 +166,6 @@ export function RecoCard({
         current={current}
         comment={comment}
         action={action}
-        capReached={capReached}
         theme={theme}
         title={r.title}
         // Pas de `track` sur une veille : sans lui, `RecoActions` n'affiche ni
@@ -182,6 +186,16 @@ export function RecoCard({
                   pourquoi: r.pourquoi,
                   verifier: r.verifier,
                   effort: r.effort ?? null,
+                  // LE LEVIER PART AVEC LE CLIC, et c'est nouveau (ticket 06).
+                  // `suivi_actions` n'a pas de colonne `levier` : la mémoire
+                  // d'un thème (`theme_memoire.py`) le lisait dans le `detail`
+                  // des hypothèses que le WORKER posait tout seul. Cette
+                  // écriture automatique est morte — sans ce champ ici, la
+                  // mémoire ne verrait plus que des « levier inconnu » et ne
+                  // saurait plus dire « trois fois argent d'affilée ». Le
+                  // deviner depuis l'indicateur serait un chiffre fabriqué
+                  // (`CLAUDE.md` §7).
+                  levier: r.levier ?? null,
                 },
               }
         }

@@ -405,6 +405,34 @@ n'est pas un KPI posé sur un tableau de bord**, et la question part telle quell
 la valeur qu'on ne sait PAS calculer) ; `docs/mesures-impossibles.md` gagne
 **« Quelle page d'arrivée perd les gens »**.
 
+**[11 · Le module « À faire » et la date libre](issues/11-module-a-faire-et-date-libre.md)** —
+**la liste qui se vide existe, et la date où on a agi cesse d'être celle du
+clic.** `resolveAction` prend le JOUR CHOISI (`done_at`, donc `check_at =
+done_at + 14`), borné par `decided_at ≤ done_at ≤ aujourd'hui` et **sans plafond
+en jours** — antidater n'avance que le verdict, la baseline étant prise à la
+décision. Hors bornes, on **refuse** au lieu de rabattre sur aujourd'hui : écrire
+une date que personne n'a choisie sur la seule colonne dont dépend l'échéance
+serait un chiffre fabriqué (§7). Un défaut trouvé en chemin et corrigé :
+`new Date("2026-09-12")` lit une date nue comme UTC et `isoDate` la relit en
+local — **l'échéance reculait d'un jour à l'ouest de Greenwich**. **Le plafond de
+trois chantiers meurt** (`capReached`, quatre fichiers) ; ce qui borne la charge
+est la composition des cinq. Le module trie et **compte à un seul endroit**
+(`lib/a-faire.ts`, pur) pour que la pastille de navigation (refonte 12) ne puisse
+pas dire un autre chiffre : verdicts → ce que tu t'es écrit → conseils, la LIGNE
+et pas la carte, trois gestes sans raison demandée, et la ligne s'en va sous le
+doigt. **Une Note peut naître `running`** — aucun objet neuf, aucune migration —
+ce qui a obligé quatre lectures à l'apprendre (le rail, le filet hors thème, la
+courbe du prototype, et `build_report.py`, qui lui aurait cherché un verdict).
+**Le cas « aucune étoile » a déménagé** du module verrouillé d'une carte vers ce
+module, comme `CONTEXT.md` l'exigeait ; la carte nomme l'état et renvoie, elle ne
+réclame plus. **Le raccourci du hero est retiré** : il comptait « à juger » ce
+qui était en observation, et pointait vers ce qui tient désormais dans le même
+écran. **Rien n'est vérifié en service** — aucun clic joué, aucune écriture
+relue en base, et `saas/web` n'a toujours aucun runner de test (décision de David
+au ticket 16, que cette carte annonçait pour ce ticket-ci nommément). `tsc` et
+`npm run build` verts, **19 routes**. **Le module se pose sous le hero, là où il
+restera** : le bilan du Carnet qui doit s'intercaler est le ticket 13.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la

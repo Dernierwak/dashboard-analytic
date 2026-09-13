@@ -25,10 +25,22 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// « ▶ Je le teste » : photographie la décision (titre, indicateur-cible + sa
-// valeur du moment) et pose l'échéance à +14 j. L'action reste « en cours »
-// jusqu'à être faite/vérifiée. Re-cliquer sur un conseil déjà suivi le retire.
-export async function startTracking(a: {
+const JOUR = /^\d{4}-\d{2}-\d{2}$/;
+
+// « +14 jours » à partir d'un JOUR, pas d'un instant.
+//
+// Jamais `new Date("2026-09-12")` : une date nue est lue comme UTC, et
+// `isoDate` la relit avec les accesseurs locaux — à l'ouest de Greenwich, le
+// jour ressort la veille. L'échéance d'un verdict n'a pas le droit de se
+// tromper d'un jour selon le fuseau du navigateur qui a cliqué.
+function plusJours(jour: string, n: number): string {
+  const [a, m, j] = jour.split("-").map(Number);
+  return isoDate(new Date(a, m - 1, j + n));
+}
+
+/** LA PHOTO D'UN CONSEIL AU MOMENT OÙ ON LE PREND — ce que la ligne de suivi
+ *  garde du conseil, qui, lui, aura disparu du rapport la semaine suivante. */
+export type Prise = {
   recoKey: string;
   title: string;
   theme: string | null;
@@ -36,7 +48,6 @@ export async function startTracking(a: {
   metricLabel: string | null;
   direction: string | null;
   baseline: number | null;
-  tracked: boolean;
   // Le conseil disparaîtra du rapport la semaine prochaine : sans cette photo,
   // l'action ne garde qu'un titre et devient incompréhensible en deux jours.
   detail?: {
@@ -50,7 +61,52 @@ export async function startTracking(a: {
      *  l'indicateur — ce qui serait un chiffre fabriqué (`CLAUDE.md` §7). */
     levier?: string | null;
   } | null;
-}): Promise<{ ok: boolean; message?: string }> {
+};
+
+type Client = ReturnType<typeof createClient>;
+
+// L'ÉCRITURE DE LA LIGNE DE SUIVI, ET SON REPLI — partagés par les deux portes
+// qui en ouvrent une : « ▶ Je le teste » (elle naît `running`) et le « ✓ C'est
+// fait » du module À faire (elle naît `done`, voir `markRecoDone`). Le repli
+// est le même dans les deux cas : si la colonne `detail` n'existe pas encore
+// (migration §11 pas passée), on réécrit sans elle plutôt que de perdre le clic.
+async function poserSuivi(
+  supabase: Client,
+  userId: string,
+  a: Prise,
+  quand: { jour: string; statut: "running" | "done" }
+): Promise<{ ok: boolean; message?: string }> {
+  const socle = {
+    user_id: userId,
+    reco_key: a.recoKey,
+    title: a.title,
+    theme: a.theme,
+    metric: a.metric,
+    metric_label: a.metricLabel,
+    direction: a.direction,
+    baseline: a.baseline,
+    decided_at: quand.jour,
+    check_at: plusJours(quand.jour, 14),
+    status: quand.statut,
+    ...(quand.statut === "done" ? { done_at: quand.jour } : {}),
+  };
+  const cle = { onConflict: "user_id,reco_key,decided_at" };
+  const r = await supabase
+    .from("suivi_actions")
+    .upsert({ ...socle, detail: a.detail ?? null }, cle);
+  if (!r.error) return { ok: true };
+  const r2 = await supabase.from("suivi_actions").upsert(socle, cle);
+  if (r2.error) return { ok: false, message: "Rejoue le SQL Supabase (table suivi_actions)." };
+  return { ok: true };
+}
+
+// « ▶ Je le teste » : photographie la décision (titre, indicateur-cible + sa
+// valeur du moment) et pose l'échéance à +14 j. L'action reste « en cours »
+// jusqu'à être faite/vérifiée. Re-cliquer sur un conseil déjà suivi le retire.
+export async function startTracking(a: Prise & { tracked: boolean }): Promise<{
+  ok: boolean;
+  message?: string;
+}> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
@@ -73,39 +129,37 @@ export async function startTracking(a: {
     return { ok: true };
   }
 
-  const today = new Date();
-  const check = new Date(today);
-  check.setDate(check.getDate() + 14);
-  const r = await supabase.from("suivi_actions").upsert(
-    {
-      user_id: user.id,
-      reco_key: a.recoKey,
-      title: a.title,
-      theme: a.theme,
-      metric: a.metric,
-      metric_label: a.metricLabel,
-      direction: a.direction,
-      baseline: a.baseline,
-      decided_at: isoDate(today),
-      check_at: isoDate(check),
-      status: "running",
-      detail: a.detail ?? null,
-    },
-    { onConflict: "user_id,reco_key,decided_at" }
-  );
-  // Repli si la colonne detail n'existe pas encore (migration §11 pas passée).
-  if (r.error) {
-    const r2 = await supabase.from("suivi_actions").upsert(
-      {
-        user_id: user.id, reco_key: a.recoKey, title: a.title, theme: a.theme,
-        metric: a.metric, metric_label: a.metricLabel, direction: a.direction,
-        baseline: a.baseline, decided_at: isoDate(today), check_at: isoDate(check),
-        status: "running",
-      },
-      { onConflict: "user_id,reco_key,decided_at" }
-    );
-    if (r2.error) return { ok: false, message: "Rejoue le SQL Supabase (table suivi_actions)." };
-  }
+  const pose = await poserSuivi(supabase, user.id, a, {
+    jour: isoDate(new Date()),
+    statut: "running",
+  });
+  if (!pose.ok) return pose;
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// « ✓ C'est fait » POSÉ SUR UN CONSEIL QU'ON N'AVAIT PAS PRIS — la porte du
+// module « À faire » (`components/a-faire.tsx`).
+//
+// La décision et le fait sont le MÊME clic : la ligne naît donc directement
+// `done`, du jour même, et son verdict tombe à +14 j. C'est pour ça qu'aucun
+// calendrier n'est proposé ici alors que « ✓ Je l'ai fait » en propose un : la
+// borne `decided_at ≤ done_at` d'une ligne née à l'instant ne laisse qu'un seul
+// jour légal, aujourd'hui. Antidater demanderait de reculer AUSSI la décision,
+// donc d'affirmer une prise qui n'a pas eu lieu (`CLAUDE.md` §7).
+export async function markRecoDone(a: Prise): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const user = { id: compte.uid };
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const pose = await poserSuivi(supabase, user.id, a, {
+    jour: isoDate(new Date()),
+    statut: "done",
+  });
+  if (!pose.ok) return pose;
+  await marquerApplique(supabase, user.id, a.recoKey, a.theme, a.title);
   revalidatePath("/");
   return { ok: true };
 }
@@ -155,36 +209,85 @@ const ECHEC_MAJ: Record<"done" | "seen" | "drop", string> = {
   drop: "Impossible de retirer cette action — réessaie.",
 };
 
+/** Ce que le clic sait du conseil et du jour, en plus de la ligne à résoudre. */
+export type ContexteResolution = {
+  recoKey?: string;
+  /** Le thème + le titre de LA PISTE au moment du clic (TASK-025) — persistés
+   *  dans `reco_feedback` (colonnes `theme`/`title`, migration
+   *  `reco_feedback_contexte.sql`) pour que le worker sache PLUS TARD sur quel
+   *  thème et sur QUELLE idée précise ce « fait » portait. Les clés IA
+   *  (`ai_<theme>_<i>`) sont positionnelles — sans ce texte posé ICI, au clic,
+   *  rien ne le retrouve la semaine suivante. */
+  theme?: string | null;
+  title?: string;
+  /** LE JOUR OÙ LE CHANGEMENT A ÉTÉ FAIT, quand ce n'est pas aujourd'hui. */
+  doneAt?: string;
+};
+
 // Cycle de vie d'une action, écrit dans Supabase à chaque étape :
-//   « ✓ C'est fait »  → status='done' + done_at=aujourd'hui, et l'échéance du
-//                       verdict repart de CE jour (+14 j) : on mesure l'effet
+//   « ✓ C'est fait »  → status='done' + done_at=LE JOUR CHOISI, et l'échéance
+//                       du verdict repart de CE jour (+14 j) : on mesure l'effet
 //                       à partir du moment où le changement existe vraiment.
 //   « ✓ Vu »          → status='archived' : rangée dans l'historique.
 //   « retirer »       → status='dropped' : abandonnée, mais CONSERVÉE. Ce que
 //                       tu as renoncé à faire fait partie de ton histoire —
 //                       l'effacer te priverait de l'info six mois plus tard.
+//
+// ── LA DATE DE RÉALISATION EST LIBRE, ET C'EST UNE CORRECTION ────────────────
+//
+// Elle valait `aujourd'hui`, en dur. Faire le changement mardi et cliquer
+// vendredi décalait la mesure de trois jours, et le verdict repose sur cette
+// date : `check_at = done_at + 14`. Ce n'est donc pas cosmétique.
+//
+// Bornée par `decided_at ≤ done_at ≤ aujourd'hui`, sans plafond en jours : on
+// ne peut pas avoir fait une chose avant de l'avoir prise, ni dans le futur.
+// Pas de plafond à défendre, parce qu'antidater ne fausse AUCUNE mesure — la
+// baseline est photographiée à `decided_at`, au clic « ▶ Je le teste », et le
+// verdict compare cette valeur stockée au KPI d'aujourd'hui (`build_report.py`).
+// Antidater n'avance que le jour où le verdict tombe. Le patron vient de
+// `saveNote`, plus bas : « on note souvent le lendemain ce qu'on a fait la
+// veille ». Décidé par `.scratch/refonte/issues/20-a-faire-cette-semaine.md`.
+//
+// LE CALENDRIER DE L'ÉCRAN N'OFFRE PAS LES JOURS HORS BORNES : arriver ici
+// avec l'un d'eux, c'est un écran en retard ou un appel forgé. On REFUSE alors,
+// on ne rabat pas sur aujourd'hui — écrire une date que personne n'a choisie
+// sur la seule colonne dont dépend l'échéance serait un fait fabriqué
+// (`CLAUDE.md` §7).
 export async function resolveAction(
   id: string,
   action: "done" | "seen" | "drop",
-  recoKey?: string,
-  // Le thème + le titre de LA PISTE au moment du clic (TASK-025) — persistés
-  // dans `reco_feedback` (colonnes `theme`/`title`, migration
-  // `reco_feedback_contexte.sql`) pour que le worker sache PLUS TARD sur quel
-  // thème et sur QUELLE idée précise ce « fait » portait. Les clés IA
-  // (`ai_<theme>_<i>`) sont positionnelles — sans ce texte posé ICI, au clic,
-  // rien ne le retrouve la semaine suivante.
-  theme?: string | null,
-  title?: string
+  ctx: ContexteResolution = {}
 ): Promise<{ ok: boolean; message?: string }> {
+  const { recoKey, theme, title } = ctx;
   const supabase = createClient();
   const compte = await getCompteActif();
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  const today = new Date();
-  const check = new Date(today);
-  check.setDate(check.getDate() + 14);
+  const aujourdhui = isoDate(new Date());
+  let jourFait = aujourdhui;
+  if (action === "done" && ctx.doneAt && ctx.doneAt !== aujourdhui) {
+    if (!JOUR.test(ctx.doneAt) || ctx.doneAt > aujourdhui)
+      return { ok: false, message: "Cette date n'existe pas encore — recharge la page." };
+    // La borne basse se LIT, elle ne se devine pas : c'est la date de décision
+    // de cette ligne-là. Une seule lecture de plus, et seulement quand une date
+    // est proposée — le clic du jour même n'en paie pas le prix.
+    const { data: prise } = await supabase
+      .from("suivi_actions")
+      .select("decided_at")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const decidee = prise?.decided_at ? String(prise.decided_at).slice(0, 10) : null;
+    if (decidee && ctx.doneAt < decidee)
+      return {
+        ok: false,
+        message: `Tu as pris cette action le ${decidee} — tu ne peux pas l'avoir faite avant.`,
+      };
+    jourFait = ctx.doneAt;
+  }
+  const check = plusJours(jourFait, 14);
 
   // `.in("status", …)` est la garde de collision ; `.select("id")` est ce qui
   // la rend visible. Sans `returning=representation`, PostgREST ne dit pas
@@ -207,12 +310,12 @@ export async function resolveAction(
         ? await majSiStatut({ status: "archived" })
         : await majSiStatut({
             status: "done",
-            done_at: isoDate(today),
-            check_at: isoDate(check),
+            done_at: jourFait,
+            check_at: check,
           });
   // Repli si la colonne done_at n'existe pas encore (migration §10 pas passée).
   if (maj.error && action === "done")
-    maj = await majSiStatut({ status: "done", check_at: isoDate(check) });
+    maj = await majSiStatut({ status: "done", check_at: check });
   if (maj.error) return { ok: false, message: ECHEC_MAJ[action] };
 
   if ((maj.data ?? []).length === 0) {
@@ -248,37 +351,50 @@ export async function resolveAction(
   // côté reco_feedback → l'IA sait ce que tu as réellement mis en place. On
   // n'y arrive qu'après une ligne réellement touchée plus haut : sans ça, une
   // collision aurait quand même écrit « appliqué » pour un geste refusé.
-  if (action === "done" && recoKey) {
-    // `theme` vaut `""` (jamais `null`) : c'est le sentinel « pas de
-    // thème » posé dans la clé d'unicité `reco_feedback_uq2` (migration
-    // reco_feedback_contexte.sql) — un `not_for_me`/`done` sur le thème A
-    // et un autre sur le thème B, la même semaine, doivent produire deux
-    // LIGNES distinctes, pas écraser l'une l'autre (rejet du checker, 2e
-    // passe : `null` aurait laissé passer plusieurs lignes « réglages »
-    // pour la même clé/semaine, `""` est une vraie valeur comparable).
-    const fb = await supabase.from("reco_feedback").upsert(
-      {
-        user_id: user.id,
-        reco_key: recoKey,
-        reaction: "done",
-        week_start: mondayISO(),
-        theme: theme ?? "",
-        title: title ?? null,
-      },
-      { onConflict: "user_id,reco_key,week_start,theme" }
-    );
-    // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
-    // n'existent pas encore (migration reco_feedback_contexte.sql pas
-    // passée) — même patron que done_at plus haut, sur l'ANCIENNE clé.
-    if (fb.error) {
-      await supabase.from("reco_feedback").upsert(
-        { user_id: user.id, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
-        { onConflict: "user_id,reco_key,week_start" }
-      );
-    }
-  }
+  if (action === "done" && recoKey)
+    await marquerApplique(supabase, user.id, recoKey, theme, title);
   revalidatePath("/");
   return { ok: true };
+}
+
+// LE CONSEIL EST MARQUÉ « APPLIQUÉ » CÔTÉ `reco_feedback` — le seul endroit de
+// l'app qui l'écrit, et donc le seul par lequel l'IA apprend ce qui a réellement
+// été mis en place. Deux appelants : `resolveAction(id, "done")` et le
+// « ✓ C'est fait » direct du module À faire (`markRecoDone`).
+//
+// `theme` vaut `""` (jamais `null`) : c'est le sentinel « pas de thème » posé
+// dans la clé d'unicité `reco_feedback_uq2` (migration
+// `reco_feedback_contexte.sql`) — un `not_for_me`/`done` sur le thème A et un
+// autre sur le thème B, la même semaine, doivent produire deux LIGNES
+// distinctes, pas écraser l'une l'autre (rejet du checker, 2e passe : `null`
+// aurait laissé passer plusieurs lignes « réglages » pour la même clé/semaine,
+// `""` est une vraie valeur comparable).
+async function marquerApplique(
+  supabase: Client,
+  userId: string,
+  recoKey: string,
+  theme?: string | null,
+  title?: string
+): Promise<void> {
+  const fb = await supabase.from("reco_feedback").upsert(
+    {
+      user_id: userId,
+      reco_key: recoKey,
+      reaction: "done",
+      week_start: mondayISO(),
+      theme: theme ?? "",
+      title: title ?? null,
+    },
+    { onConflict: "user_id,reco_key,week_start,theme" }
+  );
+  // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
+  // n'existent pas encore (migration reco_feedback_contexte.sql pas passée) —
+  // même patron que done_at plus haut, sur l'ANCIENNE clé.
+  if (fb.error)
+    await supabase.from("reco_feedback").upsert(
+      { user_id: userId, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
+      { onConflict: "user_id,reco_key,week_start" }
+    );
 }
 
 // TA PROPRE NOTE dans le fil.
@@ -311,18 +427,63 @@ export async function saveNote(
     ? jour
     : aujourdhui;
 
+  return poserNote(supabase, compte.uid, { titre, theme, jour: quand, statut: "archived" });
+}
+
+// UNE CHOSE À FAIRE QU'ON S'ÉCRIT SOI-MÊME — la ligne que Pulse n'a pas vue.
+//
+// AUCUN OBJET NEUF (décidé par `.scratch/refonte/issues/20-a-faire-cette-semaine.md`) :
+// c'est la même Note, avec le seul changement qui lui manquait — elle naît
+// `running` au lieu d'`archived`, donc elle ATTEND un geste et entre dans le
+// module « À faire ». Aucune migration : la colonne `kind` existe déjà.
+//
+// Elle n'a ni indicateur, ni baseline, ni échéance : `check_at = decided_at`
+// dit qu'elle n'attend aucun verdict, et c'est voulu — juger la note du client
+// obligerait Pulse à choisir le chiffre à sa place, donc à inventer une
+// intention (`CLAUDE.md` §7).
+//
+// ELLE N'EST PAS DATÉE ICI. Une note se date au moment où on la COCHE
+// (`CONTEXT.md`, entrée Note) : `decided_at` ne porte pour l'instant que le jour
+// de l'écriture, et il sera réécrit à la date choisie par `completeNote`. Tant
+// qu'elle est `running`, rien ne la lit comme un fait — ni le rail
+// (`rail-actions.tsx`), ni la courbe (`lib/proto-notes.ts`).
+export async function saveTache(
+  texte: string,
+  theme: string | null
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const titre = texte.trim().slice(0, 180);
+  if (!titre) return { ok: false, message: "Écris quelque chose d'abord." };
+
+  return poserNote(supabase, compte.uid, {
+    titre,
+    theme,
+    jour: isoDate(new Date()),
+    statut: "running",
+  });
+}
+
+async function poserNote(
+  supabase: Client,
+  userId: string,
+  n: { titre: string; theme: string | null; jour: string; statut: "running" | "archived" }
+): Promise<{ ok: boolean; message?: string }> {
   const r = await supabase.from("suivi_actions").insert({
-    user_id: compte.uid,
+    user_id: userId,
     // Unique par construction : deux notes du même jour ne peuvent pas se
     // heurter sur la contrainte (user_id, reco_key, decided_at).
     reco_key: `note:${crypto.randomUUID()}`,
-    title: titre,
-    theme,
+    title: n.titre,
+    theme: n.theme,
     kind: "note",
-    decided_at: quand,
+    decided_at: n.jour,
     // Elle n'attend aucun verdict : son échéance est le jour même.
-    check_at: quand,
-    status: "archived",
+    check_at: n.jour,
+    status: n.statut,
   });
   if (r.error) {
     // La colonne `kind` peut ne pas encore exister (migration pas passée).
@@ -333,6 +494,50 @@ export async function saveNote(
       };
     return { ok: false, message: "Ta note n'a pas pu être enregistrée — réessaie." };
   }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// ON COCHE UNE CHOSE À FAIRE, ET C'EST LÀ QU'ELLE SE DATE.
+//
+// Le jour est libre et jamais dans le futur — même règle que `saveNote`, pour
+// la même raison : on coche souvent le lendemain ce qu'on a fait la veille.
+// C'est la SEULE date de la note, donc elle s'écrit sur `decided_at` : c'est
+// elle que le rail affiche et elle que la courbe marque. Pas de `done_at` : une
+// note n'a rien de mesuré, `done_at` est la date d'où part un verdict.
+//
+// Elle passe `archived` — le rail, pas le module : elle n'attend plus rien.
+export async function completeNote(
+  id: string,
+  jour?: string
+): Promise<{ ok: boolean; message?: string }> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  if (!compte.peutEditer)
+    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
+
+  const aujourdhui = isoDate(new Date());
+  if (jour && (!JOUR.test(jour) || jour > aujourdhui))
+    return { ok: false, message: "Cette date n'existe pas encore — recharge la page." };
+  const quand = jour || aujourdhui;
+
+  // Même garde que `resolveAction` : l'`update` est conditionné au statut de
+  // départ ET on relit les lignes touchées, parce qu'un refus RLS ne lève
+  // aucune erreur — il touche zéro ligne (`CLAUDE.md` §8).
+  const maj = await supabase
+    .from("suivi_actions")
+    .update({ status: "archived", decided_at: quand, check_at: quand })
+    .eq("id", id)
+    .eq("user_id", compte.uid)
+    .eq("kind", "note")
+    .eq("status", "running")
+    .select("id");
+  if (maj.error) return { ok: false, message: "Impossible de cocher cette ligne — réessaie." };
+  if ((maj.data ?? []).length === 0)
+    return {
+      ok: false,
+      message: "Rien enregistré : cette ligne a déjà été cochée — recharge la page.",
+    };
   revalidatePath("/");
   return { ok: true };
 }
@@ -918,8 +1123,8 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
     .eq("user_id", user.id).eq("label", oldName);
   // Les actions décidées portent le nom du thème, pas sa clé. Sans cette ligne,
   // renommer un thème rendait toutes ses actions ORPHELINES pour toujours :
-  // plus aucune carte ne les prenait, et elles continuaient de compter dans le
-  // plafond des trois chantiers.
+  // plus aucune carte ne les prenait, et seul le filet « hors thème » pouvait
+  // encore les montrer.
   await supabase.from("suivi_actions").update({ theme: clean })
     .eq("user_id", user.id).eq("theme", oldName);
   // Même raison que la ligne au-dessus : `theme_ga4_events` porte le NOM du

@@ -145,7 +145,6 @@ export function ThemeCard({
   feedback,
   comments,
   suivis,
-  capReached = false,
   conversionsTheme = [],
   objectifEffectif = null,
   aucunePriorite = false,
@@ -168,7 +167,6 @@ export function ThemeCard({
   comments: Record<string, string>;
   /** L'action produite par un conseil, par clé de conseil. */
   suivis: Record<string, TrackedAction>;
-  capReached?: boolean;
   /** Les événements GA4 que CE thème suit comme conversions (`theme_ga4_events`,
    *  rang 'principal') — lu à part du payload du rapport, voir `app/page.tsx`. */
   conversionsTheme?: string[];
@@ -444,7 +442,6 @@ export function ThemeCard({
                           comment={comments[feedbackKey(r.key, theme.label)] ?? comments[r.key] ?? null}
                           theme={theme.label}
                           action={suivis[r.key] ?? null}
-                          capReached={capReached}
                         />
                       </div>
                     ))}

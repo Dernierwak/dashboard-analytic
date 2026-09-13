@@ -12,9 +12,9 @@ import { Erreur } from "@/components/erreur";
 // seulement dans la carte du conseil. La raison est simple et elle arrive
 // chaque semaine : le worker republie un rapport où le conseil appliqué n'est
 // plus, la carte disparaît, et avec elle la case à cocher. Une action serait
-// bloquée en `running` à vie, en continuant de compter dans le plafond des
-// trois chantiers. Le rail est la maison de référence ; la carte du conseil en
-// est le miroir tant qu'elle existe.
+// bloquée en `running` à vie, sans un seul endroit où la clore. Le rail est la
+// maison de référence ; la carte du conseil en est le miroir tant qu'elle
+// existe.
 //
 // La pastille du rail reste PASSIVE — 7 px qu'on ne clique pas. Les gestes
 // sont des boutons posés SOUS l'entrée : une cible de 44 px ne tient pas dans
@@ -50,6 +50,13 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
   const [pending, startTransition] = useTransition();
   const [erreur, setErreur] = useState<string | null>(null);
   const [fait, setFait] = useState(false);
+  // LE JOUR OÙ TU L'AS FAIT, et pas celui où tu cliques. Il part sur
+  // aujourd'hui : un clic sans y toucher écrit exactement ce qu'il écrivait
+  // avant, et la liste se vide toujours sous le doigt. Les bornes sont dans le
+  // calendrier lui-même (`min`/`max`) — un jour hors bornes ne s'offre pas,
+  // donc il n'y a pas de message d'erreur à écrire (refonte 20).
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const [jourFait, setJourFait] = useState(aujourdhui);
   const e = etat(a);
 
   // Retour optimiste : l'état change tout de suite, on revient en arrière si le
@@ -58,16 +65,16 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
     setErreur(null);
     optimiste?.();
     startTransition(async () => {
-      // Le 3e argument n'est pas décoratif : c'est le SEUL endroit de l'app qui
+      // `recoKey` n'est pas décoratif : c'est le SEUL endroit de l'app qui
       // écrit `reco_feedback.reaction = "done"`. Sans lui, l'IA ne sait jamais
       // qu'un conseil a été appliqué. `a.theme`/`a.title` (TASK-025) : le
       // contexte de CETTE action, persisté avec la réaction.
       const r = await resolveAction(
         a.id,
         mode,
-        mode === "done" ? a.reco_key : undefined,
-        mode === "done" ? a.theme : undefined,
-        mode === "done" ? a.title : undefined
+        mode === "done"
+          ? { recoKey: a.reco_key, theme: a.theme, title: a.title, doneAt: jourFait }
+          : {}
       );
       if (!r.ok) {
         annuler?.();
@@ -137,13 +144,28 @@ export function ActionVivante({ a }: { a: TrackedAction }) {
             qu'il l'a réellement mise en place, et le compte à rebours repart
             de ce jour — même geste, même `resolveAction`, que pour `"running"`. */}
         {(a.status === "running" || a.status === "auto") && !fait && (
-          <Bouton
-            ton="encre"
-            disabled={pending}
-            onClick={() => lancer("done", () => setFait(true), () => setFait(false))}
-          >
-            ✓ Je l&apos;ai fait
-          </Bouton>
+          <>
+            {/* Le calendrier AVANT le bouton, et déjà rempli : le geste reste un
+                seul clic, la date n'est là que pour qui a fait le changement
+                mardi et ouvre Pulse vendredi. C'est cette date qui pilote
+                l'échéance du verdict (`done_at + 14`), pas le jour du clic. */}
+            <input
+              type="date"
+              value={jourFait}
+              min={a.decided_at}
+              max={aujourdhui}
+              onChange={(ev) => setJourFait(ev.target.value || aujourdhui)}
+              aria-label="Le jour où tu l'as fait"
+              className="rounded-full border border-line bg-white px-2.5 py-1 text-[11.5px] text-muted outline-none focus:border-brand"
+            />
+            <Bouton
+              ton="encre"
+              disabled={pending}
+              onClick={() => lancer("done", () => setFait(true), () => setFait(false))}
+            >
+              ✓ Je l&apos;ai fait
+            </Bouton>
+          </>
         )}
         {aJuger && (
           <Bouton ton="encre" disabled={pending} onClick={() => lancer("seen")}>

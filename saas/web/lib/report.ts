@@ -202,6 +202,17 @@ export type TrackedAction = {
  * « ✓ Je l'ai fait » (`done_at` posé) DEVIENT une vraie décision — c'est
  * justement le seul geste qui écrit `done_at`, et lui seul.
  */
+/**
+ * UNE VEILLE N'EST PAS UN CONSEIL — c'est un constat qu'on surveille, et il ne
+ * demande aucun geste. D'où deux conséquences qui vivent ailleurs : la carte ne
+ * lui donne ni « ▶ Je le teste » ni état de suivi (`reco-card.tsx`), et le
+ * module « À faire » ne l'inscrit pas (`lib/a-faire.ts`) — une liste qui se
+ * vide ne peut pas porter une ligne qu'aucun geste ne retire.
+ */
+export function estVeille(key: string): boolean {
+  return key.startsWith("veille_");
+}
+
 export function estDecisionClient(a: TrackedAction): boolean {
   return a.origin !== "auto" || Boolean(a.done_at);
 }
@@ -515,6 +526,18 @@ export type ReportPayload = {
   } | null;
 };
 
+/** LE GESTE QUI N'A JAMAIS SERVI — ce que le module « À faire » vide peut
+ *  encore faire découvrir (`lib/a-faire.ts`, `nudge`). Lu une fois en base,
+ *  jamais dans le temps : un conseil d'usage éteint par le premier usage du
+ *  geste ne peut pas devenir un décor, un conseil d'usage qui revient chaque
+ *  semaine, si. */
+export type Decouvertes = {
+  /** Vrai dès qu'une Note a été écrite, une seule fois, un jour. */
+  note: boolean;
+  /** Vrai dès qu'un budget a été posé (`channel_budgets`). */
+  budget: boolean;
+};
+
 export type WeeklyData = {
   email: string;
   weekLabel: string;
@@ -546,6 +569,11 @@ export type WeeklyData = {
   actions: TrackedAction[];
   // Actions rangées (verdict vu) — l'historique de la section Suivi.
   actionsArchived: TrackedAction[];
+  // CE QUE LE COMPTE N'A JAMAIS FAIT — ce que le module « À faire » vide peut
+  // encore faire découvrir (`lib/a-faire.ts`). Lu UNE fois en base, jamais dans
+  // le temps : un conseil d'usage éteint par le premier usage du geste ne peut
+  // pas devenir un décor, un conseil d'usage qui revient chaque semaine, si.
+  decouvertes: Decouvertes;
 };
 
 function iso(d: Date): string {
@@ -623,7 +651,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes] =
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes, noteRes, budgetRes] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -678,6 +706,12 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .order("decided_at", { ascending: false })
       .limit(60),
+    // A-T-IL DÉJÀ ÉCRIT UNE NOTE, UN JOUR ? La lecture des actions juste
+    // au-dessus est bornée à 60 lignes et ne peut donc pas répondre : « jamais »
+    // ne se déduit pas d'une fenêtre. Une ligne suffit, on ne lit que son id.
+    supabase.from("suivi_actions").select("id").eq("user_id", uid).eq("kind", "note").limit(1),
+    // A-T-IL DÉJÀ POSÉ UN BUDGET ? Même question, même forme.
+    supabase.from("channel_budgets").select("id").eq("user_id", uid).limit(1),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -1027,5 +1061,13 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     suivis,
     actions,
     actionsArchived,
+    // UNE ERREUR VAUT « DÉJÀ FAIT », jamais « jamais fait » : si la colonne
+    // `kind` ou la table manquent (migration pas passée), on ne pousse pas vers
+    // un geste dont on ne sait pas s'il est possible. Un conseil d'usage de trop
+    // se paie plus cher qu'un conseil d'usage manquant — il devient un décor.
+    decouvertes: {
+      note: Boolean(noteRes.error) || (noteRes.data ?? []).length > 0,
+      budget: Boolean(budgetRes.error) || (budgetRes.data ?? []).length > 0,
+    },
   };
 }

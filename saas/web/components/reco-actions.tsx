@@ -13,7 +13,15 @@ export type TrackInfo = {
   metricLabel: string | null;
   direction: string | null;
   baseline: number | null;
-  detail?: { observation?: string; pourquoi?: string; verifier?: string; effort?: string | null } | null;
+  detail?: {
+    observation?: string;
+    pourquoi?: string;
+    verifier?: string;
+    effort?: string | null;
+    /** Le levier du conseil — la mémoire du thème le mesure au lieu de le
+     *  deviner (`saas/recos_ia/theme_memoire.py`). */
+    levier?: string | null;
+  } | null;
 };
 
 // Boutons de réaction sous chaque conseil.
@@ -50,7 +58,6 @@ export function RecoActions({
   comment,
   track,
   action = null,
-  capReached = false,
   theme = null,
   title,
 }: {
@@ -59,7 +66,6 @@ export function RecoActions({
   comment?: string | null;
   track?: TrackInfo;
   action?: TrackedAction | null;
-  capReached?: boolean;
   /** Le thème de la carte + son titre (TASK-025) — persistés avec la réaction
    *  pour que le worker sache PLUS TARD, sur quel thème et sur quelle idée
    *  précise, ce feedback portait (voir `saveRecoFeedback`/`resolveAction`). */
@@ -73,18 +79,15 @@ export function RecoActions({
   const [isTracked, setIsTracked] = useState(Boolean(action));
   const [fait, setFait] = useState(action?.status === "done");
   const [erreur, setErreur] = useState<string | null>(null);
+  // Le jour où le changement a été fait — voir `action-vivante.tsx`, même
+  // geste, même règle : prérempli sur aujourd'hui, borné par le calendrier.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const [jourFait, setJourFait] = useState(aujourdhui);
 
   return (
     <div className="mt-3.5 pt-3 border-t border-line">
       {track &&
-        (capReached && !isTracked ? (
-          // Plafond : on ne peut pas mener 4 chantiers de front. Le conseil
-          // reste lisible, mais on t'invite d'abord à en boucler un.
-          <div className="w-full mb-2 text-[11.5px] font-semibold text-faint bg-black/[0.03] border border-line rounded-lg px-3 py-2 text-center leading-snug">
-            Tu as déjà 3 chantiers en cours — finis-en un avant d&apos;en prendre un
-            nouveau. Ils sont à droite de chaque courbe, sous « Tes actions sur ce thème ».
-          </div>
-        ) : isTracked ? (
+        (isTracked ? (
           /* PRISE. La carte porte l'état de sa propre décision : quand elle a
              été prise, quand elle a été faite, quand le verdict tombe. Le sens
              — ça monte, ça baisse, ça ne bouge pas — n'est jamais demandé : il
@@ -136,28 +139,48 @@ export function RecoActions({
             )}
 
             {action && !fait && (
-              <button
-                disabled={pending}
-                onClick={() => {
-                  setErreur(null);
-                  setFait(true);
-                  startTransition(async () => {
-                    // Le 3e argument est le SEUL endroit de l'app qui écrit
-                    // `reco_feedback.reaction = "done"` : sans lui, l'IA ne sait
-                    // jamais qu'un conseil a été appliqué. `action.theme`/
-                    // `action.title` (TASK-025) : le contexte de LA DÉCISION
-                    // suivie, tel que photographié à sa prise.
-                    const r = await resolveAction(action.id, "done", recoKey, action.theme, action.title);
-                    if (!r.ok) {
-                      setFait(false);
-                      setErreur(r.message ?? "Enregistrement impossible — réessaie.");
-                    }
-                  });
-                }}
-                className="w-full mt-2 text-[12.5px] font-semibold rounded-lg bg-ink text-white px-3 py-2.5 hover:opacity-90 disabled:opacity-60"
-              >
-                ✓ Je l&apos;ai fait
-              </button>
+              <div className="flex items-stretch gap-1.5 mt-2">
+                {/* Le calendrier est prérempli sur aujourd'hui : le geste reste
+                    un seul clic. Il sert le cas qui arrive tout le temps — le
+                    changement fait mardi, le clic vendredi — et c'est LUI qui
+                    pilote l'échéance du verdict (`done_at + 14`). */}
+                <input
+                  type="date"
+                  value={jourFait}
+                  min={action.decided_at}
+                  max={aujourdhui}
+                  onChange={(ev) => setJourFait(ev.target.value || aujourdhui)}
+                  aria-label="Le jour où tu l'as fait"
+                  className="rounded-lg border border-line bg-white px-2 py-1.5 text-[11.5px] text-muted outline-none focus:border-brand"
+                />
+                <button
+                  disabled={pending}
+                  onClick={() => {
+                    setErreur(null);
+                    setFait(true);
+                    startTransition(async () => {
+                      // `recoKey` est le SEUL endroit de l'app qui écrit
+                      // `reco_feedback.reaction = "done"` : sans lui, l'IA ne
+                      // sait jamais qu'un conseil a été appliqué.
+                      // `action.theme`/`action.title` (TASK-025) : le contexte
+                      // de LA DÉCISION suivie, tel que photographié à sa prise.
+                      const r = await resolveAction(action.id, "done", {
+                        recoKey,
+                        theme: action.theme,
+                        title: action.title,
+                        doneAt: jourFait,
+                      });
+                      if (!r.ok) {
+                        setFait(false);
+                        setErreur(r.message ?? "Enregistrement impossible — réessaie.");
+                      }
+                    });
+                  }}
+                  className="flex-1 text-[12.5px] font-semibold rounded-lg bg-ink text-white px-3 py-2.5 hover:opacity-90 disabled:opacity-60"
+                >
+                  ✓ Je l&apos;ai fait
+                </button>
+              </div>
             )}
           </div>
         ) : (

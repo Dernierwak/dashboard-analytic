@@ -21,26 +21,31 @@ import Link from "next/link";
 // choix n'a pas encore été fait. Le cadenas et la trame disent « verrouillé » ;
 // la phrase dit ce qui déverrouille, et elle est la seule chose en gras.
 //
-// DEUX ÉTATS, PARCE QUE LA PHRASE QUI DÉBLOQUE N'EST PAS LA MÊME :
-//   · `aucune-priorite`  — le compte n'a aucune étoile. Il faut en poser une.
+// DEUX ÉTATS, PARCE QUE CE QUI MANQUE N'EST PAS LA MÊME CHOSE :
 //   · `hors-priorites`   — d'autres thèmes sont désignés, pas celui-ci. Il faut
 //                          en échanger une, parce que trois est le maximum.
+//   · `aucune-priorite`  — le compte n'a aucune étoile. Cette carte-ci ne
+//                          RÉCLAME alors rien : elle nomme l'état et renvoie au
+//                          module « À faire », qui porte le geste.
 //
 // La règle qu'ils servent tous les deux est la phrase du produit : **Pulse
 // n'arbitre pas entre les thèmes, le client désigne ses priorités et Pulse
 // conseille dedans** (`CLAUDE.md` §1, ADR 0003).
 //
-// ── UN ÉCART ASSUMÉ AVEC `CONTEXT.md`, À REFERMER PAR LE TICKET 11 ───────────
+// ── POURQUOI LE CAS « AUCUNE ÉTOILE » NE DEMANDE PLUS RIEN ICI ───────────────
 //
-// L'entrée « Priorité (étoile) » de `CONTEXT.md` place le cas
-// `aucune-priorite` sur le **module À faire** — « c'est lui qui le dit, jamais
-// le module verrouillé d'un thème, qui ne parle que de données manquantes ».
-// Le module À faire n'existe pas encore : c'est le ticket
-// `.scratch/construction/issues/11-module-a-faire-et-date-libre.md`. En
-// attendant, cette phrase vit dans le seul endroit où les conseils existent —
-// la colonne de gauche d'une carte de thème. Quand 11 construira À faire, le
-// cas `aucune-priorite` déménage chez lui et ne laisse ici que
-// `hors-priorites`. C'est un fait remonté, pas une décision reprise.
+// `CONTEXT.md` (entrée « Priorité ») place ce cas sur le **module À faire** :
+// « c'est lui qui le dit, jamais le module verrouillé d'un thème, qui ne parle
+// que de données manquantes ». Le module existe depuis le ticket
+// `.scratch/construction/issues/11-module-a-faire-et-date-libre.md` : la demande
+// d'étoiler — la phrase en gras, le lien vers ◫ Thèmes, ce qu'une étoile
+// débloque — a donc déménagé chez lui, et elle n'est plus écrite ici.
+//
+// Mais la carte ne se tait pas pour autant : sans une étoile sur tout le compte,
+// TOUTES les cartes ont leur colonne de conseils vide, et un vide non expliqué
+// se lit comme une panne. Elle nomme donc l'état en une ligne et désigne où le
+// geste se pose — un seul endroit demande, tous les autres expliquent. Répéter
+// la demande sur cinq cartes en ferait le décor qu'on évite partout ailleurs.
 
 const LIEN = (
   <Link href="/labels" className="text-brand font-semibold hover:underline">
@@ -63,11 +68,15 @@ export function ConseilsVerrouilles({
           {etat === "aucune-priorite" ? (
             <p className="text-[12.5px] text-muted leading-relaxed">
               <span className="font-semibold text-ink">
-                Désigne un thème prioritaire pour recevoir des conseils.
+                Aucun thème n&apos;est prioritaire pour l&apos;instant.
               </span>{" "}
-              Étoile jusqu&apos;à trois thèmes sur {LIEN} : Pulse travaille dedans, et
-              seulement dedans. En attendant, tu gardes le point de vue de la semaine —
-              tes chiffres, ta courbe et ce qui a bougé sur tes plateformes.
+              Pulse ne conseille que dans les thèmes que tu désignes — le module{" "}
+              <a href="#a-faire" className="text-brand font-semibold hover:underline">
+                À faire
+              </a>
+              , en haut du rapport, dit comment en désigner un. En attendant, tu gardes le
+              point de vue de la semaine — tes chiffres, ta courbe et ce qui a bougé sur tes
+              plateformes.
             </p>
           ) : (
             <p className="text-[12.5px] text-muted leading-relaxed">

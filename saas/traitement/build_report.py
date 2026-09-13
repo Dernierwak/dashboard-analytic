@@ -4333,6 +4333,16 @@ def build_payload(sb, user_id: str) -> dict | None:
                .order("check_at").execute().data) or []
     except Exception:
         _sa = []
+    # UNE NOTE N'EST PAS UNE ACTION SUIVIE. Depuis que le module « À faire » sait
+    # en créer une « en cours » (ticket 11 de la construction), la lecture
+    # ci-dessus en ramène : elle n'a ni indicateur ni baseline, donc aucun
+    # verdict ne peut tomber dessus (`CONTEXT.md`, entrée Note) et elle n'a rien
+    # à faire dans la mémoire des hypothèses d'un thème.
+    #
+    # Filtré ICI et pas dans la requête : un `.neq("kind", …)` échouerait sur une
+    # base où la colonne n'existe pas encore, et l'`except` juste au-dessus
+    # viderait alors TOUT le suivi en silence.
+    _sa = [a for a in _sa if a.get("kind") != "note"]
     if _sa:
         running, verified = [], []
         # ── LA MÉMOIRE DES THÈMES SE CONSTRUIT DANS CETTE BOUCLE ─────────────
