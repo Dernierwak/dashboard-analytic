@@ -674,3 +674,34 @@ tels quels — node 22+ retire les types lui-même, donc plus aucune copie du co
 pas tourné** (ticket 16) : la dérivation de `week_start` est vérifiée sur le
 texte et sur sa propriété, jamais en base — aucun `upsert` joué. Le `week_start`
 et le numéro de semaine ne se voient qu'après un « ↻ Recharger mes conseils ».
+
+**[17 · Le verdict « figé » qui se réécrit chaque semaine](issues/17-verdict-persiste-qui-derive.md)** —
+**un verdict se rend une fois.** Une ligne faite reste `due` pour toujours : la
+boucle la remesurait contre le KPI du jour et **réécrivait** `verdict` à chaque
+rapport, donc un `worse` de juin redevenait `better` en septembre parce que le
+compte avait bougé — et cette valeur-là nourrissait la mémoire du thème puis le
+poids des conseils (`_DONE_W`). La migration disait pourtant « écrite UNE
+FOIS » : c'est maintenant vrai, garde chez l'appelant **et** `verdict IS NULL`
+côté base. Le `then/now/delta` n'est servi que **la semaine de la chute** —
+après, il mesurerait la dérive du compte, pas l'action ; **prix assumé et
+irrécupérable**, l'archive existante perd sa ligne d'effet d'un coup (question
+des deux colonnes posée au ticket 42). La **mémoire d'un thème** se nourrit
+désormais du verdict persisté, sans mesure fraîche : elle perdait une hypothèse
+dès qu'un `roas` n'avait pas de revenu rattachable, et `condense_theme_memoire`
+réécrivant `resume` en entier, la perte était définitive. Le **rattrapage de
+condensation** n'appelle plus l'IA quand la mémoire n'a nulle part où se poser
+(pas de ligne `theme_plan`, thème renommé, colonne `resume` pas migrée) :
+c'était un appel Gemini par thème et par semaine pour une écriture qui touche
+zéro ligne. **La revue de code a trouvé deux défauts dans le correctif
+lui-même**, tous deux corrigés et couverts : `ecrire_verdict` rend maintenant
+`True` seulement si une ligne a été touchée et la mémoire attend ce retour
+(sinon un refus RLS y versait un chiffre neuf chaque semaine — la dérive
+déplacée d'un cran), et la condensation reçoit le libellé de `theme_plan`, pas
+celui du carnet (un renommage à la casse près passait le garde et ratait
+l'écriture). **47 vérifications neuves** dans `harnais/17-verdict-fige/`, le
+premier harnais à **réutiliser** le faux lecteur du 16 plutôt qu'à le recopier ;
+chacune rejouée d'abord contre le code d'avant, où elle tombe. Huit harnais
+rejoués sans régression — **1 671** au total. **Rien n'est joué en base** (que
+`.is_("verdict", "null")` bloque réellement une seconde écriture **reste à
+constater**) et **rien ne se verra avant un passage du worker** : cron du Jour
+de travail, ou `weekly-fetch.yml` en `report_only`.
