@@ -26,7 +26,6 @@ import { KpiFocusCard } from "@/components/kpi-focus";
 import { HorsTheme } from "@/components/hors-theme";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
-import { ReloadRecosButton } from "@/components/reload-recos-button";
 import { RecoCard } from "@/components/reco-card";
 import { PourAllerPlusLoin } from "@/components/pour-aller-plus-loin";
 import { Triangle } from "@/components/pente";
@@ -220,8 +219,8 @@ export default async function Page() {
   // filet « Ce qu'aucun thème ne prend » (`chgOrphelins`, plus bas), par
   // construction, puisque ce filet est le complément exact des cartes.
   //
-  // MAIS UN RAPPORT NE SE RÉGÉNÈRE QU'À LA DEMANDE : le payload déjà publié
-  // porte le thème surnuméraire jusqu'au prochain « ↻ Recharger mes conseils ».
+  // MAIS UN RAPPORT NE SE RÉÉCRIT QU'AU JOUR DE TRAVAIL : le payload déjà
+  // publié porte le thème surnuméraire jusqu'à la prochaine publication.
   // On rattrape donc à l'affichage, avec la même règle — le procédé exact des
   // « est programmée » de `rail-actions.tsx`, et il se retire le jour où plus
   // aucun payload ancien ne circule.
@@ -425,6 +424,8 @@ export default async function Page() {
         couverture={couverture}
         themes={data.labels}
         priorities={priorities}
+        jourDeTravail={data.jourDeTravail}
+        maintenantIso={maintenant.toISOString()}
       />
 
       {/* Hero — le verdict EST le titre : « ma semaine a été bonne ? » est la
@@ -664,12 +665,19 @@ export default async function Page() {
              d'écart, avec le même titre et la même étoile. */}
       {cartes.length > 0 && (
         <section id="conseils" className="mb-9 scroll-mt-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+          {/* LE BOUTON « ↻ Recharger mes conseils » PARTAGEAIT CETTE LIGNE.
+              Il est sorti de l'app avec les trois autres déclencheurs : les
+              conseils se réécrivent au Jour de travail, et à ce moment-là
+              seulement. La date de la prochaine réécriture est déjà en tête de
+              page, dans les trois dates — c'est la réponse à la question que ce
+              bouton posait, et elle n'oblige personne à attendre trente
+              secondes devant un rond qui tourne
+              (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`). */}
+          <div className="mb-1">
             <SectionTitle>
               <span className="text-faint font-mono mr-1.5">{nThemes}</span> Tes thèmes
               prioritaires
             </SectionTitle>
-            <ReloadRecosButton />
           </div>
           {/* L'objectif et les thèmes suivis étaient écrits ici ET dans le
               widget juste dessous : la même phrase à 40 px d'écart. Le texte
@@ -764,8 +772,11 @@ export default async function Page() {
         <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
           <p className="text-[14px] text-ink font-medium">Pas encore de données ici.</p>
           <p className="text-[12.5px] text-muted mt-2 leading-relaxed">
-            Lance « ↻ Mes données » en haut — elles arrivent dans la même base et
-            s&apos;afficheront ici automatiquement.
+            Branche une source sur la page{" "}
+            <Link href="/comptes" className="text-brand font-semibold hover:underline">
+              ⚙ Connexions
+            </Link>{" "}
+            : sa récolte part tout de suite, et tes chiffres s&apos;afficheront ici.
           </p>
         </div>
       ) : (
@@ -786,8 +797,8 @@ export default async function Page() {
                 <span className="font-semibold text-brand">Presque prêt — </span>
                 classe tes contenus sur la page{" "}
                 <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
-                (bouton « ✨ Classer mes contenus »), puis recharge : le rapport se
-                construit thème par thème.
+                — tes chiffres s&apos;y regroupent par thème à la seconde, et le rapport
+                se construit thème par thème au prochain jour de travail.
               </p>
             </div>
           )}

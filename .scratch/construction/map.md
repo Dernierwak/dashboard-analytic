@@ -49,9 +49,11 @@ trouvé une prémisse fausse ; celle qu'on trouvera ici vaut la même attention.
   oubliée. *(19 depuis que 18 a publié `/privacy`, `/terms`, `/suppression`.)*
 - Python : `python3.12 -m py_compile` sur ce qui a été touché. **`python3.12`,
   jamais `python3`.**
-- Une correction du traitement ne se voit **qu'après un « ↻ Recharger mes
-  conseils »**, une correction de récolte après « ↻ Mes données ». Le dire à
-  chaque fois — **jusqu'à ce que le ticket 15 retire ces boutons**.
+- **Les quatre boutons sont retirés depuis le ticket 15.** Une correction du
+  traitement ou de la récolte ne se voit donc **qu'après un passage du worker** :
+  le cron du Jour de travail (07:00 UTC), ou un lancement à la main depuis
+  l'onglet GitHub Actions (`weekly-fetch.yml`). Le dire à chaque fois, et dire
+  lequel des deux. Ce qui se REGROUPE par thème, lui, se voit à la lecture.
 - Ce qui n'a pas pu être vérifié se dit franchement. Pas de résultat prédit.
 
 ### Le partage des fichiers — la contrainte qui commande le parallélisme
@@ -467,6 +469,40 @@ pour la partie worker, tout de suite pour le Carnet. Sa revue a ouvert
 [33 · Une note pas encore faite marque déjà la frise](issues/33-une-note-pas-encore-faite-marque-la-frise.md) :
 `_markers` est la seule lecture des notes qui n'a pas appris qu'une Note peut
 naître `running`.
+
+**[15 · Le client ne déclenche plus rien](issues/15-le-client-ne-declenche-plus-rien.md)** —
+**les quatre boutons sont sortis, l'afficheur est resté.** `fetch-button.tsx`
+devient `suivi-recolte.tsx` : même vérité serveur, même refus d'inventer un
+pourcentage, **moins le lanceur** — et il ne rend RIEN quand rien ne tourne. Le
+flottement du panneau était une conséquence du bouton (il pendait sous lui) :
+sans bouton, les deux coupes mesurées disparaissent d'elles-mêmes. Deux places :
+`flux` (colonne, tiroir, Connexions) et `compact` (en-tête du téléphone, une
+pastille). **Une veille d'une minute a dû être ajoutée** — sans clic pour
+allumer l'écran, et GitHub mettant quelques secondes à publier un run, le client
+qui vient de brancher sa Page serait resté devant un écran muet : le défaut même
+que le ticket interdit. **Les trois décisions voisines sont bâties** : une source
+branchée lance sa récolte (`lib/github-workflow.ts`, dispatch déplacé hors d'un
+fichier `"use server"` qui ne peut exporter que des fonctions asynchrones), le
+Jour de travail se choisit **à la clôture du fil de démarrage**
+(`components/choix-jour.tsx`, l'unique écriture des sept jours — et elle ne se
+rejoue pas, `fetch_schedule` valant `'Monday'` par défaut, rien ne distingue un
+défaut d'un choix), et les trois réglages différés portent **la date** de leur
+prise en compte (`prisEnCompteLe` + `lib/jour-compte.ts`, sur le compte
+REGARDÉ). **Une conséquence non prévue par le ticket** : choisir son compte
+Google Ads puis sa propriété GA4 fait partir deux récoltes — `weekly-fetch.yml`
+gagne un `concurrency` par compte. Les trois défauts de rafraîchissement de 13
+sont réparés, **commentaire menteur compris** : `revalidatePath("/")` n'est pas
+un no-op (il rafraîchit la couverture, lue en direct), il ne peut simplement pas
+rendre les blocs par thème du payload figé — ce qui attend le ticket 04.
+`CLAUDE.md` §9 est mis à jour dans le même passage, ici et dans `spec.md`. **19
+routes**, `tsc` et `npm run build` verts, `py_compile` sur les trois fichiers
+Python. **Rien n'a été joué en service** : aucun clic, aucun run GitHub, aucune
+écriture relue en base, et `saas/web` n'a toujours aucun runner de test. Le
+ticket a fait naître
+[39 · L'annulation des étiquettes IA a perdu son déclencheur](issues/39-l-annulation-des-etiquettes-ia-a-perdu-son-declencheur.md) :
+les garanties 2 et 3 de l'ADR 0001 tenaient à un `depuis` gardé dans le
+`sessionStorage` de l'onglet qui cliquait — sans clic, plus rien à annuler,
+alors que le besoin grandit (l'IA classe maintenant sans qu'on le demande).
 
 ## Not yet specified
 

@@ -31,21 +31,42 @@ import { ThemeDonut } from "@/components/theme-donut";
 import { ConversionsThemesModule } from "@/components/conversions-themes";
 import { ConversionsCatalogueModule } from "@/components/conversions-catalogue";
 import { CreateCategory, CategoryRow } from "@/components/category-manager";
-import { ClassifyConversionsButton } from "@/components/classify-conversions-button";
 import { ScrollList } from "@/components/scroll-list";
+import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { themesChoisis } from "@/lib/commandes";
+import { prochainJourDeTravailFr } from "@/lib/jour-compte";
 
 export const dynamic = "force-dynamic";
 
-export default async function ConversionsPage() {
+export default async function ConversionsPage({
+  searchParams,
+}: {
+  searchParams?: { l?: string | string[]; label?: string };
+}) {
   const evenements = await getThemeEvenements();
   // Dépend d'`evenements` (même raison que sur /labels) : posé après, pas
   // dans le même Promise.all.
-  const [objectifs, cat] = await Promise.all([
+  const [objectifs, cat, quand] = await Promise.all([
     getThemeObjectifs(evenements),
     getConversionCategories(),
+    // Catégoriser s'enregistre tout de suite ; le rapport n'en tient compte
+    // qu'au Jour de travail, et on le date plutôt que de dire « plus tard ».
+    prochainJourDeTravailFr(),
   ]);
 
   const nomsCategories = cat.categories.map((c) => c.name);
+
+  // LE BANDEAU NE PORTE QUE LES THÈMES, ET SEULEMENT LES ÉTOILÉS. Il gouverne
+  // le bloc 2 et lui seul : les blocs 1, 3 et 4 sont indépendants des thèmes
+  // par construction (une catégorie est une propriété de l'ÉVÉNEMENT, pas du
+  // couple thème/événement — voir l'en-tête de ce fichier). Offrir un thème
+  // non étoilé donnerait un contrôle qui ne peut rien montrer : le bloc 2 ne
+  // connaît que les étoilés.
+  const themesEtoiles = objectifs.themes.map((t) => t.label);
+  const themes = themesChoisis(searchParams).filter((t) => themesEtoiles.includes(t));
+  const objectifsVus = themes.length
+    ? { ...objectifs, themes: objectifs.themes.filter((t) => themes.includes(t.label)) }
+    : objectifs;
 
   // Le camembert compte le NOMBRE DE GENRES DE CONVERSIONS (des noms
   // d'événements distincts) par catégorie — jamais leur VOLUME (le nombre de
@@ -92,14 +113,10 @@ export default async function ConversionsPage() {
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-      <div className="mb-6">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          Ce que Google Analytics compte pour toi
-        </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
-          Tes conversions.
-        </h1>
-        <p className="text-[13px] text-muted mt-2 leading-relaxed max-w-[70ch]">
+      <BandeauCommandes titre="Tes conversions." themes={themesEtoiles} themesActifs={themes} />
+
+      <div className="mb-6 mt-3">
+        <p className="text-[13px] text-muted leading-relaxed max-w-[70ch]">
           Google Analytics compte tout ce que ton site déclenche — une vue produit, un
           formulaire, un achat. Cette page dit à Pulse lesquels comptent vraiment pour toi : pour
           chaque thème prioritaire, quels événements GA4 suivre comme conversions, et de quel
@@ -128,7 +145,7 @@ export default async function ConversionsPage() {
             <p className="text-[12.5px] text-muted leading-relaxed">
               {evenements.catalogue.length === 0
                 ? evenements.ga4Connecte
-                  ? "Aucun événement connu — lance ↻ Rafraîchir maintenant dans la barre latérale."
+                  ? "Aucun événement connu — la prochaine récolte ira les chercher."
                   : "Google Analytics n'est pas connecté — va dans Comptes → Connexions."
                 : "Aucune conversion pour l'instant : ni événement marqué « clé » par Google Analytics, ni conversion catégorisée à la main. Choisis une catégorie sur une conversion plus bas, dans « Toutes tes conversions », pour voir ce camembert se remplir."}
             </p>
@@ -137,20 +154,31 @@ export default async function ConversionsPage() {
       )}
 
       {/* 2 — NOS THÈMES PRINCIPAUX. */}
-      <ConversionsThemesModule d={objectifs} categories={nomsCategories} parEvenement={cat.parEvenement} />
+      <ConversionsThemesModule
+        d={objectifsVus}
+        categories={nomsCategories}
+        parEvenement={cat.parEvenement}
+        quand={quand}
+      />
 
       {/* 3 — TOUTES TES CONVERSIONS — module séparé, façon /labels : catégoriser
           n'importe quel événement du catalogue GA4, indépendamment de toute
           sélection de thème. Voir l'en-tête de `conversions-catalogue.tsx`. */}
       <div className="border-t border-line pt-5">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <p className="text-[11.5px] text-faint leading-relaxed max-w-2xl">
-            Chaque événement que Google Analytics connaît sur ton site — assigne-lui une
-            catégorie à la main, ou laisse l&apos;IA proposer une catégorie pour tout ce qui
-            n&apos;en a pas encore.
-          </p>
-          <ClassifyConversionsButton />
-        </div>
+        {/* LE BOUTON « ✨ Classer mes conversions » ÉTAIT ICI. Il est sorti
+            avec les trois autres déclencheurs
+            (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`) :
+            la catégorisation IA tourne au Jour de travail, dans le même
+            passage que la récolte. Ce qui reste est la phrase qu'il portait,
+            et la DATE de son prochain passage — sans elle, « plus tard » ne
+            répond à personne. */}
+        <p className="text-[11.5px] text-faint leading-relaxed max-w-2xl mb-3">
+          Chaque événement que Google Analytics connaît sur ton site — assigne-lui une
+          catégorie à la main. L&apos;IA en propose une pour tout ce qui n&apos;en a pas
+          encore, au prochain passage :{" "}
+          <span className="font-semibold text-muted">{quand}</span>. Elle ne touche jamais
+          une catégorie que tu as choisie.
+        </p>
 
         {cat.migrationManquante && (
           <p className="text-[12.5px] text-neg leading-relaxed mb-3 max-w-[70ch]">
@@ -194,8 +222,8 @@ export default async function ConversionsPage() {
           <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
             <p className="text-[14px] text-ink font-medium">Aucune catégorie pour l&apos;instant.</p>
             <p className="text-[12.5px] text-muted mt-2 leading-relaxed">
-              Crée la première ci-dessus (ex. « Ventes », « Contacts »), ou laisse l&apos;IA les
-              proposer avec le bouton ci-dessus.
+              Crée la première ci-dessus (ex. « Ventes », « Contacts ») — ou laisse
+              l&apos;IA en proposer au prochain passage.
             </p>
           </div>
         ) : (

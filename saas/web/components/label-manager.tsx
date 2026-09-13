@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createLabel, renameLabel, deleteLabel, togglePriorityLabel } from "@/app/actions";
 import type { LabelRowData } from "@/lib/channels";
+import { prisEnCompteLe } from "@/lib/jour-de-travail";
 
 export function CreateLabel() {
   const [name, setName] = useState("");
@@ -52,9 +53,19 @@ export function LabelRow({
   row,
   priority,
   rang = null,
+  quand,
 }: {
   row: LabelRowData;
   priority: boolean;
+  /**
+   * « jeudi 17 septembre » — le prochain Jour de travail du compte, calculé par
+   * le serveur (`lib/jour-compte.ts`). Étoiler s'enregistre à la seconde, mais
+   * les conseils ne se réécrivent qu'à ce moment-là : depuis que le client n'a
+   * plus de bouton pour forcer le recalcul, il faut le lui DIRE, avec la date.
+   * Facultatif — un appelant qui ne connaît pas la date n'affiche pas de
+   * message plutôt que d'en afficher un vague.
+   */
+  quand?: string;
   /**
    * Le rang de l'étoile, 1 = posée en premier. `null` quand le thème n'est pas
    * étoilé. C'est LE nombre qui rend visible une règle autrement invisible :
@@ -94,7 +105,11 @@ export function LabelRow({
         onClick={() =>
           startTransition(async () => {
             const r = await togglePriorityLabel(row.name, priority);
-            setMessage(r.message ?? null);
+            // L'AVERTISSEMENT DU SERVEUR PASSE AVANT LA DATE. Quand
+            // `togglePriorityLabel` a quelque chose à dire — la quatrième
+            // étoile, un refus — c'est ce qui compte ; la date de prise en
+            // compte ne vient que lorsqu'il n'a rien à redire.
+            setMessage(r.message ?? (r.ok && quand ? prisEnCompteLe(quand) : null));
             setEchec(!r.ok);
           })
         }

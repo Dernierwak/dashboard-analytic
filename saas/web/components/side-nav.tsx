@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { FetchButton } from "@/components/fetch-button";
+import { SuiviRecolte } from "@/components/suivi-recolte";
 import { CompteSwitch } from "@/components/compte-switch";
 import { COOKIE_NAV, NAV_DEPLIEE, NAV_REPLIEE } from "@/lib/nav-cookie";
 import {
@@ -240,7 +240,7 @@ function Contenu({
 
       <div className="mt-auto pt-5">
         {replie ? (
-          // Replié, il n'y a pas 90 px pour « ↻ Mes données » ni pour un
+          // Replié, il n'y a pas 90 px pour un panneau de récolte ni pour un
           // e-mail. On garde le seul repère qui compte — QUEL compte je
           // regarde — et le cliquer déplie la colonne plutôt que de mener nulle
           // part.
@@ -254,12 +254,17 @@ function Contenu({
         ) : (
           <div className="flex flex-col gap-2.5 border-t border-line pt-4">
             <CompteSwitch comptes={compte.comptes} actif={compte.uid} />
-            {/* `ancrage="colonne"` : ici le panneau de suivi prend la largeur de
-                la colonne et s'ouvre VERS LE HAUT. Ancré à droite et vers le
-                bas comme ailleurs, il sortait de 29 px à gauche de l'écran et de
-                34 px sous la fenêtre — deux coupes qu'aucun défilement ne
-                rattrapait. Le détail est dans `fetch-button.tsx`. */}
-            {compte.peutEditer && <FetchButton ancrage="colonne" />}
+            {/* LE BOUTON « ↻ Mes données » A QUITTÉ CETTE PLACE, le panneau
+                de suivi la garde. Le client ne déclenche plus rien — le Jour
+                de travail et le branchement d'une source sont les deux seuls
+                départs de récolte — mais une première récolte Instagram dure
+                seize minutes et il faut bien que ça se voie quelque part
+                (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`).
+                `place="flux"` : le panneau prend la largeur de la colonne et
+                se range dans le flux. Il ne rend RIEN tant qu'aucune récolte
+                ne tourne — le bloc du bas retrouve alors la hauteur qu'il
+                avait. */}
+            {compte.peutEditer && <SuiviRecolte place="flux" />}
             <span className="text-[10.5px] text-faint truncate" title={compte.email}>
               {compte.email}
             </span>
@@ -393,7 +398,12 @@ export function SideNav({
             {infos.aFaire}
           </span>
         )}
-        <span className="ml-auto shrink-0">{compte.peutEditer && <FetchButton />}</span>
+        {/* `place="compact"` : dans 52 px de haut, la pastille dit qu'une
+            récolte tourne et rien de plus. Le détail est dans le tiroir, qui
+            rend le même module en `flux`. */}
+        <span className="ml-auto shrink-0">
+          {compte.peutEditer && <SuiviRecolte place="compact" />}
+        </span>
       </header>
 
       <div
@@ -471,15 +481,14 @@ export function SideNav({
           pour qu'elle ne mange pas plus d'un tiers d'un écran de portable. */}
       <aside
         // `overflow-y-auto` : le panneau de récolte ajoute de la hauteur au bloc
-        // du bas quand il s'ouvre — nettement plus depuis qu'il liste les six
-        // canaux avec leur état, là où il ne montrait qu'une barre. Sur une
-        // fenêtre courte (un portable de 13" avec la barre d'onglets et le
+        // du bas quand il paraît — il liste les six canaux avec leur état. Sur
+        // une fenêtre courte (un portable de 13" avec la barre d'onglets et le
         // dock), la colonne n'a plus la hauteur — et sans cette ligne le
         // débordement était simplement invisible, comme il l'était déjà sans le
         // panneau sous 480 px de haut.
         // La liste des canaux porte son propre plafond (`max-h` dans
-        // fetch-button.tsx) : un message d'erreur long ne peut donc pas
-        // repousser le bouton indéfiniment vers le bas.
+        // suivi-recolte.tsx) : un message d'erreur long ne peut donc pas
+        // repousser l'e-mail et « Se déconnecter » indéfiniment vers le bas.
         // `relative` : le poignée de redimensionnement s'y ancre en `absolute`.
         // Pas de transition pendant le glissement (`enGlissement`) : sinon la
         // colonne suit la souris avec 200 ms de retard.

@@ -3,15 +3,34 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { OnboardingCard } from "@/components/onboarding-card";
-import { ClassifyButton } from "@/components/classify-button";
 import { CreateLabel } from "@/components/label-manager";
 import { fmtCHF, type Couverture } from "@/components/labels-modele";
 import { togglePriorityLabel } from "@/app/actions";
+import { ChoixJour } from "@/components/choix-jour";
+import { JOURS, delai, enFrancais, prochainPassage } from "@/lib/jour-de-travail";
 
 // Parcours de démarrage — 3 étapes, quittable et reprenable :
 //   1. Ton profil (questions au clic, puis ton site — OnboardingCard)
-//   2. « Construis tes thèmes » — à la main, via l'IA, ou les deux
+//   2. « Construis tes thèmes » — à la main ; l'IA complète à chaque récolte
 //   3. Étoile tes thèmes — on travaille dessus, et l'IA rédige les 3 premiers
+// puis LA CLÔTURE : le jour où tu veux être servi.
+//
+// L'ÉTAPE 2 A PERDU SON BOUTON IA, ET LE CLASSEMENT N'A PAS BOUGÉ. « ✨ Classer
+// mes contenus » était l'un des quatre déclencheurs que le client avait en
+// main ; les quatre sont sortis
+// (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`). Le
+// classement IA tourne dans le même passage que la récolte, à chaque Jour de
+// travail. L'étape dit donc ce qui se passe et quand, au lieu de proposer un
+// geste qui n'existe plus — et elle continue de réclamer UN thème écrit à la
+// main (ADR 0002) : c'est le seul moyen d'entrer un mot qui soit VRAIMENT
+// celui du client.
+//
+// LA CLÔTURE PORTE LE JOUR DE TRAVAIL. « Le Jour de travail se choisit à la
+// clôture du fil de démarrage » — la dernière chose qu'on demande, une fois
+// qu'il y a quelque chose à servir. Elle ne se rejoue pas : `fetch_schedule`
+// vaut « Monday » par défaut en base et rien ne distingue un défaut d'un choix,
+// donc ce n'est pas une étape qu'on pourrait rouvrir plus tard sans mentir. Le
+// réglage reste disponible en permanence sur la page Connexions.
 // L'état vient des DONNÉES (profil rempli ? contenus classés ? priorités posées ?)
 // → quitter et revenir reprend exactement où on en était. « Plus tard » se
 // mémorise en local et laisse un rappel discret.
@@ -63,16 +82,30 @@ export function SetupWizard({
   couverture,
   themes,
   priorities,
+  jourDeTravail,
+  maintenantIso,
 }: {
   onboarded: boolean;
   couverture: Couverture;
   themes: string[];
   priorities: string[];
+  /** Le jour servi aujourd'hui (`profiles.fetch_schedule`), pour la clôture. */
+  jourDeTravail: string;
+  /** L'heure du serveur, figée au rendu : le calcul du prochain passage est
+   *  donc le même des deux côtés de l'hydratation. */
+  maintenantIso: string;
 }) {
   const [snoozed, setSnoozed] = useState(true); // true au 1er rendu → pas de flash
   const [picked, setPicked] = useState<string[]>(priorities);
   const [pending, startTransition] = useTransition();
   const [done, setDone] = useState(false);
+  const [jour, setJour] = useState(
+    JOURS.some((j) => j.en === jourDeTravail) ? jourDeTravail : "Monday"
+  );
+  // La clôture ne s'ouvre QUE sur le clic de fin du fil, jamais au retour sur
+  // la page : rien en base ne distingue « Monday choisi » de « Monday par
+  // défaut », donc rejouer l'étape redemanderait un choix déjà fait.
+  const [cloture, setCloture] = useState(false);
 
   useEffect(() => {
     setSnoozed(localStorage.getItem(SNOOZE_KEY) === "1");
@@ -83,6 +116,46 @@ export function SetupWizard({
 
   const needLabels = couverture.total > 0 && couverture.sansTheme > 0;
   const needPriorities = themes.length > 0 && priorities.length === 0 && !done;
+
+  // LA CLÔTURE — la dernière question du fil, et la seule qui porte sur le
+  // RYTHME plutôt que sur le contenu. Elle passe avant les autres sorties :
+  // une fois les priorités enregistrées, `needPriorities` tombe à faux et le
+  // composant rendrait `null` au clic même qui vient de terminer le fil.
+  if (cloture) {
+    const { date, delta } = prochainPassage(jour, new Date(maintenantIso));
+    return (
+      <div className="bg-white border border-brand/20 rounded-xl shadow-card p-5 sm:p-6 mb-8">
+        <span className="text-[10px] uppercase tracking-widest text-brand font-bold">
+          Mise en place — terminé
+        </span>
+        <h2 className="font-serif text-[22px] text-ink leading-tight mb-2 mt-3">
+          Quel jour veux-tu être servi ?
+        </h2>
+        <p className="text-[13px] text-muted leading-relaxed mb-4 max-w-[62ch]">
+          Une fois par semaine, Pulse va chercher tes chiffres, les range par thème et
+          réécrit tes conseils. Choisis le jour où tu veux les lire — c&apos;est le seul
+          moment où quelque chose change, et tu peux en changer quand tu veux sur la page{" "}
+          <Link href="/comptes" className="text-brand font-semibold hover:underline">
+            ⚙ Connexions
+          </Link>
+          .
+        </p>
+        <div className="text-[22px] leading-none font-semibold tracking-tight text-ink mb-1">
+          {enFrancais(date)}
+        </div>
+        <p className="text-[12.5px] text-muted mb-4">
+          prochaine mise à jour · <span className="font-semibold text-ink">{delai(delta)}</span>
+        </p>
+        <ChoixJour valeur={jour} onValeur={setJour} titre="Ton jour" />
+        <button
+          onClick={() => setCloture(false)}
+          className="mt-5 text-[12.5px] font-semibold text-white bg-brand rounded-full px-5 py-2.5 hover:bg-brand/90"
+        >
+          C&apos;est noté
+        </button>
+      </div>
+    );
+  }
 
   if (!needLabels && !needPriorities) return null;
 
@@ -124,9 +197,9 @@ export function SetupWizard({
         <p className="text-[13px] text-muted leading-relaxed mb-1">
           Un thème regroupe tes campagnes et tes posts par sujet (« e-bike », « promo
           été »…) — c&apos;est ce qui permet de savoir <span className="font-semibold text-ink">ce
-          qui rapporte, et ce que ça coûte, thème par thème</span>. Écris les tiens, ou
-          laisse l&apos;IA proposer à partir de ton profil et de tes légendes — elle
-          complète sans jamais réécrire un choix que tu as fait.
+          qui rapporte, et ce que ça coûte, thème par thème</span>. Écris les tiens :
+          ce sont TES mots. À chaque récolte, l&apos;IA pose ensuite un thème sur tout ce
+          qui n&apos;en a pas — elle complète sans jamais réécrire un choix que tu as fait.
         </p>
         <p className="text-[12px] text-warn font-semibold mb-3">
           {couverture.sansTheme} élément{couverture.sansTheme > 1 ? "s" : ""} sur{" "}
@@ -136,7 +209,6 @@ export function SetupWizard({
           <CreateLabel />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <ClassifyButton themes={themes} />
           {gateThemeManquant ? (
             <span className="text-[11.5px] text-faint max-w-[38ch] leading-relaxed">
               Crée au moins un thème pour continuer — même un seul, large, si
@@ -230,7 +302,10 @@ export function SetupWizard({
       <div className="flex items-center gap-3 flex-wrap">
         <button
           disabled={picked.length === 0 || pending}
-          onClick={() => setDone(true)}
+          onClick={() => {
+            setDone(true);
+            setCloture(true);
+          }}
           className="text-[12.5px] font-semibold text-white bg-brand rounded-full px-5 py-2.5 hover:bg-brand/90 disabled:opacity-40"
         >
           C&apos;est parti ({picked.length} thème{picked.length > 1 ? "s" : ""})

@@ -54,11 +54,17 @@ export function ConversionsThemesModule({
   d,
   categories,
   parEvenement,
+  quand,
 }: {
   d: ThemesObjectifsData;
   categories: string[];
   /** { nom d'événement → catégorie }, tenu par le module 2 juste en dessous. */
   parEvenement: Record<string, string>;
+  /** « jeudi 17 septembre » — le prochain Jour de travail, calculé par le
+   *  serveur (`lib/jour-compte.ts`). L'objectif repondère les conseils : il
+   *  s'enregistre à la seconde et ne change le rapport qu'à ce moment-là. Le
+   *  client n'ayant plus de bouton pour l'avancer, on le date. */
+  quand: string;
 }) {
   const compteMot = d.accountObjectif ? OBJ_LABEL[d.accountObjectif] ?? "non défini" : "non défini";
   // Rang 3 du module : combien de conversions sont suivies, tous thèmes
@@ -118,12 +124,12 @@ export function ConversionsThemesModule({
             L&apos;objectif du compte
           </div>
           <p className="text-[11px] text-faint leading-relaxed max-w-[46ch]">
-            Le DÉFAUT hérité par tout thème sans réglage propre. Pris en compte à la prochaine
-            publication du rapport.
+            Le DÉFAUT hérité par tout thème sans réglage propre. Tes conseils en tiennent
+            compte le <span className="font-semibold text-muted">{quand}</span>.
           </p>
         </div>
         <div className="ml-auto shrink-0">
-          <ObjectifSelect current={d.accountObjectif} />
+          <ObjectifSelect current={d.accountObjectif} quand={quand} />
         </div>
       </div>
 
@@ -253,7 +259,7 @@ function CarteTheme({
         ) : d.catalogue.length === 0 ? (
           <p className="text-[11.5px] text-muted leading-relaxed">
             {d.ga4Connecte
-              ? "Aucun événement connu — lance ↻ Rafraîchir maintenant dans la barre latérale."
+              ? "Aucun événement connu — la prochaine récolte ira les chercher."
               : "Google Analytics n'est pas connecté — va dans Comptes → Connexions."}
           </p>
         ) : (

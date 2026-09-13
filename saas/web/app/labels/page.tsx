@@ -48,7 +48,6 @@
 import { getEtiquetage } from "@/lib/couverture";
 import { getLabelsData } from "@/lib/channels";
 import { CreateLabel, LabelRow } from "@/components/label-manager";
-import { ClassifyButton } from "@/components/classify-button";
 import { ScrollList } from "@/components/scroll-list";
 import { LabelsCouverture } from "@/components/labels-couverture";
 import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
@@ -56,6 +55,7 @@ import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
 import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
+import { prochainJourDeTravailFr } from "@/lib/jour-compte";
 
 export const dynamic = "force-dynamic";
 
@@ -64,9 +64,12 @@ export default async function LabelsPage({
 }: {
   searchParams?: { [k: string]: string | string[] | undefined };
 }) {
-  const [data, etiquetage] = await Promise.all([
+  const [data, etiquetage, quand] = await Promise.all([
     getLabelsData(),
     getEtiquetage(),
+    // La date que portent les messages d'étoilage : une priorité s'enregistre
+    // tout de suite et ne change les conseils qu'au Jour de travail.
+    prochainJourDeTravailFr(),
   ]);
 
   // LE BANDEAU NE PORTE QUE LES THÈMES ICI, et pas de période : cette page
@@ -101,23 +104,22 @@ export default async function LabelsPage({
       {/* 1 — LE MODULE QUI DIT POURQUOI ON EST LÀ. */}
       <LabelsCouverture c={etiquetage.couverture} labels={etiquetage.labels} />
 
-      {/* 2 — LE GESTE DE MASSE, juste sous le chiffre qu'il fait baisser.
-          Il n'est plus dans l'en-tête : une action qui répare ce qu'un module
-          vient de mesurer se pose contre ce module, pas trois écrans plus haut.
-          Le bloc n'est PAS une rangée flex — le pavé d'annulation qu'il déplie
-          fait 320 px et ne tiendrait pas à côté d'un texte sur un téléphone. */}
+      {/* 2 — CE QUE L'IA FAIT, ET QUAND. Le bouton « ✨ Étiqueter tout via
+          l'IA » était ici : il est sorti de l'app avec les trois autres
+          déclencheurs
+          (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`).
+          Le classement n'a pas disparu pour autant — il tourne à chaque Jour de
+          travail, dans le même passage que la récolte. Ce qui reste à cette
+          place est donc la PHRASE que le bouton portait : ce que l'IA remplit,
+          ce qu'elle ne touche jamais, et le jour où elle repasse. */}
       <div className="mb-5">
-        <ClassifyButton
-          libelle="✨ Étiqueter tout via l'IA"
-          avecAnnulation
-          themes={etiquetage.labels}
-        />
-        <p className="text-[11.5px] text-faint mt-2 leading-relaxed max-w-2xl">
-          L&apos;IA lit tes légendes et tes noms de campagne, et pose un thème sur tout ce
-          qui n&apos;en a pas. Elle applique directement — mais elle ne remplit que le
-          vide : <span className="font-semibold text-muted">un thème que tu as choisi
-          n&apos;est jamais réécrit</span>, et tout ce qu&apos;elle vient de poser
-          s&apos;annule en bloc tant que tu es sur cette page.
+        <p className="text-[11.5px] text-faint leading-relaxed max-w-2xl">
+          À chaque récolte, l&apos;IA lit tes légendes et tes noms de campagne, et pose un
+          thème sur tout ce qui n&apos;en a pas — la prochaine fois,{" "}
+          <span className="font-semibold text-muted">{quand}</span>. Elle ne remplit que
+          le vide : <span className="font-semibold text-muted">un thème que tu as choisi
+          n&apos;est jamais réécrit</span>. Ce que tu étiquettes ici, toi, se voit tout de
+          suite sur tes tableaux de bord.
         </p>
       </div>
 
@@ -165,8 +167,8 @@ export default async function LabelsPage({
           <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
             <p className="text-[14px] text-ink font-medium">Aucun thème pour l&apos;instant.</p>
             <p className="text-[12.5px] text-muted mt-2 leading-relaxed">
-              Crée ton premier ci-dessus (ex. « e-bike », « promo été »), ou laisse
-              l&apos;IA les proposer avec le bouton du haut.
+              Crée ton premier ci-dessus (ex. « e-bike », « promo été ») — ou laisse
+              l&apos;IA en proposer à la prochaine récolte.
             </p>
           </div>
         ) : (
@@ -182,6 +184,7 @@ export default async function LabelsPage({
                   row={row}
                   priority={i >= 0}
                   rang={i >= 0 ? i + 1 : null}
+                  quand={quand}
                 />
               );
             })}

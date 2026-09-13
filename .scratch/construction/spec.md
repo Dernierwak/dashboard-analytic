@@ -832,10 +832,12 @@ chiffre**.
 
 Deux rappels qui valent pendant toute la construction :
 
-- une correction du traitement **ne se voit qu'après un « ↻ Recharger mes
-  conseils »**, une correction de récolte après « ↻ Mes données ». **À dire à
-  chaque fois — jusqu'à ce que le ticket 15 retire ces boutons**, et §9 se met à
-  jour dans ce même passage ;
+- une correction du traitement ou de la récolte **ne se voit qu'après un
+  passage du worker** — le cron du Jour de travail, ou un lancement à la main
+  depuis l'onglet GitHub Actions. **À dire à chaque fois, en nommant lequel des
+  deux.** (Le ticket 15 a retiré les quatre boutons de l'app le 2026-09-13, et
+  `CLAUDE.md` §9 a été mis à jour dans le même passage.) Ce qui se REGROUPE par
+  thème, lui, se voit tout de suite, à la lecture ;
 - **aucune vérification en base n'est possible en local** : le `.env` racine
   pointe un projet Supabase qui ne répond plus, et il nomme d'ailleurs la clé de
   service autrement que le worker ne la cherche — la production ne tourne que

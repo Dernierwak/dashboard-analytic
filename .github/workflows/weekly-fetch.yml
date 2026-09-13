@@ -12,25 +12,39 @@ on:
         type: boolean
         default: false
       user_id:
-        description: "Ne traiter que cet utilisateur (bouton « Mes données » de Pulse)"
+        description: "Ne traiter que cet utilisateur (récolte d'amorçage de Pulse, ou rejeu à la main)"
         type: string
         default: ""
       label_only:
-        description: "Labellisation IA seule + republication du rapport (bouton « Classer mes contenus »)"
+        description: "Labellisation IA seule + republication du rapport"
         type: boolean
         default: false
       categorize_only:
-        description: "Catégorisation IA des conversions GA4 seule (bouton « Classer mes conversions », page /conversions)"
+        description: "Catégorisation IA des conversions GA4 seule"
         type: boolean
         default: false
       report_only:
-        description: "Republie juste le rapport/conseils depuis les données en base (bouton « Recharger mes conseils »)"
+        description: "Republie juste le rapport/conseils depuis les données en base"
         type: boolean
         default: false
       meta_since:
         description: "Rejeu d'historique : fait repartir la récolte META de cette date (AAAA-MM-JJ). EXIGE user_id. Le reste de la récolte de CE compte tourne normalement (Google, GA4, Instagram, rapport, email)."
         type: string
         default: ""
+
+# UNE RÉCOLTE À LA FOIS PAR COMPTE. Tant que le seul départ manuel était le
+# bouton « ↻ Mes données », personne ne pouvait en lancer deux coup sur coup.
+# Depuis que brancher une source déclenche sa récolte
+# (`saas/web/app/comptes/actions.ts`), choisir son compte Google Ads puis sa
+# propriété Analytics en fait partir DEUX à quelques secondes d'intervalle :
+# deux workers sur le même compte écriraient `fetch_progress` en même temps et
+# publieraient le rapport deux fois. Elles s'attendent donc, par compte — la
+# clé vide regroupe les passages du cron, qui ne tourne qu'une fois par jour.
+# `cancel-in-progress: false` : on ne coupe jamais une récolte en cours, elle
+# peut être à sa quinzième minute d'Instagram.
+concurrency:
+  group: recolte-${{ inputs.user_id }}
+  cancel-in-progress: false
 
 jobs:
   fetch:

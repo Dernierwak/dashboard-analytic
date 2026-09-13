@@ -432,6 +432,12 @@ def build_constats(matrix: dict | None, insight_feedback: dict[str, str] | None,
             "angle_mort:couverture", "angle_mort",
             "Une partie de tes contenus n'est pas encore classée",
             f"{' et '.join(parts)} sans thème — cette analyse ne les voit pas encore. "
-            "Clique « ✨ Classer mes contenus » sur la page Thèmes.", fb))
+            # LE CONSTAT NE RENVOIE PLUS À UN BOUTON : les quatre déclencheurs
+            # ont quitté l'app, et l'IA classe ce qui n'a pas de thème à chaque
+            # récolte (.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md).
+            # Ce qui reste vrai, et utile : c'est sur la page Thèmes que le
+            # client peut le faire lui-même, tout de suite.
+            "Étiquette-les sur la page Thèmes, ou laisse l'IA le faire à la "
+            "prochaine récolte.", fb))
 
     return out

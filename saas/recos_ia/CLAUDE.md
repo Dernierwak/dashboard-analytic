@@ -130,9 +130,20 @@ catégories) et l'IA peut en proposer de nouvelles.
 humain (`label_source='user'` / `category_source='user'`) n'est **jamais**
 réécrite par l'IA. L'IA marque les siennes `'ai'`, corrigibles depuis
 l'interface (`/labels`, `/conversions`) — corriger repasse la ligne en
-`'user'`. Voir l'en-tête de `triggerClassify` dans `saas/web/app/actions.ts`
-pour pourquoi ce second classifieur (conversions) ne contredit pas la règle
-« une seule classification IA ».
+`'user'`.
+
+**Pourquoi DEUX classifieurs ne contredisent pas « une seule classification
+IA » :** ils portent sur des contenus DIFFÉRENTS — `labeling.py` sur les
+campagnes et les posts, `categorizing.py` sur les événements GA4. Ce qui est
+proscrit, c'est d'écrire un second classifieur sur les MÊMES contenus (par
+exemple un classement de thèmes côté web) : on aurait deux classements
+divergents. Ce raisonnement vivait dans l'en-tête de `triggerClassify`
+(`saas/web/app/actions.ts`), partie avec les quatre boutons de déclenchement
+(`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`) ; il
+vit ici désormais.
+
+**Les deux tournent dans la récolte, jamais sur un clic.** Le client n'a plus
+de bouton pour les lancer : ils passent au Jour de travail, avec le reste.
 
 Tout est **best-effort** : sans clé Gemini, sans données, ou sur JSON
 invalide, les deux fichiers logguent et continuent — la récolte n'échoue

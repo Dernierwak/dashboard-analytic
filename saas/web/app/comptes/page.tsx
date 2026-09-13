@@ -20,7 +20,7 @@ import {
 } from "@/lib/oauth-api";
 import { ChoixCompte } from "@/components/choix-compte";
 import { DeconnecterBouton } from "@/components/deconnecter-bouton";
-import { FetchButton } from "@/components/fetch-button";
+import { SuiviRecolte } from "@/components/suivi-recolte";
 import { JourRecolte } from "@/components/jour-recolte";
 import { SiteClient } from "@/components/site-client";
 import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actions";
@@ -387,11 +387,12 @@ export default async function ComptesPage({
       <SiteClient key={siteClient ?? "sans-site"} url={siteClient} />
 
       {/* ── Quand on va les lire ──────────────────────────────────────────── */}
-      {/* Placé ICI, entre « branche tes sources » et « lance une récolte » :
-          l'ordre de lecture de la page devient brancher → décider quand on lit
-          → lire tout de suite si on ne veut pas attendre. La `key` force le
-          remontage après `revalidatePath` : sans elle, l'état local du
-          composant survivrait à la réécriture et les deux divergeraient. */}
+      {/* Placé ICI, juste après « branche tes sources » : l'ordre de lecture de
+          la page devient brancher → savoir quand on est servi. Il n'y a plus de
+          troisième temps — la récolte part toute seule au branchement, elle ne
+          se demande plus. La `key` force le remontage après `revalidatePath` :
+          sans elle, l'état local du composant survivrait à la réécriture et les
+          deux divergeraient. */}
       <JourRecolte
         key={jourRecolte}
         jour={jourRecolte}
@@ -400,16 +401,24 @@ export default async function ComptesPage({
 
       {/* ── La suite ──────────────────────────────────────────────────────── */}
 
+      {/* LE BOUTON « ↻ Mes données » ÉTAIT ICI, ET IL N'Y A PLUS RIEN À
+          CLIQUER. Brancher une source lance sa récolte à la seconde
+          (`app/comptes/actions.ts`) ; ensuite, c'est le Jour de travail et lui
+          seul. Ce qui reste est l'AFFICHEUR : le panneau ne paraît que pendant
+          qu'une récolte tourne, et il vit précisément là où on vient de
+          brancher quelque chose — c'est l'écran sur lequel on attend. */}
       <div id="recolter" className="scroll-mt-16 rounded-xl border border-line bg-black/[0.015] p-4">
         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">
           {restants === 0 ? "Et maintenant" : "Une fois tout branché"}
         </div>
         <p className="text-[12.5px] text-muted leading-relaxed mb-3">
-          La récolte va chercher l&apos;historique de chaque source et écrit ton rapport.
-          Compte 5 à 8 minutes ; tu peux fermer la page, elle continue de son côté.
+          Chaque source branchée va chercher son historique tout de suite — compte 5 à
+          8 minutes, tu peux fermer la page, elle continue de son côté. Ensuite, tes
+          chiffres et tes conseils sont refaits le jour choisi ci-dessus, et ce jour-là
+          seulement.
         </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <FetchButton />
+        <div className="flex flex-col gap-3">
+          <SuiviRecolte place="flux" />
           <Link href="/" className="text-[12.5px] font-semibold text-brand hover:underline">
             Voir mon rapport →
           </Link>

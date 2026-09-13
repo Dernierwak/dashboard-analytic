@@ -741,8 +741,11 @@ def run(force: bool = False, only_user: str | None = None,
             continue
         logs = []
 
-        # Bouton « ↻ Recharger mes conseils » : republie juste le rapport à partir
-        # des données déjà en base (ni fetch réseau, ni relabel) — ~30 s.
+        # `report_only` : republie juste le rapport à partir des données déjà
+        # en base (ni fetch réseau, ni relabel) — ~30 s. Plus aucun bouton de
+        # l'app ne le déclenche ; c'est un mode de TEST, lancé depuis l'onglet
+        # GitHub Actions
+        # (.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md).
         if report_only:
             try:
                 from saas.traitement.build_report import publish_weekly_report
@@ -752,8 +755,9 @@ def run(force: bool = False, only_user: str | None = None,
             print(f"  {uid} → " + " | ".join(logs))
             continue
 
-        # Bouton « ✨ Classer mes contenus » : labellisation IA + republication du
-        # rapport, sans re-fetch réseau (~1 min au lieu de 2-3).
+        # `label_only` : labellisation IA + republication du rapport, sans
+        # re-fetch réseau (~1 min au lieu de 2-3). Mode de test lui aussi — la
+        # labellisation du client tourne dans la récolte complète, ci-dessous.
         if label_only:
             try:
                 from saas.recos_ia.labeling import auto_label
@@ -768,8 +772,8 @@ def run(force: bool = False, only_user: str | None = None,
             print(f"  {uid} → " + " | ".join(logs))
             continue
 
-        # Bouton « ✨ Classer mes conversions » (page /conversions) : classement
-        # IA des événements GA4 sans catégorie, sans re-fetch réseau. Ne republie
+        # `categorize_only` (mode de test) : classement IA des événements GA4
+        # sans catégorie, sans re-fetch réseau. Ne republie
         # PAS le rapport : une catégorie de conversion n'influence aucun conseil
         # ni aucun chiffre du rapport, contrairement à un thème (label_only,
         # ci-dessus, republie parce que le thème EST ce que le rapport lit).

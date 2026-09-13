@@ -87,11 +87,13 @@ déjà connectés à re-consentir).
 
 - `app/` — les pages (App Router) + `app/api/` (routes OAuth) + `actions.ts` /
   `actions-compte.ts` (server actions).
-- `components/` — 56 composants, un par module d'écran en général.
+- `components/` — 68 composants, un par module d'écran en général.
 - `lib/` — logique partagée : `channels.ts` (dashboards Meta/Google/Instagram),
   `report.ts` (payload `weekly_reports`), `budgets.ts`, `couts.ts`,
   `couverture.ts`, `changements-api.ts`, `oauth.ts`/`oauth-api.ts`, `account.ts`,
-  `connexions.ts`, `palette.ts`, `liens.ts`, `nav-cookie.ts`, `nav-largeur.ts`.
+  `connexions.ts`, `palette.ts`, `liens.ts`, `nav-cookie.ts`, `nav-largeur.ts`,
+  `jour-de-travail.ts`/`jour-compte.ts` (le jour servi et les dates qu'il
+  donne à lire), `github-workflow.ts` (le seul chemin vers GitHub Actions).
 - `legal/` — la **source unique** des trois documents publiés
   (`PRIVACY_POLICY.md`, `TERMS_OF_SERVICE.md`, `DATA_DELETION.md`) plus les deux
   dossiers de vérification et le script vidéo. Les pages `/privacy`, `/terms` et

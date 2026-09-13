@@ -6,9 +6,9 @@ Gemini batch (le catalogue tient en quelques dizaines de lignes, jamais besoin
 de tranches comme `labeling.py`). Les catégories réutilisent la liste
 maîtresse `conversion_categories` ; l'IA peut en proposer de nouvelles.
 
-MÊME PATRON QUE `labeling.py`, ET C'EST VOULU (voir l'en-tête de
-`triggerClassify`, saas/web/app/actions.ts, pour pourquoi ce second
-classifieur ne contredit pas « une seule classification IA ») : un événement
+MÊME PATRON QUE `labeling.py`, ET C'EST VOULU (voir saas/recos_ia/CLAUDE.md,
+« pourquoi DEUX classifieurs ne contredisent pas une seule classification
+IA » — ils portent sur des contenus différents) : un événement
 catégorisé à la main (`category_source='user'`) n'est JAMAIS réécrit — l'IA
 marque les siens `category_source='ai'`, corrigibles depuis /conversions (le
 menu déroulant repasse la ligne en 'user').

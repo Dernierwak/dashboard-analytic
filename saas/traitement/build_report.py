@@ -2234,10 +2234,10 @@ def build_payload(sb, user_id: str) -> dict | None:
     # deux vérités différentes si une publication passait entre les deux.
     #
     # LA SEMAINE EN COURS EST EXCLUE, et ce n'est pas un détail : ce worker
-    # publie au fetch cron, et « ↻ Recharger mes conseils » (Pulse) republie
-    # par-dessus. Sans ce filtre, un thème calme le matin se serait compté
-    # lui-même l'après-midi, et la carte aurait changé de texte à chaque
-    # rechargement sans qu'aucune donnée n'ait bougé.
+    # publie au cron du Jour de travail, et une republication à la main
+    # (GitHub Actions, `report_only`) repasse par-dessus. Sans ce filtre, un
+    # thème calme le matin se serait compté lui-même l'après-midi, et la carte
+    # aurait changé de texte sans qu'aucune donnée n'ait bougé.
     #
     # LA BORNE EST CELLE DU RAPPORT QU'ON FABRIQUE, pas le lundi d'aujourd'hui :
     # c'est sous `week_start_rapport` que cette publication va s'écrire, donc

@@ -1,67 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { triggerFetch, checkFetchStatus, checkFetchProgress } from "@/app/actions";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { checkFetchStatus, checkFetchProgress } from "@/app/actions";
 import type { CanalRecolte } from "@/app/actions";
 
 type Phase = "idle" | "running" | "ready" | "failed" | "error";
 
-// « ↻ Mes données » — déclenche la récolte et la suit.
+// LE SUIVI DE LA RÉCOLTE — il regarde, il ne lance rien.
 //
-// LA VÉRITÉ EST SUR GITHUB, PAS DANS CE COMPOSANT. C'est le changement de
-// fond. Avant, tout l'état vivait ici : lancer depuis la page Connexions puis
-// aller voir son rapport démontait le composant, tuait le sondage, et la
-// récolte devenait invisible alors qu'elle tournait toujours. Deux exemplaires
-// cohabitent d'ailleurs — un dans la barre latérale, un sur /comptes — et
-// chacun ignorait l'autre.
+// ── CE COMPOSANT S'APPELAIT `FetchButton`, ET LE BOUTON EST PARTI ────────────
 //
-// Désormais chaque exemplaire demande au montage l'état du dernier run et
-// reconstruit tout à partir de sa date de départ. Changer de page, recharger,
-// ouvrir un second onglet : la barre reprend là où elle en est.
+// « ↻ Mes données » était l'un des quatre déclencheurs que le client avait en
+// main ; les quatre sont sortis de l'app
+// (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`, qui
+// exécute le point 7 de `refonte/08`). Ce qui se RÉCOLTE attend le Jour de
+// travail, et rien d'autre ne déclenche une récolte : le cron de 07:00 UTC, ou
+// le branchement d'une source neuve (`app/comptes/actions.ts`).
 //
-// ET IL N'Y A PLUS DE COUPERET. L'ancienne version abandonnait à 15 minutes
-// avec « vérifie l'onglet Actions » — sur un premier chargement de 200 posts
-// Instagram, la récolte prend 16 minutes et RÉUSSIT. On annonçait donc un échec
-// une minute avant la victoire. Une récolte longue est signalée comme longue,
-// jamais comme cassée.
+// MAIS 08 TUE LE DÉCLENCHEUR, PAS L'AFFICHEUR, et c'est le piège que ce module
+// existe pour éviter. Une première récolte Instagram prend SEIZE MINUTES et
+// RÉUSSIT. Sans ce panneau, le client qui vient de brancher sa Page reste
+// devant un écran vide pendant un quart d'heure, sans savoir si quelque chose
+// tourne. Tout ce qui suit — la vérité serveur, la reprise au montage, les
+// canaux un par un — est conservé intact.
 //
-// ── LE PANNEAU S'OUVRAIT HORS DE L'ÉCRAN (mesuré, pas supposé) ──────────────
+// ── LA VÉRITÉ EST SUR GITHUB ET DANS `fetch_progress`, PAS ICI ──────────────
 //
-// Il était figé à `w-64` (256 px) et ancré `right-0 top-full`, ce qui va très
-// bien sur la page Connexions et dans l'en-tête du téléphone. Dans la colonne
-// de gauche, non : la colonne offre 215 px de large, donc 41 px de trop, et
-// comme elle commence à x = 0 le panneau démarrait à x = −29. Ces 29 px ne sont
-// pas « à faire défiler » : `scrollWidth` valait `clientWidth`, le navigateur
-// ne donne aucun moyen d'aller les chercher. « Classement des contenus par
-// l'IA » s'affichait « ssement des contenus par l'IA ».
-// Deuxième coupe, verticale, que personne n'avait vue : le bloc du bas est
-// collé au bas d'une colonne `h-screen`, et un panneau qui s'ouvre VERS LE BAS
-// finissait 34 px sous la fenêtre (834 px de bas dans 800 px de haut). La
-// colonne étant `sticky`, faire défiler la page ne les ramenait pas non plus.
+// Chaque exemplaire demande au montage l'état du dernier run et reconstruit
+// tout à partir de sa date de départ. Changer de page, recharger, ouvrir un
+// second onglet : le panneau reprend là où il en est. Il n'y a plus de
+// couperet non plus — une récolte longue est signalée comme longue, jamais
+// comme cassée.
 //
-// D'où deux ancrages, et pas une largeur unique :
-//  · `colonne` — dans la barre latérale et son tiroir : le panneau prend la
-//    LARGEUR DE LA COLONNE (`w-full`), donc il ne peut plus déborder quelle que
-//    soit la largeur de la barre, et il s'ouvre VERS LE HAUT, seul côté où il y
-//    a de la place ;
-//  · `droite` — en-tête du téléphone et page Connexions : `w-64`, vers le bas,
-//    comme avant, parce que là il y a de la place des deux côtés.
+// ── LE PANNEAU NE FLOTTE PLUS, ET C'EST LE BOUTON QUI L'IMPOSAIT ────────────
 //
-// ── ET LE BOUTON NE CHANGE PLUS DE TAILLE ───────────────────────────────────
+// Il était ancré `absolute right-0 top-full` : il pendait SOUS le bouton, qui
+// donnait sa taille et sa position à la boîte `relative`. Sans bouton, cette
+// boîte mesure zéro et le panneau se serait accroché à un point sans hauteur.
+// Le flottement n'était donc pas un choix de forme, c'était une conséquence du
+// déclencheur — il part avec lui.
 //
-// Mesuré au pixel, dans sa police : « ↻ Mes données » 108,3 px · « … » 33,2 px ·
-// « ◌ récolte 4 % » 95,2 px · « ◌ récolte 92 % » 101,4 px · « ✓ Données prêtes
-// — recharger » 189,2 px. Aucun n'était tronqué — mais cliquer faisait fondre
-// le bouton de 108 à 33 px, puis regonfler à 95, puis à 101 quand le pourcentage
-// passait à deux chiffres. Dans la colonne il tient maintenant toute la largeur
-// (comme « Se déconnecter » juste dessous), ailleurs il a un plancher de
-// 112 px : le libellé change, la boîte ne bouge pas.
-// Le pourcentage a quitté le bouton, puis il a quitté le produit — il ne
-// mesurait rien (voir la note suivante). Le bouton se contente de « ◌ récolte »
-// (73,3 px) : plus court, et surtout sans chiffre qui change de longueur en
-// cours de route.
+// Restent deux places, et elles n'ont pas la même largeur :
+//  · `flux` — la barre latérale, son tiroir, et la page Connexions : le panneau
+//    prend la LARGEUR DE SON CONTENEUR (`w-full`) et se range dans le flux. En
+//    flux, il ne peut par construction ni dépasser à gauche ni passer sous la
+//    fenêtre : les deux coupes mesurées de l'ancienne version — 29 px hors de
+//    l'écran à gauche, 34 px sous la fenêtre, qu'aucun défilement ne
+//    rattrapait — ne peuvent plus se produire ;
+//  · `compact` — l'en-tête du téléphone, 52 px de haut : il n'y a la place que
+//    pour DIRE qu'une récolte tourne. Le détail, lui, est à un tap, dans le
+//    tiroir, qui rend exactement le même module en `flux`. Y poser le panneau
+//    entier recouvrirait le contenu pendant les seize minutes d'une première
+//    récolte Instagram.
 
-// ── CE QUI A ÉTÉ RETIRÉ, ET POURQUOI ────────────────────────────────────────
+// ── CE QUI A ÉTÉ RETIRÉ AVANT LE BOUTON, ET POURQUOI ────────────────────────
 //
 // Ici vivaient une liste `ETAPES` — sept étiquettes horodatées à la main
 // (« Google Ads » à 420 s) — et une fonction `avancement(sec)` qui rendait
@@ -156,11 +148,11 @@ const ETAT: Record<string, { signe: string; couleur: string }> = {
   interrompu: { signe: "!", couleur: "text-neg" },
 };
 
-/** Où le panneau a de la place. Voir la note « LE PANNEAU S'OUVRAIT HORS DE
- *  L'ÉCRAN » en tête de fichier — ce n'est pas un goût, c'est une mesure. */
-export type Ancrage = "droite" | "colonne";
+/** Où le module a de la place. Voir la note « LE PANNEAU NE FLOTTE PLUS » en
+ *  tête de fichier — ce n'est pas un goût, c'est une mesure. */
+export type Place = "flux" | "compact";
 
-export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) {
+export function SuiviRecolte({ place = "flux" }: { place?: Place } = {}) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [debut, setDebut] = useState<number | null>(null);
@@ -173,19 +165,17 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
   const [canauxLus, setCanaux] = useState<CanalRecolte[]>([]);
   const [runIdSuivi, setRunIdSuivi] = useState<string | null>(null);
   const [suiviIndispo, setSuiviIndispo] = useState(false);
-  const [pending, startTransition] = useTransition();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Le moment où CE navigateur a demandé la récolte. Il sert à ne pas prendre
-  // le run précédent pour le nôtre pendant les secondes où GitHub n'a pas
-  // encore enregistré le nouveau.
-  const demandeA = useRef<number | null>(null);
+  const veilleRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopAll = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (tickRef.current) clearInterval(tickRef.current);
+    if (veilleRef.current) clearInterval(veilleRef.current);
     pollRef.current = null;
     tickRef.current = null;
+    veilleRef.current = null;
   }, []);
 
   useEffect(() => () => stopAll(), [stopAll]);
@@ -202,67 +192,57 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
     };
   }, [phase, debut]);
 
-  const lire = useCallback(
-    async (premier: boolean) => {
-      // Les deux sources partent ENSEMBLE : GitHub dit si ça tourne, la table
-      // dit où ça en est. Une seule ne suffit à rien — c'est le croisement des
-      // deux qui permet de dire « interrompu » sans inventer de délai.
-      const [res, prog] = await Promise.all([
-        checkFetchStatus(),
-        checkFetchProgress(),
-      ]);
-      setCanaux(prog.canaux);
-      setRunIdSuivi(prog.runId);
-      setSuiviIndispo(prog.indisponible);
-      // 401/403/404 : le sondage ne pourra plus JAMAIS répondre — inutile de
-      // faire tourner un rond pendant un quart d'heure devant un jeton mort.
-      // On s'arrête et on dit lequel des trois c'est. Les autres ratés
-      // (réseau, 5xx) n'arrivent pas jusqu'ici sans message : on retente.
-      if (res.message) {
-        stopAll();
-        setPhase("error");
-        setMessage(res.message);
-        return;
-      }
-      if (res.debut) setLien(res.url ?? null);
-      const neuf = res.debut ? Date.parse(res.debut) : null;
-      // Un run terminé mais ANTÉRIEUR à notre demande est l'ancien : GitHub ne
-      // publie le nouveau qu'après quelques secondes. On patiente.
-      const aNous =
-        demandeA.current === null || (neuf !== null && neuf >= demandeA.current - 60_000);
-
-      if (res.state === "pending") {
-        setDebut(neuf);
-        setPhase("running");
-        return;
-      }
-      if (!aNous) {
-        setPhase("running");
-        return;
-      }
-      if (res.state === "success") {
-        stopAll();
-        // Au tout premier coup d'œil sans demande de notre part, un run réussi
-        // est simplement le dernier en date : rien à annoncer.
-        setPhase(premier && demandeA.current === null ? "idle" : "ready");
-      } else if (res.state === "failure") {
-        stopAll();
-        setPhase("failed");
-        setMessage("La récolte a échoué — regarde le détail du run sur GitHub.");
-      }
-    },
-    [stopAll]
-  );
+  // Un tour de sondage. Les deux sources partent ENSEMBLE : GitHub dit si ça
+  // tourne, la table dit où ça en est. Une seule ne suffit à rien — c'est le
+  // croisement des deux qui permet de dire « interrompu » sans inventer de
+  // délai.
+  //
+  // LA QUESTION « EST-CE NOTRE RUN ? » A DISPARU AVEC LE BOUTON. Elle existait
+  // parce que GitHub met quelques secondes à publier un run qu'on vient de
+  // demander, et qu'un run terminé plus VIEUX que le clic était l'ancien. Plus
+  // personne ne clique : le dernier run est le seul dont on ait à parler.
+  const lire = useCallback(async () => {
+    const [res, prog] = await Promise.all([checkFetchStatus(), checkFetchProgress()]);
+    setCanaux(prog.canaux);
+    setRunIdSuivi(prog.runId);
+    setSuiviIndispo(prog.indisponible);
+    // 401/403/404 : le sondage ne pourra plus JAMAIS répondre — inutile de
+    // faire tourner un rond pendant un quart d'heure devant un jeton mort.
+    // On s'arrête et on dit lequel des trois c'est. Les autres ratés
+    // (réseau, 5xx) n'arrivent pas jusqu'ici sans message : on retente.
+    if (res.message) {
+      stopAll();
+      setPhase("error");
+      setMessage(res.message);
+      return;
+    }
+    if (res.debut) {
+      setLien(res.url ?? null);
+      setDebut(Date.parse(res.debut));
+    }
+    if (res.state === "pending") {
+      setPhase("running");
+      return;
+    }
+    if (res.state === "success") {
+      stopAll();
+      setPhase("ready");
+    } else if (res.state === "failure") {
+      stopAll();
+      setPhase("failed");
+      setMessage("La récolte a échoué — regarde le détail du run sur GitHub.");
+    }
+  }, [stopAll]);
 
   // Au montage : si une récolte tourne déjà, on la reprend en cours de route.
-  // C'est ce qui rend la barre indépendante de la page où on se trouve.
+  // C'est ce qui rend le panneau indépendant de la page où on se trouve — et,
+  // depuis que le client ne lance plus rien, c'est le SEUL moyen de voir une
+  // récolte qu'on n'a pas demandée : celle du Jour de travail, ou celle qui
+  // part quand on branche une source.
   useEffect(() => {
     let vivant = true;
     (async () => {
-      const [res, prog] = await Promise.all([
-        checkFetchStatus(),
-        checkFetchProgress(),
-      ]);
+      const [res, prog] = await Promise.all([checkFetchStatus(), checkFetchProgress()]);
       if (!vivant) return;
       // Le détail est repris même si le run est fini : c'est lui qui dit
       // QUELLE plateforme a échoué quand le run, lui, s'annonce réussi.
@@ -282,50 +262,51 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
   // Le sondage vit tant qu'une récolte tourne, quelle qu'en soit l'origine.
   useEffect(() => {
     if (phase !== "running" || pollRef.current) return;
-    pollRef.current = setInterval(() => void lire(false), 12_000);
+    pollRef.current = setInterval(() => void lire(), 12_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
   }, [phase, lire]);
 
-  const launch = () =>
-    startTransition(async () => {
-      demandeA.current = Date.now();
-      const res = await triggerFetch();
-      if (!res.ok) {
-        setPhase("error");
-        setMessage(res.message);
-        return;
-      }
-      setDebut(Date.now());
-      setMessage(null);
-      setPhase("running");
-    });
+  // ── LA VEILLE, ET POURQUOI ELLE N'EXISTAIT PAS AVANT ────────────────────────
+  //
+  // Tant que la récolte partait d'un clic, le clic lui-même faisait passer
+  // l'écran en « ◌ récolte » : il n'y avait rien à guetter. Maintenant les deux
+  // départs sont ailleurs — le cron du Jour de travail, et le branchement d'une
+  // source, qui lance sa récolte depuis le serveur. Sans veille, quelqu'un qui
+  // vient de brancher sa Page Facebook resterait devant un écran muet jusqu'à
+  // ce qu'il pense à recharger : GitHub met quelques secondes à publier un run,
+  // donc la lecture du montage tombe encore sur l'ANCIEN, terminé.
+  //
+  // Une minute, et `checkFetchStatus` SEUL. C'est un appel GitHub par minute et
+  // par onglet ouvert — le détail par canal (`fetch_progress`, côté Supabase)
+  // n'est lu qu'une fois la récolte repérée, par le sondage rapide ci-dessus.
+  // Un départ se voit donc dans la minute, ce qui est le bon ordre de grandeur
+  // pour un travail qui dure entre deux et seize minutes.
+  useEffect(() => {
+    if (phase !== "idle" || veilleRef.current) return;
+    const guetter = async () => {
+      // Un onglet en arrière-plan n'a personne devant lui : il reprendra la
+      // veille quand on y reviendra. La barre latérale est rendue DEUX FOIS
+      // (la colonne et le tiroir du téléphone) et la page Connexions en pose
+      // une troisième — sans cette garde, un onglet oublié interrogerait
+      // GitHub trois fois par minute pour personne.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const res = await checkFetchStatus();
+      if (res.state !== "pending") return;
+      setDebut(res.debut ? Date.parse(res.debut) : Date.now());
+      setLien(res.url ?? null);
+      setPhase("running"); // le sondage rapide prend le relais
+    };
+    veilleRef.current = setInterval(() => void guetter(), 60_000);
+    return () => {
+      if (veilleRef.current) clearInterval(veilleRef.current);
+      veilleRef.current = null;
+    };
+  }, [phase]);
 
-  const colonne = ancrage === "colonne";
-  // Une seule boîte pour toutes les phases : `w-full` dans la colonne (comme
-  // « Se déconnecter » juste dessous), un plancher de 112 px ailleurs — le plus
-  // large des libellés au repos fait 108,3 px.
-  const boite = `text-[11px] font-semibold rounded-full px-3 py-1 inline-flex items-center justify-center ${
-    colonne ? "w-full" : "min-w-[112px]"
-  }`;
-  // Le panneau. Dans la colonne il n'est PAS flottant : il prend la largeur
-  // disponible et se range DANS le flux, juste au-dessus du bouton. Trois
-  // raisons, et la troisième est la bonne :
-  //  · en flux, il ne peut par construction ni dépasser à gauche ni passer sous
-  //    la fenêtre — les deux coupes mesurées disparaissent d'elles-mêmes ;
-  //  · flottant vers le haut, il RECOUVRAIT le sélecteur de compte pendant
-  //    toute la récolte, c'est-à-dire deux à seize minutes sur toutes les pages ;
-  //  · il est placé AVANT le bouton dans le DOM, et le bloc est collé en bas par
-  //    `mt-auto` : sa hauteur est donc absorbée par le vide au-dessus. Le
-  //    bouton, l'e-mail et « Se déconnecter » ne bougent pas d'un pixel ; seul
-  //    le sélecteur remonte, dans de l'espace qui ne servait à rien.
-  // Ailleurs (en-tête du téléphone, page Connexions) il reste flottant à 256 px
-  // vers le bas, parce que là il y a la place et que rien ne doit être poussé.
-  const panneau = colonne
-    ? "w-full"
-    : "absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] z-20";
+  const compact = place === "compact";
 
   const longue = elapsed > LONGUE;
   // LE RUN EST-IL FINI ? C'est GitHub qui le dit, et personne d'autre. C'est la
@@ -339,8 +320,8 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
 
   // ── LES LIGNES DU PASSAGE PRÉCÉDENT NE COMPTENT PAS ────────────────────────
   // GitHub met une minute à réserver une machine et à installer Python : entre
-  // le clic et la première ligne du worker, la table porte encore le passage
-  // d'avant. L'afficher ferait passer « 5 / 5 terminées » d'hier pour
+  // le départ du run et la première ligne du worker, la table porte encore le
+  // passage d'avant. L'afficher ferait passer « 5 / 5 terminées » d'hier pour
   // l'avancement d'aujourd'hui — exactement le genre de chiffre qu'on vient de
   // retirer. `run_id` est l'horodatage de départ du worker, `debut` celui du run
   // GitHub : le worker démarre forcément APRÈS son run, donc des lignes plus
@@ -361,14 +342,16 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
   const interrompus = prevus.filter((c) => etatLu(c) === "interrompu");
 
   // Le panneau vit tant que la récolte tourne — et il SURVIT à la fin du run
-  // quand il a quelque chose que le bouton ne dit pas : quelle plateforme a
-  // échoué. Un run GitHub peut se conclure « réussi » avec Google Ads par
-  // terre, puisque chaque canal est attrapé dans son fil.
+  // quand il a quelque chose que le reste de l'écran ne dit pas : quelle
+  // plateforme a échoué. Un run GitHub peut se conclure « réussi » avec Google
+  // Ads par terre, puisque chaque canal est attrapé dans son fil.
   const aDire = echecs.length > 0 || interrompus.length > 0;
   const montrer = phase === "running" || (runFini && aDire);
 
-  const suivi = montrer && (
-    <div className={`${panneau} rounded-lg border border-line bg-white shadow-card px-3 py-2.5`}>
+  // EN COMPACT, LE PANNEAU N'EXISTE PAS. L'en-tête du téléphone fait 52 px :
+  // il porte la pastille d'état, rien de plus, et le détail est dans le tiroir.
+  const suivi = montrer && !compact && (
+    <div className="w-full rounded-lg border border-line bg-white shadow-card px-3 py-2.5">
       {/* rang 1 · l'identité — surtitre, c'est un module qu'on SCANNE.
           rang 2 · le compteur de contexte, à sa droite. Le chronomètre part de
           la date du run GitHub : c'est une durée mesurée, pas un avancement. */}
@@ -398,7 +381,7 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
         <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
           {suiviIndispo
             ? "Le détail par plateforme n'est pas lisible (la table fetch_progress ne répond pas). La récolte, elle, tourne."
-            : "Récolte lancée. Le worker n'a pas encore donné signe de vie — GitHub réserve une machine et installe Python avant la première ligne."}
+            : "Récolte en cours. Le worker n'a pas encore donné signe de vie — GitHub réserve une machine et installe Python avant la première ligne."}
         </p>
       )}
 
@@ -496,8 +479,8 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
         {interrompus.length > 0 ? (
           <>
             Interrompue = la récolte s&apos;est arrêtée avant la fin de ces
-            plateformes. Ce qui était déjà écrit est gardé ; relance pour le
-            reste.
+            plateformes. Ce qui était déjà écrit est gardé ; le reste sera
+            repris au prochain passage.
           </>
         ) : longue ? (
           <>
@@ -525,24 +508,53 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
     </div>
   );
 
+  // LA PASTILLE D'ÉTAT — le module en un mot, pour l'en-tête du téléphone.
+  // Elle ne se clique pas : il n'y a rien à déclencher, et le détail est dans
+  // le tiroir, à un tap du même écran. Elle DIT qu'une récolte tourne, ce qui
+  // est très exactement ce qui manquerait sans elle.
+  const pastille = (texte: string, ton: string) => (
+    <span
+      className={`text-[11px] font-semibold rounded-full px-3 py-1 inline-flex items-center justify-center border ${ton}`}
+    >
+      {texte}
+    </span>
+  );
+
+  // LA SEULE CHOSE QUE CE MODULE FAIT FAIRE À QUELQU'UN : recharger la page
+  // qu'il a sous les yeux. Ce n'est pas un déclencheur — rien ne part vers
+  // GitHub, rien ne se récolte, rien ne se rédige. C'est la fin de la phrase
+  // commencée par « ◌ récolte » : les chiffres sont en base, la page affichée
+  // date d'avant.
   if (phase === "ready") {
     return (
-      <div className={colonne ? "flex flex-col gap-2" : "relative inline-block"}>
-        {colonne && suivi}
+      <div className={compact ? "inline-block" : "flex flex-col gap-2"}>
+        {suivi}
         <button
           onClick={() => window.location.reload()}
-          className={`${boite} text-white bg-pos border border-transparent hover:opacity-90 transition-opacity animate-pulse`}
+          className={`text-[11px] font-semibold rounded-full px-3 py-1 inline-flex items-center justify-center text-white bg-pos border border-transparent hover:opacity-90 transition-opacity animate-pulse ${
+            compact ? "" : "w-full"
+          }`}
         >
-          ✓ Données prêtes — recharger
+          {compact ? "✓ recharger" : "✓ Données prêtes — recharger"}
         </button>
-        {!colonne && suivi}
       </div>
     );
   }
 
+  if (compact) {
+    if (phase === "running")
+      return pastille("◌ récolte", "text-warn border-warn/30 bg-warn/[0.06]");
+    // Un run échoué ou un sondage aveugle : la pastille le dit, la raison est
+    // dans le tiroir. Écrire un message GitHub de trois lignes dans un en-tête
+    // de 52 px n'aurait aucun lecteur.
+    if (phase === "failed" || phase === "error")
+      return pastille("✗ récolte", "text-neg border-neg/30 bg-neg/[0.06]");
+    return null;
+  }
+
   const alerte = message && (
     <div
-      className={`${panneau} text-[11.5px] leading-relaxed rounded-lg border px-3 py-2 shadow-card bg-white ${
+      className={`w-full text-[11.5px] leading-relaxed rounded-lg border px-3 py-2 shadow-card bg-white ${
         phase === "failed" || phase === "error" ? "text-neg border-neg/25" : "text-ink border-line"
       }`}
     >
@@ -566,25 +578,16 @@ export function FetchButton({ ancrage = "droite" }: { ancrage?: Ancrage } = {}) 
     </div>
   );
 
+  // RIEN À DIRE, RIEN À L'ÉCRAN. C'est l'état le plus fréquent, et c'est la
+  // différence de fond avec le bouton qu'il remplace : un bouton occupe sa
+  // place en permanence, un afficheur n'apparaît que lorsqu'il a quelque chose
+  // à afficher.
+  if (!suivi && !alerte) return null;
+
   return (
-    <div className={colonne ? "flex flex-col gap-2" : "relative inline-block"}>
-      {/* En colonne, les panneaux passent AVANT le bouton — voir la note sur
-          `panneau` : c'est ce qui empêche le bouton de sauter. */}
-      {colonne && suivi}
-      {colonne && alerte}
-      <button
-        disabled={pending || phase === "running"}
-        onClick={launch}
-        className={`${boite} border transition-colors disabled:opacity-70 ${
-          phase === "running"
-            ? "text-warn border-warn/30 bg-warn/[0.06]"
-            : "text-brand border-brand/30 hover:bg-brand/[0.06]"
-        }`}
-      >
-        {pending ? "◌ lancement" : phase === "running" ? "◌ récolte" : "↻ Mes données"}
-      </button>
-      {!colonne && suivi}
-      {!colonne && alerte}
+    <div className="flex flex-col gap-2">
+      {suivi}
+      {alerte}
     </div>
   );
 }

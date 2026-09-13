@@ -14,3 +14,23 @@ et on ajoute une revue **après coup**, spécifique aux thèmes que l'IA vient d
 créer (pas aux assignations) — garder ou supprimer chacun, en comparant la
 liste de thèmes avant/après le job plutôt qu'en persistant une métadonnée de
 provenance en base.
+
+## Statut au 2026-09-13 — la décision tient, son mécanisme n'existe plus
+
+Le ticket
+[`construction/15`](../../.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md)
+a retiré les quatre boutons de déclenchement de l'app, dont « ✨ Étiqueter tout
+via l'IA ». **La décision de cette ADR reste juste — on revoit APRÈS coup,
+jamais avant — et elle se renforce** : le classement tourne désormais à chaque
+Jour de travail, sans que personne ne le demande.
+
+**Mais tout ce que ce texte décrit comme mécanisme est parti** :
+`triggerClassify`, `classify-button.tsx`, l'annulation en bloc et la comparaison
+avant/après des thèmes. Tous bornaient leur périmètre par un `depuis` gardé dans
+le `sessionStorage` de l'onglet qui avait cliqué — sans clic, il n'y a plus rien
+à borner. Ne pas lire les paragraphes ci-dessus comme une description du code
+actuel.
+
+Le remplacement est à décider dans
+[`construction/39`](../../.scratch/construction/issues/39-l-annulation-des-etiquettes-ia-a-perdu-son-declencheur.md),
+qui dira si cette ADR se met à jour ou si une ADR neuve la remplace.

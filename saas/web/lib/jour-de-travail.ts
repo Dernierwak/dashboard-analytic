@@ -114,3 +114,21 @@ export function horodatage(x: string | null | undefined): Date | null {
   const d = new Date(x);
   return isNaN(d.getTime()) ? null : d;
 }
+
+// ── LA PHRASE D'UN RÉGLAGE QUI ATTEND LE JOUR DE TRAVAIL ─────────────────────
+//
+// Trois réglages s'enregistrent à la seconde et ne changent le rapport qu'au
+// prochain passage du worker : les priorités de thèmes, l'objectif du compte,
+// les catégories de conversions. Ils ne sont pas du REGROUPEMENT (qui se relit
+// tout de suite, partout) mais de la RÉDACTION — et ce qui se rédige attend le
+// jour dit (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md` §2).
+//
+// UNE SEULE FORMULATION, ÉCRITE UNE FOIS. Trois écrans différents qui disent la
+// même règle avec trois phrases différentes, c'est trois règles pour le
+// lecteur. Le `quand` vient du serveur (`lib/jour-compte.ts`) : ce module ne
+// lit aucune horloge ici, il met en mots une date déjà calculée.
+
+/** « Enregistré — tes conseils en tiennent compte le jeudi 17 septembre. » */
+export function prisEnCompteLe(quand: string): string {
+  return `Enregistré — tes conseils en tiennent compte le ${quand}.`;
+}

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
 import type { CampagneNote } from "@/lib/carnet";
+import { etatDernierRun, type EtatRun } from "@/lib/github-workflow";
 
 // « too_hard » : ni un rejet ni un accord — « je vois l'intérêt mais je ne sais
 // pas le faire ». C'est le retour le plus utile qu'on puisse recevoir : il dit
@@ -1606,7 +1607,23 @@ export async function setCampaignLabel(
     revalidatePath("/google");
   }
   revalidatePath("/labels");
-  revalidatePath("/"); // le rapport regroupe les campagnes par thème
+  // `/couts` MANQUAIT, et c'est la page des coûts PAR THÈME : classer une
+  // campagne y change la répartition à la lecture, sans rien recalculer
+  // (`lib/couts.ts` joint `meta_campaign_config` / `google_campaign_config` à
+  // chaque affichage). Seul `saveBudget` la rafraîchissait
+  // (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md`, trois défauts
+  // mesurés).
+  revalidatePath("/couts");
+  // `/` SE RAFRAÎCHIT, MAIS PAS LE RAPPORT LUI-MÊME, et le commentaire
+  // d'origine prétendait le contraire — « le rapport regroupe les campagnes par
+  // thème ». Les blocs par thème du rapport (`themes_focus`, `themes.rows`,
+  // `themes_tips`, `top_recos`) sortent du JSON FIGÉ écrit par le worker :
+  // relire la page relit le même JSON, et ce n'est pas ici que ça se répare
+  // (ticket 04 de la construction, la vue SQL du regroupement). Ce que cet
+  // appel rafraîchit vraiment, et qui suffit à le justifier : la couverture
+  // (« N éléments sans thème »), l'alerte de couverture et l'étape 2 de la mise
+  // en place, toutes trois lues en direct par `app/page.tsx`.
+  revalidatePath("/");
   return { ok: true };
 }
 
@@ -1634,6 +1651,11 @@ export async function setPostLabel(postId: string, label: string | null) {
   }
   revalidatePath("/instagram");
   revalidatePath("/labels");
+  // `/` MANQUAIT ICI ALORS QU'IL ÉTAIT PRÉSENT SUR LES CAMPAGNES : un post
+  // compte dans la couverture exactement comme une campagne, et c'est elle que
+  // l'accueil relit en direct. Même limite que là-bas, pour la même raison :
+  // les blocs par thème du rapport restent ceux du payload figé.
+  revalidatePath("/");
   return { ok: true };
 }
 
@@ -1778,357 +1800,33 @@ async function supabaseUpdateSite(uid: string, site_url: string | null): Promise
     : null;
 }
 
-// ── Annuler en bloc ce que l'IA vient d'étiqueter ───────────────────────────
+// ── LE SUIVI DE LA RÉCOLTE ──────────────────────────────────────────────────
 //
-// Le bouton « Étiqueter tout via l'IA » applique DIRECTEMENT, sans validation
-// préalable — c'est la décision de David, et elle tient à une condition : le
-// retour en arrière existe. Une action de masse sans retour en arrière est un
-// piège, quelle que soit la qualité du classement.
+// CE FICHIER NE DÉCLENCHE PLUS RIEN. `triggerFetch`, `triggerClassify`,
+// `triggerCategorize` et `triggerReport` ont disparu avec les quatre boutons
+// qui les appelaient : ce qui se RÉCOLTE ou se RÉDIGE attend le Jour de travail
+// (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`).
+// Le dispatch survit dans `lib/github-workflow.ts` pour ses deux appelants qui
+// ne sont pas des boutons : la récolte d'amorçage d'une source qu'on vient de
+// brancher, et GitHub Actions lui-même.
 //
-// LE PÉRIMÈTRE EST UNE DATE, PAS UNE SOURCE. « Tout ce qui porte 'ai' » aurait
-// emporté les étiquettes posées par l'IA il y a trois semaines et gardées
-// depuis. C'est `label_at` (migration labels_origine.sql) qui découpe le
-// passage courant — et les lignes antérieures à la migration ont `label_at`
-// NULL, donc aucun `>=` ne les attrape jamais.
+// CE QUI RESTE ICI EST L'AFFICHEUR, ET IL RESTE ENTIER. 08 tue le déclencheur,
+// pas l'afficheur : une première récolte Instagram de seize minutes RÉUSSIT,
+// et sans ces deux lectures le client resterait devant un écran muet pendant un
+// quart d'heure — le cron du Jour de travail ne le prévient de rien.
 //
-// `depuis` vient du SERVEUR (`triggerClassify`), jamais du navigateur : deux
-// horloges d'accord à la minute près, ce n'est pas quelque chose qu'on peut
-// supposer d'un poste client.
-async function _compterIA(
-  supabase: ReturnType<typeof createClient>,
-  uid: string,
-  depuis: string
-): Promise<{ ok: boolean; n: number }> {
-  const [m, g, p] = await Promise.all([
-    supabase.from("meta_campaign_config").select("campaign_name", { count: "exact", head: true })
-      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
-    supabase.from("google_campaign_config").select("campaign_id", { count: "exact", head: true })
-      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
-    supabase.from("instagram_organic_posts").select("id", { count: "exact", head: true })
-      .eq("user_id", uid).eq("label_source", "ai").gte("label_at", depuis),
-  ]);
-  // Une seule erreur suffit à rendre le compte faux : on préfère dire qu'on ne
-  // sait pas plutôt qu'annoncer « 12 » quand il y en a 40.
-  if (m.error || g.error || p.error) return { ok: false, n: 0 };
-  return { ok: true, n: (m.count ?? 0) + (g.count ?? 0) + (p.count ?? 0) };
-}
+// EST AUSSI PARTIE L'ANNULATION EN BLOC de ce que l'IA venait d'étiqueter
+// (`compterEtiquettesIA` / `annulerEtiquettesIA` et leurs jumelles pour les
+// catégories). Elle ne bornait son périmètre que par un `depuis` rendu par
+// `triggerClassify` et gardé dans le `sessionStorage` de l'onglet qui avait
+// cliqué : sans clic, plus de `depuis`, donc plus rien à compter ni à annuler.
+// Le besoin, lui, grandit — le classement tourne désormais sans que personne
+// ne le demande. C'est un ticket, pas un oubli :
+// `.scratch/construction/issues/39-l-annulation-des-etiquettes-ia-a-perdu-son-declencheur.md`.
 
-export async function compterEtiquettesIA(
-  depuis: string
-): Promise<{ ok: boolean; n: number; message?: string }> {
-  if (!depuis) return { ok: true, n: 0 };
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const r = await _compterIA(supabase, compte.uid, depuis);
-  if (!r.ok)
-    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (labels_origine.sql)." };
-  return { ok: true, n: r.n };
-}
-
-export async function annulerEtiquettesIA(
-  depuis: string
-): Promise<{ ok: boolean; n: number; message?: string }> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, n: 0, message: "Tu es en lecture seule sur ce compte." };
-  if (!depuis) return { ok: true, n: 0 };
-
-  const avant = await _compterIA(supabase, compte.uid, depuis);
-  if (!avant.ok)
-    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (labels_origine.sql)." };
-  if (avant.n === 0) return { ok: true, n: 0 };
-
-  // On remet la ligne au VIDE, pas à un état intermédiaire : label absent,
-  // source absente. Le trigger `stamp_label_at` efface la date avec la source,
-  // donc une seconde annulation ne repassera pas sur ces lignes.
-  // `eq('label_source','ai')` est répété sur chaque écriture : c'est le
-  // garde-fou write-time qui garantit qu'aucun choix humain n'est touché,
-  // même si la ligne a changé entre le comptage et l'écriture.
-  const res = await Promise.all([
-    supabase.from("meta_campaign_config")
-      .update({ label: null, label_source: null })
-      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
-    supabase.from("google_campaign_config")
-      .update({ label: null, label_source: null })
-      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
-    supabase.from("instagram_organic_posts")
-      .update({ labels: [], label_source: null })
-      .eq("user_id", compte.uid).eq("label_source", "ai").gte("label_at", depuis),
-  ]);
-  if (res.some((r) => r.error))
-    return { ok: false, n: 0, message: "Annulation incomplète — recharge la page et réessaie." };
-
-  revalidatePath("/labels");
-  revalidatePath("/meta");
-  revalidatePath("/google");
-  revalidatePath("/instagram");
-  revalidatePath("/");
-  return { ok: true, n: avant.n };
-}
-
-// Même patron que `_compterIA`, sur `ga4_event_categories` : pas de colonne
-// `label_at` dédiée ici, `updated_at` (posée par le trigger `set_updated_at`)
-// joue le même rôle — la borne du passage qu'on peut annuler.
-async function _compterCategoriesIA(
-  supabase: ReturnType<typeof createClient>,
-  uid: string,
-  depuis: string
-): Promise<{ ok: boolean; n: number }> {
-  const r = await supabase.from("ga4_event_categories")
-    .select("event_name", { count: "exact", head: true })
-    .eq("user_id", uid).eq("category_source", "ai").gte("updated_at", depuis);
-  if (r.error) return { ok: false, n: 0 };
-  return { ok: true, n: r.count ?? 0 };
-}
-
-export async function compterCategoriesIA(
-  depuis: string
-): Promise<{ ok: boolean; n: number; message?: string }> {
-  if (!depuis) return { ok: true, n: 0 };
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const r = await _compterCategoriesIA(supabase, compte.uid, depuis);
-  if (!r.ok)
-    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (conversion_categories.sql)." };
-  return { ok: true, n: r.n };
-}
-
-export async function annulerCategoriesIA(
-  depuis: string
-): Promise<{ ok: boolean; n: number; message?: string }> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, n: 0, message: "Tu es en lecture seule sur ce compte." };
-  if (!depuis) return { ok: true, n: 0 };
-
-  const avant = await _compterCategoriesIA(supabase, compte.uid, depuis);
-  if (!avant.ok)
-    return { ok: false, n: 0, message: "Rejoue le SQL Supabase (conversion_categories.sql)." };
-  if (avant.n === 0) return { ok: true, n: 0 };
-
-  // La ligne disparaît (pas un état intermédiaire) : l'absence de ligne EST le
-  // « non catégorisé », comme partout ailleurs sur cette table.
-  const r = await supabase.from("ga4_event_categories")
-    .delete().eq("user_id", compte.uid).eq("category_source", "ai").gte("updated_at", depuis);
-  if (r.error)
-    return { ok: false, n: 0, message: "Annulation incomplète — recharge la page et réessaie." };
-
-  revalidatePath("/conversions");
-  return { ok: true, n: avant.n };
-}
-
-// ── GITHUB ACTIONS : UN CODE HTTP N'EST PAS UN MESSAGE ──────────────────────
-//
-// Quatre fonctions tapent la même API avec le même jeton pour lancer ou suivre
-// le même workflow, et elles ratent toutes pour les mêmes raisons. Elles
-// répétaient donc quatre fois « GitHub a répondu 401 — vérifie le token », une
-// phrase qui ne dit à personne quoi faire : on ne « vérifie » pas un jeton
-// révoqué, on en refait un. Et 401, 403 et 404 demandent trois gestes
-// différents, dans trois endroits différents.
-//
-// LA TRADUCTION VIT ICI, ET NULLE PART AILLEURS. Ajouter un cinquième appel
-// n'ajoute pas un cinquième dialecte.
-//
-// ON NOMME LA VARIABLE, JAMAIS SA VALEUR. Ces messages partent vers le
-// navigateur, finissent dans une capture d'écran ou un ticket de support :
-// `GITHUB_TOKEN` est un nom public, ce qu'il contient ne l'est pas. Aucun
-// fragment de jeton — pas même les premiers caractères, pas même une longueur —
-// ne doit apparaître dans un message, une trace ou un commentaire. Il n'y a pas
-// non plus de repli : sans jeton valide, on ne lance rien, on le dit.
-const NOM_JETON = "GITHUB_TOKEN";
-const NOM_DEPOT = "GITHUB_REPO";
-const DEPOT_DEFAUT = "Dernierwak/dashboard-analytic";
-const WORKFLOW = "weekly-fetch.yml";
-
-const depotGitHub = () => process.env[NOM_DEPOT] ?? DEPOT_DEFAUT;
-
-/** Le jeton manque : ce n'est pas une panne, c'est une installation inachevée. */
-const JETON_ABSENT = `Pas encore configuré : ajoute la variable ${NOM_JETON} sur Vercel (token GitHub avec accès Actions).`;
-
-/** Chaque cause, son geste — et le geste dit OÙ il se fait. */
-function messageGitHub(status: number, repo: string): string {
-  switch (status) {
-    case 401:
-      return `GitHub refuse le jeton (401) : ${NOM_JETON} a expiré ou a été révoqué. Génère-en un nouveau sur GitHub, remplace la valeur de ${NOM_JETON} dans les variables d'environnement Vercel, puis redéploie.`;
-    case 403:
-      return `Jeton reconnu, mais interdit (403) : ${NOM_JETON} n'a pas le droit de lancer les Actions de ${repo}. Donne-lui la permission « Actions » en écriture sur ce dépôt, puis réessaie.`;
-    // GitHub répond aussi 404 pour un dépôt PRIVÉ hors de portée du jeton :
-    // il ne confirme pas l'existence de ce qu'on n'a pas le droit de voir. On
-    // ne le dit pas à l'écran — trois causes dans un encart de 255 px, plus
-    // personne ne lit — mais c'est la troisième piste si les deux premières
-    // sont bonnes.
-    case 404:
-      return `Introuvable (404) : ni le dépôt ${repo}, ni le workflow ${WORKFLOW}. Vérifie ${NOM_DEPOT}, et que .github/workflows/${WORKFLOW} existe bien sur la branche par défaut.`;
-    default:
-      return `GitHub a répondu ${status} — l'erreur vient de son côté, pas de ta configuration. Réessaie dans quelques minutes.`;
-  }
-}
-
-/** Lance le workflow avec les entrées données. Le seul chemin vers GitHub. */
-async function lancerWorkflow(
-  inputs: Record<string, string | boolean>,
-  succes: string
-): Promise<{ ok: boolean; message: string }> {
-  const token = process.env[NOM_JETON];
-  if (!token) return { ok: false, message: JETON_ABSENT };
-  const repo = depotGitHub();
-
-  let r: Response;
-  try {
-    r = await fetch(
-      `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/dispatches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ref: "main", inputs }),
-      }
-    );
-  } catch {
-    // Sans ce filet, une coupure réseau remonte en erreur d'action serveur :
-    // l'écran affiche un plantage là où il n'y a qu'un réseau qui tousse.
-    return {
-      ok: false,
-      message: "Impossible de joindre GitHub (réseau). Réessaie dans un instant.",
-    };
-  }
-  if (r.status === 204) return { ok: true, message: succes };
-  return { ok: false, message: messageGitHub(r.status, repo) };
-}
-
-// « Récupérer mes données » : déclenche le workflow GitHub Actions pour CET
-// utilisateur (fetch + republication du rapport). Fire-and-forget : les
-// données arrivent en base ~2-3 minutes plus tard.
-export async function triggerFetch(): Promise<{ ok: boolean; message: string }> {
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  return lancerWorkflow(
-    { user_id: compte.uid },
-    "Mise à jour lancée — je te préviens ici dès que c'est prêt."
-  );
-}
-
-// « ✨ Classer mes contenus » : labellisation IA de tous les posts/campagnes
-// sans thème + republication du rapport — via le même workflow GitHub Actions,
-// en mode label_only (pas de re-fetch réseau, ~1 min).
-//
-// C'EST LA SEULE CLASSIFICATION IA DE THÈMES DU PRODUIT, et le bouton
-// « Étiqueter tout » de la page Thèmes appelle celle-ci. Elle vit dans
-// `saas/recos_ia/labeling.py`, tourne dans GitHub Actions et respecte déjà la
-// règle d'or : elle saute tout ce qui porte `label_source='user'`, donc elle
-// ne remplit que le vide. En écrire une seconde CÔTÉ WEB, sur les MÊMES
-// contenus (campagnes/posts), aurait donné deux classements divergents.
-//
-// `triggerCategorize`, plus bas, est un SECOND classifieur — même mécanisme
-// (worker Python, GitHub Actions, Gemini, règle d'or `category_source`), mais
-// sur un contenu DIFFÉRENT (les événements GA4, pas les campagnes/posts) : ce
-// n'est donc pas la duplication que ce paragraphe met en garde contre.
-//
-// `depuis` EST LE BORNAGE DE L'ANNULATION. Il est pris ici, sur le serveur,
-// AVANT que le workflow ne parte : tout ce que la base horodatera après cette
-// seconde-là appartient à ce passage. Les trente secondes de marge absorbent
-// l'écart d'horloge entre Vercel et Supabase — largement au-delà du réel (les
-// deux sont sur NTP), et sans risque d'attraper autre chose : rien d'autre
-// n'écrit d'étiquette IA pendant que l'utilisateur clique.
-export async function triggerClassify(): Promise<{
-  ok: boolean;
-  message: string;
-  depuis?: string;
-}> {
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  const depuis = new Date(Date.now() - 30_000).toISOString();
-
-  const res = await lancerWorkflow(
-    { user_id: compte.uid, label_only: true },
-    "Classement lancé — l'IA labellise tes contenus, ~1 minute."
-  );
-  // `depuis` ne borne l'annulation que si le classement est effectivement parti.
-  return res.ok ? { ...res, depuis } : res;
-}
-
-// « ✨ Classer mes conversions » (page /conversions) : catégorise tous les
-// événements GA4 du catalogue qui n'ont pas encore de catégorie, via le même
-// workflow GitHub Actions, en mode categorize_only. Même mécanisme que
-// `triggerClassify` ci-dessus, sur un contenu différent — voir l'en-tête de
-// `triggerClassify` pour pourquoi ce n'est pas la duplication qu'il proscrit.
-// Ne republie PAS le rapport : une catégorie de conversion n'influence aucun
-// conseil ni aucun chiffre du rapport, contrairement à un thème.
-export async function triggerCategorize(): Promise<{
-  ok: boolean;
-  message: string;
-  depuis?: string;
-}> {
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  const depuis = new Date(Date.now() - 30_000).toISOString();
-
-  const res = await lancerWorkflow(
-    { user_id: compte.uid, categorize_only: true },
-    "Classement lancé — l'IA range tes conversions par catégorie, ~1 minute."
-  );
-  return res.ok ? { ...res, depuis } : res;
-}
-
-// « ↻ Recharger mes conseils » : republie le rapport depuis les données déjà
-// en base (recalcul des conseils, sans re-fetch ni relabel) — ~30 s.
-export async function triggerReport(): Promise<{ ok: boolean; message: string }> {
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  return lancerWorkflow(
-    { user_id: compte.uid, report_only: true },
-    "Conseils en cours de recalcul — ~30 secondes."
-  );
-}
-
-// État du dernier run du workflow (pour le suivi du bouton « Mes données »).
-export async function checkFetchStatus(): Promise<{
-  state: "pending" | "success" | "failure" | "unknown";
-  /** Début du run, en ISO — c'est LUI qui fait foi pour le temps écoulé.
-   *  Sans ça, la barre repartait de zéro à chaque changement de page. */
-  debut?: string;
-  url?: string;
-  /** Renseigné UNIQUEMENT pour 401/403/404 — les trois refus qui ne se
-   *  répareront pas tout seuls. Un 5xx ou un réseau qui tousse reste
-   *  « unknown » sans message : le sondage a le droit de rater un tour, il n'a
-   *  pas le droit d'annoncer une panne à chaque hoquet. */
-  message?: string;
-}> {
-  const token = process.env[NOM_JETON];
-  const repo = depotGitHub();
-  if (!token) return { state: "unknown" };
-  try {
-    const r = await fetch(
-      `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=1`,
-      {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-        cache: "no-store",
-      }
-    );
-    if (r.status === 401 || r.status === 403 || r.status === 404)
-      return { state: "unknown", message: messageGitHub(r.status, repo) };
-    if (!r.ok) return { state: "unknown" };
-    const run = (await r.json())?.workflow_runs?.[0];
-    if (!run) return { state: "unknown" };
-    const meta = { debut: run.created_at as string, url: run.html_url as string };
-    if (run.status !== "completed") return { state: "pending", ...meta };
-    return { state: run.conclusion === "success" ? "success" : "failure", ...meta };
-  } catch {
-    return { state: "unknown" };
-  }
+/** L'état du dernier run du workflow, pour le panneau de suivi de la récolte. */
+export async function checkFetchStatus(): Promise<EtatRun> {
+  return etatDernierRun();
 }
 
 // ── L'avancement RÉEL de la récolte ─────────────────────────────────────────

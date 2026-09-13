@@ -151,14 +151,19 @@ function terrain(cle: string): { groupe: string; court: string; sources: string[
 // collée au-dessus du ROAS, cette phrase-ci promet une séparation qui n'aura
 // jamais lieu.
 //
-// Le bouton est nommé EXACTEMENT comme il l'est en haut du rapport
-// (`components/reload-recos-button.tsx`) : une invite qui paraphrase un bouton
-// oblige à le chercher.
+// LA PHRASE NE RENVOIE PLUS À UN BOUTON, PARCE QU'IL N'Y EN A PLUS. Elle
+// disait « ↻ Recharger mes conseils les sépare » : le client ne déclenche plus
+// rien, la séparation arrive au prochain Jour de travail et à ce moment-là
+// seulement
+// (`.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md`).
+// La DATE de ce passage est déjà en tête de page, dans les trois dates : la
+// phrase dit donc ce qui est vrai et laisse la date à l'endroit qui la porte,
+// plutôt que de la recopier ici où elle vieillirait toute seule.
 const AVANT_SEPARATION_COURT =
-  "Meta et Google additionnés — « ↻ Recharger mes conseils » les sépare";
+  "Meta et Google additionnés — la séparation arrive au prochain rapport";
 const AVANT_SEPARATION_LONG =
   "Rapport publié avant la séparation par régie : ces chiffres additionnent " +
-  "Meta et Google. « ↻ Recharger mes conseils », en haut, les sépare.";
+  "Meta et Google. Le prochain rapport les sépare.";
 
 // Pourquoi un groupe « les deux régies » subsiste alors qu'on sépare tout le
 // reste : le ROAS ne se sépare PAS. Son revenu vient de Google Analytics, qui
