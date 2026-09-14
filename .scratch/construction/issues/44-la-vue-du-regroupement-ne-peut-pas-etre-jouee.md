@@ -91,18 +91,21 @@ le payload. **Ne pas choisir en passant.**
   `campagnes_muettes` sont écrits, vérifiés contre un vrai PostgreSQL, et
   **n'atteindront la production qu'une fois ce ticket réglé**.
 - Le ticket [04](04-vue-sql-du-regroupement.md), dont la vue est la livraison.
-- Le ticket [22](22-pulse-lit-la-vue.md) — **son code est écrit et `resolved`
-  depuis le 2026-09-14** : Pulse lit la vue à chaque affichage, `revenuTheme()`
-  est mort. Sans la vue, cette lecture rend « on ne sait pas » et rien ne se
-  rafraîchit — elle ne casse rien, elle n'apporte rien. C'est donc ici, et nulle
-  part ailleurs, que se trouve le déclencheur du regroupement à la lecture.
+- Le ticket [22](22-pulse-lit-la-vue.md) — **son code est écrit depuis le
+  2026-09-14, et le ticket reste OUVERT à cause d'ici** : Pulse lit la vue à
+  chaque affichage et `revenuTheme()` est mort, mais sans la vue cette lecture
+  rend « on ne sait pas » et rien ne se rafraîchit. Elle ne casse rien, elle
+  n'apporte rien. C'est donc ce ticket-ci, et nul autre, qui tient le
+  déclencheur du regroupement à la lecture.
 
-  Deux choses restent à faire **une fois la migration jouée**, et elles
-  n'appartiennent à personne d'autre :
+  Deux contrôles de 22 ne peuvent se faire **qu'une fois la migration jouée** —
+  ils restent listés chez lui, ils sont rappelés ici parce que c'est ici qu'ils
+  redeviennent possibles :
   - **Parcourir le fil à la main** : classer une campagne depuis `/labels`,
     revenir sur `/`, et voir le bilan du thème avoir bougé **sans passage du
     worker**. C'est le seul contrôle qui prouve que le `revalidatePath("/")` de
-    `setCampaignLabel` n'est plus un no-op, et le seul que 22 n'a pas pu faire.
+    `setCampaignLabel` n'est plus un no-op — et c'est lui qui manque pour que 22
+    passe `resolved`.
   - **Lire les deux phrases de la carte de thème** — « revenu inconnu » et
     « pas encore assez de dépense ». Elles vivent dans du JSX, aucun harnais ne
     les rend, et c'est exactement là que la revue de 22 a trouvé un trou.

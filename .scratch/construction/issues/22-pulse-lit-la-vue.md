@@ -1,8 +1,8 @@
 # Pulse lit la vue : la moitié TypeScript du regroupement
 
 Type: task
-Status: resolved
-Blocked by: 04
+Status: open
+Blocked by: 04, 44
 
 ## Question
 
@@ -65,24 +65,29 @@ semaine à bouger vaut mieux qu'un chiffre faux rafraîchi tout de suite.
 
 ## Avancement — session du 2026-09-14 (construction)
 
-**La moitié TypeScript est écrite, relue et vérifiée hors ligne. Livraison
-faite ; il reste une mise en service, qui n'est pas de ce ticket.**
+**La moitié TypeScript est écrite, relue et vérifiée hors ligne. LE TICKET
+RESTE OUVERT, et c'est son propre texte qui le décide.**
 
-Même règle que [04](04-vue-sql-du-regroupement.md), et c'est le précédent qui
-tranche : 04 est `resolved` avec son SQL toujours pas joué, parce que sa
-LIVRAISON — la vue — était écrite et prouvée sur un vrai PostgreSQL. Ici la
-livraison est le code de lecture, prouvé par 35 contrôles hors ligne, `tsc` et
-le build. **Jouer une migration est une exploitation, pas une réalisation** —
-elle appartient à [44](44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md), qui
-est ouvert et qui la porte.
+Il nomme lui-même sa vérification : *« `npx tsc --noEmit`, `npm run build`,
+**19 routes**, et le fil parcouru à la main. »* Les trois premiers sont verts.
+**Le quatrième n'a pas été fait** — classer une campagne, revenir sur `/`, voir
+le bilan du thème avoir bougé sans passage du worker. Il demande la vue en
+service, et [44](44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md) a mesuré
+le 2026-09-13 que `theme_regroupement` n'existe pas en production **et que sa
+migration échoue** (`column p.eng does not exist`). `CLAUDE.md` §4 :
+« Jamais avant la vérification. »
 
-**Ce que « resolved » ne dit PAS ici**, et qu'il faut lire avant de déployer :
-44 a mesuré le 2026-09-13 que `theme_regroupement` n'existe pas en production
-**et que sa migration échoue** (`column p.eng does not exist`). Le contrôle qui
-prouverait ce ticket bout en bout — classer une campagne et voir le bilan bouger
-sans passage du worker — demande la vue en service : **il n'a pas été fait**, et
-il reste en §5. Le code porte un repli explicite pour ce cas (§3) : déployé sans
-la vue, il ne casse rien, il n'apporte simplement rien.
+Le ticket [04](04-vue-sql-du-regroupement.md) ne fait PAS précédent ici, et
+c'est l'erreur que j'ai faite en première lecture : 04 est `resolved` avec son
+SQL non joué parce qu'il ne réclamait aucun contrôle à la main — sa livraison
+était prouvée de bout en bout sur un vrai PostgreSQL. Celui-ci en réclame un, et
+il manque. Deux situations qui se ressemblent et ne se traitent pas pareil.
+
+`Blocked by` porte donc **44** en plus de 04 : c'est lui qui débloque le seul
+contrôle qui reste.
+
+Le code, lui, est livré et porte un repli explicite pour ce cas (§3) : déployé
+sans la vue, il ne casse rien, il n'apporte simplement rien.
 
 ### 1 · Ce qui a été construit
 
