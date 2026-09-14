@@ -614,6 +614,44 @@ def _est_conseil(reco: dict) -> bool:
     return reco.get("nature") in NATURES
 
 
+def _une_seule_hypothese(recos: list[dict]) -> list[dict]:
+    """Une théorie par thème à la fois — la première de la liste, les autres
+    retirées.
+
+    POURQUOI C'EST UNE RÈGLE ET PAS UN CONFORT (ticket 27 de la construction).
+    Une Hypothèse ouvre une Stratégie sur son thème (`theme_plan`), et la
+    contrainte `UNIQUE (user_id, theme)` n'en laisse tourner qu'UNE. Servies à
+    deux, la carte affichait deux théories concurrentes, la boucle d'écriture
+    n'en suivait qu'une (`next(...)`), et rien sur la carte ne disait laquelle.
+    Mesuré hors ligne dans `.scratch/construction/harnais/27-une-theorie-par-theme/`
+    (`mesure.py`) : `adset_inegal` et `page_endormie` sortaient ensemble sur le
+    même thème, toutes les semaines.
+
+    L'ARBITRE EST L'ORDRE REÇU, c'est-à-dire `_importance` — celui dont tout le
+    rapport se sert déjà. `regles_payantes` tranche ses DEUX Hypothèses à elle
+    sur l'argent en jeu (`_enjeu`), ce qu'elle peut faire parce qu'elle les
+    connaît toutes les deux ; le cas général ne le peut pas, les règles
+    organiques ne déclarent aucun enjeu en francs. Comparer un thème qui
+    s'essouffle sur Instagram à un Groupe d'annonces cher demanderait une
+    échelle commune qui n'existe pas — et l'inventer serait trancher là où la
+    donnée ne tranche pas.
+
+    RETIRER, ET NON DÉCLASSER EN CONSTAT : la théorie écartée n'est pas fausse,
+    elle est en trop cette semaine. La garder sans son rôle ferait lire un
+    geste « à mesurer » comme un geste constatable demain, ce que `ROLES` sert
+    précisément à distinguer.
+    """
+    gardee = False
+    retenus = []
+    for reco in recos:
+        if reco.get("role") == "hypothese":
+            if gardee:
+                continue
+            gardee = True
+        retenus.append(reco)
+    return retenus
+
+
 def _slug_constat(valeur) -> str:
     """La normalisation des clés de constat — la même qu'`insights.py::_slug`,
     et pour la même raison : une clé qui change de casse ou d'espace change
@@ -3579,6 +3617,32 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # pas tombé. Remplie dans la boucle ci-dessous, lue par le plafond de cinq.
     _epingles: set = set()
 
+    # LES THÈMES DONT LA STRATÉGIE TOURNE ENCORE, décidés UNE FOIS (ticket 27).
+    #
+    # « Cette Stratégie tourne-t-elle encore ? » se posait à deux endroits et se
+    # répondait deux fois, avec deux conditions différentes : l'épinglage plus
+    # bas (qui regarde le verdict, la carte mémorisée et la coupe des pistes
+    # `ai_`) et la garde d'écriture tout en bas (qui ne comparait que des CLÉS).
+    # Quand elles n'étaient pas d'accord — une ligne sans `snapshot`, un verdict
+    # tombé — la carte servait la règle la mieux classée de la semaine pendant
+    # que la garde cherchait l'ancienne clé, ne la trouvait pas, et laissait
+    # `theme_plan` repartir sur un `decided_at` neuf. Mesuré dans
+    # `.scratch/construction/harnais/27-une-theorie-par-theme/mesure2.py`.
+    #
+    # La réponse est donc produite là où l'épinglage la calcule, et la boucle
+    # d'écriture la LIT au lieu de la refaire. Elle porte sur le THÈME et plus
+    # sur la clé, ce qui est le bon grain : `theme_plan` est unique par thème,
+    # et « une théorie par thème à la fois » est ce que la fenêtre d'attente
+    # (`ATTENTE_MIN_NOUVELLE_HYPOTHESE`) existe pour tenir.
+    #
+    # CE QUE ÇA NE CHANGE PAS — et c'est la raison pour laquelle ce que mesure
+    # un Verdict reste intact : un thème n'entre ici que quand sa carte REJOUE
+    # la Marche du plan, même `reco_key`, même baseline. Quand la Stratégie est
+    # finie (Verdict rendu, ou fenêtre écoulée), le thème n'y est pas, la
+    # nouvelle Hypothèse s'écrit avec sa propre date, et le Verdict suivant
+    # mesure bien ce cycle-là.
+    _plans_en_cours: set = set()
+
     # ── CE QUI A DÉJÀ ÉTÉ DEMANDÉ, CLÉ ET CIBLE ──────────────────────────────
     #
     # « On ne fait pas revenir la même reco qui change exactement la même chose »
@@ -3890,11 +3954,18 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             # qu'un seul thème présente les cinq. Avec trois thèmes conseillés au
             # maximum, elle garantit qu'au moins deux d'entre eux sont
             # représentés quand ils ont de quoi parler.
-            t_recos = sorted(
+            #
+            # ET UNE SEULE THÉORIE PAR THÈME, TRANCHÉE ICI (ticket 27). Elle se
+            # pose ENTRE le classement et la coupe, et cet ordre est ce qui la
+            # rend gratuite : après le tri, parce que « la meilleure » n'a de
+            # sens qu'une fois `_importance` passé ; avant la coupe, pour que la
+            # place libérée par la théorie écartée revienne à un vrai conseil au
+            # lieu d'amputer la carte.
+            t_recos = _une_seule_hypothese(sorted(
                 [r for r in (_attach_grammaire(x) for x in t_recos)
                  if _est_conseil(r)
                  and empreinte_conseil(r) not in _deja_servies],
-                key=_importance)[:3]
+                key=_importance))[:3]
 
             # ── PAS DE NOUVELLE MARCHE AVANT LE VERDICT DE LA PRÉCÉDENTE ─────
             #
@@ -3939,7 +4010,16 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                     t_recos = t_recos[:2] + [_epingle]
                 else:
                     t_recos[_i_hyp] = _epingle
+                # ET LA CARTE NE DIT PAS DEUX FOIS LA MÊME CHOSE — sans rien
+                # ajouter ici. Le thème servait sa théorie en double quand il
+                # portait DEUX Hypothèses : la version mémorisée remplaçait la
+                # première, la règle du jour restait à côté. `_une_seule_hypothese`
+                # (plus haut dans la coupe) ayant déjà ramené la carte à une seule
+                # Hypothèse, il n'y a plus qu'une place à remplacer — et le
+                # doublon n'a plus par où entrer (ticket 27, mesuré par
+                # `.scratch/construction/harnais/27-une-theorie-par-theme/mesure2.py`).
                 _epingles.add(empreinte_conseil(_epingle))
+                _plans_en_cours.add(nlbl)
 
         if _conseille and not t_recos and not t_veille:
             # ── LE FILET : AUCUNE CARTE CONSEILLÉE NE SORT MUETTE ────────────
@@ -4648,20 +4728,20 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         _hyp = next((r for r in _tf["recos"] if r.get("role") == "hypothese"), None)
         if not _hyp:
             continue
-        # L'Hypothèse a-t-elle simplement été RÉAFFICHÉE (blocage plus haut,
-        # même `reco_key` que le plan actif, fenêtre d'attente pas écoulée) ?
-        # Si oui, ne pas réécrire `theme_plan` : le compteur doit continuer sur
-        # SA date de décision d'origine, pas repartir sur `today`.
+        # LA STRATÉGIE DE CE THÈME TOURNE-T-ELLE ENCORE ? La question a déjà été
+        # tranchée, une seule fois, par l'épinglage (`_plans_en_cours`, voir son
+        # commentaire près de `_epingles`). Si oui, cette Hypothèse est la
+        # Marche du plan REJOUÉE : son compteur doit continuer sur SA date de
+        # décision d'origine, pas repartir sur `today`.
+        #
+        # LA GARDE PORTE SUR LE THÈME, PLUS SUR LA CLÉ (ticket 27). Comparer les
+        # clés ne protégeait rien dès que la carte changeait de règle d'une
+        # semaine à l'autre — et c'est justement la semaine où il fallait
+        # protéger. `theme_plan` est unique par thème : c'est le thème qui porte
+        # la théorie en cours, pas la clé.
         _nlbl = _nrm(_tf["label"])
-        _plan = theme_plan_by.get(_nlbl)
-        if _plan and _plan.get("reco_key") == _hyp.get("key") and _plan.get("decided_at"):
-            try:
-                _decided0 = date.fromisoformat(str(_plan["decided_at"])[:10])
-            except Exception:
-                _decided0 = None
-            _attente0 = ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get("levier"), _ATTENTE_DEFAUT)
-            if _decided0 and (today - _decided0).days < _attente0:
-                continue  # déjà suivie, rien à réécrire cette semaine
+        if _nlbl in _plans_en_cours:
+            continue  # déjà suivie, rien à réécrire cette semaine
         # Cette Hypothèse est NOUVELLE : elle devient la Marche courante du
         # thème, avec sa carte complète (déjà enrichie de metric/effort par la
         # boucle `_attach_metric`/`_attach_effort` plus haut) pour pouvoir la

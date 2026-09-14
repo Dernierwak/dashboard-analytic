@@ -415,9 +415,16 @@ def _arbitrer_collisions(recos: list[dict]) -> list[dict]:
     portent toutes deux `role="hypothese"` : servies ensemble, la carte du thème
     afficherait deux théories concurrentes et `theme_plan` n'en suivrait qu'une,
     au hasard de l'ordre de tri. On garde celle qui a le plus d'argent en jeu.
-    LE CAS GÉNÉRAL N'EST PAS RÉGLÉ ICI — `orga_essoufflement` et `page_endormie`
-    peuvent encore entrer en concurrence avec elles sur le même thème, et c'est
-    le ticket `.scratch/construction/issues/27-l-hypothese-d-une-regle-peut-changer-chaque-semaine.md`.
+    LE CAS GÉNÉRAL SE RÈGLE AILLEURS, ET IL FALLAIT LES DEUX. Ce module ne voit
+    que ses propres règles : `orga_essoufflement` et `page_endormie` entrent en
+    concurrence avec elles sur le même thème sans jamais passer par ici. Cet
+    arbitrage-là vit donc dans `build_report.py` (`_une_seule_hypothese`), une
+    fois toutes les familles réunies, et il tranche sur `_importance` — l'ordre
+    du rapport entier — parce qu'une règle organique ne déclare aucun `_enjeu`
+    en francs. Celui d'ici reste : quand les deux candidates SONT payantes,
+    l'argent en jeu dit mieux laquelle garder que le classement général.
+    Mesuré et tranché par
+    `.scratch/construction/issues/27-l-hypothese-d-une-regle-peut-changer-chaque-semaine.md`.
     """
     par_cle = {r["key"]: r for r in recos}
     retires: set = set()

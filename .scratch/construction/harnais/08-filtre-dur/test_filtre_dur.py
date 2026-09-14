@@ -160,9 +160,15 @@ def test_l_empreinte_filtre_avant_la_coupe_a_trois():
     """Filtrer seulement à la fin laisserait la coupe à trois d'un thème se
     remplir de conseils déjà servis : le thème sortirait muet alors qu'un
     quatrième conseil, frais, attendait derrière."""
-    ok("le filtre est dans la coupe",
-       "and empreinte_conseil(r) not in _deja_servies],\n                key=_importance)[:3]"
-       in SOURCE)
+    # LU EN TROIS REPÈRES, PLUS EN UN BLOC RECOPIÉ. La coupe porte depuis le
+    # ticket 27 un arbitrage de plus (`_une_seule_hypothese`, une seule théorie
+    # par thème) : recopier son texte exact faisait tomber ce test sur un
+    # changement qui ne touche en rien la propriété mesurée ici, à savoir que
+    # l'empreinte filtre AVANT le `[:3]`.
+    coupe = SOURCE.index("t_recos = _une_seule_hypothese(sorted(")
+    filtre = SOURCE.index("empreinte_conseil(r) not in _deja_servies", coupe)
+    trois = SOURCE.index("[:3]", coupe)
+    ok("le filtre est dans la coupe", filtre < trois)
     lu = SOURCE.index("_deja_servies: set = set()")
     boucle = SOURCE.index("for lbl in theme_list:")
     ok("et il est lu avant la boucle des thèmes", lu < boucle)

@@ -60,8 +60,19 @@ def test_le_plan_de_theme_reste_ecrit_a_la_publication():
     ok("theme_plan toujours écrit",
        "lecteur.ecrire_plan_de_theme(" in SOURCE
        and "upsert_theme_plan(" in LECTEUR)
-    ok("la fenêtre d'attente est toujours lue",
-       "ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(_plan.get(\"levier\")" in SOURCE)
+    # LA FENÊTRE NE SE LIT PLUS QU'À UN SEUL ENDROIT (ticket 27 de la
+    # construction). Elle se lisait deux fois — dans l'épinglage et dans la
+    # garde d'écriture — avec deux conditions différentes, et `theme_plan`
+    # repartait sur un `decided_at` neuf chaque fois qu'elles n'étaient pas
+    # d'accord. L'épinglage la lit ; la boucle d'écriture LIT SA DÉCISION
+    # (`_plans_en_cours`) au lieu de la refaire. Les deux assertions gardent
+    # donc le même contenu : la fenêtre borne toujours la réécriture du plan.
+    ok("la fenêtre d'attente est toujours lue, avec le levier du plan",
+       "ATTENTE_MIN_NOUVELLE_HYPOTHESE.get(" in SOURCE
+       and '_plan.get("levier"), _ATTENTE_DEFAUT)' in SOURCE)
+    ok("et c'est bien elle qui retient l'écriture",
+       "_plans_en_cours.add(nlbl)" in SOURCE
+       and "if _nlbl in _plans_en_cours:\n            continue" in SOURCE)
 
 
 def test_l_echeance_part_du_clic():
