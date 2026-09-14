@@ -23,6 +23,76 @@ La carte de refonte — [`../refonte/map.md`](../refonte/map.md) — est **ferm�
 ([`plan-de-refonte.md`](../refonte/plan-de-refonte.md)). Cette carte-ci ne décide
 plus rien de ce qu'elle a tranché ; elle le bâtit.
 
+<!-- ETAT:DEBUT — recalculé par `etat.py`, ne pas tenir à la main -->
+
+## Où on en est
+
+**24 tickets résolus, 26 ouverts** (sur 50). Recalculé depuis les `Status:` des fichiers par [`etat.py`](etat.py) — `python3.12 .scratch/construction/etat.py`.
+
+⚠ **Ce que tu lis dépend de ta branche.** Les tickets sont des fichiers versionnés : un ticket résolu sur une branche non fusionnée reste `open` dans une copie de travail restée sur `main`. En cas de doute, `git log --oneline main..<branche>` dit ce qui n'est pas encore arrivé dans `main`.
+
+### Fait
+
+| № | Ticket |
+|---|---|
+| **01** | [Le ROAS gonflé : un revenu deux régies divisé par une dépense Meta seule](issues/01-roas-gonfle.md) |
+| **02** | [La garde de collision : le second verdict écrase le premier, et l'écran dit « enregistré »](issues/02-garde-de-collision-resolveaction.md) |
+| **03** | [L'identifiant d'annonce Meta : la migration livrée est un piège armé](issues/03-identifiant-annonce-meta.md) |
+| **04** | [La vue SQL du regroupement par thème — le socle du reste](issues/04-vue-sql-du-regroupement.md) |
+| **05** | [Une migration, deux colonnes : l'auteur d'une note et la campagne d'une action](issues/05-migration-deux-colonnes.md) |
+| **06** | [Rebrancher le plan de thème : la séquence sans l'IA qui l'alimentait](issues/06-rebrancher-le-plan-de-theme.md) |
+| **07** | [Les quatre règles payantes qui se livrent seules](issues/07-quatre-regles-payantes.md) |
+| **08** | [Le filtre dur sur les thèmes prioritaires, et le plafond de cinq](issues/08-filtre-dur-et-plafond-de-cinq.md) |
+| **09** | [Trois moteurs, deux langages, trois jeux de seuils : `insights.py` gagne](issues/09-trois-moteurs-un-seul.md) |
+| **10** | [Les six règles payantes restantes](issues/10-six-regles-payantes-restantes.md) |
+| **11** | [Le module « à faire cette semaine » qui se vide, et la date où on a agi](issues/11-module-a-faire-et-date-libre.md) |
+| **12** | [Le carnet : un module unique posé partout — et `preuve` meurt](issues/12-le-carnet-et-la-mort-de-preuve.md) |
+| **13** | [Le premier écran de celui qui revient, et les trois dates en tête](issues/13-premier-ecran-et-trois-dates.md) |
+| **14** | [La porte vers la plateforme : le thème ET la fenêtre](issues/14-la-porte-vers-la-plateforme.md) |
+| **15** | [Le client ne déclenche plus rien : les quatre boutons sortent](issues/15-le-client-ne-declenche-plus-rien.md) |
+| **16** | [Le seam du payload : rendre le rapport appelable hors ligne](issues/16-le-seam-du-payload.md) |
+| **17** | [Le verdict « figé » qui se réécrit chaque semaine](issues/17-verdict-persiste-qui-derive.md) |
+| **18** | [La dépense Google entre par l'identifiant, son revenu ne peut entrer que par le nom](issues/18-revenu-google-non-rattachable.md) |
+| **19** | [Trente écritures qui ne relisent jamais ce qu'elles ont écrit](issues/19-ecritures-qui-ne-se-relisent-pas.md) |
+| **20** | [Le rapport se publie sur un canal muet, et l'email part avec](issues/20-rapport-publie-sur-un-canal-muet.md) |
+| **21** | [Les statuts de campagne Meta s'arrêtent à 200, sans pagination](issues/21-campagnes-meta-non-paginees.md) |
+| **23** | [L'auteur d'une note est figé après coup, mais rien ne l'empêche d'être FAUX dès l'écriture](issues/23-auteur-forge-a-l-insertion.md) |
+| **24** | [La Marche suivante écrite par Gemini — la moitié IA du plan de thème](issues/24-marche-suivante-ecrite-par-gemini.md) |
+| **43** | [L'étiqueteuse IA fabrique le nom d'une campagne Google, et ce nom détruit le pont du revenu](issues/43-le-nom-dune-campagne-google-est-fabrique-par-letiqueteuse.md) |
+
+### Reste à faire
+
+| № | Ticket |
+|---|---|
+| **22** | [Pulse lit la vue : la moitié TypeScript du regroupement](issues/22-pulse-lit-la-vue.md) — **bloqué par 44** |
+| **25** | [Le statut `auto` : des branches inertes, et des lignes orphelines en base](issues/25-le-statut-auto-et-ses-branches-inertes.md) |
+| **26** | [Les règles payantes sont écrites, et aucun client ne les verra](issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md) |
+| **27** | [L'Hypothèse d'une règle peut changer de théorie toutes les semaines](issues/27-l-hypothese-d-une-regle-peut-changer-chaque-semaine.md) |
+| **28** | [« Engagement du compte » est filtré par thème, et la page jure le contraire](issues/28-engagement-du-compte-filtre-par-theme.md) |
+| **29** | [Un post porte plusieurs thèmes ; le filtre de `/labels` n'en voit qu'un](issues/29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md) |
+| **30** | [Une médiane calculée sur deux valeurs ne peut jamais franchir son ratio](issues/30-la-mediane-sur-deux-valeurs-ne-parle-jamais.md) |
+| **31** | [Les quatre règles du ticket 07 n'ont pas de cible : elles ne sortent qu'une fois](issues/31-un-conseil-sans-cible-ne-sort-qu-une-fois.md) |
+| **32** | [Un conseil compare deux régies que le tableau de bord refuse de séparer](issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md) |
+| **33** | [Une note qu'on n'a pas encore faite marque déjà la frise, deux fois](issues/33-une-note-pas-encore-faite-marque-la-frise.md) |
+| **34** | [« Ses campagnes (8) » sur un thème qui en porte douze](issues/34-ses-campagnes-plafonnees-a-huit.md) |
+| **35** | [La période de `/couts` : l'ancien nom gagne, et la fenêtre peut s'inverser](issues/35-la-periode-de-couts-ne-repond-plus.md) |
+| **36** | [Le carnet a trois silences : un zéro fabriqué, une panne déguisée, une troncature invisible](issues/36-le-carnet-a-trois-silences.md) |
+| **37** | [La mémoire de thème lit les 200 notes les plus VIEILLES](issues/37-la-memoire-de-theme-lit-les-notes-les-plus-vieilles.md) |
+| **38** | [Le repli de `poserNote` efface l'auteur même quand la base sait le porter](issues/38-le-repli-de-posernote-efface-l-auteur.md) |
+| **39** | [L'annulation en bloc des étiquettes IA a perdu son déclencheur](issues/39-l-annulation-des-etiquettes-ia-a-perdu-son-declencheur.md) |
+| **40** | [Un thème sans revenu confirmé est publié à zéro franc](issues/40-un-theme-sans-revenu-confirme-est-publie-a-zero.md) |
+| **41** | [La fenêtre ne s'ancre pas sur Google : un compte Google seul mesure des jours vides](issues/41-la-fenetre-ne-s-ancre-pas-sur-google.md) |
+| **42** | [Le verdict persisté ne remonte jamais à l'écran](issues/42-le-verdict-persiste-ne-remonte-jamais-a-l-ecran.md) |
+| **44** | [La vue du regroupement n'existe pas en base, et le fichier qui l'installe ne peut pas être joué](issues/44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md) |
+| **45** | [Renommer un thème lui fait perdre son étoile — et le supprimer en laisse une qui ne désigne rien](issues/45-renommer-un-theme-lui-fait-perdre-son-etoile.md) |
+| **46** | [La période des coûts peut s'inverser, et le bandeau reste inerte sur un vieux lien](issues/46-la-periode-de-couts-peut-s-inverser.md) |
+| **47** | [Un canal muet deux semaines de suite n'est plus une note, c'est une relance](issues/47-un-canal-muet-deux-semaines-de-suite.md) |
+| **48** | [Les tableaux de bord lisent le trou en direct, sans passer par le rapport](issues/48-les-tableaux-de-bord-lisent-le-trou-en-direct.md) |
+| **49** | [Trois moteurs d'engagement, trois réponses — et deux d'entre eux rendent 0 sur une portée inconnue](issues/49-trois-moteurs-d-engagement-trois-reponses.md) |
+| **50** | [La collecte Instagram écrit 0 pour ce qu'elle ne sait pas — et ne demande jamais les likes des Reels](issues/50-la-collecte-instagram-ecrase-ce-qu-elle-ne-sait-pas.md) |
+
+<!-- ETAT:FIN -->
+
 ## Notes
 
 ### Cette carte EXÉCUTE — c'est l'exception, pas la règle
