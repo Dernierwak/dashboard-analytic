@@ -16,6 +16,7 @@ Variables d'env requises :
 
 from __future__ import annotations
 import os
+import re
 import sys
 import json
 import threading
@@ -330,6 +331,26 @@ def _due_today(fetch_schedule: str | None) -> bool:
 
 # ── Meta Ads (token utilisateur) ──────────────────────────────────────────────
 
+_JETON_DANS_UNE_URL = re.compile(
+    r"((?:access_token|appsecret_proof|refresh_token|token)=)[^&\s)\"']*", re.I)
+
+
+def _sans_jeton(message: str) -> str:
+    """Un message d'erreur nomme la variable, jamais sa valeur — `CLAUDE.md` §7.
+
+    CE N'EST PAS UNE PRÉCAUTION THÉORIQUE. `requests` construit l'URL complète
+    avant de se connecter et la RECOPIE dans l'exception :
+
+        ConnectionError : HTTPSConnectionPool(host='graph.facebook.com', …):
+        Max retries exceeded with url: /v24.0/act_42/campaigns?access_token=EAA…
+
+    Et le curseur `paging.next` de Meta porte le jeton par construction. Sans
+    ce filtre, une coupure réseau pendant une récolte écrit le jeton Meta d'un
+    client EN CLAIR dans le journal de run de GitHub Actions, qui est public.
+    """
+    return _JETON_DANS_UNE_URL.sub(r"\1…", message)
+
+
 def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, str | None]:
     params = {
         "access_token": token, "level": "ad",
@@ -353,7 +374,7 @@ def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, str |
     try:
         data = requests.get(f"{_GRAPH}/{ad_account_id}/insights", params=params, timeout=60).json()
     except Exception as e:
-        return [], f"{since_iso}→{until_iso} : {type(e).__name__}: {e}"
+        return [], _sans_jeton(f"{since_iso}→{until_iso} : {type(e).__name__}: {e}")
     if isinstance(data, dict) and data.get("error"):
         # Meta répond 200 avec un objet `error` : le message porte la cause
         # (limite de débit, jeton expiré). On ne montre jamais les params —
@@ -367,10 +388,89 @@ def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, str |
         except Exception as e:
             # Une pagination interrompue rend une tranche TRONQUÉE, pas vide :
             # c'est le cas le plus traître, il faut le dire aussi.
-            return rows, f"{since_iso}→{until_iso} : pagination interrompue ({type(e).__name__}: {e})"
+            return rows, _sans_jeton(
+                f"{since_iso}→{until_iso} : pagination interrompue ({type(e).__name__}: {e})")
         rows += resp.get("data", [])
         nxt = resp.get("paging", {}).get("next")
     return rows, None
+
+
+_CAMPAGNES_PAR_PAGE = 200
+_CAMPAGNES_PAGES_MAX = 50
+
+
+def _meta_campagnes(token, ad_account_id) -> tuple[list, str | None]:
+    """Les campagnes DÉCLARÉES du compte — toutes, `paging.next` suivi au bout.
+
+    Une seule page valait 200 campagnes et le curseur était ignoré : au-delà,
+    la liste était tronquée SANS UN MOT, et la 201e campagne recevait le même
+    `UNKNOWN` qu'une campagne dont Meta ignore vraiment le statut. C'est le
+    piège de `CLAUDE.md` §8 sur PostgREST (« au-delà, il tronque en silence »)
+    sur une autre API — et il ne se voyait nulle part, parce qu'une liste
+    courte a exactement la forme d'un petit compte.
+
+    Retour : (campagnes, erreur) — `erreur` à None quand la liste est ENTIÈRE.
+    Même contrat que `_meta_chunk`, et pour la même raison : sans lui, « ce
+    compte n'a que 200 campagnes » et « on s'est arrêté à 200 » se confondent.
+
+    Cette liste ne porte aucune dépense : son échec ne doit jamais coûter la
+    semaine d'insights. Elle rend donc son erreur à l'appelant plutôt que de
+    lever.
+    """
+    params = {
+        "access_token": token,
+        "fields": "name,effective_status,start_time,stop_time",
+        "limit": _CAMPAGNES_PAR_PAGE,
+    }
+    try:
+        data = requests.get(f"{_GRAPH}/{ad_account_id}/campaigns",
+                            params=params, timeout=30).json()
+    except Exception as e:
+        return [], _sans_jeton(f"{type(e).__name__}: {e}")
+    if not isinstance(data, dict):
+        # Un proxy ou une page d'erreur peut rendre du JSON parfaitement valide
+        # qui n'est pas un objet. `data.get` lèverait alors un AttributeError
+        # au travers d'une fonction qui a promis de ne pas lever — et le canal
+        # Meta tomberait tout entier pour une liste de campagnes.
+        return [], f"réponse Meta inattendue ({type(data).__name__})"
+    if data.get("error"):
+        # Meta répond 200 avec un objet `error`. On ne montre jamais les
+        # params — ils portent le jeton.
+        return [], data["error"].get("message", "erreur Meta")
+    campagnes = data.get("data", []) or []
+    nxt = (data.get("paging") or {}).get("next")
+    # LE PLAFOND N'EST PAS UNE LIMITE DE PRODUIT, C'EST UN COUPE-CIRCUIT. Meta
+    # sait rendre une page VIDE qui porte encore un `paging.next` ; le curseur
+    # tourne alors en rond, à 30 s par requête, et le worker de ce client
+    # n'arrive jamais au bout — sans une ligne de journal. Cinquante pages,
+    # c'est dix mille campagnes : aucun compte Pulse n'en approche, et le jour
+    # où l'un s'en approcherait, il le lirait dans le journal au lieu de
+    # découvrir une run qui ne finit pas.
+    pages_restantes = _CAMPAGNES_PAGES_MAX
+    while nxt and pages_restantes:
+        pages_restantes -= 1
+        # Le curseur `next` est une URL COMPLÈTE, jeton compris : repasser
+        # `params` dessus écraserait la position et relirait la page 1 sans
+        # fin.
+        try:
+            page = requests.get(nxt, timeout=30).json()
+        except Exception as e:
+            return campagnes, _sans_jeton(
+                f"liste tronquée à {len(campagnes)} campagne(s) "
+                f"({type(e).__name__}: {e})")
+        if not isinstance(page, dict):
+            return campagnes, (f"liste tronquée à {len(campagnes)} campagne(s) : "
+                               f"réponse Meta inattendue ({type(page).__name__})")
+        if page.get("error"):
+            return campagnes, (f"liste tronquée à {len(campagnes)} campagne(s) : "
+                               f"{page['error'].get('message', 'erreur Meta')}")
+        campagnes += page.get("data", []) or []
+        nxt = (page.get("paging") or {}).get("next")
+    if nxt:
+        return campagnes, (f"liste tronquée à {len(campagnes)} campagne(s) : "
+                           f"{_CAMPAGNES_PAGES_MAX} pages suivies sans fin de "
+                           f"curseur")
+    return campagnes, None
 
 
 def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
@@ -385,9 +485,9 @@ def _photo_budget(sb, uid, canal: str, recolte, jour: date) -> None:
         if rows:
             upsert_platform_budgets(sb, uid, canal, rows, jour.isoformat())
         elif err:
-            print(f"    budgets {canal} ignorés : {err}")
+            print(f"    budgets {canal} ignorés : {_sans_jeton(str(err))}")
     except Exception as e:
-        print(f"    budgets {canal} KO : {e}")
+        print(f"    budgets {canal} KO : {_sans_jeton(str(e))}")
 
 
 def _journal_changements(sb, uid, canal: str, recolte) -> None:
@@ -399,9 +499,9 @@ def _journal_changements(sb, uid, canal: str, recolte) -> None:
         if rows:
             upsert_platform_changes(sb, uid, canal, rows)
         elif err:
-            print(f"    changements {canal} ignorés : {err}")
+            print(f"    changements {canal} ignorés : {_sans_jeton(str(err))}")
     except Exception as e:
-        print(f"    changements {canal} KO : {e}")
+        print(f"    changements {canal} KO : {_sans_jeton(str(e))}")
 
 
 def _rien(_etape: str) -> None:
@@ -543,12 +643,7 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # depense : une campagne programmee jusqu'en decembre et une campagne
     # arretee hier laissent exactement la meme trace dans les insights.
     note("statuts")
-    camp = requests.get(
-        f"{_GRAPH}/{ad_account_id}/campaigns",
-        params={"access_token": token,
-                "fields": "name,effective_status,start_time,stop_time",
-                "limit": 200},
-        timeout=30).json()
+    campagnes, trou_statuts = _meta_campagnes(token, ad_account_id)
 
     def _jour(v):
         return str(v)[:10] if v else None
@@ -560,14 +655,39 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
             # stop_time absent = campagne sans date de fin programmee.
             "end_date": _jour(c.get("stop_time")),
         }
-        for c in camp.get("data", []) if c.get("name")
+        for c in campagnes if c.get("name")
     }
+    # LE COMPTE SE DIT À CHAQUE PASSAGE, MÊME QUAND TOUT VA BIEN. C'est le seul
+    # repère qui sépare « ce compte a 200 campagnes » de « on s'est arrêté à
+    # 200 » dans une run verte — le défaut d'origine tenait entièrement dans ce
+    # silence-là.
+    if trou_statuts:
+        # La run reste VERTE : ces statuts ne portent aucune dépense, et une
+        # semaine d'insights vaut plus qu'une liste de campagnes complète. Les
+        # campagnes non vues gardent le statut de la récolte précédente —
+        # `upsert_campaign_statuses` ne touche que les lignes qu'on lui donne.
+        print(f"    meta: liste des campagnes INCOMPLÈTE, "
+              f"{len(status_map)} campagne(s) vue(s) : {trou_statuts}")
+    else:
+        print(f"    meta: {len(status_map)} campagne(s) déclarée(s)")
+    # LES STATUTS S'ÉCRIVENT SEULS, ILS N'ATTENDENT PLUS UNE DÉPENSE. Cette
+    # écriture vivait sous le `if rows:` des insights, alors qu'elle vient
+    # d'une autre requête et remplit une autre table. Un compte qui ne dépense
+    # plus — ou dont toutes les tranches d'insights ont échoué — n'écrivait
+    # donc aucun statut, et `channels.ts` / `couverture.ts` montraient
+    # l'`ACTIVE` de la dernière semaine dépensière comme s'il était courant,
+    # sur une run verte qui venait d'imprimer le nombre de campagnes vues.
+    # `upsert_campaign_statuses` rend la main sur une carte vide : rien à
+    # garder ici.
+    upsert_campaign_statuses(sb, uid, status_map)
+    # `effective_status` ne se pose plus sur la ligne d'insight : personne ne le
+    # lisait. `upsert_meta_ads` ne l'envoie pas — le statut vit dans
+    # `meta_campaign_config`, une table par CAMPAGNE, pas par date. Le poser ici
+    # ne faisait qu'une chose : fabriquer un « UNKNOWN » pour toute campagne
+    # absente d'une liste tronquée.
     for row in rows:
         lc = next((it for it in row.get("actions", []) if it.get("action_type") == "link_click"), None)
         row["link_clicks"] = int(lc.get("value", 0)) if lc else 0
-        row["effective_status"] = (
-            status_map.get(row.get("campaign_name", ""), {}).get("status") or "UNKNOWN"
-        )
     if rows:
         # LA MIGRATION A DEUX MOITIÉS, ET LA SECONDE NE SE VOIT QU'ICI. Le
         # garde-fou plus haut prouve que la COLONNE existe ; il ne prouve pas
@@ -588,7 +708,6 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
                     "sautée. Rejouer supabase/migrations/000_run_me_all.sql en ENTIER "
                     "(section ad_id), puis relancer.") from e
             raise
-        upsert_campaign_statuses(sb, uid, status_map)
     return f"meta: {len(rows)} lignes"
 
 
@@ -685,8 +804,9 @@ def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
         # état, puisque l'écrire demanderait justement un client. Les lignes de
         # suivi restent donc à « attente » ; l'écran les lira comme
         # interrompues, ce qu'elles sont. Le journal, lui, dit pourquoi.
-        return [(canal, f"{canal} KO: client Supabase indisponible "
-                        f"({type(e).__name__}: {e})") for canal, _ in taches]
+        return [(canal, _sans_jeton(f"{canal} KO: client Supabase indisponible "
+                                   f"({type(e).__name__}: {e})"))
+                for canal, _ in taches]
 
     sorties: list[tuple[str, str]] = []
     for canal, appel in taches:
@@ -698,7 +818,15 @@ def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
         except Exception as e:
             # Le canal tombe, les deux autres fils continuent. C'est tout
             # l'intérêt d'attraper ici plutôt qu'autour de l'executor.
-            mot = f"{canal} KO: {e}"
+            #
+            # ET C'EST ICI QUE LE JETON SORTIRAIT. Ce `mot` ne fait pas que
+            # s'imprimer dans un journal public : `suivi.termine` l'écrit dans
+            # `fetch_progress.mot_de_fin`, que l'app relit et montre. Une
+            # exception `requests` recopie l'URL appelée, jeton compris — le
+            # `refresh_token` Google autant que le jeton Meta. Sans ce filtre,
+            # une coupure réseau publie un jeton de `connected_accounts` à
+            # tout membre invité du compte (`CLAUDE.md` §7).
+            mot = _sans_jeton(f"{canal} KO: {e}")
             sorties.append((canal, mot))
             suivi.termine(sb_fil, canal, "echec", mot)
     return sorties

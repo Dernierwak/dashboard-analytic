@@ -557,6 +557,42 @@ c'est exactement le compte que la v1 promet de servir. **Rien n'est joué en
 base** et **rien ne se voit à l'écran** : ce ticket ne change aucun rendu et ne
 demande aucun passage du worker.
 
+- **[21 · Les statuts de campagne Meta s'arrêtent à 200](issues/21-campagnes-meta-non-paginees.md) —
+resolved.** `_fetch_meta` demandait les campagnes avec `limit: 200` et ignorait
+`paging.next` : au-delà, la liste était **tronquée sans un mot**, et la 201e
+campagne recevait le même `UNKNOWN` qu'une campagne dont Meta ignore vraiment le
+statut — le piège PostgREST de `CLAUDE.md` §8 sur une autre API. `_meta_campagnes`
+suit le curseur au bout et rend `(campagnes, erreur)`, **le contrat de
+`_meta_chunk`**, pour la même raison : sans lui, « ce compte n'a que 200
+campagnes » et « on s'est arrêté à 200 » se confondent. **Le vrai correctif est
+le silence levé** — le journal donne son compte à chaque passage, et nomme
+l'incomplétude quand il y en a une. La run reste **verte** : ces statuts ne
+portent aucune dépense, et une semaine d'insights vaut plus qu'une liste
+complète. **Retiré au passage** : `row["effective_status"]`, posé sur chaque
+ligne d'insight et **lu par personne** — son seul effet était de fabriquer un
+`UNKNOWN`. **Et la revue a trouvé bien plus gros que le ticket : un
+jeton client sortait par CHAQUE échec réseau.** `requests` recopie l'URL
+appelée dans son exception — vérifié sur pièce — et le curseur `paging.next` de
+Meta la porte par construction ; ce message ne s'arrêtait pas au journal public,
+`suivi.termine` l'écrivait dans `fetch_progress.mot_de_fin`, que **l'app relit
+et montre**. Un membre invité y aurait lu un jeton de `connected_accounts` —
+`CLAUDE.md` §7 violé deux fois. `_sans_jeton` est posé sur **le goulot** (`_fil`,
+donc les quatre canaux, `refresh_token` Google compris) et sur les quatre autres
+sites qui impriment une exception réseau. **Trois défauts de plus dans le même
+geste** : les statuts vivaient sous le `if rows:` des insights (un compte qui ne
+dépense plus montrait l'`ACTIVE` de sa dernière semaine dépensière **comme
+courant**) ; un curseur Meta qui rend une page vide avec un `next` faisait
+tourner le worker sans fin et sans un mot ; et une réponse JSON qui n'est pas un
+objet levait **au travers d'une fonction qui a promis de ne pas lever**.
+**40 vérifications neuves** (harnais `21-campagnes-paginees`, faux Graph qui
+pagine ET fuit comme le vrai), **quatre mises à l'épreuve par mutation**, 16
+harnais rejoués, tous verts. **Non mesuré, et ça le reste** : combien de comptes
+dépassaient 200 campagnes — aucun accès à la base. **Rien ne se voit en
+cliquant** (§9) : il faut un passage du worker, cron du Jour de travail ou
+`weekly-fetch.yml` à la main. **Laissé ouvert dans le ticket** : `_meta_chunk`
+n'a pas de plafond de pages, et un chiffre choisi de mémoire y tronquerait une
+récolte réelle.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la
