@@ -132,7 +132,8 @@ payantes, l'argent en jeu dit mieux laquelle garder.
 ### Vérifié
 
 `python3.12 -m py_compile` sur les deux fichiers touchés, les 17 vérifications
-du harnais 27, et **les 56 fichiers de `jouer_tout.py` — tout passe**. Deux
+du harnais 27, et **les 59 fichiers de `jouer_tout.py` — tout passe**, 2 207
+vérifications. Deux
 assertions de texte des harnais 06 et 08 ont dû être réécrites : elles
 recopiaient le code exact de deux lignes que ce ticket réécrit, et prouvent
 maintenant la même chose sur des repères qui ne se périment plus.

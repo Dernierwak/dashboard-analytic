@@ -93,7 +93,8 @@ l'inventer serait trancher là où la donnée ne tranche pas (`CLAUDE.md` §7).
 | **Un verdict tombé rouvre bien une théorie** (décision du wayfinder 06, intacte) | `verdicts` gréé |
 | **Une clé `ai_` ne se réaffiche toujours pas** (coupe du ticket 11, intacte) | Plan sur `ai_…` |
 
-**Rejoués sans régression** : les 56 fichiers de `jouer_tout.py`, **tout passe**.
+**Rejoués sans régression** : les 59 fichiers de `jouer_tout.py`, **tout passe**
+— 2 207 vérifications.
 
 Deux assertions de **texte** ont dû être réécrites, et c'est le signe attendu :
 `06/test_plus_rien_sans_clic.py` et `08/test_filtre_dur.py` recopiaient le code
