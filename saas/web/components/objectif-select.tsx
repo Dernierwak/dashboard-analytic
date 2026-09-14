@@ -26,6 +26,7 @@ export function ObjectifSelect({
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [echec, setEchec] = useState(false);
   return (
     <div className="text-right">
       <select
@@ -33,8 +34,13 @@ export function ObjectifSelect({
         disabled={pending}
         onChange={(e) =>
           startTransition(async () => {
-            await saveObjectif(e.target.value || null);
-            if (quand) setMessage(prisEnCompteLe(quand));
+            // LA DATE DE PRISE EN COMPTE NE S'ÉCRIT QUE SI L'ÉCRITURE A EU
+            // LIEU. Elle s'affichait sans rien vérifier : sur un compte partagé
+            // dont la RLS refuse le profil, le client lisait « pris en compte
+            // jeudi » pour un objectif que la base n'avait jamais accepté.
+            const r = await saveObjectif(e.target.value || null);
+            setEchec(!r.ok);
+            setMessage(r.ok ? (quand ? prisEnCompteLe(quand) : null) : (r.message ?? null));
           })
         }
         className="text-[11.5px] font-medium text-muted bg-white border border-line rounded-full px-3 py-1.5 outline-none cursor-pointer hover:bg-black/[0.02] disabled:opacity-50"
@@ -47,7 +53,11 @@ export function ObjectifSelect({
         ))}
       </select>
       {message && (
-        <p className="text-[10.5px] text-muted mt-1.5 leading-relaxed max-w-[34ch] ml-auto">
+        <p
+          className={`text-[10.5px] mt-1.5 leading-relaxed max-w-[34ch] ml-auto ${
+            echec ? "text-neg" : "text-muted"
+          }`}
+        >
           {message}
         </p>
       )}

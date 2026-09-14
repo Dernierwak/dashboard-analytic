@@ -239,7 +239,14 @@ export function LabelRow({
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  await deleteLabel(row.name);
+                  // Le résultat était jeté : une suppression arrêtée au milieu
+                  // (cinq tables, aucune transaction — voir `lib/cascade.ts`)
+                  // refermait la ligne sans un mot, et le thème restait à
+                  // moitié effacé. Le message dit OÙ ça s'est arrêté et qu'il
+                  // faut relancer.
+                  const r = await deleteLabel(row.name);
+                  setMessage(r.ok ? null : (r.message ?? null));
+                  setEchec(!r.ok);
                   setMode("view");
                 })
               }

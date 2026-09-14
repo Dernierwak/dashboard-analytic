@@ -132,7 +132,12 @@ export function CategoryRow({ row }: { row: ConversionCategoryRow }) {
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  await deleteConversionCategory(row.name);
+                  // Le résultat était jeté — deux tables, aucune transaction
+                  // (`lib/cascade.ts`) : un arrêt au milieu refermait la ligne
+                  // sans un mot. Même correction que `label-manager.tsx`.
+                  const r = await deleteConversionCategory(row.name);
+                  setMessage(r.ok ? null : (r.message ?? null));
+                  setEchec(!r.ok);
                   setMode("view");
                 })
               }

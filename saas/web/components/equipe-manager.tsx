@@ -102,9 +102,15 @@ export function EquipeManager({ membres }: { membres: Membre[] }) {
   );
 }
 
+// LE RÉSULTAT DES DEUX GESTES SE REGARDE. Il était jeté : `await
+// changerRoleMembre(…)` sans rien en faire, et la ligne restait à l'écran comme
+// si tout allait bien — y compris quand le serveur venait de répondre qu'il
+// n'avait rien écrit (accès déjà retiré depuis un autre onglet). Corriger
+// l'action sans lire sa réponse n'aurait rien changé pour le client.
 function LigneMembre({ m }: { m: Membre }) {
   const [pending, startTransition] = useTransition();
   const [confirme, setConfirme] = useState(false);
+  const [echec, setEchec] = useState<string | null>(null);
 
   return (
     <div className="px-5 py-3.5 flex items-center gap-3 flex-wrap">
@@ -126,7 +132,8 @@ function LigneMembre({ m }: { m: Membre }) {
         value={m.role}
         onChange={(e) =>
           startTransition(async () => {
-            await changerRoleMembre(m.id, e.target.value as "viewer" | "editor");
+            const r = await changerRoleMembre(m.id, e.target.value as "viewer" | "editor");
+            setEchec(r.ok ? null : (r.message ?? "Changement impossible — réessaie."));
           })
         }
         className="text-[12.5px] rounded-lg border border-line bg-white px-2.5 py-2 text-ink outline-none focus:border-brand"
@@ -139,7 +146,13 @@ function LigneMembre({ m }: { m: Membre }) {
         <div className="flex items-center gap-2">
           <button
             disabled={pending}
-            onClick={() => startTransition(async () => { await revoquerMembre(m.id); })}
+            onClick={() =>
+              startTransition(async () => {
+                const r = await revoquerMembre(m.id);
+                setEchec(r.ok ? null : (r.message ?? "Révocation impossible — réessaie."));
+                if (r.ok) setConfirme(false);
+              })
+            }
             className="text-[12px] font-semibold text-white bg-neg rounded-full px-3.5 py-2 disabled:opacity-50"
           >
             {pending ? "…" : "Confirmer"}
@@ -158,6 +171,9 @@ function LigneMembre({ m }: { m: Membre }) {
         >
           Retirer l&apos;accès
         </button>
+      )}
+      {echec && (
+        <p className="w-full text-[11.5px] text-neg leading-relaxed mt-1.5">{echec}</p>
       )}
     </div>
   );

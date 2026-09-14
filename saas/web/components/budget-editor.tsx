@@ -28,6 +28,7 @@ export function BudgetEditor({
 }) {
   const [value, setValue] = useState(current > 0 ? String(Math.round(current)) : "");
   const [saved, setSaved] = useState(false);
+  const [echec, setEchec] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const dirty = Number(value || 0) !== Math.round(current);
@@ -60,6 +61,7 @@ export function BudgetEditor({
         onChange={(e) => {
           setValue(e.target.value);
           setSaved(false);
+          setEchec(null);
         }}
         className="w-28 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-[13px] font-mono text-ink outline-none focus:border-brand text-right"
       />
@@ -69,8 +71,12 @@ export function BudgetEditor({
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              await saveBudget(cle, Number(value || 0), mois);
-              setSaved(true);
+              // « ✓ enregistré » s'affichait sans regarder la réponse — le cas
+              // d'école du ticket 19. Il n'est plus écrit que sur une écriture
+              // qui a vraiment eu lieu.
+              const r = await saveBudget(cle, Number(value || 0), mois);
+              setSaved(r.ok);
+              setEchec(r.ok ? null : (r.message ?? "Budget non enregistré — réessaie."));
             })
           }
           className="text-[11.5px] font-semibold text-white bg-brand rounded-full px-3 py-1.5 hover:bg-brand/90 disabled:opacity-50"
@@ -79,6 +85,7 @@ export function BudgetEditor({
         </button>
       )}
       {saved && !dirty && <span className="text-[11.5px] text-pos font-semibold">✓ enregistré</span>}
+      {echec && <span className="text-[11.5px] text-neg font-semibold">{echec}</span>}
     </div>
   );
 }

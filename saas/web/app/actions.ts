@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
 import type { CampagneNote } from "@/lib/carnet";
 import { etatDernierRun, type EtatRun } from "@/lib/github-workflow";
+import { enchainer, arretCascade } from "@/lib/cascade";
 
 // « too_hard » : ni un rejet ni un accord — « je vois l'intérêt mais je ne sais
 // pas le faire ». C'est le retour le plus utile qu'on puisse recevoir : il dit
@@ -121,12 +122,38 @@ export async function startTracking(a: Prise & { tracked: boolean }): Promise<{
     // `build_report.py`) est incluse : sans elle, « annuler » sur une carte
     // auto-suivie ne supprimait rien en base, et la carte redevenait « suivie »
     // au rechargement suivant malgré le clic.
-    await supabase
+    const retire = await supabase
       .from("suivi_actions")
       .delete()
       .eq("user_id", user.id)
       .eq("reco_key", a.recoKey)
-      .in("status", ["running", "done", "auto"]);
+      .in("status", ["running", "done", "auto"])
+      .select("id, status");
+    if (retire.error)
+      return { ok: false, message: "Impossible de retirer ce conseil de ton suivi — réessaie." };
+    if ((retire.data ?? []).length === 0) {
+      // Zéro ligne supprimée, aucune erreur : soit la ligne n'est plus là — et
+      // alors l'état voulu est ATTEINT, ce clic n'a simplement rien eu à faire —
+      // soit quelqu'un l'a déjà rangée ou abandonnée, et le `.in(…)` ci-dessus
+      // ne la vise plus. Les deux se LISENT, ils ne se devinent pas
+      // (`CLAUDE.md` §8 pour le silence, §7 pour l'interdiction d'affirmer sans
+      // avoir lu).
+      const reste = await supabase
+        .from("suivi_actions")
+        .select("status")
+        .eq("user_id", user.id)
+        .eq("reco_key", a.recoKey)
+        .limit(1);
+      const ligne = reste.data?.[0];
+      if (!reste.error && ligne) {
+        const etat = DEJA[String(ligne.status)] ?? `déjà dans l'état « ${ligne.status} »`;
+        return {
+          ok: false,
+          message:
+            `Rien retiré : cette action est ${etat} — recharge la page pour voir où elle en est.`,
+        };
+      }
+    }
     revalidatePath("/");
     return { ok: true };
   }
@@ -411,6 +438,15 @@ async function marquerApplique(
   // Repli si les colonnes theme/title (et la contrainte reco_feedback_uq2)
   // n'existent pas encore (migration reco_feedback_contexte.sql pas passée) —
   // même patron que done_at plus haut, sur l'ANCIENNE clé.
+  //
+  // LA SEULE ÉCRITURE DE CE FICHIER QUI A LE DROIT DE RESTER NUE, et il faut
+  // que ce soit écrit pour que personne ne la « répare » en croyant bien faire.
+  // Le geste du client — « c'est fait » — est DÉJÀ enregistré dans
+  // `suivi_actions` quand on arrive ici ; cette ligne-ci ne fait que le répéter
+  // à l'IA. La faire échouer rendrait `{ ok: false }` sur une action qui a bel
+  // et bien été prise, et le client recliquerait sur un geste déjà écrit. Ce
+  // qui se perd est réel — l'IA ignorera ce conseil-là — mais c'est moins cher
+  // qu'un « ça n'a pas marché » qui serait faux.
   if (fb.error)
     await supabase.from("reco_feedback").upsert(
       { user_id: userId, reco_key: recoKey, reaction: "done", week_start: mondayISO() },
@@ -783,13 +819,18 @@ export async function saveRecoFeedback(
     // PostgREST refuse de filtrer sur une colonne absente, sans ce repli le
     // toggle échouerait en silence plutôt que de retomber sur l'ancien
     // comportement compte entier.
+    // LE REPLI EST LA DERNIÈRE CHANCE : s'il échoue AUSSI, l'action a échoué.
+    // Il était nu, donc les deux tentatives pouvaient rater sans que l'écran
+    // en sache rien — le retour redevenait actif au rechargement suivant.
     if (del.error) {
-      await supabase
+      const repli = await supabase
         .from("reco_feedback")
         .delete()
         .eq("user_id", user.id)
         .eq("reco_key", recoKey)
         .eq("week_start", week);
+      if (repli.error)
+        return { ok: false, message: "Ton retour n'a pas pu être enregistré — réessaie." };
     }
   } else {
     const r = await supabase.from("reco_feedback").upsert(
@@ -807,10 +848,12 @@ export async function saveRecoFeedback(
     // n'existent pas encore (migration reco_feedback_contexte.sql pas
     // passée) — sur l'ANCIENNE clé.
     if (r.error) {
-      await supabase.from("reco_feedback").upsert(
+      const repli = await supabase.from("reco_feedback").upsert(
         { user_id: user.id, reco_key: recoKey, reaction, week_start: week },
         { onConflict: "user_id,reco_key,week_start" }
       );
+      if (repli.error)
+        return { ok: false, message: "Ton retour n'a pas pu être enregistré — réessaie." };
     }
   }
 
@@ -832,18 +875,20 @@ export async function saveInsightFeedback(
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
 
-  if (active) {
-    await supabase
-      .from("insight_feedback")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("insight_key", insightKey);
-  } else {
-    await supabase.from("insight_feedback").upsert(
-      { user_id: user.id, insight_key: insightKey, verdict },
-      { onConflict: "user_id,insight_key" }
-    );
-  }
+  // Les deux branches étaient NUES — aucun repli, aucune lecture : ce verdict
+  // est permanent (il survit à la régénération du constat par le worker), donc
+  // le perdre en silence se paie chaque semaine suivante.
+  const r = active
+    ? await supabase
+        .from("insight_feedback")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("insight_key", insightKey)
+    : await supabase.from("insight_feedback").upsert(
+        { user_id: user.id, insight_key: insightKey, verdict },
+        { onConflict: "user_id,insight_key" }
+      );
+  if (r.error) return { ok: false, message: "Ton verdict n'a pas pu être enregistré — réessaie." };
   revalidatePath("/");
   return { ok: true };
 }
@@ -880,11 +925,15 @@ export async function togglePriorityLabel(
   const key = `priority_label:${name}`;
   let message: string | undefined;
   if (active) {
-    await supabase
+    // Le retrait était nu, quand la pose juste en dessous lisait son erreur :
+    // une étoile qu'on n'arrive pas à retirer revient au rechargement, et c'est
+    // elle qui décide si Pulse conseille ce thème (`CLAUDE.md` §1).
+    const r = await supabase
       .from("insight_feedback")
       .delete()
       .eq("user_id", user.id)
       .eq("insight_key", key);
+    if (r.error) return { ok: false, message: "L'étoile n'a pas pu être retirée — réessaie." };
   } else {
     const existing = await supabase
       .from("insight_feedback")
@@ -915,6 +964,38 @@ export async function togglePriorityLabel(
   return { ok: true, message };
 }
 
+// POURQUOI ZÉRO LIGNE SUR `profiles`, DIT SANS LE DEVINER.
+//
+// On RELIT avant de parler — affirmer « tu n'as pas le droit » sans l'avoir lu
+// serait un fait fabriqué (`CLAUDE.md` §7), et les deux causes ne se ressemblent
+// pas : `partage_select` ouvre la lecture à tout membre (`a_acces`) quand
+// `partage_update` réserve l'écriture aux « Peut agir » (`peut_editer`). Un
+// profil LISIBLE mais non écrit est donc un refus d'écriture ; un profil
+// illisible est un compte qu'on ne regarde plus.
+//
+// Même patron que `pourquoiRien` pour les notes, sur l'autre table.
+async function profilMuet(supabase: Client, uid: string): Promise<string> {
+  const r = await supabase.from("profiles").select("id").eq("id", uid).limit(1);
+  if (r.error || (r.data ?? []).length === 0)
+    return "Ce compte n'est plus accessible — recharge la page.";
+  return "Rien enregistré : ce compte ne t'autorise pas à écrire. Demande « Peut agir » à son propriétaire.";
+}
+
+// L'ÉTAPE QUI ÉCRIT LA LISTE MAÎTRESSE NE RENDAIT QUE SON ERREUR — donc elle
+// portait encore, à elle seule, le piège que tout ce ticket corrige : un refus
+// RLS sur `profiles` touche zéro ligne SANS erreur (`CLAUDE.md` §8), la cascade
+// voyait sept étapes vertes, et l'écran disait « renommé partout ».
+//
+// Le message n'est pas celui d'un arrêt ordinaire, et c'est l'ordre des étapes
+// qui le permet : la liste maîtresse étant LA DERNIÈRE, tout le reste EST écrit
+// quand on arrive ici. On le dit, plutôt que de laisser croire qu'il faut tout
+// relancer. On n'affirme pas non plus POURQUOI la base a refusé — on n'a lu que
+// le compte de lignes (§7).
+const LISTE_NON_ECRITE =
+  "Tout le reste est écrit, mais ta liste de thèmes n'a pas bougé — ce compte n'a " +
+  "pas accepté cette écriture-là. Recharge la page ; si rien n'a changé, demande " +
+  "« Peut agir » à son propriétaire.";
+
 // Objectif principal du compte ('ventes' | 'notoriete' | 'engagement' | null).
 // Re-pondère les conseils — pris en compte à la prochaine publication du rapport.
 export async function saveObjectif(objectif: string | null) {
@@ -923,10 +1004,25 @@ export async function saveObjectif(objectif: string | null) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  await supabase
+  // Le `RETURNING` ne peut pas bloquer cette écriture : `peut_editer(cible)` est
+  // EXACTEMENT `a_acces(cible)` plus `AND m.role = 'editor'` (§12 du SQL), donc
+  // `partage_select` est strictement plus large que `partage_update`.
+  //
+  // `.select("id")` N'EST PAS DÉCORATIF. L'écriture visait le profil du COMPTE
+  // regardé, qui n'est pas forcément le mien : sur un compte partagé, c'est la
+  // RLS qui tranche, et un refus RLS ne lève aucune erreur — il touche zéro
+  // ligne (`CLAUDE.md` §8). Sans compte de lignes, un invité recevait
+  // « enregistré » et une date de prise en compte pour un objectif que la base
+  // n'avait jamais accepté. `compte.peutEditer` au-dessus lit l'écran, pas la
+  // base : les deux peuvent diverger (rôle changé depuis l'ouverture de la
+  // page, section 15 du SQL pas jouée sur ce projet).
+  const maj = await supabase
     .from("profiles")
     .update({ objectif: objectif || null })
-    .eq("id", user.id);
+    .eq("id", user.id)
+    .select("id");
+  if (maj.error) return { ok: false, message: "Enregistrement impossible — réessaie." };
+  if ((maj.data ?? []).length === 0) return { ok: false, message: await profilMuet(supabase, user.id) };
   revalidatePath("/");
   // Réglable aussi sur /conversions (module « Nos thèmes principaux », à côté
   // des objectifs par thème) depuis que le rapport est passé en lecture seule.
@@ -962,7 +1058,7 @@ export async function saveComment(recoKey: string, comment: string, theme?: stri
   // Repli si la colonne theme (et reco_feedback_uq2) n'existent pas encore
   // (migration reco_feedback_contexte.sql pas passée) — sur l'ANCIENNE clé.
   if (r.error) {
-    await supabase.from("reco_feedback").upsert(
+    const repli = await supabase.from("reco_feedback").upsert(
       {
         user_id: user.id,
         reco_key: recoKey,
@@ -971,6 +1067,8 @@ export async function saveComment(recoKey: string, comment: string, theme?: stri
       },
       { onConflict: "user_id,reco_key,week_start" }
     );
+    if (repli.error)
+      return { ok: false, message: "Ton commentaire n'a pas pu être enregistré — réessaie." };
   }
   revalidatePath("/");
   return { ok: true };
@@ -989,7 +1087,11 @@ export async function saveBudget(channel: string, amount: number, monthIso?: str
     monthIso && /^\d{4}-\d{2}-01$/.test(monthIso)
       ? monthIso
       : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  await supabase.from("channel_budgets").upsert(
+  // L'ERREUR SE LIT, MÊME SUR UN UPSERT. Le compte de lignes n'apprendrait rien
+  // ici — un upsert en écrit toujours une — mais un refus RLS sur une INSERTION,
+  // lui, lève bien une erreur (contrairement à l'UPDATE du §8), et l'écran
+  // affichait « ✓ enregistré » par-dessus.
+  const r = await supabase.from("channel_budgets").upsert(
     {
       user_id: user.id,
       channel,
@@ -998,6 +1100,7 @@ export async function saveBudget(channel: string, amount: number, monthIso?: str
     },
     { onConflict: "user_id,channel,month" }
   );
+  if (r.error) return { ok: false, message: "Budget non enregistré — réessaie." };
   revalidatePath("/couts");
   return { ok: true };
 }
@@ -1082,6 +1185,11 @@ export async function saveOnboarding(answers: {
         `budget pub ${answers.budget_range} CHF/mois, ${ONB_FR.time_budget[answers.time_budget] ?? answers.time_budget}. ` +
         `Objectif : ${ONB_FR.objectif[answers.objectif] ?? answers.objectif}. ` +
         `Frustration principale : ${ONB_FR.frustration[answers.frustration] ?? answers.frustration}.`;
+      // Nue, et c'est la seconde des deux seules du fichier : le profil déclaré
+      // est DÉJÀ écrit plus haut, avec son erreur lue. Ce `seed` n'est qu'une
+      // amorce pour l'IA, écrasée dès le premier persona appris — la perdre ne
+      // fait rater aucune inscription, alors que rendre l'onboarding rouge pour
+      // elle en ferait rater.
       await supabase.from("profiles").update({ user_profile: seed }).eq("id", user.id);
     }
   } catch {
@@ -1114,9 +1222,17 @@ export async function createLabel(name: string) {
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = name.trim();
   if (!clean) return { ok: false, message: "Nom vide." };
-  const { data: current } = await _labels(supabase, user.id);
+  const { data: current, error: lectureError } = await _labels(supabase, user.id);
+  // Une lecture ratée replie sur `[]` : sans ce garde, elle écrirait la liste
+  // réduite au seul thème qu'on vient de créer, et tous les autres tomberaient.
+  if (lectureError) return { ok: false, message: "Impossible de lire tes thèmes — réessaie." };
   if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
-  await supabase.from("profiles").update({ labels: [...current, clean].sort() }).eq("id", user.id);
+  // Même garde que `saveObjectif`, même table, même piège du §8 : sans compte
+  // de lignes, « créé » s'affichait sur un thème que la base avait refusé.
+  const maj = await supabase.from("profiles")
+    .update({ labels: [...current, clean].sort() }).eq("id", user.id).select("id");
+  if (maj.error) return { ok: false, message: "Création impossible — réessaie." };
+  if ((maj.data ?? []).length === 0) return { ok: false, message: await profilMuet(supabase, user.id) };
   revalidatePath("/labels");
   return { ok: true, message: `« ${clean} » créé.` };
 }
@@ -1274,7 +1390,13 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = newName.trim();
   if (!clean) return { ok: false, message: "Nouveau nom vide." };
-  const { data: current } = await _labels(supabase, user.id);
+  // LA LECTURE SE VÉRIFIE AVANT DE DÉCIDER QUOI QUE CE SOIT. `_labels` replie
+  // un SELECT en échec sur `[]` : sans ce garde, une lecture ratée ferait
+  // croire qu'aucun thème ne porte déjà ce nom (donc pas de fusion à proposer),
+  // puis écrirait `labels: []` plus bas et effacerait TOUS les thèmes du compte.
+  const { data: current, error: lectureError } = await _labels(supabase, user.id);
+  if (lectureError)
+    return { ok: false, message: "Impossible de lire tes thèmes — réessaie." };
   if (current.includes(clean) && clean !== oldName) {
     if (!confirmerFusion) {
       return {
@@ -1286,47 +1408,109 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
     const fusion = await _fusionnerLabels(supabase, user.id, oldName, clean);
     if (!fusion.ok) {
       revalidatePath("/labels");
-      return {
-        ok: false,
-        message:
-          `Fusion interrompue sur « ${fusion.etape} » — ce qui est déjà fusionné ` +
-          `n'est pas refait, relance la fusion pour continuer.`,
-      };
+      return { ok: false, message: arretCascade("Fusion incomplète", fusion.etape) };
     }
     revalidatePath("/labels");
     revalidatePath("/");
     return { ok: true, message: `« ${oldName} » fusionné dans « ${clean} ».` };
   }
-  await supabase.from("profiles")
-    .update({ labels: current.map((l) => (l === oldName ? clean : l)).sort() })
-    .eq("id", user.id);
-  await supabase.from("meta_campaign_config").update({ label: clean })
-    .eq("user_id", user.id).eq("label", oldName);
-  await supabase.from("google_campaign_config").update({ label: clean })
-    .eq("user_id", user.id).eq("label", oldName);
-  // Les actions décidées portent le nom du thème, pas sa clé. Sans cette ligne,
-  // renommer un thème rendait toutes ses actions ORPHELINES pour toujours :
-  // plus aucune carte ne les prenait, et seul le filet « hors thème » pouvait
-  // encore les montrer.
-  await supabase.from("suivi_actions").update({ theme: clean })
-    .eq("user_id", user.id).eq("theme", oldName);
-  // Même raison que la ligne au-dessus : `theme_ga4_events` porte le NOM du
-  // thème. Sans ceci, renommer laisserait les événements choisis accrochés à un
-  // thème qui n'existe plus — le thème renommé repartirait sans conversion, et
-  // la page n'aurait aucun moyen de montrer ce qui reste en arrière.
-  await supabase.from("theme_ga4_events").update({ label: clean })
-    .eq("user_id", user.id).eq("label", oldName);
-  // Même raison, pour l'objectif propre du thème (`theme_objectifs`).
-  await supabase.from("theme_objectifs").update({ label: clean })
-    .eq("user_id", user.id).eq("label", oldName);
-  const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
-    .eq("user_id", user.id).contains("labels", [oldName])).data ?? [];
-  for (const p of posts) {
-    await supabase.from("instagram_organic_posts")
-      .update({ labels: ((p.labels as string[]) ?? []).map((l) => (l === oldName ? clean : l)) })
-      .eq("id", p.id);
-  }
+  // LES SIX ÉCRITURES S'ENCHAÎNENT, ET ELLES S'ARRÊTENT — elles étaient nues
+  // (`await supabase…` sans `const r =`), donc une panne au milieu laissait le
+  // thème à moitié renommé et l'écran répondait « renommé partout ». L'ordre
+  // est celui de `_fusionnerLabels`, pour la même raison : la liste maîtresse
+  // EN DERNIER, pour qu'un arrêt laisse `oldName` visible — donc relançable —
+  // au lieu de le faire disparaître en laissant des campagnes pointer vers un
+  // nom introuvable. Chaque étape est rejouable telle quelle : un
+  // `label = clean WHERE label = oldName` déjà passé ne retrouve plus rien.
+  let listeRefusee = false;
+  const renomme = await enchainer([
+    {
+      nom: "campagnes Meta",
+      ecrire: async () =>
+        (await supabase.from("meta_campaign_config").update({ label: clean })
+          .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      nom: "campagnes Google",
+      ecrire: async () =>
+        (await supabase.from("google_campaign_config").update({ label: clean })
+          .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      // Les actions décidées portent le nom du thème, pas sa clé. Sans cette
+      // étape, renommer un thème rendait toutes ses actions ORPHELINES pour
+      // toujours : plus aucune carte ne les prenait, et seul le filet « hors
+      // thème » pouvait encore les montrer.
+      nom: "actions décidées",
+      ecrire: async () =>
+        (await supabase.from("suivi_actions").update({ theme: clean })
+          .eq("user_id", user.id).eq("theme", oldName)).error,
+    },
+    {
+      // Même raison : `theme_ga4_events` porte le NOM du thème. Sans elle, le
+      // thème renommé repartirait sans conversion, et la page n'aurait aucun
+      // moyen de montrer ce qui reste en arrière.
+      nom: "événements GA4 du thème",
+      ecrire: async () =>
+        (await supabase.from("theme_ga4_events").update({ label: clean })
+          .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      nom: "objectif du thème",
+      ecrire: async () =>
+        (await supabase.from("theme_objectifs").update({ label: clean })
+          .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      nom: "posts Instagram",
+      ecrire: async () => {
+        const posts = await supabase.from("instagram_organic_posts").select("id, labels")
+          .eq("user_id", user.id).contains("labels", [oldName]);
+        // Une LECTURE ratée ne vaut pas « aucun post » : sans ce garde, elle
+        // laissait l'étape verte et le renommage se déclarait complet en ayant
+        // sauté tous les posts.
+        if (posts.error) return posts.error;
+        for (const p of posts.data ?? []) {
+          const r = await supabase.from("instagram_organic_posts")
+            .update({ labels: ((p.labels as string[]) ?? []).map((l) => (l === oldName ? clean : l)) })
+            .eq("id", p.id);
+          if (r.error) return r.error;
+        }
+        return null;
+      },
+    },
+    {
+      // EN DERNIER, et sur une lecture FRAÎCHE et vérifiée : `current` date du
+      // début de la fonction, et un SELECT en échec replié sur `[]` écrirait
+      // `labels: []` — tous les thèmes du compte effacés d'un coup.
+      nom: "liste des thèmes",
+      ecrire: async () => {
+        const { data: liste, error } = await _labels(supabase, user.id);
+        if (error) return error;
+        const maj = await supabase.from("profiles")
+          .update({ labels: liste.map((l) => (l === oldName ? clean : l)).sort() })
+          .eq("id", user.id)
+          .select("id");
+        if (maj.error) return maj.error;
+        // Zéro ligne sur `.eq("id", …)` ne peut pas vouloir dire « rien à
+        // faire » : la ligne de profil existe, ou elle n'est pas à nous. C'est
+        // donc un refus, et il se dit autrement qu'un arrêt technique.
+        if ((maj.data ?? []).length === 0) {
+          listeRefusee = true;
+          return { message: "zéro ligne sur profiles.labels" };
+        }
+        return null;
+      },
+    },
+  ]);
   revalidatePath("/labels");
+  if (!renomme.ok)
+    return {
+      ok: false,
+      message: listeRefusee
+        ? LISTE_NON_ECRITE
+        : arretCascade("Renommage incomplet", renomme.etape),
+    };
   return { ok: true, message: `Renommé en « ${clean} » partout.` };
 }
 
@@ -1337,31 +1521,86 @@ export async function deleteLabel(name: string) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  const { data: current } = await _labels(supabase, user.id);
-  await supabase.from("profiles")
-    .update({ labels: current.filter((l) => l !== name) }).eq("id", user.id);
-  await supabase.from("meta_campaign_config").update({ label: null })
-    .eq("user_id", user.id).eq("label", name);
-  await supabase.from("google_campaign_config").update({ label: null })
-    .eq("user_id", user.id).eq("label", name);
-  // Le thème disparaît : ses lignes d'événements n'ont plus de sujet. Elles
-  // sont supprimées et non orphelinées — la contrainte d'unicité porte sur
-  // (user_id, label, event_name), donc un thème recréé plus tard sous le même
-  // nom retrouverait sinon des choix qu'il n'a jamais faits.
-  await supabase.from("theme_ga4_events").delete()
-    .eq("user_id", user.id).eq("label", name);
-  // Même raison : un thème recréé plus tard sous le même nom ne doit pas
-  // retrouver un objectif qu'il n'a jamais choisi.
-  await supabase.from("theme_objectifs").delete()
-    .eq("user_id", user.id).eq("label", name);
-  const posts = (await supabase.from("instagram_organic_posts").select("id, labels")
-    .eq("user_id", user.id).contains("labels", [name])).data ?? [];
-  for (const p of posts) {
-    await supabase.from("instagram_organic_posts")
-      .update({ labels: ((p.labels as string[]) ?? []).filter((l) => l !== name) })
-      .eq("id", p.id);
-  }
+  // MÊME ENCHAÎNEMENT QUE `renameLabel`, et pour la même raison : ces cinq
+  // écritures étaient nues, donc une panne au milieu laissait le thème
+  // à moitié supprimé sous un « supprimé partout ». La liste maîtresse passe EN
+  // DERNIER : un arrêt laisse le thème visible, donc relançable.
+  let listeRefusee = false;
+  const efface = await enchainer([
+    {
+      nom: "campagnes Meta",
+      ecrire: async () =>
+        (await supabase.from("meta_campaign_config").update({ label: null })
+          .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      nom: "campagnes Google",
+      ecrire: async () =>
+        (await supabase.from("google_campaign_config").update({ label: null })
+          .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      // Le thème disparaît : ses lignes d'événements n'ont plus de sujet. Elles
+      // sont supprimées et non orphelinées — la contrainte d'unicité porte sur
+      // (user_id, label, event_name), donc un thème recréé plus tard sous le
+      // même nom retrouverait sinon des choix qu'il n'a jamais faits.
+      nom: "événements GA4 du thème",
+      ecrire: async () =>
+        (await supabase.from("theme_ga4_events").delete()
+          .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      // Même raison : un thème recréé plus tard sous le même nom ne doit pas
+      // retrouver un objectif qu'il n'a jamais choisi.
+      nom: "objectif du thème",
+      ecrire: async () =>
+        (await supabase.from("theme_objectifs").delete()
+          .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      nom: "posts Instagram",
+      ecrire: async () => {
+        const posts = await supabase.from("instagram_organic_posts").select("id, labels")
+          .eq("user_id", user.id).contains("labels", [name]);
+        if (posts.error) return posts.error;
+        for (const p of posts.data ?? []) {
+          const r = await supabase.from("instagram_organic_posts")
+            .update({ labels: ((p.labels as string[]) ?? []).filter((l) => l !== name) })
+            .eq("id", p.id);
+          if (r.error) return r.error;
+        }
+        return null;
+      },
+    },
+    {
+      // EN DERNIER, sur une lecture vérifiée : `_labels` replie un SELECT en
+      // échec sur `[]`, et `[].filter(…)` reste `[]` — on aurait effacé TOUS
+      // les thèmes du compte en croyant en retirer un.
+      nom: "liste des thèmes",
+      ecrire: async () => {
+        const { data: liste, error } = await _labels(supabase, user.id);
+        if (error) return error;
+        const maj = await supabase.from("profiles")
+          .update({ labels: liste.filter((l) => l !== name) })
+          .eq("id", user.id)
+          .select("id");
+        if (maj.error) return maj.error;
+        if ((maj.data ?? []).length === 0) {
+          listeRefusee = true;
+          return { message: "zéro ligne sur profiles.labels" };
+        }
+        return null;
+      },
+    },
+  ]);
   revalidatePath("/labels");
+  if (!efface.ok)
+    return {
+      ok: false,
+      message: listeRefusee
+        ? LISTE_NON_ECRITE
+        : arretCascade("Suppression incomplète", efface.etape),
+    };
   return { ok: true, message: `« ${name} » supprimé partout.` };
 }
 
@@ -1372,12 +1611,33 @@ export async function deleteLabel(name: string) {
 // renommer/la supprimer doit donc propager dans `ga4_event_categories.category`
 // (l'événement, lui, ne bouge jamais).
 
+// Même contrat que `_labels` : l'erreur est RENDUE, pas avalée. Un SELECT en
+// échec replié sur `[]` ferait croire qu'aucune catégorie ne porte déjà ce nom,
+// et créerait le doublon que le contrôle juste au-dessus existe pour empêcher.
 async function _categories(
   supabase: ReturnType<typeof createClient>,
   uid: string
-): Promise<string[]> {
+): Promise<{ data: string[]; error: { message: string } | null }> {
   const r = await supabase.from("conversion_categories").select("name").eq("user_id", uid);
-  return (r.data ?? []).map((row) => String(row.name)).sort((a, b) => a.localeCompare(b, "fr"));
+  return {
+    data: (r.data ?? []).map((row) => String(row.name)).sort((a, b) => a.localeCompare(b, "fr")),
+    error: r.error,
+  };
+}
+
+// POURQUOI ZÉRO LIGNE SUR `conversion_categories`, DIT SANS LE DEVINER.
+//
+// Une catégorie se vise par son NOM, pas par un identifiant : zéro ligne veut
+// dire qu'aucune ne s'appelle plus comme ça — un autre onglet l'a renommée ou
+// supprimée — OU que l'écriture a été refusée. Les deux se lisent (§7, §8), et
+// ils n'appellent pas le même geste : recharger dans un cas, demander un droit
+// dans l'autre. Même patron que `pourquoiRien` et `profilMuet`.
+async function categorieMuette(supabase: Client, uid: string, nom: string): Promise<string> {
+  const r = await supabase.from("conversion_categories").select("name")
+    .eq("user_id", uid).eq("name", nom).limit(1);
+  if (r.error || (r.data ?? []).length === 0)
+    return `Aucune catégorie ne s'appelle plus « ${nom} » — recharge la page.`;
+  return "Ta liste de catégories n'a pas bougé : ce compte n'a pas accepté cette écriture-là.";
 }
 
 export async function createConversionCategory(name: string) {
@@ -1388,7 +1648,9 @@ export async function createConversionCategory(name: string) {
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = name.trim();
   if (!clean) return { ok: false, message: "Nom vide." };
-  const current = await _categories(supabase, user.id);
+  const { data: current, error: lectureError } = await _categories(supabase, user.id);
+  if (lectureError)
+    return { ok: false, message: "Impossible de lire tes catégories — réessaie." };
   if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
   const r = await supabase.from("conversion_categories").insert({ user_id: user.id, name: clean });
   if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
@@ -1404,14 +1666,55 @@ export async function renameConversionCategory(oldName: string, newName: string)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
   const clean = newName.trim();
   if (!clean) return { ok: false, message: "Nouveau nom vide." };
-  const current = await _categories(supabase, user.id);
+  const { data: current, error: lectureError } = await _categories(supabase, user.id);
+  if (lectureError)
+    return { ok: false, message: "Impossible de lire tes catégories — réessaie." };
   if (current.includes(clean)) return { ok: false, message: `« ${clean} » existe déjà.` };
-  const r = await supabase.from("conversion_categories")
-    .update({ name: clean }).eq("user_id", user.id).eq("name", oldName);
-  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
-  await supabase.from("ga4_event_categories").update({ category: clean })
-    .eq("user_id", user.id).eq("category", oldName);
+  // MÊME ENCHAÎNEMENT QUE `renameLabel`, pour la même raison : deux tables,
+  // aucune transaction, et la propagation vers les événements était une
+  // écriture NUE — une panne y laissait la catégorie renommée d'un côté et pas
+  // de l'autre, sous un « renommée partout ».
+  //
+  // LES ÉVÉNEMENTS D'ABORD, LA LISTE MAÎTRESSE ENSUITE. L'ordre inverse rendait
+  // l'arrêt IRRATTRAPABLE : `conversion_categories` déjà renommée, plus aucune
+  // ligne ne répond à `name = oldName`, et relancer ne pouvait plus finir le
+  // travail. Dans cet ordre-ci, un arrêt laisse `oldName` dans la liste, donc
+  // relançable.
+  let listeRefusee = false;
+  const renomme = await enchainer([
+    {
+      nom: "événements classés",
+      ecrire: async () =>
+        (await supabase.from("ga4_event_categories").update({ category: clean })
+          .eq("user_id", user.id).eq("category", oldName)).error,
+    },
+    {
+      // L'étape maîtresse COMPTE ses lignes : sans ça, une catégorie renommée
+      // ou supprimée depuis un autre onglet rendait les deux étapes vertes sur
+      // zéro ligne chacune, et l'écran répondait « renommée partout » à un
+      // geste qui n'avait rien écrit du tout.
+      nom: "liste des catégories",
+      ecrire: async () => {
+        const maj = await supabase.from("conversion_categories")
+          .update({ name: clean }).eq("user_id", user.id).eq("name", oldName)
+          .select("name");
+        if (maj.error) return maj.error;
+        if ((maj.data ?? []).length === 0) {
+          listeRefusee = true;
+          return { message: "zéro ligne sur conversion_categories" };
+        }
+        return null;
+      },
+    },
+  ]);
   revalidatePath("/conversions");
+  if (!renomme.ok)
+    return {
+      ok: false,
+      message: listeRefusee
+        ? await categorieMuette(supabase, user.id, oldName)
+        : arretCascade("Renommage incomplet", renomme.etape),
+    };
   return { ok: true, message: `Renommée en « ${clean} » partout.` };
 }
 
@@ -1421,15 +1724,41 @@ export async function deleteConversionCategory(name: string) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  const r = await supabase.from("conversion_categories")
-    .delete().eq("user_id", user.id).eq("name", name);
-  if (r.error) return { ok: false, message: "Rejoue le SQL Supabase (table manquante)." };
-  // La catégorie disparaît : les événements qui la portaient redeviennent
-  // « non catégorisés » — l'absence de ligne EST cet état, comme pour
-  // theme_ga4_events quand un thème est supprimé.
-  await supabase.from("ga4_event_categories").delete()
-    .eq("user_id", user.id).eq("category", name);
+  let listeRefusee = false;
+  const efface = await enchainer([
+    {
+      // La catégorie disparaît : les événements qui la portaient redeviennent
+      // « non catégorisés » — l'absence de ligne EST cet état, comme pour
+      // theme_ga4_events quand un thème est supprimé. En premier, pour que
+      // l'arrêt laisse la catégorie dans la liste et donc relançable.
+      nom: "événements classés",
+      ecrire: async () =>
+        (await supabase.from("ga4_event_categories").delete()
+          .eq("user_id", user.id).eq("category", name)).error,
+    },
+    {
+      nom: "liste des catégories",
+      ecrire: async () => {
+        const sup = await supabase.from("conversion_categories")
+          .delete().eq("user_id", user.id).eq("name", name)
+          .select("name");
+        if (sup.error) return sup.error;
+        if ((sup.data ?? []).length === 0) {
+          listeRefusee = true;
+          return { message: "zéro ligne sur conversion_categories" };
+        }
+        return null;
+      },
+    },
+  ]);
   revalidatePath("/conversions");
+  if (!efface.ok)
+    return {
+      ok: false,
+      message: listeRefusee
+        ? await categorieMuette(supabase, user.id, name)
+        : arretCascade("Suppression incomplète", efface.etape),
+    };
   return { ok: true, message: `« ${name} » supprimée partout.` };
 }
 
@@ -1587,10 +1916,11 @@ export async function setCampaignLabel(
     );
     if (r.error) {
       // repli sans la colonne si la migration n'est pas encore passée
-      await supabase.from("meta_campaign_config").upsert(
+      const repli = await supabase.from("meta_campaign_config").upsert(
         { user_id: user.id, campaign_name: key, label },
         { onConflict: "user_id,campaign_name" }
       );
+      if (repli.error) return { ok: false, message: "Thème non enregistré — réessaie." };
     }
     revalidatePath("/meta");
   } else {
@@ -1599,10 +1929,11 @@ export async function setCampaignLabel(
       { onConflict: "user_id,campaign_id" }
     );
     if (r.error) {
-      await supabase.from("google_campaign_config").upsert(
+      const repli = await supabase.from("google_campaign_config").upsert(
         { user_id: user.id, campaign_id: key, campaign_name: campaignName, label },
         { onConflict: "user_id,campaign_id" }
       );
+      if (repli.error) return { ok: false, message: "Thème non enregistré — réessaie." };
     }
     revalidatePath("/google");
   }
@@ -1643,11 +1974,12 @@ export async function setPostLabel(postId: string, label: string | null) {
     .eq("user_id", user.id);
   if (r.error) {
     // repli sans la colonne si la migration n'est pas encore passée
-    await supabase
+    const repli = await supabase
       .from("instagram_organic_posts")
       .update({ labels: label ? [label] : [] })
       .eq("id", postId)
       .eq("user_id", user.id);
+    if (repli.error) return { ok: false, message: "Thème non enregistré — réessaie." };
   }
   revalidatePath("/instagram");
   revalidatePath("/labels");
@@ -1965,6 +2297,25 @@ export async function inviterMembre(
   };
 }
 
+// ── LES DEUX GESTES QUI VISENT UNE INVITATION PRÉCISE ───────────────────────
+//
+// Même garde que `resolveAction`, pour la même raison : `.eq("id", …)` vise UNE
+// ligne, et si elle n'est plus là — l'accès vient d'être retiré depuis un autre
+// onglet, une autre machine — PostgREST touche zéro ligne et ne lève AUCUNE
+// erreur (`CLAUDE.md` §8). Sans `.select("id")`, l'écran répondait « c'est
+// fait » à un geste qui n'a rien écrit.
+//
+// `.select("id")` n'ajoute aucun droit — et il faut vérifier qu'il n'en RETIRE
+// pas : un `RETURNING` fait appliquer la politique de SELECT aux lignes visées,
+// donc un SELECT plus étroit que l'UPDATE bloquerait une écriture qui passait
+// avant. Ici `dm_select` couvre `auth.uid() = owner_id`, que `dm_update` et
+// `dm_delete` exigent déjà — SELECT est plus large, pas plus étroit.
+//
+// Le message NOMME L'ÉTAT, pas une personne (ADR 0004) — et il ne l'invente
+// pas : zéro ligne sur une invitation ciblée par son identifiant veut dire
+// qu'elle n'est plus là, c'est tout ce qu'on affirme.
+const PLUS_LA = "Cet accès n'existe plus — recharge la page pour voir qui a accès aujourd'hui.";
+
 export async function changerRoleMembre(
   id: string,
   role: "viewer" | "editor"
@@ -1975,8 +2326,10 @@ export async function changerRoleMembre(
     .from("dashboard_members")
     .update({ role })
     .eq("id", id)
-    .eq("owner_id", compte.moi);
+    .eq("owner_id", compte.moi)
+    .select("id");
   if (r.error) return { ok: false, message: "Changement impossible — réessaie." };
+  if ((r.data ?? []).length === 0) return { ok: false, message: PLUS_LA };
   revalidatePath("/equipe");
   return { ok: true };
 }
@@ -1988,8 +2341,14 @@ export async function revoquerMembre(id: string): Promise<{ ok: boolean; message
     .from("dashboard_members")
     .delete()
     .eq("id", id)
-    .eq("owner_id", compte.moi);
+    .eq("owner_id", compte.moi)
+    .select("id");
   if (r.error) return { ok: false, message: "Révocation impossible — réessaie." };
+  // Zéro ligne sur un retrait d'accès : il a DÉJÀ été retiré. Le résultat voulu
+  // est là, mais ce clic-ci n'a rien fait — le dire plutôt que de s'en
+  // attribuer le mérite, sinon la liste à l'écran reste fausse sans un mot.
+  if ((r.data ?? []).length === 0)
+    return { ok: false, message: "Cet accès avait déjà été retiré — recharge la page." };
   revalidatePath("/equipe");
   return { ok: true };
 }

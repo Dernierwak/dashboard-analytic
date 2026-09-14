@@ -766,3 +766,47 @@ nulle part — c'est le plus coûteux des deux défauts, il se reproduira sur la
 prochaine colonne. La réparation demande d'abord une **définition produit** de
 l'engagement (`likes + comments + saved` ? avec `follows` ? nombre ou taux sur
 `reach` ?), à écrire dans `CONTEXT.md` : elle ne s'invente pas en passant.
+
+**[19 · Trente écritures qui ne se relisent pas](issues/19-ecritures-qui-ne-se-relisent-pas.md)** —
+**les trois familles, cascade comprise.** Sur les 30 écritures nues il en reste
+**2**, et le code écrit désormais leur raison (le harnais épingle le chiffre :
+c'est ce qui empêche une trente et unième d'arriver en silence). Le défaut avait
+une **seconde moitié** que le ticket ne voyait pas : les écrans **jetaient la
+réponse** — `budget-editor.tsx` faisait `setSaved(true)` après un appel qu'il ne
+regardait pas. Corriger les actions seules n'aurait rien changé pour le client.
+**L'arbitrage de la famille 3 est tranché et il est à David** : séquence plutôt
+que fonction SQL `SECURITY DEFINER`, parce qu'aucune migration ne peut être jouée
+(03, 04, 05 attendent) et qu'un appel à une fonction inexistante casserait le
+renommage au lieu de le rendre silencieux — *on ne remplace pas un mensonge par
+une panne*. Le patron n'est pas neuf : `_fusionnerLabels` l'appliquait déjà, il
+est **étendu aux quatre** chemins (thèmes **et** catégories de conversion) via
+`lib/cascade.ts`, un module **pur** — c'est ce qui le rend jouable hors ligne,
+`actions.ts` ne le sera jamais. **Deux défauts trouvés en chemin et corrigés dans
+le même geste** : `renameLabel`/`deleteLabel` écrivaient `profiles.labels` sur
+une lecture **non vérifiée** (`_labels` replie un SELECT raté sur `[]`, donc une
+lecture ratée **effaçait tous les thèmes du compte**), et l'ordre de
+`renameConversionCategory` rendait un arrêt **irrattrapable**. **La revue a
+trouvé ce que la relecture avait manqué** : le **dernier maillon** de chaque
+cascade — l'étape qui écrit la liste maîtresse — ne rendait que son `.error`,
+donc le défaut corrigé par ce ticket survivait **dans sa propre correction** ; et
+les deux cascades de catégories pouvaient être des **no-op complets** et dire
+« renommée partout ». Les quatre comptent leurs lignes, et le refus se dit
+autrement qu'un arrêt — la liste maîtresse étant la dernière, **tout le reste EST
+écrit**, et le message le dit. **117 + 23 vérifications neuves**, dont **trois**
+mises à l'épreuve **par mutation** ; 639 rejouées ; 19 routes. **Rien n'est joué
+en base** — mais le risque propre au ticket est écarté **sur pièce** : un
+`RETURNING` fait appliquer la politique de SELECT, donc un SELECT plus étroit
+que l'UPDATE **bloquerait** l'écriture, et `peut_editer` est exactement
+`a_acces` plus `role = 'editor'` (§12 du SQL). **Exception au §9** : tout est
+côté web, donc **visible au prochain déploiement sans aucun passage du worker**.
+Sa revue a ouvert deux tickets :
+[45 · Renommer un thème lui fait perdre son étoile](issues/45-renommer-un-theme-lui-fait-perdre-son-etoile.md) —
+l'étoile est une **clé** `priority_label:<nom>` que le renommage simple ne
+propage pas et que la suppression ne retire pas, donc un thème renommé perd ses
+conseils et un thème effacé consomme en silence une des trois places
+(`CLAUDE.md` §1) ; et
+[46 · La période des coûts peut s'inverser](issues/46-la-periode-de-couts-peut-s-inverser.md) —
+**hors de ce ticket**, dans du travail non commité porté par un autre chantier
+(`lib/couts.ts`, `bandeau-commandes.tsx`, `prototype-switcher.tsx`), donc écrit
+plutôt que corrigé (§5) : le premier des trois affiche une **courbe vide et des
+totaux à zéro** sur une fenêtre à l'envers, sans un mot.
