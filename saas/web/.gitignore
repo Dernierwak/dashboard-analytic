@@ -1,4 +1,9 @@
-node_modules/
+# SANS LE SLASH FINAL, ET C'EST LE POINT. `node_modules/` ne vise QUE des
+# dossiers : dans un worktree (`.claude/worktrees/`), `node_modules` est un
+# LIEN vers celui du dépôt principal, et un lien n'est pas un dossier — git ne
+# l'ignorait donc pas. Un `git add -A` y publiait un chemin absolu vers le
+# disque de David, dans un dépôt public.
+node_modules
 .next/
 out/
 next-env.d.ts
