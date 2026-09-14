@@ -2,13 +2,13 @@
 
 _Last updated: <DATE>_
 
-This Privacy Policy describes how **<APP_NAME>** ("we", "us", "our") collects, uses, and shares your personal information when you use our analytics dashboard for social media and advertising data.
+This Privacy Policy describes how **Pulse** ("we", "us", "our") collects, uses, and shares your personal information when you use our weekly marketing reporting service for advertising and organic social media data.
 
 ---
 
 ## 1. Who we are
 
-**<APP_NAME>** is operated by **<COMPANY_NAME>**, registered at **<COMPANY_ADDRESS>**, **<COUNTRY>**.
+**Pulse** is operated by **<COMPANY_NAME>**, registered at **<COMPANY_ADDRESS>**, **<COUNTRY>**.
 
 For any privacy-related question, contact us at **<PRIVACY_EMAIL>**.
 
@@ -20,87 +20,118 @@ We collect and process the following categories of data:
 
 ### 2.1 Account data
 - Your **email address** (used to create your account via Supabase authentication)
-- Your **encrypted password** (managed by Supabase Auth, not visible to us)
-- Account creation date and last login
+- Your **password**, stored only as a hash by Supabase Auth and never visible to us
+- Account creation date and last sign-in date
 
-### 2.2 OAuth tokens (Meta + Google Ads)
-When you authorize <APP_NAME> to access your Meta and/or Google Ads accounts:
-- **Refresh tokens** issued by Meta and Google, used to query their APIs on your behalf
-- **Customer IDs / Account IDs** (your Meta Page ID, Instagram Business ID, Google Ads Customer ID)
-- These tokens are stored in our Supabase database (PostgreSQL with Row-Level Security)
-- These tokens can be revoked at any time from your settings or via Meta/Google's permission pages
+We do not ask for your name, your postal address, or your phone number.
+
+### 2.2 OAuth tokens (Google + Meta)
+When you authorize Pulse to access your advertising accounts:
+- **Refresh tokens** issued by Google and Meta, used to query their APIs on your behalf
+- **Account identifiers** (Google Ads Customer ID, GA4 Property ID, Meta Ad Account ID, Facebook Page ID, Instagram Business Account ID)
+- These tokens are stored in our Supabase database (PostgreSQL, with Row-Level Security scoping every row to a single account)
+- **Tokens are never shared with people you invite to your account.** An invited member sees the figures; they never receive the credentials used to fetch them.
+- You can **disconnect a source at any time from your settings**, which deletes the token we hold and stops all further collection. To revoke the authorization at the source, use Google's and Meta's own permission pages — we do not call their revocation endpoints on your behalf.
 
 ### 2.3 Marketing performance data (read-only)
-We fetch the following data from Meta Graph API and Google Ads API to display in your dashboard:
-- **Instagram (organic)** : posts metadata (caption, format, date), reach, likes, saves, comments, follower count history
-- **Meta Ads (Facebook + Instagram Ads)** : campaign names, impressions, clicks, spend, CTR, CPC, statuses
-- **Google Ads** : campaign names, impressions, clicks, spend, CTR, CPC, conversions, statuses
+We fetch the following data from the Google Ads API, the Google Analytics Data API, and the Meta Graph API, in order to build your dashboards and your weekly report:
 
-⚠ We **never** access:
-- Direct messages (DM)
-- Personal user data (followers identity, etc.)
-- Ability to publish, modify, or delete any content on your behalf
+- **Google Ads** — campaign and ad names, statuses, impressions, clicks, spend, conversions, and the campaign change history of the last 30 days (budget, bid, status, audience and creative changes)
+- **Google Analytics 4** — aggregated report rows only: date, traffic source, medium, UTM campaign name, event name, sessions, conversions, revenue
+- **Meta Ads (Facebook + Instagram Ads)** — campaign and ad names, statuses, impressions, clicks, spend, conversions
+- **Instagram (organic)** — post metadata (caption, format, publication date), reach, likes, saves, comments, and follower count history
 
-### 2.4 Payment data (Stripe)
-If you subscribe to a paid plan:
-- Stripe processes your payment (we never see your card details)
-- We store: subscription status (paid/free), subscription start date
+We **never** request, receive or store:
+- Any identifier of an individual visitor or customer of yours — **no `userId`, no `clientId`, no geolocation and no device data is ever requested from Google Analytics.** We only ever read aggregated report rows.
+- Direct messages, private conversations, or contact lists
+- Any ability to publish, modify, pause or delete anything on your behalf. Our access is read-only, and no write call to Google Ads or Meta exists anywhere in our codebase.
+
+### 2.4 Payment data
+<!-- À COMPLÉTER AVANT PUBLICATION — voir README.md.
+     Le produit n'a aucun paiement aujourd'hui : aucun prestataire de paiement
+     n'est branché, aucune donnée de facturation n'est collectée. Ce paragraphe
+     doit être réécrit le jour où une offre payante existe, et pas avant :
+     décrire un prestataire qu'on n'utilise pas est une fausse déclaration. -->
+
+Pulse is not currently billed: we operate no paid plan, we use no payment provider, and we collect no billing or card data.
 
 ### 2.5 Usage data
-- Pages visited, features used (via Vercel logs, no external analytics tool)
-- IP address (for security and authentication)
+- Server logs generated by our host (Vercel), including your IP address, for security and troubleshooting
+- We use **no third-party analytics, tracking or advertising tool** inside the application
 
 ---
 
 ## 3. How we use your data
 
 We use your data only to:
-- Display your social media and advertising analytics in your dashboard
+- Build and display your dashboards and your weekly report
+- Produce the recommendations shown in that report
 - Authenticate you and secure your account
-- Process payments and manage your subscription
-- Send essential service emails (account confirmation, subscription receipts, security alerts)
+- Send essential service emails (account confirmation, security alerts)
 - Comply with legal obligations
 
 We do **NOT**:
-- Sell your data to third parties
-- Use your data for advertising (other than your own analytics)
-- Train AI models with your data
+- Sell your data, or share it with advertising platforms, data brokers or information resellers
+- Use your data to serve advertising, or to build audiences
+- Use your data to train or improve any generalized artificial intelligence or machine learning model
 - Share your data with anyone outside the providers listed in §5
+
+### 3.1 Use of a generative AI service
+
+Part of the wording of your weekly report is written by **Google's Gemini API**. To produce it, we send that service extracts of the data described in §2.3 — campaign names, theme names, and the figures being commented on.
+
+- This is done **solely** to produce a feature that is visible to you in the application: the text of your own report.
+<!-- À VÉRIFIER AVANT PUBLICATION — ticket 26. Cette phrase n'est vraie que si la
+     facturation est activée sur le projet qui porte la clé Gemini : les termes
+     définissent le palier payant comme l'accès « through a Cloud Project
+     associated with an active billing account ». Tant que ce n'est pas vérifié,
+     l'écrire serait une affirmation invérifiée (CLAUDE.md §7).
+     NE PAS en conclure qu'on est en infraction sans elle : pour un exploitant
+     en EEE, en Suisse ou au Royaume-Uni, les termes appliquent DÉJÀ le régime
+     de données du palier payant au quota gratuit. Le détail et la citation sont
+     dans GOOGLE_VERIFICATION.md §3. -->
+- We use the **paid tier** of the Gemini API, under which Google does not use the submitted content to improve its products.
+- No account data (§2.1) and no OAuth token (§2.2) is ever sent to this service.
 
 ---
 
 ## 4. Legal basis (GDPR)
 
 Under the EU General Data Protection Regulation (GDPR), our legal bases for processing your data are:
-- **Contract performance** : we need your data to provide the service you subscribed to
-- **Consent** : OAuth authorization to Meta/Google APIs is given by you explicitly via their consent screens
-- **Legitimate interest** : security, fraud prevention, service improvement
-- **Legal obligation** : tax, accounting
+- **Contract performance** : we need your data to provide the service you signed up for
+- **Consent** : OAuth authorization to the Google and Meta APIs is given by you explicitly, on their own consent screens
+- **Legitimate interest** : security and fraud prevention
+- **Legal obligation** : accounting and tax
 
 ---
 
 ## 5. Sub-processors (third parties)
 
-We use the following sub-processors who may process your data on our behalf:
+We use the following sub-processors, who may process your data on our behalf:
 
 | Provider | Purpose | Location |
 |---|---|---|
 | Supabase (Supabase Inc.) | Database + authentication | EU / US |
-| Vercel Inc. | App hosting | US |
-| Stripe (Stripe Inc.) | Payment processing | US |
-| Meta (Meta Platforms, Inc.) | Source of Instagram/Meta Ads data via API | US |
-| Google (Google LLC) | Source of Google Ads data via API | US |
+| Vercel Inc. | Application hosting | US |
+| GitHub (GitHub, Inc.) | Runs our scheduled weekly data collection | US |
+| Google (Google LLC) | Source of Google Ads and Google Analytics data; Gemini API for report wording (§3.1) | US |
+| Meta (Meta Platforms, Inc.) | Source of Meta Ads and Instagram data | US |
 
-All these providers comply with GDPR (Data Processing Addendums signed) and / or Standard Contractual Clauses for international transfers.
+International transfers rely on Standard Contractual Clauses and, where applicable, signed Data Processing Addendums.
+
+<!-- À VÉRIFIER AVANT PUBLICATION : que les DPA Supabase, Vercel et GitHub sont
+     effectivement signés depuis le compte de l'entreprise. Cette phrase est une
+     affirmation juridique, pas une intention. -->
 
 ---
 
 ## 6. Data retention
 
-- **Account data** : kept while your account is active. Deleted within 30 days after account closure.
-- **OAuth tokens** : kept while you authorize access. Deleted when you disconnect from settings or revoke from Meta/Google.
-- **Marketing data** : kept while your account is active to allow historical analysis. You can delete it at any time from your dashboard.
-- **Payment data** : retained for legal accounting period (10 years in <COUNTRY>).
+- **Account data** : kept while your account is active, and deleted within 30 days of a deletion request.
+- **OAuth tokens** : kept while you authorize access. Deleted when you disconnect a source from your settings, or when you revoke access from Google or Meta.
+- **Marketing data** : kept while your account is active, so that year-on-year comparison stays possible. Deleted within 30 days of a deletion request.
+
+Deletion requests are currently handled manually by us, on request at **<PRIVACY_EMAIL>**, and not through a self-service button in the application. The full procedure is set out in our [data deletion instructions](/suppression).
 
 ---
 
@@ -126,9 +157,8 @@ You also have the right to lodge a complaint with your national data protection 
 We protect your data with:
 - HTTPS encryption in transit
 - Database encryption at rest (Supabase)
-- Row-Level Security policies ensuring each user can only access their own data
-- Regular security updates
-- Multi-factor authentication option (via Supabase Auth)
+- Row-Level Security policies, so that every row of every table is readable only by the account that owns it
+- Credentials held as encrypted secrets, never in our source code, which is public
 
 No method is 100% secure, but we follow industry best practices.
 
@@ -136,7 +166,7 @@ No method is 100% secure, but we follow industry best practices.
 
 ## 9. Cookies
 
-We use only essential cookies (session authentication). We do not use any tracking, advertising, or analytics cookies that would require additional consent.
+We use only essential cookies (session authentication). We use no tracking, advertising or analytics cookie, and therefore ask for no cookie consent beyond what is strictly necessary to keep you signed in.
 
 ---
 
@@ -146,7 +176,19 @@ We may update this Privacy Policy occasionally. Significant changes will be noti
 
 ---
 
-## 11. Contact
+## 11. Google user data — Limited Use
+
+Pulse's use and transfer of information received from Google APIs to any other app will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+
+Concretely, for the `adwords` and `analytics.readonly` scopes:
+- We use the data **only** to provide features that are visible and prominent in our own interface: your dashboards, your weekly report, and its recommendations.
+- We do not transfer it to any third party other than the sub-processors listed in §5, each of which acts only on our behalf.
+- We do not allow humans to read it, except where you have asked us to help with a specific issue, or where security or the law requires it.
+- We do not use it to develop, improve or train generalized AI or ML models.
+
+---
+
+## 12. Contact
 
 For any question regarding this policy or to exercise your rights:
 - **Email** : <PRIVACY_EMAIL>

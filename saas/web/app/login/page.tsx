@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "signup";
@@ -182,6 +183,16 @@ export default function LoginPage() {
             </>
           )}
         </p>
+
+        {/* La seule page publique du produit est celle-ci : c'est donc d'ici
+            qu'un reviewer Google ou Meta doit atteindre les documents légaux
+            sans compte. Les trois sont exigés par les deux dossiers
+            (`saas/web/legal/GOOGLE_VERIFICATION.md`, `META_APP_REVIEW.md`). */}
+        <nav className="mt-8 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11.5px] text-faint">
+          <Link href="/privacy" className="hover:text-ink">Confidentialité</Link>
+          <Link href="/terms" className="hover:text-ink">CGU</Link>
+          <Link href="/suppression" className="hover:text-ink">Suppression des données</Link>
+        </nav>
       </div>
     </main>
   );
