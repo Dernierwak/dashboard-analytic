@@ -109,3 +109,146 @@ le payload. **Ne pas choisir en passant.**
   - **Lire les deux phrases de la carte de thème** — « revenu inconnu » et
     « pas encore assez de dépense ». Elles vivent dans du JSX, aucun harnais ne
     les rend, et c'est exactement là que la revue de 22 a trouvé un trou.
+
+## Avancement — session du 2026-09-14 (construction)
+
+**Les trois étapes qui étaient de la réalisation sont faites. Il reste la
+quatrième, qui est une EXPLOITATION et appartient à David : jouer la migration.**
+
+### 1 · L'engagement est défini — c'était le seul vrai blocage
+
+Tranché avec David le 2026-09-14 : **`(likes + comments + saved) ÷ reach`, en
+pourcentage**. Écrit dans `CONTEXT.md` (« Engagement ») avec ce que la
+définition exclut et pourquoi — `follows` dehors (s'abonner n'est pas réagir),
+`views` refusé comme dénominateur (vide sur les posts image).
+
+**L'unité n'était pas un choix libre, et ce ticket ne l'avait pas vu** :
+`METRIC_INFO["eng"]` (`saas/traitement/build_report.py` l. 217) porte déjà
+l'unité « % » et `insights.py` l. 350 écrit déjà « X % d'engagement moyen ».
+Le produit attendait donc un TAUX depuis toujours. Rendre un nombre absolu
+aurait affiché « 128 % ». La question posée à David s'est donc réduite au
+numérateur et au dénominateur.
+
+**Deux règles ajoutées en écrivant le SQL, parce qu'aucune des deux n'allait
+de soi :**
+
+- **Un rapport de sommes, pas une moyenne de taux.** Sinon une publication vue
+  par 12 personnes et aimée par 3 pèse 25 % et emporte le thème entier. Mesuré
+  dans le harnais : deux posts à 50 % et 1 % donnent 25,5 % en moyenne de taux
+  contre **1,05 %** en rapport de sommes, et c'est le second qui décrit ce qui
+  s'est passé (10 010 vues, 105 réactions).
+- **Une publication sans portée remontée sort du calcul, des DEUX côtés.**
+  Garder ses réactions au numérateur sans rien mettre au dénominateur gonfle le
+  taux d'autant plus que la donnée manque : **une panne de collecte se lirait
+  comme une réussite.** C'est un `FILTER (WHERE p.reach IS NOT NULL)`, et c'est
+  pour cela que `eng_avg` s'écarte de `reach_avg` juste au-dessus, qui compte
+  bien une portée absente comme 0 — une MOYENNE porte sur les publications
+  (elles existent toutes), un TAUX porte sur les gens (eux, on ne les connaît
+  pas). Mesuré : le thème `Lifestyle` du harnais rend **6,25 %** et non 6,70 %.
+
+### 2 · Le harnais regarde enfin la bonne base
+
+`schema.sql` du harnais 04 déclarait `eng numeric`. La colonne est **retirée**,
+les colonnes réelles de la production sont **déclarées** (`likes`, `comments`,
+`saved`, `views`, `follows`, toutes en `integer` comme des comptes), avec en
+commentaire la raison pour laquelle cette table-là est recopiée de la
+production au lieu d'être réduite à ce que la vue touche : elle est antérieure
+aux migrations, donc ce bloc est **le seul endroit du dépôt qui décrit sa
+forme**, et une colonne inventée ici ne rencontre jamais de démenti.
+
+**La preuve demandée par ce ticket a été obtenue** : sur le schéma corrigé et
+AVANT de toucher au SQL, le harnais tombe sur l'erreur exacte de la production —
+
+```
+ERROR:  column p.eng does not exist
+```
+
+Il ne prouvait rien jusque-là ; il prouve maintenant.
+
+`views` et `follows` sont déclarées bien qu'aucune formule ne les lise : elles
+existent en base, et le jour où la définition bouge elle se vérifie ici au lieu
+de partir d'une supposition.
+
+### 3 · `eng_avg` est écrit à partir des colonnes qui existent
+
+Dans `theme_regroupement.sql`, et sa copie de `000_run_me_all.sql` **régénérée
+par extraction du bloc source** plutôt que recopiée à la main —
+`test_copie_non_derivee.py` est vert, et il compare les deux au caractère près.
+
+Le `::numeric` est conservé et sa raison renforcée : sur un taux, le numérateur
+est **toujours** plus petit que le dénominateur, donc une division entière
+rendrait **0 à tous les coups**, pas seulement un arrondi faux.
+
+### 4 · Ce que la vérification a mesuré — 131 contrôles sur un vrai PostgreSQL
+
+`pgserver` (PostgreSQL 16 jetable, ni base Supabase, ni secret, ni réseau) :
+
+| Fichier | Résultat |
+|---|---|
+| `test_copie_non_derivee.py` | 2/2 |
+| `test_regles_de_la_vue.py` | **25/25** (dont 5 neufs sur l'engagement) |
+| `test_vue_vs_build_matrix.py` | 61/61 |
+| `test_isolement.py` | 4/4 |
+| `test_python_lit_la_vue.py` | 18/18 |
+| `test_part_muette_sql.py` | 21/21 |
+| `plan.py` | 2/2 — 300 puis 900 comptes, **520 lignes lues** dans les deux cas : le `FILTER` n'a pas coûté l'index |
+
+**Le harnais a fait tomber une erreur d'arithmétique que j'avais écrite**
+(un attendu à 60 au lieu de 105) : il ne passe pas toujours.
+
+### 5 · CE QUE ÇA CHANGE À L'ÉCRAN, ET QU'IL FAUT SAVOIR AVANT DE DÉPLOYER
+
+**Des engagements déjà affichés vont CHANGER DE VALEUR. Ce n'est pas une
+panne, et ce n'est pas non plus une première mesure.**
+
+⚠ **J'avais écrit ici le contraire, et c'était faux.** Je concluais de
+l'absence de colonne `eng` en base que personne n'avait jamais vu d'engagement.
+La relecture l'a corrigé : `build_report.py` l. 1997 **fabrique** la colonne
+`eng` sur le DataFrame — même numérateur, même dénominateur — avant de le
+passer à `build_matrix` (l. 2182), et `saas/web/lib/channels.ts` la recalcule
+pour `/instagram`. **L'engagement est mesuré et affiché depuis toujours.** Ce
+qui était cassé, c'est que la VUE lisait une colonne de BASE inexistante, donc
+tout le regroupement refusait de s'installer — pas seulement l'engagement.
+
+Ce que la migration change réellement, sur une valeur déjà à l'écran :
+
+- **l'agrégation** — rapport de sommes au lieu d'une moyenne de taux ;
+- **le sort de la portée inconnue** — inconnu au lieu de 0.
+
+Mesuré sur les fixtures : le thème `Lifestyle` passe de **3,12 % à 6,25 %**, le
+double. `E-bike` de 4,87 % à 5,66 %. Les deux écarts sont chiffrés dans
+`ECARTS_VOULUS` (`test_vue_vs_build_matrix.py`) pour qu'ils cessent d'être une
+surprise.
+
+**Comparer à l'ancien rapport avant de conclure à une panne**, comme pour le
+revenu et le ROAS.
+
+### 6 · Ce qui reste — et ce n'est plus de la réalisation
+
+- [ ] **Jouer la migration** (`000_run_me_all.sql`), puis déployer. **David
+      seul** : aucun secret ni accès production n'est passé par cette session.
+      C'est la seule étape restante de CE ticket.
+- [ ] Ensuite seulement, les deux contrôles de [22](22-pulse-lit-la-vue.md)
+      rappelés plus haut redeviennent possibles.
+
+### 7 · Relevé en chemin, pas de ce ticket — deux tickets ouverts
+
+- **[49](49-trois-moteurs-d-engagement-trois-reponses.md) · trois moteurs
+  d'engagement.** `channels.ts` (pour `/instagram`) et `build_report.py` font
+  tous deux une **moyenne de taux** et rendent **0** sur une portée inconnue,
+  là où la vue fait un rapport de sommes et rend « inconnu ». Le client peut
+  lire deux chiffres différents pour le même thème. Le `0` est le plus grave
+  des deux : il affirme « personne n'a réagi » là où on ne sait pas (§7).
+- **[50](50-la-collecte-instagram-ecrase-ce-qu-elle-ne-sait-pas.md) · la
+  collecte écrase ce qu'elle ignore.** `fetch_instagram.py` ne demande
+  **jamais `likes` pour les Reels et les vidéos** (l. 248-251) et écrit `0`
+  (l. 321) : l'engagement des Reels est structurellement sous-évalué, et
+  « le thème qui fait le plus réagir » peut nommer le mauvais. Plus
+  généralement, **toute métrique absente est écrite `0`** — y compris `reach`,
+  et c'est pour ça que le filtre de la vue doit viser `reach <= 0`.
+
+La docstring de `build_matrix` annonçait `df_insta` avec une colonne `eng` :
+**corrigée ici**. Elle n'était pas fausse sur le fond — `build_report` la pose
+bien avant l'appel — mais elle laissait croire que la colonne venait de la
+base, ce qui est précisément la confusion qui a coûté ce ticket. Elle dit
+maintenant d'où la colonne vient.

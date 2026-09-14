@@ -70,7 +70,12 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
 
     df_meta_raw   : meta_ads_insights complet (date_start, campaign_name, spend, …)
     df_google     : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
-    df_insta      : instagram_organic_posts complet (date, type, reach, eng, labels, …)
+    df_insta      : instagram_organic_posts complet (date, type, reach, likes,
+                    comments, saved, labels, …) PLUS une colonne `eng` qui ne
+                    vient PAS de la base : `build_report.py` l. 1997 la calcule
+                    sur le DataFrame avant d'appeler ici. La base n'a jamais eu
+                    cette colonne (ticket 44) — c'est pour l'avoir crue récoltée
+                    que la vue SQL a longtemps refusé de s'installer.
     meta_cfg      : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
     ga4_full      : build_ga4_context sur TOUT l'historique (ou None)
     themes        : les lignes de la vue `theme_regroupement`, déjà lues et déjà

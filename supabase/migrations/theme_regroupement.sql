@@ -279,7 +279,64 @@ posts AS NOT MATERIALIZED (
            lbl                                        AS label,
            count(*)::integer                          AS posts,
            sum(coalesce(p.reach, 0))::numeric / count(*)  AS reach_avg,
-           sum(coalesce(p.eng, 0))::numeric   / count(*)  AS eng_avg
+           -- L'ENGAGEMENT D'UN THÈME : LES RÉACTIONS RAPPORTÉES AUX GENS QUI
+           -- ONT VU. Défini dans `CONTEXT.md` (« Engagement »), tranché avec
+           -- David le 2026-09-14.
+           --
+           -- CE N'EST PAS LA PREMIÈRE MESURE DE L'ENGAGEMENT, et le croire
+           -- coûterait cher : `build_report.py` l. 1997 fabrique déjà la
+           -- colonne `eng` sur le DataFrame — MÊME numérateur, MÊME
+           -- dénominateur — avant de le passer à `build_matrix`. Ce qui change
+           -- ici n'est donc PAS la formule, c'est l'AGRÉGATION (voir plus bas)
+           -- et le sort de la donnée manquante. Des chiffres déjà affichés
+           -- vont bouger : ce n'est pas une panne.
+           --
+           -- CE QUI ÉTAIT VRAIMENT CASSÉ : la vue lisait `p.eng`, une colonne
+           -- que la BASE n'a jamais eue (le DataFrame, lui, l'avait). La vue
+           -- était donc rejetée en entier par PostgreSQL — `column p.eng does
+           -- not exist`, ticket 44 — et c'est tout le regroupement qui ne
+           -- pouvait pas être installé, pas seulement l'engagement.
+           --
+           -- UN TAUX, PAS UN COMPTE : `METRIC_INFO["eng"]`
+           -- (`saas/traitement/build_report.py`) porte l'unité « % » et
+           -- `insights.py` écrit « X % d'engagement moyen ». Rendre un nombre
+           -- absolu ici aurait affiché « 128 % ».
+           --
+           -- UN RATIO DE SOMMES, LÀ OÙ LE PYTHON FAIT UNE MOYENNE DE RATIOS —
+           -- et c'est LE changement de valeur. Un post vu par 12 personnes et
+           -- aimé par 3 pèse 25 % dans une moyenne de ratios et écrase le
+           -- thème entier ; en sommant des deux côtés, chaque réaction pèse
+           -- pareil quel que soit le post qui la porte. Les deux moteurs qui
+           -- font encore la moyenne de ratios (`saas/web/lib/channels.ts`,
+           -- `build_report.py`) sont une divergence connue et ouverte.
+           --
+           -- `nullif` À LA FIN, ET C'EST §7 : sans portée, l'engagement est
+           -- INCONNU, pas nul. Rendre 0 affirmerait « personne n'a réagi »
+           -- alors qu'on ne sait pas combien de gens ont vu. Le `::numeric`
+           -- est ici pour la même raison qu'au-dessus, en pire : un taux a
+           -- toujours un numérateur plus petit que son dénominateur, donc une
+           -- division entière rendrait 0 À TOUS LES COUPS.
+           --
+           -- LE `FILTER` VISE `reach <= 0`, PAS SEULEMENT `reach IS NULL`, ET
+           -- C'EST LUI QUI EMPÊCHE LE TAUX FAUX. La collecte n'écrit JAMAIS de
+           -- `NULL` : `fetch_instagram.py` l. 325 fait `metrics.get("reach",
+           -- 0)`, donc une portée que Graph ne rend pas arrive en base à ZÉRO.
+           -- Ne filtrer que `NULL` reviendrait à garder ces publications, qui
+           -- apporteraient leurs réactions au numérateur sans rien apporter au
+           -- dénominateur : mesuré sur le harnais, un post à `reach 0` avec
+           -- 500 likes à côté d'un post à 1 000 vues et 10 likes fait afficher
+           -- 51 % au lieu de 1 %. Le gonflement est d'autant plus fort que la
+           -- collecte est en panne — une panne se lirait comme une réussite.
+           -- (`IS NOT NULL` reste écrit pour les lignes d'avant ce code.)
+           --
+           -- C'est aussi pour cela que ce calcul s'écarte de `reach_avg` juste
+           -- au-dessus, qui compte bien une portée absente comme 0 : une
+           -- MOYENNE porte sur les publications (elles existent toutes), un
+           -- TAUX porte sur les gens (eux, on ne les connaît pas).
+           (sum(coalesce(p.likes, 0) + coalesce(p.comments, 0)
+                + coalesce(p.saved, 0))
+                FILTER (WHERE p.reach IS NOT NULL AND p.reach > 0))::numeric * 100
+             / nullif(sum(p.reach) FILTER (WHERE p.reach > 0), 0)  AS eng_avg
       FROM public.instagram_organic_posts p
      CROSS JOIN LATERAL unnest(p.labels) AS lbl
      CROSS JOIN bornes b

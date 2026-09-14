@@ -137,6 +137,63 @@ qu'on n'a pas (`CLAUDE.md` §7).
 _Avoid_: Fréquence — c'est le mot de Meta, et il désigne précisément la valeur
 qu'on ne sait PAS calculer. L'employer ferait passer un plancher pour elle.
 
+**Engagement** :
+La part des gens qui ont vu une publication et ont fait quelque chose :
+**`(likes + comments + saved) ÷ reach`**, exprimée en **pourcentage**. Tranché
+avec David le 2026-09-14 (ticket 44 de la construction).
+
+⚠ **La formule était déjà employée ; ce qui manquait, c'est qu'elle soit
+écrite.** Elle vit aujourd'hui à TROIS endroits, et l'énoncé ci-dessous est
+celui que la vue `theme_regroupement` applique — les deux autres en divergent
+et sont à ramener dessus (voir le ticket 50 de la construction) :
+
+| Où | Agrégation | Portée inconnue |
+|---|---|---|
+| `theme_regroupement` (la référence) | rapport de sommes | **inconnu** |
+| `saas/web/lib/channels.ts` (`/instagram`) | moyenne de taux | **0** |
+| `saas/traitement/build_report.py` l. 1997 | moyenne de taux | **0** |
+
+Ce que la définition exclut, et pourquoi :
+- **`follows` n'y est pas.** S'abonner n'est pas réagir à une publication,
+  c'est décider de suivre un compte. Les mélanger rendrait un taux qu'aucun
+  repère du métier ne permettrait plus de lire.
+- **`views` n'est pas le dénominateur.** La colonne est vide ou nulle sur les
+  publications image ; l'employer rendrait l'engagement inconnu sur une partie
+  du catalogue sans que personne comprenne pourquoi.
+- **C'est un rapport de sommes, pas une moyenne de taux.** Sinon une
+  publication vue par douze personnes pèse autant qu'une vue par dix mille, et
+  un thème entier se juge sur son plus petit post.
+- **Une publication dont la portée n'est pas remontée sort du calcul**, des
+  DEUX côtés de la division. Garder ses réactions sans son dénominateur
+  gonflerait le taux : une panne de collecte se lirait comme une réussite.
+  **« Pas remontée » veut dire `reach <= 0`, pas seulement `NULL`** : la
+  collecte écrit `metrics.get("reach", 0)` (`fetch_instagram.py`), donc une
+  portée absente arrive en base à **zéro**. Ne filtrer que le `NULL`
+  laisserait passer exactement le cas qu'on veut exclure.
+
+**Sans portée connue, l'engagement est INCONNU, jamais 0** (`CLAUDE.md` §7) —
+zéro affirmerait que personne n'a réagi, alors qu'on ignore combien de
+personnes ont vu. En revanche, une publication vue sans aucune réaction vaut
+bien 0 : là, la mesure existe.
+
+⚠ **Ce chiffre est déjà affiché, et il va BOUGER.** `/instagram` montre un
+« Engagement » en % depuis toujours, et le rapport hebdo aussi. Le passage à la
+vue ne change ni le numérateur ni le dénominateur : il change **l'agrégation**
+(rapport de sommes au lieu d'une moyenne de taux) et le sort de la portée
+inconnue (inconnu au lieu de 0). Un thème dont l'engagement change après la
+migration n'est donc pas en panne — mais il ne faut pas non plus présenter ça
+comme une première mesure.
+
+⚠ **Les Reels et les vidéos n'ont pas de `likes` en base** — la collecte ne
+demande pas la métrique pour ces formats et écrit `0`. Leur engagement est donc
+structurellement sous-évalué, quel que soit le moteur qui le calcule. Tant que
+ce n'est pas réparé (ticket 51), un classement de thèmes par engagement
+défavorise mécaniquement ceux qui publient des Reels.
+
+_Avoid_: Taux d'interaction, engagement rate — un seul mot pour une seule
+formule. Et ne jamais écrire « engagement » à côté d'un nombre brut de likes :
+l'unité du produit est le **%** (`METRIC_INFO`, `saas/traitement/build_report.py`).
+
 **Note** :
 Ce que le client a fait et que Pulse ne peut pas deviner — « refait les
 visuels », « changé le ciblage à la main », « le concurrent a lancé une promo ».

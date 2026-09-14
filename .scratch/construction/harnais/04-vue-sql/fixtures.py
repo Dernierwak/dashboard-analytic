@@ -86,11 +86,19 @@ THEME_EVENTS = [
     (A, "E-bike",     "view_item",     "secondaire"),  # un secondaire ne remplace jamais
 ]
 
+# L'ENGAGEMENT N'EST PLUS UNE COLONNE, C'EST UN CALCUL. La colonne `eng` que
+# ces fixtures portaient jusqu'au ticket 44 n'a JAMAIS existé en production :
+# elles décrivaient une table imaginaire, et c'est ce qui a permis à la vue
+# d'être prouvée verte alors qu'elle échouait à la première seconde sur la vraie
+# base. Les colonnes ci-dessous sont celles que la production a réellement.
 POSTS = [
-    # user, post_id, date, type, labels, reach, eng
-    (A, "p1", JOURS[0], "IMAGE", ["E-bike"],              1201, 3.5),
-    (A, "p2", JOURS[1], "REEL",  ["E-bike", "Lifestyle"], 4400, 6.25),
-    (A, "p3", JOURS[2], "REEL",  ["Lifestyle"],           None, 2.0),   # portée absente = 0
-    (A, "p4", JOURS[3], "IMAGE", [],                       900, 1.0),   # aucun thème
-    (B, "p9", JOURS[0], "IMAGE", ["Promo"],               2000, 4.0),
+    # user, post_id, date, type, labels, reach, likes, comments, saved
+    (A, "p1", JOURS[0], "IMAGE", ["E-bike"],              1201, 30, 8, 4),
+    (A, "p2", JOURS[1], "REEL",  ["E-bike", "Lifestyle"], 4400, 200, 50, 25),
+    # Portée jamais remontée : la publication compte dans `posts` et pèse 0 dans
+    # `reach_avg`, mais elle est DEHORS du taux d'engagement — on ne sait pas
+    # combien de gens l'ont vue, donc on ne peut pas dire quelle part a réagi.
+    (A, "p3", JOURS[2], "REEL",  ["Lifestyle"],           None, 20, 0, 0),
+    (A, "p4", JOURS[3], "IMAGE", [],                       900, 9, 0, 0),   # aucun thème
+    (B, "p9", JOURS[0], "IMAGE", ["Promo"],               2000, 60, 15, 5),
 ]

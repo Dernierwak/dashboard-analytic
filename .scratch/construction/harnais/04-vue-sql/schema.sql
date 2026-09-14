@@ -44,12 +44,41 @@ CREATE TABLE theme_ga4_events (
     user_id uuid NOT NULL, label text NOT NULL, event_name text NOT NULL,
     rang text NOT NULL DEFAULT 'secondaire');
 
+-- CETTE TABLE EST RECOPIÉE DE LA PRODUCTION, PAS RÉDUITE À CE QUE LA VUE
+-- TOUCHE — et c'est la seule du fichier dans ce cas. `instagram_organic_posts`
+-- est ANTÉRIEURE AUX MIGRATIONS : sa forme n'est écrite nulle part dans le
+-- dépôt, donc ce bloc est le seul endroit qui la décrit, et une colonne
+-- inventée ici ne rencontre jamais de démenti.
+--
+-- C'est exactement ce qui a coûté le ticket 44 : le harnais déclarait une
+-- colonne `eng numeric` que la production n'a jamais eue, montait la vraie vue
+-- dessus, et la prouvait verte. `theme_regroupement` échouait pourtant à la
+-- première seconde sur la vraie base — `column p.eng does not exist` — et
+-- personne ne pouvait le voir ici. Un harnais qui invente une colonne ne
+-- prouve rien ; il fabrique une base qui n'existe nulle part.
+--
+-- Les colonnes ci-dessous sont celles relevées sur le projet de production le
+-- 2026-09-13 (ticket 44). Celles que la vue ne lit pas — `caption`,
+-- `media_url`, `label_source`, `label_at` — restent dehors : les garder
+-- n'apprendrait rien, alors qu'une colonne d'INTERACTION absente ferait
+-- silencieusement retomber une future formule d'engagement sur du vide.
 CREATE TABLE instagram_organic_posts (
     user_id uuid NOT NULL, post_id text NOT NULL,
     date timestamptz NOT NULL, type text, labels text[],
-    -- `reach` en ENTIER, comme un compte : c'est le type qui fait tomber la
-    -- division entière si la vue oublie son `::numeric`.
-    reach integer, eng numeric);
+    -- TOUS EN ENTIER, COMME DES COMPTES — et ce n'est pas cosmétique : c'est le
+    -- type qui fait tomber la division entière si la vue oublie son
+    -- `::numeric`. `sum(bigint) / sum(bigint)` vaut 0 en PostgreSQL dès que le
+    -- numérateur est plus petit que le dénominateur, ce qui est TOUJOURS le cas
+    -- d'un taux d'engagement : un « 0,0 % » parfaitement faux, qui a l'air d'un
+    -- compte qui ne réagit pas.
+    reach integer,
+    likes integer, comments integer, saved integer,
+    -- Lues par aucune formule aujourd'hui (l'engagement est
+    -- `(likes+comments+saved)/reach`, tranché avec David le 2026-09-14 et écrit
+    -- dans `CONTEXT.md`). Elles sont là parce qu'elles EXISTENT en production :
+    -- le jour où la définition bouge, elle se vérifie ici au lieu de partir
+    -- d'une supposition.
+    views integer, follows integer);
 
 -- Les index du schéma réel, et EUX SEULS : un harnais qui en invente donne des
 -- plans plus beaux que la production.

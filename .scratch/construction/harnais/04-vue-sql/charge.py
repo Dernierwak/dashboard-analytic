@@ -43,7 +43,8 @@ def sql() -> str:
                 F.GA4_EVENTS),
         _insert("theme_ga4_events", ["user_id", "label", "event_name", "rang"], F.THEME_EVENTS),
         _insert("instagram_organic_posts",
-                ["user_id", "post_id", "date", "type", "labels", "reach", "eng"], F.POSTS),
+                ["user_id", "post_id", "date", "type", "labels", "reach",
+                 "likes", "comments", "saved"], F.POSTS),
     ])
 
 
@@ -68,9 +69,28 @@ def dataframes(user_id):
     goog = [{"date_start": d.isoformat(), "campaign_id": c, "cost_micros": m,
              "clicks": k, "impressions": i}
             for (u, d, c, m, k, i) in F.GOOGLE_ADS if u == user_id]
+    # LA COLONNE `eng` EST FABRIQUÉE ICI PARCE QUE `build_report` LA FABRIQUE.
+    #
+    # La base n'a pas cette colonne (ticket 44) — mais `build_matrix` ne lit
+    # JAMAIS la base : son seul appelant de production est `build_report.py`
+    # l. 2182, qui pose `df_insta["eng"]` 180 lignes plus haut (l. 1997) et
+    # passe le DataFrame enrichi. Nourrir `build_matrix` sans cette colonne
+    # reviendrait à comparer la vue à un chemin d'appel qui n'existe nulle
+    # part : le harnais cesserait d'inventer une colonne pour inventer un
+    # point d'entrée. Relevé en relecture du ticket 44.
+    #
+    # La formule est RECOPIÉE de `build_report.py` l. 1997-1999 telle quelle,
+    # `if r["reach"] > 0 else 0` compris — c'est la version qu'on compare, pas
+    # celle qu'on voudrait. `None` devient 0 comme le fait le `fillna(0)` de
+    # la l. 1994.
+    def _eng(r, li, co, sa):
+        portee = r or 0
+        return ((li or 0) + (co or 0) + (sa or 0)) / portee * 100 if portee > 0 else 0
+
     posts = [{"post_id": p, "date": d.isoformat() + "T12:00:00+00:00", "type": t,
-              "labels": l, "reach": r, "eng": e}
-             for (u, p, d, t, l, r, e) in F.POSTS if u == user_id]
+              "labels": l, "reach": r, "likes": li, "comments": co, "saved": sa,
+              "eng": _eng(r, li, co, sa)}
+             for (u, p, d, t, l, r, li, co, sa) in F.POSTS if u == user_id]
     df_meta = pd.DataFrame(meta) if meta else None
     df_goog = pd.DataFrame(goog) if goog else pd.DataFrame()
     df_insta = pd.DataFrame(posts) if posts else None

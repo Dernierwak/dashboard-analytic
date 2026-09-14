@@ -79,9 +79,26 @@ def themes_python(user_id, build_matrix):
 # Les deux corrections vont dans le même sens : ne rien perdre, ne rien
 # fabriquer (CLAUDE.md §7). Elles sont écrites ici pour qu'un changement futur
 # de ces chiffres fasse ROUGIR le harnais au lieu de passer inaperçu.
+#
+# LE TROISIÈME ÉCART, `eng_avg`, EST D'UNE AUTRE NATURE — il ne corrige aucun
+# bug, il change une MÉTHODE, et il fait donc bouger un chiffre déjà affiché.
+# Le détail est commenté à l'endroit de la comparaison. Les valeurs :
+#
+#  · E-bike    · deux posts à portée connue (1201 et 4400).
+#               moyenne de taux (3,50 % + 6,25 %)/2 = 4,87 % · sommes 317/5601 = 5,66 %
+#  · Lifestyle · un post à 4400 vues, un post SANS portée.
+#               Python compte le second pour 0 % → (6,25 + 0)/2 = 3,12 %
+#               la vue le SORT du calcul → 275/4400 = 6,25 %, soit le DOUBLE.
+#
+# `Promo` n'est pas listé : un seul post à portée connue, donc la moyenne d'un
+# taux unique EST le rapport des sommes. Les deux méthodes ne se séparent qu'à
+# partir de deux publications — c'est le meilleur rappel que l'écart vient de
+# l'agrégation et de rien d'autre.
 ECARTS_VOULUS = {
     ("E-bike", "revenue"): (520.00, 360.00),
     ("E-bike", "roas"):    (3.52,   2.44),
+    ("E-bike", "eng_avg"):    (5.66,   4.87),
+    ("Lifestyle", "eng_avg"): (6.25,   3.12),
 }
 
 
@@ -114,11 +131,37 @@ def main():
                     t.proche(f"[{nom}] {lbl} · {champ}", v[champ], p[champ])
             t.egal(f"[{nom}] {lbl} · posts", int(v["posts"]), int(p["posts"]))
             t.proche(f"[{nom}] {lbl} · reach_avg", v["reach_avg"], p["reach_avg"])
-            # `round()` de Python travaille sur un flottant et penche vers le
-            # pair (4,125 → 4,12) ; `round()` de PostgreSQL travaille sur un
-            # `numeric` exact et arrondit au supérieur (4,13). L'écart ne peut
-            # dépasser un centième, et c'est la version SQL qui est juste.
-            t.proche(f"[{nom}] {lbl} · eng_avg", v["eng_avg"], p["eng_avg"])
+            # ── LE TROISIÈME ÉCART VOULU : `eng_avg` ────────────────────────
+            # MÊME FORMULE DES DEUX CÔTÉS, AGRÉGATION DIFFÉRENTE. Python fait
+            # la MOYENNE DES TAUX par publication (`build_report.py` l. 1997
+            # pose `eng` post par post, `build_matrix` en prend la moyenne) ;
+            # la vue fait le RAPPORT DES SOMMES. Les deux répondent à des
+            # questions différentes : « le taux de la publication moyenne » et
+            # « la part des gens atteints qui ont réagi ». C'est la seconde
+            # qu'on veut — sinon un post vu par douze personnes pèse autant
+            # qu'un post vu par dix mille.
+            #
+            # Second écart, dans le même champ : une publication dont la portée
+            # est inconnue vaut 0 côté Python (`if r["reach"] > 0 else 0`) et
+            # sort du calcul côté vue (§7). C'est ce qui creuse l'écart sur
+            # `Lifestyle`, dont l'un des deux posts n'a pas de portée.
+            #
+            # Les deux écarts sont CHIFFRÉS dans `ECARTS_VOULUS` pour qu'un
+            # changement futur fasse rougir le harnais au lieu de passer
+            # inaperçu — et pour qu'on se souvienne que ces valeurs BOUGENT à
+            # l'écran le jour de la migration.
+            attendu = ECARTS_VOULUS.get((lbl, "eng_avg"))
+            if attendu:
+                t.proche(f"[{nom}] {lbl} · eng_avg — écart VOULU, côté vue "
+                         f"(rapport de sommes)", v["eng_avg"], attendu[0])
+                t.proche(f"[{nom}] {lbl} · eng_avg — écart VOULU, côté Python "
+                         f"(moyenne de taux)", p["eng_avg"], attendu[1])
+            else:
+                # Pas d'écart attendu : soit le thème n'a aucune publication
+                # (inconnu des deux côtés), soit il n'en a qu'UNE dont la
+                # portée est connue — et là les deux méthodes coïncident par
+                # construction, la moyenne d'un seul taux étant ce taux.
+                t.proche(f"[{nom}] {lbl} · eng_avg", v["eng_avg"], p["eng_avg"])
             # `juge` n'existait pas en Python : le seuil y était écrit en clair.
             t.egal(f"[{nom}] {lbl} · juge = le seuil des 100 CHF",
                    bool(v["juge"]), float(p["spend"]) >= 100.0)

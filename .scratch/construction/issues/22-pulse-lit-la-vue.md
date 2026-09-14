@@ -278,3 +278,73 @@ dans le commit.
   propre). Le ROAS incomplet de 10 thèmes sur 17 est donc affiché sans sa
   limite, à l'écran comme dans l'email. La vue les expose déjà — il n'y a qu'à
   les lire.
+
+## Avancement — session du 2026-09-14 (seconde passe)
+
+**Le code de ce ticket n'a pas bougé d'une ligne. Ce qui a bougé, c'est ce qui
+l'empêchait d'être vérifié.**
+
+### Ce qui a été refait ici, à l'identique
+
+La livraison de la première passe a été **re-vérifiée de bout en bout**, pas
+supposée :
+
+- `node verifie.mjs` → **35/35**.
+- `rm -rf .next tsconfig.tsbuildinfo`, `npx tsc --noEmit` → **vert**.
+- `npm run build` → **vert, 19 routes exactement** (aucune page de contrôle
+  oubliée).
+- `git grep revenuTheme` → plus aucune référence exécutable, uniquement des
+  commentaires qui expliquent sa mort.
+- La lecture est bien branchée sur `/` — non pas depuis `app/`, mais depuis
+  `lib/report.ts` l. 812, **dans le `Promise.all`**, bornée au compte regardé
+  par le même `uid` que toutes les autres lectures de la page.
+- Les trois `revalidatePath` sont en place : `setCampaignLabel` → `/couts`
+  (l. 1947) et `/` (l. 1964), `setPostLabel` → `/` (l. 2001).
+- Les deux phrases de la carte existent bien, sous la garde commune
+  `sansRoasMalgreDepense` (`theme-card.tsx` l. 219-224).
+
+### Ce qui a changé dans le blocage
+
+[44](44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md) **n'est plus bloqué
+par une décision manquante.** L'engagement est défini (`CONTEXT.md`), le
+harnais 04 regarde enfin la vraie base, `eng_avg` est calculé à partir des
+colonnes qui existent, et 131 contrôles passent sur un vrai PostgreSQL. La vue
+**peut désormais être créée** — ce qui n'était pas vrai quand ce ticket a été
+rouvert.
+
+Il reste **une seule** chose entre ce ticket et sa vérification, et ce n'est
+plus de la réalisation : **jouer la migration et déployer.** David seul.
+
+### Ce ticket reste donc `open`, pour la même raison qu'avant
+
+Son texte nomme sa vérification : « `tsc`, `npm run build`, 19 routes, **et le
+fil parcouru à la main** ». Les trois premiers sont verts et le sont restés. Le
+quatrième — classer une campagne depuis `/labels`, revenir sur `/`, voir le
+bilan du thème avoir bougé **sans passage du worker** — demande la vue en
+service. `CLAUDE.md` §4 : « Jamais avant la vérification. »
+
+`Blocked by` reste **04, 44** : 44 n'est pas clos non plus, parce qu'il nomme
+lui aussi « jouer la migration et vérifier que `fetch_theme_regroupement` rend
+enfin des lignes ».
+
+### Une chose à savoir en faisant ce contrôle
+
+**La tuile « Engagement » de la carte de thème va CHANGER DE VALEUR** — pas
+apparaître : elle affichait déjà quelque chose, et `/instagram` aussi.
+
+L'engagement est mesuré et affiché depuis toujours (`build_report.py` l. 1997
+fabrique la colonne `eng` sur le DataFrame, `channels.ts` la recalcule pour
+`/instagram`) ; ce qui manquait en base, c'est la colonne que la VUE croyait y
+trouver. En lisant la vue, la carte passe d'une **moyenne de taux** à un
+**rapport de sommes**, et une portée inconnue cesse de compter pour 0. Mesuré
+sur les fixtures du harnais : un thème peut **doubler** (3,12 % → 6,25 %).
+
+Ne pas lire ça comme une régression — et comparer à l'ancien rapport avant de
+conclure quoi que ce soit, comme pour le revenu et le ROAS (§5).
+
+⚠ **Un écart restera, et il ne vient pas de ce ticket** : `/instagram` et le
+rapport calculent encore autrement ([49](49-trois-moteurs-d-engagement-trois-reponses.md)),
+et les Reels n'ont pas de `likes` en base
+([50](50-la-collecte-instagram-ecrase-ce-qu-elle-ne-sait-pas.md)). Deux chiffres
+d'engagement différents pour le même thème sont donc ATTENDUS tant que ces deux
+tickets sont ouverts.

@@ -23,10 +23,11 @@ def lignes_lues(db, comptes):
       SELECT ('00000000-0000-4000-8000-' || lpad(u::text, 12, '0'))::uuid,
              current_date - (d || ' days')::interval, 'C' || u, 10, 1, 100
       FROM generate_series(1, {comptes}) u, generate_series(1, {JOURS}) d;
-    INSERT INTO instagram_organic_posts (user_id, post_id, date, labels, reach, eng)
+    INSERT INTO instagram_organic_posts
+        (user_id, post_id, date, labels, reach, likes, comments, saved)
       SELECT ('00000000-0000-4000-8000-' || lpad(u::text, 12, '0'))::uuid,
              u || '-' || d, current_date - (d || ' days')::interval,
-             ARRAY['T' || u], 100, 2
+             ARRAY['T' || u], 100, 2, 0, 0
       FROM generate_series(1, {comptes}) u, generate_series(1, 20) d;
     ANALYZE;""")
 

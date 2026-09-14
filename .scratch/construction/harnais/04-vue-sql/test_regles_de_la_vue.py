@@ -44,15 +44,20 @@ def main():
     INSERT INTO ga4_insights (user_id, date, medium, campaign, revenue)
       VALUES ('{U}', '{HIER}', 'cpc', 'C', 50),
              ('{U}', '{AUJ}',  'cpc', 'C', 5000);
-    INSERT INTO instagram_organic_posts (user_id, post_id, date, labels, reach, eng)
-      VALUES ('{U}', 'a', '{HIER} 12:00+02', ARRAY['T'], 100, 2.0),
-             ('{U}', 'b', '{AUJ} 12:00+02',  ARRAY['T'], 9999, 99.0);
+    INSERT INTO instagram_organic_posts
+        (user_id, post_id, date, labels, reach, likes, comments, saved)
+      VALUES ('{U}', 'a', '{HIER} 12:00+02', ARRAY['T'], 100, 1, 1, 0),
+             ('{U}', 'b', '{AUJ} 12:00+02',  ARRAY['T'], 9999, 900, 90, 9);
     """)
     x = themes(db)["T"]
     t.proche("la dépense du jour en cours n'entre pas", x["spend"], 100.0)
     t.proche("le revenu du jour en cours n'entre pas", x["revenue"], 50.0)
     t.egal("la publication du jour en cours n'entre pas", int(x["posts"]), 1)
     t.proche("la portée moyenne ne compte que les jours pleins", x["reach_avg"], 100.0)
+    # (1+1+0)/100 = 2 %. Si la publication du jour entrait, le taux monterait à
+    # (2+999)/(100+9999) = 9,91 % — l'écart est assez large pour que l'oubli se
+    # voie, ce qu'un taux presque identique n'aurait pas permis.
+    t.proche("l'engagement ne compte que les jours pleins", x["eng_avg"], 2.0)
 
     # ── 2) Le seuil de jugement, aux deux centimes qui l'encadrent ───────────
     peuple(db, f"""
@@ -134,6 +139,66 @@ def main():
     t.proche("la dépense d'avant le 1er janvier compte", x["spend"], 200.0)
     t.proche("...et SON revenu aussi — même périmètre des deux côtés", x["revenue"], 800.0)
     t.proche("...donc un ROAS qui a un sens", x["roas"], 4.0)
+
+    # ── 5 bis) L'engagement est un TAUX, et il vaut « inconnu » sans portée ──
+    # Ces règles n'ont jamais été vérifiables avant le ticket 44 : la vue lisait
+    # `p.eng`, une colonne que la production n'a jamais eue, et le harnais la
+    # DÉCLARAIT pour que la vue monte quand même. Le taux est désormais calculé
+    # à partir de `likes + comments + saved` sur `reach` (`CONTEXT.md`).
+    peuple(db, f"""
+    INSERT INTO instagram_organic_posts
+        (user_id, post_id, date, labels, reach, likes, comments, saved)
+      VALUES ('{U}', 'p1', '{HIER} 10:00+02', ARRAY['TAUX'], 1000, 10, 5, 5),
+             ('{U}', 'p2', '{HIER} 11:00+02', ARRAY['TAUX'], 1000,  5, 0, 0),
+             -- Portée jamais remontée SUR UN THÈME QUI EN A D'AUTRES : ses
+             -- réactions ne doivent PAS gonfler le taux du thème.
+             ('{U}', 'p2b', '{HIER} 12:00+02', ARRAY['TAUX'], NULL, 999, 0, 0),
+             -- LE MÊME CAS TEL QUE LA PRODUCTION L'ÉCRIT VRAIMENT : zéro, pas
+             -- NULL (`fetch_instagram.py` l. 325, `metrics.get("reach", 0)`).
+             -- C'est la branche VIVANTE ; celle de `p2b` ne concerne que les
+             -- lignes antérieures à ce code. Relevé en relecture : le filtre
+             -- ne visait d'abord que `NULL` et laissait donc passer celle-ci.
+             ('{U}', 'p2c', '{HIER} 13:00+02', ARRAY['TAUX'], 0, 999, 0, 0),
+             -- Portée jamais remontée : c'est le dénominateur qui manque.
+             ('{U}', 'p3', '{HIER} 10:00+02', ARRAY['SANSVUE'], NULL, 7, 0, 0),
+             -- Vue par personne : diviser par zéro ne rend pas zéro non plus.
+             ('{U}', 'p4', '{HIER} 10:00+02', ARRAY['ZEROVUE'], 0, 0, 0, 0),
+             -- Réactions jamais remontées, mais la portée, si : le thème a bien
+             -- été vu sans faire réagir. Ici zéro est la VRAIE réponse.
+             ('{U}', 'p5', '{HIER} 10:00+02', ARRAY['MUET'], 500, NULL, NULL, NULL);
+    """)
+    x = themes(db)
+    # (10+5+5 + 5+0+0) / (1000+1000) = 25/2000 = 1,25 %. Les 999 « likes » de
+    # `p2b` (portée NULL) ET ceux de `p2c` (portée 0, ce que la collecte écrit
+    # vraiment) sont DEHORS : sans portée connue, une publication ne peut entrer
+    # ni au numérateur ni au dénominateur. Si `p2c` comptait, le thème
+    # afficherait 1024/2000 = 51,2 % — une panne de collecte déguisée en succès.
+    t.proche("l'engagement est un TAUX en %, pas un compte", x["TAUX"]["eng_avg"], 1.25)
+    t.egal("une portée à 0 (ce que la collecte écrit) ne compte pas non plus",
+           int(x["TAUX"]["posts"]), 4)
+    # UN RATIO DE SOMMES, PAS UNE MOYENNE DE RATIOS. Par post : 2,0 % et 0,5 %,
+    # dont la moyenne serait 1,25 % — ici les deux coïncident parce que les deux
+    # posts ont la même portée. Le contrôle qui SÉPARE les deux méthodes est
+    # celui de `PETITEVUE` ci-dessous.
+    t.egal("sans portée remontée, l'engagement est INCONNU, pas nul (§7)",
+           x["SANSVUE"]["eng_avg"], None)
+    t.egal("une portée à zéro ne rend pas un taux nul non plus (§7)",
+           x["ZEROVUE"]["eng_avg"], None)
+    t.proche("vu sans réaction : zéro est la vraie réponse", x["MUET"]["eng_avg"], 0.0)
+
+    # Le contrôle qui distingue vraiment les deux méthodes : un post minuscule
+    # au taux énorme à côté d'un gros post au taux faible. En moyenne de ratios
+    # le thème afficherait (50 % + 1 %)/2 = 25,5 % ; en ratio de sommes il
+    # affiche 105/10010 = 1,05 %. C'est le second qui décrit ce qui s'est passé :
+    # 10 010 personnes ont vu, 105 ont réagi.
+    peuple(db, f"""
+    INSERT INTO instagram_organic_posts
+        (user_id, post_id, date, labels, reach, likes, comments, saved)
+      VALUES ('{U}', 'q1', '{HIER} 10:00+02', ARRAY['PETITEVUE'], 10, 5, 0, 0),
+             ('{U}', 'q2', '{HIER} 11:00+02', ARRAY['PETITEVUE'], 10000, 100, 0, 0);
+    """)
+    t.proche("un ratio de SOMMES : un post vu 10 fois n'emporte pas le thème",
+             themes(db)["PETITEVUE"]["eng_avg"], 105.0 * 100 / 10010)
 
     # ── 6) La vue lit avec les droits de l'APPELANT ──────────────────────────
     opts = q(db, "SELECT coalesce(array_to_string(reloptions, ','), '') FROM pg_class "
