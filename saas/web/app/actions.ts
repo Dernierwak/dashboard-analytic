@@ -1945,15 +1945,22 @@ export async function setCampaignLabel(
   // (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md`, trois défauts
   // mesurés).
   revalidatePath("/couts");
-  // `/` SE RAFRAÎCHIT, MAIS PAS LE RAPPORT LUI-MÊME, et le commentaire
-  // d'origine prétendait le contraire — « le rapport regroupe les campagnes par
-  // thème ». Les blocs par thème du rapport (`themes_focus`, `themes.rows`,
-  // `themes_tips`, `top_recos`) sortent du JSON FIGÉ écrit par le worker :
-  // relire la page relit le même JSON, et ce n'est pas ici que ça se répare
-  // (ticket 04 de la construction, la vue SQL du regroupement). Ce que cet
-  // appel rafraîchit vraiment, et qui suffit à le justifier : la couverture
-  // (« N éléments sans thème »), l'alerte de couverture et l'étape 2 de la mise
-  // en place, toutes trois lues en direct par `app/page.tsx`.
+  // `/` SE RAFRAÎCHIT, ET LE BILAN DE CHAQUE THÈME AVEC LUI depuis le ticket
+  // 22. Cet appel a longtemps été un no-op documenté comme s'il marchait : les
+  // blocs par thème sortaient du JSON FIGÉ écrit par le worker, donc relire la
+  // page relisait le même JSON. `getWeeklyData` lit désormais la vue
+  // `theme_regroupement` à chaque affichage (`lib/regroupement.ts`) — classer
+  // une campagne change la dépense, le revenu et le ROAS de son thème tout de
+  // suite, sans attendre le Jour de travail.
+  //
+  // CE QUI NE BOUGE TOUJOURS PAS, ET C'EST VOULU : le `jugement` du thème, les
+  // baselines des actions, les Verdicts rendus et les repères de courbe sont
+  // des MESURES PRISES — elles jugeaient un geste sur le périmètre qui existait
+  // alors, et elles ne rétroagissent jamais. Les conseils et `themes_tips` sont
+  // des Écrits : ils attendent le Jour de travail.
+  //
+  // Et il rafraîchit toujours ce qu'il rafraîchissait déjà : la couverture
+  // (« N éléments sans thème »), son alerte, et l'étape 2 de la mise en place.
   revalidatePath("/");
   return { ok: true };
 }
@@ -1985,8 +1992,12 @@ export async function setPostLabel(postId: string, label: string | null) {
   revalidatePath("/labels");
   // `/` MANQUAIT ICI ALORS QU'IL ÉTAIT PRÉSENT SUR LES CAMPAGNES : un post
   // compte dans la couverture exactement comme une campagne, et c'est elle que
-  // l'accueil relit en direct. Même limite que là-bas, pour la même raison :
-  // les blocs par thème du rapport restent ceux du payload figé.
+  // l'accueil relit en direct. Depuis le ticket 22 il fait plus que ça — la vue
+  // `theme_regroupement` compte aussi les publications (`posts`, `reach_avg`,
+  // `eng_avg`), donc étiqueter un post déplace le bilan de son thème à la
+  // lecture suivante. Même limite que sur les campagnes, pour la même raison :
+  // le `jugement`, les Verdicts et les conseils sont des Mesures prises et des
+  // Écrits, ils attendent le Jour de travail.
   revalidatePath("/");
   return { ok: true };
 }

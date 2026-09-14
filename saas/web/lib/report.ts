@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import { JOUR_DEFAUT } from "@/lib/jour-de-travail";
+import { fusionneRegroupement, lisRegroupement } from "@/lib/regroupement";
 
 // Couche données du rapport hebdo.
 // Règles maison (identiques au Streamlit) :
@@ -218,24 +219,25 @@ export function estVeille(key: string): boolean {
   return key.startsWith("veille_");
 }
 
+/** La ventilation de la DÉPENSE DE LA FENÊTRE DU RAPPORT par thème — l'anneau
+ *  de la section 1, avec sa part « autres » (`orphan`). Ce n'est PAS le
+ *  regroupement de la carte de thème : celui-là couvre tout l'historique et se
+ *  lit dans la vue (`lib/regroupement.ts`). Deux périmètres, deux objets — les
+ *  confondre est exactement ce que `revenuTheme()` faisait. */
 export type ThemeRow = { label: string; spend: number; rev: number };
 
-/**
- * LE REVENU RÉELLEMENT CONSTATÉ SUR UN THÈME, quelle que soit la source qui le
- * porte.
- *
- * Deux endroits du payload le connaissent, et ils ne sont pas remplis par le
- * même chemin : `themes.rows[].rev` (la ventilation GA4 du compte) et
- * `themes_focus[].summary.revenue` (le bilan de la carte). Un rapport peut
- * porter l'un sans l'autre selon la version du worker qui l'a publié — on prend
- * donc le plus grand des deux plutôt que d'en élire un et de rater le cas où
- * c'est l'autre qui sait.
- */
-export function revenuTheme(theme: ThemeFocus, rows?: ThemeRow[] | null): number {
-  const bilan = theme.summary?.revenue ?? 0;
-  const ligne = (rows ?? []).find((r) => r.label === theme.label)?.rev ?? 0;
-  return Math.max(bilan > 0 ? bilan : 0, ligne > 0 ? ligne : 0);
-}
+// `revenuTheme()` A ÉTÉ SUPPRIMÉ AVEC LE TICKET 22 DE LA CONSTRUCTION.
+//
+// Il prenait « le plus grand des deux » entre `themes_focus[].summary.revenue`
+// et `themes.rows[].rev`. Les deux ne mesurent pas la même chose : le premier
+// couvre tout l'historique, le second la seule fenêtre du rapport. Prendre le
+// max, c'était afficher le plus flatteur des deux sous un bilan calculé sur la
+// période de l'autre — un revenu que rien ne confirme (`CLAUDE.md` §7).
+//
+// LE REVENU D'UN THÈME A MAINTENANT UNE SEULE SOURCE : la vue
+// `theme_regroupement`, lue à chaque affichage (`lib/regroupement.ts`). Sans
+// réponse d'elle, `summary.revenue` vaut `null` et la carte écrit que le revenu
+// n'est pas connu. Pas de zéro, pas d'estimation, pas de seconde source.
 
 /**
  * LA NOTE DE LA SÉRIE, MAIS SEULEMENT QUAND ELLE EST VRAIE.
@@ -261,14 +263,21 @@ export function revenuTheme(theme: ThemeFocus, rows?: ThemeRow[] | null): number
  * de note que le worker écrit aujourd'hui, mais il en écrira d'autres — « on
  * suit la portée faute d'engagement », par exemple — et celles-là ne sont pas
  * démenties par un revenu.
+ *
+ * `revenu === null` N'EST PAS `0`. Depuis le ticket 22, le revenu vient de la
+ * vue `theme_regroupement` et vaut `null` quand elle n'en rattache aucun — donc
+ * « on ne sait pas », pas « il n'y en a pas ». La note est alors CONSERVÉE :
+ * elle n'est démentie que par un revenu réellement constaté, et taire un
+ * avertissement sur une ignorance reviendrait à affirmer le contraire de ce
+ * qu'on sait.
  */
 export function noteSerie(
   serie: ThemeSeries | null | undefined,
-  revenu: number
+  revenu: number | null
 ): string | null {
   const note = serie?.note;
   if (!note) return null;
-  if (revenu > 0 && /roas/i.test(note)) return null;
+  if (revenu !== null && revenu > 0 && /roas/i.test(note)) return null;
   return note;
 }
 
@@ -347,6 +356,20 @@ export type ThemeSummary = {
   spend_week: number | null;
   best_campaign: string | null;
   n_campaigns: number;
+  /**
+   * ASSEZ DE DÉPENSE POUR QU'ON SE PRONONCE — le drapeau de la vue
+   * `theme_regroupement`, posé par `fusionneRegroupement` (ticket 22).
+   *
+   * IL VOYAGE, IL NE SE RECALCULE PAS. Le seuil (100 CHF) vit dans le SQL et
+   * nulle part ailleurs : le réécrire ici en donnerait deux, et deux seuils
+   * finissent toujours par diverger. C'est lui qui dit POURQUOI un thème n'a
+   * pas de ROAS — trop peu dépensé, et non « revenu inconnu », deux phrases
+   * qu'un lecteur ne doit pas confondre.
+   *
+   * `null`/absent = on ne sait pas : la vue n'a pas pu être lue, ou ce payload
+   * est antérieur au ticket. Jamais traité comme un « non ».
+   */
+  juge?: boolean | null;
 };
 
 /**
@@ -697,7 +720,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
 
   // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes, noteRes, budgetRes] =
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes, noteRes, budgetRes, regroupement] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -774,6 +797,19 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     supabase.from("suivi_actions").select("id").eq("user_id", uid).eq("kind", "note").limit(1),
     // A-T-IL DÉJÀ POSÉ UN BUDGET ? Même question, même forme.
     supabase.from("channel_budgets").select("id").eq("user_id", uid).limit(1),
+    // LE REGROUPEMENT PAR THÈME, RECALCULÉ EN BASE À CHAQUE AFFICHAGE.
+    //
+    // C'est la moitié web du ticket 04 : la vue `theme_regroupement` est la
+    // seule implémentation de l'arithmétique des thèmes, et Pulse la lit
+    // désormais au lieu de relire le total figé dans le payload. Classer une
+    // campagne change le bilan de son thème à la lecture suivante — c'est ce
+    // qui rend enfin vrai le `revalidatePath("/")` de `setCampaignLabel`, qui
+    // était jusqu'ici un no-op documenté comme s'il marchait.
+    //
+    // DANS LE `Promise.all`, PAS APRÈS. Elle est lue sur la page la plus
+    // consultée du produit : la mettre au bout de la file ajouterait son
+    // aller-retour à tous les autres, et elle ne dépend d'aucun d'eux.
+    lisRegroupement(supabase, uid),
   ]);
 
   const meta = metaRes.data ?? [];
@@ -782,8 +818,16 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // null si la table est absente (migration pas encore passée) ou si le
   // worker n'a pas encore publié pour ce compte — l'écran gère les deux
   // sans distinction, en état vide.
-  const report: ReportPayload | null =
-    (reportRes.data?.[0]?.payload as ReportPayload | undefined) ?? null;
+  //
+  // CE QUI SE REGROUPE EST RECALCULÉ PAR-DESSUS ; LE RESTE ATTEND LE JOUR DE
+  // TRAVAIL. `fusionneRegroupement` ne touche qu'aux totaux de thème
+  // (`summary`) et ne recalcule RIEN lui-même — le détail des trois cas, et de
+  // ce qui reste intouchable (`jugement`, baselines, Verdicts, repères), est
+  // dans `lib/regroupement.ts`.
+  const report: ReportPayload | null = fusionneRegroupement(
+    (reportRes.data?.[0]?.payload as ReportPayload | undefined) ?? null,
+    regroupement
+  );
   // QUAND CE PAYLOAD A ÉTÉ ÉCRIT — la ligne, pas le payload : le worker n'y
   // met aucune date de publication, et `updated_at` est la seule qui existe.
   // Elle bouge à chaque republication, ce qui est exactement ce qu'on veut

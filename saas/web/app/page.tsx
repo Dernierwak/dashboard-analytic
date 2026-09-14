@@ -751,7 +751,6 @@ export default async function Page() {
                 archived={data.actionsArchived}
                 changements={chgParTheme(t.label)}
                 changementsApi={apiParTheme(t.label)}
-                rows={report?.themes?.rows ?? null}
                 fenetre={report?.vision?.period_label || null}
                 fenetreDates={fenetreBilan}
                 decroche={pire?.label === t.label}

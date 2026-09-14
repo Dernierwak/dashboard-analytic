@@ -5,10 +5,8 @@ import {
   feedbackKey,
   fmtCHF,
   noteSerie,
-  revenuTheme,
   type ChangementPlateforme,
   type ThemeFocus,
-  type ThemeRow,
   type TrackedAction,
 } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
@@ -122,7 +120,6 @@ export function ThemeCard({
   archived,
   changements = [],
   changementsApi = [],
-  rows,
   fenetre,
   fenetreDates = null,
   decroche = false,
@@ -141,9 +138,6 @@ export function ThemeCard({
   changements?: ChangementPlateforme[];
   /** Ce que les plateformes DÉCLARENT sur ce thème — prime sur le déduit. */
   changementsApi?: ChangementApi[];
-  /** La ventilation par thème du rapport — l'autre endroit qui connaît le
-   *  revenu du thème, et le seul à le connaître sur les anciens payloads. */
-  rows?: ThemeRow[] | null;
   /** « depuis le 1 jan » — la fenêtre du bilan, qui n'est PAS celle de la courbe. */
   fenetre: string | null;
   /** LES MÊMES BORNES QUE `fenetre`, EN DATES — `matrice.period`, la fenêtre
@@ -184,11 +178,17 @@ export function ThemeCard({
 
   const som = theme.summary;
   const hasRoas = som.roas !== null && som.roas !== undefined;
+  // LE REVENU A UNE SEULE SOURCE, ET C'EST LA VUE (ticket 22). Il se lisait
+  // avant par `revenuTheme()`, « le plus grand des deux » entre ce bilan et la
+  // ventilation `themes.rows` — deux périmètres différents, et le plus flatteur
+  // des deux affiché sous la fenêtre de l'autre. `summary.revenue` est
+  // rafraîchi à chaque affichage depuis `theme_regroupement`
+  // (`lib/regroupement.ts`), et `null` y veut dire INCONNU, jamais zéro.
+  const revenu = som.revenue ?? null;
   // LE REVENU EST LE JUGE DE LA NOTE. Le worker écrit « le ROAS de ce thème
   // n'est pas mesurable » sans regarder si le thème a du revenu : la carte
   // affichait donc « 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas, que
   // le ROAS n'était pas mesurable. On ne garde la note que quand elle est vraie.
-  const revenu = revenuTheme(theme, rows);
   const note = noteSerie(s, revenu);
   const exclure = s && s.metric_label.startsWith("Engagement") ? "Engagement" : null;
   const cases: { cle: string; valeur: string; unite?: string }[] = [];
@@ -355,12 +355,26 @@ export function ThemeCard({
                   Et ce texte-ci ne s'écrit que si le thème n'a AUCUN revenu :
                   « revenu inconnu » sous un revenu affiché serait le même
                   mensonge que la note du worker, une ligne plus haut. */}
-              {!hasRoas && !note && revenu === 0 && som.spend != null && som.spend > 0 && (
+              {!hasRoas && !note && som.spend != null && som.spend > 0 && revenu === null && (
                 <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
                   Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
                   conversions — donc pas de ROAS ici, plutôt qu&apos;un ROAS faux.
                 </p>
               )}
+              {/* L'AUTRE RAISON DE NE PAS AFFICHER DE ROAS, ET ELLE NE SE
+                  CONFOND PAS AVEC LA PREMIÈRE. Ici Google Analytics répond — le
+                  revenu est connu — mais le thème n'a pas assez dépensé pour
+                  qu'un ratio veuille dire quelque chose, et c'est la vue qui le
+                  dit, par `juge` : le seuil vit dans le SQL et nulle part
+                  ailleurs. Écrire « revenu inconnu » ici serait faux, et se
+                  taire laisserait croire à un ROAS manquant par accident. */}
+              {!hasRoas && !note && som.spend != null && som.spend > 0 && revenu !== null &&
+                som.juge === false && (
+                  <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
+                    Pas encore assez de dépense sur ce thème pour se prononcer : Pulse ne
+                    publie pas un ROAS calculé sur quelques francs.
+                  </p>
+                )}
             </>
           )}
         </div>
