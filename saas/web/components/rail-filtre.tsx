@@ -38,9 +38,11 @@ import { Entree, LigneFait, type Fait } from "@/components/rail-entree";
 // s'affiche dès qu'un thème coexiste avec au moins une entrée sans thème : même
 // un seul thème présent aide à l'isoler du bruit anonyme.
 //
-// LE STYLE REPREND CELUI DE `filter-bar.tsx` (pastilles en `<select>` arrondi,
-// actif en `text-brand`) pour rester le même geste que sur la page Coûts et
-// sur `/labels`, plutôt qu'un widget de plus à apprendre.
+// LE STYLE REPREND CELUI DES PASTILLES DE FILTRE DE L'APP (`<select>` arrondi,
+// actif en `text-brand`) pour rester le même geste que sur la page Coûts,
+// plutôt qu'un widget de plus à apprendre. Ce rail filtre ce qui est DÉJÀ
+// CHARGÉ, en mémoire : il ne passe pas par l'URL et n'est donc pas un candidat
+// au bandeau de commandes, qui gouverne ce que le serveur va chercher.
 
 type Ligne =
   | { cle: string; date: string; action: TrackedAction }

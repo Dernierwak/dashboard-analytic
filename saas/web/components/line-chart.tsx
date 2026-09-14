@@ -567,7 +567,7 @@ export function LineChart({
 // + `Pente` ~11 px + le padding de la carte) reste plus étroit que 180 px, donc
 // c'est le `min-width` qui gouverne — la tuile fait EXACTEMENT 180 px, pas
 // « au moins ». Et ce cas n'a rien d'un cas limite qu'on n'atteindrait jamais :
-// `PeriodPills` propose 7 j, ce qui donne `n = 7` sur `d.daily`, et
+// Le bandeau de commandes propose 7 j, ce qui donne `n = 7` sur `d.daily`, et
 // `taillePoint = clamp(180/6 × 0,75, 2, 4) = 4 px` s'y applique réellement, pas
 // en théorie.
 //
