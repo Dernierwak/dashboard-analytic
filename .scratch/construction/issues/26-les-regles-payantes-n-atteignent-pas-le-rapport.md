@@ -118,3 +118,43 @@ places », un partage par RÔLE — est sans objet : il n'y a plus qu'un auteur.
 **Ce ticket reste `open` exprès.** Il est HITL et sa question était pour David ;
 une session ne ferme pas un ticket qui lui était adressé, même quand le code a
 fini par lui donner une réponse. À lire, puis à fermer par lui.
+
+---
+
+**2026-09-14, la consigne de repli est rendue : la porte est mesurée, plus
+seulement racontée.**
+
+Le commentaire du 12 disait que la porte avait disparu ; il le disait en lisant
+le code. La mesure que ce ticket demandait en repli — *« ce que reçoit
+aujourd'hui un compte à une étoile, à deux, à trois et à quatre, ligne par
+ligne »* — est maintenant **exécutée**, sur le seam du ticket
+[16](16-le-seam-du-payload.md) : `build_payload` tourne sur un lecteur figé, un
+compte à quatre thèmes, sans base, sans secret, sans réseau. Elle se rejoue —
+`.scratch/construction/harnais/26-la-porte/`, `python3.12 mesure.py`.
+
+| Étoiles | Cartes rendues | Conseils servis | Ce que le compte reçoit |
+|---|---|---|---|
+| 0 | 3 (repli par poids) | **0** | cartes, chiffres, courbes, le point de vue de la semaine — aucun conseil, et c'est voulu |
+| 1 | 1 | **2** | `annonce_sans_conversion`, `roas` — plus `page_arrivee_muette` au socle |
+| 2 | 2 | **4** | les deux mêmes sur chacun des deux thèmes |
+| 3 | 3 | **5** | 2 + 2 + 1 — **le plafond de cinq mord ici**, pas la porte |
+| 4 | 4 | **5** | la 4ᵉ étoile garde carte, chiffres et courbe, `conseille: false`, zéro conseil |
+
+**Ce que cette mesure prouve, et qui est exactement le fait que ce ticket
+relevait :** `annonce_sans_conversion` est **une des quatre règles payantes du
+ticket [07](07-quatre-regles-payantes.md)**, et `roas` est le conseil-règle que
+le ticket [22](../../refonte/issues/22-rebrancher-le-plan-de-theme.md) comptait.
+Tous deux **sortent dès la PREMIÈRE étoile**. Sous le code que ce ticket
+décrivait, la colonne « 1 étoile » aurait affiché **0**.
+
+Ce qui limite un compte à trois étoiles n'est donc plus une porte invisible,
+c'est le **plafond de cinq**, qui est une décision assumée de David
+([refonte 11](../../refonte/issues/11-d-ou-viennent-les-conseils.md)) et qui est
+visible dans le rapport.
+
+Vérifié le 2026-09-14 : harnais 08 (`test_filtre_dur.py`, 59/59) et **toute** la
+suite hors ligne (`jouer_tout.py`, 40 fichiers, « Tout passe »). **Aucun code
+produit n'a été touché par cette session** — il n'y avait rien à implémenter, la
+question était déjà répondue par construction.
+
+**Le ticket reste `open` : la mesure ne le ferme pas, David le ferme.**
