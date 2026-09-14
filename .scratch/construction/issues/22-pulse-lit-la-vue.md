@@ -1,7 +1,7 @@
 # Pulse lit la vue : la moitié TypeScript du regroupement
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 04
 
 ## Question
@@ -65,16 +65,24 @@ semaine à bouger vaut mieux qu'un chiffre faux rafraîchi tout de suite.
 
 ## Avancement — session du 2026-09-14 (construction)
 
-**La moitié TypeScript est écrite et vérifiée hors ligne. Le ticket reste
-ouvert : sa condition d'entrée n'a jamais pu être remplie.**
-[44](44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md) a mesuré le 2026-09-13
-que `theme_regroupement` n'existe pas en production **et que sa migration
-échoue** (`column p.eng does not exist`). Le seul contrôle qui prouverait le
-ticket — classer une campagne et voir le bilan bouger sans passage du worker —
-demande la vue en service. Il n'a pas été fait.
+**La moitié TypeScript est écrite, relue et vérifiée hors ligne. Livraison
+faite ; il reste une mise en service, qui n'est pas de ce ticket.**
 
-Le code a été écrit quand même, avec un repli explicite pour ce cas précis
-(§3) : déployé sans la vue, il ne casse rien, il n'apporte simplement rien.
+Même règle que [04](04-vue-sql-du-regroupement.md), et c'est le précédent qui
+tranche : 04 est `resolved` avec son SQL toujours pas joué, parce que sa
+LIVRAISON — la vue — était écrite et prouvée sur un vrai PostgreSQL. Ici la
+livraison est le code de lecture, prouvé par 35 contrôles hors ligne, `tsc` et
+le build. **Jouer une migration est une exploitation, pas une réalisation** —
+elle appartient à [44](44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md), qui
+est ouvert et qui la porte.
+
+**Ce que « resolved » ne dit PAS ici**, et qu'il faut lire avant de déployer :
+44 a mesuré le 2026-09-13 que `theme_regroupement` n'existe pas en production
+**et que sa migration échoue** (`column p.eng does not exist`). Le contrôle qui
+prouverait ce ticket bout en bout — classer une campagne et voir le bilan bouger
+sans passage du worker — demande la vue en service : **il n'a pas été fait**, et
+il reste en §5. Le code porte un repli explicite pour ce cas (§3) : déployé sans
+la vue, il ne casse rien, il n'apporte simplement rien.
 
 ### 1 · Ce qui a été construit
 
