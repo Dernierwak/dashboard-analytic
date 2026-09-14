@@ -65,15 +65,37 @@ export type Regroupement = {
 /** « On ne sait pas ». Une FONCTION, pas une constante partagée : un `Map`
  *  module-level vivrait d'une requête à l'autre sur le même serveur, et un
  *  appelant qui y écrirait un jour contaminerait le compte suivant. */
-function riensu(): Regroupement {
+function regroupementInconnu(): Regroupement {
   return { lu: false, lignes: new Map() };
+}
+
+/** LES CHIFFRES D'UN THÈME DONT LA VUE NE DIT RIEN — tous inconnus, aucun à
+ *  zéro. Le type force la liste à rester complète : ajouter une colonne à
+ *  `LigneRegroupement` sans l'ajouter ici ne compile pas. Sans cette contrainte,
+ *  une colonne oubliée laisserait le chiffre d'hier survivre dans `summary`,
+ *  et un chiffre périmé a exactement l'air d'un chiffre juste. */
+const INCONNU: Record<keyof Omit<LigneRegroupement, "label">, null> = {
+  spend: null, ctr: null, posts: null, reach_avg: null,
+  eng_avg: null, revenue: null, juge: null, roas: null,
+};
+
+/** Les chiffres d'une ligne, sans sa clé. `label` est le seul champ qui ne soit
+ *  pas une mesure du thème : il sert à retrouver la ligne, il n'a rien à faire
+ *  dans le bilan. */
+function chiffresDe(ligne: LigneRegroupement): Omit<LigneRegroupement, "label"> {
+  const { label: _cle, ...chiffres } = ligne;
+  return chiffres;
 }
 
 export function cleTheme(label: string | null | undefined): string {
   return String(label ?? "").trim().toLowerCase();
 }
 
-function nombre(v: unknown): number {
+/** Le nom dit qu'il CHOISIT zéro, et ce n'est pas un détail : « une absence de
+ *  donnée n'est pas un zéro » (`CLAUDE.md` §7). Il n'est employé que sur les
+ *  deux colonnes que le SQL `coalesce` lui-même — `spend` et `posts` — où zéro
+ *  est la vraie réponse. Partout ailleurs c'est `nombreOuRien`. */
+function nombreOuZero(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
@@ -118,16 +140,17 @@ export async function lisRegroupement(
       .eq("user_id", uid)
       .order("label")
       .range(debut, debut + PAGE - 1);
-    if (error) return riensu();
+    if (error) return regroupementInconnu();
     const page = (data ?? []) as Record<string, unknown>[];
+    const avant = lignes.size;
     for (const r of page) {
       const label = String(r.label ?? "");
       if (!label) continue;
       lignes.set(cleTheme(label), {
         label,
-        spend: nombre(r.spend),
+        spend: nombreOuZero(r.spend),
         ctr: nombreOuRien(r.ctr),
-        posts: nombre(r.posts),
+        posts: nombreOuZero(r.posts),
         reach_avg: nombreOuRien(r.reach_avg),
         eng_avg: nombreOuRien(r.eng_avg),
         revenue: nombreOuRien(r.revenue),
@@ -136,6 +159,15 @@ export async function lisRegroupement(
       });
     }
     if (page.length < PAGE) return { lu: true, lignes };
+    // UNE PAGE PLEINE QUI N'APPORTE AUCUN THÈME NOUVEAU veut dire que le
+    // serveur ne fait pas avancer `range` — il rend la même tranche à chaque
+    // tour. La seule condition de sortie étant « une page courte », la boucle
+    // tournerait alors SANS FIN, sur la page la plus consultée du produit.
+    // On s'arrête, et on rend « on ne sait pas » plutôt qu'une liste dont on
+    // sait qu'elle est incomplète : une liste de thèmes amputée a exactement
+    // la forme d'un compte qui en a moins. C'est une borne de CONTRAT, pas un
+    // plafond choisi de mémoire — aucun nombre de thèmes n'est supposé ici.
+    if (lignes.size === avant) return regroupementInconnu();
   }
 }
 
@@ -176,20 +208,13 @@ export function fusionneRegroupement(
   if (!focus || focus.length === 0) return report;
   const rafraichis: ThemeFocus[] = focus.map((t) => {
     const ligne = regroupement.lignes.get(cleTheme(t.label));
-    return {
-      ...t,
-      summary: {
-        ...t.summary,
-        spend: ligne ? ligne.spend : null,
-        revenue: ligne ? ligne.revenue : null,
-        roas: ligne ? ligne.roas : null,
-        ctr: ligne ? ligne.ctr : null,
-        posts: ligne ? ligne.posts : null,
-        reach_avg: ligne ? ligne.reach_avg : null,
-        eng_avg: ligne ? ligne.eng_avg : null,
-        juge: ligne ? ligne.juge : null,
-      },
-    };
+    // LES HUIT CHAMPS PARTENT EN BLOC, jamais un par un. Écrits à la main, un
+    // oubli ne lève pas : le chiffre d'hier survit dans `summary` et il a
+    // exactement l'air d'un chiffre juste. Ici c'est le type qui tient la
+    // liste — ajouter une colonne à `LigneRegroupement` sans l'ajouter à
+    // `INCONNU` ne compile pas.
+    const chiffres = ligne ? chiffresDe(ligne) : INCONNU;
+    return { ...t, summary: { ...t.summary, ...chiffres } };
   });
   return { ...report, themes_focus: rafraichis };
 }

@@ -207,6 +207,27 @@ export function ThemeCard({
       cases.push({ cle: "Engagement", valeur: som.eng_avg.toFixed(1), unite: "%" });
   }
 
+  // ── POURQUOI IL N'Y A PAS DE ROAS : UNE SEULE GARDE, DEUX RÉPONSES ────────
+  //
+  // Les deux phrases sous le bilan portaient chacune sa copie de la condition,
+  // et la copie a ouvert un trou : gardées sur `revenu === null` d'un côté et
+  // `juge === false` de l'autre, un thème à `revenue: 0` sans `juge` connu — un
+  // payload publié avant ce ticket, ou la vue muette (cas 3) — n'affichait PLUS
+  // AUCUNE des deux, là où « revenu inconnu » s'affichait avant. Relevé par la
+  // revue. Les deux branches sortent maintenant d'une garde commune et sont
+  // exhaustives : dès qu'un thème a dépensé sans ROAS, il dit pourquoi.
+  const sansRoasMalgreDepense = !hasRoas && !note && som.spend != null && som.spend > 0;
+  // « Pas assez dépensé » ne se dit QUE si la vue l'a dit : le seuil vit dans le
+  // SQL (`juge`), et `undefined` n'est pas un « non ». Partout ailleurs la seule
+  // chose honnête reste « on ne sait pas » — ce que la carte disait déjà.
+  const tropPeuDepense = sansRoasMalgreDepense && som.juge === false;
+  const revenuNonConfirme = sansRoasMalgreDepense && !tropPeuDepense;
+  // RIEN N'EST REGROUPÉ SOUS CE THÈME. Ni dépense, ni publication : ses
+  // campagnes et ses posts ont perdu leur étiquette, ou n'en ont jamais eu.
+  // Sans cette phrase la carte s'affichait avec son titre et un blanc dessous,
+  // ce qui se lit comme une panne plutôt que comme un thème vide.
+  const rienARegrouper = cases.length === 0;
+
   // Les actions de CE thème. Le rail les répartit lui-même entre ce qui court
   // et ce qui est clos ; ici on ne calcule que ce qui se lit AVANT lui.
   //
@@ -352,10 +373,10 @@ export function ThemeCard({
               </p>
               {/* La note de la série dit déjà pourquoi le ROAS manque, sous la
                   courbe : deux fois la même explication, c'est une de trop.
-                  Et ce texte-ci ne s'écrit que si le thème n'a AUCUN revenu :
-                  « revenu inconnu » sous un revenu affiché serait le même
-                  mensonge que la note du worker, une ligne plus haut. */}
-              {!hasRoas && !note && som.spend != null && som.spend > 0 && revenu === null && (
+                  Et ce texte-ci ne s'écrit que si le thème n'a AUCUN revenu
+                  confirmé : « revenu inconnu » sous un revenu affiché serait le
+                  même mensonge que la note du worker, une ligne plus haut. */}
+              {revenuNonConfirme && (
                 <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
                   Revenu inconnu tant que Google Analytics ne remonte pas la valeur de tes
                   conversions — donc pas de ROAS ici, plutôt qu&apos;un ROAS faux.
@@ -368,14 +389,20 @@ export function ThemeCard({
                   dit, par `juge` : le seuil vit dans le SQL et nulle part
                   ailleurs. Écrire « revenu inconnu » ici serait faux, et se
                   taire laisserait croire à un ROAS manquant par accident. */}
-              {!hasRoas && !note && som.spend != null && som.spend > 0 && revenu !== null &&
-                som.juge === false && (
-                  <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
-                    Pas encore assez de dépense sur ce thème pour se prononcer : Pulse ne
-                    publie pas un ROAS calculé sur quelques francs.
-                  </p>
-                )}
+              {tropPeuDepense && (
+                <p className="text-[11px] text-faint mt-1.5 max-w-[62ch] leading-relaxed">
+                  Pas encore assez de dépense sur ce thème pour se prononcer : Pulse ne
+                  publie pas un ROAS calculé sur quelques francs.
+                </p>
+              )}
             </>
+          )}
+          {rienARegrouper && (
+            <p className="text-[11px] text-faint mt-3 max-w-[62ch] leading-relaxed">
+              Aucune campagne ni publication ne porte ce thème pour l&apos;instant — il
+              n&apos;y a rien à regrouper dessous. Étiquettes-en et ce bilan se remplit à
+              la lecture suivante.
+            </p>
           )}
         </div>
 

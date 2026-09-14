@@ -161,7 +161,47 @@ valeur de tes conversions » (`revenue is null`) et « pas encore assez de dépe
 sur ce thème pour se prononcer » (`juge === false`). La première était affichée
 pour les deux cas.
 
-### 4 · La vérification — 32 contrôles, plus `tsc` et le build
+### 3 bis · Ce que la revue de code a fait tomber
+
+Deux relectures en parallèle (standards / spec) ont trouvé **le même défaut**,
+et c'était une vraie régression que j'avais introduite.
+
+**La phrase « on le dit » avait disparu pour un cas entier.** Les deux
+paragraphes de la carte portaient chacun sa copie de la condition, gardés l'un
+sur `revenu === null`, l'autre sur `juge === false`. Un thème à `revenue: 0`
+avec de la dépense et sans ROAS — **l'état de production aujourd'hui**, puisque
+`juge` n'est écrit que par la fusion et que la vue est muette — n'affichait donc
+**plus aucune des deux**, là où « revenu inconnu » s'affichait avant le ticket.
+Corrigé par une garde commune (`sansRoasMalgreDepense`) dont les deux branches
+sont exhaustives : dès qu'un thème a dépensé sans ROAS, il dit pourquoi.
+
+**Un thème absent de la vue tombait dans le silence.** Cas 2 ci-dessus : tous
+ses chiffres à `null`, donc aucune tuile et aucune phrase — un titre et un blanc
+dessous, qui se lit comme une panne. Il écrit maintenant qu'aucune campagne ni
+publication ne le porte.
+
+**La boucle de pagination n'avait aucune borne.** Sa seule sortie était « une
+page courte » : un serveur qui n'avancerait pas `range` la ferait tourner sans
+fin sur la page la plus consultée du produit. Elle s'arrête désormais dès qu'une
+page pleine n'apporte aucun thème nouveau, et rend « on ne sait pas » — une
+borne de CONTRAT, pas un plafond de thèmes choisi de mémoire.
+
+**Trois remarques de forme prises telles quelles** : `riensu()` →
+`regroupementInconnu()`, `nombre()` → `nombreOuZero()` (le nom doit dire qu'il
+CHOISIT zéro, §7), et les huit ternaires parallèles remplacés par un bloc que
+**le type oblige à rester complet** — ajouter une colonne à `LigneRegroupement`
+sans l'ajouter à `INCONNU` ne compile plus. Un champ oublié dans une liste de
+huit aurait laissé le chiffre d'hier survivre, et un chiffre périmé a exactement
+l'air d'un chiffre juste.
+
+**Une remarque écartée, avec sa raison** : la relecture spec note qu'un serveur
+dont `max-rows` serait inférieur à 1 000 ferait lire la première page courte
+comme complète. C'est vrai — et c'est exactement le cas de `_all_pages`
+(`fetch_data.py`) et des deux `fetchAllRows` de `saas/web`. Corriger ce seul
+appelant créerait une divergence de plus entre Python et TypeScript, ce que ce
+chantier existe pour supprimer. À traiter partout ou nulle part.
+
+### 4 · La vérification — 35 contrôles, plus `tsc` et le build
 
 `.scratch/construction/harnais/22-pulse-lit-la-vue/` (`node verifie.mjs`, ni
 base, ni secret, ni réseau). Il transpile `lib/regroupement.ts` tel qu'il est sur
@@ -174,12 +214,18 @@ tient.
   **avant** la pagination · 1 500 thèmes rendent 1 500 lignes en deux requêtes ·
   une panne rend « on ne sait pas », pas « rien ».
 - **2** · la clé : casse et espaces normalisés comme `_nrm` côté worker.
-- **18** · la fusion : les trois cas ci-dessus, ce qui ne bouge pas, et les
-  bords.
+- **21** · la fusion : les trois cas ci-dessus · ce qui ne bouge pas · aucun
+  champ figé ne survit à une réponse de la vue · une pagination qui n'avance pas
+  s'arrête · les bords.
 
 **Le harnais tombe quand on casse le code** — vérifié en injectant deux pannes
 (boucle de pagination supprimée, repli sur l'ancien total) : 28/32, avec les
 quatre bons contrôles en rouge. Un harnais qui passe toujours ne prouve rien.
+
+⚠ **Les deux phrases de la carte ne sont couvertes par aucun contrôle** : elles
+vivent dans du JSX, et il n'y a pas de rendu à interroger. C'est précisément là
+que la revue a trouvé la régression — elle serait passée. Elles se lisent à
+l'œil, sur un compte dont la vue est en service.
 
 `rm -rf .next tsconfig.tsbuildinfo`, puis **`npx tsc --noEmit` vert** et
 **`npm run build` vert à 19 routes**.

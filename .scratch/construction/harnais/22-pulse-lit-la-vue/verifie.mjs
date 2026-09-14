@@ -210,11 +210,49 @@ const payload = (summary) => ({
   verifie("3.16 et aucun ROAS n'en sort", r.themes_focus[0].summary.roas, null);
 }
 
+// UNE COLONNE AJOUTÉE À LA VUE NE DOIT PAS LAISSER SURVIVRE LE CHIFFRE D'HIER.
+// Les huit champs partent en bloc (`chiffresDe` / `INCONNU`) plutôt qu'écrits
+// un par un. Le contrôle regarde l'inverse : aucun champ de Regroupement du
+// payload ne doit rester à sa valeur figée quand la vue a répondu.
+{
+  const r = fusionneRegroupement(payload({}), {
+    lu: true, lignes: new Map([["ete", ligne("Ete")]]),
+  });
+  const s = r.themes_focus[0].summary;
+  const figes = ["spend", "ctr", "posts", "reach_avg", "eng_avg", "revenue", "roas"]
+    .filter((c) => s[c] === 111 || s[c] === 1.1 || s[c] === 1);
+  verifie("3.17 aucun champ de la vue n'a gardé sa valeur figée", figes, []);
+}
+
+// LA PAGINATION QUI N'AVANCE PAS NE TOURNE PAS SANS FIN. Un serveur qui
+// ignorerait `range` rendrait la même page pleine à chaque tour : la seule
+// sortie étant « une page courte », la boucle tournerait pour toujours sur la
+// page la plus consultée du produit.
+{
+  let appels = 0;
+  const bloque = {
+    from() {
+      const c = {
+        select: () => c, eq: () => c, order: () => c,
+        async range() {
+          appels += 1;
+          if (appels > 50) throw new Error("boucle sans fin");
+          return { data: Array.from({ length: 1000 }, () => ligne("Toujours")), error: null };
+        },
+      };
+      return c;
+    },
+  };
+  const r = await lisRegroupement(bloque, "u-1");
+  verifie("3.19 une page pleine qui n'apporte rien arrête la boucle", appels <= 2, true);
+  verifie("3.20 et rend « on ne sait pas », pas une liste amputée", r.lu, false);
+}
+
 // Les bords : rien à fusionner ne doit rien casser.
 {
-  verifie("3.17 pas de rapport du tout", fusionneRegroupement(null, { lu: true, lignes: new Map() }), null);
+  verifie("3.21 pas de rapport du tout", fusionneRegroupement(null, { lu: true, lignes: new Map() }), null);
   const sansThemes = { ...payload({}), themes_focus: [] };
-  verifie("3.18 un rapport sans thème passe tel quel",
+  verifie("3.22 un rapport sans thème passe tel quel",
     fusionneRegroupement(sansThemes, { lu: true, lignes: new Map() }) === sansThemes, true);
 }
 

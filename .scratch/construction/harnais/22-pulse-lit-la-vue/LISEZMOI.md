@@ -23,13 +23,13 @@ Aucun runner n'est introduit pour autant : ce fichier est un script `node`
 autonome, il ne touche ni `package.json` ni la chaîne de build. L'arbitrage de
 David sur [16](../../issues/16-le-seam-du-payload.md) tient.
 
-## Ce qu'il prouve — 32 vérifications
+## Ce qu'il prouve — 35 vérifications
 
 | | |
 |---|---|
 | **12** · la lecture | la vue lue est bien `theme_regroupement` · bornée au compte REGARDÉ · l'ordre posé **avant** la pagination · 1 500 thèmes rendent 1 500 lignes en deux requêtes · une panne rend « on ne sait pas », pas « rien » |
 | **2** · la clé | casse et espaces normalisés comme `_nrm` côté worker · le label brut conservé tel quel |
-| **18** · la fusion | les trois cas ci-dessous, plus les bords (pas de rapport, aucun thème) |
+| **21** · la fusion | les trois cas ci-dessous · aucun champ figé ne survit à une réponse de la vue · une pagination qui n'avance pas s'arrête au lieu de tourner sans fin · les bords (pas de rapport, aucun thème) |
 
 ## Les trois cas de la fusion, et pourquoi ils ne se confondent pas
 
