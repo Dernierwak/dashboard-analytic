@@ -59,6 +59,8 @@
 --   25)    suivi_actions.author_id — qui a écrit la ligne, posé à la création
 --          et figé par déclencheur — plus campaign_channel/campaign_key, la
 --          campagne qu'une note ou une action désigne.
+--   26)    suivi_actions — la politique RESTRICTIVE qui empêche de signer une
+--          note du nom de quelqu'un d'autre. APRÈS les sections 15 et 25.
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
 --   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
@@ -2636,6 +2638,54 @@ CREATE INDEX IF NOT EXISTS idx_suivi_actions_campagne
     WHERE campaign_key IS NOT NULL;
 
 
+
+-- ============================================================================
+-- 26) suivi_actions — UNE NOTE NE SE SIGNE QUE DE SON PROPRE NOM.
+--     Voir suivi_actions_auteur_sincere.sql (SOURCE DE VÉRITÉ) : le bloc
+--     ci-dessous en est la copie mot pour mot, et tout le POURQUOI y est écrit
+--     — d'où venait le trou, pourquoi `AS RESTRICTIVE` est le point entier du
+--     fichier (les politiques permissives se combinent en OU, donc une de plus
+--     n'interdit rien), pourquoi une politique suffit ici alors que la 25 a dû
+--     prendre un déclencheur, et pourquoi le NULL reste permis.
+--
+--     APRÈS la section 15, qui pose `partage_insert`, et APRÈS la section 25,
+--     qui crée la colonne : ce bloc s'arrête net si elle manque. Additive :
+--     aucun DROP TABLE, aucun DELETE, aucun TRUNCATE, aucun UPDATE sur
+--     l'existant. Le `DROP POLICY IF EXISTS` ne sert qu'à la rejouabilité.
+-- ============================================================================
+
+-- Sans `author_id`, la politique porterait sur une colonne absente et
+-- PostgreSQL refuserait de la créer — avec un message qui ne dit pas quoi
+-- faire. On le dit à la place (même patron que partage_tables_manquantes.sql).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name   = 'suivi_actions'
+                     AND column_name  = 'author_id') THEN
+        RAISE EXCEPTION
+            'suivi_actions.author_id manque : joue suivi_actions_auteur_campagne.sql avant celui-ci.';
+    END IF;
+END $$;
+
+DROP POLICY IF EXISTS "auteur_sincere" ON public.suivi_actions;
+
+-- `(SELECT auth.uid())` plutôt que `auth.uid()` : entre parenthèses, PostgreSQL
+-- l'évalue UNE FOIS pour l'instruction (InitPlan) au lieu d'une fois par ligne.
+-- Sans effet sur une note à l'unité, mesurable sur un insert en lot.
+CREATE POLICY "auteur_sincere" ON public.suivi_actions
+    AS RESTRICTIVE
+    FOR INSERT
+    WITH CHECK (
+        author_id IS NULL
+        OR author_id = (SELECT auth.uid())
+    );
+
+COMMENT ON POLICY "auteur_sincere" ON public.suivi_actions IS
+    'Une note se signe de son propre nom ou de personne. RESTRICTIVE : les '
+    'politiques permissives d''une même commande se combinent en OU, donc une '
+    'de plus n''aurait rien interdit. Voir le ticket 23 de la construction.';
+
 -- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
@@ -2783,6 +2833,22 @@ securite AS (
                       AND column_name ~ '(token|secret|refresh)')
                 THEN '✗ UN JETON TRAÎNE SUR profiles, LU PAR LES INVITÉS'
                 ELSE '✓' END
+    UNION ALL
+    -- §26. `permissive = 'RESTRICTIVE'` fait partie du contrôle, et c'est le
+    -- seul morceau qui compte vraiment : posée en PERMISSIVE, cette politique
+    -- existerait, se lirait pareil, et n'interdirait RIEN — les politiques
+    -- permissives d'une même commande se combinent en OU. Une ligne de contrôle
+    -- qui se contenterait de son nom dirait « ✓ » sur une base ouverte.
+    SELECT 'sécurité',
+           'suivi_actions — une note ne se signe que de son propre nom',
+           CASE WHEN EXISTS (
+                    SELECT 1 FROM pg_policies
+                    WHERE schemaname = 'public' AND tablename = 'suivi_actions'
+                      AND policyname = 'auteur_sincere'
+                      AND permissive = 'RESTRICTIVE'
+                      AND cmd = 'INSERT')
+                THEN '✓'
+                ELSE '✗ UN MEMBRE PEUT POSER UNE NOTE SIGNÉE DE QUELQU''UN D''AUTRE' END
     UNION ALL
     SELECT 'réglage',
            'profiles.fetch_schedule — défaut ''Monday''',
