@@ -24,14 +24,25 @@ pas propres à ce dossier — voir `CLAUDE.md` § 7.
 | `categorizing.py` | Oui — Gemini | Catégorise chaque événement GA4 du catalogue qui n'en a pas. |
 | `user_persona.py` | Oui — IA injectée (`call_ai`, pas un import direct de Gemini) | Le **profil client vivant** : synthétise un profil pour personnaliser le TON et le NIVEAU des recos. |
 | `theme_memoire.py` | Oui — IA injectée (même patron que `user_persona.py`) | La **mémoire d'un thème** : condense ce qu'il a déjà tenté et ce que ça a donné. |
+| `marche_suivante.py` | Oui — IA injectée (même patron) | La **Marche suivante** d'une Stratégie déjà ouverte par une règle : l'étape d'après, sous trois barrières dures. Il n'ouvre jamais une Stratégie, il ne déclare que dans les listes fermées, il ne nomme qu'un objet des `facts` du thème. |
 
-**Plus aucun conseil n'est rédigé par un modèle de langage.** Les « pistes » de
-thème — un appel Gemini par thème, trois idées écrites à partir de ses chiffres —
-sont coupées depuis le ticket 08 de la construction : c'était le seul endroit où
-Pulse disait quelque chose que **rien ne pouvait vérifier**, ni un chiffre du
-compte ni une règle. **Le moteur trie, l'IA explique** — elle garde le ton
-(`user_persona.py`), le savoir-faire de fond (`_themes_tips`, dans
-`saas/traitement/`), le résumé de la semaine et la mémoire d'un thème.
+**Aucun conseil n'est rédigé par un modèle de langage À PARTIR DES CHIFFRES DU
+COMPTE.** Les « pistes » de thème — un appel Gemini par thème, trois idées
+écrites à partir de ses chiffres — sont coupées depuis le ticket 08 de la
+construction : c'était le seul endroit où Pulse disait quelque chose que **rien
+ne pouvait vérifier**, ni un chiffre du compte ni une règle. **Le moteur trie,
+l'IA explique** — elle garde le ton (`user_persona.py`), le savoir-faire de fond
+(`_themes_tips`, dans `saas/traitement/`), le résumé de la semaine et la mémoire
+d'un thème.
+
+**La seule exception est `marche_suivante.py`, et elle n'en est pas vraiment
+une** (ticket 22 de la refonte, décision 6). Aucune règle déterministe ne sait
+que « refaire la page d'arrivée » se descend en appel à l'action → titre →
+structure : c'est du savoir-faire, le même bois que les astuces, que la coupe a
+explicitement épargnées. Il ne lit **aucun chiffre du compte** — son prompt n'en
+contient pas un — et il ne peut écrire que l'étape d'après d'une Stratégie
+**qu'une règle a ouverte** et dont le client a **confirmé** avoir fait la
+précédente.
 
 Le nom du dossier dit « recos IA » au sens large : *tout ce qui fabrique la
 recommandation*, pas seulement ce qui appelle un modèle. `reco_engine.py` et
@@ -204,6 +215,36 @@ avant la boucle de verdict — voir le commentaire au branchement, ce n'est pas
 un bug d'ordonnancement) ; et une action `archived`/`dropped` sort de la
 mémoire, faute de verdict à raconter.
 
+## `marche_suivante.py` — l'étape d'après
+
+Le seul endroit où l'IA écrit encore un conseil, et le seul qu'elle sache
+écrire. Tranché par `.scratch/refonte/issues/22-rebrancher-le-plan-de-theme.md`
+(décision 6), bâti par le ticket 24 de la construction.
+
+**Trois barrières dures**, chacune un rejet, jamais une correction :
+
+1. **Il n'ouvre jamais une Stratégie.** Seule une règle le fait, en posant une
+   Hypothèse (`role="hypothese"`). Deux verrous : pas d'appel sans une Marche
+   déjà FAITE (un `done_at` en base, la preuve d'un clic), et rejet de toute
+   piste qui ne déclare pas `role="generale"` — or `generale` est précisément
+   ce que la boucle `ecrire_plan_de_theme` ne ramasse pas.
+2. **Grammaire dans les listes fermées** (`nature`, `role`, `levier`, `metric`,
+   `effort`). Une seule valeur hors liste et la piste ENTIÈRE tombe. Les listes
+   arrivent **par paramètre** depuis `build_report.py` (`GRAMMAIRE`) : les
+   recopier ici ferait les deux tables qui finissent par ne plus dire la même
+   chose, ce qui a déjà coûté `PROOF_KPI`.
+3. **Il ne nomme qu'un objet présent dans les `facts` du thème** — les noms de
+   campagnes et d'annonces que la récolte y a réellement rangés.
+
+**Il n'écrit aucun chiffre**, et ça se vérifie par lecture du prompt : aucune
+donnée du compte n'y entre, seulement des NOMS. Le seul nombre de la carte est
+la baseline, photographiée après coup par `_attach_metric`.
+
+**Il ne réserve aucune place.** Sa Marche entre dans le vivier du thème AVANT le
+tri par importance et le plafond de cinq : elle passe les mêmes filtres que
+n'importe quelle règle, empreinte anti-répétition comprise, et peut très bien ne
+pas sortir.
+
 ## Qui appelle ce dossier
 
 `saas/collecte/automatisation/fetch_all.py` déclenche `labeling.py` et
@@ -211,5 +252,9 @@ mémoire, faute de verdict à raconter.
 `saas/traitement/build_report.py` appelle `reco_engine.py`,
 `regles_payantes.py` (une fois par thème, sur le chemin des conseils-règles) et
 `insights.py` pour construire le payload du rapport, `user_persona.py` pour calibrer le
-brief IA sur le profil client vivant, et `theme_memoire.py` depuis sa boucle
-de verdict, une fois par thème dont un verdict vient de tomber.
+brief IA sur le profil client vivant, `theme_memoire.py` depuis sa boucle
+de verdict, une fois par thème dont un verdict vient de tomber, et
+`marche_suivante.py` depuis la boucle des thèmes — au plus une fois par thème
+CONSEILLÉ, et seulement quand une Stratégie y est ouverte ET que sa Marche
+précédente a été confirmée faite. Sur la plupart des comptes, il n'est donc
+jamais appelé.

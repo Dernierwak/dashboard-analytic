@@ -865,3 +865,34 @@ conseils et un thème effacé consomme en silence une des trois places
 (`lib/couts.ts`, `bandeau-commandes.tsx`, `prototype-switcher.tsx`), donc écrit
 plutôt que corrigé (§5) : le premier des trois affiche une **courbe vide et des
 totaux à zéro** sur une fenêtre à l'envers, sans un mot.
+
+**[24 · La Marche suivante écrite par Gemini](issues/24-marche-suivante-ecrite-par-gemini.md)** —
+**le repli de 06 est rattrapé, et c'est le seul endroit où l'IA écrit encore un
+conseil.** Un module neuf, pur et headless (`saas/recos_ia/marche_suivante.py`),
+branché dans la boucle des thèmes **avant** le tri et la coupe — la consigne de
+repli est tenue, `composition.py` n'est pas touché d'une ligne. **La barrière qui
+compte se ferme deux fois** : le branchement n'appelle Gemini que si une
+Stratégie est ouverte **par une règle** et que le client a confirmé la Marche
+précédente ; et le module rejette toute piste qui ne déclare pas
+`role="generale"` — or c'est très exactement ce que la boucle
+`ecrire_plan_de_theme` **ne ramasse pas**. Ce garde-fou vient de la décision 11
+de [14](../refonte/issues/14-le-conseil-facile-et-la-degradation.md), que la
+décision 6 de 22 n'a pas renversée : **sans lui j'aurais produit une Hypothèse**,
+donc une Stratégie ouverte par Gemini. Les listes fermées arrivent **par
+paramètre** (`build_report.GRAMMAIRE`) plutôt que recopiées — les deux tables qui
+divergent ont déjà coûté `PROOF_KPI`. `effort` s'ajoute aux quatre colonnes du
+ticket, parce que sans lui le plafond des gestes lourds ne peut **par
+construction** jamais voir une Marche, et la décision 1 de 22 dit qu'il existe
+pour ça. **Deux défauts trouvés par ma propre relecture, pas par les tests** :
+une **Note cochée** faisait avancer une Stratégie qu'elle n'avait jamais ouverte,
+et un **seul vieux clic** faisait écrire une étape neuve chaque semaine — chaque
+étape portant sa propre clé, l'empreinte ne les voyait jamais passer. La borne
+posée est le `week_start` du dernier rapport publié : *un clic, une Marche*, la
+lecture littérale de la décision 9 de 14. **171 vérifications neuves**, dont
+**60 sur `build_payload` réellement exécutée** (seam du 16) — y compris la seule
+qui compte vraiment : **rien n'entre dans `theme_plan`**, lu sur les écritures
+tentées, pas supposé. Les **48 autres fichiers de harnais rejoués sans
+régression**, par `harnais/jouer_tout.py` que ce ticket ajoute. `saas/web` n'est
+pas touché. **§9 s'applique en entier** : ça ne se verra qu'après un passage du
+worker — et seulement le jour où une règle qui pose une Hypothèse et un clic
+« ✓ Je l'ai fait » se rencontrent sur le même thème.

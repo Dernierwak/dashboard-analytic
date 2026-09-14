@@ -40,6 +40,7 @@ from saas.recos_ia.composition import (  # noqa: E402
     composer_la_semaine, empreinte as empreinte_conseil,
 )
 from saas.recos_ia.insights import build_matrix, build_constats  # noqa: E402
+from saas.recos_ia.marche_suivante import marche_suivante  # noqa: E402
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
@@ -335,6 +336,30 @@ ROLES = ("generale", "hypothese")
 # d'affichage séparé, sorti du flux normal des recos-thème/recos-règles
 # (voir ses usages plus bas).
 SETUP_KEYS = {"ga4_muet", "connecter_ga4", "funnel"}
+
+
+# LES LISTES FERMÉES, RASSEMBLÉES POUR CEUX QUI DOIVENT LES FAIRE RESPECTER.
+#
+# `marche_suivante` (`saas/recos_ia/`) rejette une piste dont la grammaire sort
+# de ces listes — il lui faut donc les lire, et il ne peut pas les importer :
+# `build_report` importe `recos_ia`, jamais l'inverse. Les recopier là-bas
+# ferait les deux tables qui finissent par ne plus dire la même chose, ce qui a
+# déjà coûté `PROOF_KPI` (ticket 22, décision 5). Elles se passent donc en
+# paramètre, et il n'existe toujours qu'un seul endroit où elles sont écrites.
+#
+# `efforts` EN FAIT PARTIE, et ce n'est pas une cinquième colonne inventée :
+# le plafond des gestes lourds (`composition.MAX_LOURDS`) lit `nature` ET
+# `effort`, et la décision 1 du ticket 22 dit qu'il « ne servira que lorsque
+# les Marches de Gemini ajouteront des `créer`/`corriger` ». Sans effort
+# déclaré, une Marche retombe sur le défaut « 30 min » d'`_attach_effort` et ce
+# plafond ne peut par construction jamais la voir.
+GRAMMAIRE = {
+    "natures": NATURES,
+    "roles": ROLES,
+    "leviers": LEVIERS,
+    "metrics": METRICS_MESURABLES,
+    "efforts": EFFORTS,
+}
 
 
 def _effort_de(reco: dict) -> str:
@@ -2334,13 +2359,22 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # historique. Les deux valeurs ne diffèrent que pour un compte servi le
     # lundi, mais c'est exactement le compte qui se serait relu lui-même.
     _rapports_publies = []
+    # LA SEMAINE DU DERNIER RAPPORT PUBLIÉ, gardée à côté des payloads.
+    # C'est la borne « depuis la dernière fois qu'on a parlé », et elle sert à
+    # la Marche suivante : une Stratégie n'avance que d'un cran par clic
+    # « ✓ Je l'ai fait », pas d'un cran par rapport. `None` = premier rapport
+    # de ce compte, et alors tout clic est nouveau.
+    _semaine_precedente = None
     try:
-        _rapports_publies = [
-            (_h.get("payload") or {})
-            for _h in lecteur.rapports_publies(week_start_rapport.isoformat())
-        ]
+        _histo = lecteur.rapports_publies(week_start_rapport.isoformat())
+        _rapports_publies = [(_h.get("payload") or {}) for _h in _histo]
+        # `rapports_publies` rend les plus récents d'abord (`.order("week_start",
+        # desc=True)`) — on ne re-trie pas, on prend le premier.
+        _semaine_precedente = (str(_histo[0].get("week_start") or "")[:10]
+                               or None) if _histo else None
     except Exception:
         _rapports_publies = []
+        _semaine_precedente = None
 
     # ── Les campagnes lancées DEPUIS PEU (≤ 14 jours) ────────────────────────
     # Rien de nouveau n'est demandé à personne : le premier jour où une campagne
@@ -2450,6 +2484,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
 
     # ── Frise (Phase 2) : série hebdo de la métrique du thème + repères d'actions
     _markers = {}
+    _marches_faites: dict[str, list[dict]] = {}
     try:
         # Le repere se pose au jour ou l'action a ete FAITE (a defaut, decidee).
         # On garde son TITRE avec sa date : un pointille muet ne relie rien, et
@@ -2483,8 +2518,45 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             _markers.setdefault(_nrm(_a.get("theme")), []).append(
                 {"date": str(_d)[:10], "titre": (_a.get("title") or "").strip()}
             )
+            # ── LES MARCHES QUE LE CLIENT DÉCLARE AVOIR FAITES ──────────────
+            #
+            # Ce que `marche_suivante` attend pour écrire la suivante, et
+            # l'unique déclencheur qu'elle ait : « la suivante n'arrive que
+            # lorsque la précédente est faite — un Verdict ne fait pas avancer
+            # d'une marche, il dit si la Stratégie continue ou change »
+            # (`CONTEXT.md`, entrée Marche ; `.scratch/refonte/issues/
+            # 14-le-conseil-facile-et-la-degradation.md`, décision 9).
+            #
+            # `done_at` EST LA CONDITION, PAS `status`. C'est la seule preuve
+            # d'un vrai clic « ✓ Je l'ai fait » (seul `resolveAction(id,"done")`
+            # l'écrit, `saas/web/app/actions.ts`) ; `status` peut valoir "done"
+            # sur une ligne d'avant la migration `done_at`, et faire avancer une
+            # Stratégie sur une date qu'on n'a pas serait exactement le geste
+            # jamais confirmé que le ticket 06 a retiré du carnet
+            # (`CLAUDE.md` §7).
+            #
+            # Lu ICI et pas dans une seconde requête : `suivi_actions()` est
+            # déjà en main, et la boucle par thème qui s'en sert est plus bas.
+            #
+            # UNE NOTE N'EST PAS UNE MARCHE, et c'est le même filtre que la
+            # boucle de verdict s'impose déjà plus bas : depuis que le module
+            # « À faire » sait créer une ligne de suivi (ticket 11 de la
+            # construction), `suivi_actions` en ramène. Une Note n'a ni
+            # indicateur, ni baseline, ni Stratégie derrière elle
+            # (`CONTEXT.md`, entrée Note) — faire descendre une échelle d'un
+            # cran parce que quelqu'un a coché un texte libre inventerait la
+            # Stratégie que ce texte n'a jamais ouverte.
+            if _a.get("done_at") and _a.get("kind") != "note":
+                _marches_faites.setdefault(_nrm(_a.get("theme")), []).append(_a)
     except Exception:
         _markers = {}
+        _marches_faites = {}
+
+    # La plus récente en DERNIER — `marche_suivante` prend `[-1]` comme étape
+    # qui vient d'être terminée, et lui donne les autres comme ce qu'il ne doit
+    # pas répéter. Un tri par texte suffit : `done_at` est une date ISO.
+    for _lst in _marches_faites.values():
+        _lst.sort(key=lambda a: str(a.get("done_at") or ""))
 
     def _reperes(dates):
         """Les reperes d'une serie, groupes par semaine et nommes.
@@ -3700,6 +3772,96 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                         t_recos.append(_r_pay)
             except Exception:
                 pass
+
+            # ── LA MARCHE SUIVANTE, ÉCRITE PAR GEMINI ───────────────────────
+            #
+            # Le seul endroit où Pulse laisse encore l'IA écrire un conseil, et
+            # le seul qu'elle sache écrire : aucune règle déterministe ne sait
+            # que « refaire la page d'arrivée » se descend en appel à l'action →
+            # titre → structure. C'est du savoir-faire, pas une lecture de
+            # chiffres — donc la coupe de
+            # `.scratch/refonte/issues/11-d-ou-viennent-les-conseils.md` reste
+            # intacte, elle visait l'idée INVENTÉE À PARTIR DE CHIFFRES et elle
+            # a explicitement épargné les astuces, qui sont le même bois
+            # (ticket 22, décision 6 ; bâti par le ticket 24 de la
+            # construction).
+            #
+            # DEUX CONDITIONS, ET LA PREMIÈRE EST LA BARRIÈRE : **Gemini
+            # n'ouvre jamais une Stratégie.**
+            #   · une ligne `theme_plan` existe sur ce thème, posée par une
+            #     RÈGLE — la clé `ai_` est refusée, c'est une piste rédigée
+            #     avant la coupe de 11 et la réafficher remettrait à l'écran
+            #     exactement ce que la décision retire (même garde que le
+            #     blocage de fenêtre, plus bas) ;
+            #   · le client a CONFIRMÉ avoir fait la Marche précédente.
+            # Le module ferme la barrière une seconde fois de son côté, en
+            # rejetant toute piste qui ne déclare pas `role="generale"` — et
+            # `role="generale"` est précisément ce que la boucle
+            # `ecrire_plan_de_theme` (tout en bas) ne ramasse pas. Rien de ce
+            # qui sort d'ici ne peut devenir la Marche courante d'un plan.
+            #
+            # LES `facts` SONT CE QU'IL A LE DROIT DE NOMMER, et on lui donne
+            # les MÊMES qu'aux règles payantes — plus les annonces, que
+            # `regles_payantes` reçoit à part. Une Marche ne peut désigner
+            # qu'un objet que la récolte a réellement rangé sous ce thème :
+            # c'est la décision 7 de 14 (une campagne ne se nomme que si elle
+            # appartient au thème traité), et c'est ce qui l'empêche de
+            # conseiller sur une campagne qui n'existe pas.
+            #
+            # ELLE ENTRE COMME UNE CANDIDATE, JAMAIS COMME UNE PLACE RÉSERVÉE :
+            # elle est ajoutée AVANT le tri par `_importance` et la coupe à
+            # trois, donc elle passe les mêmes filtres que n'importe quelle
+            # règle (`_est_conseil`, l'empreinte déjà servie) et peut très bien
+            # ne pas sortir. Le tri et le plafond appartiennent au ticket 08,
+            # et rien ici ne les touche.
+            try:
+                _plan_strat = theme_plan_by.get(nlbl) or {}
+                _ouverte_par_regle = (
+                    bool(_plan_strat.get("reco_key"))
+                    and not str(_plan_strat["reco_key"]).startswith("ai_"))
+                _faites = _marches_faites.get(nlbl) or []
+                # UN CLIC FAIT AVANCER D'UNE MARCHE, PAS D'UNE PAR SEMAINE.
+                # Sans cette borne, un seul « ✓ Je l'ai fait » posé il y a six
+                # mois faisait écrire une étape neuve CHAQUE semaine — et
+                # comme chaque étape porte sa propre clé, l'empreinte
+                # anti-répétition ne les voyait jamais passer. On descendait
+                # une échelle que plus personne ne montait.
+                #
+                # La borne est le `week_start` du dernier rapport publié, pas
+                # un délai en jours : « depuis la dernière fois qu'on t'a
+                # parlé » est la seule fenêtre que ce produit sache définir
+                # sans inventer un seuil. Aucun rapport publié = premier
+                # rapport du compte, et alors tout clic est nouveau.
+                _neuf = (_semaine_precedente is None or (
+                    _faites and str(_faites[-1].get("done_at") or "")[:10]
+                    >= _semaine_precedente))
+                if (_ouverte_par_regle and _faites and _neuf
+                        and not _aveugle_semaine):
+                    _m_suiv = marche_suivante(
+                        lbl, _faites[-1],
+                        {**_faits_payants(lbl),
+                         "annonces": _annonces_theme(lbl, cur_since,
+                                                     last_full_day)},
+                        lecteur.redige, GRAMMAIRE,
+                        deja_faites=[str(_a.get("title") or "").strip()
+                                     for _a in _faites],
+                        resume=_plan_strat.get("resume"),
+                        # LE CANAL VIENT DE LA STRATÉGIE, PAS DE LA LIGNE DE
+                        # SUIVI : `suivi_actions` n'a pas de colonne
+                        # `platform` (voir sa table dans
+                        # `supabase/migrations/000_run_me_all.sql`), et le lire
+                        # là rendrait `None` à chaque fois. Le `snapshot` du
+                        # plan est la carte COMPLÈTE de la règle qui a ouvert
+                        # la Stratégie : une Marche reste sur le canal de la
+                        # Stratégie qu'elle continue, et ça se lit au lieu de
+                        # se deviner depuis le texte.
+                        platform=(_plan_strat.get("snapshot")
+                                  or {}).get("platform"),
+                    )
+                    if _m_suiv:
+                        t_recos.append(_m_suiv)
+            except Exception:
+                pass   # une panne d'IA retire une carte, jamais le rapport
             # LE COÛT PAR CONVERSION REJOINT LES CONSTATS AU LIEU D'ÊTRE JETÉ.
             # `theme_event_cout` ne demande aucun geste : `_est_conseil` le
             # refusait deux lignes plus bas, en silence, depuis le ticket 06 —
