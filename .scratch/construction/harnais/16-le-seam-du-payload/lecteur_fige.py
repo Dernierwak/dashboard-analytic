@@ -101,6 +101,10 @@ class LecteurFige:
     def config_google(self): return self._config_google
     def budgets_poses(self): return self._budgets
     def themes_regroupes(self): return self._themes_regroupes
+    # Aucun canal muet par défaut : le compte de référence est un compte
+    # dont la récolte a réussi. Le ticket 20 grée le trou par-dessus
+    # (`../20-canal-muet/gree.py`), il ne le pose pas ici.
+    def canaux_muets(self): return {}
 
     # ── Ce que le client a répondu ───────────────────────────────────────────
     def reco_feedback(self): return {}

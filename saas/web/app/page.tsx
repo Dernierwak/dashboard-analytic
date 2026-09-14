@@ -18,6 +18,7 @@ import { BilanDuCarnet } from "@/components/carnet";
 import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
+import { CanalMuetAlerte } from "@/components/canal-muet";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { ancreTheme } from "@/lib/liens";
@@ -437,6 +438,14 @@ export default async function Page() {
             lecture : l'écart, la métrique et la phrase de verdict sont produits
             par des règles déterministes, le résumé est écrit par une IA. Un
             cadre autour du second lui donnerait l'autorité du premier. */}
+        {/* CE QU'ON N'A PAS PU LIRE — AU-DESSUS DES CHIFFRES, PAS EN NOTE.
+            Un canal dont la récolte a échoué laisse des « — » à la place d'une
+            dépense, d'un CPC, d'un ROAS (ticket 20). Ces tirets se lisent comme
+            un bug de Pulse tant que personne ne dit d'où ils viennent, et un
+            produit qui a l'air cassé se ferme. Le module est donc AVANT le
+            verdict qu'il conditionne, et il se vide de lui-même dès que la
+            récolte a tout lu — voir `canal-muet.tsx`. */}
+        <CanalMuetAlerte canaux={report?.canaux_muets} />
         <div className="rounded-2xl border border-line bg-white shadow-card px-5 py-5 sm:px-7 sm:py-6">
           {/* LES TROIS DATES PRENNENT LA PLACE DU LIBELLÉ DE SEMAINE, elles ne
               s'ajoutent pas à lui : `week_label` dit déjà « Semaine 37 · 7 → 13

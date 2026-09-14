@@ -419,9 +419,15 @@ def _rien(_etape: str) -> None:
 # semaine suivante lirait comme une BAISSE : un faux verdict, pas un trou
 # visible.
 #
-# ON RETIENT LES UTILISATEURS, PAS UN SIMPLE OUI/NON, et c'est ce qui permet
-# les deux usages : `run()` sait QUI n'a pas de rapport publiable, et
-# `__main__` sait qu'il reste au moins un cas pour finir en rouge. Les fils
+# CE QUE CET ENSEMBLE NE FAIT PLUS : retenir la publication. Depuis le
+# ticket 20, un trou de récolte ne fait plus taire le rapport entier — il fait
+# taire les mesures qui le traversent, et le rapport NOMME le canal muet
+# (`build_payload`, clé `canaux_muets`). Retenir ne couvrait qu'une cause sur
+# cinq et privait le client du seul message capable de lui dire de reconnecter.
+#
+# CE QU'IL FAIT ENCORE, ET QUI RESTE UTILE : finir la run en ROUGE. C'est le
+# seul signal qui dise à David qu'une migration attend — le client, lui, voit
+# déjà le trou dans son rapport. Les fils
 # Meta de plusieurs utilisateurs n'écrivent jamais en même temps (les profils
 # se suivent en série), mais l'ensemble est quand même verrouillé — il coûte
 # trois lignes et se relit sans avoir à vérifier cette hypothèse.
@@ -955,24 +961,34 @@ def run(force: bool = False, only_user: str | None = None,
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
         # L'email part le jour de fetch de l'utilisateur (défaut lundi) ; sans
         # RESEND_API_KEY, send_email passe en dry-run (aucun envoi).
-        # LE RAPPORT NE PART PAS SUR UN TROU CONNU. Si l'écriture Meta a été
-        # sautée, la fenêtre de cette semaine n'a pas la dépense publicitaire —
-        # et un rapport qui la publie quand même la présente comme une BAISSE,
-        # avec un email au client derrière. C'est exactement le faux verdict que
-        # le garde-fou existe pour éviter ; le rendre visible à David (run
-        # rouge) ne suffit pas si le client, lui, a déjà reçu le chiffre faux.
-        # On ne publie donc rien pour CET utilisateur — les autres ne sont pas
-        # concernés — et le journal dit pourquoi.
-        # `saute` et pas `echec` : rien n'a été tenté et rien n'a raté — la
-        # publication a été RETENUE, et ça ne se répare pas au même endroit
-        # (une migration à jouer, pas une API qui refuse).
-        if a_tente and uid in _ECRITURES_SAUTEES:
-            _mot = ("rapport NON PUBLIÉ : la dépense Meta de la semaine manque "
-                    "(colonne ad_id absente) — un rapport publié dessus lirait "
-                    "un trou comme une baisse. Jouer la migration, puis relancer.")
-            journal.append((_rang["rapport"], _mot))
-            suivi.saute(sb, "rapport", _mot)
-        elif a_tente:
+        # LE RAPPORT PART, ET IL DIT CE QU'IL N'A PAS PU LIRE (ticket 20).
+        #
+        # CE BLOC RETENAIT LA PUBLICATION quand l'écriture Meta avait été sautée
+        # pour cause de schéma en retard. La raison était juste — un rapport
+        # publié sur une semaine sans dépense Meta présente le trou comme une
+        # BAISSE — mais la retenue ne l'était pas, pour deux motifs mesurés par
+        # le ticket 20 :
+        #
+        # ① ELLE NE COUVRAIT QU'UNE CAUSE SUR CINQ. Le schéma en retard était
+        #    le seul cas retenu ; un jeton Meta expiré (le plus courant), un 500,
+        #    une limite de débit ou n'importe quelle exception attrapée par `_fil`
+        #    laissaient le rapport partir, l'email avec, et la run finir VERTE.
+        # ② RETENIR, C'EST DÉPLACER LE SILENCE. Un compte au jeton mort ne
+        #    recevait plus rien, sans jamais apprendre pourquoi — or le rapport
+        #    est le seul canal par lequel on peut lui dire de reconnecter.
+        #
+        # Ce que le rapport fait maintenant, il le fait pour TOUTES les causes à
+        # la fois, parce qu'il ne les distingue plus : `build_payload` lit
+        # `fetch_progress` (état `echec` du dernier passage), fait taire chaque
+        # mesure dont la source est muette — dépense, CPC, ROAS, verdict,
+        # conseils payants — et publie le trou sous `canaux_muets`. Tranché avec
+        # `vision-produit` le 2026-09-14,
+        # `.scratch/construction/issues/20-rapport-publie-sur-un-canal-muet.md`.
+        #
+        # `_ECRITURES_SAUTEES` reste, et seulement pour ce qu'il sait vraiment :
+        # faire finir la run en ROUGE quand une migration attend. Il ne commande
+        # plus la publication.
+        if a_tente:
             suivi.commence(sb, "rapport")
             try:
                 from saas.traitement.build_report import publish_weekly_report
@@ -1054,6 +1070,8 @@ if __name__ == "__main__":
     if _ECRITURES_SAUTEES:
         print(f"!! ÉCHEC : écriture Meta Ads sautée pour {len(_ECRITURES_SAUTEES)} "
               f"utilisateur(s) — colonne ad_id absente de meta_ads_insights. "
-              f"Leur rapport n'a PAS été publié. Le reste de la récolte a bien tourné. "
-              f"Jouer supabase/migrations/000_run_me_all.sql, puis relancer.")
+              f"Leur rapport a été publié SANS chiffre de dépense Meta, en "
+              f"nommant le trou (ticket 20). Le reste de la récolte a bien "
+              f"tourné. Jouer supabase/migrations/000_run_me_all.sql, puis "
+              f"relancer : le recouvrement de sept jours rattrapera la semaine.")
         sys.exit(1)

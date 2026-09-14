@@ -787,3 +787,53 @@ def fetch_user_profile(supabase: Client, user_id: str) -> tuple[str | None, str 
     except Exception:
         pass
     return None, None
+
+
+# ── Le canal qui n'a rien écrit alors qu'il aurait dû ─────────────────────────
+#
+# CE QUI DISTINGUE UN TROU D'UN ZÉRO, et pourquoi ça ne se déduit pas des
+# lignes. Trois états se ressemblent dans `meta_ads_insights` et se traitent à
+# l'opposé (`.scratch/construction/issues/20-rapport-publie-sur-un-canal-muet.md`) :
+#
+#   ① jamais connecté      — le canal n'existe pas pour ce compte. Aucun trou,
+#                            aucune mention : il n'y a rien à manquer.
+#   ② connecté, ÉCHEC      — jeton expiré, 500, limite de débit, schéma en
+#                            retard. La dépense de la semaine MANQUE.
+#   ③ connecté, 0 ligne    — aucune campagne active. C'est un zéro MESURÉ, et
+#                            il doit continuer à s'afficher comme un zéro.
+#
+# ② et ③ rendent exactement le même nombre de lignes. Le signal ne peut donc
+# JAMAIS être « il y a peu de lignes » — c'est « une écriture a été tentée et
+# elle a échoué », ce que seul le worker sait et ce que `fetch_progress` range
+# déjà (`saas/collecte/automatisation/suivi.py`, état `echec`).
+#
+# ON NE LIT QUE LE PASSAGE LE PLUS RÉCENT. `run_id` est un horodatage ISO en
+# UTC écrit tel quel : le max lexicographique est le passage le plus récent, et
+# c'est la règle que l'écran de récolte applique déjà. Sans ce filtre, un échec
+# d'il y a trois semaines tairait éternellement la dépense d'un canal réparé
+# depuis.
+#
+# 'saute' N'EST PAS 'echec', et la nuance porte tout le ①. Un canal sauté n'a
+# pas été appelé (aucune connexion, aucune propriété GA4 choisie) ; un canal en
+# échec a été appelé et a refusé. Seul le second creuse un trou.
+def fetch_canaux_muets(supabase: Client, user_id: str) -> dict[str, str]:
+    """Les canaux dont la récolte a ÉCHOUÉ au dernier passage → {canal: mot}.
+
+    Rend `{}` dès que la table est absente ou illisible : un suivi qu'on ne
+    sait pas lire ne doit pas faire taire un rapport entier — il rendrait muet
+    tout le monde le jour où la migration `fetch_progress.sql` n'est pas jouée.
+    Le risque est asymétrique et assumé dans ce sens-là.
+    """
+    try:
+        rows = (supabase.table("fetch_progress")
+                .select("canal, run_id, etat, mot_de_fin")
+                .eq("user_id", user_id)
+                .execute().data) or []
+    except Exception:
+        return {}
+    if not rows:
+        return {}
+    dernier = max(str(r.get("run_id") or "") for r in rows)
+    return {r["canal"]: (r.get("mot_de_fin") or f"{r['canal']} : échec de récolte")
+            for r in rows
+            if str(r.get("run_id") or "") == dernier and r.get("etat") == "echec"}

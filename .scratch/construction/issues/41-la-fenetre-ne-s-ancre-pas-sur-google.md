@@ -83,3 +83,31 @@ que le défaut ait vécu jusqu'ici.
 - Aucun changement de la règle « jamais aujourd'hui » : `min(last_data_date,
   yesterday)` reste.
 - Aucun rejeu d'historique, aucun recalcul d'un Verdict déjà rendu.
+
+---
+
+## À LIRE AVANT DE CORRIGER — ajouté par le ticket [20](20-rapport-publie-sur-un-canal-muet.md), 2026-09-14
+
+Le ticket 20 a touché ces mêmes lignes, pour une autre raison : **un canal muet
+ne doit pas ancrer la fenêtre.** Sa dernière date est périmée par définition
+(c'est le jour où il a cessé d'écrire), et s'ancrer dessus fait republier la
+semaine précédente sous sa propre clé — le client reçoit l'ancien rapport au
+lieu d'un rapport troué, et la panne devient invisible. Le test est
+`test_la_semaine_declaree_ne_bouge_pas_parce_qu_un_canal_est_tombe`
+(`.scratch/construction/harnais/20-canal-muet/`).
+
+L'ancre porte donc maintenant une garde :
+
+```python
+if ("meta" not in pub_muette
+        and df_meta_raw is not None and "date_start" in df_meta_raw.columns):
+```
+
+**Elle ne nomme que Meta, et uniquement parce que Google n'est pas dans l'ancre.**
+Le jour où ce ticket ajoute `df_google` à `_data_dates`, il faut lui poser la
+**même garde** (`"google" not in pub_muette`), sinon le défaut du ticket 20
+rouvre côté Google : un Google Ads tombé ferait reculer la fenêtre, et le compte
+recevrait sa semaine précédente en silence.
+
+Le harnais 20 ne l'attrapera pas tout seul — il n'a pas de cas « Google muet et
+seule source ». En ajouter un en même temps que la correction.

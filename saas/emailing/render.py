@@ -15,6 +15,7 @@ BG = "#faf9f6"
 LINE = "rgba(14,15,18,0.08)"
 POS = "#1a7a4a"
 BRAND = "#1a56ff"
+WARN = "#8b6f00"   # ambre — « à reconnecter », pas « au feu »
 
 CHANNEL_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a",
                  "pub": "#1a56ff", "ia": "#8b6f00"}
@@ -82,6 +83,25 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
     todos = [{"title": t["title"], "channel": t.get("platform", "ia")}
              for t in (payload.get("todo") or []) if not t.get("done")]
 
+    # ── LE CANAL MUET CHANGE L'OBJET DE L'EMAIL (ticket 20) ──────────────────
+    # Un email au sujet habituel est ouvert comme d'habitude, et les « — » à la
+    # place des chiffres se lisent comme un bug de Pulse, pas comme une
+    # connexion à refaire. Sans ce changement d'objet on aurait juste DÉPLACÉ le
+    # silence : le rapport dirait la vérité à quelqu'un qui ne l'ouvre pas.
+    #
+    # On ne nomme que les canaux qui TAISENT vraiment des chiffres cette
+    # semaine : un canal tombé après avoir tout écrit n'a rien creusé, et
+    # alarmer sur lui userait l'alarme.
+    muets = [c for c in (payload.get("canaux_muets") or [])
+             if c.get("chiffres_tus")]
+    alerte = ""
+    if muets:
+        _noms = " et ".join(c.get("nom") or c.get("canal") for c in muets)
+        alerte = (f"{_noms} n'a pas répondu cette semaine : les chiffres de "
+                  f"publicité manquent, et rien ne les remplace. Reconnecte "
+                  f"depuis Comptes → Connexions pour que le prochain rapport "
+                  f"soit complet.")
+
     html = build_email_html(
         account_name=account_name,
         week_label=payload.get("week_label", ""),
@@ -89,8 +109,13 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
         wins_text=wins,
         todos=todos,
         app_url=app_url,
+        alerte=alerte,
     )
-    subject = f"Pulse — {payload.get('week_label', 'ta semaine en bref')}"
+    if muets:
+        _noms = " et ".join(c.get("nom") or c.get("canal") for c in muets)
+        subject = f"Pulse — {_noms} à reconnecter, ta semaine est incomplète"
+    else:
+        subject = f"Pulse — {payload.get('week_label', 'ta semaine en bref')}"
     return subject, html
 
 
@@ -101,11 +126,16 @@ def build_email_html(
     wins_text: str,
     todos: list[dict],
     app_url: str = "#",
+    alerte: str = "",
 ) -> str:
     """Construit le HTML complet de l'email hebdo.
 
-    kpis  : {"spend": "CHF 465", "clicks": "3 342", "ctr": "3.59%", "followers": "+119"}
-    todos : [{"title": "...", "channel": "meta"|"instagram"|"google"|"ia"}, ...]
+    kpis   : {"spend": "CHF 465", "clicks": "3 342", "ctr": "3.59%", "followers": "+119"}
+    todos  : [{"title": "...", "channel": "meta"|"instagram"|"google"|"ia"}, ...]
+    alerte : la phrase du canal muet, vide quand la récolte a tout lu. Elle
+             passe AVANT les KPI — c'est elle qui explique leurs « — »
+             (ticket 20). Défaut vide : les appelants d'avant ce ticket, et
+             leurs tests, gardent exactement l'email qu'ils rendaient.
     """
     kpi_cells = (
         _kpi_cell("Dépensé", kpis.get("spend", "—"), "Meta + Google · 7j pleins")
@@ -122,6 +152,20 @@ def build_email_html(
     )
 
     wins_block = wins_text or "Pas de signal positif marquant cette semaine."
+
+    # Ambre et pas rouge : ce n'est pas une catastrophe, c'est une connexion à
+    # refaire. Le rouge est réservé à ce qui coûte de l'argent maintenant.
+    alerte_block = (
+        f'<tr><td style="padding:0 28px 16px;">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+        f'<tr><td style="padding:14px 16px;background:#fdf6e3;'
+        f'border-left:3px solid {WARN};border-radius:8px;">'
+        f'<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;'
+        f'color:{WARN};font-weight:700;margin-bottom:6px;">'
+        f'Ce qu\'on n\'a pas pu lire</div>'
+        f'<div style="font-size:13px;color:{INK};line-height:1.55;">{alerte}</div>'
+        f'</td></tr></table></td></tr>'
+    ) if alerte else ""
 
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
@@ -150,6 +194,10 @@ def build_email_html(
                   color:{INK};line-height:1.2;">Ta semaine en bref</div>
       <div style="font-size:13px;color:{MUTED};margin-top:4px;">Bonjour {account_name}, voici l'essentiel.</div>
     </td></tr>
+
+    <!-- Ce qu'on n'a pas pu lire (ticket 20) — avant les KPI, parce qu'il
+         explique leurs tirets. Absent quand la récolte a tout lu. -->
+    {alerte_block}
 
     <!-- KPI -->
     <tr><td style="padding:0 28px 18px;">

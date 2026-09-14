@@ -52,6 +52,7 @@ from saas.commun.fetch_data import (
     fetch_theme_plan, fetch_theme_regroupement,
     fetch_google_ads_ad_insights, fetch_platform_budgets,
     fetch_ga4_events, fetch_ga4_insights,
+    fetch_canaux_muets,
 )
 from saas.commun.insert_data import upsert_theme_plan
 from saas.recos_ia.user_persona import build_user_persona
@@ -81,6 +82,7 @@ class Lecteur(Protocol):
     def config_google(self) -> dict[str, dict]: ...
     def budgets_poses(self) -> list[dict]: ...
     def themes_regroupes(self) -> list[dict]: ...
+    def canaux_muets(self) -> dict[str, str]: ...
 
     # ── Ce que le client a répondu ───────────────────────────────────────────
     def reco_feedback(self) -> dict[str, str]: ...
@@ -178,6 +180,17 @@ class LecteurSupabase:
         — voir l'en-tête du module : une migration qui manque n'est pas un
         compte sans données."""
         return fetch_theme_regroupement(self.sb, self.user_id)
+
+    def canaux_muets(self) -> dict[str, str]:
+        """Les canaux dont la récolte a échoué au dernier passage.
+
+        LE SEUL ÉTAT QUE `build_payload` LIT DE LA RÉCOLTE, et il passe par la
+        base plutôt que par un paramètre de `publish_weekly_report` — pour que
+        `report_only` (qui republie sans rien récolter) voie exactement le même
+        trou que la récolte complète. Un seul chemin, donc un seul comportement
+        à vérifier.
+        """
+        return fetch_canaux_muets(self.sb, self.user_id)
 
     # ── Ce que le client a répondu ───────────────────────────────────────────
 

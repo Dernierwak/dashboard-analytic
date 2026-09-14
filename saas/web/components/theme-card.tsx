@@ -284,7 +284,11 @@ export function ThemeCard({
                 celui qui décroche
               </span>
             )}
-            {som.spend_week > 0 && (
+            {/* `null` = un canal payant était muet cette semaine, la dépense
+                du thème traverse un trou de récolte (ticket 20). La ligne
+                disparaît alors — elle n'affiche NI 0 CHF, ni un total amputé
+                qui se lirait comme une coupe de budget. */}
+            {som.spend_week !== null && som.spend_week > 0 && (
               <span className="text-[11.5px] text-faint">
                 {fmtCHF(som.spend_week)} CHF cette semaine
               </span>

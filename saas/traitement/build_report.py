@@ -161,6 +161,13 @@ FENETRE_LEVIER = {"contenu": 7, "tempo": 7, "argent": 14, "audience": 14}
 ATTENTE_MIN_NOUVELLE_HYPOTHESE = {"contenu": 14, "tempo": 14, "argent": 21, "audience": 21}
 _ATTENTE_DEFAUT = 14
 
+# Le nom qu'un canal porte DEVANT LE CLIENT. `meta` et `ga4` sont des noms de
+# colonnes ; personne n'a connecté « ga4 ». Posé au niveau module parce que le
+# verdict et la liste `canaux_muets` doivent nommer la même panne du même mot
+# (ticket 20).
+NOMS_CANAUX = {"meta": "Meta Ads", "google": "Google Ads",
+               "instagram": "Instagram", "ga4": "Google Analytics"}
+
 # ── LE JUGEMENT ASSEMBLÉ D'UN THÈME (wayfinder
 # `.scratch/recos-labels/issues/04-analyse-assemblee.md`) ────────────────────
 #
@@ -1743,10 +1750,91 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     except Exception:
         df_gads = pd.DataFrame()
 
+    # ── LE CANAL MUET : ce qui n'a pas été écrit, et que rien ne doit combler ──
+    #
+    # Tranché le 2026-09-14 avec `vision-produit`, ticket 20 de la construction
+    # (`.scratch/construction/issues/20-rapport-publie-sur-un-canal-muet.md`).
+    #
+    # LA DÉCISION : on publie TOUJOURS, et ce qui dépend de la donnée absente
+    # devient `None` — jamais 0, jamais une baisse. Retenir le rapport (ce que
+    # faisait la garde `ad_id`) est un silence que le client ne sait pas lire ;
+    # or le rapport est le SEUL canal par lequel on peut lui dire de reconnecter.
+    # La règle n'est donc pas « canal tombé → rapport dégradé », c'est
+    # **chaque mesure se tait si sa source est muette**, mesure par mesure : un
+    # compte dont la boussole est l'engagement garde un rapport entier et bon
+    # quand Meta Ads tombe, parce qu'aucun de ses chiffres ne touche la dépense.
+    #
+    # POURQUOI ÇA PRESSE, ET DANS L'AUTRE SENS QU'ON CROIT. Le trou n'est pas
+    # symétrique : GA4 tourne dans son propre fil et écrit normalement pendant
+    # que Meta ou Google échoue. Le revenu reste donc ENTIER pendant que le
+    # dénominateur est amputé — le ROAS ne s'effondre pas, **il gonfle**. Le
+    # rapport n'a pas l'air cassé, il a l'air excellent, et la règle `scaler`
+    # conseille d'augmenter le budget sur un chiffre fabriqué par une panne.
+    #
+    # CE N'EST PAS UN COMPTE À ZÉRO. Trois états rendent le même nombre de
+    # lignes et se traitent à l'opposé — jamais connecté, échec, zéro mesuré :
+    # la distinction est faite en amont par `fetch_canaux_muets`
+    # (`saas/commun/fetch_data.py`), qui ne lit QUE l'état `echec` du dernier
+    # passage. Ici, on ne se demande plus pourquoi : on se demande jusqu'à quelle
+    # date le canal a écrit.
+    try:
+        canaux_muets = dict(lecteur.canaux_muets() or {})
+    except Exception:
+        canaux_muets = {}
+    # Seule la pub creuse un trou dans un CHIFFRE. Instagram muet coûte des
+    # posts, pas une division fausse ; GA4 muet est déjà traité par `_rev is
+    # None` (le ROAS se tait de lui-même, il ne gonfle pas).
+    _PUB_MUETTE = ("meta", "google")
+    pub_muette = {c: m for c, m in canaux_muets.items() if c in _PUB_MUETTE}
+
+    # JUSQU'OÙ CHAQUE CANAL A RÉELLEMENT ÉCRIT. Le trou ne couvre pas tout
+    # l'historique : les semaines d'avant ont été écrites par les passages
+    # réussis d'avant, et elles restent bonnes. Un canal muet est aveugle
+    # APRÈS sa dernière date connue, et nulle part ailleurs — c'est ce qui
+    # permet aux fenêtres de référence (4 semaines, 84 jours) de rester des
+    # chiffres pendant que la semaine en cours se tait.
+    #
+    # La date se DÉDUIT des lignes écrites, elle ne se stocke pas : c'est le
+    # même raisonnement que `_depart_recolte` côté récolte — une date lue dans
+    # les lignes réellement présentes ne peut pas mentir sur ce qui a été fait.
+    def _derniere_date(df, col="date_start"):
+        if df is None or getattr(df, "empty", True) or col not in df.columns:
+            return None
+        _d = pd.to_datetime(df[col], errors="coerce").max()
+        return _d.date() if pd.notna(_d) else None
+
+    _bord_muet: dict[str, object] = {}
+    if "meta" in pub_muette:
+        _bord_muet["meta"] = _derniere_date(df_meta_raw)
+    if "google" in pub_muette:
+        _bord_muet["google"] = _derniere_date(df_google)
+
+    def _pub_aveugle(d1, d2) -> set:
+        """Les canaux payants muets dont la donnée manque SUR CETTE FENÊTRE.
+
+        Un canal muet qui n'a jamais rien écrit (`None`) est aveugle sur toute
+        fenêtre : on ne peut pas prouver qu'il n'a pas dépensé.
+        """
+        aveugles = set()
+        for _c in pub_muette:
+            _bord = _bord_muet.get(_c)
+            if _bord is None or d2 > _bord:
+                aveugles.add(_c)
+        return aveugles
+
     # ── Fenêtre : 7 jours pleins ancrés sur la dernière donnée (jamais aujourd'hui)
     yesterday = today - timedelta(days=1)
+    # UN CANAL MUET N'ANCRE PAS LA FENÊTRE (ticket 20). Sa dernière date est
+    # périmée PAR DÉFINITION — c'est le jour où il a cessé d'écrire. L'ancrer
+    # dessus revient à décider que « la dernière donnée » remonte à une semaine,
+    # donc à REPUBLIER LA SEMAINE PRÉCÉDENTE sous sa propre clé : le client ne
+    # reçoit pas un rapport troué, il reçoit l'ancien, et la panne devient
+    # invisible pour tout le monde, lui comme nous. C'est la porte de sortie la
+    # plus discrète du ticket, et c'est un compte SANS Instagram — celui qui ne
+    # fait que de la pub — qui l'emprunte, faute d'une autre source pour ancrer.
     _data_dates = []
-    if df_meta_raw is not None and "date_start" in df_meta_raw.columns:
+    if ("meta" not in pub_muette
+            and df_meta_raw is not None and "date_start" in df_meta_raw.columns):
         _d = pd.to_datetime(df_meta_raw["date_start"], errors="coerce").max()
         if pd.notna(_d):
             _data_dates.append(_d.date())
@@ -1791,6 +1879,12 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # les autres jours, hier est dans la même semaine ISO qu'aujourd'hui et
     # rien ne bouge.
     week_start_rapport = last_full_day - timedelta(days=last_full_day.weekday())
+
+    # LES CANAUX PAYANTS MUETS SUR LA SEMAINE DU RAPPORT (ticket 20). Posé ICI,
+    # dès que la fenêtre est connue et avant le premier chiffre qui en dépend :
+    # tout ce qui publie une dépense, un CPC ou un ROAS de cette semaine le
+    # teste, des cartes de thème jusqu'aux KPI de l'email. Vide = rien à taire.
+    _aveugle_semaine = _pub_aveugle(cur_since, last_full_day)
 
     # ── Meta Ads : agrégats + par campagne ────────────────────────────────────
     total_spend = 0.0
@@ -1915,7 +2009,16 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                     week_eng = float(df_week_posts["eng"].mean())
                     week_reach = float(df_week_posts["reach"].mean())
 
-    has_data = total_spend > 0 or g_spend > 0 or followers_current > 0
+    # UN CANAL MUET EST UNE DONNÉE, PAS UNE ABSENCE DE DONNÉE (ticket 20).
+    # Sans cette clause, le pire cas se refermait sur lui-même : un compte qui
+    # ne fait QUE du Meta Ads et dont le jeton Meta vient d'expirer a
+    # `total_spend == 0` sur la fenêtre, donc `has_data` faux, donc AUCUN
+    # rapport et aucun email — exactement le silence que ce ticket existe pour
+    # supprimer, reconstitué par une autre porte. Le rapport publié alors ne
+    # porte aucun chiffre de pub (ils se taisent tous, plus haut) : il porte
+    # ce qu'on n'a pas pu lire et le geste qui le répare.
+    has_data = (total_spend > 0 or g_spend > 0 or followers_current > 0
+                or bool(pub_muette))
     if not has_data:
         return None
 
@@ -2696,7 +2799,16 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 cl += int(_g["clicks"].sum())
                 im += float(_g["impressions"].sum())
                 canaux.add("google")
-        return {"spend": sp, "clics": cl, "impressions": im, "canaux": canaux}
+        # `aveugle` : les canaux payants qui auraient dû écrire sur cette
+        # fenêtre et ne l'ont pas fait (ticket 20). `spend`, `clics` et
+        # `impressions` restent des nombres — ce sont les sommes de ce qu'on a
+        # VU, et les fenêtres de référence en ont besoin — mais dès que cet
+        # ensemble n'est pas vide, ce ne sont plus des TOTAUX : les publier tels
+        # quels revient à présenter un trou comme une baisse. C'est au lecteur
+        # de se taire, pas à la somme de mentir ; chaque appelant qui publie un
+        # de ces nombres teste donc `aveugle` avant.
+        return {"spend": sp, "clics": cl, "impressions": im, "canaux": canaux,
+                "aveugle": _pub_aveugle(d1, d2)}
 
     def _posts_theme(lbl, d1, d2):
         """Nombre de publications du thème sur la fenêtre, et leur portée."""
@@ -3298,6 +3410,29 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         Chaque lecture est protégée séparément : une table absente ou une
         colonne qui manque fait taire SA règle, pas les cinq autres.
         """
+        # UNE SEMAINE TROUÉE NE NOURRIT AUCUNE RÈGLE PAYANTE (ticket 20).
+        # Les cinq lectures ci-dessous portent TOUTES sur `cur_since →
+        # last_full_day`, et chacune divise, compare ou seuille une dépense
+        # mesurée sur cette fenêtre. Un canal muet ne les rend pas imprécises,
+        # il les retourne :
+        #   · `regies` est la plus dangereuse — sa garde est la complétude de
+        #     l'attribution des deux régies et un écart de 4× ; un canal à zéro
+        #     la franchit MÉCANIQUEMENT et fait conseiller un transfert de
+        #     budget vers un fantôme ;
+        #   · `campagnes` (`budget_non_depense`) lit un budget non consommé là
+        #     où la dépense n'a simplement pas été récoltée ;
+        #   · `arrivee` compare des clics payés amputés à des visites GA4
+        #     entières, et accuse la page d'arrivée d'un trou de récolte.
+        # Le contrat du module est déjà « clé absente = on n'a pas lu ça, la
+        # règle se tait » : on s'en sert tel quel plutôt que d'apprendre le trou
+        # à dix règles.
+        #
+        # ON NE TRIE PAS PAR CANAL, et ce n'est pas de la paresse : distinguer
+        # « ce thème ne dépense pas sur Google » de « Google n'a rien écrit »
+        # demanderait justement le chiffre qui manque. Le silence large est la
+        # seule réponse qu'on puisse défendre.
+        if _aveugle_semaine:
+            return {}
         faits = {}
         for _nom, _lire in (
             ("campagnes", lambda: _budget_campagnes_theme(lbl)),
@@ -3535,12 +3670,22 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             # parce qu'à l'intérieur d'un thème une campagne n'a plus personne à
             # qui se comparer.
             try:
-                _payantes = regles_payantes(
-                    lbl,
-                    _annonces_theme(lbl, cur_since, last_full_day),
-                    _budget_theme(lbl, _sem_theme),
-                    _faits_payants(lbl),
-                )
+                # LES QUATRE PREMIÈRES RÈGLES SE TAISENT AUSSI (ticket 20).
+                # `_faits_payants` rend déjà `{}` sur une semaine trouée, ce qui
+                # désarme les six du ticket 10 ; mais `annonce_chere`,
+                # `locomotive`, `sans_conversion` et `theme_hors_budget` lisent
+                # `annonces` et `budget`, pas `faits`. `theme_hors_budget` est
+                # le cas qui décide : une semaine non récoltée le fait annoncer
+                # « tu es dans ton budget » — le seul verdict qu'on ne veut
+                # surtout pas rendre à tort.
+                _payantes = []
+                if not _aveugle_semaine:
+                    _payantes = regles_payantes(
+                        lbl,
+                        _annonces_theme(lbl, cur_since, last_full_day),
+                        _budget_theme(lbl, _sem_theme),
+                        _faits_payants(lbl),
+                    )
                 # `page_arrivee_muette` NE PREND PAS UNE DES TROIS PLACES DU
                 # THÈME. C'est un prérequis de MESURE (levier `socle`) : tant
                 # qu'on ne sait pas où passent les clics payés, tout ce qu'on
@@ -3705,7 +3850,15 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                             else None),
             "ctr": tt.get("ctr"), "posts": tt.get("posts"),
             "reach_avg": tt.get("reach_avg"), "eng_avg": tt.get("eng_avg"),
-            "spend_week": round(float(tc["spend"].sum()), 2) if tc is not None else 0.0,
+            # LA DÉPENSE DE LA SEMAINE SE TAIT QUAND UN CANAL EST MUET
+            # (ticket 20) — contrairement aux agrégats full-history juste
+            # au-dessus, qui viennent de la vue et qu'une semaine trouée ne
+            # déplace qu'à la marge, celui-ci EST la semaine trouée. Le publier
+            # amputé le ferait comparer à la semaine d'avant et lire comme une
+            # coupe de budget que personne n'a décidée.
+            "spend_week": (None if _aveugle_semaine
+                           else round(float(tc["spend"].sum()), 2)
+                           if tc is not None else 0.0),
             "best_campaign": t_camps[0]["name"] if t_camps else None,
             "n_campaigns": len(t_camps),
         }
@@ -3772,7 +3925,17 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     if week_reach is not None and hist_reach:
         _signals.append(((week_reach - hist_reach) / hist_reach * 100,
                          "la portée de tes posts"))
-    if clicks_delta_pct:
+    # LE VERDICT EST L'ENDROIT OÙ LE TROU DEVIENT UN MENSONGE LISIBLE
+    # (ticket 20). `clicks_delta_pct` compare les clics de la semaine à ceux de
+    # la précédente ; un canal muet met le numérateur à zéro et rend -100 %,
+    # que la phrase publie en toutes lettres : « Semaine en retrait — les clics
+    # publicitaires (-100 %) ». C'est LE faux verdict que ce ticket vise, servi
+    # en tête du rapport et repris tel quel dans l'email.
+    #
+    # Les signaux Instagram, eux, restent : leur source a écrit. C'est toute la
+    # doctrine — chaque mesure se tait si SA source est muette, et le verdict
+    # d'un compte dont la boussole est l'engagement reste entier et bon.
+    if clicks_delta_pct and not _aveugle_semaine:
         _signals.append((clicks_delta_pct, "les clics publicitaires"))
     # Le verdict sort d'ici en DEUX formes. La phrase, pour la lire ; et ses
     # trois ingredients bruts, pour que le front puisse afficher l'ecart en
@@ -3797,6 +3960,15 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             verdict += f" {'+' if followers_delta > 0 else ''}{followers_delta} abonnés."
     elif followers_delta:
         verdict = f"{'+' if followers_delta > 0 else ''}{followers_delta} abonnés cette semaine."
+    elif _aveugle_semaine:
+        # Sans ce cas, un compte qui ne fait que de la pub et dont le canal
+        # vient de tomber lirait « Première semaine de données » — faux, et
+        # rassurant à contretemps. On nomme la panne ; le détail et le geste
+        # sont dans `canaux_muets`, que l'écran et l'email affichent.
+        verdict = ("Semaine incomplète — "
+                   + " et ".join(NOMS_CANAUX.get(_c, _c)
+                                 for _c in sorted(_aveugle_semaine))
+                   + " n'a pas répondu, les chiffres de pub manquent.")
     else:
         verdict = "Première semaine de données — le rapport s'affinera avec l'historique."
     _alert = next((r for r in rule_recos
@@ -4061,8 +4233,17 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         # ventiler entre les deux. Séparer un ROAS par canal reste, lui, une
         # décision produit non prise (`docs/mesures-impossibles.md`).
         _pub = _pub_fenetre(theme, w_since, w_until)
-        k["spend"] = _pub["spend"]
-        k["cpc"] = (_pub["spend"] / _pub["clics"]) if _pub["clics"] > 0 else None
+        # UN CANAL MUET NE REND PAS UN CHIFFRE PLUS PETIT, IL N'EN REND PAS
+        # (ticket 20). `spend` amputé se lirait comme une baisse de budget, et
+        # `cpc` a son numérateur ET son dénominateur amputés — le second se
+        # trompe même de SENS quand les deux canaux n'ont pas le même coût du
+        # clic. Les deux se taisent ensemble, parce qu'ils sortent de la même
+        # somme incomplète.
+        _aveugle = _pub["aveugle"]
+        k["spend"] = None if _aveugle else _pub["spend"]
+        k["cpc"] = (None if _aveugle
+                    else (_pub["spend"] / _pub["clics"]) if _pub["clics"] > 0
+                    else None)
         if not df_insta.empty and "date" in df_insta.columns and "eng" in df_insta.columns:
             dtp = pd.to_datetime(df_insta["date"], errors="coerce")
             p = df_insta[(dtp.dt.date >= w_since) & (dtp.dt.date <= w_until)]
@@ -4084,7 +4265,15 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             _sub = {n: d for n, d in (g.get("by_campaign") or {}).items()
                     if name2label.get(_nrm(n)) == theme}
             _rev = sum(float((d or {}).get("revenue") or 0) for d in _sub.values()) if _sub else None
-        if _rev is not None and k.get("spend", 0) > 0:
+        # LE ROAS EST LE PLUS DANGEREUX DES TROIS, ET C'EST CONTRE-INTUITIF.
+        # GA4 tourne dans son propre fil : quand Meta ou Google échoue, le
+        # revenu reste ENTIER pendant que la dépense est amputée. Le ROAS ne
+        # tombe pas, il GONFLE — le rapport n'a pas l'air cassé, il a l'air
+        # excellent, et `scaler` conseille d'augmenter un budget sur un chiffre
+        # fabriqué par une panne. `k["spend"]` vaut déjà `None` juste au-dessus,
+        # ce qui suffit à l'empêcher, mais la condition est écrite en clair
+        # plutôt que déduite : c'est elle qu'on relira.
+        if _rev is not None and not _aveugle and (k.get("spend") or 0) > 0:
             k["roas"] = float(_rev) / k["spend"]
         pu = (g or {}).get("funnel", {}).get("purchase")
         # `purchases` reste un chiffre de compte : GA4 ne rattache pas un achat
@@ -4743,8 +4932,13 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             "coverage": matrix["coverage"],
         }
 
-    _all_clicks = total_clicks + g_clicks
-    _all_impr = total_impr + g_impr
+    # LES TROIS CHIFFRES QUE L'EMAIL MET EN GROS — dépense, clics, CTR — et
+    # les premiers que le client lit. Les additionner sur une semaine trouée
+    # publierait un total partiel sous l'étiquette « Meta + Google » : un
+    # chiffre faux, pas une approximation (ticket 20, `_aveugle_semaine`).
+    _all_clicks = None if _aveugle_semaine else total_clicks + g_clicks
+    _all_impr = None if _aveugle_semaine else total_impr + g_impr
+    _spend_compte = None if _aveugle_semaine else round(total_spend + g_spend, 2)
 
     # Bloc « lecture simple » des métriques clés de la semaine (section Où on en est).
     _vues = None
@@ -4761,7 +4955,8 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         "trafic": _trafic,   # sessions GA4 (None tant que Google muet)
         "vues": _vues,       # vues Instagram de la semaine
         "clics": _all_clicks,
-        "ctr": round((_all_clicks / _all_impr * 100), 2) if _all_impr > 0 else None,
+        "ctr": (round((_all_clicks / _all_impr * 100), 2)
+                if _all_impr else None),
     }
 
     # Les memes metriques sur la fenetre PRECEDENTE : un chiffre sans repere ne
@@ -5472,8 +5667,41 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         frise = None
         changements = []
 
+    # ── CE QU'ON N'A PAS PU LIRE, DIT AU CLIENT (ticket 20) ──────────────────
+    # Le payload porte le trou lui-même, pas seulement ses conséquences. Sans
+    # cette liste, l'écran et l'email verraient des `None` sans savoir les
+    # expliquer — et un « — » sans raison se lit comme un bug de Pulse, pas
+    # comme une connexion à refaire. C'est la moitié qui transforme un silence
+    # en geste : le client doit comprendre POURQUOI il ne voit rien, sinon on a
+    # juste déplacé le silence.
+    #
+    # `mot` vient de `fetch_progress.mot_de_fin`, c'est-à-dire de la ligne que
+    # le worker a déjà imprimée dans son journal. On ne la réécrit pas : elle
+    # nomme l'exception telle qu'elle est tombée. Le NOM DE VARIABLE peut y
+    # apparaître, jamais sa valeur (`CLAUDE.md` §7).
+    canaux_muets_payload = [
+        {
+            "canal": _c,
+            "nom": NOMS_CANAUX.get(_c, _c),
+            "mot": _m,
+            # Le dernier jour que ce canal a réellement écrit — ce qui borne le
+            # trou. `None` quand il n'a jamais rien écrit.
+            "depuis": (_bord_muet.get(_c).isoformat()
+                       if _bord_muet.get(_c) else None),
+            # `True` quand ce canal fait taire des chiffres de CETTE semaine.
+            # Un canal en échec dont la dernière date couvre déjà la fenêtre
+            # n'a rien creusé : il est signalé, mais il ne tait rien.
+            "chiffres_tus": _c in _aveugle_semaine,
+        }
+        for _c, _m in sorted(pub_muette.items())
+    ]
+
     return {
         "version": 2,
+        # La liste est TOUJOURS présente, vide quand tout va bien : un écran qui
+        # doit distinguer « pas de trou » de « payload d'avant le ticket 20 »
+        # lirait autrement une absence comme une absence de trou.
+        "canaux_muets": canaux_muets_payload,
         "changements": changements,
         "vision": vision,
         "matrice": matrice,
@@ -5484,9 +5712,12 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         "metrics_series": metrics_series,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
-            "spend": round(total_spend + g_spend, 2),
+            # `None` et jamais 0 quand un canal payant est muet : l'email
+            # affiche alors « — » (voir `saas/emailing/render.py`), ce qu'il
+            # savait déjà faire. Un 0 se lirait « tu n'as rien dépensé ».
+            "spend": _spend_compte,
             "clicks": _all_clicks,
-            "ctr": (_all_clicks / _all_impr * 100) if _all_impr > 0 else 0.0,
+            "ctr": ((_all_clicks / _all_impr * 100) if _all_impr else None),
             "followers_delta": followers_delta,
             "followers_total": followers_current,
         },

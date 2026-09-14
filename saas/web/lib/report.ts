@@ -340,7 +340,11 @@ export type ThemeSummary = {
   posts: number | null;
   reach_avg: number | null;
   eng_avg: number | null;
-  spend_week: number;
+  /** `null` quand un canal payant était muet cette semaine : la dépense
+   *  hebdo du thème traverse alors un trou de récolte et ne se publie pas
+   *  amputée (ticket 20). `theme-card.tsx` teste `> 0`, que `null` ne
+   *  passe pas — la ligne disparaît, elle n'affiche pas 0 CHF. */
+  spend_week: number | null;
   best_campaign: string | null;
   n_campaigns: number;
 };
@@ -442,8 +446,35 @@ export type ChangementPlateforme = {
   detail?: string | null;
 };
 
+/** UN CANAL QUI AURAIT DÛ ÉCRIRE ET N'A RIEN ÉCRIT (ticket 20 de la
+ *  construction). Ce n'est ni « pas connecté » ni « zéro dépensé » : c'est une
+ *  récolte qui a échoué — jeton expiré, 500, limite de débit, schéma en retard.
+ *  Les trois se ressemblent dans les chiffres et se traitent à l'opposé, d'où
+ *  ce champ : le worker est le seul à savoir laquelle des trois s'est produite.
+ *
+ *  Tant qu'un canal est là-dedans avec `chiffres_tus`, les mesures qui
+ *  traversent son trou valent `null` dans ce payload — jamais 0. Un écran qui
+ *  afficherait 0 à la place dirait « tu n'as rien dépensé » (`CLAUDE.md` §7). */
+export type CanalMuet = {
+  canal: string;
+  /** Le nom porté devant le client — « Meta Ads », jamais « meta ». */
+  nom: string;
+  /** Le mot de la fin du worker. Nomme la variable en cause, jamais sa valeur. */
+  mot: string;
+  /** Dernier jour que ce canal a réellement écrit. `null` = jamais rien écrit. */
+  depuis: string | null;
+  /** `true` quand ce canal fait taire des chiffres de CETTE semaine. Un canal
+   *  tombé après avoir tout écrit est signalé sans rien taire — ne pas alarmer
+   *  dessus, ça userait l'alarme. */
+  chiffres_tus: boolean;
+};
+
 export type ReportPayload = {
   version: number;
+  /** Toujours présent depuis le ticket 20, vide quand la récolte a tout lu.
+   *  Absent des payloads d'avant : `undefined` ne veut donc PAS dire « aucun
+   *  trou », il veut dire « ce rapport ne sait pas répondre ». */
+  canaux_muets?: CanalMuet[] | null;
   changements?: ChangementPlateforme[] | null;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
   vision?: VisionBlock | null;
