@@ -705,3 +705,64 @@ rejoués sans régression — **1 671** au total. **Rien n'est joué en base** (
 `.is_("verdict", "null")` bloque réellement une seconde écriture **reste à
 constater**) et **rien ne se verra avant un passage du worker** : cron du Jour
 de travail, ou `weekly-fetch.yml` en `report_only`.
+
+**[18 · Le revenu Google non rattachable](issues/18-revenu-google-non-rattachable.md)** —
+**mesuré, et la mesure a déplacé la question.** L'étape 1 du ticket est faite,
+en lecture seule dans l'éditeur SQL Supabase du projet vivant : ce n'est **pas
+zéro** (2 campagnes étiquetées, **808.87 CHF**), mais ce n'est pas diffus non
+plus — **tout tient sur le seul thème « Campagne Générale », à 100 %.** Les dix
+autres thèmes sont à 0 %. Le ticket cherchait une règle d'attribution à choisir
+entre trois (puis quatre) lectures ; il a trouvé **une fabrication à arrêter**.
+Les deux campagnes muettes portent dans `google_campaign_config` un
+`campaign_name` que Google n'a jamais émis — `Campagne <campaign_id>`, écrit par
+`labeling.py` l. 282, qui liste les campagnes depuis `google_ads_insights` sans
+lire le `campaign_name` que cette table porte pourtant. Le vrai nom
+(`ch_fr_pmax_herbst_2026`, `ch_de_pmax_herbst_2026`) est intact dans
+l'historique, **et GA4 le connaît** : 352.00 CHF de revenu réel n'ont
+aujourd'hui aucun thème. ROAS affiché 0.00, ROAS réel 0.44. Second dégât : la
+description envoyée à Gemini était `«Campagne 24176742897»`, sans un mot de
+business — d'où les deux campagnes dans le fourre-tout. Le défaut technique part
+au ticket [43](issues/43-le-nom-dune-campagne-google-est-fabrique-par-letiqueteuse.md) ;
+18 **reste `open`** et garde la seule question qui demande David : que dit-on
+d'une campagne étiquetée vraiment non rattachable, une fois la fabrication
+arrêtée ? **`build_report.py` et `insights.py` sont intacts** — aucune règle
+d'attribution n'a été écrite (étape 3 du ticket).
+
+**[43 · Le nom fabriqué](issues/43-le-nom-dune-campagne-google-est-fabrique-par-letiqueteuse.md)
+· [18 · La part muette](issues/18-revenu-google-non-rattachable.md)** — **résolus
+tous les deux, et le second a fallu poser la question à David DEUX fois.**
+`labeling.py` listait les campagnes Google sans lire le `campaign_name` que
+`google_ads_insights` porte pourtant, fabriquait `Campagne <id>` et **l'écrivait
+en base** : le pont du revenu détruit (352.00 CHF orphelins) et Gemini classant
+sur une description sans un mot de business. Corrigé à la source — `name` part
+en base et vaut `None` sans nom réel, `desc` seul garde le repli pour Gemini —
+plus une migration de rattrapage (`nom_google_fabrique.sql`, un `UPDATE` borné à
+l'égalité exacte, **périmètre mesuré en lecture seule : 2 lignes**), **que David
+doit jouer.** Pour 18, la première réponse (« se taire ») reposait sur une
+prémisse fausse que j'avais énoncée : le pont passe par le nom pour les DEUX
+régies, et **mesuré avant d'écrire la règle**, se taire aurait vidé **10 thèmes
+jugés sur 17** — 9 à cause de Meta seul, 48 431 CHF sur 90 515. Seconde réponse,
+implémentée : **on publie le ROAS et on écrit la part muette à côté** — la vue
+rend `spend_muette` / `campagnes_muettes` (NULL et non 0 quand GA4 ne répond pas
+au COMPTE), la carte de thème porte `part_muette`. `insights.py` n'est pas
+touché : depuis 04, il ne calcule plus le ROAS d'un thème. **39 vérifications
+neuves**, dont 21 **contre un vrai PostgreSQL montant la vraie migration**,
+toutes rejouées d'abord contre le code d'avant ; le faux lecteur du 16 a été
+aligné sur la vue (GA4 se juge au compte, pas au thème). **1 874 au total, aucun
+échec.** ⚠ **Rien de tout ça n'atteint la production** : `theme_regroupement`
+n'existe pas en base et sa migration ne peut pas être jouée — voir
+[44](issues/44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md).
+
+**[44 · La vue ne peut pas être jouée](issues/44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md)** —
+**ouvert, et il bloque 04, 18 et 22.** Deux faits lus en base le 2026-09-13 :
+`theme_regroupement` **n'existe pas** en production, et la migration qui
+l'installe **échoue** (`column p.eng does not exist`). `instagram_organic_posts`
+n'a pas de colonne `eng` et aucune migration n'en crée — la table est antérieure
+aux migrations, ce que le commentaire de la vue dit sans en tirer la
+conséquence. `000_run_me_all.sql` porte la même ligne, donc « le fichier unique
+à jouer » échoue au même endroit. **Le harnais 04 ne l'a pas vu parce que son
+`schema.sql` déclare `eng`** : il prouve la vue contre une base qui n'existe
+nulle part — c'est le plus coûteux des deux défauts, il se reproduira sur la
+prochaine colonne. La réparation demande d'abord une **définition produit** de
+l'engagement (`likes + comments + saved` ? avec `follows` ? nombre ou taux sur
+`reach` ?), à écrire dans `CONTEXT.md` : elle ne s'invente pas en passant.

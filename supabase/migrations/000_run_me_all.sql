@@ -2177,6 +2177,33 @@ ga4_present AS NOT MATERIALIZED (
        AND btrim(coalesce(g.campaign, '')) <> ''
 ),
 
+-- ── 2 bis) LES NOMS QUE GOOGLE ANALYTICS CONNAÎT, TOUS MEDIUMS CONFONDUS ───
+-- Sert à dire ce qu'on NE SAIT PAS, pas à calculer un revenu.
+--
+-- Une campagne dont le nom n'apparaît nulle part dans `ga4_insights` verse sa
+-- dépense au dénominateur du ROAS sans pouvoir jamais verser son revenu au
+-- numérateur : le ratio est écrasé, et rien à l'écran ne le disait. Mesuré sur
+-- le compte de production le 2026-09-13 : 10 thèmes jugés sur 17 sont dans ce
+-- cas, pour 48 431 CHF de dépense sur 90 515 — 9 à cause de Meta seul, dont
+-- les noms de campagne ne reprennent presque jamais l'`utm_campaign`.
+--
+-- Tranché avec David (ticket 18) : on PUBLIE le ROAS et on écrit la part
+-- muette à côté. Se taire complètement aurait vidé 59 % des thèmes ; publier
+-- sans le dire est ce que §7 interdit.
+--
+-- AUCUN FILTRE `medium` ICI, contrairement au revenu du bloc 3. La question
+-- posée n'est pas « ce nom a-t-il rapporté ? » mais « ce nom existe-t-il pour
+-- Google Analytics ? ». Un nom vu en organique EST rattachable ; qu'il ne porte
+-- pas de revenu payant est une autre affaire, et c'est déjà celle du bloc 3.
+noms_ga4_connus AS NOT MATERIALIZED (
+    SELECT DISTINCT g.user_id,
+           lower(btrim(g.campaign))  AS nom_norm
+      FROM public.ga4_insights g
+     CROSS JOIN bornes b
+     WHERE g.date < b.aujourdhui
+       AND btrim(coalesce(g.campaign, '')) <> ''
+),
+
 -- ── 3) Le revenu attribué, par campagne ────────────────────────────────────
 -- Trafic PAYANT seulement (`medium` contenant cpc / ppc / paid) : c'est la
 -- convention du rapport depuis l'origine, et c'est ce qui rend le rapport d'un
@@ -2267,8 +2294,17 @@ pub AS NOT MATERIALIZED (
            c.label,
            sum(c.spend)                              AS spend,
            sum(c.clicks)                             AS clicks,
-           sum(c.impressions)                        AS impressions
+           sum(c.impressions)                        AS impressions,
+           -- LA PART MUETTE, au même endroit que la dépense qu'elle qualifie :
+           -- la dépense des campagnes dont Google Analytics ne connaît pas le
+           -- nom. Elle est DANS `spend`, elle ne s'en retranche pas — la
+           -- dépense affichée reste vraie (ticket 18).
+           sum(c.spend) FILTER (WHERE k.nom_norm IS NULL)   AS spend_muette,
+           count(*) FILTER (WHERE k.nom_norm IS NULL)       AS campagnes_muettes
       FROM campagnes c
+      LEFT JOIN noms_ga4_connus k
+        ON k.user_id = c.user_id
+       AND k.nom_norm = c.nom_norm
      GROUP BY c.user_id, c.label
 ),
 
@@ -2339,7 +2375,9 @@ themes AS NOT MATERIALIZED (
            coalesce(posts.posts, 0)              AS posts,
            posts.reach_avg                       AS reach_avg,
            posts.eng_avg                         AS eng_avg,
-           rg.revenue                            AS revenue_generique
+           rg.revenue                            AS revenue_generique,
+           coalesce(pub.spend_muette, 0)         AS spend_muette,
+           coalesce(pub.campagnes_muettes, 0)    AS campagnes_muettes
       FROM cles k
       LEFT JOIN pub
         ON pub.user_id = k.user_id AND pub.label = k.label
@@ -2368,7 +2406,26 @@ SELECT t.user_id,
             -- Revenu NON arrondi au numérateur, dépense arrondie au
             -- dénominateur — là encore l'ordre de `build_matrix`.
             THEN round(rev.montant / t.spend, 2)
-       END                                              AS roas
+       END                                              AS roas,
+       -- CE QUE LE ROAS CI-DESSUS NE PEUT PAS VOIR (ticket 18).
+       --
+       -- `spend_muette` est la part de `spend` dépensée par des campagnes dont
+       -- Google Analytics ne connaît pas le nom : elle pèse sur le dénominateur
+       -- et ne peut rien apporter au numérateur. Un ROAS dont `spend_muette`
+       -- vaut la moitié de `spend` n'est pas faux, il est INCOMPLET — et ça
+       -- doit se lire à côté du chiffre, jamais se deviner.
+       --
+       -- NULL, ET PAS 0, QUAND ON NE SAIT RIEN. Sur un compte où Google
+       -- Analytics n'attribue aucune campagne payante, `revenue` est déjà NULL
+       -- et aucun ROAS n'est publié : annoncer « 0 CHF non rattachable » y
+       -- affirmerait que tout est rattaché, ce qui est le contraire de la
+       -- vérité (CLAUDE.md §7).
+       CASE WHEN EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = t.user_id)
+            THEN round(t.spend_muette, 2)
+       END                                              AS spend_muette,
+       CASE WHEN EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = t.user_id)
+            THEN t.campagnes_muettes
+       END                                              AS campagnes_muettes
   FROM themes t
   LEFT JOIN revenu_choisi rc
     ON rc.user_id = t.user_id

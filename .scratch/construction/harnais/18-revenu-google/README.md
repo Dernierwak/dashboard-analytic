@@ -28,3 +28,27 @@ rien d'autre.
 ```
 python3.12 -c "import pglast,glob;[print(f,sorted({type(x.stmt).__name__ for x in pglast.parse_sql(open(f).read())})) for f in glob.glob('*.sql')]"
 ```
+
+---
+
+## 2026-09-13 — la mesure a été faite, et le dossier a changé de métier
+
+Les trois requêtes ci-dessus ont été jouées dans l'éditeur SQL Supabase du
+projet vivant. Résultats et conclusions dans le ticket 18 ; en deux lignes :
+le défaut était réel (2 campagnes, 808.87 CHF, **tout sur un seul thème**) mais
+sa cause n'était pas celle qu'on croyait — un nom **fabriqué par nous**, pas un
+nom manquant (ticket 43).
+
+Le dossier porte maintenant **`test_part_muette.py`** : les vérifications du
+correctif retenu — on publie le ROAS et on écrit la part de dépense dont le
+revenu n'est pas rattachable. Son pendant SQL, contre un vrai PostgreSQL montant
+la vraie migration, vit dans `../04-vue-sql/test_part_muette_sql.py` — c'est là
+que la vue est montée.
+
+```
+python3.12 test_part_muette.py
+```
+
+Les trois `.sql` restent : ils se rejouent pour remesurer, notamment après que
+David aura joué `supabase/migrations/nom_google_fabrique.sql`, où les deux
+campagnes doivent disparaître du compte « nom introuvable ».

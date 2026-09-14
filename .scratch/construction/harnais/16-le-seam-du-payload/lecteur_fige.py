@@ -265,16 +265,33 @@ def _vue_regroupement(campagnes, jours: int) -> list[dict]:
     QUE sous ce seuil, et surtout **pas de revenu du tout** quand GA4 ne répond
     pas — ni zéro, ni estimation (`CLAUDE.md` §7).
     """
+    # GOOGLE ANALYTICS RÉPOND-IL POUR CE COMPTE ? La question se pose AU COMPTE,
+    # pas au thème — c'est le `ga4_present` de la vue
+    # (`supabase/migrations/theme_regroupement.sql`, bloc 2). Un compte sans
+    # réponse ne peut pas dire d'un thème qu'il n'a rien rapporté, ni combien de
+    # sa dépense est muette : il ne sait rien. Un compte qui répond, lui, sait
+    # les deux — y compris pour un thème dont AUCUNE campagne n'est rattachable.
+    ga4_repond = any(c.revenu_jour is not None for c in campagnes)
+
     par_theme: dict[str, dict] = {}
     for c in campagnes:
         t = par_theme.setdefault(c.theme, {
             "label": c.theme, "spend": 0.0, "clicks": 0, "impressions": 0,
-            "posts": 0, "reach_avg": None, "eng_avg": None, "revenue": None})
+            "posts": 0, "reach_avg": None, "eng_avg": None, "revenue": None,
+            "spend_muette": 0.0, "campagnes_muettes": 0})
         t["spend"] += c.depense_jour * jours
         t["clicks"] += c.clics_jour * jours
         t["impressions"] += c.impressions_jour * jours
         if c.revenu_jour is not None:
             t["revenue"] = (t["revenue"] or 0.0) + c.revenu_jour * jours
+        else:
+            # LA PART MUETTE (ticket 18) : une campagne dont GA4 ne connaît pas
+            # le nom verse sa dépense au dénominateur du ROAS sans pouvoir
+            # jamais verser son revenu au numérateur. `revenu_jour=None` est
+            # exactement ce cas ici ; `revenu_jour=0.0` est l'autre cas — un nom
+            # que GA4 connaît et qui n'a rien rapporté, qui lui est mesuré.
+            t["spend_muette"] += c.depense_jour * jours
+            t["campagnes_muettes"] += 1
 
     lignes = []
     for t in par_theme.values():
@@ -287,5 +304,16 @@ def _vue_regroupement(campagnes, jours: int) -> list[dict]:
         t["roas"] = (round(t["revenue"] / t["spend"], 2)
                      if t["juge"] and t["revenue"] is not None and t["spend"]
                      else None)
+        # Même règle que la vue : sans réponse de GA4 SUR LE COMPTE, on ne dit
+        # pas « 0 CHF non rattachable » — ce serait affirmer que tout est
+        # rattaché, l'inverse de la vérité (CLAUDE.md §7). Le critère est bien
+        # le compte et non le thème : un thème entièrement muet dans un compte
+        # qui répond a une part muette de 100 %, et c'est précisément le chiffre
+        # qu'on veut voir (ticket 18).
+        if not ga4_repond:
+            t["spend_muette"] = None
+            t["campagnes_muettes"] = None
+        else:
+            t["spend_muette"] = round(t["spend_muette"], 2)
         lignes.append(t)
     return sorted(lignes, key=lambda l: l["label"])

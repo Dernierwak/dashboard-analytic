@@ -131,14 +131,45 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
         pass
 
     # Campagnes Google : ids distincts depuis les insights (paginé, même raison)
+    #
+    # LE NOM SE LIT ICI, IL NE SE FABRIQUE PLUS (ticket 43). Cette table porte
+    # le `campaign_name` du JOUR de la récolte (`fetch_google_ads.py`) : on ne
+    # demandait que l'identifiant, et le nom manquant finissait inventé en
+    # `Campagne <id>` — une chaîne que Google n'a jamais émise et que GA4 ne
+    # peut donc jamais enregistrer en `utm_campaign`. Mesuré sur le compte de
+    # David le 2026-09-13 : deux campagnes, 808.87 CHF de dépense dont 352.00
+    # CHF de revenu réel devenus orphelins, et deux descriptions sans un mot de
+    # business envoyées à Gemini.
+    #
+    # `date_start desc` est déjà l'ordre de la requête : le PREMIER nom vu pour
+    # un identifiant est le plus récent. Après un renommage, c'est celui-là
+    # qu'on garde — l'ancien reste dans l'historique, il n'est pas notre affaire
+    # ici (voir le ticket 18 pour ce qu'on en fait au rattachement du revenu).
     goog_ids: set[str] = set()
+    goog_noms_recoltes: dict[str, str] = {}
     try:
         rows = _all_pages(lambda: sb.table("google_ads_insights")
-                          .select("campaign_id").eq("user_id", user_id)
+                          .select("campaign_id, campaign_name").eq("user_id", user_id)
                           .order("date_start", desc=True))
-        goog_ids = {str(r["campaign_id"]) for r in rows if r.get("campaign_id")}
+        for r in rows:
+            if not r.get("campaign_id"):
+                continue
+            cid = str(r["campaign_id"])
+            goog_ids.add(cid)
+            nom = str(r.get("campaign_name") or "").strip()
+            if nom and cid not in goog_noms_recoltes:
+                goog_noms_recoltes[cid] = nom
     except Exception:
-        pass
+        # Repli : la colonne `campaign_name` peut manquer sur une base ancienne.
+        # On perd le nom, jamais la campagne — elle reste classable, sans nom à
+        # écrire, ce que la suite sait traiter.
+        try:
+            rows = _all_pages(lambda: sb.table("google_ads_insights")
+                              .select("campaign_id").eq("user_id", user_id)
+                              .order("date_start", desc=True))
+            goog_ids = {str(r["campaign_id"]) for r in rows if r.get("campaign_id")}
+        except Exception:
+            pass
     goog_cfg: dict[str, dict] = {}
     try:
         rows = (sb.table("google_campaign_config")
@@ -167,8 +198,14 @@ def _collect_candidates(sb, user_id: str) -> tuple[list[dict], dict]:
         cfg = goog_cfg.get(cid, {})
         if cfg.get("label") or not _is_ai_editable(cfg.get("label_source")):
             continue
-        cname = cfg.get("campaign_name") or f"Campagne {cid}"
-        candidates.append({"kind": "google", "id": cid, "name": cname,
+        # DEUX CHAMPS, PARCE QU'ILS N'ONT PAS LE MÊME DROIT (ticket 43).
+        # `name` part EN BASE : il vaut None tant qu'aucun nom réel n'est connu,
+        # et l'upsert n'envoie alors pas la colonne. `desc` ne part qu'à Gemini :
+        # là, `Campagne <id>` vaut mieux qu'une ligne vide. C'est exactement la
+        # frontière que le défaut avait franchie.
+        nom_reel = cfg.get("campaign_name") or goog_noms_recoltes.get(cid)
+        cname = nom_reel or f"Campagne {cid}"
+        candidates.append({"kind": "google", "id": cid, "name": nom_reel,
                            "desc": f"[Campagne Google] «{cname}»"})
 
     return candidates, {"labels": labels, "business": business}
@@ -277,11 +314,16 @@ def auto_label(sb, user_id: str) -> str:
                      "label": theme, "label_source": "ai"},
                     on_conflict="user_id,campaign_name").execute()
             else:
+                # Sans nom réel, la colonne ne part PAS : la valeur par défaut
+                # de la table est `''`, que le rattachement du revenu sait lire
+                # comme « on ne sait pas », alors qu'un `Campagne <id>` écrit se
+                # fait passer pour un nom (ticket 43).
+                ligne = {"user_id": user_id, "campaign_id": item["id"],
+                         "label": theme, "label_source": "ai"}
+                if item.get("name"):
+                    ligne["campaign_name"] = item["name"]
                 sb.table("google_campaign_config").upsert(
-                    {"user_id": user_id, "campaign_id": item["id"],
-                     "campaign_name": item.get("name") or f"Campagne {item['id']}",
-                     "label": theme, "label_source": "ai"},
-                    on_conflict="user_id,campaign_id").execute()
+                    ligne, on_conflict="user_id,campaign_id").execute()
             n_ok += 1
         except Exception:
             continue

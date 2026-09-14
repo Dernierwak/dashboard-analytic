@@ -3675,8 +3675,34 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                    if _est_conseil(r)]
 
         tt = matrix_themes_by.get(nlbl, {})
+        # CE QUE LE ROAS DE CE THÈME NE PEUT PAS VOIR (ticket 18).
+        #
+        # `spend_muette` est la part de `spend` dépensée par des campagnes dont
+        # Google Analytics ne connaît pas le nom : elle pèse sur le dénominateur
+        # et ne pourra jamais rien apporter au numérateur. Le ROAS n'est pas
+        # faux, il est INCOMPLET — et sur le compte de production, 10 thèmes
+        # jugés sur 17 sont dans ce cas (mesuré le 2026-09-13). Le taire serait
+        # publier un ratio en sachant qu'un de ses deux côtés est amputé.
+        #
+        # ON PUBLIE LE ROAS ET ON ÉCRIT LA LIMITE, tranché avec David : se taire
+        # complètement aurait vidé 59 % des thèmes de leur seul chiffre de
+        # rentabilité.
+        #
+        # `None` veut dire « on ne sait pas », jamais « rien n'est muet » : la
+        # vue rend NULL sur un compte où Google Analytics n'attribue aucune
+        # campagne payante, et un payload d'avant ce ticket n'a pas la colonne.
+        _muette = tt.get("spend_muette")
+        _spend = tt.get("spend")
         summary = {
-            "spend": tt.get("spend"), "revenue": tt.get("revenue"), "roas": tt.get("roas"),
+            "spend": _spend, "revenue": tt.get("revenue"), "roas": tt.get("roas"),
+            "spend_muette": _muette,
+            "campagnes_muettes": tt.get("campagnes_muettes"),
+            # La part, calculée ici plutôt qu'à l'affichage : c'est elle qui dit
+            # si le ROAS mérite d'être lu, et deux écrans ne doivent pas la
+            # recalculer chacun à sa façon.
+            "part_muette": (round(float(_muette) / float(_spend), 4)
+                            if _muette is not None and _spend not in (None, 0)
+                            else None),
             "ctr": tt.get("ctr"), "posts": tt.get("posts"),
             "reach_avg": tt.get("reach_avg"), "eng_avg": tt.get("eng_avg"),
             "spend_week": round(float(tc["spend"].sum()), 2) if tc is not None else 0.0,
