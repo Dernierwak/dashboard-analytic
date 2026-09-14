@@ -201,6 +201,25 @@ la colonne est figée après coup, mais la politique d'insertion contrôle le
 compte et jamais la personne — une règle sur ce qu'un Membre a le droit
 d'écrire, donc elle se propose.
 
+**[23 · L'auteur, sincère dès l'écriture](issues/23-auteur-forge-a-l-insertion.md)** —
+une note se signe de son propre nom ou de personne : `author_id IS NULL OR
+author_id = auth.uid()`, en `WITH CHECK` sur l'INSERT. Ici une politique suffit
+là où 05 a dû prendre un déclencheur — à l'insertion il n'y a pas de ligne
+d'avant, donc la limite « une policy ne voit que la ligne d'arrivée » ne mord
+pas. **Le mot qui porte tout le ticket est `AS RESTRICTIVE`**, et il n'était pas
+dans l'énoncé : PostgreSQL combine les politiques PERMISSIVES d'une même commande
+**en OU**, et `suivi_actions` en a déjà deux sur l'insertion (`partage_insert` et
+`suivi_actions_insert_own`) — une permissive de plus se serait lue comme une
+protection sans en être une, à un mot près dans le SQL. D'où un contrôle de fin
+de fichier qui vérifie `permissive = 'RESTRICTIVE'` et pas seulement le nom.
+**39 vérifications** sur un PostgreSQL 16 réel, dont **le trou lui-même reproduit
+avant correction** — sans ce contraste, le vert de la correction ne dirait pas si
+elle sert. Le `NULL` reste permis (ADR 0004), le worker n'est pas concerné
+(vérifié : clé de service, et zéro INSERT Python sur la table), l'app écrivait
+déjà juste (`actions.ts` l. 587). **Le SQL n'est PAS joué**, et **ça ne se verra
+pas en cliquant** : l'écran ne change pas, seul change ce qu'une écriture directe
+en PostgREST a le droit de faire.
+
 **[06 · Rebrancher le plan de thème](issues/06-rebrancher-le-plan-de-theme.md)** —
 les cinq colonnes d'une règle sont posées, et l'entrée automatique au carnet est
 morte. La panne était plus bête que prévu : `_LEVIER_REGLE` et `EFFORT_BY_KEY`
