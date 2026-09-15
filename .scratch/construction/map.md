@@ -58,6 +58,7 @@ plus rien de ce qu'elle a tranché ; elle le bâtit.
 | **21** | [Les statuts de campagne Meta s'arrêtent à 200, sans pagination](issues/21-campagnes-meta-non-paginees.md) |
 | **23** | [L'auteur d'une note est figé après coup, mais rien ne l'empêche d'être FAUX dès l'écriture](issues/23-auteur-forge-a-l-insertion.md) |
 | **24** | [La Marche suivante écrite par Gemini — la moitié IA du plan de thème](issues/24-marche-suivante-ecrite-par-gemini.md) |
+| **28** | [« Engagement du compte » est filtré par thème, et la page jure le contraire](issues/28-engagement-du-compte-filtre-par-theme.md) |
 | **43** | [L'étiqueteuse IA fabrique le nom d'une campagne Google, et ce nom détruit le pont du revenu](issues/43-le-nom-dune-campagne-google-est-fabrique-par-letiqueteuse.md) |
 
 ### Reste à faire
@@ -68,7 +69,6 @@ plus rien de ce qu'elle a tranché ; elle le bâtit.
 | **25** | [Le statut `auto` : des branches inertes, et des lignes orphelines en base](issues/25-le-statut-auto-et-ses-branches-inertes.md) |
 | **26** | [Les règles payantes sont écrites, et aucun client ne les verra](issues/26-les-regles-payantes-n-atteignent-pas-le-rapport.md) |
 | **27** | [L'Hypothèse d'une règle peut changer de théorie toutes les semaines](issues/27-l-hypothese-d-une-regle-peut-changer-chaque-semaine.md) |
-| **28** | [« Engagement du compte » est filtré par thème, et la page jure le contraire](issues/28-engagement-du-compte-filtre-par-theme.md) |
 | **29** | [Un post porte plusieurs thèmes ; le filtre de `/labels` n'en voit qu'un](issues/29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md) |
 | **30** | [Une médiane calculée sur deux valeurs ne peut jamais franchir son ratio](issues/30-la-mediane-sur-deux-valeurs-ne-parle-jamais.md) |
 | **31** | [Les quatre règles du ticket 07 n'ont pas de cible : elles ne sortent qu'une fois](issues/31-un-conseil-sans-cible-ne-sort-qu-une-fois.md) |
@@ -966,3 +966,21 @@ régression**, par `harnais/jouer_tout.py` que ce ticket ajoute. `saas/web` n'es
 pas touché. **§9 s'applique en entier** : ça ne se verra qu'après un passage du
 worker — et seulement le jour où une règle qui pose une Hypothèse et un clic
 « ✓ Je l'ai fait » se rencontrent sur le même thème.
+
+**[28 · « Engagement du compte » filtré par thème](issues/28-engagement-du-compte-filtre-par-theme.md)** —
+la tuile disait « du compte », la phrase du bandeau le **jurait** au lecteur, et
+le chiffre était celui du thème coché. Des deux réparations légitimes, c'est le
+périmètre qui bouge, pas l'étiquette : `avgEng` et `histReach` se calculent
+désormais sur `tous` — la liste d'avant le filtre. La raison qui tranche n'est
+pas la tuile, c'est **`histReach` comme repère** : il colore en vert la portée
+d'une ligne de la table des posts, écrit son pied et son état vide. Filtré, il
+faisait changer de couleur une ligne que rien n'avait changée, et pris à
+l'intérieur du groupe qu'il note il mettait la moitié des lignes en vert par
+construction. L'engagement DU thème n'est pas perdu : c'est la colonne « Eng. »
+de « Performance par thème », et la phrase du bandeau y renvoie maintenant —
+**seulement si cette table est rendue**, sinon le renvoi serait la même faute par
+l'autre bout. **Un zéro fabriqué part avec** : un thème sans aucun post donnait
+`mean([])` → « Engagement du compte : 0,0 % », §7 de face. `tsc` et `npm run
+build` verts, **19 routes**. Pas de harnais : `saas/web` n'a aucun lanceur de
+tests et `getInstaDash` va chercher Supabase. **Ça se voit tout de suite**, à la
+lecture — c'est du rendu de page, aucun passage du worker n'est nécessaire.

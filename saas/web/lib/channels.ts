@@ -959,7 +959,8 @@ export type InstaDash = {
   // continue de produire sans l'afficher se remet à diverger en silence, et
   // ressort un jour dans un module qui le croit à jour. `histReach` et `avgEng`
   // restent : ils servent le seuil « au-dessus de ton post moyen » et la tuile
-  // « Engagement du compte », deux lectures d'HISTORIQUE assumées.
+  // « Engagement du compte », deux lectures de TOUT L'HISTORIQUE DU COMPTE —
+  // que le thème coché ne filtre pas, sans quoi leurs étiquettes mentiraient.
   followersSeries: FollowerPoint[];
   // `formats`, `heatmap` et `bestSlot` VIVAIENT ICI, ET ILS SONT MORTS LE
   // 2026-09-12. Ils répondaient en TypeScript, sur la fenêtre affichée, à la
@@ -1228,8 +1229,18 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     followers,
     followersDelta,
     growth30,
-    avgEng: mean(all.map((p) => p.eng)),
-    histReach: mean(all.map((p) => p.reach)),
+    // SUR `tous`, JAMAIS SUR `all` : ces deux moyennes sont celles du COMPTE, et
+    // trois textes de la page s'appuient dessus en le disant — la tuile
+    // « Engagement du compte », le seuil « au-dessus de ton post moyen » qui
+    // colore la portée d'une ligne en vert, et « vs ton habitude ». Calculées
+    // sur `all` (filtré par thème) elles répondaient à la question du thème sous
+    // l'étiquette du compte, et une même ligne changeait de couleur selon le
+    // thème coché
+    // (`.scratch/construction/issues/28-engagement-du-compte-filtre-par-theme.md`).
+    // L'engagement DU THÈME n'est pas perdu pour autant : c'est la colonne
+    // « Eng. » de « Performance par thème », qui elle part bien de `all`.
+    avgEng: mean(tous.map((p) => p.eng)),
+    histReach: mean(tous.map((p) => p.reach)),
     followersSeries,
     topPosts,
     topMetric,

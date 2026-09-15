@@ -340,17 +340,32 @@ export default async function InstagramPage({
 
       {/* ── TA PAGE ──
           LES TROIS TUILES CI-DESSOUS SONT CELLES DU COMPTE, jamais celles d'un
-          thème : `followers_history` compte des abonnés, et un abonné ne
-          s'attache à aucun thème — il n'y a rien à filtrer, donc rien à
-          promettre. On l'écrit dès qu'un thème est posé, sinon les trois
-          chiffres se lisent comme ceux du thème (CLAUDE.md §7 : on dit ce
-          qu'on ne sait pas mesurer). */}
+          thème. Pour les deux premières c'est une impossibilité :
+          `followers_history` compte des abonnés, et un abonné ne s'attache à
+          aucun thème — il n'y a rien à filtrer. Pour la troisième c'est un
+          choix : `avgEng` et `histReach` SE filtreraient très bien, mais ils
+          servent aussi de repère « ton post moyen » à la table des posts plus
+          bas, et un repère qui bouge avec le filtre fait changer de couleur une
+          ligne que rien n'a changée. On l'écrit dès qu'un thème est posé, sinon
+          les trois chiffres se lisent comme ceux du thème (CLAUDE.md §7 : on dit
+          ce qu'on ne sait pas mesurer, et sous quelle question un chiffre
+          répond). */}
       <div className="flex items-baseline gap-2 flex-wrap mb-3 mt-5">
         <h2 className="text-[14px] font-semibold text-ink">Ta page</h2>
         {themes.length > 0 && (
           <span className="text-[11.5px] text-faint">
             ces trois chiffres sont ceux du compte entier — un abonné n&apos;appartient à
             aucun thème
+            {/* Le renvoi ne se fait QUE si la table existe : `ByLabelInsta` ne
+                rend rien quand `byLabel` est vide (un thème coché sur lequel
+                rien n'a jamais été publié), et envoyer le lecteur vers une
+                section absente serait la deuxième version du même défaut. */}
+            {d.byLabel.length > 0 && (
+              <>
+                , et l&apos;engagement par thème se lit plus bas, colonne
+                «&nbsp;Eng.&nbsp;» de «&nbsp;Performance par thème&nbsp;»
+              </>
+            )}
           </span>
         )}
       </div>

@@ -1,7 +1,7 @@
 # « Engagement du compte » est filtré par thème, et la page jure le contraire
 
 Type: task
-Status: open
+Status: resolved
 Blocked by:
 
 ## Question
@@ -51,3 +51,67 @@ de son pied. Changer son périmètre change ce que le vert veut dire.
 
 `lib/channels.ts` et `app/instagram/page.tsx` — les deux fichiers que le travail
 du bandeau a encore en cours.
+
+## Ce qui a été fait
+
+**Le premier des deux : `avgEng` et `histReach` se calculent sur `tous`**
+(`saas/web/lib/channels.ts` l. 1232-1243), la liste des posts D'AVANT le filtre
+de thème. La tuile « Engagement du compte » tient donc sa promesse, et la phrase
+du bandeau redevient vraie pour les trois chiffres.
+
+### Pourquoi celui-là et pas le renommage
+
+Trois raisons, dans l'ordre où elles pèsent :
+
+1. **`histReach` n'est pas qu'une tuile, c'est un repère.** Il colore en vert la
+   portée d'une ligne de la table des posts (« au-dessus de ton post moyen »),
+   il écrit le pied de cette table, et il écrit l'état vide (« ton compte porte
+   d'habitude à N par post »). Filtré, ce repère bouge avec le thème coché : la
+   MÊME ligne, la même portée, change de couleur selon la case cochée. Et un
+   repère pris à l'intérieur du groupe qu'il note met à peu près la moitié des
+   lignes en vert par construction — il cesse de dire quoi que ce soit.
+2. **L'engagement DU THÈME n'est pas perdu** : il est déjà sur la page, colonne
+   « Eng. » de « Performance par thème » (`byLabel`, qui part bien de `all`).
+   Renommer la tuile aurait donné deux chemins vers le même chiffre.
+3. Le renommage demandait de retoucher quatre textes (tuile, pied de table,
+   « vs ton habitude », état vide) au lieu d'une ligne.
+
+### Un zéro fabriqué qui part avec
+
+Effet non prévu par le ticket : avec `all`, cocher un thème sur lequel rien n'a
+jamais été publié donnait `mean([])` → **« Engagement du compte : 0,0 % »**. Un
+zéro affiché là où il n'y a pas de mesure, `CLAUDE.md` §7 (« une absence de
+donnée n'est pas un zéro »). Sur `tous`, ce cas n'existe plus : la moyenne ne
+tombe à 0 que si le compte entier n'a aucun post.
+
+### La phrase du bandeau
+
+Elle gardait sa justification d'origine — « un abonné n'appartient à aucun
+thème » — qui ne vaut que pour DEUX des trois tuiles. Elle renvoie maintenant
+vers la colonne « Eng. » de « Performance par thème », **et seulement si cette
+table est rendue** : `ByLabelInsta` ne rend rien quand `byLabel` est vide, et
+envoyer le lecteur vers une section absente aurait été la même faute par
+l'autre bout.
+
+## Vérifié
+
+`rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` vert et
+`npm run build` vert, **19 routes** — `/privacy`, `/terms` et `/suppression`
+comprises. Pas de harnais possible ici : `saas/web` n'a aucun lanceur de tests
+(`package.json` ne porte que `dev`/`build`/`start`/`lint`), et
+`getInstaDash` va chercher Supabase — il n'y a pas de seam équivalent au
+`Lecteur` du traitement.
+
+## Comment on le verra
+
+**Tout de suite, à la lecture** — c'est du rendu de page, pas du traitement :
+aucun passage du worker n'est nécessaire. Ouvrir `/instagram?l=<un thème>` et
+comparer la tuile « Engagement du compte » avec et sans le thème coché : elle ne
+doit plus bouger.
+
+## Ce qui reste non mesuré
+
+**L'écart que le défaut a produit en vrai** — pas d'accès à la base depuis cet
+environnement, donc on ne sait pas de combien l'engagement d'un thème s'écartait
+de celui du compte chez un client réel, ni combien de fois la page a été lue
+avec un thème coché.
