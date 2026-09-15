@@ -84,3 +84,26 @@ export function themesChoisis(
   if (retenus.length) return retenus;
   return sp?.label ? [sp.label] : [];
 }
+
+/**
+ * CE QUE LES THÈMES COCHÉS LAISSENT PASSER.
+ *
+ * Le thème FILTRE, il ne compare pas : cocher deux thèmes veut dire « cache-moi
+ * le reste » (ticket 12 §4), et aucun thème coché ne cache rien. Un élément
+ * porte PLUSIEURS thèmes — il suffit donc qu'un seul corresponde, exactement
+ * comme le filtre de `/instagram` (`lib/channels.ts`, `p.labels.some(...)`).
+ *
+ * La règle est écrite ICI pour n'être écrite qu'une fois. Recopiée dans une
+ * page, elle s'y était aplatie en `themes.includes(e.label)` : un post étiqueté
+ * « Marque » ET « Promo » sortait de « Déjà étiqueté » dès que le client
+ * cochait « Promo », et `/labels` écrivait alors « Rien n'est encore étiqueté
+ * "Promo" » à propos d'un post que `/instagram` affichait au même instant.
+ * Voir `.scratch/construction/issues/29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md`.
+ */
+export function filtreParThemes<T extends { labels: string[] }>(
+  elements: T[],
+  themes: string[]
+): T[] {
+  if (themes.length === 0) return elements;
+  return elements.filter((e) => e.labels.some((l) => themes.includes(l)));
+}

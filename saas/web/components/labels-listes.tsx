@@ -31,7 +31,7 @@ import { fmtCHF, GLYPHE, type ElementLabel } from "@/components/labels-modele";
 // « page d'arrivée » (ouvert, à moitié tapé) survit sur une AUTRE campagne.
 // C'est le corollaire technique écrit noir sur blanc dans la grammaire.
 function cleLigne(e: ElementLabel): string {
-  return `${e.canal}:${e.cle}:${e.label ?? ""}:${e.landing ?? ""}`;
+  return `${e.canal}:${e.cle}:${e.labels.join("|")}:${e.landing ?? ""}`;
 }
 
 // LA PAGE D'ARRIVÉE D'UNE CAMPAGNE — deuxième ligne de la rangée, jamais une
@@ -197,7 +197,7 @@ function LigneElement({ el, labels }: { el: ElementLabel; labels: string[] }) {
           {el.canal === "instagram" ? (
             <PostLabelSelect
               postId={el.cle}
-              current={el.label}
+              current={el.labels[0] ?? null}
               labels={labels}
               source={el.source}
             />
@@ -206,7 +206,7 @@ function LigneElement({ el, labels }: { el: ElementLabel; labels: string[] }) {
               channel={el.canal}
               campaignKey={el.cle}
               campaignName={el.nom}
-              current={el.label}
+              current={el.labels[0] ?? null}
               labels={labels}
               source={el.source}
             />

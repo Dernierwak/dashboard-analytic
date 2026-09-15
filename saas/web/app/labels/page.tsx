@@ -54,7 +54,7 @@ import { ListeSansTheme, ListeDeja } from "@/components/labels-listes";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
 import { Carnet } from "@/components/carnet";
-import { themesChoisis } from "@/lib/commandes";
+import { themesChoisis, filtreParThemes } from "@/lib/commandes";
 import { prochainJourDeTravailFr } from "@/lib/jour-compte";
 
 export const dynamic = "force-dynamic";
@@ -78,10 +78,15 @@ export default async function LabelsPage({
   // liste de travail à parcourir. La couverture, le geste de masse et le
   // vocabulaire restent ceux du compte entier, et on l'écrit plutôt que de
   // laisser croire à un filtre global.
+  //
+  // LE FILTRE NE S'ÉCRIT PAS ICI. Il s'écrivait, et il s'était aplati : une
+  // publication porte plusieurs thèmes, `themes.includes(e.label)` n'en
+  // regardait qu'un, et un post « Marque » + « Promo » disparaissait de
+  // « Déjà étiqueté » sous « Promo » — pendant que `/instagram`, qui filtre
+  // avec `some`, l'affichait. La règle vit donc dans `lib/commandes.ts`, où
+  // les deux pages la lisent au lieu de la recopier (ticket 29).
   const themes = themesChoisis(searchParams);
-  const deja = themes.length
-    ? etiquetage.deja.filter((e) => e.label && themes.includes(e.label))
-    : etiquetage.deja;
+  const deja = filtreParThemes(etiquetage.deja, themes);
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.

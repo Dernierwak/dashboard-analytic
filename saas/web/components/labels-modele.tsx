@@ -27,7 +27,22 @@ export type ElementLabel = {
    *  publication organique ne coûte rien, et ce zéro-là est un fait, pas une
    *  mesure manquante — les lignes Instagram ne l'affichent donc pas. */
   depense: number;
-  label: string | null;
+  /** LES thèmes de l'élément, jamais LE thème. Une publication Instagram en
+   *  porte plusieurs (`instagram_organic_posts.labels`), une campagne au plus
+   *  un — la liste est le seul modèle qui dise vrai pour les deux. Elle est
+   *  vide quand l'élément n'est pas étiqueté, et c'est ce vide-là qui le range
+   *  dans « Sans thème ».
+   *
+   *  ELLE NE S'APLATIT PAS AVANT UN FILTRE. Un filtre par thème se lit
+   *  `labels.some(...)` — voir `filtreParThemes` dans `lib/commandes.ts`. Un
+   *  `labels[0]` posé là faisait disparaître de « Déjà étiqueté » un post
+   *  étiqueté « Marque » ET « Promo » dès qu'on cochait « Promo », pendant que
+   *  `/instagram` continuait de l'afficher : deux pages du même produit
+   *  répondaient l'inverse à la même question
+   *  (`.scratch/construction/issues/29-un-post-a-plusieurs-themes-le-filtre-n-en-voit-qu-un.md`).
+   *  `labels[0]` reste légitime pour AFFICHER un thème unique — un sélecteur
+   *  n'a qu'une valeur — jamais pour décider ce qu'on garde. */
+  labels: string[];
   /** 'user' | 'ai' | null — pilote la pastille IA des sélecteurs existants. */
   source: string | null;
   /** page d'arrivée (campagnes seulement, null sur Instagram) */

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { themesChoisis } from "@/lib/commandes";
+import { themesChoisis, filtreParThemes } from "@/lib/commandes";
 import { getCompteActif } from "@/lib/account";
 
 // Couche données des dashboards par canal — mêmes règles que le Streamlit :
@@ -1032,18 +1032,18 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   // dernier post du COMPTE, pas celle du dernier post du thème.
   const w = customWindow(sp) ?? makeWindow(tous[0]?.date ?? null, tous.length ? tous[tous.length - 1].date : null, days);
 
-  // LE THÈME FILTRE, IL NE COMPARE PAS : cocher deux thèmes veut dire
-  // « cache-moi le reste » (ticket 12 §4). Un post porte PLUSIEURS thèmes
-  // (`instagram_organic_posts.labels`), là où une campagne n'en porte qu'un —
-  // il suffit donc qu'un seul corresponde. Le filtre s'applique à `all` et pas
-  // seulement à la fenêtre : les modules qui retombent sur l'historique quand
-  // la période est vide (top 3, performance par thème — voir `scope`) doivent
-  // parler du même périmètre que les autres, sinon la page mélange deux
+  // LE THÈME FILTRE, IL NE COMPARE PAS — la règle elle-même est dans
+  // `filtreParThemes` (`lib/commandes.ts`), et c'est le seul endroit où elle
+  // s'écrit. Elle vivait ici en toutes lettres, et sa copie sur `/labels` s'y
+  // était aplatie à un seul thème : le ticket 29 est né de cet écart-là.
+  //
+  // CE QUI EST PROPRE À CETTE PAGE, en revanche : le filtre s'applique à `all`
+  // et pas seulement à la fenêtre. Les modules qui retombent sur l'historique
+  // quand la période est vide (top 3, performance par thème — voir `scope`)
+  // doivent parler du même périmètre que les autres, sinon la page mélange deux
   // périmètres sans le dire.
   const themesRetenus = themesChoisis(sp);
-  const all = themesRetenus.length
-    ? tous.filter((p) => p.labels.some((l) => themesRetenus.includes(l)))
-    : tous;
+  const all = filtreParThemes(tous, themesRetenus);
   const posts = all.filter((p) => inWin(p.date, w.since, w.until));
 
   const followers = follows.length ? Number(follows[0].followers) || 0 : 0;
