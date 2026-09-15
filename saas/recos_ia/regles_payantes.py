@@ -45,23 +45,53 @@ C'est l'appelant (`saas/traitement/build_report.py`) qui sait rattacher une
 annonce à un thème — même partage que `_orga_recos` et `_reco_evenements`.
 """
 
-from statistics import median
-
 from .reco_engine import SEUILS, _reco
 
 
+def _cpc_groupe(lignes: list[dict]) -> float:
+    """Le prix du clic d'un ENSEMBLE d'annonces : dépense totale sur clics totaux.
+
+    C'EST LA SEULE FORMULE DU FICHIER, et `_cpc` n'en est que le cas à une
+    ligne. Une annonce qui a reçu deux clics ne pèse pas autant qu'une qui en a
+    reçu dix mille — la pondération est ce qui empêche un petit voisin de
+    commander le repère des autres.
+    """
+    clics = sum(int(a.get("clics") or 0) for a in lignes)
+    return sum(float(a.get("depense") or 0) for a in lignes) / clics if clics else 0.0
+
+
 def _cpc(a: dict) -> float:
-    clics = int(a.get("clics") or 0)
-    return float(a.get("depense") or 0) / clics if clics > 0 else 0.0
+    return _cpc_groupe([a])
+
+
+def _ctr_groupe(lignes: list[dict]) -> float:
+    """Le taux de clic d'un ENSEMBLE d'annonces — le pendant exact de
+    `_cpc_groupe`, pondéré par les impressions pour la même raison."""
+    impressions = sum(int(a.get("impressions") or 0) for a in lignes)
+    if impressions <= 0:
+        return 0.0
+    return sum(int(a.get("clics") or 0) for a in lignes) / impressions * 100
 
 
 def _ctr(a: dict) -> float:
-    im = int(a.get("impressions") or 0)
-    return int(a.get("clics") or 0) / im * 100 if im > 0 else 0.0
+    return _ctr_groupe([a])
 
 
 def _nom(a: dict) -> str:
     return str(a.get("nom") or "")[:40]
+
+
+def _les_autres(n: int, mot: str) -> str:
+    """« l'autre annonce » ou « les 3 autres annonces ».
+
+    LE SINGULIER N'EST PAS UNE COQUETTERIE : depuis que le repère est celui des
+    VOISINES et non plus une médiane, ces règles parlent enfin sur un Groupe de
+    deux — et le cas le plus courant devient donc `n = 1`. Écrit sans ce helper,
+    le conseil le plus fréquent du produit s'ouvrirait sur « les 1 autres
+    annonces », ce qui est exactement le genre de détail qui fait douter du
+    reste du chiffre.
+    """
+    return f"l'autre {mot}" if n == 1 else f"les {n} autres {mot}s"
 
 
 def _designe(annonce: dict, reco: dict) -> dict:
@@ -125,10 +155,14 @@ def regle_annonce_chere(theme: str, annonces: list[dict]) -> dict | None:
     LA COMPARAISON SE FAIT DANS UN GROUPE D'ANNONCES, jamais sur tout le thème
     — voir `_par_groupe`.
 
+    LE REPÈRE EST CE QUE PAIENT LES AUTRES, jamais une médiane qui inclurait la
+    candidate — voir le commentaire dans le corps, et le ticket
+    `.scratch/construction/issues/30-la-mediane-sur-deux-valeurs-ne-parle-jamais.md`.
+
     Les annonces des campagnes JEUNES sortent de la comparaison des deux côtés —
-    candidate et médiane. Pas seulement parce qu'on ne coupe pas un test : une
+    candidate et repère. Pas seulement parce qu'on ne coupe pas un test : une
     campagne en apprentissage paie ses premiers clics plus cher, la laisser dans
-    la médiane remonterait le repère et masquerait la vraie annonce chère.
+    le repère le remonterait et masquerait la vraie annonce chère.
 
     Quand plusieurs Groupes ont chacun leur annonce chère, on ne sert que celle
     qui COÛTE LE PLUS : trois fois le même conseil sur trois Groupes remplirait
@@ -140,29 +174,43 @@ def regle_annonce_chere(theme: str, annonces: list[dict]) -> dict | None:
                        if not a.get("jeune") and int(a.get("clics") or 0) > 0]
         if len(comparables) < 2:
             continue  # une seule annonce n'a personne à qui se comparer
-        mediane = median(_cpc(a) for a in comparables)
-        if mediane <= 0:
-            continue
         pire = max(comparables, key=_cpc)
-        if (_cpc(pire) >= mediane * SEUILS["cpc_ratio"]
+        # UNE ANNONCE NE FAIT JAMAIS PARTIE DU REPÈRE QUI LA JUGE, et c'est
+        # arithmétique, pas une préférence : une médiane calculée sur DEUX
+        # valeurs tombe pile entre elles, donc la candidate devrait valoir deux
+        # fois la moyenne des deux — ce qu'aucun prix du clic positif ne permet.
+        # La règle était muette sur TOUT Groupe de deux annonces, c'est-à-dire
+        # sur la forme la plus courante chez un petit annonceur et sur la forme
+        # canonique d'un test A/B (mesuré dans
+        # `.scratch/construction/harnais/30-le-repere-des-autres/`).
+        # Le repère est donc celui qu'utilisent déjà `regle_annonce_locomotive`
+        # et `regle_adset_inegal` : ce que paient les VOISINES, pondéré par
+        # leurs clics. La mesure a écarté la médiane des autres, qui garde la
+        # robustesse aux valeurs extrêmes mais se fait piéger par le déséquilibre
+        # de VOLUME — or la livraison concentre les clics sur l'annonce qui
+        # marche, donc c'est le déséquilibre de volume qui est la règle ici.
+        repere = _cpc_groupe([a for a in comparables if a is not pire])
+        if repere <= 0:
+            continue
+        if (_cpc(pire) >= repere * SEUILS["cpc_ratio"]
                 and float(pire.get("depense") or 0) >= SEUILS["cpc_spend_min"]):
-            candidats.append((pire, mediane, len(comparables)))
+            candidats.append((pire, repere, len(comparables) - 1))
     if not candidats:
         return None
 
-    pire, mediane, n_voisines = max(candidats,
-                                    key=lambda c: float(c[0].get("depense") or 0))
+    pire, repere, n_voisines = max(candidats,
+                                   key=lambda c: float(c[0].get("depense") or 0))
     cpc = _cpc(pire)
     depense = float(pire["depense"])
     nom = _nom(pire)
     groupe_nom = str(pire.get("groupe") or "")[:40]
     return _designe(pire, _reco(
         "annonce_chere", pire.get("canal") or "pub",
-        f"« {nom} » te coûte {cpc:.2f} CHF le clic, les autres {mediane:.2f}",
+        f"« {nom} » te coûte {cpc:.2f} CHF le clic, les autres {repere:.2f}",
         f"Sur « {theme} », l'annonce « {nom} » a dépensé {depense:,.0f} CHF cette "
         f"semaine pour {int(pire['clics'])} clics, soit {cpc:.2f} CHF le clic — "
-        f"{cpc / mediane:.1f}× la médiane des {n_voisines} annonces du Groupe "
-        f"« {groupe_nom} » ({mediane:.2f} CHF).",
+        f"{cpc / repere:.1f}× ce que paient {_les_autres(n_voisines, 'annonce')} "
+        f"du Groupe « {groupe_nom} » ({repere:.2f} CHF).",
         "Ces annonces tournent dans le même Groupe : même audience, même "
         "placement, même enchère. Ce qui les sépare est donc ce qu'elles "
         "montrent — le visuel ou l'accroche, pas le ciblage.",
@@ -174,7 +222,7 @@ def regle_annonce_chere(theme: str, annonces: list[dict]) -> dict | None:
         "conversions avant de la couper si tu les suis.",
         "solide", 1,
         repere="Le repère : c'est l'ÉCART DANS SON GROUPE qui compte, pas le "
-               "montant. Une annonce au-dessus de 2× la médiane de ses voisines a "
+               "montant. Une annonce au-dessus de 2× ce que paient ses voisines a "
                "un problème de créa ; un clic cher partagé par tout le Groupe est "
                "un problème d'audience, et ça ne se règle pas en coupant.",
         # Geste invariable : cette branche ne s'ouvre que sur une annonce
@@ -211,10 +259,7 @@ def regle_annonce_locomotive(theme: str, annonces: list[dict]) -> dict | None:
             continue
         best = max(eligibles, key=_ctr)
         autres = [a for a in eligibles if a is not best]
-        im_autres = sum(int(a.get("impressions") or 0) for a in autres)
-        if im_autres <= 0:
-            continue
-        ctr_autres = sum(int(a.get("clics") or 0) for a in autres) / im_autres * 100
+        ctr_autres = _ctr_groupe(autres)
         if ctr_autres > 0 and _ctr(best) >= ctr_autres * SEUILS["ctr_ratio"]:
             candidats.append((best, ctr_autres, len(autres)))
     if not candidats:
@@ -230,8 +275,8 @@ def regle_annonce_locomotive(theme: str, annonces: list[dict]) -> dict | None:
         f"« {nom} » accroche {ctr / ctr_autres:.1f}× mieux que ses voisines",
         f"Sur « {theme} », dans le Groupe « {groupe[:40]} », « {nom} » fait "
         f"{ctr:.2f} % de clics sur {int(best['impressions']):,} impressions, "
-        f"contre {ctr_autres:.2f} % pour les {n_autres} autres annonces du même "
-        f"Groupe.",
+        f"contre {ctr_autres:.2f} % pour {_les_autres(n_autres, 'annonce')} du "
+        f"même Groupe.",
         "Ces annonces sont montrées aux mêmes gens, au même endroit, à la même "
         "enchère : un écart d'accroche de cette taille veut dire que le message "
         "de celle-ci porte. C'est le moment de lui donner plus de place — "
@@ -540,11 +585,6 @@ def regles_payantes(theme: str, annonces: list[dict],
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-def _cpc_groupe(lignes: list[dict]) -> float:
-    clics = sum(int(a.get("clics") or 0) for a in lignes)
-    return sum(float(a.get("depense") or 0) for a in lignes) / clics if clics else 0.0
-
-
 # ── 5 · DEUX GROUPES D'ANNONCES QUI NE PAIENT PAS LE MÊME PRIX ───────────────
 
 def regle_adset_inegal(theme: str, annonces: list[dict]) -> dict | None:
@@ -624,9 +664,9 @@ def regle_adset_inegal(theme: str, annonces: list[dict]) -> dict | None:
         f"« {pire} » te coûte {c['cpc'] / c['cpc_voisin']:.1f}× le clic des autres Groupes",
         f"Sur « {theme} », dans la campagne « {c['campagne'][:40]} », le Groupe "
         f"« {pire} » a dépensé {c['depense']:,.0f} CHF cette semaine à "
-        f"{c['cpc']:.2f} CHF le clic, contre {c['cpc_voisin']:.2f} CHF pour les "
-        f"{c['n'] - 1} autres Groupes de la même campagne — le moins cher étant "
-        f"« {voisin} ».",
+        f"{c['cpc']:.2f} CHF le clic, contre {c['cpc_voisin']:.2f} CHF pour "
+        f"{_les_autres(c['n'] - 1, 'Groupe')} de la même campagne — le moins "
+        f"cher étant « {voisin} ».",
         "Ces Groupes tournent sous la même campagne : même objectif, même "
         "optimisation, même enchère. Ce qui les sépare est À QUI ils parlent — "
         "une audience plus étroite, plus disputée ou plus froide se paie plus "

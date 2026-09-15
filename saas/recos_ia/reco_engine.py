@@ -68,7 +68,7 @@ KEY_LABELS = {
 }
 
 SEUILS = {
-    "cpc_ratio": 2.0,             # CPC > 2× ta médiane = signal de coût
+    "cpc_ratio": 2.0,             # CPC > 2× le repère des voisins = signal de coût
     "cpc_spend_min": 50.0,        # ...seulement si ≥ 50 CHF dépensés sur la semaine
     "roas_spend_min": 50.0,       # ROAS calculé seulement si ≥ 50 CHF dépensés (sinon bruit)
     "roas_bon": 3.0,              # ROAS ≥ 3 = rentable avec marge → scaler
