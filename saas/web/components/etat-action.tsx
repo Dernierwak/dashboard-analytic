@@ -106,16 +106,42 @@ export function etat(a: TrackedAction): Etat {
   // PLEINE et les mots « rangée »/« abandonnée » sont réservés aux vraies
   // décisions — `estDecisionClient` (lit `origin`, durable) tranche, pas
   // `status` (qui a justement changé).
+  //
+  // UNE LIGNE ABANDONNÉE PEUT PORTER UN VERDICT, et on ne l'affiche pas : les
+  // deux boutons sont côte à côte au moment du verdict (`action-vivante.tsx`),
+  // et `drop` admet un départ `done` (`DEPART_ADMIS`, `app/actions.ts`) — donc
+  // « × j'abandonne » cliqué sur une action déjà jugée. Ce qu'on annonce ici
+  // est où la ligne a FINI, et elle a fini abandonnée. Le verdict, lui, reste
+  // compté là où on compte des mesures (`lib/carnet.ts`, `theme-card.tsx`) :
+  // il a réellement été rendu, le renier serait perdre une mesure.
   if (a.status === "dropped")
     return estDecisionClient(a)
       ? { forme: "barree", couleur: "#8b8e98", cls: "text-faint", label: "abandonnée" }
       : { forme: "creuse", couleur: "#8b8e98", cls: "text-faint", label: "hypothèse écartée" };
-  if (a.status === "archived")
-    return a.verdict
-      ? VERDICT[a.verdict] ?? VERDICT.stable
-      : estDecisionClient(a)
+  // UNE LIGNE RANGÉE PORTE DÉSORMAIS SON VERDICT, et c'était le défaut du
+  // ticket 42 : il venait du payload, où `suivi_en_cours()` ne met que
+  // `running`/`done` — une action rangée n'y est plus et perdait son verdict au
+  // profit du mot « rangée », pendant que le bilan du carnet (`lib/carnet.ts`)
+  // comptait ce même verdict en base. Il se lit maintenant sur la ligne
+  // (`lib/report.ts`).
+  //
+  // CE QUI OUVRE UN CHEMIN JUSQU'ICI INERTE : une hypothèse `auto` que personne
+  // n'a confirmée peut porter un verdict (les lignes jugées avant que le
+  // ticket 06 ne sorte `"auto"` de `suivi_en_cours`) et arriverait alors à la
+  // pastille PLEINE — celle que la règle du dessus réserve aux vraies
+  // décisions. Elle garde donc sa forme creuse et le mot « hypothèse », comme à
+  // tous ses autres paliers : le verdict est vrai, il a été mesuré, mais il ne
+  // dit pas que le client a fait quelque chose.
+  if (a.status === "archived") {
+    if (!a.verdict)
+      return estDecisionClient(a)
         ? { forme: "pleine", couleur: "#5a5d66", cls: "text-muted", label: "rangée" }
         : { forme: "creuse", couleur: "#5a5d66", cls: "text-muted", label: "hypothèse rangée" };
+    const rendu = VERDICT[a.verdict] ?? VERDICT.stable;
+    return estDecisionClient(a)
+      ? rendu
+      : { ...rendu, forme: "creuse", label: `hypothèse — ${rendu.label}` };
+  }
   if (a.status === "done")
     return a.due
       ? { forme: "creuse", couleur: "#b86b00", cls: "text-warn", label: "à juger" }

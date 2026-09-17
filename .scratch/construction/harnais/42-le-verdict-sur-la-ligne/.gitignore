@@ -1,0 +1,4 @@
+# Le JS émis par `tsc` à chaque `bash jouer.sh` — reconstruit à chaque rejeu,
+# jamais lu par un humain. Le versionner ferait entrer dans git une COPIE du
+# composant, qui vieillirait sans que rien ne le signale.
+.build/

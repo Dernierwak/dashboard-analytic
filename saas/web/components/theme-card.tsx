@@ -248,6 +248,14 @@ export function ThemeCard({
   const miennesManuelles = miennes.filter(estDecisionClient);
   // Ce qui a MARCHÉ sur ce thème, pas ce qui a été coché : le verdict vient du
   // worker quatorze jours après coup, pas du clic.
+  //
+  // CE RATIO A CHANGÉ DE CONTENU AU TICKET 42, sans que cette ligne bouge : le
+  // verdict se lit sur `suivi_actions` et non plus dans le payload, donc les
+  // actions RANGÉES et ABANDONNÉES le portent enfin — elles en sortaient
+  // silencieusement, parce que `suivi_en_cours()` ne rend que `running`/`done`.
+  // Le compte dit maintenant la même chose que le bilan du carnet
+  // (`compterVerdicts`, `lib/carnet.ts`), qui les comptait déjà en base : c'est
+  // exactement la contradiction que le ticket refermait.
   const jugees = miennesManuelles.filter((a) => a.verdict);
   const gagnantes = jugees.filter((a) => a.verdict === "better").length;
   const prochain = miennes

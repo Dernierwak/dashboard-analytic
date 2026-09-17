@@ -143,6 +143,19 @@ export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolea
 //              composants) sont donc inertes, pas actives.
 //   archived = verdict vu, rangée dans l'historique
 //   dropped  = abandonnée — elle quitte la liste mais reste dans l'historique
+/** LES TROIS VERDICTS, ÉCRITS UNE SEULE FOIS DE CE CÔTÉ-CI.
+ *  L'union du type et la validation de ce qui arrive de la base disaient la
+ *  même liste deux fois ; elle en dérive maintenant. Un quatrième verdict
+ *  ajouté au `CHECK` de `suivi_actions_verdict.sql` ne peut donc plus être
+ *  accepté à la lecture sans que le type le connaisse aussi.
+ *
+ *  PAS EXPORTÉE, délibérément : `etat-action.tsx` tient le lexique affiché de
+ *  ces trois mots, il est chargé par des composants CLIENT, et il n'importe de
+ *  ce module que des TYPES. Y prendre une VALEUR entraînerait `next/headers`
+ *  dans leur bundle (piège `CLAUDE.md` §8, déjà commenté là-bas). */
+const VERDICTS = ["better", "worse", "stable"] as const;
+type Verdict = (typeof VERDICTS)[number];
+
 export type TrackedAction = {
   id: string;
   reco_key?: string;
@@ -173,7 +186,7 @@ export type TrackedAction = {
   then?: number;
   now?: number;
   delta?: number | null;
-  verdict?: "better" | "worse" | "stable";
+  verdict?: Verdict;
   // Photo du conseil au moment de la décision — pour s'en souvenir plus tard.
   detail?: {
     observation?: string;
@@ -739,6 +752,40 @@ async function fetchRecoFeedbackRows(
   return { ...sansTheme, migrationOk: false as const };
 }
 
+// LE VERDICT SE LIT SUR LA LIGNE, PAS DANS LE PAYLOAD.
+//
+// Depuis le ticket 17 de la construction, `suivi_actions.verdict` est écrit UNE
+// fois, le jour de la chute, et ne se réécrit plus (`ecrire_verdict` filtre
+// `verdict IS NULL` côté base) : la colonne est la vérité, le payload n'en est
+// qu'une copie. Or `tracking.verified` est bâti sur `suivi_en_cours()`, qui ne
+// lit que `status IN ('running','done')` — une action RANGÉE n'y est plus. Lue
+// depuis le payload, elle perdait donc son verdict au premier rangement, et
+// l'écran écrivait « rangée » là où le bilan du carnet, lui, comptait ce même
+// verdict en direct (`lib/carnet.ts`) : deux chiffres qui se contredisent sur
+// la même page.
+//
+// Le payload ne sert plus qu'au triplet `then/now/delta`, qui n'existe QUE la
+// semaine de la chute et qu'aucune colonne ne garde.
+//
+// ON NE RECOPIE PAS UNE VALEUR QU'ON NE SAIT PAS LIRE. Un `verdict` hors des
+// trois que le worker écrit ne serait pas une nuance : `etat()` le rabattrait
+// silencieusement sur « stable » (`VERDICT[a.verdict] ?? VERDICT.stable`,
+// `etat-action.tsx`), donc afficherait un jugement que personne n'a rendu
+// (`CLAUDE.md` §7). La colonne porte bien un `CHECK` en base
+// (`000_run_me_all.sql` §23) ; ceci est la garde de l'autre bout du fil, là où
+// la ligne arrive non typée.
+//
+// ET AUCUN REPLI SUR LE PAYLOAD, c'est le cœur du correctif. Un verdict que le
+// payload porte alors que la colonne est vide, c'est une écriture qui n'a pas
+// pris — un refus RLS ne lève rien et touche zéro ligne (`CLAUDE.md` §8) : la
+// ligne repassera par la branche de mesure et son verdict sera RECALCULÉ contre
+// le KPI du jour au rapport suivant. Le servir remettrait à l'écran le verdict
+// qui dérive que le ticket 17 vient de retirer du worker. La ligne reste alors
+// « à juger » : un verdict retardé, pas un verdict faux.
+function verdictDeLaLigne(valeur: unknown): Verdict | undefined {
+  return VERDICTS.includes(valeur as Verdict) ? (valeur as Verdict) : undefined;
+}
+
 export async function getWeeklyData(): Promise<WeeklyData> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -867,7 +914,8 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   }
 
   // Les chiffres du verdict (avant → après) sont calculés par le worker : on
-  // les rapatrie par id sur les lignes lues en direct.
+  // les rapatrie par id sur les lignes lues en direct. Le VERDICT, lui, se lit
+  // sur la ligne (`verdictDeLaLigne`) — voir le commentaire de ce helper.
   const todayIso = iso(new Date());
   const measured = new Map<string, TrackedAction>();
   for (const v of report?.tracking?.verified ?? []) measured.set(String(v.id), v);
@@ -931,7 +979,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       then: m?.then,
       now: m?.now,
       delta: m?.delta ?? null,
-      verdict: m?.verdict,
+      verdict: verdictDeLaLigne(r.verdict),
     };
   });
   const vivantes = (st?: string) => st !== "archived" && st !== "dropped";
