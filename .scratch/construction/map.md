@@ -493,6 +493,11 @@ interne à la décision, pas une désobéissance à elle. La règle est livrée 
 ses gardes, la lecture retenue étant qu'**un conseil qui porte son angle mort
 n'est pas un KPI posé sur un tableau de bord**, et la question part telle quelle →
 [32](issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md).
+**Tranché par David le 2026-09-17 : c'est cette lecture-là.** La limite ne
+parlait que des écrans, la règle reste en l'état, et ce sont **ses gardes** qui
+rendent la réponse vraie — les assouplir rouvre 32. La règle d'attribution
+elle-même reste entière, et reste la question de
+[18](issues/18-revenu-google-non-rattachable.md).
 `CONTEXT.md` gagne **Vues par personne** (et déconseille « fréquence », le nom de
 la valeur qu'on ne sait PAS calculer) ; `docs/mesures-impossibles.md` gagne
 **« Quelle page d'arrivée perd les gens »**.

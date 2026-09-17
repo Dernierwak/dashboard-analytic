@@ -701,6 +701,25 @@ def regle_theme_deux_regies(theme: str, regies: dict) -> dict | None:
     ce que l'autre a coûté ni rapporté
     (`.scratch/refonte/issues/02-sur-quoi-se-differencient-les-autres.md`).
 
+    ELLE DIT UN CHIFFRE QUE `docs/mesures-impossibles.md` INTERDIT D'AFFICHER, et
+    c'est voulu : David a tranché le 2026-09-17 que cette limite ne parlait que
+    des ÉCRANS
+    (`.scratch/construction/issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md`).
+    Un KPI arrive nu ; un conseil porte son angle mort avec lui.
+
+    CE QUI A ÉTÉ AUTORISÉ, C'EST CETTE RÈGLE SOUS SES GARDES — pas un ROAS par
+    canal en général. Les quatre ci-dessous sont la raison pour laquelle la
+    réponse est « oui », donc aucune ne s'assouplit sans rouvrir 32 : attribution
+    complète des DEUX côtés, aucun nom de campagne porté par les deux régies,
+    écart supérieur à 4× (et non le 2× des autres comparaisons de coût), et le
+    champ `pourquoi` qui NOMME le biais du dernier clic. Les descendre rendrait à
+    la règle le statut de chiffre affiché, qui reste interdit.
+
+    LA RÈGLE D'ATTRIBUTION ELLE-MÊME N'EST TOUJOURS PAS CHOISIE : c'est la
+    question du ticket
+    `.scratch/construction/issues/18-revenu-google-non-rattachable.md`, et rien
+    ici ne la tranche.
+
     ELLE SE TAIT DÈS QUE L'ATTRIBUTION EST INCOMPLÈTE, et ce n'est pas une
     précaution de confort. Le revenu d'une campagne n'entre que si GA4 la
     retrouve par son nom ; une campagne étiquetée dont l'`utm_campaign` ne
