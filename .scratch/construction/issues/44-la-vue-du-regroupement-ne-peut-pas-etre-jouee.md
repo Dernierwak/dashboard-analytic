@@ -179,15 +179,15 @@ Le `::numeric` est conservé et sa raison renforcée : sur un taux, le numérate
 est **toujours** plus petit que le dénominateur, donc une division entière
 rendrait **0 à tous les coups**, pas seulement un arrondi faux.
 
-### 4 · Ce que la vérification a mesuré — 131 contrôles sur un vrai PostgreSQL
+### 4 · Ce que la vérification a mesuré — 133 contrôles sur un vrai PostgreSQL
 
 `pgserver` (PostgreSQL 16 jetable, ni base Supabase, ni secret, ni réseau) :
 
 | Fichier | Résultat |
 |---|---|
 | `test_copie_non_derivee.py` | 2/2 |
-| `test_regles_de_la_vue.py` | **25/25** (dont 5 neufs sur l'engagement) |
-| `test_vue_vs_build_matrix.py` | 61/61 |
+| `test_regles_de_la_vue.py` | **26/26** (dont 5 neufs sur l'engagement) |
+| `test_vue_vs_build_matrix.py` | 60/60 |
 | `test_isolement.py` | 4/4 |
 | `test_python_lit_la_vue.py` | 18/18 |
 | `test_part_muette_sql.py` | 21/21 |
@@ -195,6 +195,16 @@ rendrait **0 à tous les coups**, pas seulement un arrondi faux.
 
 **Le harnais a fait tomber une erreur d'arithmétique que j'avais écrite**
 (un attendu à 60 au lieu de 105) : il ne passe pas toujours.
+
+⚠ **Trois nombres de ce tableau étaient faux, corrigés le 2026-09-17.** Il
+portait 25/25 et 61/61 sur les deux premières lignes, et « 131 contrôles » en
+titre alors que ses propres lignes en additionnaient 133. Les valeurs
+ci-dessus sont celles de deux rejeux successifs et identiques, sur un dépôt où
+ni le harnais ni la vue n'ont bougé depuis le commit qui les a écrites
+(`git diff 44092af HEAD` vide sur `04-vue-sql/` et `theme_regroupement.sql`) :
+le total de 133 était donc juste, seule sa répartition et le titre ne
+l'étaient pas. Un chiffre recopié d'un rejeu antérieur au dernier contrôle
+ajouté reste un chiffre faux (`CLAUDE.md` §7).
 
 ### 5 · CE QUE ÇA CHANGE À L'ÉCRAN, ET QU'IL FAUT SAVOIR AVANT DE DÉPLOYER
 
@@ -228,6 +238,17 @@ revenu et le ROAS.
 - [ ] **Jouer la migration** (`000_run_me_all.sql`), puis déployer. **David
       seul** : aucun secret ni accès production n'est passé par cette session.
       C'est la seule étape restante de CE ticket.
+
+      **Toujours pas jouée au 2026-09-17**, re-mesuré ce jour-là. La vue est
+      encore absente de la production : un `GET /rest/v1/theme_regroupement`
+      avec la **clé anon publique** (celle de `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+      lecture seule, aucun secret en jeu) rend `404 PGRST205 — Could not find
+      the table 'public.theme_regroupement' in the schema cache`. C'est
+      exactement le code que `fetch_theme_regroupement` attrape pour lever
+      `VueRegroupementAbsente` : **le rapport ne se construit toujours pas.**
+      La sonde ne prouve que l'absence, pas que la migration passera — elle
+      ne peut pas créer la vue, qui demande des droits que cette session n'a
+      pas.
 - [ ] Ensuite seulement, les deux contrôles de [22](22-pulse-lit-la-vue.md)
       rappelés plus haut redeviennent possibles.
 
