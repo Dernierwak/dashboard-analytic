@@ -2548,6 +2548,23 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         # ligne devient une vraie décision client, quelle que soit son
         # origine, et mérite son repère.
         for _a in lecteur.suivi_actions():
+            # UNE NOTE PAS ENCORE COCHÉE N'EST PAS UN FAIT (ticket 33). Depuis
+            # le ticket 11, une Note peut naître `running` : le client écrit ce
+            # qu'il COMPTE faire, et la ligne ne se date qu'au moment où on la
+            # coche (`CONTEXT.md`, entrée Note). Son `decided_at` est pourtant
+            # déjà posé — c'est le jour de l'ÉCRITURE, que `saveNoteOuverte`
+            # inscrit et que le cochage RÉÉCRIRA au jour choisi. Sans ce filtre,
+            # le jour où quelqu'un tape « il faudrait refaire les visuels »
+            # posait un ▲ sur la frise et sur la boussole, faisant attribuer un
+            # mouvement de courbe à un geste jamais fait (`CLAUDE.md` §7). La
+            # marque n'est pas perdue : elle revient au cochage, à la bonne date.
+            #
+            # FILTRÉ ICI ET PAS DANS LA REQUÊTE, comme la boucle de verdict plus
+            # bas : un `.neq("kind", …)` échouerait sur une base où la colonne
+            # n'existe pas encore, et l'`except` qui entoure cette lecture
+            # viderait alors TOUS les repères en silence.
+            if _a.get("kind") == "note" and _a.get("status") == "running":
+                continue
             _det = _a.get("detail")
             _origine_auto = isinstance(_det, dict) and _det.get("origin") == "auto"
             if _origine_auto and not _a.get("done_at"):
