@@ -1,7 +1,7 @@
 # Renommer un thème lui fait perdre son étoile — et le supprimer en laisse une qui ne désigne rien
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -66,3 +66,26 @@ fait. La fusion, qui traite déjà les trois cas.
 Livrer les deux étapes du renommage, vérifiées, plutôt que d'ouvrir en plus la
 question des lignes orphelines déjà écrites : celle-là touche des données
 existantes et se décide avec David.
+
+## Answer
+
+Les trois propagations manquantes sont livrées dans les cascades existantes,
+avant les posts Instagram et la liste maîtresse :
+
+- le renommage met à jour `reco_feedback.theme` ;
+- il met à jour la clé `insight_feedback.insight_key` de
+  `priority_label:<ancien>` vers `priority_label:<nouveau>`, sans recréer la
+  ligne : son `created_at`, donc le rang de la priorité, reste intact ;
+- la suppression retire la ligne `priority_label:<nom>` avant de retirer le
+  thème de `profiles.labels`.
+
+Chaque étape passe par `enchainer` et expose son nom si elle échoue. Le chemin
+de fusion n'a pas été modifié : il traitait déjà les collisions.
+
+Vérification : `npx tsc --noEmit` et `npm run build` verts (19 routes). Le
+dépôt ne contient aucun harnais de tests TypeScript ; `npm run lint` ne peut
+pas tourner sans interaction car ESLint n'est pas encore configuré.
+
+**Les priorités orphelines déjà présentes en base n'ont été ni comptées ni
+supprimées.** Leur nettoyage reste une décision explicite de David, car il
+touche des données existantes.

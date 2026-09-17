@@ -1414,7 +1414,8 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
     revalidatePath("/");
     return { ok: true, message: `« ${oldName} » fusionné dans « ${clean} ».` };
   }
-  // LES SIX ÉCRITURES S'ENCHAÎNENT, ET ELLES S'ARRÊTENT — elles étaient nues
+  // LES HUIT ÉCRITURES S'ENCHAÎNENT, ET ELLES S'ARRÊTENT — les six
+  // historiques étaient nues
   // (`await supabase…` sans `const r =`), donc une panne au milieu laissait le
   // thème à moitié renommé et l'écran répondait « renommé partout ». L'ordre
   // est celui de `_fusionnerLabels`, pour la même raison : la liste maîtresse
@@ -1460,6 +1461,44 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
       ecrire: async () =>
         (await supabase.from("theme_objectifs").update({ label: clean })
           .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      // Le thème participe à la clé d'unicité des retours. Dans le chemin
+      // simple la cible n'existe pas, donc un UPDATE suffit et conserve toute
+      // l'histoire du conseil écarté ou appliqué.
+      nom: "retours sur les conseils",
+      ecrire: async () => {
+        const avant = await supabase.from("reco_feedback").select("id")
+          .eq("user_id", user.id).eq("theme", oldName);
+        if (avant.error) return avant.error;
+        const ids = (avant.data ?? []).map((row) => row.id);
+        if (ids.length === 0) return null;
+        const maj = await supabase.from("reco_feedback").update({ theme: clean })
+          .eq("user_id", user.id).in("id", ids).select("id");
+        if (maj.error) return maj.error;
+        return (maj.data ?? []).length === ids.length
+          ? null
+          : { message: "des retours n'ont pas été renommés" };
+      },
+    },
+    {
+      // UPDATE, jamais delete+insert : created_at porte l'ordre d'ancienneté
+      // des priorités et doit survivre au renommage du thème.
+      nom: "priorité du thème",
+      ecrire: async () => {
+        const avant = await supabase.from("insight_feedback").select("id")
+          .eq("user_id", user.id).eq("insight_key", `priority_label:${oldName}`);
+        if (avant.error) return avant.error;
+        const ids = (avant.data ?? []).map((row) => row.id);
+        if (ids.length === 0) return null;
+        const maj = await supabase.from("insight_feedback")
+          .update({ insight_key: `priority_label:${clean}` })
+          .eq("user_id", user.id).in("id", ids).select("id");
+        if (maj.error) return maj.error;
+        return (maj.data ?? []).length === ids.length
+          ? null
+          : { message: "la priorité n'a pas été renommée" };
+      },
     },
     {
       nom: "posts Instagram",
@@ -1521,8 +1560,8 @@ export async function deleteLabel(name: string) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  // MÊME ENCHAÎNEMENT QUE `renameLabel`, et pour la même raison : ces cinq
-  // écritures étaient nues, donc une panne au milieu laissait le thème
+  // MÊME ENCHAÎNEMENT QUE `renameLabel`, et pour la même raison : les cinq
+  // écritures historiques étaient nues, donc une panne au milieu laissait le thème
   // à moitié supprimé sous un « supprimé partout ». La liste maîtresse passe EN
   // DERNIER : un arrêt laisse le thème visible, donc relançable.
   let listeRefusee = false;
@@ -1556,6 +1595,25 @@ export async function deleteLabel(name: string) {
       ecrire: async () =>
         (await supabase.from("theme_objectifs").delete()
           .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      // Une priorité désigne un thème par son nom dans la clé. La retirer
+      // avant la liste maîtresse empêche une étoile orpheline d'occuper l'une
+      // des trois places de conseil.
+      nom: "priorité du thème",
+      ecrire: async () => {
+        const avant = await supabase.from("insight_feedback").select("id")
+          .eq("user_id", user.id).eq("insight_key", `priority_label:${name}`);
+        if (avant.error) return avant.error;
+        const ids = (avant.data ?? []).map((row) => row.id);
+        if (ids.length === 0) return null;
+        const suppression = await supabase.from("insight_feedback").delete()
+          .eq("user_id", user.id).in("id", ids).select("id");
+        if (suppression.error) return suppression.error;
+        return (suppression.data ?? []).length === ids.length
+          ? null
+          : { message: "la priorité n'a pas été supprimée" };
+      },
     },
     {
       nom: "posts Instagram",

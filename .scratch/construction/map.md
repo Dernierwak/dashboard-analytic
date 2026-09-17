@@ -840,7 +840,11 @@ Sa revue a ouvert deux tickets :
 l'étoile est une **clé** `priority_label:<nom>` que le renommage simple ne
 propage pas et que la suppression ne retire pas, donc un thème renommé perd ses
 conseils et un thème effacé consomme en silence une des trois places
-(`CLAUDE.md` §1) ; et
+(`CLAUDE.md` §1). **Résolu** : le renommage propage désormais
+`reco_feedback.theme` et met à jour la clé de priorité sans recréer sa ligne
+(le rang `created_at` tient) ; la suppression retire cette clé avant la liste
+maîtresse. Les orphelines historiques restent volontairement intactes, en
+attente d'une décision de David ; et
 [46 · La période des coûts peut s'inverser](issues/46-la-periode-de-couts-peut-s-inverser.md) —
 **hors de ce ticket**, dans du travail non commité porté par un autre chantier
 (`lib/couts.ts`, `bandeau-commandes.tsx`, `prototype-switcher.tsx`), donc écrit
