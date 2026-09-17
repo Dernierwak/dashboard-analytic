@@ -1,21 +1,22 @@
-// UNE ÉCRITURE QUI EN ENTRAÎNE SIX — ET CE QU'ON DIT QUAND ELLE S'ARRÊTE AU
+// UNE ÉCRITURE QUI EN ENTRAÎNE NEUF — ET CE QU'ON DIT QUAND ELLE S'ARRÊTE AU
 // MILIEU.
 //
-// Renommer ou supprimer un thème touche jusqu'à SIX tables : la liste maîtresse
+// Renommer un thème touche NEUF tables : la liste maîtresse
 // (`profiles.labels`), les assignations Meta et Google, les actions décidées,
-// les événements GA4 du thème, son objectif, et les posts Instagram. PostgREST
-// n'a pas de transaction : ce sont six requêtes distinctes, et rien n'annule
-// les précédentes quand la troisième échoue.
+// les événements GA4 du thème, son objectif, les retours sur ses conseils, son
+// étoile de priorité, et les posts Instagram. PostgREST n'a pas de transaction :
+// ce sont neuf requêtes distinctes, et rien n'annule les précédentes quand la
+// troisième échoue.
 //
-// Avant ce module, ces six `await` étaient NUS — leur résultat n'était même pas
+// Avant ce module, ces `await` étaient NUS — leur résultat n'était même pas
 // capturé. Une panne au milieu laissait le compte avec un thème à moitié
 // renommé, et l'écran répondait « renommé partout ». C'est le piège de
-// `CLAUDE.md` §8 posé six fois d'affilée, et le plus cher des trois : il produit
+// `CLAUDE.md` §8 posé une fois par étape, et le plus cher des trois : il produit
 // un état incohérent, pas seulement un silence.
 //
 // ── POURQUOI PAS UNE FONCTION SQL `SECURITY DEFINER` ────────────────────────
 //
-// Le ticket 19 pose la question, et elle est juste : six écritures qui doivent
+// Le ticket 19 pose la question, et elle est juste : neuf écritures qui doivent
 // tenir ensemble SONT une transaction. Elle reste la bonne réponse le jour où
 // la base se joue. Elle n'est pas prenable aujourd'hui — aucun accès à la base,
 // donc une migration écrite et NON JOUÉE (c'est déjà le cas des tickets 03, 04
@@ -48,8 +49,8 @@ export type Enchainement = { ok: true } | { ok: false; etape: string };
 
 /** Les étapes dans l'ORDRE, jusqu'à la première qui échoue.
  *
- *  En série et jamais en parallèle : `Promise.all` lancerait les six d'un coup,
- *  donc écrirait les cinq autres alors que la première a déjà échoué — c'est
+ *  En série et jamais en parallèle : `Promise.all` lancerait les neuf d'un coup,
+ *  donc écrirait les huit autres alors que la première a déjà échoué — c'est
  *  exactement l'état incohérent qu'on cherche à éviter. L'ordre est la seule
  *  chose qui rend un arrêt rattrapable. */
 export async function enchainer(etapes: Etape[]): Promise<Enchainement> {

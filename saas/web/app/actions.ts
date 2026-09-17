@@ -7,6 +7,11 @@ import { getCompteActif, COOKIE_COMPTE } from "@/lib/account";
 import type { CampagneNote } from "@/lib/carnet";
 import { etatDernierRun, type EtatRun } from "@/lib/github-workflow";
 import { enchainer, arretCascade } from "@/lib/cascade";
+import {
+  deplacerEtoile,
+  deplacerRetoursConseils,
+  retirerEtoile,
+} from "@/lib/deplacer-theme";
 
 // « too_hard » : ni un rejet ni un accord — « je vois l'intérêt mais je ne sais
 // pas le faire ». C'est le retour le plus utile qu'on puisse recevoir : il dit
@@ -1307,48 +1312,17 @@ async function _fusionnerLabels(
     if (r.error) return { ok: false, etape: "objectif du thème" };
   }
   {
-    // `theme` est dans la clé d'unicité de reco_feedback (TASK-025, scoping par
-    // thème d'un « pas pour moi »/commentaire) — même traitement de conflit.
-    const [oldFeedback, targetFeedback] = await Promise.all([
-      supabase.from("reco_feedback").select("id, reco_key, week_start")
-        .eq("user_id", uid).eq("theme", oldName),
-      supabase.from("reco_feedback").select("reco_key, week_start")
-        .eq("user_id", uid).eq("theme", target),
-    ]);
-    if (oldFeedback.error || targetFeedback.error) return { ok: false, etape: "retours sur les conseils" };
-    const targetKeys = new Set(
-      (targetFeedback.data ?? []).map((r) => `${r.reco_key}::${r.week_start}`)
-    );
-    for (const row of oldFeedback.data ?? []) {
-      const key = `${row.reco_key}::${row.week_start}`;
-      const r = targetKeys.has(key)
-        ? await supabase.from("reco_feedback").delete().eq("id", row.id)
-        : await supabase.from("reco_feedback").update({ theme: target }).eq("id", row.id);
-      if (r.error) return { ok: false, etape: "retours sur les conseils" };
-    }
-  }
-  {
-    // L'étoile « thème prioritaire » vit dans insight_feedback sous la clé
-    // priority_label:<nom> (voir togglePriorityLabel). En UPDATE-ant la ligne
-    // (plutôt que delete+insert), `created_at` ne bouge pas : le rang de
-    // priorité de l'absorbé (ordre d'ancienneté) passe intact à la cible.
-    const oldKey = `priority_label:${oldName}`;
-    const targetKey = `priority_label:${target}`;
-    const [oldStar, targetStar] = await Promise.all([
-      supabase.from("insight_feedback").select("id")
-        .eq("user_id", uid).eq("insight_key", oldKey).limit(1),
-      supabase.from("insight_feedback").select("id")
-        .eq("user_id", uid).eq("insight_key", targetKey).limit(1),
-    ]);
-    if (oldStar.error || targetStar.error) return { ok: false, etape: "priorité du thème" };
-    if ((oldStar.data ?? []).length > 0) {
-      const r = (targetStar.data ?? []).length > 0
-        ? await supabase.from("insight_feedback").delete()
-            .eq("user_id", uid).eq("insight_key", oldKey)
-        : await supabase.from("insight_feedback").update({ insight_key: targetKey })
-            .eq("user_id", uid).eq("insight_key", oldKey);
-      if (r.error) return { ok: false, etape: "priorité du thème" };
-    }
+    // LES DEUX TABLES OÙ LE NOM DU THÈME EST DANS UNE CLÉ D'UNICITÉ — et donc
+    // les deux seules où un renommage peut heurter une ligne déjà en place.
+    // Elles vivent dans `lib/deplacer-theme.ts` depuis le ticket 45 : le
+    // renommage SIMPLE les avait oubliées, et les recopier ici aurait posé la
+    // même gestion de conflit à deux endroits. Un seul exemplaire, deux
+    // appelants — et il s'exécute dans un harnais, ce qu'`actions.ts` ne peut
+    // pas faire.
+    if (await deplacerRetoursConseils(supabase, uid, oldName, target))
+      return { ok: false, etape: "retours sur les conseils" };
+    if (await deplacerEtoile(supabase, uid, oldName, target))
+      return { ok: false, etape: "priorité du thème" };
   }
   {
     const posts = await supabase.from("instagram_organic_posts").select("id, labels")
@@ -1414,7 +1388,7 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
     revalidatePath("/");
     return { ok: true, message: `« ${oldName} » fusionné dans « ${clean} ».` };
   }
-  // LES SIX ÉCRITURES S'ENCHAÎNENT, ET ELLES S'ARRÊTENT — elles étaient nues
+  // LES ÉCRITURES S'ENCHAÎNENT, ET ELLES S'ARRÊTENT — elles étaient nues
   // (`await supabase…` sans `const r =`), donc une panne au milieu laissait le
   // thème à moitié renommé et l'écran répondait « renommé partout ». L'ordre
   // est celui de `_fusionnerLabels`, pour la même raison : la liste maîtresse
@@ -1460,6 +1434,23 @@ export async function renameLabel(oldName: string, newName: string, confirmerFus
       ecrire: async () =>
         (await supabase.from("theme_objectifs").update({ label: clean })
           .eq("user_id", user.id).eq("label", oldName)).error,
+    },
+    {
+      // LE MUSELLEMENT D'UN CONSEIL EST POSÉ PAR (conseil, THÈME) — TASK-025.
+      // Sans cette étape, un « pas pour moi » restait sur l'ancien nom : il ne
+      // s'appliquait plus à rien, et le conseil écarté revenait la semaine
+      // d'après comme si personne ne l'avait jamais refusé.
+      nom: "retours sur les conseils",
+      ecrire: () => deplacerRetoursConseils(supabase, user.id, oldName, clean),
+    },
+    {
+      // L'ÉTOILE N'EST PAS UNE COLONNE : c'est une ligne `insight_feedback`
+      // dont la CLÉ porte le nom du thème. Sans cette étape, renommer un thème
+      // étoilé lui retirait son étoile sans un mot — et `CLAUDE.md` §1 dit que
+      // Pulse ne conseille QUE dans les thèmes étoilés : le client perdait tous
+      // les conseils de ce thème en croyant l'avoir seulement renommé.
+      nom: "priorité du thème",
+      ecrire: () => deplacerEtoile(supabase, user.id, oldName, clean),
     },
     {
       nom: "posts Instagram",
@@ -1521,7 +1512,7 @@ export async function deleteLabel(name: string) {
   const user = { id: compte.uid };
   if (!compte.peutEditer)
     return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-  // MÊME ENCHAÎNEMENT QUE `renameLabel`, et pour la même raison : ces cinq
+  // MÊME ENCHAÎNEMENT QUE `renameLabel`, et pour la même raison : ces
   // écritures étaient nues, donc une panne au milieu laissait le thème
   // à moitié supprimé sous un « supprimé partout ». La liste maîtresse passe EN
   // DERNIER : un arrêt laisse le thème visible, donc relançable.
@@ -1556,6 +1547,15 @@ export async function deleteLabel(name: string) {
       ecrire: async () =>
         (await supabase.from("theme_objectifs").delete()
           .eq("user_id", user.id).eq("label", name)).error,
+    },
+    {
+      // L'ÉTOILE SURVIVAIT AU THÈME, ET ELLE COÛTAIT UNE DES TROIS PLACES.
+      // `build_report.py` compte les CLÉS `priority_label:` sans vérifier qu'un
+      // thème les porte encore : un thème supprimé consommait en silence une
+      // des trois places où Pulse conseille, et le client ne comprenait pas
+      // pourquoi son troisième thème restait sans conseils.
+      nom: "priorité du thème",
+      ecrire: () => retirerEtoile(supabase, user.id, name),
     },
     {
       nom: "posts Instagram",
