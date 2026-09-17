@@ -1613,6 +1613,36 @@ def _strip_reco(r: dict) -> dict:
     return {k: r.get(k) for k in RECO_FIELDS}
 
 
+# COMBIEN DE CAMPAGNES LA CARTE D'UN THÈME PUBLIE — et pourquoi un plafond.
+#
+# Ce bloc n'est pas la liste des campagnes du thème, c'est un EXTRAIT : les plus
+# grosses dépenses, assez pour reconnaître le thème et réparer une étiquette
+# sans faire du payload un export. Chaque ligne y est éditable
+# (`CampaignLabelSelect`), donc chacune coûte du poids ET du rendu.
+#
+# LE PLAFOND RESTE, ET IL SE DIT (ticket 34). Ce qui a changé, c'est que
+# l'extrait ne se fait plus passer pour le tout : `n_campaigns` et
+# `n_campaigns_canal` portent le compte entier, et le front en déduit ce qui
+# manque au lieu de le recompter ici. Les campagnes hors de l'extrait se
+# ré-étiquettent sur `/meta` et `/google`, qui les portent TOUTES.
+_CAMPAGNES_PUBLIEES = 8
+
+
+def _compte_par_canal(campagnes: list[dict]) -> dict:
+    """Combien de campagnes ce thème porte sur chaque régie — exactement.
+
+    Attend la liste ENTIÈRE des campagnes du thème, jamais l'extrait publié :
+    c'est toute la raison d'être de cette fonction (ticket 34, et le commentaire
+    posé sur `n_campaigns_canal` dans `build_payload`).
+    """
+    par_canal: dict = {}
+    for c in campagnes:
+        canal = c.get("channel")
+        if canal:
+            par_canal[canal] = par_canal.get(canal, 0) + 1
+    return par_canal
+
+
 # `_compares_channels` VIVAIT ICI, ET ELLE EST MORTE LE 2026-09-12.
 #
 # Elle écartait tout conseil qui nommait Meta ET Google avec un mot de
@@ -4120,6 +4150,21 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                            if tc is not None else 0.0),
             "best_campaign": t_camps[0]["name"] if t_camps else None,
             "n_campaigns": len(t_camps),
+            # LE COMPTE PAR RÉGIE, ET IL NE SE DÉDUIT PAS DE `campaigns`
+            # (ticket 34). La liste publiée plus bas s'arrête à huit, et ce
+            # sont les huit plus GROSSES DÉPENSES — `build_matrix` trie par
+            # dépense décroissante (`saas/recos_ia/insights.py`). En compter
+            # les canaux se trompe donc deux fois : sur le nombre (« huit »
+            # sur un thème qui en porte quatorze) et, plus grave, sur la
+            # PRÉSENCE — douze campagnes Meta grasses évincent les deux
+            # campagnes Google du thème, et la porte vers `/google` ne
+            # s'ouvre plus du tout.
+            #
+            # Ce compte-ci porte sur `t_camps` ENTIER. Une régie où le thème
+            # ne tourne pas n'a pas de clé : un `0` écrit là serait vrai mais
+            # ne dirait plus rien de plus que l'absence, et laisserait chaque
+            # lecteur inventer son propre `> 0`.
+            "n_campaigns_canal": _compte_par_canal(t_camps),
         }
         try:
             _series = _theme_series(lbl, summary.get("revenue"))
@@ -4147,7 +4192,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             "campaigns": [
                 {k: c.get(k) for k in ("name", "channel", "key", "label",
                                        "label_source", "spend", "revenue", "ctr", "cpc")}
-                for c in t_camps[:8]
+                for c in t_camps[:_CAMPAGNES_PUBLIEES]
             ],
             # `t_veille` est TOUJOURS AJOUTÉE, jamais mélangée à la coupe des
             # 2+1 (thèmes rédigés par Gemini) ni comptée dans les 3 (thèmes

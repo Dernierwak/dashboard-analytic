@@ -20,6 +20,7 @@ import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
 import { CANAUX, PorteCanal } from "@/components/porte-canal";
+import { compteCampagnes, regiesDuTheme } from "@/lib/campagnes-theme";
 import { ancreTheme } from "@/lib/liens";
 
 // UNE SEULE CARTE PAR THÈME, ET ELLE PORTE TOUT.
@@ -267,6 +268,13 @@ export function ThemeCard({
   const marqueurs = s
     ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
     : [];
+
+  // COMBIEN DE CAMPAGNES CE THÈME PORTE VRAIMENT — et combien la liste en
+  // montre. `theme.campaigns` est un extrait des huit plus grosses dépenses
+  // (ticket 34) ; ces deux-là ne se recomptent pas ici, ils se lisent
+  // (`lib/campagnes-theme.ts`).
+  const campagnes = compteCampagnes(theme);
+  const regiesDuManque = regiesDuTheme(theme).map((r) => CANAUX[r.canal].nom);
 
   // ── LE PLI A DISPARU ──────────────────────────────────────────────────────
   //
@@ -612,12 +620,19 @@ export function ThemeCard({
         <PorteCanal theme={theme} fenetre={fenetreDates} />
 
         {/* Les campagnes du thème — c'est ici qu'on répare une étiquette. En
-            pied, replié : on ne vient pas sur cette carte pour ça. */}
+            pied, replié : on ne vient pas sur cette carte pour ça.
+
+            LE COMPTE DU TITRE EST CELUI DU THÈME, PAS CELUI DE LA LISTE
+            (ticket 34). Il écrivait `theme.campaigns.length`, c'est-à-dire la
+            longueur d'un extrait plafonné à huit : « Ses campagnes (8) » sur un
+            thème qui en porte douze, un chiffre qui n'était pas le nombre de
+            campagnes du thème et se présentait comme s'il l'était
+            (`CLAUDE.md` §7). */}
         {theme.campaigns.length > 0 && (
           <details className="group border-t border-line">
             <summary className="flex items-center gap-2 cursor-pointer select-none list-none px-4 py-2.5">
               <span className="text-[11px] uppercase tracking-wide text-faint font-bold">
-                Ses campagnes <span className="text-faint/70">({theme.campaigns.length})</span>
+                Ses campagnes <span className="text-faint/70">({campagnes.total})</span>
               </span>
               <span className="text-[11px] text-brand font-semibold group-open:hidden">
                 déplier ▾
@@ -660,6 +675,21 @@ export function ThemeCard({
                   );
                 })}
               </ScrollList>
+              {/* CE QUI N'EST PAS DANS LA LISTE SE DIT, ET SE DIT OÙ ALLER LE
+                  CHERCHER. Réparer une étiquette est la seule raison d'être de
+                  ce bloc : sans cette phrase, les campagnes hors de l'extrait
+                  ne sont nulle part, y compris pour être ré-étiquetées. Elles
+                  le sont sur les pages de régie, qui les portent TOUTES — et la
+                  porte juste au-dessus y mène en gardant la fenêtre du bilan. */}
+              {campagnes.manquantes > 0 && regiesDuManque.length > 0 && (
+                <p className="text-[10.5px] text-faint/80 mt-2.5 leading-relaxed">
+                  Cette liste garde les {campagnes.affichees} plus grosses dépenses.
+                  Les {campagnes.manquantes} autres campagnes de ce thème s&apos;étiquettent
+                  sur {regiesDuManque.join(" et ")}, qui {regiesDuManque.length > 1
+                    ? "les portent"
+                    : "les porte"} toutes.
+                </p>
+              )}
             </div>
           </details>
         )}

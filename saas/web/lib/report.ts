@@ -355,7 +355,24 @@ export type ThemeSummary = {
    *  passe pas — la ligne disparaît, elle n'affiche pas 0 CHF. */
   spend_week: number | null;
   best_campaign: string | null;
+  /** Le nombre EXACT de campagnes du thème sur la fenêtre du bilan — pas la
+   *  longueur de `ThemeFocus.campaigns`, qui est un extrait plafonné. */
   n_campaigns: number;
+  /**
+   * LE MÊME COMPTE, RÉGIE PAR RÉGIE (ticket 34).
+   *
+   * `ThemeFocus.campaigns` s'arrête aux huit plus grosses dépenses du thème :
+   * en compter les canaux se trompe sur le nombre ET sur la PRÉSENCE — douze
+   * campagnes Meta grasses évincent les deux campagnes Google du thème, et la
+   * porte vers `/google` ne s'ouvre plus du tout. Ce compte-ci porte sur la
+   * liste entière, côté worker.
+   *
+   * Une régie où le thème ne tourne pas n'a **pas de clé**, elle ne vaut pas 0.
+   * `undefined`/`null` = payload publié avant ce ticket : on ne sait pas, et
+   * `lib/campagnes-theme.ts` retombe alors sur l'extrait — le comportement
+   * d'avant, jamais une invention rétroactive.
+   */
+  n_campaigns_canal?: Partial<Record<"meta" | "google", number>> | null;
   /**
    * ASSEZ DE DÉPENSE POUR QU'ON SE PRONONCE — le drapeau de la vue
    * `theme_regroupement`, posé par `fusionneRegroupement` (ticket 22).

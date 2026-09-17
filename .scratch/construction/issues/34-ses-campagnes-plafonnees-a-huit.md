@@ -1,7 +1,7 @@
 # « Ses campagnes (8) » sur un thème qui en porte douze
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -44,3 +44,70 @@ La porte vers la plateforme n'affiche **aucun** compte par plateforme à cause d
 sans le dire. Le plafond mord aussi sur la PRÉSENCE — les huit gardées sont les
 huit plus grosses dépenses, donc une régie où le thème dépense peu peut ne pas
 ouvrir de porte du tout sur un thème qui porte plus de huit campagnes.
+
+## Answer
+
+### Ce qui a été tranché
+
+**Le plafond reste à huit, et c'est l'extrait qui arrête de se faire passer pour
+le tout.** Le monter avait un coût réel (le payload est déjà gros, chaque ligne
+est éditable) sans rien régler : à douze, un thème à quinze campagnes reposerait
+la même question. La troisième piste du ticket est la bonne — `/meta` et
+`/google` portent TOUTES les campagnes, la porte du [14](14-la-porte-vers-la-plateforme.md)
+y mène, et il suffisait de le **dire**.
+
+### Ce qui a été construit
+
+**Le compte exact, régie par régie** — `summary.n_campaigns_canal`
+(`build_report.py`, `_compte_par_canal`). Il porte sur `t_camps` ENTIER, jamais
+sur l'extrait. Une régie où le thème ne tourne pas n'a **pas de clé** : un `0`
+écrit là serait vrai mais ne dirait rien de plus que l'absence. Le plafond
+s'appelle désormais `_CAMPAGNES_PUBLIEES` et porte sa raison d'être.
+
+**Un seul endroit qui lit ces comptes** — `saas/web/lib/campagnes-theme.ts`.
+`compteCampagnes` rend `{ total, affichees, manquantes }`, `regiesDuTheme` rend
+les régies dans l'ordre de lecture des pages avec leur compte. Sur un payload
+publié **avant** ce ticket, il retombe sur l'extrait — le comportement d'avant —
+mais ne prétend rien : `n` vaut `null`, « on ne sait pas », jamais un nombre
+deviné.
+
+**Le pied dit le compte du thème** — « Ses campagnes (12) » sur un thème qui en
+porte douze, et non plus (8).
+
+**Le dépliage rattrape ce qui manque**, ce qu'il ne faisait pas : sous la liste,
+quand elle est tronquée, « Cette liste garde les 8 plus grosses dépenses. Les 4
+autres campagnes de ce thème s'étiquettent sur Meta et Google, qui les portent
+toutes. » Les régies nommées sont les vraies, tirées du compte exact.
+
+**La porte ne perd plus de régie** — `destinations()` lisait l'extrait, donc sur
+un thème à douze campagnes Meta grasses et deux Google maigres, la porte vers
+`/google` **ne s'ouvrait pas**. Elle lit maintenant le compte entier. C'est la
+moitié du ticket qui ne se voyait nulle part et qui coûtait le plus.
+
+### Pourquoi la porte n'affiche toujours pas de chiffre
+
+Le ticket note qu'elle n'en affiche aucun « à cause de ça ». Le chiffre est
+maintenant exact et disponible — il n'est pourtant pas affiché, pour une **autre**
+raison que celle du 14 : Instagram est dans la même rangée, et son chiffre
+(`summary.posts`) se mesure sur tout l'historique quand celui des campagnes se
+mesure sur la fenêtre du bilan. Une rangée où « 7 » et « 12 » ne compteraient pas
+la même chose serait pire que pas de chiffre. Le total reste affiché trente
+pixels plus bas. **La donnée est là si on veut revenir dessus** — c'est une
+décision d'affichage, plus un blocage.
+
+### Vérifié
+
+`.scratch/construction/harnais/34-le-compte-des-campagnes/` — **15 vérifications**
+côté worker (`build_payload` devant le faux lecteur du 16) et **19** côté web
+(`lib/campagnes-theme.ts` transpilé et exécuté). Le jeu est le même des deux
+côtés : douze campagnes Meta grasses, deux Google maigres, pour que la perte de
+régie soit prouvée et pas seulement décrite.
+
+`npx tsc --noEmit` et `npm run build` verts, **19 routes**.
+`python3.12 -m py_compile` sur `build_report.py`.
+
+**Ça ne se voit qu'après un passage du worker** — le cron du Jour de travail
+(07:00 UTC) ou un lancement à la main depuis GitHub Actions (`weekly-fetch.yml`,
+`report_only`) : `n_campaigns_canal` n'existe pas dans les payloads déjà
+publiés, et jusque-là les deux écrans se replient sur l'extrait, exactement
+comme avant.

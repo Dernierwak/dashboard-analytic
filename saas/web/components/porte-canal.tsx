@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { porteVersCanal, type Canal } from "@/lib/liens";
+import { regiesDuTheme } from "@/lib/campagnes-theme";
 import type { ThemeFocus } from "@/lib/report";
 
 // ── LA SORTIE DE LA CARTE D'UN THÈME ─────────────────────────────────────────
@@ -13,19 +14,20 @@ import type { ThemeFocus } from "@/lib/report";
 // clique pas (`.scratch/refonte/issues/09-la-porte-vers-la-plateforme.md`).
 //
 // RIEN N'EST CALCULÉ ICI, ET AUCUN CHIFFRE N'EST AFFICHÉ. La porte dit OÙ ce
-// thème tourne, pas combien il y porte : `theme.campaigns` est **plafonné à
-// huit** par le worker (`build_report.py`, `t_camps[:8]`), donc un « 8
-// campagnes » écrit d'après cette liste vaudrait « huit ou plus » sans le dire
-// — un chiffre qu'on ne peut pas tenir (`CLAUDE.md` §7). Le compte exact
-// existe (`summary.n_campaigns`) et il est déjà affiché trente pixels plus
-// bas, sur « Ses campagnes » : le répéter ici n'apprendrait rien.
+// thème tourne, pas combien il y porte. Le compte exact existe désormais régie
+// par régie (`summary.n_campaigns_canal`, ticket 34) et ce module le lit — mais
+// pour la PRÉSENCE seulement, et c'est délibéré : Instagram est là aussi, et
+// son chiffre (`summary.posts`) se mesure sur tout l'historique quand celui des
+// campagnes se mesure sur la fenêtre du bilan. Une rangée où « 7 » et « 12 » ne
+// compteraient pas la même chose serait pire que pas de chiffre du tout. Le
+// total, lui, est déjà affiché trente pixels plus bas sur « Ses campagnes ».
 //
-// LE PLAFOND MORD AUSSI SUR LA PRÉSENCE, et c'est la limite assumée de ce
-// module : les huit campagnes gardées sont les huit plus grosses dépenses du
-// thème, donc une régie où il dépense peu peut ne pas ouvrir de porte sur un
-// thème qui en porte plus de huit. Rien dans le payload ne dit mieux — et une
-// porte manquante se répare d'un clic dans la colonne de gauche, là où une
-// porte qui ment se paie en confiance.
+// LE PLAFOND NE MORD PLUS SUR LA PRÉSENCE, et c'était le défaut du ticket 34 :
+// `theme.campaigns` est un extrait des huit plus GROSSES dépenses, donc en
+// déduire les régies faisait disparaître celle où le thème dépense peu — sur un
+// thème à douze campagnes Meta et deux Google, la porte vers `/google` ne
+// s'ouvrait pas. `regiesDuTheme` (`lib/campagnes-theme.ts`) lit le compte
+// entier, et ne retombe sur l'extrait que pour un payload antérieur au ticket.
 //
 // PAS DE FENÊTRE, PAS DE PORTE. C'est la seule chose que ce module refuse de
 // faire : ouvrir sans la période du bilan. Le lien emporte le thème ET la
@@ -44,8 +46,7 @@ export const CANAUX: Record<Canal, { glyphe: string; couleur: string; nom: strin
  *  deux régies puis l'organique. Une plateforme où il n'a rien n'ouvre aucune
  *  porte — promettre une page vide est pire que de ne rien promettre. */
 function destinations(theme: ThemeFocus): Canal[] {
-  const regies = new Set(theme.campaigns.map((c) => c.channel));
-  const sorties: Canal[] = (["meta", "google"] as const).filter((c) => regies.has(c));
+  const sorties: Canal[] = regiesDuTheme(theme).map((r) => r.canal);
   if ((theme.summary.posts ?? 0) > 0) sorties.push("instagram");
   return sorties;
 }
