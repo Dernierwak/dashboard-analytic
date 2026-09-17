@@ -849,4 +849,8 @@ attente d'une décision de David ; et
 **hors de ce ticket**, dans du travail non commité porté par un autre chantier
 (`lib/couts.ts`, `bandeau-commandes.tsx`, `prototype-switcher.tsx`), donc écrit
 plutôt que corrigé (§5) : le premier des trois affiche une **courbe vide et des
-totaux à zéro** sur une fenêtre à l'envers, sans un mot.
+totaux à zéro** sur une fenêtre à l'envers, sans un mot. **Résolu** : la
+résolution rabat toute fenêtre future sur le dernier jour plein avant de compter,
+les dates du bandeau portent cette ancre en maximum, les écritures effacent
+l'ancien `p`, et le sélecteur de prototype ne pose plus d'écouteur en production.
+4 régressions rejouées ; typecheck et build verts, 19 routes.

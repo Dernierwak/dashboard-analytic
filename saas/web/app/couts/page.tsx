@@ -162,6 +162,7 @@ export default async function CoutsPage({
           jours: data.periode.presetJours,
           from: data.periode.preset === "custom" ? data.periode.from : undefined,
           to: data.periode.preset === "custom" ? data.periode.to : undefined,
+          max: data.periode.max,
         }}
         themes={univers}
         themesActifs={data.labelsChoisis}

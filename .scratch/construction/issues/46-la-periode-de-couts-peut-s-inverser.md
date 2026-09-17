@@ -1,7 +1,7 @@
 # La période des coûts peut s'inverser, et le bandeau reste inerte sur un vieux lien
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -74,3 +74,17 @@ fait.
 
 Livrer l'inversion de fenêtre seule, vérifiée : c'est celle qui affiche des
 chiffres faux. Les deux autres sont des commandes inertes, pas des mensonges.
+
+## Answer
+
+Résolu le 2026-09-17. La résolution de période est désormais une fonction pure
+testée : une borne de début postérieure au dernier jour plein est rabattue sur
+ce jour avant de calculer la durée, sans `Math.max` capable de masquer une
+inversion. Le bandeau borne ses deux champs avec cette même ancre.
+
+Les deux défauts de commande sont également corrigés : une présélection ou une
+plage libre efface l'ancien paramètre `p` (et `d` prime aussi à la lecture), et
+le sélecteur de prototype ne pose aucun écouteur clavier en production.
+
+Vérifié par 4 tests de régression, `npx tsc --noEmit` et `npm run build` : 19
+routes.

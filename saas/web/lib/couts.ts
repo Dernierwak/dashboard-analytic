@@ -1,5 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
+import {
+  dAjout,
+  dCourt,
+  dIso,
+  dJours,
+  dParse,
+  MOIS_ABR,
+  resoudrePeriode,
+  type PeriodeCouts,
+} from "@/lib/periode-couts";
 
 // Couche données de la page Coûts.
 //
@@ -40,40 +50,11 @@ import { getCompteActif } from "@/lib/account";
 // Il ne gouverne plus rien — un nombre qu'on abandonne se raconte, il ne
 // s'efface pas en silence.
 
-const MOIS_FULL = [
-  "janvier", "février", "mars", "avril", "mai", "juin",
-  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-];
-const MOIS_ABR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-
-// Dates en heure LOCALE. `new Date("2026-08-12")` est interprété en UTC et
-// recule d'un jour à l'ouest de Greenwich : une dépense du 1er août tomberait
-// en juillet, et le mois entier serait faux d'un jour.
-function dParse(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1);
-}
-function dIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function dAjout(s: string, n: number): string {
-  const d = dParse(s);
-  d.setDate(d.getDate() + n);
-  return dIso(d);
-}
-function dJours(from: string, to: string): number {
-  return Math.round((dParse(to).getTime() - dParse(from).getTime()) / 86_400_000) + 1;
-}
 function dLundi(s: string): string {
   const d = dParse(s);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return dIso(d);
 }
-function dCourt(s: string): string {
-  const d = dParse(s);
-  return `${String(d.getDate()).padStart(2, "0")} ${MOIS_ABR[d.getMonth()]}`;
-}
-
 // `ChannelCout` A DISPARU, et avec lui le tableau `channels`.
 //
 // Il ne restait de ce type qu'une dépense par plateforme (`spent` le mois,
@@ -138,21 +119,18 @@ export type AlerteJour = {
 
 /** Ce que l'utilisateur a demandé de voir — période et thèmes. */
 export type FiltreCouts = {
-  /** Preset : "30" | "90" | "mois" | "an" (défaut). Ignoré si from+to. */
+  /** La fenêtre en JOURS GLISSANTS — le vocabulaire du bandeau (`d`) :
+   *  7 / 14 / 30 / 90, et 0 pour « depuis le début ». Absent vaut 7, comme
+   *  partout ailleurs. Ignoré si from+to. */
+  jours?: number;
+  /** L'ANCIEN nom de la période de cette page ("30" | "90" | "mois" | "an").
+   *  Encore LU pour qu'aucun favori ni lien partagé ne casse, plus jamais
+   *  écrit — même extinction que `label` sur les pages canal (12 §5). */
   p?: string;
   from?: string;
   to?: string;
   /** Thèmes retenus ; vide = tous. */
   labels?: string[];
-};
-
-export type PeriodeCouts = {
-  from: string;
-  to: string;
-  jours: number;
-  preset: string;          // "30" | "90" | "mois" | "an" | "custom"
-  titre: string;           // « depuis janvier », « 30 derniers jours », « du 3 mar au 8 avr »
-  pas: "jour" | "semaine";
 };
 
 export type CoutsData = {
@@ -161,7 +139,6 @@ export type CoutsData = {
   // chacun, la même ici que dans le rapport.
   labels: string[];
   annee: number;
-  monthLabel: string;
   elapsed: number;    // fraction du MOIS écoulée (repère), 0..1
   elapsedAn: number;  // fraction de l'ANNÉE écoulée, en jours et non en mois
 
@@ -216,45 +193,6 @@ async function fetchAllRows<T>(
   }
 }
 
-/** Résout le filtre demandé en une période bornée, avec son pas d'affichage. */
-function resoudrePeriode(f: FiltreCouts, aujourdhui: string, yearStart: string, monthStart: string): PeriodeCouts {
-  const valide = (s?: string) => Boolean(s && /^\d{4}-\d{2}-\d{2}$/.test(s));
-  let from: string;
-  let to = aujourdhui;
-  let preset: string;
-  let titre: string;
-
-  if (valide(f.from) && valide(f.to) && f.from! <= f.to!) {
-    from = f.from!;
-    to = f.to!;
-    preset = "custom";
-    titre = `du ${dCourt(from)} au ${dCourt(to)}`;
-  } else if (f.p === "30") {
-    from = dAjout(aujourdhui, -29);
-    preset = "30";
-    titre = "30 derniers jours";
-  } else if (f.p === "90") {
-    from = dAjout(aujourdhui, -89);
-    preset = "90";
-    titre = "90 derniers jours";
-  } else if (f.p === "mois") {
-    from = monthStart;
-    preset = "mois";
-    titre = "ce mois-ci";
-  } else {
-    from = yearStart;
-    preset = "an";
-    titre = "depuis janvier";
-  }
-
-  const jours = Math.max(1, dJours(from, to));
-  // Au-delà de dix semaines, un point par jour donne un peigne illisible —
-  // `LineChart` dessine bien un point par colonne quel que soit n (TASK-033),
-  // mais un peigne à 90 dents reste un peigne. On agrège alors par semaine :
-  // la FORME reste, le bruit part.
-  return { from, to, jours, preset, titre, pas: jours > 70 ? "semaine" : "jour" };
-}
-
 export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -270,7 +208,48 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const elapsed = Math.min(1, now.getDate() / daysInMonth);
 
-  const periode = resoudrePeriode(filtre, aujourdhui, yearStart, monthStart);
+  // ── L'ANCRE DE LA FENÊTRE : LE DERNIER JOUR PLEIN, JAMAIS AUJOURD'HUI ─────
+  //
+  // Aligner les MOTS sans aligner l'ancre aurait produit deux fenêtres
+  // différentes sous un seul libellé : cette page finissait sur aujourd'hui,
+  // les pages canal finissent sur la veille — et reculent jusqu'au dernier jour
+  // de donnée quand la récolte a du retard (`makeWindow`, `lib/channels.ts`).
+  // La journée en cours est incomplète (`CLAUDE.md` §7) : son point de courbe
+  // se lit comme une chute, et sa dépense manque à la répartition.
+  //
+  // Les deux bornes se DEMANDENT à la base au lieu de se déduire des lignes
+  // déjà ramenées, parce que c'est la fenêtre de récolte qui dépend d'elles.
+  // Quatre requêtes d'une ligne : la borne est exacte, là où une marge de
+  // sécurité aurait été un chiffre inventé.
+  const bord = (table: string, ancien: boolean) =>
+    supabase
+      .from(table)
+      .select("date_start")
+      .eq("user_id", uid)
+      .order("date_start", { ascending: ancien })
+      .limit(1);
+  const bornesBrutes = await Promise.all([
+    bord("meta_ads_insights", false),
+    bord("google_ads_insights", false),
+    bord("meta_ads_insights", true),
+    bord("google_ads_insights", true),
+  ]);
+  const jourOuRien = (res: { data: unknown }) => {
+    const d = (res.data as { date_start: string }[] | null)?.[0]?.date_start;
+    return d ? String(d).slice(0, 10) : null;
+  };
+  const connus = (xs: (string | null)[]) => xs.filter((x): x is string => Boolean(x)).sort();
+  const derniers = connus([jourOuRien(bornesBrutes[0]), jourOuRien(bornesBrutes[1])]);
+  const premiers = connus([jourOuRien(bornesBrutes[2]), jourOuRien(bornesBrutes[3])]);
+  const veille = dAjout(aujourdhui, -1);
+  const dernierJour = derniers[derniers.length - 1] ?? null;
+
+  const periode = resoudrePeriode(filtre, {
+    ancre: dernierJour && dernierJour < veille ? dernierJour : veille,
+    premier: premiers[0] ?? null,
+    yearStart,
+    monthStart,
+  });
   const labelsChoisis = (filtre.labels ?? []).filter(Boolean);
   const filtreActif = labelsChoisis.length > 0;
   const retenu = new Set(labelsChoisis);
@@ -525,7 +504,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     email: compte.email,
     labels: (labelsRes.data?.[0]?.labels as string[] | null) ?? [],
     annee: y,
-    monthLabel: `${MOIS_FULL[m]} ${y}`,
     elapsed,
     elapsedAn,
     spentYear,
