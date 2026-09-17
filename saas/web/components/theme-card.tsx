@@ -20,7 +20,7 @@ import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
 import { CANAUX, PorteCanal } from "@/components/porte-canal";
-import { compteCampagnes, regiesDuTheme } from "@/lib/campagnes-theme";
+import { compteCampagnes, regiesDuManque } from "@/lib/campagnes-theme";
 import { ancreTheme } from "@/lib/liens";
 
 // UNE SEULE CARTE PAR THÈME, ET ELLE PORTE TOUT.
@@ -274,7 +274,13 @@ export function ThemeCard({
   // (ticket 34) ; ces deux-là ne se recomptent pas ici, ils se lisent
   // (`lib/campagnes-theme.ts`).
   const campagnes = compteCampagnes(theme);
-  const regiesDuManque = regiesDuTheme(theme).map((r) => CANAUX[r.canal].nom);
+  // OÙ SONT LES CAMPAGNES QUI NE SONT PAS DANS LA LISTE — et ce ne sont pas
+  // « les régies du thème ». Sur un thème à huit grosses campagnes Meta et une
+  // petite Google, la seule manquante est la Google : nommer les deux enverrait
+  // chercher sur `/meta` quelque chose qui n'y manque pas. La liste est vide
+  // sur un payload d'avant le ticket 34, qui ne permet pas de le savoir — la
+  // phrase reste alors, sans nommer de régie.
+  const regiesOuChercher = regiesDuManque(theme).map((r) => CANAUX[r].nom);
 
   // ── LE PLI A DISPARU ──────────────────────────────────────────────────────
   //
@@ -681,13 +687,14 @@ export function ThemeCard({
                   ne sont nulle part, y compris pour être ré-étiquetées. Elles
                   le sont sur les pages de régie, qui les portent TOUTES — et la
                   porte juste au-dessus y mène en gardant la fenêtre du bilan. */}
-              {campagnes.manquantes > 0 && regiesDuManque.length > 0 && (
+              {campagnes.manquantes > 0 && (
                 <p className="text-[10.5px] text-faint/80 mt-2.5 leading-relaxed">
-                  Cette liste garde les {campagnes.affichees} plus grosses dépenses.
-                  Les {campagnes.manquantes} autres campagnes de ce thème s&apos;étiquettent
-                  sur {regiesDuManque.join(" et ")}, qui {regiesDuManque.length > 1
-                    ? "les portent"
-                    : "les porte"} toutes.
+                  Cette liste garde les {campagnes.affichees} plus grosses dépenses
+                  cumulées. Les {campagnes.manquantes} autres campagnes de ce thème
+                  s&apos;étiquettent sur {regiesOuChercher.length > 0
+                    ? `${regiesOuChercher.join(" et ")}, qui ${
+                        regiesOuChercher.length > 1 ? "les portent" : "les porte"} toutes`
+                    : "ses pages de régie, qui les portent toutes"}.
                 </p>
               )}
             </div>

@@ -53,7 +53,7 @@ function compile() {
   return pathToFileURL(join(dir, "campagnes-theme.js")).href;
 }
 
-const { regiesDuTheme, compteCampagnes } = await import(compile());
+const { regiesDuTheme, regiesDuManque, compteCampagnes } = await import(compile());
 
 let vus = 0;
 const ratés = [];
@@ -190,6 +190,52 @@ function theme({ extrait, n_campaigns, n_campaigns_canal }) {
   });
   verifie("6.1 Meta d'abord, Google ensuite",
     regiesDuTheme(t).map((r) => r.canal), ["meta", "google"]);
+}
+
+// ── 7 · OÙ SONT LES MANQUANTES — pas « les régies du thème » ─────────────────
+{
+  // LE CAS QUE LA REVUE A TROUVÉ. Huit grosses Meta publiées, une petite Google
+  // hors de l'extrait : la seule manquante est la Google. Nommer « Meta et
+  // Google » enverrait chercher sur `/meta` quelque chose qui n'y manque pas.
+  const t = theme({
+    extrait: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => camp("meta", i)),
+    n_campaigns: 9,
+    n_campaigns_canal: { meta: 8, google: 1 },
+  });
+  verifie("7.1 une campagne manque, et elle est chez Google",
+    compteCampagnes(t).manquantes, 1);
+  verifie("7.2 seule Google est nommée", regiesDuManque(t), ["google"]);
+  verifie("7.3 alors que les DEUX régies portent le thème",
+    regiesDuTheme(t).map((r) => r.canal), ["meta", "google"]);
+}
+{
+  // Les deux régies débordent : les deux sont nommées, dans l'ordre de lecture.
+  const t = theme({
+    extrait: [...[0, 1, 2, 3, 4].map((i) => camp("meta", i)),
+              ...[0, 1, 2].map((i) => camp("google", i))],
+    n_campaigns: 14,
+    n_campaigns_canal: { meta: 9, google: 5 },
+  });
+  verifie("7.4 les deux régies débordent, les deux sont nommées",
+    regiesDuManque(t), ["meta", "google"]);
+}
+{
+  // Rien ne manque : personne n'est nommé, et la phrase ne s'affiche pas.
+  const t = theme({
+    extrait: [camp("meta", 0), camp("google", 0)],
+    n_campaigns: 2,
+    n_campaigns_canal: { meta: 1, google: 1 },
+  });
+  verifie("7.5 rien ne manque, aucune régie nommée", regiesDuManque(t), []);
+}
+{
+  // Payload d'avant le ticket : on ne peut PAS savoir où sont les manquantes.
+  // Rendre les régies de l'extrait serait précisément l'erreur du cas 7.1.
+  const t = theme({
+    extrait: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => camp("meta", i)),
+    n_campaigns: 9,
+  });
+  verifie("7.6 sans le compte exact, on ne nomme personne", regiesDuManque(t), []);
 }
 
 console.log(`\nLe compte des campagnes, côté web (34) : ${vus - ratés.length}/${vus} vérifications passent`);

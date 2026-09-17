@@ -355,8 +355,17 @@ export type ThemeSummary = {
    *  passe pas — la ligne disparaît, elle n'affiche pas 0 CHF. */
   spend_week: number | null;
   best_campaign: string | null;
-  /** Le nombre EXACT de campagnes du thème sur la fenêtre du bilan — pas la
-   *  longueur de `ThemeFocus.campaigns`, qui est un extrait plafonné. */
+  /**
+   * Le nombre EXACT de campagnes du thème — pas la longueur de
+   * `ThemeFocus.campaigns`, qui est un extrait plafonné.
+   *
+   * IL PORTE SUR TOUT L'HISTORIQUE, pas sur la semaine : il se compte dans
+   * `matrix.campaigns`, que `build_matrix` agrège sur toute la profondeur des
+   * données (`saas/recos_ia/insights.py`). Une campagne arrêtée l'an dernier y
+   * est donc comptée. C'est cohérent avec le lien de la porte, qui emporte
+   * `matrice.period` — la même profondeur, de la première donnée au dernier
+   * jour plein.
+   */
   n_campaigns: number;
   /**
    * LE MÊME COMPTE, RÉGIE PAR RÉGIE (ticket 34).

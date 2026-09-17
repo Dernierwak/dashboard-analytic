@@ -4152,8 +4152,11 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             "n_campaigns": len(t_camps),
             # LE COMPTE PAR RÉGIE, ET IL NE SE DÉDUIT PAS DE `campaigns`
             # (ticket 34). La liste publiée plus bas s'arrête à huit, et ce
-            # sont les huit plus GROSSES DÉPENSES — `build_matrix` trie par
-            # dépense décroissante (`saas/recos_ia/insights.py`). En compter
+            # sont les huit plus GROSSES DÉPENSES CUMULÉES — `build_matrix`
+            # agrège sur tout l'historique puis trie par dépense décroissante
+            # (`saas/recos_ia/insights.py`), donc ni ce compte ni cet extrait
+            # ne parlent de la semaine. C'est la même profondeur que
+            # `matrice.period`, que la porte emporte dans son lien. En compter
             # les canaux se trompe donc deux fois : sur le nombre (« huit »
             # sur un thème qui en porte quatorze) et, plus grave, sur la
             # PRÉSENCE — douze campagnes Meta grasses évincent les deux

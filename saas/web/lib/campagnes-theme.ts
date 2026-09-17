@@ -15,6 +15,13 @@
 // (ticket 34). Ce module ne fait que le lire et retomber proprement sur
 // l'extrait quand le payload est antérieur au ticket — auquel cas il ne
 // PRÉTEND rien : `n` vaut `null`, « on ne sait pas », jamais un nombre deviné.
+//
+// CE QUE CES COMPTES MESURENT : tout l'historique, jamais la semaine.
+// `matrix.campaigns` est agrégé sur toute la profondeur des données
+// (`saas/recos_ia/insights.py`), et l'extrait garde les plus grosses dépenses
+// CUMULÉES. C'est la même profondeur que `matrice.period`, la fenêtre que la
+// porte emporte dans son lien — les deux se répondent, et un écran qui écrirait
+// « cette semaine » à côté de l'un d'eux mentirait.
 import type { ThemeFocus } from "@/lib/report";
 
 /** Les deux régies. `Canal` (`lib/liens.ts`) porte aussi Instagram, qui ne
@@ -41,6 +48,30 @@ export function regiesDuTheme(theme: ThemeFocus): { canal: Regie; n: number | nu
   // mais il ne doit pas non plus se mettre à énoncer un nombre.
   const vues = new Set(theme.campaigns.map((c) => c.channel));
   return REGIES.filter((r) => vues.has(r)).map((r) => ({ canal: r, n: null }));
+}
+
+/**
+ * Les régies qui portent des campagnes ABSENTES de l'extrait — pas les régies
+ * du thème, qui sont autre chose.
+ *
+ * La nuance décide où on envoie le lecteur. Un thème à huit grosses campagnes
+ * Meta et une petite Google publie les huit Meta : la seule manquante est la
+ * Google, et nommer « Meta et Google » envoie sur `/meta` chercher quelque
+ * chose qui n'y manque pas. Ça se calcule exactement, régie par régie, depuis
+ * que le compte entier existe.
+ *
+ * Rend une liste VIDE quand le payload ne porte pas ce compte : on ne sait
+ * alors pas où sont les manquantes, et l'appelant doit rester vague plutôt que
+ * de nommer une régie au hasard.
+ */
+export function regiesDuManque(theme: ThemeFocus): Regie[] {
+  const exact = theme.summary?.n_campaigns_canal;
+  if (!exact) return [];
+  const dansExtrait = new Map<string, number>();
+  for (const c of theme.campaigns) {
+    dansExtrait.set(c.channel, (dansExtrait.get(c.channel) ?? 0) + 1);
+  }
+  return REGIES.filter((r) => (exact[r] ?? 0) - (dansExtrait.get(r) ?? 0) > 0);
 }
 
 /**

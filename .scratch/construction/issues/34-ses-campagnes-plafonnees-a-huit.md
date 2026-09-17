@@ -76,8 +76,13 @@ porte douze, et non plus (8).
 
 **Le dépliage rattrape ce qui manque**, ce qu'il ne faisait pas : sous la liste,
 quand elle est tronquée, « Cette liste garde les 8 plus grosses dépenses. Les 4
-autres campagnes de ce thème s'étiquettent sur Meta et Google, qui les portent
-toutes. » Les régies nommées sont les vraies, tirées du compte exact.
+autres campagnes de ce thème s'étiquettent sur Google, qui les porte toutes. »
+Les régies nommées sont celles qui portent **les manquantes**, pas celles du
+thème : sur huit grosses Meta et une petite Google, la seule absente est la
+Google, et nommer les deux enverrait chercher sur `/meta` ce qui n'y manque pas
+(`regiesDuManque`, trouvé par la revue de code). Sur un payload d'avant ce
+ticket, où ce calcul est impossible, la phrase reste et dit « ses pages de
+régie » — elle ne nomme personne au hasard.
 
 **La porte ne perd plus de régie** — `destinations()` lisait l'extrait, donc sur
 un thème à douze campagnes Meta grasses et deux Google maigres, la porte vers
@@ -95,10 +100,22 @@ la même chose serait pire que pas de chiffre. Le total reste affiché trente
 pixels plus bas. **La donnée est là si on veut revenir dessus** — c'est une
 décision d'affichage, plus un blocage.
 
+### Ce que ces comptes mesurent, et ce qu'ils ne mesurent pas
+
+**Tout l'historique, jamais la semaine.** `matrix.campaigns` est agrégé sur toute
+la profondeur des données (`insights.py`, `build_matrix`), et l'extrait garde les
+plus grosses dépenses **cumulées**. Une campagne arrêtée l'an dernier est donc
+comptée dans « Ses campagnes (12) ». C'est cohérent avec le lien de la porte, qui
+emporte `matrice.period` — la même profondeur, de la première donnée au dernier
+jour plein : une porte ouverte sur une campagne ancienne tombe bien sur une page
+qui la montre. Le premier jet de ce ticket écrivait « sur la fenêtre du bilan »
+dans les commentaires, ce qui laissait entendre la semaine ; corrigé dans les
+trois fichiers.
+
 ### Vérifié
 
 `.scratch/construction/harnais/34-le-compte-des-campagnes/` — **15 vérifications**
-côté worker (`build_payload` devant le faux lecteur du 16) et **19** côté web
+côté worker (`build_payload` devant le faux lecteur du 16) et **25** côté web
 (`lib/campagnes-theme.ts` transpilé et exécuté). Le jeu est le même des deux
 côtés : douze campagnes Meta grasses, deux Google maigres, pour que la perte de
 régie soit prouvée et pas seulement décrite.
