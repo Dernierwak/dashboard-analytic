@@ -28,6 +28,11 @@ Ce qu'ils figent :
 - **Le rognage d'une plage sur mesure**, et le fait qu'il soit ÉCRIT dans le
   libellé — une fenêtre qu'on raccourcit sans le dire est pire qu'une fenêtre
   fausse.
+- **Une plage entièrement postérieure au trou se rabat, elle n'est pas jetée.**
+  La jeter renvoyait l'appelant sur la présélection de 7 jours en silence,
+  pendant que les champs de date annonçaient la plage tapée. Une plage
+  INVERSÉE, elle, reste refusée : ce n'est pas une fenêtre à rabattre, c'est
+  une saisie qui n'a pas de sens.
 
 ## La couture qui a rendu ça testable
 

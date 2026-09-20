@@ -19,6 +19,10 @@ import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
 import { CanalMuetAlerte } from "@/components/canal-muet";
+// L'ÉTAT VIDE, et lui seul. Le bandeau du rapport reste `CanalMuetAlerte`, qui
+// lit le payload : deux listes du même fait sur un écran finiraient par se
+// contredire. Celui-ci prend le relais là où il n'y a PAS de payload.
+import { TrouDeRecolte } from "@/components/trou-recolte";
 import { SetupWizard } from "@/components/setup-wizard";
 import { ThemeCard, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { ancreTheme } from "@/lib/liens";
@@ -778,16 +782,28 @@ export default async function Page() {
           alors qu'il porte les seules actions qui débloquent le reste. */}
 
       {!data.hasData ? (
-        <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
-          <p className="text-[14px] text-ink font-medium">Pas encore de données ici.</p>
-          <p className="text-[12.5px] text-muted mt-2 leading-relaxed">
-            Branche une source sur la page{" "}
-            <Link href="/comptes" className="text-brand font-semibold hover:underline">
-              ⚙ Connexions
-            </Link>{" "}
-            : sa récolte part tout de suite, et tes chiffres s&apos;afficheront ici.
-          </p>
-        </div>
+        // « BRANCHE UNE SOURCE » EST FAUX QUAND LA SOURCE EST DÉJÀ BRANCHÉE
+        // (ticket 48). Un compte qui vient de connecter Meta et dont la
+        // première récolte a échoué n'a ni ligne ni rapport : il tombe ici, et
+        // s'entendait répondre de faire ce qu'il venait de faire. La panne a
+        // un nom, une date et un geste — c'est ça qu'il doit lire.
+        data.canauxMuets.length > 0 ? (
+          <TrouDeRecolte
+            muets={data.canauxMuets}
+            taisent="Rien n'a encore pu être lu sur ce compte, donc aucun chiffre ne s'affiche ici"
+          />
+        ) : (
+          <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center">
+            <p className="text-[14px] text-ink font-medium">Pas encore de données ici.</p>
+            <p className="text-[12.5px] text-muted mt-2 leading-relaxed">
+              Branche une source sur la page{" "}
+              <Link href="/comptes" className="text-brand font-semibold hover:underline">
+                ⚙ Connexions
+              </Link>{" "}
+              : sa récolte part tout de suite, et tes chiffres s&apos;afficheront ici.
+            </p>
+          </div>
+        )
       ) : (
         <>
 

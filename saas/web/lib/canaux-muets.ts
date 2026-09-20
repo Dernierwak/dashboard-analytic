@@ -142,8 +142,29 @@ export async function fetchCanauxMuets(
  *
  *  Seule la borne de FIN compte, comme dans `_pub_aveugle` (`build_report.py`) :
  *  le trou est toujours à la fin de l'historique, donc une fenêtre est trouée
- *  dès qu'elle va au-delà du dernier jour écrit. Un canal qui n'a jamais rien
- *  écrit (`depuis === null`) est aveugle sur toute fenêtre. */
+ *  dès qu'elle va au-delà du dernier jour écrit.
+ *
+ *  `depuis === null` REND LE CANAL AVEUGLE SUR TOUTE FENÊTRE, y compris des
+ *  mois antérieurs à sa connexion, et c'est délibéré — mais la portée mérite
+ *  d'être vue en face plutôt que redécouverte comme un défaut.
+ *
+ *  Ce que ça coûte : un compte qui ne faisait que du Meta depuis huit mois
+ *  branche Google Ads aujourd'hui, et la première récolte échoue. La page
+ *  Coûts passe entièrement en « — », janvier compris, alors qu'elle affichait
+ *  des chiffres la veille.
+ *
+ *  Pourquoi on le garde quand même : ces chiffres de la veille ne comptaient
+ *  pas Google, et ils n'avaient jamais prétendu le faire. À partir du moment
+ *  où la régie est branchée, le cumul de l'année est censé porter son
+ *  historique — que la récolte ramène, quand elle réussit. Tant qu'elle
+ *  échoue, on ne peut pas prouver que ce compte publicitaire n'a rien dépensé
+ *  avant : ce n'est pas un zéro, c'est une inconnue. Et c'est la règle exacte
+ *  du worker (`_pub_aveugle`) — deux lectures du même fait qui divergeraient
+ *  produiraient deux vérités, ce que le ticket 48 vient précisément défaire.
+ *
+ *  Ce qui rend la chose tenable : le bandeau écrit « aucune donnée reçue » en
+ *  face du canal, avec le lien de reconnexion. Le client ne lit pas des tirets
+ *  sans cause, il lit une connexion à refaire. */
 export function aveuglesSur(muets: CanalMuetLive[], fin: string): CanalMuetLive[] {
   return muets.filter((m) => m.depuis === null || fin > m.depuis);
 }

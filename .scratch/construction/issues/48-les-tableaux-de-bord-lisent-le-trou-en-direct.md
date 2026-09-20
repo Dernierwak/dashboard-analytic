@@ -69,11 +69,16 @@ jour. Les dépenses par canal valent `null` pour le canal tombé, les totaux
 (dépense, clics, CTR) valent `null` dès qu'une des deux régies manque, et le
 ROAS ne se calcule plus : c'est le vrai piège, GA4 écrit pendant que Meta
 échoue, donc le ratio ne s'effondre pas, **il gonfle**. Les deltas se taisent
-avec leurs deux termes. `hasData` ne retombe plus : un canal muet EST une
-donnée. La liste lue en direct **ne ressort pas** de `WeeklyData` : ce que le
-client lit sur cette page reste `report.canaux_muets`, le trou tel que le worker
-l'a constaté en écrivant ce payload — deux listes exposées côte à côte sur un
-même écran finiraient par se contredire.
+avec leurs deux termes.
+
+Le bandeau du rapport reste `CanalMuetAlerte`, qui lit `report.canaux_muets` :
+deux listes du même fait sur un écran finiraient par se contredire. La liste
+lue en direct sert à **un seul endroit**, l'état vide — un compte qui vient de
+brancher Meta et dont la première récolte a échoué n'a ni ligne ni payload, et
+s'entendait répondre « branche une source » alors qu'il venait de le faire.
+`hasData` reste donc une question de LIGNES : ce verrou-ci choisit entre
+l'écran de bienvenue et le corps du rapport, il n'a rien à voir avec le
+`has_data` du worker, qui décide s'il PUBLIE.
 
 **`/couts`.** L'alerte **se désarme** au lieu de se prononcer, comme le demande
 l'ADR 0005. Dépense de l'année, du mois, moyenne quotidienne, repère de rythme,
@@ -114,7 +119,39 @@ production. Elles vivent dans `lib/fenetre-canal.ts`, sans aucun import, et
 `channels.ts` les importe — `customWindow` garde sa signature, c'est une
 couture, pas une réécriture.
 
-Vérifié par **23 tests hors ligne** (`.scratch/construction/harnais/48-trou-en-direct/`,
+### Ce que la revue de code a rattrapé
+
+Sept défauts, tous corrigés dans la foulée :
+
+- les tuiles de budget disaient « à fixer juste en dessous » à un compte qui
+  avait déjà posé son enveloppe — « à fixer » et « on ne sait pas » sont deux
+  absences différentes et tombaient sur le même texte ;
+- une plage sur mesure entièrement postérieure au trou était **jetée**, donc
+  remplacée en silence par la présélection de 7 jours pendant que les deux
+  champs de date continuaient d'annoncer la plage tapée. Elle se rabat
+  maintenant sur le dernier jour lu et le dit — même remède qu'au ticket 46, et
+  le défaut existait déjà sur le seul rognage du jour en cours. Les deux pages
+  canal réaffichent désormais la fenêtre RÉELLE, plus les dates brutes ;
+- `hasData` incluait les canaux muets, donc un compte n'ayant jamais rien reçu
+  sautait l'écran de bienvenue pour un corps de rapport vide et inexpliqué ;
+- « Meta Ads et Google Ads **n'a** pas répondu » : l'accord du verbe ;
+- sur un compte sans enveloppe ET avec une régie muette, le module de dépense
+  parlait de la panne au lieu du seul geste possible — poser l'enveloppe ;
+- la phrase des anneaux nommait toutes les régies muettes de l'ANNÉE puis
+  affirmait qu'il n'en manquait qu'une : elle ne nomme plus que celles qui
+  taisent la période ;
+- « les jours suivants ne sont pas mesurés, **elles** ne valent pas zéro » :
+  l'accord du pronom.
+
+**Un point a été confirmé plutôt que corrigé.** Un canal muet qui n'a JAMAIS
+rien écrit est aveugle sur toute fenêtre, y compris des mois antérieurs à sa
+connexion : brancher Google Ads sur un compte Meta de huit mois et rater la
+première récolte fait passer la page Coûts entièrement en « — ». C'est la règle
+exacte du worker (`_pub_aveugle`), et en changer une seule des deux
+recréerait la divergence que ce ticket vient défaire. Le raisonnement et son
+coût sont écrits dans `aveuglesSur` — à rouvrir si le cas se présente vraiment.
+
+Vérifié par **26 tests hors ligne** (`.scratch/construction/harnais/48-trou-en-direct/`,
 `node --test --experimental-strip-types`), le harnais du ticket 20 rejoué
 (31/31), `npx tsc --noEmit` et `npm run build` sur un `.next` propre : **19
 routes**.

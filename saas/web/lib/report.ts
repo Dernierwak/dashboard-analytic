@@ -6,6 +6,7 @@ import {
   canalTu,
   fenetreTue,
   fetchCanauxMuets,
+  type CanalMuetLive,
 } from "@/lib/canaux-muets";
 
 // Couche données du rapport hebdo.
@@ -611,6 +612,15 @@ export type WeeklyData = {
   hasData: boolean;
   kpis: Kpi[];
   channels: ChannelSpend[];
+  /** LE TROU DE RÉCOLTE LU EN DIRECT, pas celui du payload.
+   *
+   *  Il ne double PAS `report.canaux_muets`, qui reste la source du bandeau du
+   *  rapport : celui-là est la photo du jour où le worker a écrit, celui-ci est
+   *  l'état de maintenant. Un seul écran a besoin du second — l'ÉTAT VIDE. Un
+   *  compte qui vient de brancher Meta et dont la première récolte a échoué n'a
+   *  ni ligne ni payload : sans cette liste, on lui dirait « branche une
+   *  source » alors qu'il vient de le faire, et rien ne nommerait la panne. */
+  canauxMuets: CanalMuetLive[];
   report: ReportPayload | null;
   /** `weekly_reports.updated_at` — la date de PUBLICATION de ce payload, la
    *  deuxième des trois dates en tête du rapport. `null` tant qu'aucun rapport
@@ -1078,13 +1088,21 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     if (best) followersDelta = followersNow - best.val;
   }
 
-  // UN CANAL MUET NE FAIT PAS RETOMBER `hasData` (ADR 0005). Un compte qui ne
-  // fait que du Meta Ads et dont le jeton vient d'expirer n'a aucune ligne à
-  // montrer ; le traiter comme « pas de données » lui servirait l'écran de
-  // bienvenue et reconstituerait le silence par une autre porte. Un canal muet
-  // EST une donnée — c'est même la seule qui compte ce jour-là.
-  const hasData =
-    meta.length > 0 || google.length > 0 || followers.length > 0 || canauxMuets.length > 0;
+  // `hasData` RESTE UNE QUESTION DE LIGNES, et ce n'est pas le même verrou que
+  // le `has_data` du worker.
+  //
+  // Celui du worker décide s'il PUBLIE un rapport, et l'ADR 0005 lui interdit
+  // de se taire sur un canal muet — sinon la panne devient invisible. Celui-ci
+  // décide entre l'écran de bienvenue et le corps du rapport : sans une seule
+  // ligne ni un seul payload, ce corps n'a rien à rendre, et le forcer donne
+  // une page de modules vides sans rien pour l'expliquer.
+  //
+  // Un compte au jeton mort garde ses lignes des semaines passées, donc
+  // `hasData` vaut vrai pour lui de toute façon. Le seul cas qui tombe ici est
+  // celui qui n'a JAMAIS rien reçu — et c'est l'écran de bienvenue qui doit le
+  // prendre en charge, en disant que la récolte a échoué (`canauxMuets`
+  // ci-dessous, lu par `app/page.tsx`).
+  const hasData = meta.length > 0 || google.length > 0 || followers.length > 0;
 
   // ── Vue d'ensemble SELON LA MISSION — les 3 chiffres qui servent l'objectif ─
   const winDates = `${fmtDay(curSince)} → ${fmtDay(anchor)}`;
@@ -1121,17 +1139,18 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // des deux canaux manque : un tiret sans raison se lit comme un bug de Pulse,
   // pas comme une connexion à refaire (même arbitrage que `CanalMuetAlerte`).
   const manquants = aveuglesCourants.map((c) => c.nom).join(" et ");
+  const naPasRepondu = `${manquants} n${aveuglesCourants.length > 1 ? "'ont" : "'a"} pas répondu`;
   const kpiSpend: Kpi = {
     label: "Dépensé",
     value: spend === null ? "—" : `${fmtCHF(spend)} CHF`,
-    sub: spend === null ? `${manquants} n'a pas répondu` : `Meta + Google · ${winDates}`,
+    sub: spend === null ? naPasRepondu : `Meta + Google · ${winDates}`,
     delta: pctDelta(spend, spendPrev),
     deltaGoodWhenUp: null,
   };
   const kpiClicks: Kpi = {
     label: "Clics",
     value: clicks === null ? "—" : fmtCHF(clicks),
-    sub: ctr === null ? `${manquants} n'a pas répondu` : `CTR ${ctr.toFixed(2)} %`,
+    sub: ctr === null ? naPasRepondu : `CTR ${ctr.toFixed(2)} %`,
     delta: pctDelta(clicks, clicksPrev),
     deltaGoodWhenUp: true,
   };
@@ -1164,7 +1183,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
           roas !== null
             ? `ROAS ${roas.toFixed(1)} · GA4 payant`
             : spend === null
-              ? `GA4 payant · ROAS indisponible, ${manquants} n'a pas répondu`
+              ? `GA4 payant · ROAS indisponible, ${naPasRepondu}`
               : "GA4 · trafic payant",
         delta: pctDelta(rev, revPrev),
         deltaGoodWhenUp: true,
@@ -1239,6 +1258,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     suivis,
     actions,
     actionsArchived,
+    canauxMuets,
     // UNE ERREUR VAUT « DÉJÀ FAIT », jamais « jamais fait » : si la colonne
     // `kind` ou la table manquent (migration pas passée), on ne pousse pas vers
     // un geste dont on ne sait pas s'il est possible. Un conseil d'usage de trop

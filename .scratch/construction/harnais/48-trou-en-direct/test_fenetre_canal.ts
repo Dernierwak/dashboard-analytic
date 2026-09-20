@@ -70,8 +70,39 @@ test("un canal muet dont le trou est APRÈS la plage ne la touche pas", () => {
   assert.ok(!w.label.includes("dernier jour lu"));
 });
 
-test("une plage entièrement postérieure au trou ne rend aucune fenêtre", () => {
-  assert.equal(fenetreSurMesure(hier(-2), hier(), hier(-3)), null);
+test("une plage entièrement postérieure au trou se rabat sur le dernier jour lu", () => {
+  // Rendre `null` renvoyait l'appelant sur la présélection de 7 jours SANS
+  // RIEN DIRE : les champs de date du bandeau annonçaient la plage tapée
+  // pendant que la page montrait autre chose. Même remède que le ticket 46.
+  const w = fenetreSurMesure(hier(-2), hier(), hier(-3));
+
+  assert.ok(w);
+  assert.equal(iso(w.since), hier(-3));
+  assert.equal(iso(w.until), hier(-3));
+});
+
+test("une plage rabattue le DIT, elle ne se fait pas passer pour la plage choisie", () => {
+  const w = fenetreSurMesure(hier(-2), hier(), hier(-3));
+
+  assert.ok(w);
+  assert.match(w.label, /· 1 jour(?!s)/);
+  assert.match(w.label, /ta plage est entièrement après/);
+});
+
+test("une plage entièrement dans le futur se rabat aussi, sans canal muet", () => {
+  // Le défaut existait déjà sur le seul rognage du jour en cours : une plage
+  // « du 15 au 20 » demandée le 10 partait au repli, en silence.
+  const w = fenetreSurMesure(hier(5), hier(9), null);
+
+  assert.ok(w);
+  assert.equal(iso(w.until), hier());
+  assert.equal(iso(w.since), hier());
+});
+
+test("une plage inversée par le client reste refusée", () => {
+  // `to` avant `from` n'est pas une fenêtre à rabattre, c'est une saisie qui
+  // n'a pas de sens : on ne lui invente pas de bornes.
+  assert.equal(fenetreSurMesure(hier(), hier(-5), null), null);
 });
 
 test("le rognage du jour en cours et celui du trou se cumulent", () => {

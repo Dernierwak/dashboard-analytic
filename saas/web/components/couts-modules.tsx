@@ -394,7 +394,16 @@ export function DepenseAnnee({
             plus vite que le temps ne passe.
           </p>
         </div>
-      ) : spentYear === null ? (
+      ) : budgetAnnuel <= 0 ? (
+        // L'ORDRE DES DEUX ABSENCES COMPTE. Un compte neuf peut n'avoir ni
+        // enveloppe NI récolte : lui parler d'abord de la régie muette le
+        // prive du seul geste qu'il puisse faire aujourd'hui — poser son
+        // enveloppe. Le trou, lui, se répare tout seul au prochain passage.
+        <p className="text-[12px] text-muted mt-3 leading-relaxed">
+          Aucune barre ici tant que l&apos;enveloppe de l&apos;année n&apos;est pas fixée : sans
+          elle, ce montant ne se compare à rien. Elle se pose dans le module de gauche.
+        </p>
+      ) : (
         // LA BARRE NE SE DESSINE PAS SUR UNE DÉPENSE INCONNUE, même si
         // l'enveloppe, elle, est bien fixée. C'est exactement le désarmement
         // que demande l'ADR 0005 : ne rien prononcer plutôt que prononcer à
@@ -405,11 +414,6 @@ export function DepenseAnnee({
           l&apos;année serait amputé, et le comparer à ton enveloppe te dirait que tu es
           dans les clous sans qu&apos;on en sache rien. Le chiffre revient tout seul au
           prochain passage réussi.
-        </p>
-      ) : (
-        <p className="text-[12px] text-muted mt-3 leading-relaxed">
-          Aucune barre ici tant que l&apos;enveloppe de l&apos;année n&apos;est pas fixée : sans
-          elle, ce montant ne se compare à rien. Elle se pose dans le module de gauche.
         </p>
       )}
 
@@ -584,7 +588,8 @@ export function CourbeDepense({
             {" "}
             La courbe s&apos;arrête au dernier {unite} lu : une régie n&apos;a pas répondu,
             et les {unite}s suivant{unite === "semaine" ? "es" : "s"} ne sont pas mesuré
-            {unite === "semaine" ? "es" : "s"} — elles ne valent pas zéro.
+            {unite === "semaine" ? "es" : "s"} — {unite === "semaine" ? "elles" : "ils"} ne
+            valent pas zéro.
           </>
         )}
       </p>

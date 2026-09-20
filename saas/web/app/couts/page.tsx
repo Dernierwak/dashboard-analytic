@@ -51,6 +51,7 @@ import {
 } from "@/components/couts-modules";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
+import { aveuglesSur } from "@/lib/canaux-muets";
 import { dateCourte } from "@/components/etat-action";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
@@ -82,6 +83,22 @@ const SOURCE_MOIS: Record<string, string> = {
   aucun: "fixe ton enveloppe d'année, le mois en découle",
 };
 
+// « À FIXER » ET « ON NE SAIT PAS » NE SONT PAS LA MÊME ABSENCE (ticket 48).
+// Les deux font tomber le ratio à `null`, et les deux tombaient sur le même
+// texte : un compte qui a bel et bien posé son enveloppe de 60 000 CHF se
+// voyait répondre « à fixer juste en dessous » le jour où une régie ne
+// répondait pas. On lui demandait de refaire ce qu'il avait déjà fait, au lieu
+// de lui dire que c'est la CONSOMMATION qu'on ignore.
+function sousBudget(
+  ratio: number | null,
+  dejaFixe: boolean,
+  consomme: string,
+  aFixer: string
+): string {
+  if (ratio !== null) return consomme;
+  return dejaFixe ? "consommation inconnue — une régie n'a pas répondu" : aFixer;
+}
+
 // Les couleurs de canal, forcées sur l'anneau par plateforme. `teinteLabel`
 // indexe sur la liste des THÈMES : Meta et Google y prendraient deux teintes
 // arbitraires, et Google pourrait sortir en bleu — la couleur de Meta dans
@@ -91,6 +108,12 @@ const TEINTE_CANAL: Record<string, Teinte> = {
   Meta: { nom: "meta", trait: "#1a56ff", aplat: "rgba(26, 86, 255, 0.14)" },
   Google: { nom: "google", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
 };
+
+/** « a », « a et b », « a, b et c » — une énumération qui se lit à voix haute. */
+function joindre(noms: string[]): string {
+  if (noms.length <= 1) return noms[0] ?? "";
+  return `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
+}
 
 function unSeul(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -137,6 +160,9 @@ export default async function CoutsPage({
   const jours = data.daily.map((j) =>
     j.meta === null || j.google === null ? null : j.meta + j.google
   );
+  // Les régies qui taisent la PÉRIODE FILTRÉE — un sous-ensemble de celles qui
+  // taisent l'année, et le seul dont la section « Où ça part » puisse parler.
+  const muetsPeriode = aveuglesSur(data.muets, data.periode.to);
 
   // L'univers des thèmes filtrables : la liste maîtresse, plus tout thème qui a
   // dépensé sans y figurer. Un label posé sur une campagne mais pas encore
@@ -205,22 +231,24 @@ export default async function CoutsPage({
           <Chiffre
             titre="Budget annuel"
             valeur={data.budgetAnnuel > 0 ? `${fmtCHF(data.budgetAnnuel)} CHF` : "—"}
-            sous={
-              ratioAn !== null
-                ? `${Math.round(ratioAn * 100)} % consommé · repère ${Math.round(data.elapsedAn * 100)} % de l'année`
-                : "à fixer juste en dessous"
-            }
+            sous={sousBudget(
+              ratioAn,
+              data.budgetAnnuel > 0,
+              `${Math.round((ratioAn ?? 0) * 100)} % consommé · repère ${Math.round(data.elapsedAn * 100)} % de l'année`,
+              "à fixer juste en dessous"
+            )}
             ton={ratioAn !== null && ratioAn > 1 ? "neg" : "ink"}
             serie={data.parMois}
           />
           <Chiffre
             titre="Budget mensuel"
             valeur={data.totalBudget > 0 ? `${fmtCHF(data.totalBudget)} CHF` : "—"}
-            sous={
-              ratioMois !== null
-                ? `${SOURCE_MOIS[data.sourceBudgetMois]} · ${Math.round(ratioMois * 100)} % consommé ce mois`
-                : SOURCE_MOIS.aucun
-            }
+            sous={sousBudget(
+              ratioMois,
+              data.totalBudget > 0,
+              `${SOURCE_MOIS[data.sourceBudgetMois]} · ${Math.round((ratioMois ?? 0) * 100)} % consommé ce mois`,
+              SOURCE_MOIS.aucun
+            )}
             // Un mois ne se saisit plus : il n'y a plus qu'une source, et c'est
             // pour ça que la phrase ci-dessus a cessé de varier.
             ton={ratioMois !== null && ratioMois > 1 ? "neg" : "ink"}
@@ -307,11 +335,16 @@ export default async function CoutsPage({
             laisser une moitié se faire passer pour un tout. */}
         {data.totalPeriode === null ? (
           <p className="text-[12.5px] text-muted leading-relaxed mb-4 max-w-[68ch]">
-            Pas de répartition sur cette période :{" "}
-            {data.muets.map((c) => c.nom).join(" et ")}{" "}
-            {data.muets.length > 1 ? "n'ont" : "n'a"} pas répondu au dernier passage, et
-            une part calculée sur une seule des deux régies gonflerait celle qui reste.
-            Elle revient d&apos;elle-même au prochain passage réussi.
+            {/* ON NE NOMME QUE LES RÉGIES QUI TAISENT CETTE PÉRIODE-CI.
+                `data.muets` couvre la fenêtre la plus large de la page,
+                l'année : une régie tombée après la fin de la période y figure
+                sans rien y cacher, et la citer ici contredisait la phrase qui
+                suit — « une seule des deux » alors qu'on venait d'en nommer
+                deux. */}
+            Pas de répartition sur cette période : {joindre(muetsPeriode.map((c) => c.nom))}{" "}
+            {muetsPeriode.length > 1 ? "n'ont" : "n'a"} pas répondu au dernier passage, et
+            une répartition à laquelle il manque une régie gonflerait la part de celles qui
+            restent. Elle revient d&apos;elle-même au prochain passage réussi.
           </p>
         ) : data.totalPeriode > 0 ? (
           /* DEUX ANNEAUX, PAS UN. « Où ça part » a deux réponses qui ne se

@@ -59,8 +59,13 @@ export default async function MetaPage({
         periode={{
           fenetre: d.periodLabel,
           jours: d.days,
-          from: searchParams?.from,
-          to: searchParams?.to,
+          // LES BORNES RÉELLEMENT AFFICHÉES, pas celles qui ont été tapées
+          // (ticket 48). Une plage sur mesure se rabat sur le dernier jour
+          // plein — et, quand la récolte a échoué, sur le dernier jour LU.
+          // Réafficher les dates brutes laissait les deux champs annoncer une
+          // fenêtre que la page ne montrait pas.
+          from: searchParams?.from ? d.windowDebut : undefined,
+          to: searchParams?.to ? d.windowFin : undefined,
         }}
         themes={d.labels}
         themesActifs={themesChoisis(searchParams)}

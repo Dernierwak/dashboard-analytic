@@ -116,21 +116,35 @@ export function fenetreSurMesure(
   // rétrécissent la fenêtre, et c'est la borne la plus ancienne qui gagne.
   const trou = dernierJourLu !== null && iso(until) > dernierJourLu;
   if (trou) until = new Date(dernierJourLu + "T00:00:00Z");
-  if (since > until) return null;
-  const len = Math.round((until.getTime() - since.getTime()) / 86400_000) + 1;
-  const prevUntil = addDays(since, -1);
+
+  // UNE PLAGE ENTIÈREMENT APRÈS LA BORNE SE RABAT DESSUS, ELLE N'EST PAS JETÉE.
+  //
+  // Rendre `null` ici renvoyait l'appelant sur `makeWindow`, donc sur la
+  // présélection de 7 jours — SANS RIEN DIRE. Les deux champs de date du
+  // bandeau continuaient d'afficher « du 15 au 20 septembre » pendant que le
+  // libellé et tous les chiffres portaient les sept jours finissant le 10 : une
+  // fenêtre de repli déguisée en fenêtre choisie, exactement le défaut que le
+  // ticket 46 a corrigé sur la page Coûts (`resoudrePeriode`). Même remède
+  // ici, et pour les deux bornes — le jour en cours comme le trou de récolte.
+  let debut = since;
+  const rabattue = debut > until;
+  if (rabattue) debut = until;
+
+  const len = Math.round((until.getTime() - debut.getTime()) / 86400_000) + 1;
+  const prevUntil = addDays(debut, -1);
   const prevSince = addDays(prevUntil, -(len - 1));
   return {
-    since,
+    since: debut,
     until,
     prevSince,
     prevUntil,
     // UNE FENÊTRE QU'ON RACCOURCIT SANS LE DIRE EST PIRE QU'UNE FENÊTRE FAUSSE
     // — la règle est déjà celle du jour en cours, elle vaut ici aussi.
     label:
-      `du ${fmtDay(since)} ${since.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jours` +
+      `du ${fmtDay(debut)} ${debut.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jour${len > 1 ? "s" : ""}` +
       (rogne ? " · jour en cours exclu" : "") +
-      (trou ? " · arrêtée au dernier jour lu" : ""),
+      (trou ? " · arrêtée au dernier jour lu" : "") +
+      (rabattue ? " · ta plage est entièrement après" : ""),
   };
 }
 
