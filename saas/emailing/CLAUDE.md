@@ -1,9 +1,10 @@
 # CLAUDE.md — saas/emailing/
 
-Ce dossier fait une seule chose : **rendre et envoyer l'email hebdo**
-(« L'essentiel » du rapport). Il ne calcule rien lui-même — ni KPI, ni reco —
-il reçoit des valeurs déjà prêtes et les met en forme, ou les envoie. Deux
-fichiers, deux responsabilités qui ne se mélangent jamais.
+Ce dossier fait une seule chose : **l'email hebdo** (« L'essentiel » du
+rapport). Il ne calcule rien lui-même — ni KPI, ni reco — il reçoit des valeurs
+déjà prêtes et les met en forme, les envoie, ou relit ce qu'elles sont devenues.
+Trois fichiers, trois responsabilités qui ne se mélangent jamais. **Aucun des
+trois ne touche Supabase** — ranger un fait est le travail de `saas/commun/`.
 
 Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 
@@ -25,7 +26,7 @@ détail.
 
 ## `send.py` — l'envoi, agnostique du fournisseur
 
-`send_email(to, subject, html) -> {"ok": bool, "provider": str, "detail": str}`.
+`send_email(to, subject, html) -> {"ok": bool, "provider": str, "detail": str, "id": str | None}`.
 Le fournisseur se choisit par variable d'environnement, jamais dans le code :
 
 | Variable | Rôle |
@@ -34,18 +35,49 @@ Le fournisseur se choisit par variable d'environnement, jamais dans le code :
 | `RESEND_API_KEY` | clé Resend |
 | `EMAIL_FROM` | adresse expéditrice — sans domaine vérifié chez Resend, seul `onboarding@resend.dev` est accepté (et uniquement vers l'email du compte Resend) |
 
+`send_email` rend aussi **`id`**, l'identifiant du fournisseur, à part de
+`detail` : c'est le seul moyen de lui redemander plus tard ce que l'email est
+devenu (voir `evenements.py`). `None` quand il n'y a rien à relire — dry-run,
+ou envoi en échec.
+
 **Sans clé configurée → mode `dry` automatique.** C'est ce qui permet de
 tester tout le flux (recos → email → « envoi ») sans compte ni risque —
-voir `saas/collecte/automatisation/run_weekly.py`, qui appelle ce module.
+le mode `dry` range quand même sa ligne dans `email_envois`, en disant que rien
+n'est parti.
 
 Pour ajouter un fournisseur (Postmark ou autre) : un cas de plus dans
 `send_email`, le reste ne bouge pas — c'est explicitement pensé pour.
 
+## `evenements.py` — ce qu'est devenu un email déjà envoyé
+
+`etat_email(message_id)` redemande à Resend son `last_event` ; `etat_ouverture`
+et `phrase_ouverture` le traduisent. **Pas de Supabase ici non plus** : ranger
+le fait est le travail de `saas/commun/` (`email_envois`), le composer celui de
+`fetch_all.py`, qui relève au passage suivant du worker — par l'API, pas par
+webhook (ticket 50, `docs/adr/0007-…`).
+
+**Ce vocabulaire n'a aucune valeur « pas ouvert », et c'est le point.** Une
+ouverture est un pixel chargé : bloqué chez Gmail et Outlook, préchargé par un
+volet de prévisualisation, et chez Resend **désactivé par défaut** tant qu'aucun
+domaine n'est vérifié. Il dit donc `sans_reponse` (« le fournisseur n'a rien
+remonté »), `en_route` (« l'envoi n'est pas terminé ») ou `inconnu` (« rien
+d'exploitable ») — jamais « il n'a pas ouvert ».
+
+`clique`, `signale_spam` et `pas_arrive`, eux, sont des **faits**, et
+`ETATS_DEFINITIFS` dit lesquels arrêtent le relevé. Une plainte pour spam prouve
+que l'email est **arrivé et regardé** : elle ne se range surtout pas avec les
+rebonds. `FOURNISSEURS_RELISIBLES` dit ce qu'on sait interroger — aujourd'hui
+Resend seul. Voir `docs/mesures-impossibles.md`.
+
 ## Qui appelle ce dossier
 
-Aujourd'hui, uniquement `saas/collecte/automatisation/run_weekly.py`, qui
-n'est **pas encore câblé au cron** (voir `saas/README.md`, section « Ce qui
-reste à câbler »). Le rapport hebdo publié sur `weekly_reports` par
-`saas/traitement/build_report.py` est aujourd'hui lu par `saas/web/`, pas
-encore par ce module — l'email et l'écran partagent la même source de
-données mais pas encore le même pont.
+`saas/traitement/build_report.py` (`publish_weekly_report`) est le **seul
+chemin d'envoi réel** : c'est lui que le cron atteint, via `fetch_all.py`, et
+lui qui range l'envoi dans `email_envois`. `saas/collecte/automatisation/run_weekly.py`
+appelle aussi `send_email`, mais son `run()` lève `NotImplementedError` et
+aucun workflow ne l'atteint — il n'est **pas encore câblé au cron** (voir `saas/README.md`, section « Ce qui
+reste à câbler »).
+
+**L'email et l'écran lisent le MÊME payload** : `publish_weekly_report` passe à
+`email_from_payload` exactement ce qu'il vient d'écrire sur `weekly_reports`.
+Une seule source de vérité, donc aucun chiffre ne peut différer entre les deux.

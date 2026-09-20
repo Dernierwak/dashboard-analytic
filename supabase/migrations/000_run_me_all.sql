@@ -59,6 +59,9 @@
 --   25)    suivi_actions.author_id — qui a écrit la ligne, posé à la création
 --          et figé par déclencheur — plus campaign_channel/campaign_key, la
 --          campagne qu'une note ou une action désigne.
+--   26)    email_envois — ce qu'est devenu l'email hebdo (ticket 50). APRÈS la
+--          section 15, et sans jamais y entrer : RLS activée, aucune policy,
+--          service_role seul. Mesure d'exploitation, pas information produit.
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
 --   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
@@ -1616,6 +1619,12 @@ DECLARE
     -- 'dashboard_members' n'y est pas non plus, et c'est voulu : elle a ses
     -- propres règles (dm_*). L'ouvrir au partage laisserait un invité lire —
     -- et réécrire — la liste des invitations.
+    --
+    -- 'email_envois' (section 26) non plus, et c'est voulu aussi : RLS activée
+    -- SANS AUCUNE POLICY, service_role seul. C'est une mesure d'exploitation —
+    -- ce qu'est devenu l'email hebdo — pas une information produit. Ni le
+    -- propriétaire du compte ni un invité n'ont rien à y voir. Lui ajouter une
+    -- ligne ici reviendrait sur l'ADR 0007, pas sur un oubli.
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         IF NOT EXISTS (SELECT 1 FROM information_schema.tables
@@ -2580,6 +2589,51 @@ CREATE INDEX IF NOT EXISTS idx_suivi_actions_campagne
 
 
 -- ============================================================================
+-- 26) email_envois — CE QU'EST DEVENU L'EMAIL HEBDO QU'ON A ENVOYÉ (ticket 50)
+--
+-- Copie fidèle de `supabase/migrations/email_envois.sql` — s'y reporter pour le
+-- raisonnement complet. L'essentiel tient en trois lignes :
+--
+--   · Le ticket 47 alerte David au motif que « le client a déjà été prévenu ».
+--     On ne savait pas s'il avait ouvert. Cette table range ce fait.
+--   · UNE NON-OUVERTURE NE PROUVE RIEN (pixel bloqué, prévisualisation). La
+--     table ne porte donc jamais « pas ouvert », seulement `dernier_evenement`,
+--     ce que le fournisseur a remonté, tel quel.
+--   · RLS ACTIVÉE, AUCUNE POLICY, ET C'EST LA DÉCISION — pas un oubli. Mesure
+--     d'exploitation, pas information produit : le client n'a rien à y voir, un
+--     invité non plus. D'où son absence VOLONTAIRE de la section 15.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.email_envois (
+    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    week_start  date NOT NULL,
+    -- 'resend', 'dry'… Sans clé configurée, `send_email` passe en dry-run : la
+    -- ligne existe quand même et dit que RIEN n'est parti. Un dry-run lu comme
+    -- un envoi ferait conclure « jamais ouvert » sur un email qui n'a jamais
+    -- quitté la machine.
+    fournisseur text NOT NULL,
+    -- NULL en dry-run et sur un envoi en échec : il n'y a rien à relire.
+    message_id  text,
+    -- Un fait plus fort qu'une ouverture, et il se perdait dans un log.
+    envoi_ok    boolean NOT NULL,
+    envoye_a    timestamptz NOT NULL DEFAULT now(),
+    -- Aucune contrainte CHECK, volontairement : le jour où Resend ajoute un
+    -- événement, un CHECK ferait échouer l'écriture du worker sur le fait
+    -- qu'on cherchait à apprendre. C'est le code qui traduit, et il range ce
+    -- qu'il ne connaît pas dans « inconnu », jamais dans « sans réponse ».
+    dernier_evenement text,
+    -- NULL = on n'a pas encore demandé. Ce n'est pas « on a demandé et rien
+    -- n'est remonté ». Sans cette colonne, les deux se liraient pareil.
+    releve_a    timestamptz,
+    PRIMARY KEY (user_id, week_start)
+);
+
+ALTER TABLE public.email_envois ENABLE ROW LEVEL SECURITY;
+-- Aucune policy — voir l'en-tête. RLS active + zéro policy = zéro ligne
+-- visible, pour tout le monde sauf la clé service_role.
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -2621,6 +2675,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'suivi_actions',            NULL),
     ('t', 'channel_budgets',          NULL),
     ('t', 'weekly_reports',           NULL),
+    ('t', 'email_envois',             NULL),
     ('t', 'dashboard_members',        NULL),
     ('t', 'platform_budgets',         NULL),
     ('t', 'platform_changes',         NULL),
@@ -2755,9 +2810,11 @@ ORDER BY (etat = '✓'), famille, objet;
 --      ORDER BY tablename, policyname;
 --
 --   B) Les tables qu'un invité NE voit PAS. Attendu : connected_accounts
---      (volontaire), dashboard_members (règle propre dm_select), et les tables
---      de l'ancien Streamlit (ai_recommendations, ai_feedback, free_data,
---      paid_data). Toute AUTRE ligne est un module que l'invité verra vide :
+--      (volontaire), email_envois (volontaire aussi — mesure d'exploitation,
+--      section 26 : RLS activée sans aucune policy, service_role seul),
+--      dashboard_members (règle propre dm_select), et les tables de l'ancien
+--      Streamlit (ai_recommendations, ai_feedback, free_data, paid_data).
+--      Toute AUTRE ligne est un module que l'invité verra vide :
 --      SELECT c.relname
 --      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 --      WHERE n.nspname = 'public' AND c.relkind = 'r'

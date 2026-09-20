@@ -40,4 +40,7 @@ absolu avant de committer — pas en confiance.
 Tout le monde côté Python : `saas/collecte/**`, `saas/recos_ia/**`,
 `saas/traitement/build_report.py`. Rien dans `saas/web/` (TypeScript, accès
 Supabase direct via `@supabase/ssr`) ni `saas/emailing/` (ne touche pas à
-Supabase, voir `saas/emailing/CLAUDE.md`).
+Supabase, voir `saas/emailing/CLAUDE.md`) — c'est ici, et pas là-bas, que
+vivent `upsert_envoi_email`, `maj_evenement_email` et
+`fetch_dernier_envoi_email`, le rangement de ce que l'email hebdo est devenu
+(ticket 50).

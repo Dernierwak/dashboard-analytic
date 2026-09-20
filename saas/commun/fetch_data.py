@@ -837,3 +837,28 @@ def fetch_canaux_muets(supabase: Client, user_id: str) -> dict[str, str]:
     return {r["canal"]: (r.get("mot_de_fin") or f"{r['canal']} : échec de récolte")
             for r in rows
             if str(r.get("run_id") or "") == dernier and r.get("etat") == "echec"}
+
+
+# L'ENVOI D'EMAIL LE PLUS RÉCENT (ticket 50). Une ligne par (utilisateur,
+# semaine) ; on ne relit jamais que la dernière — les précédentes ont déjà été
+# relevées au passage d'avant, et ce qu'on cherche à savoir, c'est ce qu'est
+# devenu le dernier message parti.
+def fetch_dernier_envoi_email(supabase: Client, user_id: str) -> dict | None:
+    """Le dernier email hebdo envoyé à ce compte, ou None.
+
+    Rend `None` dès que la table est absente ou illisible, exactement comme
+    `fetch_canaux_muets` : un suivi d'exploitation qu'on ne sait pas lire ne
+    doit pas faire tomber une récolte. Le pire qu'on y perde est une ligne de
+    journal.
+    """
+    try:
+        rows = (supabase.table("email_envois")
+                .select("week_start, fournisseur, message_id, envoi_ok, "
+                        "envoye_a, dernier_evenement, releve_a")
+                .eq("user_id", user_id)
+                .order("week_start", desc=True)
+                .limit(1)
+                .execute().data) or []
+    except Exception:
+        return None
+    return rows[0] if rows else None

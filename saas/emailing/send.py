@@ -22,7 +22,15 @@ def _provider() -> str:
 
 
 def send_email(to: str, subject: str, html: str) -> dict:
-    """Envoie un email. Retourne {ok: bool, provider: str, detail: str}."""
+    """Envoie un email. Rend {ok, provider, detail, id}.
+
+    `id` EST L'IDENTIFIANT DU FOURNISSEUR, et il est rendu à part de `detail`
+    depuis le ticket 50 : c'est le seul moyen de lui redemander, au passage
+    suivant du worker, ce que l'email est devenu. Il vivait jusqu'ici dans
+    `detail`, une chaîne destinée à un journal — la lire pour en extraire un
+    identifiant aurait fait dépendre une clé de base d'un texte d'affichage.
+    `None` quand il n'y a rien à relire : dry-run, ou envoi en échec.
+    """
     provider = _provider()
     # Sans domaine vérifié chez Resend, seul onboarding@resend.dev est accepté
     # (et uniquement vers l'email du compte Resend). Avec un domaine vérifié :
@@ -31,12 +39,13 @@ def send_email(to: str, subject: str, html: str) -> dict:
 
     if provider == "dry":
         print(f"[dry-run] → {to} | {subject} | {len(html)} octets HTML (aucun envoi réel)")
-        return {"ok": True, "provider": "dry", "detail": "non envoyé (mode test)"}
+        return {"ok": True, "provider": "dry", "detail": "non envoyé (mode test)", "id": None}
 
     if provider == "resend":
         api_key = os.getenv("RESEND_API_KEY")
         if not api_key:
-            return {"ok": False, "provider": "resend", "detail": "RESEND_API_KEY manquante"}
+            return {"ok": False, "provider": "resend",
+                    "detail": "RESEND_API_KEY manquante", "id": None}
         try:
             r = requests.post(
                 "https://api.resend.com/emails",
@@ -46,9 +55,13 @@ def send_email(to: str, subject: str, html: str) -> dict:
                 timeout=20,
             )
             if r.status_code in (200, 201):
-                return {"ok": True, "provider": "resend", "detail": r.json().get("id", "")}
-            return {"ok": False, "provider": "resend", "detail": f"HTTP {r.status_code}: {r.text[:200]}"}
+                envoi_id = r.json().get("id") or None
+                return {"ok": True, "provider": "resend",
+                        "detail": envoi_id or "", "id": envoi_id}
+            return {"ok": False, "provider": "resend",
+                    "detail": f"HTTP {r.status_code}: {r.text[:200]}", "id": None}
         except Exception as e:
-            return {"ok": False, "provider": "resend", "detail": str(e)}
+            return {"ok": False, "provider": "resend", "detail": str(e), "id": None}
 
-    return {"ok": False, "provider": provider, "detail": f"provider inconnu: {provider}"}
+    return {"ok": False, "provider": provider,
+            "detail": f"provider inconnu: {provider}", "id": None}

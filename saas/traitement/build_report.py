@@ -30,7 +30,8 @@ import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
 from saas.commun.app_secrets import secret  # noqa: E402
-from saas.commun.insert_data import upsert_weekly_report  # noqa: E402
+from saas.commun.insert_data import (upsert_envoi_email,  # noqa: E402
+                                     upsert_weekly_report)
 from saas.traitement.lecteur import Lecteur, LecteurSupabase  # noqa: E402
 from saas.recos_ia.reco_engine import (  # noqa: E402
     build_recos, KEY_LABELS, OBJECTIFS, SEUILS, FORMAT_LABELS,
@@ -5884,6 +5885,11 @@ def publish_weekly_report(sb, user_id: str,
         app_url = os.getenv("EMAIL_APP_URL", "https://dashboard-analytic-green.vercel.app")
         subject, html = email_from_payload(_display_name(sb, user_id, email_to), payload, app_url)
         res = send_email(to=email_to, subject=subject, html=html)
+        # ON RANGE L'ENVOI, PAS SEULEMENT SON RÉSUMÉ (ticket 50). Cette ligne
+        # est la seule trace qui survivra à la run : c'est elle qu'on relira au
+        # passage suivant pour demander au fournisseur ce que l'email est
+        # devenu. Le journal, lui, disparaît avec le run GitHub.
+        upsert_envoi_email(sb, user_id, week_start, res)
         log += (f" · email {res['provider']}: "
                 f"{'envoyé' if res['ok'] and res['provider'] != 'dry' else res['detail']}")
     return log, list(payload.get("canaux_muets") or [])

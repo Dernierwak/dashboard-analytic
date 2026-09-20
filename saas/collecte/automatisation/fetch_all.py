@@ -600,6 +600,143 @@ def vu_par_le_client(canal: dict) -> bool:
     return bool(canal.get("chiffres_tus"))
 
 
+# CE QU'EST DEVENU L'EMAIL DE LA SEMAINE D'AVANT (ticket 50). L'escalade
+# ci-dessus n'alerte David plutôt que le client qu'au motif que « le client a
+# déjà été prévenu » — une phrase que personne ne savait vérifier. Elle se
+# vérifie maintenant, à un appel HTTP par compte et par passage.
+#
+# ET ELLE NE SE VÉRIFIE QU'À MOITIÉ, VOLONTAIREMENT. « Ouvert » et « cliqué »
+# et « pas arrivé » sont des faits ; « rien remonté » n'en est pas un — un pixel
+# bloqué, une prévisualisation, un suivi non activé chez le fournisseur donnent
+# le même silence qu'un email jamais lu. Le vocabulaire de
+# `saas/emailing/evenements.py` n'a donc aucune valeur « pas ouvert », et ce
+# qu'on a le droit d'en conclure est écrit dans `docs/mesures-impossibles.md`.
+#
+# CE QU'ON N'EN FAIT PAS : aucun taux d'ouverture, nulle part, et surtout pas
+# dans le rapport du client. C'est une mesure d'exploitation — elle sert à
+# David pour décider s'il décroche son téléphone, et à rien d'autre.
+_OUVERTURES: dict[str, str] = {}
+
+# ON NE RELIT PAS UN EMAIL PARTI IL Y A UNE HEURE, et on ne redemande pas deux
+# fois le même jour. Le cas n'est pas théorique — un `--force` relancé le jour
+# même repasse sur le compte quelques minutes après l'envoi, et un `report_only`
+# lancé à la main peut repasser dix fois dans l'après-midi.
+_DELAI_RELEVE_H = 24
+
+
+def _assez_vieux(iso: str | None, maintenant: datetime) -> bool:
+    """Cet horodatage a-t-il au moins `_DELAI_RELEVE_H` ? Absent ou illisible → oui.
+
+    UN HORODATAGE AVEC FUSEAU SE RAMÈNE EN UTC AVANT D'ÊTRE COMPARÉ. Postgres
+    rend `timestamptz` avec un décalage (`+02:00`) ou un `Z` ; le comparer tel
+    quel à un `utcnow()` naïf lève `TypeError`, que le `try` de
+    `_relever_ouverture` avalerait — le relevé ne partirait alors jamais, en
+    silence.
+    """
+    if not iso:
+        return True
+    try:
+        quand = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if quand.tzinfo is not None:
+        quand = quand.replace(tzinfo=None) - quand.utcoffset()
+    return (maintenant - quand) >= timedelta(hours=_DELAI_RELEVE_H)
+
+
+def a_relever(envoi: dict | None, maintenant: datetime) -> bool:
+    """Faut-il redemander au fournisseur ce qu'est devenu cet envoi ?
+
+    Quatre non, et chacun pour une raison différente :
+      · rien à relire — pas de `message_id` (dry-run, envoi en échec), ou un
+        fournisseur que ce code ne sait pas interroger. Il ne faut surtout pas
+        en conclure une non-ouverture ;
+      · la réponse est DÉFINITIVE — ouvert, cliqué, signalé, pas arrivé :
+        redemander paierait un appel pour la même réponse ;
+      · l'envoi est trop récent — voir `_DELAI_RELEVE_H` ;
+      · on a déjà demandé il y a moins de `_DELAI_RELEVE_H`.
+
+    ET UN SILENCE N'EST PAS UNE RÉPONSE DÉFINITIVE, c'est ce qui commande tout
+    le reste. La plupart des ouvertures arrivent APRÈS le premier jour : figer
+    la réponse au premier relevé — comme le faisait la version d'avant, qui
+    s'arrêtait dès que `releve_a` était posé — perdrait systématiquement le
+    fait qu'on cherche, et d'autant plus sûrement qu'un `label_only` lancé à la
+    main 25 h après l'envoi suffisait à le figer pour de bon.
+    """
+    from saas.emailing.evenements import (ETATS_DEFINITIFS,
+                                          FOURNISSEURS_RELISIBLES,
+                                          etat_ouverture)
+    if not envoi or not envoi.get("message_id"):
+        return False
+    if (envoi.get("fournisseur") or "") not in FOURNISSEURS_RELISIBLES:
+        return False
+    if etat_ouverture(envoi.get("dernier_evenement")) in ETATS_DEFINITIFS:
+        return False
+    return (_assez_vieux(envoi.get("envoye_a"), maintenant)
+            and _assez_vieux(envoi.get("releve_a"), maintenant))
+
+
+def mot_du_releve(envoi: dict, evenement: str | None) -> str:
+    """La ligne de journal : de quand datait l'email, et ce qu'il est devenu.
+
+    LA SEMAINE EST NOMMÉE, parce que le relevé porte sur l'email de la semaine
+    PRÉCÉDENTE — celui de cette semaine vient à peine de partir. Sans la date,
+    la ligne se lirait comme un verdict sur l'email du jour.
+    """
+    from saas.emailing.evenements import phrase_ouverture
+    return f"email du {envoi.get('week_start')} : {phrase_ouverture(evenement)}"
+
+
+def _relever_ouverture(sb, uid: str, logs: list[str]) -> None:
+    """Relit chez le fournisseur l'email de la semaine d'avant, et le range.
+
+    APPELÉ AVANT LA PUBLICATION, et l'ordre porte tout : `fetch_dernier_envoi_email`
+    rend la ligne la plus récente, et publier d'abord en écrirait une neuve —
+    on relèverait alors l'email de la minute, pas celui de la semaine passée.
+
+    REMPLIT `_OUVERTURES` DÈS QU'ON SAIT, PAS SEULEMENT QUAND ON VIENT
+    D'APPRENDRE. Un `report_only` lancé à la main le matin relève la ligne et
+    fige `releve_a` ; la récolte qui suit ne redemanderait rien, et la ligne
+    rouge perdrait l'ouverture alors qu'elle est en base depuis une heure. Un
+    fait déjà rangé se relit, il ne se redemande pas.
+
+    Ne lève jamais. Une mesure d'exploitation ne fait pas tomber une récolte.
+    """
+    try:
+        from saas.commun.fetch_data import fetch_dernier_envoi_email
+        from saas.commun.insert_data import maj_evenement_email
+        from saas.emailing.evenements import etat_email, phrase_ouverture
+
+        envoi = fetch_dernier_envoi_email(sb, uid)
+        if not envoi:
+            return
+        if a_relever(envoi, datetime.utcnow()):
+            lu = etat_email(envoi.get("message_id"))
+            # UN APPEL RATÉ NE FIGE RIEN. Écrire ici poserait `releve_a` sur
+            # une coupure réseau : la ligne serait marquée « demandée » pour
+            # toujours, et une panne de vingt secondes se lirait ensuite comme
+            # un client qui n'ouvre pas. On le dit, et on n'en conclut rien.
+            if not lu.get("ok"):
+                logs.append(f"ouverture non relevée ({envoi.get('week_start')}) : "
+                            f"{lu.get('detail')}")
+                return
+            evenement = lu.get("evenement")
+            maj_evenement_email(sb, uid, str(envoi.get("week_start")), evenement)
+            logs.append(mot_du_releve(envoi, evenement))
+        elif envoi.get("releve_a"):
+            # Déjà relevé : réponse définitive, ou relevé de moins de 24 h. On
+            # relit ce qui est rangé, sans appel ni ligne de journal — la ligne
+            # a déjà été imprimée le jour où le fait est arrivé.
+            evenement = envoi.get("dernier_evenement")
+        else:
+            # Trop récent, dry-run, envoi raté : on ne sait rien, et on se garde
+            # de le dire comme si on savait.
+            return
+        _OUVERTURES[uid] = phrase_ouverture(evenement)
+    except Exception as e:
+        logs.append(f"relevé d'ouverture KO: {e}")
+
+
 class SchemaEnRetard(RuntimeError):
     """Le schéma en base est en retard sur le code — colonne absente (42703) ou
     contrainte d'unicité pas encore déplacée (42P10). Rattrapable en jouant la
@@ -941,6 +1078,12 @@ def run(force: bool = False, only_user: str | None = None,
         # GitHub Actions
         # (.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md).
         if report_only:
+            # AVANT de republier, comme dans la récolte complète : la ligne
+            # relevée doit être celle de l'email de la semaine d'avant.
+            # `report_only` n'envoie rien, mais c'est un mode de VÉRIFICATION —
+            # taire le relevé là où on vient le chercher le rendrait invisible
+            # (même raison qu'au ticket 47 pour `_note_canaux_qui_durent`).
+            _relever_ouverture(sb, uid, logs)
             try:
                 from saas.traitement.build_report import publish_weekly_report
                 _mot, _muets = publish_weekly_report(sb, uid)
@@ -955,6 +1098,7 @@ def run(force: bool = False, only_user: str | None = None,
         # re-fetch réseau (~1 min au lieu de 2-3). Mode de test lui aussi — la
         # labellisation du client tourne dans la récolte complète, ci-dessous.
         if label_only:
+            _relever_ouverture(sb, uid, logs)
             try:
                 from saas.recos_ia.labeling import auto_label
                 logs.append(auto_label(sb, uid))
@@ -1180,7 +1324,12 @@ def run(force: bool = False, only_user: str | None = None,
         # `_ECRITURES_SAUTEES` reste, et seulement pour ce qu'il sait vraiment :
         # faire finir la run en ROUGE quand une migration attend. Il ne commande
         # plus la publication.
+
+        # CE QU'EST DEVENU L'EMAIL DE LA SEMAINE D'AVANT (ticket 50), et il se
+        # relève AVANT que celui de cette semaine ne parte — sinon la ligne la
+        # plus récente serait celle qu'on vient d'écrire.
         if a_tente:
+            _relever_ouverture(sb, uid, logs)
             suivi.commence(sb, "rapport")
             try:
                 from saas.traitement.build_report import publish_weekly_report
@@ -1284,9 +1433,16 @@ if __name__ == "__main__":
                        else "aucune donnée jamais reçue")
             # CE QUE LE CLIENT SAIT, DIT LIGNE PAR LIGNE. Sur un canal qui ne
             # tait aucun chiffre, les deux surfaces client se taisent : il n'a
-            # rien vu. L'écrire ici est ce qui décide si David a besoin de
+            # rien reçu. L'écrire ici est ce qui décide si David a besoin de
             # l'appeler ou seulement de reconnecter.
-            _su = ("le client l'a vu dans son rapport et son email"
+            #
+            # « REÇU », PAS « VU » (ticket 50). Cette ligne disait « le client
+            # l'a vu » : personne ne l'avait mesuré, et c'est exactement la
+            # phrase invérifiable sur laquelle reposait tout l'arbitrage du
+            # ticket 47. Ce qui est mesuré, c'est que le rapport et l'email
+            # portaient la note — donc « reçu ». Ce qu'il en a fait, s'il est
+            # connu, tient dans la ligne d'ouverture juste en dessous.
+            _su = ("le client l'a reçu dans son rapport et son email"
                    if vu_par_le_client(_c)
                    else "INVISIBLE POUR LE CLIENT — ce canal ne lui tait aucun "
                         "chiffre, il n'en a jamais entendu parler")
@@ -1294,6 +1450,12 @@ if __name__ == "__main__":
                   f"{_c.get('semaines_muettes')} rapports, {_depuis} — "
                   f"{_c.get('mot')}")
             print(f"        → {_su}")
+            # L'OUVERTURE, QUAND ON LA CONNAÎT, ET SEULEMENT ALORS. Aucune
+            # ligne tant qu'aucun envoi n'a été relevé pour ce compte :
+            # imprimer « ouverture inconnue » à chaque escalade apprendrait à
+            # ne plus lire la ligne le jour où elle dit quelque chose.
+            if _uid in _OUVERTURES:
+                print(f"        → {_OUVERTURES[_uid]}")
         print("   Reconnecter le canal sur le compte, puis relancer "
               "weekly-fetch.yml (force + user_id) : le recouvrement réécrira "
               "les semaines trouées.")

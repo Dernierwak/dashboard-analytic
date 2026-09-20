@@ -96,11 +96,20 @@ compteur n'est qu'un seuil interne qui vaudrait faux dès qu'une semaine n'a pas
 
 ## Ce qui manque, et qui rouvrira la question
 
-**On ne sait pas si le client ouvre l'email.** Toute la différence entre « note
-ignorée » et « note pas vue » s'y joue, et tant qu'on ne l'a pas, l'arbitrage
-entre alerter David et écrire au client repose sur une intuition. C'est le fait
-le moins cher à acquérir de tout ce dossier. Suivi au ticket
-[50](../../.scratch/construction/issues/50-on-ne-sait-pas-si-l-email-est-ouvert.md).
+**~~On ne sait pas si le client ouvre l'email.~~ Répondu le 2026-09-20 par
+l'[ADR 0007](0007-l-ouverture-d-un-email-se-mesure-pour-david-jamais-pour-le-client.md)**,
+ticket [50](../../.scratch/construction/issues/50-on-ne-sait-pas-si-l-email-est-ouvert.md) :
+Pulse relit l'API du fournisseur au passage suivant du worker et range le fait
+dans `email_envois`, pour David seul.
+
+Deux conséquences sur cet ADR-ci. **La ligne rouge ne dit plus « le client l'a
+vu »** — personne ne l'avait mesuré — mais « l'a **reçu** », et une seconde
+ligne porte l'ouverture quand elle a été relevée. Et l'email dédié écarté
+ci-dessus **ne redevient pas légitime pour autant** : une non-ouverture ne
+prouve rien (pixel bloqué, suivi désactivé par défaut chez Resend), donc elle
+ne peut pas servir de condition d'envoi. Ce qui rouvrirait la question, c'est un
+**clic** sans reconnexion — la friction du 49, démontrée — ou un **rebond** :
+deux faits qui ne dépendent d'aucun pixel.
 
 **Et le pari opposé n'a pas été tranché** : que le frein ne soit pas l'attention
 mais la **friction** — reconnecter est un parcours OAuth de plusieurs gestes, et

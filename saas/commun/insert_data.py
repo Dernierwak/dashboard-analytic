@@ -858,3 +858,74 @@ def save_theme_resume(
         return bool(res.data)
     except Exception:
         return False
+
+
+# CE QU'EST DEVENU L'EMAIL HEBDO (ticket 50). Deux écritures, à une semaine
+# d'écart : l'envoi au moment où il part, l'événement au passage suivant du
+# worker. Elles restent séparées parce que la seconde ne doit jamais pouvoir
+# réécrire la première — `maj_evenement_email` fait un `update`, pas un upsert,
+# donc un relevé arrivé sur une ligne disparue ne ressuscite pas un envoi.
+def upsert_envoi_email(supabase: Client, user_id: str, week_start_iso: str,
+                       envoi: dict) -> None:
+    """Range l'envoi hebdo — `envoi` est le dict rendu par `send_email`.
+
+    UNE LIGNE EST ÉCRITE MÊME EN DRY-RUN ET MÊME EN ÉCHEC, et c'est le point.
+    Sans elle, une semaine où rien n'est parti serait indiscernable d'une
+    semaine où le client n'a pas ouvert — on conclurait « il ignore ses emails »
+    sur un email qui n'a jamais quitté la machine (`CLAUDE.md` §7).
+
+    Ne lève jamais : l'email est parti, c'est le fait qui compte pour le
+    client. Perdre sa trace ne doit pas faire échouer la publication du
+    rapport qui vient de réussir.
+    """
+    from datetime import datetime, timezone
+    try:
+        supabase.table("email_envois").upsert(
+            {
+                "user_id": user_id,
+                "week_start": week_start_iso,
+                "fournisseur": envoi.get("provider") or "?",
+                "message_id": envoi.get("id") or None,
+                # UN DRY-RUN N'EST PAS UN ENVOI RÉUSSI. `send_email` rend
+                # `ok: True` en mode `dry` — il veut dire « la fonction a fait
+                # ce qu'on lui demandait », pas « l'email est parti ». Le
+                # recopier tel quel ferait compter, dans un futur « quelles
+                # semaines l'email est-il parti ? », une semaine où rien n'a
+                # quitté la machine (`CLAUDE.md` §7).
+                "envoi_ok": bool(envoi.get("ok")) and envoi.get("provider") != "dry",
+                "envoye_a": datetime.now(timezone.utc).isoformat(),
+                # Un nouvel envoi remplace la ligne de la semaine : le relevé de
+                # l'envoi précédent ne vaut plus pour celui-ci.
+                "dernier_evenement": None,
+                "releve_a": None,
+            },
+            on_conflict="user_id,week_start",
+        ).execute()
+    except Exception as e:
+        print(f"   (envoi email non rangé : {e})")
+
+
+def maj_evenement_email(supabase: Client, user_id: str, week_start_iso: str,
+                        evenement: str | None) -> None:
+    """Range ce que le fournisseur a remonté sur cet envoi, tel quel.
+
+    `releve_a` est posé MÊME QUAND `evenement` est None : « on a demandé et
+    rien n'est venu » et « on n'a pas encore demandé » sont deux états
+    différents, et les confondre ferait redemander chaque semaine un fait que
+    le fournisseur ne rendra jamais.
+    """
+    from datetime import datetime, timezone
+    try:
+        res = (supabase.table("email_envois").update({
+            "dernier_evenement": evenement or None,
+            "releve_a": datetime.now(timezone.utc).isoformat(),
+        }).eq("user_id", user_id).eq("week_start", week_start_iso).execute())
+        # UN `update` QUI NE TOUCHE AUCUNE LIGNE NE LÈVE RIEN (`CLAUDE.md` §8).
+        # Ici ce n'est pas un refus RLS — le worker écrit en service_role — mais
+        # une ligne disparue entre l'envoi et le relevé. On le dit plutôt que de
+        # laisser croire que le fait est rangé.
+        if not res.data:
+            print(f"   (relevé d'ouverture : aucune ligne {week_start_iso} à mettre "
+                  f"à jour — l'envoi n'a jamais été rangé)")
+    except Exception as e:
+        print(f"   (relevé d'ouverture non rangé : {e})")
