@@ -11,6 +11,7 @@ import {
   ByLabelTable,
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { TrouDeRecolte } from "@/components/trou-recolte";
 import { RetourRapport } from "@/components/retour-rapport";
 import { CeQuiMarche } from "@/components/ce-qui-marche";
 import { Carnet } from "@/components/carnet";
@@ -49,6 +50,22 @@ export default async function GooglePage({
       {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
           et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
       <RetourRapport de={searchParams?.de} />
+
+      {/* CE QU'ON N'A PAS PU LIRE, AVANT LES CHIFFRES QU'IL EXPLIQUE (ticket
+          48). Les chiffres de cette page restent justes quand la récolte a
+          échoué — la fenêtre s'ancre sur la dernière ligne écrite — mais elle
+          RECULE alors sans le dire, et le client relit sa semaine d'avant sous
+          les dates du jour. C'est la sortie la plus discrète du problème : la
+          panne devient invisible pour tout le monde. Ce bandeau est ce qui
+          l'empêche. */}
+      {d.muet && (
+        <div className="mt-5">
+          <TrouDeRecolte
+            muets={[d.muet]}
+            taisent="La fenêtre affichée s'arrête au dernier jour lu, elle ne couvre pas les jours suivants"
+          />
+        </div>
+      )}
 
       <div className="mt-5">
         <AdsKpis d={d} channel="google" />

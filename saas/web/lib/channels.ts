@@ -1,6 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
+import { aveuglesSur, fetchCanauxMuets, type CanalMuetLive, type CanalPub } from "@/lib/canaux-muets";
 import { themesChoisis } from "@/lib/commandes";
 import { getCompteActif } from "@/lib/account";
+import {
+  addDays,
+  fenetreSurMesure,
+  fmtDay,
+  inWin,
+  iso,
+  makeWindow,
+  type Days,
+  type Window,
+} from "@/lib/fenetre-canal";
+
+export type { Days } from "@/lib/fenetre-canal";
 
 // Couche données des dashboards par canal — mêmes règles que le Streamlit :
 // fenêtre de N jours PLEINS ancrée sur la dernière date de données (jamais
@@ -8,21 +21,6 @@ import { getCompteActif } from "@/lib/account";
 // Filtres statut / campagne / thème appliqués AVANT les agrégats (KPIs, graphe
 // et tables suivent le filtre, comme dans l'app actuelle).
 
-const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-
-function iso(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setUTCDate(r.getUTCDate() + n);
-  return r;
-}
-function fmtDay(d: Date): string {
-  return `${String(d.getUTCDate()).padStart(2, "0")} ${MOIS_FR[d.getUTCMonth()]}`;
-}
-
-export type Days = 7 | 14 | 30 | 90 | 0; // 0 = tout l'historique
 
 export type DashParams = {
   d?: string;
@@ -57,82 +55,17 @@ export function periodDays(sp: DashParams | undefined): Days {
   return d === 14 ? 14 : d === 30 ? 30 : d === 90 ? 90 : 7;
 }
 
-type Window = { since: Date; until: Date; prevSince: Date; prevUntil: Date; label: string };
-
-function makeWindow(lastDataIso: string | null, firstDataIso: string | null, days: Days): Window {
-  const yesterday = addDays(new Date(), -1);
-  let anchor = yesterday;
-  if (lastDataIso) {
-    const d = new Date(lastDataIso.slice(0, 10) + "T00:00:00Z");
-    if (!isNaN(d.getTime()) && d < yesterday) anchor = d;
-  }
-  if (days === 0) {
-    let first = addDays(anchor, -365);
-    if (firstDataIso) {
-      const f = new Date(firstDataIso.slice(0, 10) + "T00:00:00Z");
-      if (!isNaN(f.getTime())) first = f;
-    }
-    // pas de période précédente comparable → deltas null
-    return {
-      since: first,
-      until: anchor,
-      prevSince: addDays(first, -1),
-      prevUntil: addDays(first, -2),
-      label: `Tout l'historique · ${fmtDay(first)} ${first.getUTCFullYear()} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()}`,
-    };
-  }
-  const since = addDays(anchor, -(days - 1));
-  const prevUntil = addDays(since, -1);
-  const prevSince = addDays(prevUntil, -(days - 1));
-  return {
-    since,
-    until: anchor,
-    prevSince,
-    prevUntil,
-    label: `${fmtDay(since)} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()} · ${days} jours pleins`,
-  };
+// LA FENÊTRE VIT DANS `lib/fenetre-canal.ts` (ticket 48) — arithmétique pure,
+// donc vérifiable hors ligne, ce que ce fichier-ci ne sera jamais (il importe le
+// client Supabase). `customWindow` reste exporté d'ici avec sa signature
+// d'origine : tout ce qui construit un lien ou une période passe par ce nom.
+export function customWindow(
+  sp: DashParams | undefined,
+  /** Le dernier jour lu par un canal MUET, ou `null` — voir `fenetreSurMesure`. */
+  dernierJourLu: string | null = null
+): Window | null {
+  return fenetreSurMesure(sp?.from ?? "", sp?.to ?? "", dernierJourLu);
 }
-
-// Période custom « du … au … » : fenêtre libre, comparée à la fenêtre de même
-// durée juste avant (même règle de delta que les presets).
-//
-// ELLE S'ARRÊTE AU DERNIER JOUR PLEIN, comme les presets. `makeWindow` ancre sur
-// `yesterday` depuis toujours ; la période sur mesure, elle, prenait la date
-// tapée telle quelle. Un client qui choisissait « du 1er au 17 août » le 17 août
-// comparait donc dix-sept jours dont un incomplet à dix-sept jours pleins — la
-// règle de la maison (« toute comparaison exclut le jour en cours ») tombait
-// exactement là où l'utilisateur avait choisi ses bornes lui-même. Le rognage
-// est ÉCRIT dans le libellé : une fenêtre qu'on raccourcit sans le dire est pire
-// qu'une fenêtre fausse.
-export function customWindow(sp: DashParams | undefined): Window | null {
-  const f = sp?.from ?? "";
-  const t = sp?.to ?? "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
-  const since = new Date(f + "T00:00:00Z");
-  const demande = new Date(t + "T00:00:00Z");
-  if (isNaN(since.getTime()) || isNaN(demande.getTime()) || since > demande) return null;
-  const hier = addDays(new Date(), -1);
-  const rogne = iso(demande) > iso(hier);
-  const until = rogne ? new Date(iso(hier) + "T00:00:00Z") : demande;
-  if (since > until) return null;
-  const len = Math.round((until.getTime() - since.getTime()) / 86400_000) + 1;
-  const prevUntil = addDays(since, -1);
-  const prevSince = addDays(prevUntil, -(len - 1));
-  return {
-    since,
-    until,
-    prevSince,
-    prevUntil,
-    label:
-      `du ${fmtDay(since)} ${since.getUTCFullYear()} au ${fmtDay(until)} ${until.getUTCFullYear()} · ${len} jours` +
-      (rogne ? " · jour en cours exclu" : ""),
-  };
-}
-
-const inWin = (dateStr: string, since: Date, until: Date) => {
-  const d = String(dateStr).slice(0, 10);
-  return d >= iso(since) && d <= iso(until);
-};
 
 export function pct(cur: number, prev: number): number | null {
   return prev > 0 ? ((cur - prev) / prev) * 100 : null;
@@ -529,6 +462,17 @@ export type ChannelDash = {
   byLabel: LabelAgg[];
   labels: string[];
   comparaison: Comparaison;
+  /** LA RÉCOLTE DE CE CANAL A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48), ou `null`
+   *  si tout va bien.
+   *
+   *  Ce qu'il change ici n'est pas un calcul mais une EXPLICATION. Les chiffres
+   *  de cette page sont déjà justes quand un canal est muet — la fenêtre
+   *  s'ancre sur la dernière ligne écrite (`makeWindow`), la plage sur mesure
+   *  s'y arrête aussi, et la comparaison refuse toute référence au-delà. Ce qui
+   *  manquait, c'est de DIRE pourquoi la fenêtre s'est décalée : sans ça, le
+   *  client relit sa semaine d'avant sous les dates d'aujourd'hui et la panne
+   *  devient invisible pour tout le monde, lui comme nous (ADR 0005). */
+  muet: CanalMuetLive | null;
 };
 
 type RawAd = {
@@ -544,18 +488,27 @@ type RawAd = {
 
 type Cfg = Map<string, { name: string; label: string | null; labelSource: string | null; status: string | null }>;
 
+/** Ce qui change d'un canal à l'autre et qu'un tableau de bord ne calcule pas
+ *  lui-même. Regroupé parce que `buildDash` en portait déjà sept, et qu'une
+ *  fonction à huit paramètres positionnels s'appelle à l'aveugle. */
+type Contexte = {
+  cfg: Cfg;
+  labels: string[];
+  email: string;
+  muet: CanalMuetLive | null;
+};
+
 function buildDash(
   rows: RawAd[],
   drillRows: RawAd[],
   days: Days,
   sp: DashParams | undefined,
-  cfg: Cfg,
-  labels: string[],
-  email: string
+  ctx: Contexte
 ): ChannelDash {
+  const { cfg, labels, email, muet } = ctx;
   const lastIso = rows[0]?.date ?? null;
   const firstIso = rows.length ? rows[rows.length - 1].date : null;
-  const w = customWindow(sp) ?? makeWindow(lastIso, firstIso, days);
+  const w = customWindow(sp, muet?.depuis ?? null) ?? makeWindow(lastIso, firstIso, days);
 
   // Options de filtre (avant filtrage — on liste tout ce qui existe)
   const statusSet = new Set<string>();
@@ -802,6 +755,7 @@ function buildDash(
     byLabel,
     labels,
     comparaison,
+    muet,
   };
 }
 
@@ -811,7 +765,7 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [rowsRes, cfgRes, labelsRes] = await Promise.all([
+  const [rowsRes, cfgRes, labelsRes, muets] = await Promise.all([
     supabase.from("meta_ads_insights")
       .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
@@ -819,6 +773,7 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
     supabase.from("meta_campaign_config")
       .select("*").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
+    fetchCanauxMuets(supabase, uid),
   ]);
 
   const rows: RawAd[] = (rowsRes.data ?? []).map((r) => ({
@@ -845,7 +800,12 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
   // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
-  return buildDash(rows, rows, days, sp, cfg, labels, compte.email);
+  return buildDash(rows, rows, days, sp, {
+    cfg,
+    labels,
+    email: compte.email,
+    muet: muetDu(muets, "meta"),
+  });
 }
 
 export async function getGoogleDash(sp: DashParams | undefined): Promise<ChannelDash> {
@@ -854,7 +814,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [rowsRes, adsRes, cfgRes, labelsRes] = await Promise.all([
+  const [rowsRes, adsRes, cfgRes, labelsRes, muets] = await Promise.all([
     supabase.from("google_ads_insights")
       .select("date_start, campaign_id, cost_micros, clicks, impressions")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
@@ -865,6 +825,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     supabase.from("google_campaign_config")
       .select("*").eq("user_id", uid),
     supabase.from("profiles").select("labels").eq("id", uid).limit(1),
+    fetchCanauxMuets(supabase, uid),
   ]);
 
   const rows: RawAd[] = (rowsRes.data ?? []).map((r) => ({
@@ -901,7 +862,25 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
   );
   const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
-  return buildDash(rows, drillRows, days, sp, cfg, labels, compte.email);
+  return buildDash(rows, drillRows, days, sp, {
+    cfg,
+    labels,
+    email: compte.email,
+    muet: muetDu(muets, "google"),
+  });
+}
+
+/** Le trou de CE canal-ci, parmi ceux du compte, et seulement s'il tait
+ *  vraiment quelque chose.
+ *
+ *  Une page canal ne parle que d'une régie : celle de l'autre ne la concerne
+ *  pas, et l'afficher ici enverrait le client reconnecter ce qui fonctionne.
+ *  Un canal tombé APRÈS avoir écrit jusqu'à hier ne raccourcit aucune fenêtre
+ *  non plus — il est en panne, il sera signalé sur le rapport, mais il n'a rien
+ *  à expliquer ici. Une alarme qui s'allume sans rien cacher s'use. */
+function muetDu(muets: CanalMuetLive[], canal: CanalPub): CanalMuetLive | null {
+  const hier = iso(addDays(new Date(), -1));
+  return aveuglesSur(muets, hier).find((m) => m.canal === canal) ?? null;
 }
 
 // ── Instagram organique ───────────────────────────────────────────────────────

@@ -49,14 +49,17 @@ export function Chiffre({
   delta?: number | null;
   baisseEstBonne?: boolean;
   verdict?: { texte: string; ton: Ton };
-  serie?: number[];
+  /** `null` = un point qu'on n'a PAS mesuré (récolte muette, ticket 48). La
+   *  sparkline le saute au lieu de le poser à zéro, où il dessinerait une chute
+   *  que personne n'a décidée. */
+  serie?: (number | null)[];
   /** Le libellé de chaque point de `serie` (une date, le plus souvent) —
    *  affiché dans la bulle au survol de la sparkline, en plus de la valeur. */
   serieLabels?: string[];
   ton?: Ton;
   grand?: boolean;
 }) {
-  const utile = (serie ?? []).filter((v) => v > 0).length >= 2;
+  const utile = (serie ?? []).filter((v) => v !== null && v > 0).length >= 2;
 
   return (
     <div className="bg-white border border-line rounded-xl min-w-[180px] shrink-0 sm:min-w-0 sm:shrink overflow-hidden flex flex-col">

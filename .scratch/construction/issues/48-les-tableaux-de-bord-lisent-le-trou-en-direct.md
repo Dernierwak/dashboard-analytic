@@ -1,7 +1,7 @@
 # Les tableaux de bord lisent le trou en direct, sans passer par le rapport
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -52,3 +52,87 @@ de deviner lequel — seul `fetch_progress` le sait.
 Le rapport hebdo et l'email sont corrigés et vérifiés
 (`.scratch/construction/harnais/20-canal-muet/`). Ce ticket ne porte que sur les
 écrans qui court-circuitent le payload.
+
+## Answer
+
+Résolu le 2026-09-20. Le signal traverse une seconde fois : `lib/canaux-muets.ts`
+est le jumeau web de `fetch_canaux_muets` — même table, même filtre sur le
+dernier passage (`run_id` max, état `echec`), même restriction aux canaux
+payants — et il rapporte en plus, pour chaque canal muet, **la dernière date
+qu'il a réellement écrite**. C'est elle qui borne le trou : une mesure se tait
+APRÈS cette date, et nulle part ailleurs, donc les fenêtres d'avant restent des
+chiffres.
+
+**Le rapport (`lib/report.ts`).** Un canal muet n'ancre plus la fenêtre — sinon
+la semaine entière reculait et le client relisait l'ancienne sous les dates du
+jour. Les dépenses par canal valent `null` pour le canal tombé, les totaux
+(dépense, clics, CTR) valent `null` dès qu'une des deux régies manque, et le
+ROAS ne se calcule plus : c'est le vrai piège, GA4 écrit pendant que Meta
+échoue, donc le ratio ne s'effondre pas, **il gonfle**. Les deltas se taisent
+avec leurs deux termes. `hasData` ne retombe plus : un canal muet EST une
+donnée. La liste lue en direct **ne ressort pas** de `WeeklyData` : ce que le
+client lit sur cette page reste `report.canaux_muets`, le trou tel que le worker
+l'a constaté en écrivant ce payload — deux listes exposées côte à côte sur un
+même écran finiraient par se contredire.
+
+**`/couts`.** L'alerte **se désarme** au lieu de se prononcer, comme le demande
+l'ADR 0005. Dépense de l'année, du mois, moyenne quotidienne, repère de rythme,
+total de période et dépense par thème valent `null` quand une régie muette les
+traverse ; la barre d'enveloppe, la pastille « dans les clous » et « reste à
+dépenser » disparaissent avec eux — ce dernier est un feu vert à dépenser, et un
+cumul amputé le rendait trop généreux. Les deux anneaux sortent entièrement :
+une part calculée sur une seule des deux régies gonfle celle qui reste. La
+courbe et les sparklines sautent les jours non lus au lieu de les poser à zéro.
+Les alertes de dépassement quotidien ne jugent plus une journée dont on n'a
+qu'une moitié.
+
+**`/meta` et `/google`.** Les chiffres y étaient déjà justes sans qu'on le
+sache : `makeWindow` s'ancre sur la dernière ligne écrite, et
+`batirComparaison` refuse déjà toute référence au-delà (« les jours qui
+manquent compteraient comme des zéros »). Deux trous restaient. Une **plage
+tapée à la main** prenait les dates du client telles quelles : les jours d'après
+la panne entraient comme des jours à zéro, la courbe tombait, et ça se lit comme
+un arrêt de campagne. Elle s'arrête désormais au dernier jour lu, et le libellé
+le dit. Et surtout, la fenêtre **reculait en silence** : c'est la sortie la plus
+discrète du problème, la panne devenait invisible pour tout le monde. Un bandeau
+`TrouDeRecolte` l'explique maintenant sur `/couts`, `/meta` et `/google`.
+
+**Une alarme qui s'allume sans rien cacher s'use.** Un canal tombé APRÈS avoir
+écrit toute la fenêtre ne creuse aucun trou : il n'est signalé sur aucune de ces
+trois pages, exactement comme `chiffres_tus` le décide côté rapport.
+
+**Le piège des trois états a décidé d'un choix précis.** On ne rogne QUE sur un
+canal muet, jamais sur « plus de lignes récentes » : un canal qui a bien répondu
+et n'a simplement plus de campagne active a des zéros **mesurés**, et ils
+doivent continuer à s'afficher (ADR 0005, état ③). Seule `fetch_progress` sépare
+les deux, et c'est le seul endroit où le web se le demande.
+
+**Une couture a été posée pour pouvoir vérifier.** `lib/channels.ts` importe le
+client Supabase, donc `next/headers`, donc React : il ne se charge pas hors de
+Next, et ses règles de fenêtre étaient invérifiables autrement qu'en
+production. Elles vivent dans `lib/fenetre-canal.ts`, sans aucun import, et
+`channels.ts` les importe — `customWindow` garde sa signature, c'est une
+couture, pas une réécriture.
+
+Vérifié par **23 tests hors ligne** (`.scratch/construction/harnais/48-trou-en-direct/`,
+`node --test --experimental-strip-types`), le harnais du ticket 20 rejoué
+(31/31), `npx tsc --noEmit` et `npm run build` sur un `.next` propre : **19
+routes**.
+
+**Rien de tout ça ne se voit en cliquant** — il faut une vraie panne de récolte.
+Ce qui se constate à l'écran demande un passage du worker : le cron du Jour de
+travail (07:00 UTC) ou un lancement à la main depuis GitHub Actions
+(`weekly-fetch.yml`).
+
+### Trouvé en chemin
+
+`WeeklyData.kpis` et `WeeklyData.channels` **ne sont lus par aucun composant** —
+la contradiction « deux chiffres à trente pixels d'écart » décrite plus haut ne
+peut donc pas se produire. Ils ont été rendus honnêtes quand même (c'était le
+cas le plus net du ticket), mais un calcul que personne ne lit ne se vérifie
+pas : ticket [51](51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md).
+
+`lib/couverture.ts` lit lui aussi les tables brutes. Il n'est pas touché ici :
+sa fenêtre s'ancre sur la dernière ligne écrite, donc elle ne traverse pas le
+trou, et il mesure une COUVERTURE (l'argent qui échappe aux thèmes), pas un
+verdict de budget. Le ticket ne le nommait pas.

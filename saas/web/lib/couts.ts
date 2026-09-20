@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import {
+  aveuglesSur,
+  canalTu,
+  fenetreTue,
+  fetchCanauxMuets,
+  type CanalMuetLive,
+} from "@/lib/canaux-muets";
+import {
   dAjout,
   dCourt,
   dIso,
@@ -50,6 +57,11 @@ import {
 // Il ne gouverne plus rien — un nombre qu'on abandonne se raconte, il ne
 // s'efface pas en silence.
 
+/** La plus petite de deux dates ISO — deux jours pleins se comparent en texte. */
+function minJour(a: string, b: string): string {
+  return a < b ? a : b;
+}
+
 function dLundi(s: string): string {
   const d = dParse(s);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -74,13 +86,33 @@ function dLundi(s: string): string {
 // `metaYear`, `googleYear`) restent : `totalSpent` et `spentYear` en
 // descendent, et toute la page en dépend.
 
-export type CoutDay = { date: string; label: string; meta: number; google: number };
+// ── POURQUOI TANT DE `number | null` SUR CETTE PAGE (ticket 48) ─────────────
+//
+// Cette page ne lit pas le rapport : elle rouvre `meta_ads_insights` et
+// `google_ads_insights` elle-même. Elle traverse donc le MÊME trou de récolte
+// que le rapport, par un autre chemin, et aucune des protections du ticket 20
+// ne s'y appliquait. Une semaine de récolte ratée faisait baisser la dépense de
+// l'année — et cette page se sert de la dépense de l'année pour dire « tu es
+// dans ton budget ». L'alerte se désarmait donc toute seule, dans le bon sens
+// pour le client et dans le mauvais pour la vérité.
+//
+// La règle appliquée est celle de l'ADR 0005 : chaque mesure se tait si sa
+// source est muette SUR SA FENÊTRE. `null` veut dire « on ne sait pas », jamais
+// « zéro » — et un budget ne se juge pas sur une dépense qu'on ne connaît pas.
+// Les fenêtres qui s'arrêtent AVANT le trou restent des chiffres.
+
+export type CoutDay = { date: string; label: string; meta: number | null; google: number | null };
 
 /** Un point de la courbe filtrée — un jour, ou une semaine sur les longues périodes. */
-export type PointSerie = { cle: string; label: string; meta: number; google: number };
+export type PointSerie = {
+  cle: string;
+  label: string;
+  meta: number | null;
+  google: number | null;
+};
 
 /** Ce qui a été dépensé par plateforme — la même forme partout sur cette page. */
-export type ParCanal = { meta: number; google: number };
+export type ParCanal = { meta: number | null; google: number | null };
 
 // Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
 // pour le mensuel et "an:label:<nom>" pour l'annuel (même carry-forward que
@@ -95,12 +127,14 @@ export type ParCanal = { meta: number; google: number };
 // absente ; sans elle, un thème affiche sa dépense et se tait.
 export type ThemeSpend = {
   label: string;
-  spendYear: number;    // dépense cumulée depuis janvier
+  /** `null` quand une régie muette traverse l'année : un cumul amputé se lirait
+   *  comme un thème qu'on a arrêté de financer. */
+  spendYear: number | null;
   budgetYear: number;   // enveloppe d'année SAISIE (0 = aucune, et rien ne la remplace)
   /** Ce que l'ancienne estimation aurait produit — affiché pour dire qu'il ne
    *  compte plus, jamais pour fabriquer un dénominateur. */
   budgetYearHerite: number;
-  spendPeriode: number; // dépense sur la période filtrée — ce que montre l'anneau
+  spendPeriode: number | null; // dépense sur la période filtrée — ce que montre l'anneau
   /** Sur QUELLE plateforme l'argent de ce thème est parti, depuis janvier.
    *  Un thème qui pèse 4 000 CHF ne se pilote pas pareil selon qu'il est à
    *  100 % sur Google ou partagé — et rien ne le disait. */
@@ -135,6 +169,11 @@ export type FiltreCouts = {
 
 export type CoutsData = {
   email: string;
+  /** LES RÉGIES DONT LA RÉCOLTE A ÉCHOUÉ AU DERNIER PASSAGE, lues en direct
+   *  (`lib/canaux-muets.ts`). C'est ce qui explique chaque `—` de la page : un
+   *  tiret sans raison se lit comme un bug de Pulse, pas comme une connexion à
+   *  refaire. Vide quand tout va bien, et la page ne dit alors rien. */
+  muets: CanalMuetLive[];
   // Liste maîtresse des thèmes (profiles.labels) — elle fixe la couleur de
   // chacun, la même ici que dans le rapport.
   labels: string[];
@@ -143,7 +182,11 @@ export type CoutsData = {
   elapsedAn: number;  // fraction de l'ANNÉE écoulée, en jours et non en mois
 
   // ── L'année : ce qui se pilote ────────────────────────────────────────────
-  spentYear: number;
+  /** `null` = une régie muette traverse l'année, donc aucun verdict de budget.
+   *  L'alerte SE DÉSARME plutôt que de se prononcer sur une dépense incomplète
+   *  (ADR 0005) : une semaine creuse ferait repasser le compte du bon côté et
+   *  fabriquerait un « tu es dans ton budget » faux. */
+  spentYear: number | null;
   /** L'enveloppe unique, telle qu'elle a été TAPÉE. Aucune règle de préséance,
    *  aucune estimation : 0 tant que rien n'est saisi. */
   budgetAnnuel: number;
@@ -152,17 +195,27 @@ export type CoutsData = {
   budgetAnnuelHerite: number;
 
   // ── Le mois : une lecture de l'année, et rien d'autre ─────────────────────
-  totalSpent: number;
+  totalSpent: number | null;
   totalBudget: number;       // toujours l'annuel ÷ 12
   sourceBudgetMois: "annuel" | "aucun";
 
   joursMois: number;
   budgetJour: number;    // budget mensuel ÷ jours du mois
-  moyenneJour: number;   // dépense de l'ANNÉE ÷ jours écoulés — le rythme réel
-  repereJour: number;    // ce qu'il faudrait tenir par jour pour finir l'année dedans
-  alertes: AlerteJour[]; // jours au-dessus du double du budget quotidien
+  /** `null` quand la dépense de l'année l'est : une moyenne dont on ignore le
+   *  numérateur n'est pas une moyenne plus floue, c'est un chiffre inventé. */
+  moyenneJour: number | null;
+  /** Ce qu'il faudrait tenir par jour pour finir l'année dans l'enveloppe.
+   *  `null` dans deux cas : aucune enveloppe fixée (il n'y a rien à tenir), ou
+   *  dépense de l'année inconnue (le calculer sur un cumul amputé rendrait une
+   *  marge trop généreuse, et c'est un feu vert à dépenser). */
+  repereJour: number | null;
+  /** Les jours au-dessus du double du budget quotidien. Un jour que le trou
+   *  ampute n'y entre PAS : on ne juge pas une journée dont on n'a qu'une
+   *  moitié. Ce qui reste est donc constaté — et l'absence d'alerte ne vaut
+   *  jamais « tout va bien » quand `muets` n'est pas vide. */
+  alertes: AlerteJour[];
   daily: CoutDay[];      // le mois en cours, jour par jour (non filtré)
-  parMois: number[];     // dépense de chaque mois de l'année — la forme de la tuile
+  parMois: (number | null)[]; // dépense de chaque mois de l'année — la forme de la tuile
 
   // ── Ce que le filtre commande ─────────────────────────────────────────────
   periode: PeriodeCouts;
@@ -170,7 +223,7 @@ export type CoutsData = {
   serie: PointSerie[];       // la courbe, au pas de la période
   /** Le dernier point est une semaine incomplète — il faut le dire. */
   dernierePartielle: boolean;
-  totalPeriode: number;
+  totalPeriode: number | null;
   /** La même dépense de période, ventilée par plateforme — le second anneau. */
   parCanalPeriode: ParCanal;
   filtreActif: boolean;      // au moins un thème sélectionné
@@ -228,11 +281,17 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       .eq("user_id", uid)
       .order("date_start", { ascending: ancien })
       .limit(1);
-  const bornesBrutes = await Promise.all([
-    bord("meta_ads_insights", false),
-    bord("google_ads_insights", false),
-    bord("meta_ads_insights", true),
-    bord("google_ads_insights", true),
+  const [bornesBrutes, muets] = await Promise.all([
+    Promise.all([
+      bord("meta_ads_insights", false),
+      bord("google_ads_insights", false),
+      bord("meta_ads_insights", true),
+      bord("google_ads_insights", true),
+    ]),
+    // QUELLE RÉCOLTE A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48). Lue avant tout le
+    // reste parce qu'elle décide de ce que chaque total de cette page a le
+    // droit d'affirmer — et c'est cette page qui porte le verdict de budget.
+    fetchCanauxMuets(supabase, uid),
   ]);
   const jourOuRien = (res: { data: unknown }) => {
     const d = (res.data as { date_start: string }[] | null)?.[0]?.date_start;
@@ -250,6 +309,22 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     yearStart,
     monthStart,
   });
+  // ── CE QUE LE TROU DE RÉCOLTE A LE DROIT DE TAIRE ────────────────────────
+  //
+  // Une fenêtre est trouée dès qu'elle va AU-DELÀ du dernier jour qu'une régie
+  // muette a écrit. Celles qui s'arrêtent avant restent des chiffres — c'est ce
+  // qui garde les mois d'avant lisibles pendant que le mois en cours se tait.
+  // `fin` est donc toujours le DERNIER jour couvert par la fenêtre, jamais son
+  // début.
+  const tuSi = (v: number, fin: string) => (fenetreTue(muets, fin) ? null : v);
+  const parCanalTu = (
+    v: { meta: number; google: number },
+    fin: string
+  ): ParCanal => ({
+    meta: canalTu(muets, "meta", fin) ? null : v.meta,
+    google: canalTu(muets, "google", fin) ? null : v.google,
+  });
+
   const labelsChoisis = (filtre.labels ?? []).filter(Boolean);
   const filtreActif = labelsChoisis.length > 0;
   const retenu = new Set(labelsChoisis);
@@ -310,13 +385,13 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const parJourMois = new Map<string, { meta: number; google: number }>();
   const parJourPeriode = new Map<string, { meta: number; google: number }>();
   const themeAn = new Map<string, number>();
-  const themeCanalAn = new Map<string, ParCanal>();
+  const themeCanalAn = new Map<string, { meta: number; google: number }>();
   const themePeriode = new Map<string, number>();
   const parMoisCanal = new Map<string, { meta: number; google: number }>();
   let metaSpent = 0, googleSpent = 0;        // mois en cours
   let metaYear = 0, googleYear = 0;          // depuis janvier
   let totalPeriode = 0;
-  const parCanalPeriode: ParCanal = { meta: 0, google: 0 };
+  const canalPeriodeBrut = { meta: 0, google: 0 };
 
   for (const l of lignes) {
     const dansMois = l.date >= monthStart && l.date <= aujourdhui;
@@ -352,7 +427,7 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       v[l.canal] += l.chf;
       parJourPeriode.set(cle, v);
       totalPeriode += l.chf;
-      parCanalPeriode[l.canal] += l.chf;
+      canalPeriodeBrut[l.canal] += l.chf;
       if (l.theme) themePeriode.set(l.theme, (themePeriode.get(l.theme) ?? 0) + l.chf);
     }
   }
@@ -369,7 +444,12 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     // afficherait alors « 29 déc » comme premier point, pour une semaine dont
     // on n'a que quatre jours. On l'écrit à sa vraie date de départ.
     const debut = cur < periode.from ? periode.from : cur;
-    serie.push({ cle: cur, label: dCourt(debut), meta: v.meta, google: v.google });
+    // LE SEAU SE TAIT DÈS QU'IL DÉBORDE SUR LE TROU, et c'est le défaut le plus
+    // visible du ticket 48 : une courbe qui tombe à zéro sur les derniers jours
+    // se lit comme un arrêt de campagne, alors que personne n'a rien arrêté.
+    // Un point tu ne se dessine pas — le trait s'arrête au dernier jour connu.
+    const finSeau = periode.pas === "semaine" ? minJour(dAjout(cur, 6), periode.to) : cur;
+    serie.push({ cle: cur, label: dCourt(debut), ...parCanalTu(v, finSeau) });
   }
   // La dernière semaine est en cours : elle est mécaniquement plus basse, et
   // sans avertissement elle se lit comme un effondrement de la dépense.
@@ -382,7 +462,11 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   for (let day = 1; day <= now.getDate(); day++) {
     const dk = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const v = parJourMois.get(dk) ?? { meta: 0, google: 0 };
-    daily.push({ date: dk, label: `${String(day).padStart(2, "0")} ${MOIS_ABR[m]}`, meta: v.meta, google: v.google });
+    daily.push({
+      date: dk,
+      label: `${String(day).padStart(2, "0")} ${MOIS_ABR[m]}`,
+      ...parCanalTu(v, dk),
+    });
   }
 
   // ── Budgets : carry-forward (même règle que budget_for_month) ─────────────
@@ -421,26 +505,36 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       const mensuels = sommeDouze(`label:${label}`);
       return {
         label,
-        spendYear,
+        spendYear: tuSi(spendYear, aujourdhui),
         // `saisi`, jamais `saisi || mensuels` : douze mensuels ne font pas une
         // enveloppe d'année, ils font une moyenne qu'on présenterait comme une
         // décision.
         budgetYear: saisi,
         budgetYearHerite: saisi > 0 ? 0 : mensuels,
-        spendPeriode: themePeriode.get(label) ?? 0,
-        parCanalAn: themeCanalAn.get(label) ?? { meta: 0, google: 0 },
+        spendPeriode: tuSi(themePeriode.get(label) ?? 0, periode.to),
+        parCanalAn: parCanalTu(themeCanalAn.get(label) ?? { meta: 0, google: 0 }, aujourdhui),
       };
     })
-    .sort((a, b) => b.spendYear - a.spendYear);
+    // Le tri reste sur la dépense MESURÉE : quand elle se tait, il n'y a plus
+    // d'ordre à défendre et l'alphabet vaut mieux qu'un classement arbitraire.
+    .sort((a, b) =>
+      a.spendYear !== null && b.spendYear !== null
+        ? b.spendYear - a.spendYear
+        : a.label.localeCompare(b.label)
+    );
 
   // La forme de l'année, mois par mois — la sparkline de la tuile « Budget
   // annuel ». La table « détail mois par mois » a disparu avec le dépliant des
   // réglages : c'était douze lignes de saisie pour un nombre qu'on tape une
   // fois, et elle n'était rendue nulle part ailleurs.
-  const parMois: number[] = [];
+  const parMois: (number | null)[] = [];
   for (let i = 0; i <= m; i++) {
     const spent = parMoisCanal.get(`${y}-${String(i + 1).padStart(2, "0")}`) ?? { meta: 0, google: 0 };
-    parMois.push(spent.meta + spent.google);
+    // Le dernier jour que ce mois couvre — le 31 pour un mois révolu,
+    // aujourd'hui pour le mois en cours. C'est lui qui dit si le mois
+    // traverse le trou : ceux d'avant restent des chiffres.
+    const finMois = minJour(dIso(new Date(y, i + 1, 0)), aujourdhui);
+    parMois.push(tuSi(spent.meta + spent.google, finMois));
   }
 
   // ── L'ANNÉE, d'abord : c'est elle qui commande tout le reste ─────────────
@@ -461,8 +555,12 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   const sourceBudgetMois: CoutsData["sourceBudgetMois"] =
     budgetAnnuel > 0 ? "annuel" : "aucun";
 
-  const totalSpent = metaSpent + googleSpent;
-  const spentYear = metaYear + googleYear;
+  // LE TOTAL AMPUTÉ EST LE MENSONGE LE PLUS CHER DE CETTE PAGE (ticket 48).
+  // C'est lui qui fait dire « dans les clous » à un compte dont on n'a pas lu
+  // une semaine de dépense. Il n'a pas de moitié valide : dès qu'une des deux
+  // régies manque sur la fenêtre, la somme n'est plus une somme.
+  const totalSpent = tuSi(metaSpent + googleSpent, aujourdhui);
+  const spentYear = tuSi(metaYear + googleYear, aujourdhui);
 
   // La part de l'année écoulée se compte en JOURS, pas en mois entiers : le
   // 2 août, compter août comme passé annoncerait 67 % d'année au lieu de 58, et
@@ -473,16 +571,32 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
 
   const joursMois = daysInMonth;
   const budgetJour = totalBudget > 0 ? totalBudget / joursMois : 0;
-  const moyenneJour = spentYear / Math.max(1, joursEcoulesAn);
+  const moyenneJour = spentYear === null ? null : spentYear / Math.max(1, joursEcoulesAn);
   // Ce qu'il reste à dépenser, étalé sur les jours qui restent : le vrai repère
   // du rythme. Une moyenne comparée au budget/365 punit un début d'année calme
   // et absout une fin d'année emballée.
+  //
+  // IL SE TAIT AVEC LA DÉPENSE. Calculé sur un cumul amputé, il rendrait une
+  // marge quotidienne TROP GÉNÉREUSE — le sens exact dans lequel il ne faut pas
+  // se tromper, puisque c'est un feu vert à dépenser.
   const joursRestants = Math.max(1, joursAnnee - joursEcoulesAn);
-  const repereJour = budgetAnnuel > 0 ? Math.max(0, budgetAnnuel - spentYear) / joursRestants : 0;
+  const repereJour =
+    spentYear === null || budgetAnnuel <= 0
+      ? null
+      : Math.max(0, budgetAnnuel - spentYear) / joursRestants;
 
+  // UNE JOURNÉE QU'ON N'A LUE QU'À MOITIÉ NE SE JUGE PAS. Elle ne peut pas
+  // produire une fausse alerte — une dépense manquante ne fait que baisser le
+  // ratio — mais elle produirait un SILENCE trompeur, listé au milieu de jours
+  // réellement mesurés. On l'écarte, et la page dit ailleurs qu'il manque des
+  // jours : l'absence d'alerte ne vaut jamais « tout va bien » tant qu'une
+  // régie est muette.
   const alertes: AlerteJour[] =
     budgetJour > 0
       ? daily
+          .filter((d): d is CoutDay & { meta: number; google: number } =>
+            d.meta !== null && d.google !== null
+          )
           .map((d) => ({
             date: d.date,
             label: d.label,
@@ -502,6 +616,12 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
 
   return {
     email: compte.email,
+    // ON NE SIGNALE QUE CE QUI TAIT VRAIMENT QUELQUE CHOSE. Un canal tombé
+    // APRÈS avoir écrit toute la période ne creuse aucun trou sur cette page :
+    // l'annoncer quand même userait l'alarme pour rien — c'est la règle de
+    // `chiffres_tus` côté rapport, appliquée ici à la fenêtre la plus large de
+    // la page, l'année.
+    muets: aveuglesSur(muets, aujourdhui),
     labels: (labelsRes.data?.[0]?.labels as string[] | null) ?? [],
     annee: y,
     elapsed,
@@ -523,8 +643,8 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     labelsChoisis,
     serie,
     dernierePartielle,
-    totalPeriode,
-    parCanalPeriode,
+    totalPeriode: tuSi(totalPeriode, periode.to),
+    parCanalPeriode: parCanalTu(canalPeriodeBrut, periode.to),
     filtreActif,
     byTheme,
   };

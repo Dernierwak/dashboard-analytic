@@ -304,16 +304,22 @@ export function DepenseAnnee({
   planifie,
 }: {
   annee: number;
-  spentYear: number;
+  /** `null` = une régie muette traverse l'année (ticket 48). LE VERDICT SE
+   *  DÉSARME ALORS ENTIÈREMENT — pas de barre, pas de pastille, pas de « reste
+   *  à dépenser ». C'est le cœur du ticket : une semaine de récolte ratée
+   *  faisait baisser ce cumul, donc repasser le compte du bon côté, donc
+   *  afficher « dans les clous » à quelqu'un qui ne l'est peut-être pas. Un
+   *  verdict sur une dépense inconnue est pire que pas de verdict. */
+  spentYear: number | null;
   budgetAnnuel: number;
   elapsedAn: number;
   /** Ce qui est RÉGLÉ sur les campagnes — l'autre promesse, celle des plateformes. */
   planifie: BudgetPlanifie;
 }) {
-  const ratio = budgetAnnuel > 0 ? spentYear / budgetAnnuel : null;
+  const ratio = budgetAnnuel > 0 && spentYear !== null ? spentYear / budgetAnnuel : null;
   const enAvance = ratio !== null && ratio > elapsedAn + 0.05;
   const depasse = ratio !== null && ratio > 1;
-  const resteEnveloppe = budgetAnnuel - spentYear;
+  const resteEnveloppe = spentYear === null ? null : budgetAnnuel - spentYear;
 
   return (
     /* `flex flex-col`, et ce n'est pas décoratif : ce module est le plus COURT
@@ -340,11 +346,13 @@ export function DepenseAnnee({
           une cible non écrite ferait du décor. */}
       <div className="flex items-baseline gap-x-2.5 gap-y-1 flex-wrap">
         <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {fmtCHF(spentYear)}
-          <span className="text-[15px] text-faint"> CHF</span>
+          {spentYear === null ? "—" : fmtCHF(spentYear)}
+          {spentYear !== null && <span className="text-[15px] text-faint"> CHF</span>}
         </span>
         <span className="text-[11px] text-faint">
-          dépensés depuis janvier, au total
+          {spentYear === null
+            ? "une régie n'a pas répondu — le cumul de l'année est incomplet"
+            : "dépensés depuis janvier, au total"}
         </span>
         {ratio !== null && (
           <span
@@ -386,6 +394,18 @@ export function DepenseAnnee({
             plus vite que le temps ne passe.
           </p>
         </div>
+      ) : spentYear === null ? (
+        // LA BARRE NE SE DESSINE PAS SUR UNE DÉPENSE INCONNUE, même si
+        // l'enveloppe, elle, est bien fixée. C'est exactement le désarmement
+        // que demande l'ADR 0005 : ne rien prononcer plutôt que prononcer à
+        // côté. Le bandeau en haut de page dit quelle régie manque et depuis
+        // quand ; ici on dit seulement ce qui ne peut plus être dit.
+        <p className="text-[12px] text-muted mt-3 leading-relaxed">
+          Pas de barre tant qu&apos;une régie n&apos;a pas répondu : le cumul de
+          l&apos;année serait amputé, et le comparer à ton enveloppe te dirait que tu es
+          dans les clous sans qu&apos;on en sache rien. Le chiffre revient tout seul au
+          prochain passage réussi.
+        </p>
       ) : (
         <p className="text-[12px] text-muted mt-3 leading-relaxed">
           Aucune barre ici tant que l&apos;enveloppe de l&apos;année n&apos;est pas fixée : sans
@@ -396,7 +416,12 @@ export function DepenseAnnee({
       {/* Rang 7 — le bilan : deux nombres qui ne se déduisent ni l'un de
           l'autre ni du chiffre de tête. */}
       <div className="mt-4 rounded-xl bg-black/[0.025] px-4 py-3 flex gap-x-8 gap-y-3 flex-wrap">
-        {budgetAnnuel > 0 && (
+        {/* « RESTE À DÉPENSER » EST UN FEU VERT, et c'est le sens dans lequel il
+            ne faut surtout pas se tromper : calculé sur un cumul amputé, il
+            autorise à dépenser de l'argent qui est peut-être déjà parti. Il
+            disparaît donc avec la dépense, il ne se replie pas sur l'enveloppe
+            entière. */}
+        {budgetAnnuel > 0 && resteEnveloppe !== null && (
           <div className="min-w-0">
             <div
               className={`font-mono text-[19px] leading-none font-medium ${
@@ -464,8 +489,17 @@ export function CourbeDepense({
 }) {
   if (serie.length < 2) return null;
 
-  const total = serie.reduce((a, p) => a + p.meta + p.google, 0);
-  const pire = serie.reduce(
+  // UN POINT TU (`null`) N'EST PAS UN POINT À ZÉRO (ticket 48). Il ne compte
+  // ni dans le cumul, ni dans la recherche du pic — l'inclure comme un zéro
+  // ferait d'un jour non lu le jour le plus calme de la période, et baisserait
+  // un total que la tuile du haut affiche en 34 px.
+  const mesures = serie.filter(
+    (p): p is PointSerie & { meta: number; google: number } =>
+      p.meta !== null && p.google !== null
+  );
+  const tus = serie.length - mesures.length;
+  const total = mesures.reduce((a, p) => a + p.meta + p.google, 0);
+  const pire = mesures.reduce(
     (m, p) => (p.meta + p.google > m.montant ? { label: p.label, montant: p.meta + p.google } : m),
     { label: "", montant: 0 }
   );
@@ -479,12 +513,14 @@ export function CourbeDepense({
 
       <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
         <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {fmtCHF(total)}
-          <span className="text-[15px] text-faint"> CHF</span>
+          {mesures.length === 0 ? "—" : fmtCHF(total)}
+          {mesures.length > 0 && <span className="text-[15px] text-faint"> CHF</span>}
         </span>
         <span className="text-[11px] text-faint">
-          cumulés sur {serie.length} {unite}
-          {serie.length > 1 ? "s" : ""}
+          {mesures.length === 0
+            ? `aucun ${unite} lu sur cette période`
+            : `cumulés sur ${mesures.length} ${unite}${mesures.length > 1 ? "s" : ""}`}
+          {tus > 0 && ` · ${tus} non lu${tus > 1 ? "s" : ""}`}
         </span>
         {pire.montant > 0 && (
           <span className="text-[11px] font-bold text-warn bg-warn/[0.08] px-2 py-0.5 rounded-full">
@@ -541,6 +577,16 @@ export function CourbeDepense({
         {dernierePartielle && (
           <> La dernière semaine est en cours : elle est forcément plus basse que les autres.</>
         )}
+        {/* Le trait qui s'arrête avant le bord doit s'expliquer, sinon il se lit
+            comme un arrêt de campagne — c'est le défaut nommé par le ticket 48. */}
+        {tus > 0 && (
+          <>
+            {" "}
+            La courbe s&apos;arrête au dernier {unite} lu : une régie n&apos;a pas répondu,
+            et les {unite}s suivant{unite === "semaine" ? "es" : "s"} ne sont pas mesuré
+            {unite === "semaine" ? "es" : "s"} — elles ne valent pas zéro.
+          </>
+        )}
       </p>
     </div>
   );
@@ -586,19 +632,27 @@ export function LigneTheme({
   planifie,
 }: {
   t: ThemeSpend;
-  part: number;
+  /** `null` quand la dépense du compte n'est pas connue : une part de quelque
+   *  chose qu'on ne mesure pas n'est pas une part. */
+  part: number | null;
   elapsedAn: number;
   annee: number;
   univers: string[];
   planifie: BudgetPlanifie;
 }) {
-  const r = t.budgetYear > 0 ? t.spendYear / t.budgetYear : null;
+  // Le verdict d'enveloppe se désarme avec la dépense (ticket 48) : un thème
+  // dont on n'a pas lu la semaine afficherait « 40 % de l'enveloppe » sur un
+  // cumul amputé, et c'est précisément sur ces pourcentages qu'on décide de
+  // remettre de l'argent quelque part.
+  const r = t.budgetYear > 0 && t.spendYear !== null ? t.spendYear / t.budgetYear : null;
   const teinte = teinteLabel(t.label, univers);
   const pose = planifie.parTheme[t.label] ?? 0;
   const canaux = ([
     ["meta", t.parCanalAn.meta],
     ["google", t.parCanalAn.google],
-  ] as const).filter(([, v]) => v > 0);
+  ] as const).filter((entree): entree is readonly ["meta" | "google", number] =>
+    entree[1] !== null && entree[1] > 0
+  );
 
   return (
     <div className="px-4 py-4 h-full flex flex-col min-w-0">
@@ -610,7 +664,7 @@ export function LigneTheme({
         />
         <span className="text-[13.5px] font-semibold text-ink truncate min-w-0">{t.label}</span>
         <span className="ml-auto text-[10.5px] text-faint whitespace-nowrap shrink-0">
-          {part.toFixed(0)} % du total
+          {part === null ? "part inconnue" : `${part.toFixed(0)} % du total`}
         </span>
       </div>
 
@@ -619,11 +673,11 @@ export function LigneTheme({
           nombre que cette carte existe pour montrer. Il porte sa fenêtre et son
           mot — une somme dit « au total ». */}
       <div className="font-mono text-[22px] leading-none font-medium text-ink mt-2.5">
-        {fmtCHF(t.spendYear)}
-        <span className="text-[12px] text-faint"> CHF</span>
+        {t.spendYear === null ? "—" : fmtCHF(t.spendYear)}
+        {t.spendYear !== null && <span className="text-[12px] text-faint"> CHF</span>}
       </div>
       <div className="text-[10.5px] text-faint mt-1">
-        dépensés en {annee}, au total
+        {t.spendYear === null ? `${annee} — une régie n'a pas répondu` : `dépensés en ${annee}, au total`}
         {t.budgetYear > 0 && (
           <span className="text-muted"> · enveloppe {fmtCHF(t.budgetYear)} CHF</span>
         )}
@@ -638,7 +692,7 @@ export function LigneTheme({
             }`}
           >
             {r > 1
-              ? `dépassé de ${fmtCHF(t.spendYear - t.budgetYear)} CHF`
+              ? `dépassé de ${fmtCHF((t.spendYear ?? 0) - t.budgetYear)} CHF`
               : `${Math.round(r * 100)} % de l'enveloppe · ${Math.round(elapsedAn * 100)} % de l'année`}
           </div>
         </>
@@ -686,7 +740,7 @@ export function LigneTheme({
                   {fmtCHF(montant)}
                   <span className="text-faint">
                     {" "}
-                    · {Math.round((montant / Math.max(1, t.spendYear)) * 100)} %
+                    · {Math.round((montant / Math.max(1, t.spendYear ?? montant)) * 100)} %
                   </span>
                 </span>
               </div>

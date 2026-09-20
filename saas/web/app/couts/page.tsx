@@ -50,6 +50,7 @@ import {
   LigneTheme,
 } from "@/components/couts-modules";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
+import { TrouDeRecolte } from "@/components/trou-recolte";
 import { dateCourte } from "@/components/etat-action";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
@@ -123,9 +124,19 @@ export default async function CoutsPage({
   // planifié restreint à « 30 derniers jours » ne voudrait rien dire (une photo
   // hebdomadaire n'a pas de fenêtre).
   const planifie = await getBudgetPlanifie(`${annee}-01-01`, `${annee}-12-31`);
-  const ratioMois = data.totalBudget > 0 ? data.totalSpent / data.totalBudget : null;
-  const ratioAn = data.budgetAnnuel > 0 ? data.spentYear / data.budgetAnnuel : null;
+  // LES DEUX RATIOS SE DÉSARMENT AVEC LEUR NUMÉRATEUR (ticket 48). Ils portent
+  // le verdict de la page — « X % consommé » — et une dépense amputée les fait
+  // tomber du bon côté sans que personne ne l'ait décidé.
+  const ratioMois =
+    data.totalBudget > 0 && data.totalSpent !== null ? data.totalSpent / data.totalBudget : null;
+  const ratioAn =
+    data.budgetAnnuel > 0 && data.spentYear !== null ? data.spentYear / data.budgetAnnuel : null;
   const attribue = data.byTheme.reduce((a, t) => a + t.budgetYear, 0);
+  // La sparkline du mois : un jour dont une régie manque vaut `null`, pas 0 —
+  // sinon il dessine un creux qui se lit comme une journée sans dépense.
+  const jours = data.daily.map((j) =>
+    j.meta === null || j.google === null ? null : j.meta + j.google
+  );
 
   // L'univers des thèmes filtrables : la liste maîtresse, plus tout thème qui a
   // dépensé sans y figurer. Un label posé sur une campagne mais pas encore
@@ -179,6 +190,15 @@ export default async function CoutsPage({
       <section className="mb-9">
         <Titre sur="Fixer le cap">L&apos;année {annee}</Titre>
 
+        {/* CE QU'ON N'A PAS PU LIRE, AVANT LES CHIFFRES QU'IL EXPLIQUE (ticket
+            48). Il est au-dessus de l'alerte de dépassement, et pas sous elle :
+            quand une régie est muette, l'absence d'alerte ne vaut pas « tout va
+            bien » — c'est justement ce silence-là qu'il faut lire en premier. */}
+        <TrouDeRecolte
+          muets={data.muets}
+          taisent="Ta dépense, ton rythme et le verdict de ton enveloppe restent inconnus tant qu'elle n'a pas répondu"
+        />
+
         <AlerteDepassement alertes={data.alertes} budgetJour={data.budgetJour} />
 
         <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
@@ -204,22 +224,31 @@ export default async function CoutsPage({
             // Un mois ne se saisit plus : il n'y a plus qu'une source, et c'est
             // pour ça que la phrase ci-dessus a cessé de varier.
             ton={ratioMois !== null && ratioMois > 1 ? "neg" : "ink"}
-            serie={data.daily.map((j) => j.meta + j.google)}
+            serie={jours}
             serieLabels={data.daily.map((j) => j.label)}
           />
           <Chiffre
             titre="Moyenne quotidienne"
-            valeur={`${fmtCHF(data.moyenneJour)} CHF`}
+            valeur={data.moyenneJour === null ? "—" : `${fmtCHF(data.moyenneJour)} CHF`}
             sous={
-              data.repereJour > 0
-                ? `depuis janvier · tiens ${fmtCHF(data.repereJour)} CHF par jour pour finir l'année dans l'enveloppe`
-                : "depuis janvier, tous canaux confondus"
+              data.moyenneJour === null
+                ? "une régie n'a pas répondu — le rythme de l'année n'est pas mesurable"
+                : data.repereJour !== null && data.repereJour > 0
+                  ? `depuis janvier · tiens ${fmtCHF(data.repereJour)} CHF par jour pour finir l'année dans l'enveloppe`
+                  : "depuis janvier, tous canaux confondus"
             }
             // Le repère n'est pas budget ÷ 365 mais « ce qui reste ÷ les jours
             // qui restent » : sinon un début d'année calme se lit comme un
             // dérapage, et une fin d'année emballée passe inaperçue.
-            ton={data.repereJour > 0 && data.moyenneJour > data.repereJour * 1.05 ? "warn" : "ink"}
-            serie={data.daily.map((j) => j.meta + j.google)}
+            ton={
+              data.repereJour !== null &&
+              data.moyenneJour !== null &&
+              data.repereJour > 0 &&
+              data.moyenneJour > data.repereJour * 1.05
+                ? "warn"
+                : "ink"
+            }
+            serie={jours}
             serieLabels={data.daily.map((j) => j.label)}
           />
         </div>
@@ -269,7 +298,22 @@ export default async function CoutsPage({
           bougent pas : ils restent sur l&apos;année entière.
         </p>
 
-        {data.totalPeriode > 0 ? (
+        {/* AUCUN ANNEAU SUR UNE RÉPARTITION TROUÉE (ticket 48). Un camembert est
+            une affirmation sur des PARTS : « 71 % chez Google ». Quand une des
+            deux régies n'a pas répondu sur la période, la part de l'autre est
+            mécaniquement gonflée — l'anneau ne serait pas imprécis, il serait
+            faux, et il est d'autant plus convaincant qu'il est dessiné. Le
+            `null` de `totalPeriode` sort la section entière plutôt que de
+            laisser une moitié se faire passer pour un tout. */}
+        {data.totalPeriode === null ? (
+          <p className="text-[12.5px] text-muted leading-relaxed mb-4 max-w-[68ch]">
+            Pas de répartition sur cette période :{" "}
+            {data.muets.map((c) => c.nom).join(" et ")}{" "}
+            {data.muets.length > 1 ? "n'ont" : "n'a"} pas répondu au dernier passage, et
+            une part calculée sur une seule des deux régies gonflerait celle qui reste.
+            Elle revient d&apos;elle-même au prochain passage réussi.
+          </p>
+        ) : data.totalPeriode > 0 ? (
           /* DEUX ANNEAUX, PAS UN. « Où ça part » a deux réponses qui ne se
              déduisent pas l'une de l'autre : sur quelle RÉGIE, et sur quel
              THÈME. Un compte à 80 % sur Google et un compte partagé ne se
@@ -283,8 +327,8 @@ export default async function CoutsPage({
           <div className="grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3 mb-4 items-stretch">
             <ThemeDonut
               rows={[
-                { label: "Meta", spend: data.parCanalPeriode.meta },
-                { label: "Google", spend: data.parCanalPeriode.google },
+                { label: "Meta", spend: data.parCanalPeriode.meta ?? 0 },
+                { label: "Google", spend: data.parCanalPeriode.google ?? 0 },
               ]}
               teintes={TEINTE_CANAL}
               titre="Dépensé par plateforme"
@@ -299,8 +343,11 @@ export default async function CoutsPage({
               }
             />
             <ThemeDonut
-              rows={vus.map((t) => ({ label: t.label, spend: t.spendPeriode }))}
-              orphan={Math.max(0, data.totalPeriode - vus.reduce((a, t) => a + t.spendPeriode, 0))}
+              rows={vus.map((t) => ({ label: t.label, spend: t.spendPeriode ?? 0 }))}
+              orphan={Math.max(
+                0,
+                data.totalPeriode - vus.reduce((a, t) => a + (t.spendPeriode ?? 0), 0)
+              )}
               univers={data.labels}
               titre="Dépensé par thème"
               sousTitre={data.periode.titre}
@@ -390,7 +437,11 @@ export default async function CoutsPage({
                 >
                   <LigneTheme
                     t={t}
-                    part={data.spentYear > 0 ? (t.spendYear / data.spentYear) * 100 : 0}
+                    part={
+                      data.spentYear !== null && data.spentYear > 0 && t.spendYear !== null
+                        ? (t.spendYear / data.spentYear) * 100
+                        : null
+                    }
                     elapsedAn={data.elapsedAn}
                     annee={annee}
                     univers={data.labels}
