@@ -58,6 +58,52 @@ def _fmt(n: float) -> str:
     return f"{n:,.0f}".replace(",", " ")
 
 
+_MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+         "août", "septembre", "octobre", "novembre", "décembre")
+
+
+def _jour_fr(iso: str) -> str:
+    """« 2026-09-05 » → « 5 septembre ». Rend l'ISO tel quel s'il ne se lit pas.
+
+    Les dates du payload sont des JOURS PLEINS, pas des instants : on découpe la
+    chaîne au lieu de la passer par un fuseau, qui la reculerait d'un jour à
+    l'ouest de Greenwich. Même arbitrage que `fmtJour` dans `canal-muet.tsx`.
+    """
+    try:
+        annee, mois, jour = (int(x) for x in str(iso).split("-")[:3])
+        return f"{jour} {_MOIS[mois - 1]}"
+    except (ValueError, IndexError):
+        return str(iso)
+
+
+def _nom(canal: dict) -> str:
+    """Le nom porté devant le client — « Meta Ads », jamais « meta »."""
+    return canal.get("nom") or canal.get("canal") or "Un canal"
+
+
+def _sans_reponse(canaux: list[dict]) -> str:
+    """« Meta Ads ne répond plus depuis le 1 août », et sa version à plusieurs.
+
+    CHAQUE CANAL PORTE SA PROPRE DATE. Une seule date pour plusieurs canaux
+    daterait les uns du jour où l'autre est tombé — et `depuis` est une valeur
+    MESURÉE (le dernier jour que ce canal a réellement écrit), pas une
+    approximation qu'on aurait le droit d'étendre au voisin (`CLAUDE.md` §7).
+    À plusieurs, chaque date passe donc entre parenthèses derrière son canal.
+
+    Un canal qui n'a JAMAIS rien écrit n'a pas de date : il est nommé sans, et
+    on ne lui en fabrique pas une.
+    """
+    if len(canaux) == 1:
+        seul = canaux[0]
+        quand = f" depuis le {_jour_fr(seul['depuis'])}" if seul.get("depuis") else ""
+        return f"{_nom(seul)} ne répond plus{quand}"
+    noms = " et ".join(
+        f"{_nom(c)} (depuis le {_jour_fr(c['depuis'])})" if c.get("depuis")
+        else _nom(c)
+        for c in canaux)
+    return f"{noms} ne répondent plus"
+
+
 def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[str, str]:
     """Adapte le payload weekly_reports (celui que Pulse lit) → (sujet, html email).
 
@@ -94,13 +140,39 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
     # alarmer sur lui userait l'alarme.
     muets = [c for c in (payload.get("canaux_muets") or [])
              if c.get("chiffres_tus")]
+    # LA DEUXIÈME SEMAINE CHANGE LE REGISTRE, PAS LE VOLUME (ticket 47). Le même
+    # objet et la même phrase, quatre lundis de suite, s'apprennent par cœur : le
+    # seul fait NOUVEAU qu'on ait est la durée, et c'est donc lui qu'on dit.
+    #
+    # LE REGISTRE SE DÉCIDE CANAL PAR CANAL, ET C'EST TOUT L'ENJEU. Deux canaux
+    # peuvent avoir deux âges — Google tombé lundi, Meta mort depuis deux mois —
+    # et une phrase écrite pour l'un vaut FAUX sur l'autre. Pire : `canaux_muets`
+    # est trié par clé de canal (« google » avant « meta »), donc celui qui a
+    # déclenché l'escalade n'est presque jamais le premier de la liste ; prendre
+    # « la » date de la liste raccourcirait une panne de deux mois à une semaine.
+    # Une durée mesurée affichée fausse est exactement ce que `CLAUDE.md` §7
+    # interdit — d'où deux groupes, chacun avec sa phrase et ses propres dates.
+    #
+    # `or 1` : un payload d'avant ce ticket n'a pas le compteur ; le lire comme
+    # une première semaine sous-estime la panne au lieu de l'inventer.
+    durent = [c for c in muets if (c.get("semaines_muettes") or 1) >= 2]
+    recents = [c for c in muets if (c.get("semaines_muettes") or 1) < 2]
     alerte = ""
     if muets:
-        _noms = " et ".join(c.get("nom") or c.get("canal") for c in muets)
-        alerte = (f"{_noms} n'a pas répondu cette semaine : les chiffres de "
-                  f"publicité manquent, et rien ne les remplace. Reconnecte "
-                  f"depuis Comptes → Connexions pour que le prochain rapport "
-                  f"soit complet.")
+        phrases = []
+        if durent:
+            phrases.append(
+                f"{_sans_reponse(durent)}, et ce n'est plus la première semaine. "
+                f"Tant que ça dure, Pulse ne peut rien dire de ta publicité — ni "
+                f"dépense, ni coût par clic, ni ROAS, et aucun conseil qui en "
+                f"dépendrait.")
+        if recents:
+            _noms = " et ".join(_nom(c) for c in recents)
+            phrases.append(
+                f"{_noms} n'a pas répondu cette semaine : les chiffres de "
+                f"publicité manquent, et rien ne les remplace.")
+        phrases.append("Reconnecte depuis Comptes → Connexions.")
+        alerte = " ".join(phrases)
 
     html = build_email_html(
         account_name=account_name,
@@ -111,9 +183,16 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
         app_url=app_url,
         alerte=alerte,
     )
+    # L'OBJET NOMME LA PIRE DES DEUX PANNES, PAS LEUR SOMME. Quand un canal dure,
+    # c'est lui qui commande l'objet — avec SA date ; les canaux tombés cette
+    # semaine sont dits dans le corps. Mélanger les deux dans une seule phrase
+    # d'objet daterait l'une de la date de l'autre.
     if muets:
-        _noms = " et ".join(c.get("nom") or c.get("canal") for c in muets)
-        subject = f"Pulse — {_noms} à reconnecter, ta semaine est incomplète"
+        if durent:
+            subject = f"Pulse — {_sans_reponse(durent)}"
+        else:
+            _noms = " et ".join(_nom(c) for c in muets)
+            subject = f"Pulse — {_noms} à reconnecter, ta semaine est incomplète"
     else:
         subject = f"Pulse — {payload.get('week_label', 'ta semaine en bref')}"
     return subject, html

@@ -1661,6 +1661,67 @@ def _themes_tips(redige, labels: list, obj_txt: str, business: str = "",
         return []
 
 
+# ── DEPUIS COMBIEN DE RAPPORTS UN CANAL EST-IL MUET (ticket 47) ─────────────
+#
+# POURQUOI CE COMPTEUR EXISTE. L'ADR 0005 fait taire chaque mesure dont la
+# source est muette et nomme le canal tombé. Ça suffit tant qu'on parle d'une
+# semaine ; à la troisième, un compte au jeton mort a reçu quatre rapports polis
+# qui disent tous la même absence, la run reste verte, et personne ne voit que
+# le compte dérive. On aurait remplacé un chiffre faux par un message que
+# personne n'agit. Ce compteur est ce qui permet à l'escalade de sortir du cycle
+# hebdomadaire — tranché avec `vision-produit` le 2026-09-20, ticket 47.
+#
+# IL SE COMPTE SUR LES RAPPORTS PUBLIÉS, PAS SUR LE CALENDRIER, et c'est la
+# seule chose qui le rende honnête. `fetch_progress` n'a AUCUN historique — une
+# ligne par (utilisateur, canal), réécrite à chaque passage — donc il ne sait
+# que le dernier. `weekly_reports`, lui, garde une ligne par semaine avec son
+# `canaux_muets` : c'est la seule preuve qu'on ait, et elle est déjà lue par
+# `build_payload` (`lecteur.rapports_publies`). Aucune récolte de plus, aucune
+# migration, rien à stocker.
+#
+# UNE SEMAINE SANS RAPPORT PUBLIÉ NE CASSE PAS LA SÉRIE ET NE COMPTE PAS. Elle
+# a deux causes opposées — un compte sans données, un worker tombé — et AUCUNE
+# des deux ne dit que le canal est revenu. La traiter comme une guérison
+# remettrait le compteur à zéro précisément sur les comptes les plus cassés ;
+# la traiter comme une semaine muette inventerait un fait.
+
+# À PARTIR DE COMBIEN DE RAPPORTS MUETS L'ESCALADE SORT DU CYCLE HEBDOMADAIRE.
+# Deux, et pas un : une panne d'une SEULE semaine se rattrape toute seule au
+# prochain passage réussi — `_depart_recolte` déduit le point de reprise des
+# lignes réellement écrites, moins le recouvrement (7 jours côté Meta, 30 côté
+# Google), donc la semaine trouée est réécrite (ADR 0005). Sonner à la première
+# transférerait simplement le papier peint du client à David.
+SEUIL_ESCALADE = 2
+
+
+def semaines_muettes(canal: str, historique: list[dict]) -> int:
+    """Depuis combien de rapports publiés d'affilée ce canal est muet, CELUI
+    QU'ON FABRIQUE COMPRIS. Vaut donc 1 à la première semaine.
+
+    `historique` est ce que rend `lecteur.rapports_publies` : des lignes
+    `{week_start, payload}`, la semaine en cours exclue. L'ordre de lecture
+    n'est pas supposé — il est refait ici. La base trie déjà par `week_start`
+    décroissant, mais une série comptée du mauvais bout tiendrait jusqu'au jour
+    où cette lecture changerait d'ordre, et personne ne le verrait.
+    """
+    n = 1
+    for _h in sorted(historique or [],
+                     key=lambda r: str(r.get("week_start") or ""), reverse=True):
+        _muets = (_h.get("payload") or {}).get("canaux_muets")
+        # Deux absences se rejoignent ici, et elles s'arrêtent toutes les deux :
+        # une LISTE VIDE répond vraiment « aucun trou cette semaine-là », donc
+        # le canal était revenu et la série est cassée ; une clé ABSENTE est un
+        # payload d'avant le ticket 20, qui ne dit pas « aucun trou » mais « je
+        # ne sais pas répondre ». Le compte est alors SOUS-ESTIMÉ, jamais
+        # inventé (`CLAUDE.md` §7) — c'est le seul sens où se tromper est permis.
+        if not _muets:
+            break
+        if canal not in {str(_m.get("canal")) for _m in _muets}:
+            break
+        n += 1
+    return n
+
+
 def build_payload(lecteur: Lecteur) -> dict | None:
     """Prépare le payload du rapport hebdo. None si pas assez de données.
 
@@ -2333,14 +2394,19 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # c'est cette ligne-là — et elle seule — qu'il faut tenir hors de son propre
     # historique. Les deux valeurs ne diffèrent que pour un compte servi le
     # lundi, mais c'est exactement le compte qui se serait relu lui-même.
-    _rapports_publies = []
+    #
+    # LES LIGNES SONT GARDÉES ENTIÈRES, `week_start` COMPRIS. Les consommateurs
+    # historiques (les thèmes calmes, l'horizon) ne lisent que le payload, mais
+    # l'escalade du canal muet (ticket 47) a besoin de l'ordre des semaines pour
+    # compter une série — et le déduire d'une liste dont on a jeté la date
+    # reviendrait à faire confiance à l'ordre d'une requête.
+    _historique_publie = []
     try:
-        _rapports_publies = [
-            (_h.get("payload") or {})
-            for _h in lecteur.rapports_publies(week_start_rapport.isoformat())
-        ]
+        _historique_publie = list(
+            lecteur.rapports_publies(week_start_rapport.isoformat()))
     except Exception:
-        _rapports_publies = []
+        _historique_publie = []
+    _rapports_publies = [(_h.get("payload") or {}) for _h in _historique_publie]
 
     # ── Les campagnes lancées DEPUIS PEU (≤ 14 jours) ────────────────────────
     # Rien de nouveau n'est demandé à personne : le premier jour où une campagne
@@ -5692,6 +5758,14 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             # Un canal en échec dont la dernière date couvre déjà la fenêtre
             # n'a rien creusé : il est signalé, mais il ne tait rien.
             "chiffres_tus": _c in _aveugle_semaine,
+            # Depuis combien de rapports publiés d'affilée ce canal est muet,
+            # celui-ci compris — donc 1 la première semaine (ticket 47). C'est
+            # ce qui permet à la note de changer de registre au lieu de répéter
+            # la même phrase, et à la run de finir rouge quand la panne dure.
+            # INDÉPENDANT DE `chiffres_tus` : un Google Ads mort sur un compte
+            # organique ne cache rien aujourd'hui et cassera tout le jour où ce
+            # client lancera sa première campagne.
+            "semaines_muettes": semaines_muettes(_c, _historique_publie),
         }
         for _c, _m in sorted(pub_muette.items())
     ]
@@ -5774,15 +5848,24 @@ def _display_name(sb, user_id: str, fallback_email: str | None) -> str:
     return (fallback_email or "").split("@")[0] or "toi"
 
 
-def publish_weekly_report(sb, user_id: str, email_to: str | None = None) -> str:
+def publish_weekly_report(sb, user_id: str,
+                          email_to: str | None = None) -> tuple[str, list[dict]]:
     """Construit + publie le rapport d'un utilisateur ; envoie l'email si email_to.
 
     L'email lit le MÊME payload que Pulse (une seule source de vérité).
     Sans RESEND_API_KEY, send_email passe en dry-run → aucun envoi, juste un log.
+
+    REND AUSSI LES CANAUX MUETS DU RAPPORT PUBLIÉ, avec leur compteur de
+    semaines (ticket 47). C'est ce que l'orchestrateur a besoin de savoir pour
+    faire finir la run en rouge quand une panne dure — et ça part d'ici parce
+    qu'ici seulement on a le payload sous la main : le relire depuis
+    `weekly_reports` coûterait une requête par compte pour un fait qu'on vient
+    d'écrire. La LISTE est rendue telle quelle, sans seuil : cette fonction
+    publie, elle n'arbitre pas. Le seuil est la doctrine de l'appelant.
     """
     payload = build_payload(LecteurSupabase(sb, user_id, _call_gemini))
     if payload is None:
-        return "rapport: pas de données"
+        return "rapport: pas de données", []
     # LA SEMAINE VIENT DU PAYLOAD, donc de la FENÊTRE MESURÉE : republier ne
     # doit jamais créer une deuxième ligne pour les mêmes chiffres (la clé est
     # `(user_id, week_start)`). Le repli sur le lundi d'aujourd'hui ne sert que
@@ -5803,7 +5886,7 @@ def publish_weekly_report(sb, user_id: str, email_to: str | None = None) -> str:
         res = send_email(to=email_to, subject=subject, html=html)
         log += (f" · email {res['provider']}: "
                 f"{'envoyé' if res['ok'] and res['provider'] != 'dry' else res['detail']}")
-    return log
+    return log, list(payload.get("canaux_muets") or [])
 
 
 def _service_client():
@@ -5822,13 +5905,13 @@ if __name__ == "__main__":
     if "--all" in args:
         profiles = (sb.table("profiles").select("id").execute().data) or []
         for p in profiles:
-            print(f"{p['id']} → {publish_weekly_report(sb, p['id'])}")
+            print(f"{p['id']} → {publish_weekly_report(sb, p['id'])[0]}")
     elif "--user" in args:
         uid = args[args.index("--user") + 1]
         if "--print" in args:
             payload = build_payload(LecteurSupabase(sb, uid, _call_gemini))
             print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
         else:
-            print(publish_weekly_report(sb, uid))
+            print(publish_weekly_report(sb, uid)[0])
     else:
         print(__doc__)

@@ -467,6 +467,15 @@ export type CanalMuet = {
    *  tombé après avoir tout écrit est signalé sans rien taire — ne pas alarmer
    *  dessus, ça userait l'alarme. */
   chiffres_tus: boolean;
+  /** Depuis combien de rapports publiés d'affilée ce canal est muet, celui-ci
+   *  compris — donc 1 la première semaine (ticket 47). Compté sur les rapports
+   *  PUBLIÉS, pas sur le calendrier : une semaine sans rapport ne dit pas que le
+   *  canal est revenu, elle est sautée. Absent des payloads d'avant le
+   *  ticket 47 : `undefined` se lit alors « première semaine », faute de mieux.
+   *
+   *  NE JAMAIS L'AFFICHER TEL QUEL. C'est un seuil interne ; ce que le client
+   *  lit, c'est la date de `depuis`, qui est mesurée. */
+  semaines_muettes?: number;
 };
 
 export type ReportPayload = {

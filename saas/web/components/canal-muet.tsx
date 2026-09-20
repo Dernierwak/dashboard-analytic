@@ -28,8 +28,10 @@ import type { CanalMuet } from "@/lib/report";
 // les semaines s'apprend par cœur, et le jour où il dit autre chose on ne le lit
 // plus.
 //
-// AMBRE ET PAS ROUGE. Ce n'est pas une catastrophe, c'est une connexion à
-// refaire ; le rouge est réservé à ce qui coûte de l'argent maintenant.
+// AMBRE ET PAS ROUGE, MÊME À LA TROISIÈME SEMAINE. Ce n'est toujours pas une
+// catastrophe, c'est une connexion à refaire ; le rouge reste réservé à ce qui
+// coûte de l'argent maintenant. Ce qui change quand ça dure, c'est le REGISTRE
+// du texte, pas son volume — voir `dure` plus bas.
 export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
   // `undefined` = payload publié avant le ticket 20. Il ne dit pas « aucun
   // trou », il dit « je ne sais pas répondre » — on se tait plutôt que
@@ -37,7 +39,22 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
   const tus = (canaux ?? []).filter((c) => c.chiffres_tus);
   if (tus.length === 0) return null;
 
-  const noms = tus.map((c) => c.nom).join(" et ");
+  // LA NOTE CHANGE DE REGISTRE À LA DEUXIÈME SEMAINE (ticket 47), elle n'élève
+  // pas le ton. Un compte au jeton mort depuis un mois recevait quatre fois la
+  // même phrase — « n'a pas répondu cette semaine » — et on s'habitue à une
+  // phrase qui ne bouge pas comme à un bandeau de cookies. Elle cesse donc de
+  // décrire LA SEMAINE et nomme LA DURÉE, qui est le seul fait nouveau.
+  //
+  // LE REGISTRE SE DÉCIDE CANAL PAR CANAL. Deux canaux peuvent avoir deux âges
+  // — Google tombé lundi, Meta mort depuis deux mois — et « ce n'est plus la
+  // première semaine » vaut alors FAUX sur l'un des deux. Un seul `some()` sur
+  // toute la liste aurait promu le fait de l'un en phrase sur l'ensemble, et le
+  // détail juste, plus bas, aurait contredit le titre.
+  //
+  // `?? 1` : les payloads d'avant ce ticket n'ont pas le compteur. Les lire
+  // comme une première semaine sous-estime la panne au lieu de l'inventer.
+  const durent = tus.filter((c) => (c.semaines_muettes ?? 1) >= 2);
+  const recents = tus.filter((c) => (c.semaines_muettes ?? 1) < 2);
 
   return (
     <div className="rounded-2xl border border-warn/25 bg-warn/[0.06] px-5 py-4 sm:px-6 mb-3">
@@ -45,21 +62,44 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
         Ce qu&apos;on n&apos;a pas pu lire
       </p>
       <p className="text-[13.5px] text-ink leading-relaxed max-w-[68ch]">
-        <strong className="font-semibold">{noms}</strong> n&apos;a pas répondu cette
-        semaine. Les chiffres de publicité qui en dépendent — dépense, coût par clic,
-        ROAS — sont marqués «&nbsp;—&nbsp;» au lieu d&apos;être calculés sans eux :{" "}
+        {durent.length > 0 && (
+          <>
+            <strong className="font-semibold">{joindre(durent)}</strong>{" "}
+            {durent.length > 1 ? "ne répondent" : "ne répond"} toujours pas, et
+            ce n&apos;est plus la première semaine. Tant que ça dure, Pulse ne
+            peut rien dire de ta publicité — ni dépense, ni coût par clic, ni
+            ROAS, et aucun conseil qui en dépendrait.{" "}
+          </>
+        )}
+        {recents.length > 0 && (
+          <>
+            <strong className="font-semibold">{joindre(recents)}</strong>{" "}
+            {recents.length > 1 ? "n'ont" : "n'a"} pas répondu cette semaine. Les
+            chiffres de publicité qui en dépendent — dépense, coût par clic,
+            ROAS — sont marqués «&nbsp;—&nbsp;» au lieu d&apos;être calculés sans
+            eux.{" "}
+          </>
+        )}
         <span className="text-muted">
-          une donnée absente n&apos;est pas un zéro, et un total amputé se lirait comme
+          Une donnée absente n&apos;est pas un zéro, et un total amputé se lirait comme
           une baisse que personne n&apos;a décidée.
         </span>
       </p>
       {/* Le dernier jour réellement lu — c'est ce qui borne le trou, et c'est la
-          seule chose qui dise au client si la panne date d'hier ou d'un mois. */}
+          seule chose qui dise au client si la panne date d'hier ou d'un mois.
+          C'EST CETTE DATE QU'ON MONTRE, JAMAIS LE COMPTEUR DE SEMAINES : la date
+          est mesurée, le compteur n'est qu'un seuil interne (ticket 47). Un
+          canal qui n'a jamais rien écrit n'a pas de date — on le dit, on n'en
+          fabrique pas une. */}
       <ul className="mt-2.5 space-y-1">
         {tus.map((c) => (
           <li key={c.canal} className="text-[12px] text-muted leading-relaxed">
             <span className="font-medium text-ink">{c.nom}</span>
-            {c.depuis ? ` — lu jusqu'au ${fmtJour(c.depuis)}` : " — aucune donnée reçue"}
+            {c.depuis
+              ? (c.semaines_muettes ?? 1) >= 2
+                ? ` — sans réponse depuis le ${fmtJour(c.depuis)}`
+                : ` — lu jusqu'au ${fmtJour(c.depuis)}`
+              : " — aucune donnée reçue"}
           </li>
         ))}
       </ul>
@@ -81,6 +121,10 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
 // navigateur les reculerait d'un jour à l'ouest de Greenwich.
 const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
   "août", "septembre", "octobre", "novembre", "décembre"];
+
+function joindre(canaux: CanalMuet[]): string {
+  return canaux.map((c) => c.nom).join(" et ");
+}
 
 function fmtJour(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);

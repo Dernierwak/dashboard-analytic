@@ -73,11 +73,15 @@ lignes réellement écrites, moins le recouvrement (7 jours côté Meta, 30 côt
 Google), donc le prochain passage réussi **réécrit la semaine trouée**. La
 semaine suivante ne ment donc pas — à condition qu'un passage réussisse.
 
-Reste entier le point soulevé par `vision-produit` et **non traité ici** : à la
-deuxième semaine muette consécutive, une note dans le rapport ne suffit plus. Un
-compte au jeton mort depuis un mois reçoit quatre rapports polis qui disent tous
-la même absence, pendant que la run reste verte. Suivi au ticket
-[47](../../.scratch/construction/issues/47-un-canal-muet-deux-semaines-de-suite.md).
+Le point soulevé par `vision-produit` et non traité ici — à la deuxième semaine
+muette consécutive, une note dans le rapport ne suffit plus — **a depuis été
+tranché au ticket
+[47](../../.scratch/construction/issues/47-un-canal-muet-deux-semaines-de-suite.md)**,
+et sa doctrine vit à
+[0006](0006-une-panne-qui-dure-change-de-destinataire.md). L'escalade se pose
+AU-DESSUS de cette décision-ci, qui n'a pas bougé : on publie toujours, à
+n'importe quel nombre de semaines muettes. Ce qui change à la deuxième, c'est
+le **destinataire** — la run finit en rouge, et c'est David qu'elle appelle.
 
 Tranché avec `vision-produit` le 2026-09-14, au ticket
 [20](../../.scratch/construction/issues/20-rapport-publie-sur-un-canal-muet.md),

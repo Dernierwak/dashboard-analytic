@@ -540,6 +540,66 @@ def _note_ecriture_sautee(uid: str) -> None:
         _ECRITURES_SAUTEES.add(uid)
 
 
+# LES PANNES QUI DURENT (ticket 47). Un canal muet UNE semaine est une note dans
+# le rapport, et ça suffit : le prochain passage réussi réécrit la semaine
+# trouée (ADR 0005). À la DEUXIÈME, le client a reçu deux fois la même absence
+# poliment formulée, la run est restée verte, et personne n'a vu le compte
+# dériver. On aurait remplacé un chiffre faux par un message que personne n'agit.
+#
+# L'ESCALADE CHANGE DE DESTINATAIRE, PAS DE VOLUME. Le client a DÉJÀ été
+# prévenu — bandeau ambre en tête du rapport, objet d'email réécrit, lien vers
+# la reconnexion. Lui renvoyer un email dédié répéterait la même phrase dans une
+# autre enveloppe : aucune information nouvelle, donc aucune décision nouvelle.
+# Ce rouge-ci s'adresse à David, le seul qui puisse décrocher son téléphone.
+#
+# LE TUYAU EST CELUI QUI EXISTE DÉJÀ : GitHub envoie un email au propriétaire du
+# dépôt quand un workflow échoue. Construire un webhook ou une page de statut
+# pour une poignée de comptes serait de l'outillage d'exploitation avant d'avoir
+# la preuve qu'on en a besoin. Tranché avec `vision-produit` le 2026-09-20.
+#
+# `report_only` ET `label_only` LE REMPLISSENT AUSSI, et c'est voulu : ce sont
+# les modes par lesquels on republie un rapport à la main, donc ceux par
+# lesquels on vérifie. Taire le signal exactement là où on vient le chercher
+# serait le rendre invisible au seul moment où on le regarde.
+#
+# Rempli dans la boucle des profils, qui se suivent en SÉRIE — pas de verrou,
+# contrairement à `_ECRITURES_SAUTEES`, que les fils Meta touchent.
+_CANAUX_QUI_DURENT: list[tuple[str, dict]] = []
+
+
+def _note_canaux_qui_durent(uid: str, canaux_muets: list[dict]) -> None:
+    """Retient les canaux muets depuis au moins `SEUIL_ESCALADE` rapports.
+
+    ON NE FILTRE PAS SUR `chiffres_tus`, et c'est la seule asymétrie voulue
+    entre les deux destinataires. Le client ne voit que les canaux qui lui
+    cachent quelque chose — alarmer sur un canal qui ne tait rien userait
+    l'alarme. David, lui, les voit tous : un Google Ads mort depuis cinq
+    semaines sur un compte 100 % organique ne cache rien AUJOURD'HUI et cassera
+    tout le jour où ce client lancera sa première campagne.
+    """
+    from saas.traitement.build_report import SEUIL_ESCALADE
+    _CANAUX_QUI_DURENT.extend(
+        (uid, c) for c in (canaux_muets or [])
+        if (c.get("semaines_muettes") or 0) >= SEUIL_ESCALADE)
+
+
+def vu_par_le_client(canal: dict) -> bool:
+    """Ce canal a-t-il été dit au client, dans son rapport et dans son email ?
+
+    C'EST LE REVERS DE L'ASYMÉTRIE CI-DESSUS, et il ne va pas de soi. Les deux
+    surfaces client (`canal-muet.tsx`, `emailing/render.py`) ne montrent que les
+    canaux à `chiffres_tus` vrai ; David, lui, les voit tous. Donc pour la moitié
+    exacte des cas que cette escalade existe pour attraper — le canal qui ne tait
+    rien aujourd'hui — le client n'a RIEN reçu.
+
+    Sans cette distinction, la run imprimerait « le client a déjà été prévenu »
+    sur un canal dont il n'a jamais entendu parler : David en conclurait qu'il
+    sait, ne l'appellerait pas, et l'escalade aurait acheté l'inverse de ce
+    qu'elle promet.
+    """
+    return bool(canal.get("chiffres_tus"))
+
+
 class SchemaEnRetard(RuntimeError):
     """Le schéma en base est en retard sur le code — colonne absente (42703) ou
     contrainte d'unicité pas encore déplacée (42P10). Rattrapable en jouant la
@@ -883,7 +943,9 @@ def run(force: bool = False, only_user: str | None = None,
         if report_only:
             try:
                 from saas.traitement.build_report import publish_weekly_report
-                logs.append(publish_weekly_report(sb, uid))
+                _mot, _muets = publish_weekly_report(sb, uid)
+                logs.append(_mot)
+                _note_canaux_qui_durent(uid, _muets)
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
             print(f"  {uid} → " + " | ".join(logs))
@@ -900,7 +962,9 @@ def run(force: bool = False, only_user: str | None = None,
                 logs.append(f"labels KO: {e}")
             try:
                 from saas.traitement.build_report import publish_weekly_report
-                logs.append(publish_weekly_report(sb, uid))
+                _mot, _muets = publish_weekly_report(sb, uid)
+                logs.append(_mot)
+                _note_canaux_qui_durent(uid, _muets)
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
             print(f"  {uid} → " + " | ".join(logs))
@@ -1125,7 +1189,8 @@ def run(force: bool = False, only_user: str | None = None,
                     email_to = sb.auth.admin.get_user_by_id(uid).user.email
                 except Exception:
                     pass
-                _mot = publish_weekly_report(sb, uid, email_to=email_to)
+                _mot, _muets = publish_weekly_report(sb, uid, email_to=email_to)
+                _note_canaux_qui_durent(uid, _muets)
                 journal.append((_rang["rapport"], _mot))
                 suivi.termine(sb, "rapport", "fini", _mot)
             except Exception as e:
@@ -1195,6 +1260,45 @@ if __name__ == "__main__":
     # labels et le rapport ont fini leur travail — on ne perd pas une récolte
     # entière parce qu'une colonne Meta manque. Mais la run ne ment pas sur ce
     # qu'elle a écrit.
+    #
+    # DEUX CAUSES DE ROUGE, ET AUCUNE NE DOIT MASQUER L'AUTRE. Elles s'impriment
+    # toutes les deux, puis on sort une seule fois : un `sys.exit` posé sous la
+    # première aurait rendu la seconde invisible le jour où les deux tombent
+    # ensemble — et c'est exactement le jour où il faut les lire.
+    _rouge = False
+
+    # LA PANNE QUI DURE (ticket 47). La ligne nomme de quoi AGIR : le compte, le
+    # canal, depuis combien de rapports, et jusqu'à quel jour on a lu. Un run
+    # rouge qui oblige à ouvrir Supabase pour savoir qui appeler est un signal
+    # qu'on finit par ignorer — c'est le papier peint déplacé d'un cran.
+    #
+    # `mot` est le mot de la fin du worker, déjà imprimé tel quel plus haut dans
+    # ce même journal : il nomme l'exception, jamais la valeur d'un jeton
+    # (`CLAUDE.md` §7).
+    if _CANAUX_QUI_DURENT:
+        print(f"!! ÉCHEC : {len(_CANAUX_QUI_DURENT)} canal/canaux muets depuis "
+              f"au moins deux rapports — une note dans le rapport ne suffit "
+              f"plus (ticket 47).")
+        for _uid, _c in _CANAUX_QUI_DURENT:
+            _depuis = (f"lu jusqu'au {_c.get('depuis')}" if _c.get("depuis")
+                       else "aucune donnée jamais reçue")
+            # CE QUE LE CLIENT SAIT, DIT LIGNE PAR LIGNE. Sur un canal qui ne
+            # tait aucun chiffre, les deux surfaces client se taisent : il n'a
+            # rien vu. L'écrire ici est ce qui décide si David a besoin de
+            # l'appeler ou seulement de reconnecter.
+            _su = ("le client l'a vu dans son rapport et son email"
+                   if vu_par_le_client(_c)
+                   else "INVISIBLE POUR LE CLIENT — ce canal ne lui tait aucun "
+                        "chiffre, il n'en a jamais entendu parler")
+            print(f"   {_uid} · {_c.get('nom') or _c.get('canal')} — muet depuis "
+                  f"{_c.get('semaines_muettes')} rapports, {_depuis} — "
+                  f"{_c.get('mot')}")
+            print(f"        → {_su}")
+        print("   Reconnecter le canal sur le compte, puis relancer "
+              "weekly-fetch.yml (force + user_id) : le recouvrement réécrira "
+              "les semaines trouées.")
+        _rouge = True
+
     if _ECRITURES_SAUTEES:
         print(f"!! ÉCHEC : écriture Meta Ads sautée pour {len(_ECRITURES_SAUTEES)} "
               f"utilisateur(s) — colonne ad_id absente de meta_ads_insights. "
@@ -1202,4 +1306,7 @@ if __name__ == "__main__":
               f"nommant le trou (ticket 20). Le reste de la récolte a bien "
               f"tourné. Jouer supabase/migrations/000_run_me_all.sql, puis "
               f"relancer : le recouvrement de sept jours rattrapera la semaine.")
+        _rouge = True
+
+    if _rouge:
         sys.exit(1)
