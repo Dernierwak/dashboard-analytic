@@ -1,7 +1,7 @@
 # Les tuiles KPI du rapport ne sont lues par personne
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -61,3 +61,76 @@ fonction la plus lue du produit.
 Les deux autres surfaces du ticket 48 — `/couts` et les pages canal — sont
 vivantes, corrigées et vérifiées
 (`.scratch/construction/harnais/48-trou-en-direct/`). Rien à y reprendre ici.
+
+
+## Answer
+
+**Elles ne reviennent pas.** Tranché par David le 2026-09-20, sur les deux
+sorties que ce ticket posait. Les trois pièces qui ont porté la décision :
+
+- l'ordre du premier écran est **déjà tranché** — verdict, bilan du Carnet, à
+  faire, rail, résumé replié
+  (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`) — et une rangée de
+  totaux tous canaux confondus n'y a pas de place ;
+- les tuiles n'ont pas été oubliées, elles ont été **retirées** : `data.kpis`
+  quitte `app/page.tsx` au commit `6e92303`, *« rapport hebdo organisé PAR
+  THÈME »* ;
+- la dépense par plateforme est **vivante ailleurs** — « Dépensé par
+  plateforme » sur `/couts` (`app/couts/page.tsx:367`), corrigée et vérifiée au
+  ticket 48.
+
+### Ce qui sort
+
+`Kpi`, `ChannelSpend`, les champs `kpis` et `channels` de `WeeklyData`, les
+trois branches d'objectif (`ventes` / `notoriete` / `engagement`), le ROAS, la
+portée moyenne par post, le total d'interactions, les sommes par canal et par
+fenêtre, et `pctDelta`, qui n'avait plus d'appelant. `hasData` reste : il est lu
+(`app/page.tsx:784`) et il gouverne l'écran vide.
+
+**Deux lectures Supabase disparaissent** avec leurs seuls consommateurs —
+`ga4_insights` (6 000 lignes) et `instagram_organic_posts` (300). **Trois autres
+se réduisent à une ligne et une colonne** : ce qui reste de `meta_ads_insights`
+et `google_ads_insights`, c'est l'ancre — la dernière date écrite, donc la
+première ligne du tri — et de `followers_history`, l'existence seule.
+
+Au passage, et c'est le plus instructif : le `limit(3000)` de ces deux lectures
+était **une fiction**. PostgREST plafonne à 1 000 lignes et tronque en silence
+(`CLAUDE.md` §8). L'ancre n'en souffrait pas, elle est la première ligne ; les
+sommes, elles, se calculaient sur un mois tronqué **sans le dire**. Le défaut
+part avec le code qui le portait — il n'a jamais rien affiché, faute de lecteur.
+
+### Vérifié
+
+`rm -rf .next tsconfig.tsbuildinfo`, `npx tsc --noEmit` et `npm run build`
+verts, **19 routes**. **30 régressions rejouées** — les 26 du ticket 48
+(`harnais/48-trou-en-direct/`) et les 4 du 46 — qui tiennent l'ADR 0005 et le
+rognage de fenêtre. `git grep` ne rend plus **aucune** occurrence de `Kpi`,
+`ChannelSpend`, `pctDelta` dans `saas/web`. `/couts`, `lib/couts.ts` et
+`lib/channels.ts` ne sont pas touchés, comme ce ticket le demandait.
+
+**Aucun harnais neuf, et c'est le point** : ce ticket ne corrige pas un calcul,
+il en supprime un. Ce qui reste — l'ancre et `hasData` — était déjà couvert.
+
+**Exception au §9** : tout est côté web. **Aucun passage du worker n'est
+nécessaire** ; la page se relit au prochain déploiement. Rien ne change non plus
+à l'écran — c'est exactement ce qu'on vérifie : du code que personne ne lisait
+s'en va.
+
+### Ce que la revue a rattrapé
+
+- **Un commentaire rendu faux par ce ticket** : le bloc de `fetchCanauxMuets`
+  disait que la lecture en direct sert à *« faire taire les chiffres recalculés
+  à côté du payload »*. Ces chiffres sont partis ; il ne lui reste que l'ancre.
+  Le même bloc affirmait *« ELLE NE RESSORT PAS DE `WeeklyData` »*, ce qui était
+  **déjà faux avant ce ticket** — `canauxMuets` est dans le retour. Les deux
+  sont corrigés.
+- **Deux commentaires trop longs**, qui recensaient le code supprimé au lieu de
+  dire pourquoi il ne revient pas. Git tient le recensement ; ils sont resserrés
+  sur la règle.
+
+Elle a ouvert un ticket :
+[52 · Le mot « chantier » contredit le glossaire](52-le-mot-chantier-contredit-le-glossaire.md) —
+`CONTEXT.md` l. 201 écarte « chantier » pour ce que le rail contient, et le code
+l'emploie sept fois, dont un nom de fonction exporté. Jamais sous les yeux du
+client, donc **écrit plutôt que corrigé** (§4) : renommer touche six fichiers
+d'un autre chantier que celui-ci.

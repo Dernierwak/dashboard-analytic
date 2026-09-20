@@ -1,41 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import { JOUR_DEFAUT } from "@/lib/jour-de-travail";
-import {
-  aveuglesSur,
-  canalTu,
-  fenetreTue,
-  fetchCanauxMuets,
-  type CanalMuetLive,
-} from "@/lib/canaux-muets";
+import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 
 // Couche données du rapport hebdo.
-// Règles maison (identiques au Streamlit) :
-//  - fenêtre = 7 jours PLEINS, ancrés sur la dernière date de données (jamais aujourd'hui)
-//  - delta = comparaison avec les 7 jours pleins précédents
-//  - |delta| < 0.5 % → « stable »
+// Règle maison : fenêtre = 7 jours PLEINS, ancrés sur la dernière date de
+// données, jamais aujourd'hui (`CLAUDE.md` §7 : le jour du fetch est
+// incomplet). Elle ne sert plus qu'à dater `weekLabel` — les mesures et leurs
+// écarts sont calculés par le worker et lus dans `report` (ticket 51).
 
 const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-
-export type Kpi = {
-  label: string;
-  value: string;
-  sub: string;
-  delta: number | null; // % vs 7 jours précédents, null = pas comparable
-  deltaGoodWhenUp: boolean | null; // null = neutre (ex. dépense)
-};
-
-/** `spend`/`prev` valent `null` — et JAMAIS 0 — quand la récolte de ce canal a
- *  échoué sur la fenêtre (ticket 48). Un 0 en face d'un canal tombé dit « tu
- *  n'as rien dépensé », ce que `CLAUDE.md` §7 interdit : une absence de donnée
- *  n'est pas un zéro. */
-export type ChannelSpend = {
-  name: string;
-  icon: string;
-  color: string;
-  spend: number | null;
-  prev: number | null;
-};
 
 // Payload publié en headless par saas/traitement/build_report.py (weekly_reports.payload).
 export type PayloadReco = {
@@ -610,8 +584,16 @@ export type WeeklyData = {
   email: string;
   weekLabel: string;
   hasData: boolean;
-  kpis: Kpi[];
-  channels: ChannelSpend[];
+  /** IL N'Y A NI TUILES KPI NI DÉPENSE PAR CANAL ICI, et ce n'est pas un oubli
+   *  (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`). Le rapport a été réorganisé PAR THÈME : son premier écran a
+   *  un ordre tranché — verdict, bilan du Carnet, à faire, rail, résumé replié
+   *  (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`) — où une rangée
+   *  de totaux tous canaux confondus n'a pas de place. La dépense par
+   *  plateforme, elle, est vivante sur `/couts`.
+   *
+   *  Leur calcul avait survécu à leur retrait, donc plus rien ne le
+   *  vérifiait. Les rebrancher demande de reprendre la décision d'ordre
+   *  ci-dessus, pas de décommenter. */
   /** LE TROU DE RÉCOLTE LU EN DIRECT, pas celui du payload.
    *
    *  Il ne double PAS `report.canaux_muets`, qui reste la source du bandeau du
@@ -675,14 +657,6 @@ export function fmtCHF(n: number): string {
   return n.toLocaleString("fr-CH", { maximumFractionDigits: 0 }).replace(/ /g, " ");
 }
 
-// UNE MESURE TUE NE SE COMPARE PAS (ticket 48). `null` d'un côté ou de l'autre
-// et il n'y a plus de variation à écrire : la calculer sur ce qui reste
-// produirait un « −100 % » fabriqué par une panne, servi comme un fait.
-function pctDelta(cur: number | null, prev: number | null): number | null {
-  if (cur === null || prev === null || prev <= 0) return null;
-  return ((cur - prev) / prev) * 100;
-}
-
 // LA CLÉ DE LOOKUP « current »/« comment » D'UNE CARTE (TASK-025) — `reco_key`
 // seul ne suffit plus : une clé-règle générique (ex. « gaspillage ») porte
 // maintenant une ligne PAR THÈME (`reco_feedback_uq2`, migration
@@ -733,28 +707,43 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const compte = await getCompteActif();
   const uid = compte.uid;
 
-  // On lit ~1 mois : assez pour la fenêtre courante + la précédente.
+  // On lit ~1 mois de réactions : assez pour les 4 semaines que `feedback`
+  // expose.
   const fbCutoff = iso(addDays(new Date(), -28));
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, ga4Res, postsRes, insightRes, trackRes, noteRes, budgetRes, canauxMuets] =
+  //
+  // LES DEUX RÉGIES NE SE LISENT PLUS QU'À UNE LIGNE CHACUNE
+  // (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`), et
+  // c'est tout ce dont ce module a besoin depuis que les tuiles KPI ont quitté
+  // l'écran : l'ANCRE veut la dernière date écrite — le tri la met en tête —
+  // et `hasData` veut seulement savoir s'il existe une ligne. Plus une seule
+  // somme ici, donc plus une seule raison de rapatrier la fenêtre entière.
+  //
+  // Le `limit(3000)` d'avant était en outre une fiction — PostgREST plafonne à
+  // 1 000 lignes et tronque EN SILENCE (`CLAUDE.md` §8) : les sommes que ce
+  // ticket supprime se calculaient sur un mois tronqué sans le dire.
+  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, insightRes, trackRes, noteRes, budgetRes, canauxMuets] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
-      .select("date_start, spend, clicks, impressions")
+      .select("date_start")
       .eq("user_id", uid)
       .order("date_start", { ascending: false })
-      .limit(3000),
+      .limit(1),
     supabase
       .from("google_ads_insights")
-      .select("date_start, cost_micros, clicks, impressions")
+      .select("date_start")
       .eq("user_id", uid)
       .order("date_start", { ascending: false })
-      .limit(3000),
+      .limit(1),
+    // Une seule ligne suffit ici aussi, et N'IMPORTE LAQUELLE : `followers`
+    // ne sert plus qu'à dire « ce compte a déjà reçu quelque chose » dans
+    // `hasData`. D'où l'absence de tri — contrairement aux deux régies
+    // ci-dessus, où le tri désigne l'ancre.
     supabase
       .from("followers_history")
-      .select("fetched_at, followers")
+      .select("fetched_at")
       .eq("user_id", uid)
-      .order("fetched_at", { ascending: false })
-      .limit(40),
+      .limit(1),
     // `updated_at` EXISTE DEPUIS TOUJOURS ET N'ÉTAIT JAMAIS LU. C'est la
     // deuxième des trois dates en tête du rapport — « publié le X » — et la
     // seule qui dise QUAND le worker a écrit ce payload. Sans elle, un lecteur
@@ -779,19 +768,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .select("objectif, business_type, labels, fetch_schedule")
       .eq("id", uid)
       .limit(1),
-    // Pour la Vue d'ensemble selon la mission (ventes → revenu, noto/eng → posts)
-    supabase
-      .from("ga4_insights")
-      .select("date, medium, revenue")
-      .eq("user_id", uid)
-      .gte("date", iso(addDays(new Date(), -35)))
-      .limit(6000),
-    supabase
-      .from("instagram_organic_posts")
-      .select("date, reach, likes, comments, saved")
-      .eq("user_id", uid)
-      .gte("date", iso(addDays(new Date(), -35)))
-      .limit(300),
     // Verdicts ✓/✗ sur les constats de la vision (table absente avant la
     // migration → error, on dégrade en {}).
     supabase
@@ -813,16 +789,18 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     // A-T-IL DÉJÀ POSÉ UN BUDGET ? Même question, même forme.
     supabase.from("channel_budgets").select("id").eq("user_id", uid).limit(1),
     // QUELLE RÉCOLTE A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48). Dans le même
-    // lot que le reste : la lecture ne coûte rien de plus en temps, et elle
-    // décide de ce que TOUS les chiffres qui suivent ont le droit de dire.
+    // lot que le reste : la lecture ne coûte rien de plus en temps.
     //
-    // ELLE NE RESSORT PAS DE `WeeklyData`, et c'est voulu. Ce que le client
-    // lit sur cette page-ci, c'est `report.canaux_muets` — le trou tel que le
-    // worker l'a constaté quand il a écrit ce payload, servi par
-    // `CanalMuetAlerte`. La lecture en direct sert ici à une autre chose :
-    // empêcher un canal périmé d'ancrer la fenêtre, et faire taire les
-    // chiffres recalculés à côté du payload. Deux listes exposées côte à côte
-    // sur un même écran finiraient par se contredire.
+    // ELLE N'A PLUS QU'UN SEUL RÔLE ICI — empêcher un canal périmé d'ancrer la
+    // fenêtre (ADR 0005). Elle faisait aussi taire les chiffres recalculés à
+    // côté du payload ; ces chiffres sont partis avec les tuiles KPI, ce
+    // rôle-là n'a plus d'objet.
+    //
+    // ELLE RESSORT DE `WeeklyData`, pour l'ÉTAT VIDE seulement (voir
+    // `canauxMuets` dans le type). Ce que lit le client d'un rapport garni,
+    // c'est `report.canaux_muets` — la photo du worker, servie par
+    // `CanalMuetAlerte` : deux listes côte à côte sur un même écran finiraient
+    // par se contredire.
     fetchCanauxMuets(supabase, uid),
   ]);
 
@@ -1011,82 +989,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   if (!anchor || anchor > yesterday) anchor = anchor && anchor <= yesterday ? anchor : yesterday;
 
   const curSince = addDays(anchor, -6);
-  const prevSince = addDays(anchor, -13);
-  const prevUntil = addDays(anchor, -7);
-
-  const inWin = (dateStr: string, since: Date, until: Date) => {
-    const d = String(dateStr).slice(0, 10);
-    return d >= iso(since) && d <= iso(until);
-  };
-
-  const sum = (rows: any[], col: string, since: Date, until: Date, factor = 1) =>
-    rows.reduce(
-      (acc, r) => (inWin(r.date_start, since, until) ? acc + (Number(r[col]) || 0) * factor : acc),
-      0
-    );
-
-  // ── CE QUE LE TROU DE RÉCOLTE A LE DROIT DE TAIRE (ticket 48) ─────────────
-  //
-  // Une mesure se tait si SA source est muette SUR SA FENÊTRE, et nulle part
-  // ailleurs (ADR 0005) : les semaines d'avant le trou ont été écrites par les
-  // passages réussis d'avant, elles restent bonnes. D'où deux tests distincts —
-  // la fenêtre courante finit sur l'ancre, la fenêtre de référence finit une
-  // semaine plus tôt et survit donc souvent au trou.
-  //
-  // UN TOTAL TOUS CANAUX CONFONDUS N'A PAS DE MOITIÉ VALIDE : dès qu'une des
-  // deux régies manque, la somme est amputée, et une somme amputée se lit comme
-  // une BAISSE que personne n'a décidée. Le pire cas n'est d'ailleurs pas la
-  // baisse mais le ROAS, qui GONFLE — le revenu GA4 reste entier pendant que le
-  // dénominateur se creuse.
-  const finCourante = iso(anchor);
-  const finPrec = iso(prevUntil);
-  const aveuglesCourants = aveuglesSur(canauxMuets, finCourante);
-  const muetCourant = aveuglesCourants.length > 0;
-  const muetPrec = fenetreTue(canauxMuets, finPrec);
-  const taire = (valeur: number, muet: boolean) => (muet ? null : valeur);
-
-  // Meta
-  const mSpendBrut = sum(meta, "spend", curSince, anchor);
-  const mSpendPrevBrut = sum(meta, "spend", prevSince, prevUntil);
-  const mClicks = sum(meta, "clicks", curSince, anchor);
-  const mClicksPrev = sum(meta, "clicks", prevSince, prevUntil);
-  const mImpr = sum(meta, "impressions", curSince, anchor);
-
-  // Google (coûts en micros)
-  const gSpendBrut = sum(google, "cost_micros", curSince, anchor, 1 / 1_000_000);
-  const gSpendPrevBrut = sum(google, "cost_micros", prevSince, prevUntil, 1 / 1_000_000);
-  const gClicks = sum(google, "clicks", curSince, anchor);
-  const gClicksPrev = sum(google, "clicks", prevSince, prevUntil);
-  const gImpr = sum(google, "impressions", curSince, anchor);
-
-  // Une dépense PAR CANAL ne se tait que si SON canal est muet : Google reste un
-  // chiffre quand Meta tombe. Le TOTAL, lui, tombe dès que l'un des deux manque.
-  const mSpend = taire(mSpendBrut, canalTu(canauxMuets, "meta", finCourante));
-  const mSpendPrev = taire(mSpendPrevBrut, canalTu(canauxMuets, "meta", finPrec));
-  const gSpend = taire(gSpendBrut, canalTu(canauxMuets, "google", finCourante));
-  const gSpendPrev = taire(gSpendPrevBrut, canalTu(canauxMuets, "google", finPrec));
-
-  const spend = taire(mSpendBrut + gSpendBrut, muetCourant);
-  const spendPrev = taire(mSpendPrevBrut + gSpendPrevBrut, muetPrec);
-  const clicks = taire(mClicks + gClicks, muetCourant);
-  const clicksPrev = taire(mClicksPrev + gClicksPrev, muetPrec);
-  const impr = taire(mImpr + gImpr, muetCourant);
-  const ctr = impr === null || clicks === null ? null : impr > 0 ? (clicks / impr) * 100 : 0;
-
-  // Abonnés : dernier relevé vs relevé le plus proche d'il y a 7 jours.
-  let followersNow: number | null = null;
-  let followersDelta: number | null = null;
-  if (followers.length > 0) {
-    followersNow = Number(followers[0].followers) || 0;
-    const target = addDays(new Date(String(followers[0].fetched_at)), -7).getTime();
-    let best: { diff: number; val: number } | null = null;
-    for (const f of followers.slice(1)) {
-      const t = new Date(String(f.fetched_at)).getTime();
-      const diff = Math.abs(t - target);
-      if (!best || diff < best.diff) best = { diff, val: Number(f.followers) || 0 };
-    }
-    if (best) followersDelta = followersNow - best.val;
-  }
 
   // `hasData` RESTE UNE QUESTION DE LIGNES, et ce n'est pas le même verrou que
   // le `has_data` du worker.
@@ -1104,147 +1006,10 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // ci-dessous, lu par `app/page.tsx`).
   const hasData = meta.length > 0 || google.length > 0 || followers.length > 0;
 
-  // ── Vue d'ensemble SELON LA MISSION — les 3 chiffres qui servent l'objectif ─
-  const winDates = `${fmtDay(curSince)} → ${fmtDay(anchor)}`;
-
-  // Revenu payant GA4 (fenêtre courante + précédente)
-  const ga4Rows = ga4Res.data ?? [];
-  const isPaid = (m: unknown) =>
-    ["cpc", "ppc", "paid"].some((k) => String(m ?? "").toLowerCase().includes(k));
-  let rev = 0, revPrev = 0;
-  for (const r of ga4Rows) {
-    if (!isPaid(r.medium)) continue;
-    if (inWin(String(r.date), curSince, anchor)) rev += Number(r.revenue) || 0;
-    else if (inWin(String(r.date), prevSince, prevUntil)) revPrev += Number(r.revenue) || 0;
-  }
-  const hasGa4 = ga4Rows.length > 0;
-
-  // Posts Instagram (fenêtre courante + précédente)
-  const postRows = (postsRes.data ?? []).map((p) => ({
-    date: String(p.date ?? ""),
-    reach: Number(p.reach) || 0,
-    inter: (Number(p.likes) || 0) + (Number(p.comments) || 0) + (Number(p.saved) || 0),
-  }));
-  const pWin = postRows.filter((p) => inWin(p.date, curSince, anchor));
-  const pPrev = postRows.filter((p) => inWin(p.date, prevSince, prevUntil));
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-  const reachAvg = mean(pWin.map((p) => p.reach));
-  const reachAvgPrev = mean(pPrev.map((p) => p.reach));
-  const engAvg = mean(pWin.map((p) => (p.reach > 0 ? (p.inter / p.reach) * 100 : 0)));
-  const engAvgPrev = mean(pPrev.map((p) => (p.reach > 0 ? (p.inter / p.reach) * 100 : 0)));
-  const interTot = pWin.reduce((a, p) => a + p.inter, 0);
-  const interTotPrev = pPrev.reduce((a, p) => a + p.inter, 0);
-
-  // « — » ET JAMAIS 0 QUAND LA SOURCE EST MUETTE, et le sous-titre dit lequel
-  // des deux canaux manque : un tiret sans raison se lit comme un bug de Pulse,
-  // pas comme une connexion à refaire (même arbitrage que `CanalMuetAlerte`).
-  const manquants = aveuglesCourants.map((c) => c.nom).join(" et ");
-  const naPasRepondu = `${manquants} n${aveuglesCourants.length > 1 ? "'ont" : "'a"} pas répondu`;
-  const kpiSpend: Kpi = {
-    label: "Dépensé",
-    value: spend === null ? "—" : `${fmtCHF(spend)} CHF`,
-    sub: spend === null ? naPasRepondu : `Meta + Google · ${winDates}`,
-    delta: pctDelta(spend, spendPrev),
-    deltaGoodWhenUp: null,
-  };
-  const kpiClicks: Kpi = {
-    label: "Clics",
-    value: clicks === null ? "—" : fmtCHF(clicks),
-    sub: ctr === null ? naPasRepondu : `CTR ${ctr.toFixed(2)} %`,
-    delta: pctDelta(clicks, clicksPrev),
-    deltaGoodWhenUp: true,
-  };
-  const kpiFollowers: Kpi = {
-    label: "Abonnés",
-    value:
-      followersDelta === null
-        ? "—"
-        : `${followersDelta >= 0 ? "+" : ""}${fmtCHF(followersDelta)}`,
-    sub: followersNow === null ? "pas de relevé" : `${fmtCHF(followersNow)} au total`,
-    delta: null,
-    deltaGoodWhenUp: true,
-  };
-
-  let kpis: Kpi[];
-  if (objectif === "ventes" && hasGa4) {
-    // LE ROAS EST LE PIÈGE DE CE TICKET, et il ne ressemble pas à une panne.
-    // GA4 tourne dans son propre fil et écrit normalement pendant que Meta ou
-    // Google échoue : le revenu reste ENTIER pendant que le dénominateur est
-    // amputé. Le ratio ne s'effondre pas, il GONFLE — l'écran n'a pas l'air
-    // cassé, il a l'air excellent. Le revenu lui-même, lui, reste un chiffre
-    // mesuré : c'est le rapport des deux qui n'existe pas.
-    const roas = spend !== null && spend > 0 ? rev / spend : null;
-    kpis = [
-      kpiSpend,
-      {
-        label: "Revenu attribué",
-        value: `${fmtCHF(rev)} CHF`,
-        sub:
-          roas !== null
-            ? `ROAS ${roas.toFixed(1)} · GA4 payant`
-            : spend === null
-              ? `GA4 payant · ROAS indisponible, ${naPasRepondu}`
-              : "GA4 · trafic payant",
-        delta: pctDelta(rev, revPrev),
-        deltaGoodWhenUp: true,
-      },
-      kpiClicks,
-    ];
-  } else if (objectif === "notoriete") {
-    kpis = [
-      kpiFollowers,
-      {
-        label: "Portée moyenne / post",
-        value: pWin.length ? fmtCHF(reachAvg) : "—",
-        sub: `${pWin.length} post${pWin.length > 1 ? "s" : ""} · ${winDates}`,
-        delta: pWin.length && pPrev.length ? pctDelta(reachAvg, reachAvgPrev) : null,
-        deltaGoodWhenUp: true,
-      },
-      {
-        label: "Posts publiés",
-        value: String(pWin.length),
-        sub: pPrev.length ? `${pPrev.length} la période précédente` : "sur la période",
-        delta: null,
-        deltaGoodWhenUp: true,
-      },
-    ];
-  } else if (objectif === "engagement") {
-    kpis = [
-      {
-        label: "Engagement moyen",
-        value: pWin.length ? `${engAvg.toFixed(1)} %` : "—",
-        sub: `${pWin.length} post${pWin.length > 1 ? "s" : ""} · ${winDates}`,
-        delta: pWin.length && pPrev.length ? pctDelta(engAvg, engAvgPrev) : null,
-        deltaGoodWhenUp: true,
-      },
-      {
-        label: "Interactions",
-        value: fmtCHF(interTot),
-        sub: "j'aime + comm. + enreg.",
-        delta: pctDelta(interTot, interTotPrev),
-        deltaGoodWhenUp: true,
-      },
-      kpiFollowers,
-    ];
-  } else {
-    kpis = [kpiSpend, kpiClicks, kpiFollowers];
-  }
-
-  // LE CAS LE PLUS NET DU TICKET 48 : ces deux lignes posaient `spend: mSpend`
-  // en dur, donc ZÉRO en face du canal tombé — « Meta Ads : 0 CHF » alors que
-  // personne ne sait ce qui y a été dépensé. `null` dit « on ne sait pas », et
-  // c'est la seule chose vraie.
-  const channels: ChannelSpend[] = [
-    { name: "Meta Ads", icon: "▣", color: "#1a56ff", spend: mSpend, prev: mSpendPrev },
-    { name: "Google Ads", icon: "◆", color: "#1a7a4a", spend: gSpend, prev: gSpendPrev },
-  ];
-
   return {
     email: compte.email,
     weekLabel: `${fmtDay(curSince)} → ${fmtDay(anchor)} ${anchor.getUTCFullYear()} · 7 jours pleins`,
     hasData,
-    kpis,
-    channels,
     report,
     publieLe,
     jourDeTravail,

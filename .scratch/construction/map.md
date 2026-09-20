@@ -593,6 +593,31 @@ cliquant** (§9) : il faut un passage du worker, cron du Jour de travail ou
 n'a pas de plafond de pages, et un chiffre choisi de mémoire y tronquerait une
 récolte réelle.
 
+[51 · Les tuiles KPI du rapport ne sont lues par personne](issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md) —
+né de la réalisation du 48, et c'était **une décision produit avant d'être une
+suppression** : `WeeklyData.kpis` et `.channels` n'étaient lus par aucun
+composant, donc une centaine de lignes — trois branches d'objectif, le ROAS, la
+portée par post — s'exécutaient à chaque rapport et se jetaient. **Tranché par
+David : les tuiles ne reviennent pas.** L'ordre du premier écran est déjà
+tranché (`refonte/issues/10`) et n'a pas de place pour des totaux tous canaux
+confondus ; la dépense par plateforme est vivante sur `/couts`. Sortent avec
+elles `Kpi`, `ChannelSpend`, `pctDelta`, **deux lectures Supabase entières**
+(`ga4_insights`, `instagram_organic_posts`) et **trois autres réduites à une
+ligne** — il ne reste de `meta_ads_insights` et `google_ads_insights` que
+l'ancre, et de `followers_history` que l'existence. `hasData` reste : il est lu,
+et il gouverne l'écran vide. **Le plus instructif est ce que la suppression
+révèle** : le `limit(3000)` de ces lectures était une fiction — PostgREST
+tronque à 1 000 en silence (§8) — donc les sommes supprimées se calculaient sur
+un mois tronqué **sans le dire**. Jamais affiché, faute de lecteur. Typecheck et
+build verts, 19 routes ; 30 régressions rejouées (26 du 48, 4 du 46). **Aucun
+harnais neuf, et c'est le point** : on ne corrige pas un calcul, on en supprime
+un. **Exception au §9** : tout est côté web, rien n'attend le worker. Sa revue a
+ouvert
+[52 · Le mot « chantier » contredit le glossaire](issues/52-le-mot-chantier-contredit-le-glossaire.md) —
+`CONTEXT.md` l. 201 l'écarte pour ce que le rail contient, le code l'emploie
+sept fois dont un nom de fonction exporté ; jamais sous les yeux du client, donc
+écrit plutôt que corrigé.
+
 ## Not yet specified
 
 - **Le jugement de David sur le fil, une fois la v1 en service.** C'est la

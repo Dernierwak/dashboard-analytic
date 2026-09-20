@@ -30,7 +30,7 @@ verts, **19 routes** — un écart signale une page de contrôle oubliée.
 
 | Route | Ce qu'elle montre |
 |---|---|
-| `/` (`page.tsx`) | Le rapport hebdo — KPIs, recos, brief. Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. |
+| `/` (`page.tsx`) | Le rapport hebdo, organisé PAR THÈME — verdict, bilan du Carnet, à faire, rail des actions suivies, résumé replié, puis les cartes de thème. Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Pas de tuiles KPI ni de dépense par canal** : elles ont quitté l'écran avec la refonte, et leur calcul avec elles (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
 | `/meta` | Dashboard Meta Ads — périodes 7→Tout, filtres, hero impressions, KPIs, évolution quotidienne, campagnes → adsets → annonces. |
 | `/google` | Dashboard Google Ads — même structure que Meta, jusqu'aux annonces (`google_ads_ad_insights`). |
 | `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts, par thème, « ce qui marche pour toi ». Ses modules « formats » et « créneaux » sont morts le 2026-09-12 : ils recalculaient en TypeScript la réponse d'`insights.py`. |
