@@ -42,7 +42,7 @@ const vivantes = [
   a("auto-observe", { status: "auto", due: false }),
 ];
 
-const rail = M.chantiersEnCours(vivantes).map((x) => x.id);
+const rail = M.actionsOuvertes(vivantes).map((x) => x.id);
 const liste = M.composerAFaire(null, vivantes, {}, {});
 const module_ = [...liste.verdicts, ...liste.notes].map((x) => x.id);
 
@@ -63,17 +63,17 @@ ok("aucune action ne se perd entre les deux", perdues.length === 0, perdues.join
 // Le rail de l'accueil ne reçoit que `data.actions`, d'où le rangé et
 // l'abandonné sont déjà absents — mais s'ils lui arrivaient un jour, ils ne
 // doivent pas se mettre à « courir » : une ligne close ne court plus.
-const closes = M.chantiersEnCours([
+const closes = M.actionsOuvertes([
   a("rangee", { status: "archived" }),
   a("abandonnee", { status: "dropped" }),
 ]);
 ok("ni rangée ni abandonnée ne court", closes.length === 0, closes.map((x) => x.id).join(", "));
-ok("aucune action → aucun rail", M.chantiersEnCours([]).length === 0);
+ok("aucune action → aucun rail", M.actionsOuvertes([]).length === 0);
 
 // L'ordre du rail vient du rail lui-même (`ORDRE`, `rail-actions.tsx`) ; ici on
 // garde seulement que la sélection ne réordonne rien qu'elle n'a pas trié.
 ok("le rail rend les lignes dans l'ordre reçu",
-  JSON.stringify(M.chantiersEnCours(vivantes).map((x) => x.id)) ===
+  JSON.stringify(M.actionsOuvertes(vivantes).map((x) => x.id)) ===
     JSON.stringify(vivantes.filter((x) => rail.includes(x.id)).map((x) => x.id)));
 
 console.log(`  → ${ko === 0 ? "tout passe" : ko + " échec(s)"}`);

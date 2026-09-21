@@ -103,6 +103,7 @@ class Lecteur(Protocol):
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]: ...
     def suivi_actions(self) -> list[dict]: ...
     def suivi_en_cours(self) -> list[dict]: ...
+    # Les `limite` plus RÉCENTES, du plus ancien au plus récent (ticket 37).
     def notes_archivees(self, limite: int = 200) -> list[dict]: ...
 
     # ── L'IA ─────────────────────────────────────────────────────────────────
@@ -278,15 +279,24 @@ class LecteurSupabase:
                 .order("check_at").execute().data) or []
 
     def notes_archivees(self, limite: int = 200) -> list[dict]:
-        """Les Notes du client, pour la mémoire d'un thème — jamais pour le
-        repondérage des conseils. La lecture est à part de `suivi_en_cours`
-        exprès : élargir celle-là ferait entrer les notes dans la boucle qui
-        ÉCRIT `verdict`."""
-        return (self.sb.table("suivi_actions")
-                .select("title, theme, decided_at")
-                .eq("user_id", self.user_id).eq("kind", "note")
-                .eq("status", "archived")
-                .order("decided_at").limit(limite).execute().data) or []
+        """Les `limite` Notes les plus RÉCENTES, rendues du plus ancien au plus
+        récent — pour la mémoire d'un thème, jamais pour le repondérage des
+        conseils. La lecture est à part de `suivi_en_cours` exprès : élargir
+        celle-là ferait entrer les notes dans la boucle qui ÉCRIT `verdict`.
+
+        `desc=True` PUIS RENVERSEMENT, et les deux comptent. `supabase-py` trie
+        en ascendant par défaut : `.order("decided_at").limit(200)` gardait les
+        200 notes les plus VIEILLES du compte, et `theme_memoire.build_prompt`
+        en prenait `faits[-8:]` — les huit dernières d'un lot périmé. Au-delà de
+        200 notes, la mémoire décrivait à Gemini un travail que le client ne
+        fait plus (ticket 37). Le renversement garde l'ordre chronologique que
+        tous les appelants supposent, `[-8:]` compris."""
+        lignes = (self.sb.table("suivi_actions")
+                  .select("title, theme, decided_at")
+                  .eq("user_id", self.user_id).eq("kind", "note")
+                  .eq("status", "archived")
+                  .order("decided_at", desc=True).limit(limite).execute().data) or []
+        return lignes[::-1]
 
     # ── L'IA ─────────────────────────────────────────────────────────────────
 

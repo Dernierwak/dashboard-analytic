@@ -43,7 +43,8 @@ def sql() -> str:
                 F.GA4_EVENTS),
         _insert("theme_ga4_events", ["user_id", "label", "event_name", "rang"], F.THEME_EVENTS),
         _insert("instagram_organic_posts",
-                ["user_id", "post_id", "date", "type", "labels", "reach", "eng"], F.POSTS),
+                ["user_id", "post_id", "date", "type", "labels",
+                 "reach", "likes", "comments", "saved"], F.POSTS),
     ])
 
 
@@ -68,9 +69,14 @@ def dataframes(user_id):
     goog = [{"date_start": d.isoformat(), "campaign_id": c, "cost_micros": m,
              "clicks": k, "impressions": i}
             for (u, d, c, m, k, i) in F.GOOGLE_ADS if u == user_id]
+    # `eng` est DÉRIVÉ ici, jamais lu : la `build_matrix` d'origine attendait
+    # une colonne que `instagram_organic_posts` n'a jamais eue (ticket 44). En
+    # production elle recevait `None` et `float(r.get("eng") or 0)` la repliait
+    # sur 0 — donc l'engagement de CHAQUE thème valait 0,0. Lui donner ici le
+    # taux que la vue calcule est ce qui rend les deux côtés comparables.
     posts = [{"post_id": p, "date": d.isoformat() + "T12:00:00+00:00", "type": t,
-              "labels": l, "reach": r, "eng": e}
-             for (u, p, d, t, l, r, e) in F.POSTS if u == user_id]
+              "labels": l, "reach": r, "eng": F.engagement(r, li, co, sa)}
+             for (u, p, d, t, l, r, li, co, sa) in F.POSTS if u == user_id]
     df_meta = pd.DataFrame(meta) if meta else None
     df_goog = pd.DataFrame(goog) if goog else pd.DataFrame()
     df_insta = pd.DataFrame(posts) if posts else None

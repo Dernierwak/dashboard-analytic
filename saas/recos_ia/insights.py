@@ -70,7 +70,9 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
 
     df_meta_raw   : meta_ads_insights complet (date_start, campaign_name, spend, …)
     df_google     : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
-    df_insta      : instagram_organic_posts complet (date, type, reach, eng, labels, …)
+    df_insta      : instagram_organic_posts complet (date, type, reach, likes,
+                    comments, saved, labels, …) — PAS de colonne `eng` : c'est un
+                    taux, il se recalcule ici (`CONTEXT.md`, « Engagement »).
     meta_cfg      : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
     ga4_full      : build_ga4_context sur TOUT l'historique (ou None)
     themes        : les lignes de la vue `theme_regroupement`, déjà lues et déjà
@@ -157,9 +159,18 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
     account_reach_avg = 0.0
     if df_insta is not None and not df_insta.empty and "date" in df_insta.columns:
         p = df_insta.copy()
-        for col in ("reach", "eng"):
+        for col in ("reach", "likes", "comments", "saved"):
             if col in p.columns:
                 p[col] = pd.to_numeric(p[col], errors="coerce").fillna(0)
+        # L'ENGAGEMENT EST UN TAUX, PAS UNE COLONNE (`CONTEXT.md`).
+        # `instagram_organic_posts.eng` n'a jamais existé : `r.get("eng") or 0`
+        # repliait donc CHAQUE post sur 0, et `eng_avg` de chaque format sortait
+        # à `None` — une colonne vide publiée depuis l'origine (ticket 44). La
+        # formule est celle de la vue `theme_regroupement` et de
+        # `lib/channels.ts` l. 1001 : les trois bougent ensemble ou pas du tout.
+        if {"reach", "likes", "comments", "saved"} <= set(p.columns):
+            p["eng"] = ((p["likes"] + p["comments"] + p["saved"])
+                        / p["reach"].where(p["reach"] > 0) * 100).fillna(0.0)
         p["_dt"] = pd.to_datetime(p["date"], errors="coerce", utc=True)
         dates += [d.date() for d in (p["_dt"].min(), p["_dt"].max()) if pd.notna(d)]
         posts_total = len(p)

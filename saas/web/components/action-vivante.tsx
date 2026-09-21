@@ -8,7 +8,7 @@ import { Erreur } from "@/components/erreur";
 
 // UNE ACTION QUI COURT ENCORE, dans le rail — celui de la carte de son
 // thème, et celui de la page d'accueil, qui sert le même module sur les
-// seules actions en cours (`lib/a-faire.ts`, `chantiersEnCours`).
+// seules actions en cours (`lib/a-faire.ts`, `actionsOuvertes`).
 //
 // C'est ici que vit le cycle de vie — et il fallait qu'il vive ici, pas
 // seulement dans la carte du conseil. La raison est simple et elle arrive

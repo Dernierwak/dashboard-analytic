@@ -86,11 +86,28 @@ THEME_EVENTS = [
     (A, "E-bike",     "view_item",     "secondaire"),  # un secondaire ne remplace jamais
 ]
 
+# L'ENGAGEMENT N'EST PLUS DONNÉ, IL SE CALCULE — comme en production, où la
+# colonne `eng` n'existe pas : `(j'aime + commentaires + enregistrements) /
+# portée × 100` (`CONTEXT.md`). Les comptes ci-dessous sont choisis pour que
+# trois des quatre taux tombent JUSTE (6,25 % · 1,0 % · 4,0 %), et que `p1`
+# tombe faux exprès (42 / 1201 = 3,497…) : c'est lui qui met à l'épreuve
+# l'écart d'arrondi entre `round()` de Python et celui de PostgreSQL.
 POSTS = [
-    # user, post_id, date, type, labels, reach, eng
-    (A, "p1", JOURS[0], "IMAGE", ["E-bike"],              1201, 3.5),
-    (A, "p2", JOURS[1], "REEL",  ["E-bike", "Lifestyle"], 4400, 6.25),
-    (A, "p3", JOURS[2], "REEL",  ["Lifestyle"],           None, 2.0),   # portée absente = 0
-    (A, "p4", JOURS[3], "IMAGE", [],                       900, 1.0),   # aucun thème
-    (B, "p9", JOURS[0], "IMAGE", ["Promo"],               2000, 4.0),
+    # user, post_id, date, type, labels, reach, likes, comments, saved
+    (A, "p1", JOURS[0], "IMAGE", ["E-bike"],              1201,  30,  8,  4),
+    (A, "p2", JOURS[1], "REEL",  ["E-bike", "Lifestyle"], 4400, 240, 20, 15),
+    (A, "p3", JOURS[2], "REEL",  ["Lifestyle"],           None,  20,  2,  1),  # portée absente = 0
+    (A, "p4", JOURS[3], "IMAGE", [],                       900,   7,  1,  1),  # aucun thème
+    (B, "p9", JOURS[0], "IMAGE", ["Promo"],               2000,  70,  6,  4),
 ]
+
+
+def engagement(reach, likes, comments, saved):
+    """LA formule, une seule fois dans le harnais.
+
+    Le côté SQL lit les comptes bruts, le côté Python a besoin du taux : la
+    `build_matrix` d'origine lisait une colonne `eng` que la production n'a
+    jamais portée. Dériver ici plutôt que figer un nombre est ce qui rend la
+    comparaison des deux côtés honnête — si la vue changeait de formule sans
+    que celle-ci change, l'écart se verrait."""
+    return ((likes + comments + saved) / reach * 100) if reach else 0.0

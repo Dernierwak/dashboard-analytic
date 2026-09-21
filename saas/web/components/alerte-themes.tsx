@@ -25,7 +25,7 @@ import { fmtCHF, type Couverture } from "@/components/labels-modele";
 // C'est aussi ce qui en fait une tâche qui se VIDE : on étiquette, il s'en va.
 //
 // POURQUOI PAS DE FORME (rang 6). La page Thèmes porte la barre « X % rattaché
-// à un thème » parce qu'on y vient pour suivre un chantier. Ici on vient
+// à un thème » parce qu'on y vient pour suivre une action suivie. Ici on vient
 // apprendre un fait en deux secondes : le verdict en mots (rang 4) dit déjà la
 // part, et la grammaire n'autorise qu'une forme par module — autant n'en mettre
 // aucune plutôt qu'une barre qui allongerait un module dont la vertu est

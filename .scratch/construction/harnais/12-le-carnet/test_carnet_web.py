@@ -152,7 +152,19 @@ def test_le_repli_de_migration_ne_perd_pas_une_campagne_en_silence():
     campagne X » tiendrait une promesse à moitié sans le dire."""
     ok("le repli refuse quand une campagne est désignée",
        "if (n.campagne)" in ACTIONS and "ne sait pas encore la porter" in ACTIONS)
-    ok("il accepte sans auteur", "sansColonnesNeuves" in ACTIONS)
+    # LE REPLI RETIRE CE QUE LA BASE A REFUSÉ, PAS TOUT CE QUI EST NEUF
+    # (ticket 38). Il déposait les trois colonnes d'un bloc : sur une base à
+    # moitié migrée — `author_id` présent, paire `campaign_*` absente — il
+    # créait une note SANS AUTEUR sur une base qui savait la signer, et
+    # `peutToucher` la rendait modifiable par tout membre (ADR 0004).
+    ok("il ne retire l'auteur que si la base l'a refusé",
+       'if (message.includes("author_id") && "author_id" in repliLigne)' in ACTIONS
+       and "sansColonnesNeuves" not in ACTIONS)
+    ok("il retire la paire de campagne à la même condition",
+       'if (message.includes("campaign_") && "campaign_channel" in repliLigne)' in ACTIONS)
+    ok("il réessaie tant qu'il a retiré quelque chose — PostgREST ne nomme "
+       "qu'une colonne à la fois",
+       "for (let tour = 0; tour < 3; tour++)" in ACTIONS and "if (!retire) break;" in ACTIONS)
     ok("la raison est écrite", "une note sans auteur est une note ancienne" in ACTIONS)
 
 

@@ -44,12 +44,24 @@ CREATE TABLE theme_ga4_events (
     user_id uuid NOT NULL, label text NOT NULL, event_name text NOT NULL,
     rang text NOT NULL DEFAULT 'secondaire');
 
+-- LES COLONNES DE LA PRODUCTION, ET RIEN D'AUTRE. Ce harnais déclarait
+-- `eng numeric` : la colonne n'existe nulle part, et le harnais prouvait donc
+-- la vue contre une base qui n'existe nulle part (ticket 44). Les noms
+-- ci-dessous sont ceux relevés sur `public.instagram_organic_posts` du projet
+-- de production le 2026-09-13. La table est ANTÉRIEURE aux migrations : aucun
+-- fichier de ce dépôt ne la crée, elle ne peut donc que se recopier.
+--
+-- LES COMPTES SONT EN `integer`, comme `reach` et pour la même raison : c'est
+-- le type qui fait tomber la division entière si la vue oublie un `::numeric`.
+-- Un harnais choisit le type le plus SÉVÈRE des types plausibles — celui qui
+-- révèle le défaut plutôt que celui qui le masque.
 CREATE TABLE instagram_organic_posts (
+    id bigserial, created_at timestamptz DEFAULT now(),
     user_id uuid NOT NULL, post_id text NOT NULL,
-    date timestamptz NOT NULL, type text, labels text[],
-    -- `reach` en ENTIER, comme un compte : c'est le type qui fait tomber la
-    -- division entière si la vue oublie son `::numeric`.
-    reach integer, eng numeric);
+    type text, caption text, date timestamptz NOT NULL,
+    likes integer, comments integer, saved integer,
+    reach integer, views integer, follows integer,
+    labels text[], label_source text, label_at timestamptz, media_url text);
 
 -- Les index du schéma réel, et EUX SEULS : un harnais qui en invente donne des
 -- plans plus beaux que la production.

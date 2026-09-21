@@ -165,7 +165,9 @@ class LecteurFige:
     def suivi_en_cours(self):
         return [a for a in self._suivi if a.get("status") in ("running", "done")]
 
-    def notes_archivees(self, limite=200): return self._notes[:limite]
+    # LES PLUS RÉCENTES, pas les plus vieilles — le faux lecteur tenait la
+    # même coupe que le vrai, donc il n'aurait jamais vu le ticket 37.
+    def notes_archivees(self, limite=200): return self._notes[-limite:]
 
     # ── L'IA ─────────────────────────────────────────────────────────────────
     def redige(self, prompt):

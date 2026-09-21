@@ -879,3 +879,47 @@ résolution rabat toute fenêtre future sur le dernier jour plein avant de compt
 les dates du bandeau portent cette ancre en maximum, les écritures effacent
 l'ancien `p`, et le sélecteur de prototype ne pose plus d'écouteur en production.
 4 régressions rejouées ; typecheck et build verts, 19 routes.
+
+**[44 · La vue du regroupement ne peut pas être jouée](issues/44-la-vue-du-regroupement-ne-peut-pas-etre-jouee.md)** —
+**trois pas sur quatre ; le quatrième est à David.** Le ticket concluait à une
+définition produit absente : elle ne l'était pas, elle n'était pas *écrite*.
+`(j'aime + commentaires + enregistrements) / portée × 100` vivait déjà dans
+`lib/channels.ts`, `channel-dash.tsx` et `comparaison.tsx`, identique — la
+reprendre était le seul geste qui ne fabrique rien
+([ADR 0008](../../docs/adr/0008-l-engagement-est-un-taux-recalcule-jamais-une-colonne.md),
+`CONTEXT.md` « Engagement »). Le harnais 04 prouvait la vue contre un schéma
+inventé : il porte désormais les colonnes de la production, avec les comptes en
+`integer` — un harnais prend le type qui révèle la division entière, pas celui
+qui la masque. `eng_avg` se calcule dans les deux fichiers SQL **et** dans
+`insights.py`, où `formats[].eng_avg` sortait à `None` depuis l'origine.
+L'agrégat n'a pas bougé (moyenne des taux post par post) : réparer la colonne et
+déplacer le chiffre dans le même geste l'aurait changé sans demande. **Reste :
+jouer la migration**, sans quoi `VueRegroupementAbsente` lève et le rapport ne se
+construit pas. Un défaut écrit plutôt que corrigé —
+[53 · Une portée absente compte pour un engagement nul](issues/53-une-portee-absente-compte-pour-un-engagement-nul.md) :
+le zéro est fabriqué dans les quatre implémentations, et le corriger dans le seul
+SQL ferait diverger la vue de l'écran.
+
+**[37 · La mémoire de thème lit les notes les plus vieilles](issues/37-la-memoire-de-theme-lit-les-notes-les-plus-vieilles.md)** —
+**résolu, et le faux lecteur portait le même défaut.** `supabase-py` trie en
+ascendant par défaut : la mémoire décrivait à Gemini les 200 notes les plus
+anciennes du compte. `desc=True` **puis renversement** — rendre la liste
+décroissante aurait mis « les huit plus vieilles des deux cents plus récentes »
+à la place du défaut. Ce qu'aucun harnais n'avait vu, c'est que
+`lecteur_fige.py` faisait la **même coupe** que le vrai : un faux qui reproduit
+le bug du vrai ne prouve rien. Harnais neuf (11 vérifications) qui regarde la
+**requête construite**, pas le résultat.
+
+**[38 · Le repli de `poserNote` efface l'auteur](issues/38-le-repli-de-posernote-efface-l-auteur.md)** —
+**résolu, avec un second défaut trouvé en chemin.** Le repli retire ce que la
+base a refusé, plus ce qui est neuf. Et PostgREST ne nomme **qu'une** colonne à
+la fois : un repli unique aurait rendu « réessaie » à une note qui pouvait
+s'écrire, sur une base pas migrée du tout. C'est une boucle bornée par les trois
+colonnes, qui s'arrête plutôt que de deviner. Le harnais 12 épinglait
+`sansColonnesNeuves` — c'est-à-dire le défaut.
+
+**[52 · Le mot « chantier » contredit le glossaire](issues/52-le-mot-chantier-contredit-le-glossaire.md)** —
+**le glossaire a raison.** `CONTEXT.md` écarte le mot **deux fois**, et aucune
+des sept occurrences ne portait de nuance qu'« action suivie » ne porte pas :
+`chantiersEnCours` devient `actionsOuvertes`. Le harnais 13 épinglait le nom
+dans deux fichiers.

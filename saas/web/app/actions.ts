@@ -607,9 +607,40 @@ async function poserNote(
           "Ta note désigne une campagne, et la base ne sait pas encore la porter" +
           " — la migration suivi_actions_auteur_campagne.sql n'est pas jouée.",
       };
-    const { author_id, campaign_channel, campaign_key, ...sansColonnesNeuves } = ligne;
-    const repli = await supabase.from("suivi_actions").insert(sansColonnesNeuves);
-    if (!repli.error) return noteEcrite();
+    // LE REPLI RETIRE CE QUE LA BASE A REFUSÉ, PAS TOUT CE QUI EST NEUF.
+    //
+    // Les trois colonnes arrivent par la même migration, mais elle peut être à
+    // moitié jouée. Sur une base qui porte `author_id` et pas encore la paire
+    // `campaign_*`, les retirer d'un bloc créait AUJOURD'HUI une note sans
+    // auteur sur une base qui savait la signer — et `peutToucher` rend une note
+    // sans auteur modifiable et supprimable par TOUT membre du compte, ce
+    // qu'ADR 0004 interdit précisément (ticket 38).
+    //
+    // POURQUOI UNE BOUCLE ET PAS UN SEUL REPLI : PostgREST ne nomme qu'UNE
+    // colonne à la fois. Si les deux manquent, le premier repli échoue sur la
+    // seconde, et un repli unique aurait rendu « réessaie » à une note qui
+    // pouvait s'écrire. Elle est bornée par les trois colonnes connues — chaque
+    // tour en retire au moins une, donc elle s'arrête.
+    const repliLigne: Record<string, unknown> = { ...ligne };
+    let message = panne;
+    for (let tour = 0; tour < 3; tour++) {
+      let retire = false;
+      if (message.includes("author_id") && "author_id" in repliLigne) {
+        delete repliLigne.author_id;
+        retire = true;
+      }
+      if (message.includes("campaign_") && "campaign_channel" in repliLigne) {
+        delete repliLigne.campaign_channel;
+        delete repliLigne.campaign_key;
+        retire = true;
+      }
+      // La base refuse pour une raison qu'on n'a pas prévue : réécrire au
+      // hasard reviendrait à deviner ce qu'elle sait porter.
+      if (!retire) break;
+      const repli = await supabase.from("suivi_actions").insert(repliLigne);
+      if (!repli.error) return noteEcrite();
+      message = String(repli.error.message || "");
+    }
   }
   return { ok: false, message: "Ta note n'a pas pu être enregistrée — réessaie." };
 }

@@ -2340,12 +2340,36 @@ revenu_generique AS NOT MATERIALIZED (
 -- PostgreSQL. Une portée moyenne de 1 234,7 s'afficherait 1 234 — un chiffre
 -- faux qui a l'air juste, sur une colonne dont le type ne vit pas dans ce
 -- dépôt (`instagram_organic_posts` est antérieure aux migrations).
+--
+-- ⚠ IL N'Y A PAS DE COLONNE `eng`, ET IL N'Y EN AURA PAS. Cette vue en lisait
+-- une : la migration échouait en `42703` sur la vraie base, donc la vue
+-- n'existait nulle part et le rapport ne se construisait pas (ticket 44).
+-- L'engagement est un TAUX recalculé à la lecture — `(j'aime + commentaires +
+-- enregistrements) / portée × 100`, `CONTEXT.md` — et la formule ci-dessous est
+-- au caractère près celle de `lib/channels.ts` l. 1001, qui alimente `/instagram`.
+-- Les deux DOIVENT bouger ensemble : la vue existe pour que la base et l'écran
+-- lisent la même arithmétique.
+--
+-- LA MOYENNE EST CELLE DES TAUX POST PAR POST, pas le taux des totaux du thème :
+-- c'est ce que rendait `build_matrix` (`("eng", "mean")`) et ce qu'affiche la
+-- colonne « Eng. ». Le module « Comparer » calcule l'autre, délibérément
+-- (`channel-dash.tsx` l. 849-852) — les deux ne se mettent jamais en face.
+--
+-- LE `ELSE 0` EST UN ZÉRO FABRIQUÉ, et il est ici À DESSEIN : un post sans
+-- portée n'a pas un engagement nul, il en a un inconnu. Les trois
+-- implémentations TypeScript écrivent le même zéro ; le corriger ICI SEULEMENT
+-- ferait diverger la vue de l'écran, ce que cette vue existe pour empêcher.
+-- Écrit plutôt que corrigé : ticket 53.
 posts AS NOT MATERIALIZED (
     SELECT p.user_id,
            lbl                                        AS label,
            count(*)::integer                          AS posts,
            sum(coalesce(p.reach, 0))::numeric / count(*)  AS reach_avg,
-           sum(coalesce(p.eng, 0))::numeric   / count(*)  AS eng_avg
+           sum(CASE WHEN coalesce(p.reach, 0) > 0
+                    THEN (coalesce(p.likes, 0) + coalesce(p.comments, 0)
+                          + coalesce(p.saved, 0))::numeric / p.reach * 100
+                    ELSE 0
+               END) / count(*)                            AS eng_avg
       FROM public.instagram_organic_posts p
      CROSS JOIN LATERAL unnest(p.labels) AS lbl
      CROSS JOIN bornes b

@@ -12,7 +12,7 @@ import { RailFiltre } from "@/components/rail-filtre";
 // lui donne les seules actions QUI COURENT, tous thèmes confondus et sans
 // aucun fait de plateforme : c'est le rang 4 de son premier écran, et la
 // chronologie complète se lit dans la carte, pas en tête de page. Le tri est
-// fait en amont (`lib/a-faire.ts`, `chantiersEnCours`) ; ce module ne décide
+// fait en amont (`lib/a-faire.ts`, `actionsOuvertes`) ; ce module ne décide
 // jamais de ce qu'on lui donne.
 //
 // UN SEUL RAIL, DEUX RÉGIMES. Pas deux traits côte à côte : la grammaire
@@ -58,7 +58,7 @@ const ORDRE: Record<string, number> = { juger: 0, running: 1, observation: 2 };
 function rang(a: TrackedAction): number {
   // `"auto"` (l'hypothèse d'un thème, posée par le worker sans clic) suit le
   // même rang que `"done"` : à juger une fois l'échéance passée, sinon en
-  // observation — jamais « en cours », ce mot désignant un chantier que le
+  // observation — jamais « en cours », ce mot désignant une action que le
   // client a lui-même choisi de mener.
   if ((a.status === "done" || a.status === "auto") && a.due) return ORDRE.juger;
   if (a.status === "running") return ORDRE.running;

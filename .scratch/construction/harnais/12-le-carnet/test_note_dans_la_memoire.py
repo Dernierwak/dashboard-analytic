@@ -142,10 +142,16 @@ def test_la_lecture_des_notes_est_bornee_et_ne_lit_pas_les_running():
     source_notes = [n for n in ast.walk(arbre)
                     if isinstance(n, ast.Name) and n.id == "_notes_rows"]
     ok("`_notes_rows` existe dans l'arbre", len(source_notes) > 0)
-    ok("la lecture est bornée", '.order("decided_at").limit(limite)' in LECTEUR
+    # `desc=True` ET le renversement, depuis le ticket 37 : la borne gardait
+    # les 200 notes les plus VIEILLES, et le renversement rend l'ordre
+    # chronologique que `faits[-8:]` suppose en aval.
+    ok("la lecture est bornée sur les plus RÉCENTES",
+       '.order("decided_at", desc=True).limit(limite)' in LECTEUR
        and "def notes_archivees(self, limite: int = 200)" in LECTEUR)
+    ok("et elle les rend du plus ancien au plus récent",
+       "return lignes[::-1]" in LECTEUR)
     ok("elle exclut les notes pas encore cochées",
-       '.eq("kind", "note")\n                .eq("status", "archived")' in LECTEUR)
+       '.eq("kind", "note")\n                  .eq("status", "archived")' in LECTEUR)
 
 
 if __name__ == "__main__":

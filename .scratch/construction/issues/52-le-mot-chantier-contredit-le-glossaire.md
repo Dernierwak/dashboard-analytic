@@ -1,7 +1,7 @@
 # Le mot « chantier » contredit le glossaire
 
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -52,3 +52,27 @@ Trancher lequel des deux a raison — et les deux sorties sont défendables :
 
 L'_Avoid_ de `CONTEXT.md` l. 221 — « chantier » comme synonyme de **Stratégie** —
 n'est contredit nulle part dans le code. Rien à y reprendre.
+
+## Answer
+
+**Le glossaire a raison** — la première des deux sorties du ticket.
+
+`CONTEXT.md` écarte « chantier » explicitement, et l'écarte **deux fois** (l. 201
+comme synonyme d'Action suivie, l. 221 comme synonyme de Stratégie). Le mot
+n'avait pas pris de sens propre dans le code : les sept occurrences étaient des
+commentaires et un nom de fonction, aucune n'introduisait de nuance que
+« action suivie » ne porte pas. Faire entrer dans le glossaire un mot qu'il
+écarte deux fois pour sauver sept commentaires aurait été le mauvais sens.
+
+`chantiersEnCours` devient **`actionsOuvertes`** — le ticket demandait un nom qui
+distingue *ouvertes* de *toutes*, `actions` étant déjà la liste complète dans
+`WeeklyData`. Les sept commentaires suivent, dans cinq fichiers
+(`lib/a-faire.ts`, `app/page.tsx`, `components/rail-actions.tsx`,
+`action-vivante.tsx`, `alerte-themes.tsx`). `grep -rn chantier` sur `saas/web`
+est propre.
+
+**Le harnais 13 épinglait le nom** (`test_premier_ecran.py` l. 96,
+`verifier_partition.js` en quatre endroits) : renommé avec le reste, 43/43.
+
+**§9 — exception, tout est côté web.** Et rien ne change à l'écran : le client
+n'a jamais lu ce mot.

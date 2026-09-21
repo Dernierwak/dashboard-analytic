@@ -294,13 +294,17 @@ CHAINES = {
          ("eq", "user_id", UID),
          ("in_", "status", ["running", "done"]),
          ("order", "check_at"), ("execute",)]),
+    # `desc=True` depuis le ticket 37 : sans lui, PostgREST rendait les 200
+    # notes les PLUS VIEILLES du compte, et la mémoire d'un thème décrivait à
+    # Gemini un travail que le client ne fait plus. C'est le seul écart voulu
+    # avec l'appel que `build_payload` faisait en clair.
     "notes_archivees": (
         lambda l: l.notes_archivees(),
         [("table", "suivi_actions"),
          ("select", "title, theme, decided_at"),
          ("eq", "user_id", UID), ("eq", "kind", "note"),
          ("eq", "status", "archived"),
-         ("order", "decided_at"), ("limit", 200), ("execute",)]),
+         ("order", "decided_at", ("desc", True)), ("limit", 200), ("execute",)]),
     "dates_declarees": (
         lambda l: l.dates_declarees("meta_campaign_config"),
         [("table", "meta_campaign_config"),

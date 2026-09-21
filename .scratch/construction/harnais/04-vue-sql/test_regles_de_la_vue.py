@@ -44,9 +44,9 @@ def main():
     INSERT INTO ga4_insights (user_id, date, medium, campaign, revenue)
       VALUES ('{U}', '{HIER}', 'cpc', 'C', 50),
              ('{U}', '{AUJ}',  'cpc', 'C', 5000);
-    INSERT INTO instagram_organic_posts (user_id, post_id, date, labels, reach, eng)
-      VALUES ('{U}', 'a', '{HIER} 12:00+02', ARRAY['T'], 100, 2.0),
-             ('{U}', 'b', '{AUJ} 12:00+02',  ARRAY['T'], 9999, 99.0);
+    INSERT INTO instagram_organic_posts (user_id, post_id, date, labels, reach, likes, comments, saved)
+      VALUES ('{U}', 'a', '{HIER} 12:00+02', ARRAY['T'],  100,   2, 0, 0),
+             ('{U}', 'b', '{AUJ} 12:00+02',  ARRAY['T'], 9999, 990, 0, 0);
     """)
     x = themes(db)["T"]
     t.proche("la dépense du jour en cours n'entre pas", x["spend"], 100.0)

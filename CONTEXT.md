@@ -137,6 +137,28 @@ qu'on n'a pas (`CLAUDE.md` §7).
 _Avoid_: Fréquence — c'est le mot de Meta, et il désigne précisément la valeur
 qu'on ne sait PAS calculer. L'employer ferait passer un plancher pour elle.
 
+**Engagement** :
+Un **taux**, jamais un nombre : `(j'aime + commentaires + enregistrements) /
+portée × 100`, en pourcentage. Ce n'est **pas une colonne en base** —
+`instagram_organic_posts` porte les cinq comptes bruts, et l'engagement se
+recalcule à chaque lecture, partout pareil (`lib/channels.ts`,
+`components/channel-dash.tsx`, `components/comparaison.tsx`, la vue
+`theme_regroupement`, `recos_ia/insights.py`).
+**`follows` et `views` en sont dehors**, bien que les colonnes existent : les
+abonnements gagnés ne sont pas une réaction à la publication, et compter les
+vues au numérateur d'un taux dont la portée est le dénominateur mélangerait
+deux dénominateurs.
+**Deux agrégats portent ce nom et ne se comparent pas** : la *moyenne des taux
+post par post* — un post vu par 40 personnes y pèse autant qu'un reel vu par
+12 000 — qui est ce qu'affichent la colonne « Eng. » et `eng_avg` d'un Thème ;
+et le *taux calculé sur les totaux* d'une fenêtre, qui est ce qu'affiche
+« Comparer ». Les deux sont légitimes, aucun des deux ne se met en face de
+l'autre.
+_Avoid_: Interactions, engagement rate — le premier désigne le numérateur seul
+et se confondrait avec le taux, le second est de l'anglais de régie. Et « le
+nombre d'engagements » ne veut rien dire ici : la valeur affichée est toujours
+un pourcentage.
+
 **Note** :
 Ce que le client a fait et que Pulse ne peut pas deviner — « refait les
 visuels », « changé le ciblage à la main », « le concurrent a lancé une promo ».

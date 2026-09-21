@@ -72,7 +72,7 @@ export function estNoteOuverte(a: TrackedAction): boolean {
 }
 
 /**
- * LE RAIL DES CHANTIERS EN COURS, SUR LA PAGE D'ACCUEIL — le complément EXACT
+ * LE RAIL DES ACTIONS OUVERTES, SUR LA PAGE D'ACCUEIL — le complément EXACT
  * du module « À faire », et c'est pour ça que le filtre vit ICI.
  *
  * L'ordre du premier écran est Verdict → bilan du Carnet → À faire → **rail**
@@ -94,7 +94,7 @@ export function estNoteOuverte(a: TrackedAction): boolean {
  * deux, sans doublon ni trou par construction, calculée au même endroit que
  * l'autre moitié pour que les deux ne puissent pas diverger.
  */
-export function chantiersEnCours(actions: TrackedAction[]): TrackedAction[] {
+export function actionsOuvertes(actions: TrackedAction[]): TrackedAction[] {
   return actions.filter((a) => {
     if (estNoteOuverte(a)) return false;
     if (a.status === "running") return true;

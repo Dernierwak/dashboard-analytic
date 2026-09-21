@@ -10,7 +10,7 @@ import {
 } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
-import { chantiersEnCours, composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
+import { actionsOuvertes, composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
 import { AFaire } from "@/components/a-faire";
 import { RailActions } from "@/components/rail-actions";
 import { TroisDates } from "@/components/trois-dates";
@@ -277,8 +277,8 @@ export default async function Page() {
   // actions derrière lui.
   //
   // Sans ce filet, ces actions seraient invisibles ET inatteignables : plus un
-  // seul endroit pour les marquer faites ou les abandonner, donc des chantiers
-  // ouverts à vie. (Elles saturaient en plus le plafond de trois chantiers, mort
+  // seul endroit pour les marquer faites ou les abandonner, donc des actions
+  // ouvertes à vie. (Elles saturaient en plus le plafond de trois actions, mort
   // avec le module « À faire ».)
   //
   // `themesRendus` est calculé plus haut, avec `cartes` : c'est le même
@@ -329,7 +329,7 @@ export default async function Page() {
   const etatAFaireModule = etatAFaire(aFaire, priorities.length === 0, data.decouvertes);
   // CE QUI COURT ET N'ATTEND RIEN DE TOI — l'autre moitié exacte des actions
   // vivantes, calculée par le même module pour que les deux ne divergent pas.
-  const enCours = chantiersEnCours(data.actions);
+  const enCours = actionsOuvertes(data.actions);
 
   // L'HEURE DU RENDU, LUE UNE FOIS. La troisième des trois dates (« mis à jour
   // le ») se calcule à partir d'elle ; la figer ici garantit que toute la ligne
@@ -490,7 +490,7 @@ export default async function Page() {
       </div>
 
       {/* LE BILAN DU CARNET — deuxième marche de l'ordre décidé par la refonte :
-          verdict → BILAN DU CARNET → à faire → rail des chantiers → résumé IA
+          verdict → BILAN DU CARNET → à faire → rail des actions → résumé IA
           replié (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). C'est
           un COMPTAGE des verdicts déjà persistés, pas une mesure : le moteur qui
           remesurait ce bilan sur le compte entier est mort avec ce ticket, parce
@@ -502,7 +502,7 @@ export default async function Page() {
 
       {/* À FAIRE CETTE SEMAINE — POSÉ ICI, ET PAS PLUS HAUT NI PLUS BAS.
           L'ordre décidé par la refonte est : verdict → bilan du Carnet →
-          À FAIRE → rail des chantiers → résumé IA replié
+          À FAIRE → rail des actions → résumé IA replié
           (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). Les cinq
           marches sont en place : le bilan depuis le ticket 12, le rail et la
           descente du résumé depuis le 13. Le verdict répond à « ma
@@ -547,7 +547,7 @@ export default async function Page() {
           CE QU'IL NE MONTRE PAS, ET POURQUOI : les Verdicts tombés et les
           lignes que tu t'es écrites. Le module « À faire » juste au-dessus les
           porte déjà — le rail montre le temps qui passe, le module ce qui
-          attend une décision de toi (`lib/a-faire.ts`, `chantiersEnCours`, où
+          attend une décision de toi (`lib/a-faire.ts`, `actionsOuvertes`, où
           la partition est calculée une seule fois pour que les deux moitiés ne
           puissent pas se contredire). */}
       {enCours.length > 0 && (

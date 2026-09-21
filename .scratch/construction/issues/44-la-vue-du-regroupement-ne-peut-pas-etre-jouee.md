@@ -92,3 +92,68 @@ le payload. **Ne pas choisir en passant.**
   **n'atteindront la production qu'une fois ce ticket réglé**.
 - Le ticket [04](04-vue-sql-du-regroupement.md), dont la vue est la livraison.
 - Le ticket [22](22-pulse-lit-la-vue.md), qui attend que Pulse lise la vue.
+
+## Avancement — 2026-09-20 : trois des quatre pas sont faits
+
+**Le ticket reste OUVERT** : son quatrième pas — jouer la migration — n'appartient
+qu'à David. Rien de ce qui suit n'est visible tant qu'elle n'est pas passée.
+
+### 1. La définition ne manquait pas, elle n'était pas écrite
+
+Le ticket concluait à une **définition produit absente**. Elle existait déjà
+dans le produit, à trois endroits, identique au caractère près :
+
+```
+lib/channels.ts:1001      eng: reach > 0 ? ((likes + comments + saved) / reach) * 100 : 0
+channel-dash.tsx:571      r > 0 ? (som(g, p => p.likes + p.comments + p.saved) / r) * 100 : null
+comparaison.tsx:108       p.reach > 0 ? ((p.likes + p.comments + p.saved) / p.reach) * 100 : null
+```
+
+`insights.py:350` imprime « % d'engagement moyen » et `/instagram` affiche la
+colonne avec son `%`. C'est **cette** formule qui entre dans `CONTEXT.md`, pas
+une quatrième choisie en passant — `follows` et `views` restent dehors parce
+qu'aucune des trois ne les a jamais comptés. Décision consignée en
+[ADR 0008](../../../docs/adr/0008-l-engagement-est-un-taux-recalcule-jamais-une-colonne.md).
+
+### 2. Le harnais regarde enfin la bonne base
+
+`04-vue-sql/schema.sql` déclarait `eng numeric`. Il porte maintenant les
+colonnes relevées sur la production, et les comptes sont en `integer` comme
+`reach` — un harnais choisit le type qui **révèle** la division entière, pas
+celui qui la masque. `fixtures.py` donne des comptes bruts et partage la formule
+avec le côté Python via `engagement()`, parce que la `build_matrix` d'origine
+lisait une colonne que la production n'a jamais eue.
+
+### 3. `eng_avg` se calcule des deux côtés
+
+`theme_regroupement.sql` **et** sa copie dans `000_run_me_all.sql`
+(`test_copie_non_derivee.py` refuse toute dérive). L'agrégat n'a pas bougé :
+c'est la **moyenne des taux post par post**, ce que rendait `build_matrix` et ce
+qu'affiche la colonne « Eng. » — réparer la colonne et déplacer l'agrégat dans
+le même geste aurait bougé un chiffre publié sans que personne le demande.
+
+**Côté Python aussi** : `insights.py` gardait `("eng", "mean") if "eng" in
+p.columns else …`, donc `formats[].eng_avg` sortait à `None` pour chaque format
+— une colonne vide publiée depuis l'origine. L'engagement s'y calcule
+maintenant, avec la même formule.
+
+**Vérifié** : harnais 04 complet sur PostgreSQL 16 jetable — 58/58 pour
+« vue vs `build_matrix` », 19/19, 18/18, 21/21, 4/4, 2/2, 2/2. Les harnais du
+traitement rejoués : 16 (184/184), 09, 07, 10, tous verts. `npx tsc --noEmit`
+et `npm run build` verts, **19 routes**.
+
+### Ce qui reste, et qui n'appartient qu'à David
+
+**Jouer `supabase/migrations/theme_regroupement.sql`** (ou `000_run_me_all.sql`)
+sur le projet de production, puis vérifier que `fetch_theme_regroupement` rend
+des lignes. Tant que ce n'est pas fait, `VueRegroupementAbsente` continue de
+lever et **le rapport hebdomadaire ne se construit pas**. La migration ne porte
+aucun `DROP TABLE`, `DELETE` ni `TRUNCATE` : le seul `DROP VIEW` ne touche
+qu'une définition, et le fichier est rejouable sans risque.
+
+### Un défaut écrit plutôt que corrigé
+
+Ticket [53](53-une-portee-absente-compte-pour-un-engagement-nul.md) : un post
+sans portée compte pour un engagement **nul** alors qu'il est inconnu. Le
+corriger dans le seul SQL aurait fait diverger la vue de l'écran — ce que cette
+vue existe précisément pour empêcher.

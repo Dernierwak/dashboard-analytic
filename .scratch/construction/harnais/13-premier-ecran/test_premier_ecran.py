@@ -1,6 +1,6 @@
 """L'ORDRE DU PREMIER ÉCRAN, ET LE DÉFAUT DE PUBLICATION.
 
-Verdict → bilan du Carnet → À faire → rail des chantiers en cours → résumé IA
+Verdict → bilan du Carnet → À faire → rail des actions ouvertes → résumé IA
 REPLIÉ (`.scratch/refonte/issues/10-l-entree-premier-ecran.md` point 6, confirmé
 par le 20). Plus le fil de démarrage, qui était rendu sous deux écrans de
 défilement.
@@ -93,7 +93,7 @@ t.ok("chaque ligne porte donc son thème (pas de thème courant)",
      "themeCourant" not in CODE[rang("<RailActions actions={enCours}"):
                                 rang("<RailActions actions={enCours}") + 200])
 t.ok("le tri est fait en amont, par le module de la frontière",
-     "chantiersEnCours(data.actions)" in CODE and "export function chantiersEnCours" in A)
+     "actionsOuvertes(data.actions)" in CODE and "export function actionsOuvertes" in A)
 t.ok("le rail ne s'affiche pas vide", "enCours.length > 0 &&" in CODE)
 t.ok("la frontière est écrite là où elle est calculée",
      "le rail montre le temps qui passe" in A)
