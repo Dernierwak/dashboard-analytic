@@ -30,33 +30,6 @@ import {
 const lienAds = (path: string, d: ChannelDash, patch: Partial<DashParams>) =>
   lienDash(path, d.params, patch, "spend");
 
-export function PeriodPills({ path, d }: { path: string; d: ChannelDash }) {
-  const opts: { v: number; label: string }[] = [
-    { v: 7, label: "7 j" },
-    { v: 14, label: "14 j" },
-    { v: 30, label: "30 j" },
-    { v: 90, label: "90 j" },
-    { v: 0, label: "Tout" },
-  ];
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {opts.map((o) => (
-        <a
-          key={o.v}
-          href={lienAds(path, d, { d: o.v === 7 ? undefined : String(o.v) })}
-          className={`text-[11.5px] font-semibold rounded-full px-3 py-1 border transition-colors ${
-            d.days === o.v
-              ? "bg-ink text-white border-ink"
-              : "border-line text-muted hover:bg-black/[0.03] bg-white"
-          }`}
-        >
-          {o.label}
-        </a>
-      ))}
-    </div>
-  );
-}
-
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
 export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
   // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
