@@ -2,10 +2,10 @@
 
 Ce dossier est **Pulse**, le produit que le client voit : Next.js 14 (App
 Router), TypeScript, Tailwind, déployé sur Vercel depuis `main`. Il ne
-calcule ni ne récolte rien lui-même — il **lit** ce que
-`saas/collecte/`, `saas/recos_ia/` et `saas/traitement/build_report.py` ont
-déjà écrit dans Supabase (`weekly_reports.payload` pour le rapport, les
-tables par canal pour les dashboards). Voir `CLAUDE.md` § 7 pour pourquoi la
+calcule ni ne récolte rien lui-même — il **lit** ce que `saas/collecte/` et
+`saas/traitement/build_report.py` ont déjà écrit dans Supabase
+(`weekly_reports.payload` pour le rapport, les tables par canal pour les
+dashboards). Voir `CLAUDE.md` § 7 pour pourquoi la
 fabrication du rapport n'est PAS ici (temps d'exécution serverless, secrets,
 déclenchement cron).
 
@@ -30,11 +30,11 @@ verts, **19 routes** — un écart signale une page de contrôle oubliée.
 
 | Route | Ce qu'elle montre |
 |---|---|
-| `/` (`page.tsx`) | Le rapport hebdo, organisé PAR THÈME — verdict, bilan du Carnet, à faire, rail des actions suivies, résumé replié, puis les cartes de thème. Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Pas de tuiles KPI ni de dépense par canal** : elles ont quitté l'écran avec la refonte, et leur calcul avec elles (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
+| `/` (`page.tsx`) | Le rapport hebdo, organisé PAR THÈME — les trois dates, le verdict, la boussole, l'anneau, la frise, puis les cartes de thème, puis ce qu'aucun thème ne prend. Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Il ne conseille rien** : les conseils, le module « À faire », le rail des actions, le Carnet et le résumé IA sont partis le 2026-09-21. **Pas de tuiles KPI ni de dépense par canal** non plus (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
 | `/meta` | Dashboard Meta Ads — périodes 7→Tout, filtres, hero impressions, KPIs, évolution quotidienne, campagnes → adsets → annonces. |
 | `/google` | Dashboard Google Ads — même structure que Meta, jusqu'aux annonces (`google_ads_ad_insights`). |
-| `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts, par thème, « ce qui marche pour toi ». Ses modules « formats » et « créneaux » sont morts le 2026-09-12 : ils recalculaient en TypeScript la réponse d'`insights.py`. |
-| `/labels` | Le copilote des thèmes — sans eux, pas de bilan ni de conseil par thème. Une campagne non étiquetée disparaît de presque toute l'analyse. |
+| `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts, par thème. Ses modules « formats » et « créneaux » sont morts le 2026-09-12, et le bloc « ce qui marche pour toi » avec les constats le 2026-09-21. |
+| `/labels` | Le copilote des thèmes — sans eux, pas de bilan par thème. Une campagne non étiquetée disparaît de presque toute l'analyse. **C'est le seul endroit où un thème se pose** depuis que la labellisation IA est partie. |
 | `/conversions` | Sélection et catégorisation des conversions GA4 — vivait éclaté sur `/labels` avant, regroupé ici. |
 | `/couts` | Budget publicitaire — un seul horizon piloté, l'année (pas jour ni mois). |
 | `/comptes` | Brancher Meta/Google sur Pulse. Une autorisation OAuth accordée n'est pas une source de données branchée — voir le compte publicitaire ET la propriété Analytics, chacun sa propre étape. |
@@ -87,9 +87,10 @@ déjà connectés à re-consentir).
 
 - `app/` — les pages (App Router) + `app/api/` (routes OAuth) + `actions.ts` /
   `actions-compte.ts` (server actions).
-- `components/` — 68 composants, un par module d'écran en général.
+- `components/` — un par module d'écran en général.
 - `lib/` — logique partagée : `channels.ts` (dashboards Meta/Google/Instagram),
-  `report.ts` (payload `weekly_reports`), `budgets.ts`, `couts.ts`,
+  `report.ts` (payload `weekly_reports` — il ne porte plus ni conseil ni
+  action), `budgets.ts`, `couts.ts`,
   `couverture.ts`, `changements-api.ts`, `oauth.ts`/`oauth-api.ts`, `account.ts`,
   `connexions.ts`, `palette.ts`, `liens.ts`, `nav-cookie.ts`, `nav-largeur.ts`,
   `jour-de-travail.ts`/`jour-compte.ts` (le jour servi et les dates qu'il

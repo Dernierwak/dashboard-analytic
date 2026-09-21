@@ -164,33 +164,27 @@ export async function getCompteActifOuNull(): Promise<CompteActif | null> {
 // Ce que la barre latérale affiche en permanence : ce qu'il reste à faire, et
 // jusqu'à quand les données sont fraîches.
 export async function getInfosNav(uid: string): Promise<{
-  aFaire: number;
   fraicheur: string | null;
 }> {
   const supabase = createClient();
   const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
   try {
-    const [act, meta] = await Promise.all([
-      supabase
-        .from("suivi_actions")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", uid)
-        .eq("status", "running"),
-      supabase
-        .from("meta_ads_insights")
-        .select("date_start")
-        .eq("user_id", uid)
-        .order("date_start", { ascending: false })
-        .limit(1),
-    ]);
+    // Le comptage « N actions à faire » qui accompagnait cette lecture est
+    // parti avec le suivi des recommandations : il aurait toujours rendu zéro.
+    const meta = await supabase
+      .from("meta_ads_insights")
+      .select("date_start")
+      .eq("user_id", uid)
+      .order("date_start", { ascending: false })
+      .limit(1);
     const d = meta.data?.[0]?.date_start as string | undefined;
     let fraicheur: string | null = null;
     if (d) {
       const dt = new Date(String(d).slice(0, 10) + "T00:00:00");
       if (!isNaN(dt.getTime())) fraicheur = `données au ${dt.getDate()} ${MOIS[dt.getMonth()]}`;
     }
-    return { aFaire: act.count ?? 0, fraicheur };
+    return { fraicheur };
   } catch {
-    return { aFaire: 0, fraicheur: null };
+    return { fraicheur: null };
   }
 }

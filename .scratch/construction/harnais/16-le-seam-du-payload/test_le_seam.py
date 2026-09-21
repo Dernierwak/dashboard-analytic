@@ -180,24 +180,14 @@ RENVOIS = {
     "publications": ("fetch_post_metrics", "fetch_post_metrics(sb, user_id)"),
     "abonnes": ("fetch_daily_followers", "fetch_daily_followers(sb, user_id)"),
     "google_ads": ("fetch_google_ads", "fetch_google_ads(sb, user_id)"),
-    "google_annonces": ("fetch_google_ads_ad_insights",
-                        "fetch_google_ads_ad_insights(sb, user_id)"),
     "objectif": ("fetch_objectif", "fetch_objectif(sb, user_id)"),
-    "profil_onboarding": ("fetch_onboarding_profile",
-                          "fetch_onboarding_profile(sb, user_id)"),
     "objectifs_par_theme": ("fetch_theme_objectifs",
                             "fetch_theme_objectifs(sb, user_id)"),
     "config_meta": ("fetch_campaign_config", "fetch_campaign_config(sb, user_id)"),
     "config_google": ("fetch_google_campaign_config",
                       "fetch_google_campaign_config(sb, user_id)"),
-    "budgets_poses": ("fetch_platform_budgets", "fetch_platform_budgets(sb, user_id)"),
     "themes_regroupes": ("fetch_theme_regroupement",
                          "fetch_theme_regroupement(sb, user_id)"),
-    "reco_feedback": ("fetch_reco_feedback", "fetch_reco_feedback(sb, user_id)"),
-    "verdicts": ("fetch_reco_verdicts", "fetch_reco_verdicts(sb, user_id)"),
-    "contexte_theme": ("fetch_reco_theme_context",
-                       "fetch_reco_theme_context(sb, user_id)"),
-    "plan_de_theme": ("fetch_theme_plan", "fetch_theme_plan(sb, user_id)"),
     "insight_feedback": ("fetch_insight_feedback", "fetch_insight_feedback(sb, user_id)"),
     "ga4_lignes": ("fetch_ga4_events", "_db_ga4_ev(sb, user_id)"),
     "ga4_insights": ("fetch_ga4_insights", "_fga4(sb, user_id)"),
@@ -284,27 +274,6 @@ CHAINES = {
          ("order", "week_start", ("desc", True)),
          ("limit", 8),
          ("execute",)]),
-    "suivi_actions": (
-        lambda l: l.suivi_actions(),
-        [("table", "suivi_actions"), ("select", "*"),
-         ("eq", "user_id", UID), ("execute",)]),
-    "suivi_en_cours": (
-        lambda l: l.suivi_en_cours(),
-        [("table", "suivi_actions"), ("select", "*"),
-         ("eq", "user_id", UID),
-         ("in_", "status", ["running", "done"]),
-         ("order", "check_at"), ("execute",)]),
-    # `desc=True` depuis le ticket 37 : sans lui, PostgREST rendait les 200
-    # notes les PLUS VIEILLES du compte, et la mémoire d'un thème décrivait à
-    # Gemini un travail que le client ne fait plus. C'est le seul écart voulu
-    # avec l'appel que `build_payload` faisait en clair.
-    "notes_archivees": (
-        lambda l: l.notes_archivees(),
-        [("table", "suivi_actions"),
-         ("select", "title, theme, decided_at"),
-         ("eq", "user_id", UID), ("eq", "kind", "note"),
-         ("eq", "status", "archived"),
-         ("order", "decided_at", ("desc", True)), ("limit", 200), ("execute",)]),
     "dates_declarees": (
         lambda l: l.dates_declarees("meta_campaign_config"),
         [("table", "meta_campaign_config"),
@@ -338,38 +307,6 @@ def test_chaque_lecture_brute_rejoue_la_meme_requete():
 
 # ── Les deux écritures : détournées, jamais perdues ──────────────────────────
 
-def test_l_ecriture_du_plan_de_theme_atteint_la_meme_fonction():
-    import saas.traitement.lecteur as mod
-    espion = Espion()
-    ancien = mod.upsert_theme_plan
-    mod.upsert_theme_plan = espion
-    try:
-        LecteurSupabase("le-client", UID).ecrire_plan_de_theme(
-            "Été", "roas", "argent", "2026-09-13", {"key": "roas"})
-    finally:
-        mod.upsert_theme_plan = ancien
-    egal("mêmes arguments, même ordre", espion.appels[0],
-         (("le-client", UID, "Été", "roas", "argent", "2026-09-13",
-           {"key": "roas"}), {}))
-    ok("l'appel existait avant", "upsert_theme_plan(" in AVANT_PAYLOAD)
-
-
-def test_l_ecriture_du_verdict_rejoue_la_meme_requete():
-    """La chaîne a gagné UN filtre depuis l'injection, et c'est la seule
-    divergence assumée de ce fichier : `verdict IS NULL`, posé par le ticket 17
-    de la construction. Un verdict se rend une fois — sans ce filtre, chaque
-    rapport réécrivait la colonne avec une valeur recalculée contre le KPI du
-    jour. Le reste de la chaîne (table, corps, `eq` sur l'id) est celui d'avant
-    l'injection, et c'est ce que ce test continue de tenir."""
-    sb = FauxSb()
-    LecteurSupabase(sb, UID).ecrire_verdict("action-1", "better")
-    egal("la chaîne d'écriture, plus le garde du ticket 17", sb.chaine,
-         [("table", "suivi_actions"), ("update", {"verdict": "better"}),
-          ("eq", "id", "action-1"), ("is_", "verdict", "null"), ("execute",)])
-    ok("elle était là avant",
-       'sb.table("suivi_actions").update(' in AVANT_PAYLOAD)
-
-
 # ── Le contrat, et rien de plus ──────────────────────────────────────────────
 
 def test_le_faux_lecteur_honore_le_meme_contrat_que_le_vrai():
@@ -378,17 +315,10 @@ def test_le_faux_lecteur_honore_le_meme_contrat_que_le_vrai():
     une source au lieu de la lire."""
     from lecteur_fige import LecteurFige
     contrat = {n for n in dir(Lecteur) if not n.startswith("_")}
-    ok("le contrat n'est pas vide", len(contrat) >= 25, f"{len(contrat)} méthodes")
+    ok("le contrat n'est pas vide", len(contrat) >= 15, f"{len(contrat)} méthodes")
     for methode in sorted(contrat):
         ok(f"le vrai lecteur rend `{methode}`", hasattr(LecteurSupabase, methode))
         ok(f"le faux lecteur rend `{methode}`", hasattr(LecteurFige, methode))
-
-
-def test_le_redacteur_absent_ne_leve_jamais():
-    """En headless sans clé Gemini, `redige` doit rendre `None` — le rapport ne
-    casse jamais sur une panne d'IA."""
-    egal("aucun rédacteur → aucune phrase",
-         LecteurSupabase("le-client", UID).redige("écris-moi quelque chose"), None)
 
 
 if __name__ == "__main__":

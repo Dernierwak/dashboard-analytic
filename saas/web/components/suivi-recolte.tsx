@@ -132,7 +132,6 @@ const NOM_CANAL: Record<string, string> = {
   instagram: "Posts Instagram",
   google: "Google Ads",
   ga4: "Google Analytics",
-  labels: "Classement par l'IA",
   rapport: "Ton rapport",
 };
 

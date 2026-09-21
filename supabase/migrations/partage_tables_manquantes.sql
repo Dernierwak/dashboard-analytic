@@ -64,7 +64,7 @@ DECLARE
         'instagram_organic_posts', 'followers_history',
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
-        'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
+        'weekly_reports', 'insight_feedback',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
         -- le profil : objectif, labels unifiés (profiles.labels), persona IA

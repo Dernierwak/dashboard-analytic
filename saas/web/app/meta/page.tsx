@@ -13,16 +13,11 @@ import {
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { RetourRapport } from "@/components/retour-rapport";
-import { CeQuiMarche } from "@/components/ce-qui-marche";
-import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
 // PROTOTYPE, À RETIRER — quatre façons de poser tes notes sur la courbe
 // (`?variant=A|B|C|D`). Sans le paramètre, la page est exactement celle
 // d'avant. Ticket 19 de `.scratch/refonte/`.
 import { Suspense } from "react";
-import { VARIANTES_NOTES, getNotesCourbe } from "@/lib/proto-notes";
-import { ProtoNotesModule } from "@/components/proto-notes-module";
-import { PrototypeSwitcher } from "@/components/prototype-switcher";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +27,6 @@ export default async function MetaPage({
   searchParams: DashParams;
 }) {
   const d = await getMetaDash(searchParams);
-
-  // PROTOTYPE — la variante remplace `MetricChart`, elle ne s'ajoute pas à lui :
-  // deux fois la même courbe sur un écran est exactement ce que le ticket
-  // interdit de produire.
-  const brut = (searchParams as Record<string, unknown>)?.variant;
-  const variante =
-    typeof brut === "string" && VARIANTES_NOTES.some((v) => v.cle === brut) ? brut : null;
-  const notes = variante ? await getNotesCourbe(d.daily, searchParams) : null;
 
   return (
     // Pas de `max-w-*` : le conteneur prend toute la largeur laissée par la
@@ -102,22 +89,11 @@ export default async function MetaPage({
           rapporte se compare d'un mois à l'autre, la courbe ne dit que la
           silhouette de la fenêtre affichée. */}
       <MoyennesAds d={d} path="/meta" />
-      {variante && notes ? (
-        <ProtoNotesModule d={d} path="/meta" variante={variante} notes={notes} canal="Meta" />
-      ) : (
-        <MetricChart d={d} path="/meta" />
-      )}
+      <MetricChart d={d} path="/meta" />
       {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
           qu'une comparaison, dès qu'elle est posée — et rien de plus quand
           elle ne l'est pas. */}
       <ByLabelTable d={d} path="/meta" />
-
-      {/* ── CE QUI MARCHE POUR TOI (rang 4) — le bloc qui CONCLUT, entre le
-          thème (rang 3) et le détail ligne par ligne (rang 5). Il ne calcule
-          rien : il lit les constats de `insights.py`, tirés de tout
-          l'historique. Meta et Google ne concluaient rien jusqu'ici — seul
-          Instagram le faisait, et il le faisait avec ses propres seuils. */}
-      <CeQuiMarche page="meta" />
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé, et son
           titre dit son classement — promettre ici un dépliage ou un tri que la
@@ -127,25 +103,6 @@ export default async function MetaPage({
         Le thème relie tes campagnes cross-canal (page Labels) — c&apos;est lui qui permet
         le « ce que chaque thème rapporte » du rapport.
       </p>
-
-      {/* ── TON CARNET — le même module que sur les quatre autres pages, filtré
-          par ce que le bandeau filtre (thème, campagne). Écrire ici plutôt que
-          de revenir à l'accueil : la note hérite de la campagne cochée et de la
-          régie de la page, donc elle sait de quoi elle parle sans qu'on le lui
-          demande (`lib/carnet.ts`). */}
-      <Carnet
-        canal="meta"
-        themes={themesChoisis(searchParams)}
-        campKey={d.filters.camp}
-        campagnes={d.campOptions}
-      />
-
-      {/* PROTOTYPE — la barre de comparaison, invisible en production. */}
-      {variante && (
-        <Suspense fallback={null}>
-          <PrototypeSwitcher variantes={VARIANTES_NOTES} courant={variante} />
-        </Suspense>
-      )}
     </main>
   );
 }

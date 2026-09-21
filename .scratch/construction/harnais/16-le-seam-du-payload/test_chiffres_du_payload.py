@@ -100,34 +100,6 @@ def test_un_theme_sans_revenu_confirme_ne_porte_ni_zero_ni_estimation():
     ok("le thème qui en a, lui, l'affiche", matrice["Été"]["revenue"] is not None)
 
 
-# ── 3 · DEUX ANNONCES HOMONYMES RESTENT DEUX ANNONCES (ticket 03) ────────────
-
-def test_deux_annonces_au_meme_nom_restent_deux_dans_les_comparaisons():
-    """Deux Annonces d'un même Groupe portent le MÊME nom et des identifiants
-    différents. Si elles fusionnaient — le bug que le ticket 03 répare —, le
-    Groupe n'aurait plus qu'une annonce mesurée et la règle qui compare deux
-    voisines se tairait. Sa présence est donc la preuve qu'elles sont restées
-    deux."""
-    homonymes = Campagne(
-        "Été – Search", theme="Été", canal="google", depense_jour=30.0,
-        clics_jour=100, impressions_jour=4000, revenu_jour=40.0,
-        annonces=[Annonce("Visuel", "Groupe 1", 140, 350, 14000, 7),
-                  Annonce("Visuel", "Groupe 1", 70, 175, 7000, 0)])
-    p = build_payload(compte([homonymes], etoiles=["Été"], aujourd_hui=AUJOURD_HUI))
-    cles = [r["key"] for r in carte(p, "Été")["recos"]]
-    ok("la comparaison entre deux voisines a parlé",
-       "annonce_sans_conversion" in cles, cles)
-
-    seule = Campagne(
-        "Été – Search", theme="Été", canal="google", depense_jour=30.0,
-        clics_jour=100, impressions_jour=4000, revenu_jour=40.0,
-        annonces=[Annonce("Visuel", "Groupe 1", 140, 350, 14000, 7)])
-    p2 = build_payload(compte([seule], etoiles=["Été"], aujourd_hui=AUJOURD_HUI))
-    cles2 = [r["key"] for r in carte(p2, "Été")["recos"]]
-    ok("et elle se tait quand il n'y a vraiment qu'une annonce",
-       "annonce_sans_conversion" not in cles2, cles2)
-
-
 # ── 4 · LA FENÊTRE, LES DATES, ET LA PUBLICATION IDEMPOTENTE (ticket 13) ────
 
 def _fixture_meta(**kw):

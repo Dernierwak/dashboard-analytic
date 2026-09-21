@@ -99,36 +99,18 @@ d'attribution** — ce qui est une décision produit, pas une donnée manquante.
 Tant qu'elle n'est pas prise, un ROAS par canal **affiché à l'écran** — une
 tuile, une courbe, un KPI posé comme une vérité — serait une invention.
 
-**Cette limite porte sur les écrans, et c'est David qui l'a bornée là, le
-2026-09-17** (ticket
-[32](../.scratch/construction/issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md)).
-Un KPI arrive nu : il ne dit pas d'où vient son incertitude, et le lecteur n'a
-aucun moyen de la deviner. Un conseil, lui, porte son angle mort avec lui. La
-distinction n'est donc pas un assouplissement du §7 — c'est ce que le §7 exige
-déjà : **dire ce qu'on ne sait pas.** Le paragraphe suivant est le seul cas
-ouvert par cette borne, et il est ouvert sous conditions.
+**L'EXCEPTION QUI EXISTAIT ICI A DISPARU AVEC LES CONSEILS.** Jusqu'au
+2026-09-21, un paragraphe autorisait une règle — `theme_deux_regies` — à dire
+« ce thème rend mieux sur une régie que sur l'autre », sous des gardes dures et
+en nommant le biais du dernier clic. Le raisonnement de David tenait en une
+phrase : *un conseil a le droit de dire ce qu'un tableau de bord n'a pas le
+droit d'afficher*, parce qu'un conseil porte son angle mort avec lui alors
+qu'un KPI arrive nu.
 
-**Et depuis le 2026-09-12, un conseil compare les deux régies.**
-`theme_deux_regies` (`saas/recos_ia/regles_payantes.py`, ticket
-[10](../.scratch/construction/issues/10-six-regles-payantes-restantes.md)) dit
-« ce thème rend nettement mieux sur une régie que sur l'autre ». Ce n'est **pas**
-le ROAS par canal que le paragraphe ci-dessus retient : il ne s'affiche sur
-aucun tableau de bord, il ne sort que sous deux gardes dures — l'attribution des
-deux canaux doit être **complète** (toute campagne dépensière retrouvée côté
-GA4, aucun nom porté par les deux régies), et l'écart doit dépasser **4×**,
-précisément pour laisser au biais du dernier clic la place qu'il prend — et son
-champ `pourquoi` **nomme ce biais**, condition posée par
-[24](../.scratch/refonte/issues/24-conseils-payants-manquants.md). Le geste
-qu'il demande est un **transfert partiel à tester**, jamais une réallocation.
-**David a tranché le 2026-09-17** (ticket
-[32](../.scratch/construction/issues/32-un-conseil-compare-deux-regies-que-le-tableau-de-bord-refuse-de-separer.md)) :
-*oui, un conseil a le droit de dire ce qu'un tableau de bord n'a pas le droit
-d'afficher* — la limite du paragraphe ci-dessus ne parlait que des écrans. La
-règle reste en l'état, gardes comprises. **Les gardes ne sont pas décoratives :
-ce sont elles qui rendent la réponse vraie.** Une règle qui perdrait la
-complétude d'attribution, ou qui descendrait son écart à 2×, ou qui cesserait de
-nommer le biais du dernier clic, ne serait plus le cas que David a autorisé — ce
-serait le ROAS par canal du paragraphe ci-dessus, et il reste interdit.
+Le moteur de conseils a été retiré du produit. **Il ne reste donc que des
+écrans, et la règle ci-dessus vaut sans exception : le ROAS par canal ne
+s'affiche pas.** Si un conseil revient un jour, c'est ce paragraphe qu'il
+faudra rouvrir — le raisonnement reste valable, il n'a simplement plus d'objet.
 
 **Et la décision d'attribution elle-même reste entière.** Elle n'est pas prise
 ici et ne se tranche pas dans le code : c'est la question du ticket

@@ -32,16 +32,33 @@ sys.modules.setdefault("supabase", _faux)
 
 
 def build_matrix_d_origine():
-    """La version de `build_matrix` telle qu'elle était AVANT ce ticket."""
-    src = subprocess.check_output(
-        ["git", "show", f"{ORIGINE}:saas/recos_ia/insights.py"], cwd=RACINE).decode()
+    """La version de `build_matrix` telle qu'elle était AVANT ce ticket.
+
+    `saas/recos_ia/` N'EXISTE PLUS DANS L'ARBRE — il est parti avec les
+    recommandations. Ce test compare la vue SQL à une implémentation HISTORIQUE,
+    et cette histoire, elle, ne bouge pas : les deux fichiers se relisent au
+    commit d'origine, et `reco_engine` est posé dans `sys.modules` pour que
+    l'import qu'`insights.py` faisait de lui trouve encore quelque chose.
+    """
     d = pathlib.Path(tempfile.mkdtemp())
-    f = d / "insights_origine.py"
-    f.write_text(src)
-    spec = importlib.util.spec_from_file_location("insights_origine", f)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.build_matrix
+
+    def _au_commit(chemin, nom):
+        src = subprocess.check_output(
+            ["git", "show", f"{ORIGINE}:{chemin}"], cwd=RACINE).decode()
+        f = d / f"{nom}.py"
+        f.write_text(src)
+        spec = importlib.util.spec_from_file_location(nom, f)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[nom] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    paquet = types.ModuleType("saas.recos_ia")
+    paquet.__path__ = []
+    sys.modules["saas.recos_ia"] = paquet
+    sys.modules["saas.recos_ia.reco_engine"] = _au_commit(
+        "saas/recos_ia/reco_engine.py", "reco_engine_origine")
+    return _au_commit("saas/recos_ia/insights.py", "insights_origine").build_matrix
 
 
 def ga4_contexte(user_id, last_full_day):

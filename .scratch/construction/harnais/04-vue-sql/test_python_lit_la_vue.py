@@ -71,7 +71,7 @@ def main():
             "theme_ga4_events, instagram_organic_posts;\n" + charge.sql())
 
     from saas.commun.fetch_data import fetch_theme_regroupement, VueRegroupementAbsente
-    from saas.recos_ia.insights import build_matrix, build_constats, C_SEUILS
+    from saas.traitement.matrice import build_matrix
 
     appels: list[str] = []
     sb = FauxPostgREST(db, appels)
@@ -86,9 +86,6 @@ def main():
          all("LIMIT" in a and "OFFSET" in a for a in appels), appels)
     t.ok("...et ordonnée AVANT de paginer, sinon deux pages se recouvrent",
          all("ORDER BY label" in a for a in appels), appels)
-
-    t.ok("le seuil des 100 CHF a bien quitté Python",
-         "theme_spend_min" not in C_SEUILS, sorted(C_SEUILS))
 
     df_meta, df_goog, df_insta = charge.dataframes(F.A)
     meta_cfg, goog_cfg = charge.configs(F.A)
@@ -105,42 +102,6 @@ def main():
          m["campaigns"] and m["coverage"]["campaigns_total"] > 0)
     t.egal("la couverture compte les publications étiquetées",
            m["coverage"]["posts_labeled"], 3)
-
-    # Les constats lisent `juge`, plus un seuil écrit en clair.
-    m["coverage"]["ga4"] = True
-    cs = build_constats(m, {}, None)
-    cles = [c["key"] for c in cs]
-    t.ok("un thème SOUS le seuil ne devient jamais « ton moteur »",
-         "theme_best:curiosite" not in cles, cles)
-    t.ok("un thème jugé qui ne rapporte rien est signalé",
-         "theme_worst:newsletter" in cles, cles)
-
-    # Un thème passe sous le seuil : le constat doit disparaître avec lui.
-    for x in m["themes"]:
-        if x["label"] == "Newsletter":
-            x["juge"] = False
-    cles = [c["key"] for c in build_constats(m, {}, None)]
-    t.ok("`juge` à False suffit à retirer le constat — le seuil n'est plus lu ailleurs",
-         "theme_worst:newsletter" not in cles, cles)
-
-    # Un revenu INCONNU n'est pas un revenu nul — même quand le compte, lui,
-    # a bien une attribution GA4 ailleurs.
-    inconnu = {"label": "Muet", "spend": 500.0, "clicks": 10, "impressions": 1000,
-               "ctr": 1.0, "posts": 0, "reach_avg": None, "eng_avg": None,
-               "revenue": None, "juge": True, "roas": None}
-    m2 = dict(m, themes=[inconnu], coverage=dict(m["coverage"], ga4=True))
-    cs2 = build_constats(m2, {}, None)
-    cles2 = [c["key"] for c in cs2]
-    t.ok("un thème au revenu INCONNU n'est jamais « dépense sans vente attribuée »",
-         "theme_worst:muet" not in cles2, cles2)
-    t.ok("...et sa phrase dit que le revenu est inconnu, pas qu'il est insuffisant",
-         any("revenu inconnu" in c["detail"] for c in cs2 if c["kind"] == "theme_best"),
-         [c["detail"] for c in cs2])
-
-    # Le même thème, mais la vue SAIT qu'il n'a rien rapporté.
-    m3 = dict(m, themes=[dict(inconnu, revenue=0.0)], coverage=dict(m["coverage"], ga4=False))
-    t.ok("revenu à 0 rendu par la vue : le constat tombe, même si coverage.ga4 dit non",
-         "theme_worst:muet" in [c["key"] for c in build_constats(m3, {}, None)])
 
     # La vue absente ne se rattrape pas par un repli.
     class SansVue:

@@ -25,14 +25,13 @@
 --          google_ads_insights, google_campaign_config
 --   1)     profiles.labels — la liste maîtresse unique (Meta + Google + Insta)
 --   2)     GA4 : ga4_insights (+ campagne UTM) et ga4_events (funnel)
---   3)     reco_feedback + profiles.objectif + persona IA + fetch_schedule
+--   3)     profiles.objectif + fetch_schedule
 --   3bis)  google_ads_ad_insights — le détail par annonce
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   6)     weekly_reports — le rapport hebdo précalculé
 --   7)     Onboarding express (secteur, budget, temps, frustration)
 --   8)     label_source + insight_feedback — la labellisation IA validable
---   9→11)  suivi_actions — « Je le teste », done_at, detail
 --   12)    Partage d'accès : dashboard_members + a_acces() / peut_editer()
 --   13)    platform_budgets — le budget PLANIFIÉ, relevé par relevé
 --   14)    platform_changes — ce que les plateformes déclarent avoir changé
@@ -46,27 +45,17 @@
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   17)    landing_url — la page d'arrivée d'une campagne
 --   18)    profiles.site_url — le site du client
---   19)    suivi_actions.kind — tes propres notes dans le fil
 --   20)    label_at + triggers — QUAND une étiquette a été posée
 --   21)    (volontairement absent — voir la section, il faut ta décision)
---   22)    reco_feedback.theme/title + reco_feedback_uq2 — le contexte d'un
---          feedback (Graphe B, TASK-025)
---   23)    suivi_actions.verdict — le verdict d'une action, persisté (TASK-025)
 --   24)    theme_regroupement — LA VUE du regroupement par thème. APRÈS la
 --          section 15 : `security_invoker` la fait lire avec les droits de
 --          l'appelant, donc elle n'a de sens qu'une fois les politiques de
 --          partage posées sur les tables qu'elle agrège.
---   25)    suivi_actions.author_id — qui a écrit la ligne, posé à la création
---          et figé par déclencheur — plus campaign_channel/campaign_key, la
---          campagne qu'une note ou une action désigne.
 --   26)    email_envois — ce qu'est devenu l'email hebdo (ticket 50). APRÈS la
 --          section 15, et sans jamais y entrer : RLS activée, aucune policy,
 --          service_role seul. Mesure d'exploitation, pas information produit.
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
---   14septies) theme_plan — l'hypothèse active d'un thème (Graphe B), même
---          raison qu'au-dessus (elle CRÉE une table) — plus ses colonnes
---          `resume`/`resume_at`, la mémoire narrative du thème.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -463,56 +452,11 @@ CREATE POLICY "ga4ev_delete_own" ON public.ga4_events
 
 
 -- ============================================================================
--- 3) FEEDBACK  →  table reco_feedback + profiles.objectif
+-- 3) L'OBJECTIF DU COMPTE + le jour de récolte par défaut
 -- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.reco_feedback (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    reco_key    text NOT NULL,
-    reaction    text NOT NULL,
-    week_start  date NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT reco_feedback_uq UNIQUE (user_id, reco_key, week_start)
-);
-
-CREATE INDEX IF NOT EXISTS idx_reco_feedback_user
-    ON public.reco_feedback (user_id, created_at DESC);
-
-DROP TRIGGER IF EXISTS trg_reco_feedback_updated_at ON public.reco_feedback;
-CREATE TRIGGER trg_reco_feedback_updated_at
-    BEFORE UPDATE ON public.reco_feedback
-    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-ALTER TABLE public.reco_feedback ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "reco_feedback_select_own" ON public.reco_feedback;
-DROP POLICY IF EXISTS "reco_feedback_insert_own" ON public.reco_feedback;
-DROP POLICY IF EXISTS "reco_feedback_update_own" ON public.reco_feedback;
-DROP POLICY IF EXISTS "reco_feedback_delete_own" ON public.reco_feedback;
-CREATE POLICY "reco_feedback_select_own" ON public.reco_feedback
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "reco_feedback_insert_own" ON public.reco_feedback
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_feedback_update_own" ON public.reco_feedback
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "reco_feedback_delete_own" ON public.reco_feedback
-    FOR DELETE USING (auth.uid() = user_id);
 
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS objectif text DEFAULT NULL;
-
--- Commentaire libre attaché à un conseil (peut exister sans réaction) +
--- persona utilisateur dérivé par l'IA (profiles.user_profile). Voir
--- supabase/migrations/user_profile.sql pour le détail.
-ALTER TABLE public.reco_feedback
-    ADD COLUMN IF NOT EXISTS comment text;
-ALTER TABLE public.reco_feedback
-    ALTER COLUMN reaction DROP NOT NULL;
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS user_profile            text,
-    ADD COLUMN IF NOT EXISTS user_profile_updated_at timestamptz;
 
 -- fetch_schedule : jour par défaut (lundi) + backfill des NULL, sinon le profil
 -- n'est jamais fetché par le cron. Voir supabase/migrations/fetch_schedule_default.sql
@@ -765,72 +709,6 @@ CREATE POLICY "insight_fb_update_own" ON public.insight_feedback
 CREATE POLICY "insight_fb_delete_own" ON public.insight_feedback
     FOR DELETE USING (auth.uid() = user_id);
 
-
--- ============================================================================
--- 9) Suivi des recommandations — « ▶ Je le teste » puis verdict 2 semaines
---    après. Voir suivi_actions.sql. La décision est photographiée (titre,
---    indicateur-cible, valeur de départ) → elle reste « en cours » jusqu'à ce
---    qu'elle soit faite / vérifiée.
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.suivi_actions (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    reco_key    text NOT NULL,
-    title       text NOT NULL,
-    theme       text,
-    metric      text,
-    metric_label text,
-    direction   text,
-    baseline    numeric(14, 4),
-    decided_at  date NOT NULL DEFAULT current_date,
-    check_at    date NOT NULL,
-    status      text NOT NULL DEFAULT 'running',
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT suivi_actions_uq UNIQUE (user_id, reco_key, decided_at)
-);
-
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_user
-    ON public.suivi_actions (user_id, check_at);
-
-ALTER TABLE public.suivi_actions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "suivi_actions_select_own" ON public.suivi_actions;
-DROP POLICY IF EXISTS "suivi_actions_insert_own" ON public.suivi_actions;
-DROP POLICY IF EXISTS "suivi_actions_update_own" ON public.suivi_actions;
-DROP POLICY IF EXISTS "suivi_actions_delete_own" ON public.suivi_actions;
-CREATE POLICY "suivi_actions_select_own" ON public.suivi_actions
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "suivi_actions_insert_own" ON public.suivi_actions
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "suivi_actions_update_own" ON public.suivi_actions
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "suivi_actions_delete_own" ON public.suivi_actions
-    FOR DELETE USING (auth.uid() = user_id);
-
--- ============================================================================
--- 10) Suivi des recommandations, suite : la colonne done_at.
---     Un conseil passe par trois etats :
---       'running'  = a faire (tu as clique sur "Je le teste") -> en haut du rapport
---       'done'     = fait le done_at -> on observe 14 jours a partir de CE jour
---       'archived' = verdict vu, range dans l'historique
---     Le compteur des deux semaines part donc du jour ou l'action est reellement
---     appliquee, pas du jour ou elle a ete decidee.
--- ============================================================================
-
-ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS done_at date;
-
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_status
-    ON public.suivi_actions (user_id, status, check_at);
-
--- ============================================================================
--- 11) Le detail du conseil, conserve avec l'action.
---     Une action ne gardait que son titre : deux jours plus tard, impossible de
---     se rappeler de quoi il s'agissait ni pourquoi on l'avait prise. On
---     photographie donc aussi le constat, le pourquoi et le comment tester.
--- ============================================================================
-
-ALTER TABLE public.suivi_actions ADD COLUMN IF NOT EXISTS detail jsonb;
 
 -- ============================================================================
 -- 12) PARTAGE D'ACCÈS — inviter quelqu'un sur son dashboard.
@@ -1215,7 +1093,7 @@ END $$;
 --     `rang` est donc rempli par le client, par thème.
 --
 --     LE LABEL EST STOCKÉ PAR SON NOM, comme partout ailleurs
---     (`meta_campaign_config.label`, `suivi_actions.theme`). Renommer ou
+--     (`meta_campaign_config.label`, `theme_objectifs.label`). Renommer ou
 --     supprimer un thème propage ici — voir `renameLabel` / `deleteLabel`
 --     dans saas/web/app/actions.ts.
 -- ============================================================================
@@ -1494,73 +1372,6 @@ DROP TABLE IF EXISTS public.reco_news;
 
 
 -- ============================================================================
--- 14septies) theme_plan — voir theme_plan.sql (source de vérité).
---
---     AVANT LA SECTION 15, qui doit la partager, même raison que les autres
---     14* : elle CRÉE une table.
---
---     L'hypothèse ACTIVE d'un thème (Graphe B, `_theme_ai_recos`) — pas
---     l'historique, l'état courant : depuis quand elle tourne, quel levier,
---     et sa carte complète (`snapshot`) pour la réafficher fidèlement tant
---     que la fenêtre d'attente n'est pas écoulée, plutôt que d'en laisser
---     Gemini proposer une nouvelle chaque semaine (voir
---     `ATTENTE_MIN_NOUVELLE_HYPOTHESE`, `saas/traitement/build_report.py`).
---
---     Une ligne par (user_id, theme) : une nouvelle hypothèse REMPLACE la
---     ligne du thème plutôt que d'empiler un historique — ce n'est pas un
---     journal, c'est l'état courant.
---
---     SECONDE COUCHE, `resume`/`resume_at` : la mémoire narrative du thème
---     (ce qu'il a déjà tenté, sur quels leviers, ce que ça a donné), réécrite
---     à la chute d'un nouveau verdict par `saas/recos_ia/theme_memoire.py` et
---     injectée dans le prompt qui rédige ses pistes. Elle SURVIT au
---     remplacement d'une hypothèse par la suivante — c'est sa raison d'être.
---     Mémoire interne, jamais affichée dans `saas/web/`.
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.theme_plan (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    theme       text NOT NULL,
-    reco_key    text,
-    levier      text,
-    decided_at  date,
-    snapshot    jsonb,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT theme_plan_uq UNIQUE (user_id, theme)
-);
-
--- Ajout pur pour une base déjà créée par une version antérieure de ce fichier.
-ALTER TABLE public.theme_plan
-    ADD COLUMN IF NOT EXISTS resume     text,
-    ADD COLUMN IF NOT EXISTS resume_at  timestamptz;
-
-CREATE INDEX IF NOT EXISTS idx_theme_plan_user
-    ON public.theme_plan (user_id, theme);
-
-DROP TRIGGER IF EXISTS trg_theme_plan_updated_at ON public.theme_plan;
-CREATE TRIGGER trg_theme_plan_updated_at
-    BEFORE UPDATE ON public.theme_plan
-    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-ALTER TABLE public.theme_plan ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "theme_plan_select_own" ON public.theme_plan;
-DROP POLICY IF EXISTS "theme_plan_insert_own" ON public.theme_plan;
-DROP POLICY IF EXISTS "theme_plan_update_own" ON public.theme_plan;
-DROP POLICY IF EXISTS "theme_plan_delete_own" ON public.theme_plan;
-CREATE POLICY "theme_plan_select_own" ON public.theme_plan
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "theme_plan_insert_own" ON public.theme_plan
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "theme_plan_update_own" ON public.theme_plan
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "theme_plan_delete_own" ON public.theme_plan
-    FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================================
 -- 15) PARTAGE — toutes les tables au même niveau, et le contrôle des jetons.
 --     Voir partage_tables_manquantes.sql (source de vérité).
 --
@@ -1597,8 +1408,8 @@ DECLARE
         'instagram_organic_posts', 'followers_history',
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
-        'weekly_reports', 'reco_feedback', 'insight_feedback', 'suivi_actions',
-        'theme_ga4_events', 'theme_objectifs', 'theme_plan',
+        'weekly_reports', 'insight_feedback',
+        'theme_ga4_events', 'theme_objectifs',
         -- les catégories de conversions
         'conversion_categories', 'ga4_event_categories',
         -- budgets et journal des plateformes
@@ -1840,48 +1651,6 @@ COMMENT ON COLUMN public.profiles.site_url IS
 
 
 -- ============================================================================
--- 19) TES PROPRES NOTES DANS LE FIL — suivi_actions.kind.
---     Voir suivi_actions_notes.sql (source de vérité).
---
---     Le fil montre ce que Pulse a conseillé et ce que les plateformes ont
---     fait. Il manquait le troisième tiers : ce que TU as fait et que personne
---     ne peut deviner — « refait les visuels », « le concurrent a lancé une
---     promo ».
---
---     Une note n'est PAS une action : ni indicateur, ni baseline, ni échéance,
---     donc aucun verdict ne peut tomber dessus. C'est ce que `kind` distingue,
---     et c'est ce qui interdit de lui coller une pastille de verdict.
---
---     ORDRE : après les sections 9→11, qui créent suivi_actions.
--- ============================================================================
-
-ALTER TABLE public.suivi_actions
-    ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'action';
-
--- 'action' : née d'un conseil, elle sera jugée.
--- 'note'   : écrite à la main, elle ne sera jamais jugée.
---
--- La migration d'origine fait ici un DROP CONSTRAINT IF EXISTS suivi d'un ADD.
--- C'est correct et rejouable, mais ça laisse une fraction de transaction sans
--- contrainte. Ici on préfère le motif « on ajoute, et on ignore le doublon » :
--- rien n'est jamais retiré.
-DO $$
-BEGIN
-    ALTER TABLE public.suivi_actions
-        ADD CONSTRAINT suivi_actions_kind_chk CHECK (kind IN ('action', 'note'));
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
--- La contrainte d'unicité porte sur (user_id, reco_key, decided_at). Deux notes
--- écrites le même jour auraient la même clé si on ne la rendait pas unique :
--- `reco_key` d'une note vaut donc 'note:<uuid>', généré côté serveur.
-
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_kind
-    ON public.suivi_actions (user_id, kind, decided_at DESC);
-
-
--- ============================================================================
 -- 20) QUAND UNE ÉTIQUETTE A ÉTÉ POSÉE — label_at. Voir labels_origine.sql.
 --
 --     La section 8 dit QUI a étiqueté ('user' | 'ai'). Elle ne dit pas QUAND.
@@ -2022,73 +1791,6 @@ CREATE INDEX IF NOT EXISTS idx_insta_posts_label_ia
 
 CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
     ON public.instagram_organic_posts (user_id, date DESC);
-
-
--- ============================================================================
--- 22) reco_feedback.theme/title + reco_feedback_uq2 — voir
---     reco_feedback_contexte.sql (source de vérité, commentaire complet).
---
---     `theme` DANS LA CLÉ D'UNICITÉ, PAS JUSTE UNE COLONNE À CÔTÉ : une
---     clé-règle générique (ex. « gaspillage ») apparaît sur PLUSIEURS cartes
---     de thème du même rapport — sans `theme` dans la clé, un refus « pas
---     pour moi » sur le thème A et un autre sur le thème B, la même semaine,
---     retombaient sur la MÊME ligne (musellement transféré au lieu d'être
---     scopé par thème). `theme` est NOT NULL DEFAULT '' (jamais NULL : deux
---     NULL ne sont jamais égaux dans une contrainte UNIQUE Postgres, ce qui
---     aurait cassé l'upsert des réglages compte-entier). `title` reste
---     nullable et hors clé — un texte d'affichage, jamais un identifiant.
---
---     DROP CONSTRAINT + ADD CONSTRAINT, même patron que la section 2
---     (`ga4_insights_uq` → `ga4_insights_uq2`) : sans danger sur les lignes
---     déjà en base, qui héritent toutes de `theme=''` au rejeu.
--- ============================================================================
-
-ALTER TABLE public.reco_feedback
-    ADD COLUMN IF NOT EXISTS theme text NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS title text;
-
-ALTER TABLE public.reco_feedback DROP CONSTRAINT IF EXISTS reco_feedback_uq;
-ALTER TABLE public.reco_feedback DROP CONSTRAINT IF EXISTS reco_feedback_uq2;
-ALTER TABLE public.reco_feedback
-    ADD CONSTRAINT reco_feedback_uq2 UNIQUE (user_id, reco_key, week_start, theme);
-
-CREATE INDEX IF NOT EXISTS idx_reco_feedback_theme
-    ON public.reco_feedback (user_id, theme, reco_key)
-    WHERE theme <> '';
-
-
--- ============================================================================
--- 23) suivi_actions.verdict — voir suivi_actions_verdict.sql (source de
---     vérité, commentaire complet).
---
---     Le verdict d'une action (`"better"`/`"worse"`/`"stable"`) était calculé
---     À LA VOLÉE dans `build_report.py`, jamais réécrit en base : introuvable
---     la semaine suivante, donc inutilisable pour repondérer un conseil
---     `"done"` selon ce qu'il a RÉELLEMENT donné (`saas/recos_ia/reco_engine.py`).
---     Nullable, écrite UNE FOIS au moment où le verdict tombe.
---
---     Index sur `check_at`, PAS `decided_at` : `fetch_reco_verdicts`
---     (`scripts/fetch_data.py`) filtre et trie sur `check_at` — c'est la seule
---     date qui dit fidèlement quand le verdict est réellement tombé
---     (`check_at` est recalculé à `done_at + 14j` au clic « ✓ C'est fait »,
---     qui peut survenir bien après `decided_at`).
--- ============================================================================
-
-ALTER TABLE public.suivi_actions
-    ADD COLUMN IF NOT EXISTS verdict text;
-
-DO $$
-BEGIN
-    ALTER TABLE public.suivi_actions
-        ADD CONSTRAINT suivi_actions_verdict_ck
-        CHECK (verdict IS NULL OR verdict IN ('better', 'worse', 'stable'));
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_verdict
-    ON public.suivi_actions (user_id, reco_key, check_at DESC)
-    WHERE verdict IS NOT NULL;
 
 
 -- ============================================================================
@@ -2507,112 +2209,6 @@ END $$;
 
 
 -- ============================================================================
--- 25) suivi_actions — L'AUTEUR D'UNE NOTE, ET LA CAMPAGNE QU'ELLE DÉSIGNE.
---     Voir suivi_actions_auteur_campagne.sql (SOURCE DE VÉRITÉ) : le bloc
---     ci-dessous en est la copie mot pour mot, et tout le POURQUOI y est écrit
---     — la fiche ADR 0004 et le prix accepté (on ne saura jamais qui a jugé
---     quoi), l'absence de backfill, pourquoi c'est un DÉCLENCHEUR et pas une
---     politique RLS, et pourquoi la campagne demande deux colonnes.
---
---     APRÈS les sections 9→11, 19 et 23, qui créent et complètent la table.
---     Additive : aucun DROP TABLE, aucun DELETE, aucun TRUNCATE, aucun UPDATE
---     sur l'existant. Les `DROP TRIGGER IF EXISTS` et `CREATE OR REPLACE
---     FUNCTION` ne servent qu'à la rejouabilité.
--- ============================================================================
-
--- ── 1 · L'auteur ────────────────────────────────────────────────────────────
-ALTER TABLE public.suivi_actions
-    ADD COLUMN IF NOT EXISTS author_id uuid
-        REFERENCES auth.users(id) ON DELETE SET NULL;
-
-COMMENT ON COLUMN public.suivi_actions.author_id IS
-    'Qui a ÉCRIT la ligne. Posé à la création, jamais réécrit (déclencheur '
-    'trg_suivi_actions_auteur_fige). NULL = ligne antérieure à cette migration, '
-    'ou auteur parti : aucun backfill, voir ADR 0004.';
-
-CREATE OR REPLACE FUNCTION public.suivi_actions_auteur_fige()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-BEGIN
-    -- `IS DISTINCT FROM` et non `<>` : le cas qui compte ici est justement
-    -- OLD NULL (une ligne d'avant la migration) et NEW non nul — le backfill à
-    -- la main que l'ADR 0004 refuse. `NEW <> OLD` y rendrait NULL, donc la
-    -- condition serait fausse et le garde-fou muet pile là où il sert.
-    IF NEW.author_id IS NOT NULL AND NEW.author_id IS DISTINCT FROM OLD.author_id THEN
-        RAISE EXCEPTION
-            'suivi_actions.author_id est posé à la création et ne se réécrit pas (id = %)',
-            OLD.id
-            USING ERRCODE = '23514';   -- check_violation : c'est bien une contrainte
-                                       -- que la table ne peut pas porter elle-même.
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_suivi_actions_auteur_fige ON public.suivi_actions;
--- `UPDATE OF author_id` : le déclencheur ne se réveille que si la colonne
--- figure dans le SET. Marquer une action « faite » ne le paie donc jamais.
-CREATE TRIGGER trg_suivi_actions_auteur_fige
-    BEFORE UPDATE OF author_id ON public.suivi_actions
-    FOR EACH ROW EXECUTE FUNCTION public.suivi_actions_auteur_fige();
-
--- Le `ON DELETE SET NULL` doit RETROUVER les lignes d'un membre supprimé :
--- sans index, chaque suppression de compte balaie toute la table. Partiel,
--- parce que la grande majorité des lignes n'a pas d'auteur (aucun backfill).
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_author
-    ON public.suivi_actions (author_id)
-    WHERE author_id IS NOT NULL;
-
--- ── 2 · La campagne ─────────────────────────────────────────────────────────
-ALTER TABLE public.suivi_actions
-    ADD COLUMN IF NOT EXISTS campaign_channel text,
-    ADD COLUMN IF NOT EXISTS campaign_key     text;
-
-COMMENT ON COLUMN public.suivi_actions.campaign_channel IS
-    'La régie de la campagne désignée : ''meta'' ou ''google''. NULL avec '
-    'campaign_key NULL = la ligne ne désigne aucune campagne.';
-COMMENT ON COLUMN public.suivi_actions.campaign_key IS
-    'La clé de la campagne dans sa régie : campaign_name (Meta) | campaign_id '
-    '(Google) — la même paire que ThemeCampaign côté web. Aucune clé étrangère : '
-    'une note survit à la campagne qu''elle raconte.';
-
--- Les deux colonnes vont ensemble ou pas du tout : une clé sans régie ne
--- désigne rien de lisible, et une régie sans clé ne désigne rien tout court.
---
--- ⚠ LES `IS NOT NULL` NE SONT PAS REDONDANTS, et le harnais l'a prouvé : UN
--- CHECK LAISSE PASSER CE QUI S'ÉVALUE À NULL, pas seulement ce qui est vrai.
--- Écrit sans eux, `campaign_channel IN ('meta','google')` rendait NULL sur une
--- régie absente, donc `FAUX OR NULL` = NULL, donc la ligne PASSAIT : une clé
--- orpheline entrait en base, et le carnet aurait dû deviner sa régie.
---
--- `ADD CONSTRAINT IF NOT EXISTS` n'existe pas pour un CHECK — on rattrape le
--- doublon plutôt que de le deviner (même patron que campagne_landing.sql).
-DO $$
-BEGIN
-    ALTER TABLE public.suivi_actions
-        ADD CONSTRAINT suivi_actions_campaign_ck
-        CHECK (
-            (campaign_channel IS NULL AND campaign_key IS NULL)
-            OR (campaign_channel IS NOT NULL
-                AND campaign_channel IN ('meta', 'google')
-                AND campaign_key IS NOT NULL
-                AND btrim(campaign_key) <> '')
-        );
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
--- La question que le carnet pose : « tout ce que j'ai fait pour CETTE
--- campagne », du plus récent au plus ancien. Partiel : une ligne sans campagne
--- n'a rien à faire dans cet index — la plupart des notes n'en désignent pas.
-CREATE INDEX IF NOT EXISTS idx_suivi_actions_campagne
-    ON public.suivi_actions (user_id, campaign_channel, campaign_key, decided_at DESC)
-    WHERE campaign_key IS NOT NULL;
-
-
--- ============================================================================
 -- 26) email_envois — CE QU'EST DEVENU L'EMAIL HEBDO QU'ON A ENVOYÉ (ticket 50)
 --
 -- Copie fidèle de `supabase/migrations/email_envois.sql` — s'y reporter pour le
@@ -2694,9 +2290,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'google_ads_ad_insights',   NULL),
     ('t', 'ga4_insights',             NULL),
     ('t', 'ga4_events',               NULL),
-    ('t', 'reco_feedback',            NULL),
     ('t', 'insight_feedback',         NULL),
-    ('t', 'suivi_actions',            NULL),
     ('t', 'channel_budgets',          NULL),
     ('t', 'weekly_reports',           NULL),
     ('t', 'email_envois',             NULL),
@@ -2708,7 +2302,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'theme_objectifs',          NULL),   -- §14quater
     ('t', 'conversion_categories',    NULL),   -- §14quinquies
     ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
-    ('t', 'theme_plan',               NULL),   -- §14septies
     -- `to_regclass` ne distingue pas une vue d'une table : la ligne dit
     -- « table » dans le tableau, elle vérifie bien la vue de la §24.
     ('t', 'theme_regroupement',       NULL),   -- §24 (vue)
@@ -2716,7 +2309,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     --    s'enregistrer avec un message d'erreur
     ('c', 'profiles',                 'labels'),               -- §1
     ('c', 'profiles',                 'objectif'),             -- §3
-    ('c', 'profiles',                 'user_profile'),         -- §3
     ('c', 'profiles',                 'business_type'),        -- §7
     ('c', 'profiles',                 'budget_range'),         -- §7
     ('c', 'profiles',                 'time_budget'),          -- §7
@@ -2729,7 +2321,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'google_customer_id'),   -- §4
     ('c', 'connected_accounts',       'ga4_property_id'),      -- §4
     ('c', 'ga4_insights',             'campaign'),             -- §2
-    ('c', 'reco_feedback',            'comment'),              -- §3
     ('c', 'meta_campaign_config',     'effective_status'),     -- §0
     ('c', 'meta_campaign_config',     'label_source'),         -- §8
     ('c', 'meta_campaign_config',     'label_at'),             -- §20
@@ -2743,22 +2334,12 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_campaign_config',   'landing_url'),          -- §17
     ('c', 'instagram_organic_posts',  'label_source'),         -- §8
     ('c', 'instagram_organic_posts',  'label_at'),             -- §20
-    ('c', 'suivi_actions',            'done_at'),              -- §10
-    ('c', 'suivi_actions',            'detail'),               -- §11
-    ('c', 'suivi_actions',            'kind'),                 -- §19
-    ('c', 'reco_feedback',            'theme'),                -- §22
-    ('c', 'reco_feedback',            'title'),                -- §22
-    ('c', 'suivi_actions',            'verdict'),              -- §23
-    ('c', 'suivi_actions',            'author_id'),            -- §25
-    ('c', 'suivi_actions',            'campaign_channel'),     -- §25
-    ('c', 'suivi_actions',            'campaign_key'),         -- §25
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
     ('f', 'public.peut_editer(uuid)',      NULL),   -- §12
     ('f', 'public.stamp_label_at()',       NULL),   -- §20
-    ('f', 'public.stamp_label_at_posts()', NULL),   -- §20
-    ('f', 'public.suivi_actions_auteur_fige()', NULL)   -- §25
+    ('f', 'public.stamp_label_at_posts()', NULL)    -- §20
 ),
 catalogue AS (
     SELECT

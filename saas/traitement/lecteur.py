@@ -45,18 +45,12 @@ from typing import Protocol
 
 from saas.commun.fetch_data import (
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_onboarding_profile, fetch_theme_objectifs,
-    fetch_reco_feedback, fetch_google_ads,
+    fetch_objectif, fetch_theme_objectifs, fetch_google_ads,
     fetch_campaign_config, fetch_google_campaign_config,
-    fetch_insight_feedback, fetch_reco_theme_context, fetch_reco_verdicts,
-    fetch_theme_plan, fetch_theme_regroupement,
-    fetch_google_ads_ad_insights, fetch_platform_budgets,
+    fetch_insight_feedback, fetch_theme_regroupement,
     fetch_ga4_events, fetch_ga4_insights,
     fetch_canaux_muets,
 )
-from saas.commun.insert_data import upsert_theme_plan
-from saas.recos_ia.user_persona import build_user_persona
-from saas.recos_ia.theme_memoire import condense_theme_memoire
 
 
 class Lecteur(Protocol):
@@ -72,23 +66,15 @@ class Lecteur(Protocol):
     def publications(self) -> list[dict]: ...
     def abonnes(self) -> list[dict]: ...
     def google_ads(self) -> list[dict]: ...
-    def google_annonces(self) -> list[dict]: ...
 
     # ── Les réglages du compte ───────────────────────────────────────────────
     def objectif(self) -> str | None: ...
-    def profil_onboarding(self) -> dict: ...
     def objectifs_par_theme(self) -> dict[str, str]: ...
     def config_meta(self) -> dict[str, dict]: ...
     def config_google(self) -> dict[str, dict]: ...
-    def budgets_poses(self) -> list[dict]: ...
     def themes_regroupes(self) -> list[dict]: ...
     def canaux_muets(self) -> dict[str, str]: ...
 
-    # ── Ce que le client a répondu ───────────────────────────────────────────
-    def reco_feedback(self) -> dict[str, str]: ...
-    def verdicts(self) -> dict[str, str]: ...
-    def contexte_theme(self) -> list[dict] | None: ...
-    def plan_de_theme(self) -> dict[str, dict]: ...
     def insight_feedback(self) -> dict[str, str]: ...
     def priorites_datees(self) -> list[dict]: ...
 
@@ -101,22 +87,8 @@ class Lecteur(Protocol):
     # ── Les lectures qui passaient par `sb.table(...)` en clair ──────────────
     def dates_declarees(self, table: str) -> list[dict]: ...
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]: ...
-    def suivi_actions(self) -> list[dict]: ...
-    def suivi_en_cours(self) -> list[dict]: ...
-    # Les `limite` plus RÉCENTES, du plus ancien au plus récent (ticket 37).
-    def notes_archivees(self, limite: int = 200) -> list[dict]: ...
 
-    # ── L'IA ─────────────────────────────────────────────────────────────────
-    def redige(self, prompt: str) -> str | None: ...
-    def persona(self, **kwargs) -> str | None: ...
-    def memoire_theme(self, theme: str, historique: list[dict] | None,
-                      faits: list[dict] | None) -> str | None: ...
 
-    # ── Les deux écritures ───────────────────────────────────────────────────
-    def ecrire_plan_de_theme(self, theme: str, reco_key: str,
-                             levier: str | None, decided_at: str,
-                             carte: dict) -> None: ...
-    def ecrire_verdict(self, action_id, verdict: str) -> bool: ...
 
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self) -> date: ...
@@ -130,14 +102,9 @@ class LecteurSupabase:
     mêmes arguments, même table, même filtre.
     """
 
-    def __init__(self, sb, user_id: str, redacteur=None):
-        # `redacteur` est l'appel Gemini. Il arrive par paramètre plutôt que
-        # d'être importé ici parce qu'il vit dans `build_report.py` avec le
-        # reste de la rédaction, et qu'un import croisé entre les deux modules
-        # ferait un cycle.
+    def __init__(self, sb, user_id: str):
         self.sb = sb
         self.user_id = user_id
-        self._redacteur = redacteur
 
     # ── La récolte ───────────────────────────────────────────────────────────
 
@@ -153,16 +120,11 @@ class LecteurSupabase:
     def google_ads(self) -> list[dict]:
         return fetch_google_ads(self.sb, self.user_id)
 
-    def google_annonces(self) -> list[dict]:
-        return fetch_google_ads_ad_insights(self.sb, self.user_id)
-
     # ── Les réglages du compte ───────────────────────────────────────────────
 
     def objectif(self) -> str | None:
         return fetch_objectif(self.sb, self.user_id)
 
-    def profil_onboarding(self) -> dict:
-        return fetch_onboarding_profile(self.sb, self.user_id)
 
     def objectifs_par_theme(self) -> dict[str, str]:
         return fetch_theme_objectifs(self.sb, self.user_id)
@@ -173,8 +135,6 @@ class LecteurSupabase:
     def config_google(self) -> dict[str, dict]:
         return fetch_google_campaign_config(self.sb, self.user_id)
 
-    def budgets_poses(self) -> list[dict]:
-        return fetch_platform_budgets(self.sb, self.user_id)
 
     def themes_regroupes(self) -> list[dict]:
         """La vue `theme_regroupement`. LAISSE REMONTER `VueRegroupementAbsente`
@@ -193,19 +153,9 @@ class LecteurSupabase:
         """
         return fetch_canaux_muets(self.sb, self.user_id)
 
-    # ── Ce que le client a répondu ───────────────────────────────────────────
 
-    def reco_feedback(self) -> dict[str, str]:
-        return fetch_reco_feedback(self.sb, self.user_id)
 
-    def verdicts(self) -> dict[str, str]:
-        return fetch_reco_verdicts(self.sb, self.user_id)
 
-    def contexte_theme(self) -> list[dict] | None:
-        return fetch_reco_theme_context(self.sb, self.user_id)
-
-    def plan_de_theme(self) -> dict[str, dict]:
-        return fetch_theme_plan(self.sb, self.user_id)
 
     def insight_feedback(self) -> dict[str, str]:
         return fetch_insight_feedback(self.sb, self.user_id)
@@ -264,96 +214,13 @@ class LecteurSupabase:
                 .order("week_start", desc=True)
                 .limit(limite).execute().data) or []
 
-    def suivi_actions(self) -> list[dict]:
-        return (self.sb.table("suivi_actions").select("*")
-                .eq("user_id", self.user_id).execute().data) or []
 
-    def suivi_en_cours(self) -> list[dict]:
-        """Les actions lancées ou faites, par échéance.
 
-        `"auto"` a disparu de cette lecture au ticket 06 : rendre un verdict à
-        une ligne que personne n'a confirmée mesurerait l'effet d'un geste qui
-        n'a peut-être jamais eu lieu (`CLAUDE.md` § 7)."""
-        return (self.sb.table("suivi_actions").select("*")
-                .eq("user_id", self.user_id).in_("status", ["running", "done"])
-                .order("check_at").execute().data) or []
 
-    def notes_archivees(self, limite: int = 200) -> list[dict]:
-        """Les `limite` Notes les plus RÉCENTES, rendues du plus ancien au plus
-        récent — pour la mémoire d'un thème, jamais pour le repondérage des
-        conseils. La lecture est à part de `suivi_en_cours` exprès : élargir
-        celle-là ferait entrer les notes dans la boucle qui ÉCRIT `verdict`.
 
-        `desc=True` PUIS RENVERSEMENT, et les deux comptent. `supabase-py` trie
-        en ascendant par défaut : `.order("decided_at").limit(200)` gardait les
-        200 notes les plus VIEILLES du compte, et `theme_memoire.build_prompt`
-        en prenait `faits[-8:]` — les huit dernières d'un lot périmé. Au-delà de
-        200 notes, la mémoire décrivait à Gemini un travail que le client ne
-        fait plus (ticket 37). Le renversement garde l'ordre chronologique que
-        tous les appelants supposent, `[-8:]` compris."""
-        lignes = (self.sb.table("suivi_actions")
-                  .select("title, theme, decided_at")
-                  .eq("user_id", self.user_id).eq("kind", "note")
-                  .eq("status", "archived")
-                  .order("decided_at", desc=True).limit(limite).execute().data) or []
-        return lignes[::-1]
 
-    # ── L'IA ─────────────────────────────────────────────────────────────────
 
-    def redige(self, prompt: str) -> str | None:
-        if not callable(self._redacteur):
-            return None
-        return self._redacteur(prompt)
 
-    def persona(self, **kwargs) -> str | None:
-        return build_user_persona(self.sb, self.user_id, self._redacteur,
-                                  **kwargs)
-
-    def memoire_theme(self, theme: str, historique: list[dict] | None,
-                      faits: list[dict] | None) -> str | None:
-        return condense_theme_memoire(self.sb, self.user_id, theme,
-                                      self._redacteur, historique, faits)
-
-    # ── Les deux écritures ───────────────────────────────────────────────────
-
-    def ecrire_plan_de_theme(self, theme: str, reco_key: str,
-                             levier: str | None, decided_at: str,
-                             carte: dict) -> None:
-        upsert_theme_plan(self.sb, self.user_id, theme, reco_key, levier,
-                          decided_at, carte)
-
-    def ecrire_verdict(self, action_id, verdict: str) -> bool:
-        """Le verdict persisté, ÉCRIT UNE SEULE FOIS. Sans effet si la colonne
-        n'existe pas encore (migration pas jouée) — l'appelant avale la panne,
-        comme avant.
-
-        REND `True` SEULEMENT SI UNE LIGNE A ÉTÉ TOUCHÉE, comme
-        `save_theme_resume` et pour la même raison : un refus RLS sur un
-        `update` ne lève AUCUNE erreur, il touche zéro ligne (`CLAUDE.md` § 8).
-        Sans ce retour, l'appelant croirait avoir figé un verdict et verserait
-        dans la mémoire du thème un chiffre qu'il remesurerait la semaine
-        suivante — la dérive que ce ticket retire, déplacée d'un cran.
-
-        `.is_("verdict", "null")` N'EST PAS UNE OPTIMISATION. Une ligne faite
-        reste `due` pour toujours : sans ce filtre, chaque rapport réécrivait le
-        verdict avec une valeur recalculée contre le KPI du jour, et un `worse`
-        de juin redevenait `better` en septembre parce que le compte avait bougé
-        (ticket 17 de la construction). L'appelant a déjà son garde — il ne passe
-        ici que sur une colonne vide ; celui-ci tient la même règle côté base,
-        pour le cas où deux constructions se croiseraient sur la même ligne.
-
-        La condition vit dans le `WHERE`, jamais dans une relecture préalable :
-        un `select` puis un `update` laisse la place entre les deux, et un refus
-        RLS sur l'`update` ne lèverait de toute façon rien (`CLAUDE.md` § 8).
-        """
-        res = (
-            self.sb.table("suivi_actions")
-            .update({"verdict": verdict})
-            .eq("id", action_id)
-            .is_("verdict", "null")
-            .execute()
-        )
-        return bool(res.data)
 
     # ── L'horloge ────────────────────────────────────────────────────────────
 

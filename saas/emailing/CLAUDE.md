@@ -1,8 +1,13 @@
 # CLAUDE.md — saas/emailing/
 
 Ce dossier fait une seule chose : **l'email hebdo** (« L'essentiel » du
-rapport). Il ne calcule rien lui-même — ni KPI, ni reco — il reçoit des valeurs
-déjà prêtes et les met en forme, les envoie, ou relit ce qu'elles sont devenues.
+rapport). Il ne calcule rien lui-même — il reçoit des valeurs déjà prêtes et
+les met en forme, les envoie, ou relit ce qu'elles sont devenues.
+
+**L'EMAIL S'EST ALLÉGÉ** avec le retrait des recommandations (2026-09-21) : la
+liste « À faire cette semaine » et le brief rédigé par Gemini ont disparu. Il
+porte les trois chiffres de la semaine, le verdict déterministe et l'alerte du
+canal muet.
 Trois fichiers, trois responsabilités qui ne se mélangent jamais. **Aucun des
 trois ne touche Supabase** — ranger un fait est le travail de `saas/commun/`.
 
@@ -41,7 +46,7 @@ devenu (voir `evenements.py`). `None` quand il n'y a rien à relire — dry-run,
 ou envoi en échec.
 
 **Sans clé configurée → mode `dry` automatique.** C'est ce qui permet de
-tester tout le flux (recos → email → « envoi ») sans compte ni risque —
+tester tout le flux (rapport → email → « envoi ») sans compte ni risque —
 le mode `dry` range quand même sa ligne dans `email_envois`, en disant que rien
 n'est parti.
 
@@ -72,10 +77,10 @@ Resend seul. Voir `docs/mesures-impossibles.md`.
 ## Qui appelle ce dossier
 
 `saas/traitement/build_report.py` (`publish_weekly_report`) est le **seul
-chemin d'envoi réel** : c'est lui que le cron atteint, via `fetch_all.py`, et
-lui qui range l'envoi dans `email_envois`. `saas/collecte/automatisation/run_weekly.py`
-appelle aussi `send_email`, mais son `run()` lève `NotImplementedError` et
-aucun workflow ne l'atteint — il n'est **pas encore câblé au cron** (voir `saas/README.md`, section « Ce qui
+chemin d'envoi**, et il l'est désormais sans concurrent : c'est lui que le cron
+atteint, via `fetch_all.py`, et lui qui range l'envoi dans `email_envois`.
+`run_weekly.py`, qui appelait aussi `send_email` sans qu'aucun workflow ne
+l'atteigne, est parti avec les recommandations (voir `saas/README.md`, section « Ce qui
 reste à câbler »).
 
 **L'email et l'écran lisent le MÊME payload** : `publish_weekly_report` passe à

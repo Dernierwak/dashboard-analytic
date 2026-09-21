@@ -15,16 +15,21 @@ Règle de rédaction de ce fichier : une ligne n'y reste que si la réponse à
 **Pulse** est un SaaS d'analyse marketing. Il récolte les données publicitaires
 et organiques d'un client, les range par **thème** (une étiquette posée sur des
 campagnes et des publications), et publie chaque semaine — le jour que le client
-choisit — **ce qui a bougé chez lui, quoi faire sur les thèmes qu'il a mis en
-priorité, et si ce qu'il a fait la semaine d'avant a marché.**
+choisit — **ce qui a bougé chez lui.**
 
-**Pulse n'arbitre pas entre les thèmes** : le client désigne ses priorités
-(trois au maximum), Pulse conseille dedans. Sans thème prioritaire, il rend le
-point de vue de la semaine — un constat, pas un conseil. Tranché par David le
-2026-09-10, voir `.scratch/refonte/plan-de-refonte.md` §1.
+**Pulse ne conseille rien.** Le moteur de recommandations, les règles payantes,
+les constats « ce qui marche », le brief rédigé par une IA, le suivi des actions
+et le carnet ont été retirés du produit le 2026-09-21, sur demande de David :
+« je n'arrive plus à suivre cette application ». Ce qui reste est ce qui se
+mesure — le verdict de la semaine, la boussole, l'anneau des thèmes, la frise,
+les cartes de thème et les faits survenus sur les plateformes.
 
-Tout le reste — courbes, KPI, frises — n'existe que pour rendre cette réponse
-crédible.
+**Aucun appel à un modèle de langage ne subsiste dans le produit**, la
+thématisation comprise : un thème se pose à la main, sur la page Thèmes.
+
+Le client désigne toujours ses **thèmes prioritaires** (étoiles rangées dans
+`insight_feedback`, clé `priority_label:<nom>`) : c'est ce qui décide des cartes
+affichées en tête du rapport. Rien d'autre n'en dépend plus.
 
 ## 2 · Le dépôt
 
@@ -32,11 +37,10 @@ crédible.
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
 | `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour l'OAuth Google partagé Ads/GA4, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
-| `saas/recos_ia/` | Décide quoi recommander — `reco_engine.py` + `insights.py` (déterministes), `labeling.py` + `categorizing.py` + `user_persona.py` (IA, Gemini). Son `CLAUDE.md` détaille qui appelle l'IA et qui non. |
-| `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` et `recos_ia/` ont produit — `build_report.py`. Son `CLAUDE.md` détaille la logique. |
-| `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/`, `recos_ia/` et `traitement/`, pas propre à un seul domaine. |
+| `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` a récolté — `build_report.py`, `lecteur.py` (le seam hors ligne), `matrice.py` (la matrice full-history). Son `CLAUDE.md` détaille la logique. |
+| `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/` et `traitement/`, pas propre à un seul domaine. |
 | `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
-| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. |
+| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. `999_supprimer_les_recommandations.sql` en est l'exception : il DÉTRUIT, il ne s'installe pas, et il se joue une fois à la main. |
 
 Python : **`python3.12`**, jamais `python3`.
 
@@ -181,7 +185,7 @@ tout son échafaudage. `git grep` doit être propre.
   correction du traitement ou de la récolte **ne se voit qu'après un passage du
   worker** — le cron du Jour de travail (07:00 UTC), ou un lancement à la main
   depuis l'onglet **GitHub Actions** (`weekly-fetch.yml` : `report_only`,
-  `label_only`, `categorize_only`, `force`, `user_id`). Le dire à chaque fois,
+  `force`, `user_id`, `meta_since`). Le dire à chaque fois,
   et dire **lequel des deux** il faudra. Les quatre boutons de l'app sont
   partis ; ce qui se regroupe par thème, en revanche, se voit **tout de suite**,
   à la lecture.

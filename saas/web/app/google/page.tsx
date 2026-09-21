@@ -13,8 +13,6 @@ import {
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { RetourRapport } from "@/components/retour-rapport";
-import { CeQuiMarche } from "@/components/ce-qui-marche";
-import { Carnet } from "@/components/carnet";
 import { themesChoisis } from "@/lib/commandes";
 
 export const dynamic = "force-dynamic";
@@ -84,11 +82,6 @@ export default async function GooglePage({
           elle ne l'est pas. */}
       <ByLabelTable d={d} path="/google" />
 
-      {/* Même bloc, même place que sur Meta (rang 4) : les constats sont ceux
-          du compte, et chaque page ne garde que ceux qui la concernent —
-          `constatsDeLaPage`. */}
-      <CeQuiMarche page="google" />
-
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
           sur Google le détail par groupe d'annonces n'est pas toujours là. */}
       <CampaignTable d={d} channel="google" path="/google" />
@@ -96,14 +89,6 @@ export default async function GooglePage({
         Le thème relie tes campagnes cross-canal (page Labels) — même liste que Meta
         et Instagram.
       </p>
-
-      {/* Même module, même place que sur Meta. */}
-      <Carnet
-        canal="google"
-        themes={themesChoisis(searchParams)}
-        campKey={d.filters.camp}
-        campagnes={d.campOptions}
-      />
     </main>
   );
 }

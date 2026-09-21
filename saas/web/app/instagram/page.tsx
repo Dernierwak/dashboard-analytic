@@ -5,13 +5,11 @@
 //
 // « TES FORMATS » ET « QUAND PUBLIER ? » ONT ÉTÉ RETIRÉS LE 2026-09-12.
 // Les deux répondaient à « qu'est-ce qui marche chez toi » en RECALCULANT la
-// réponse ici, en TypeScript, sur la fenêtre affichée — pendant que
-// `saas/recos_ia/insights.py` répondait à la même question sur tout
-// l'historique, avec d'autres seuils, et que deux règles du moteur la posaient
-// une troisième fois. Trois moteurs, deux langages, qui pouvaient se contredire
-// le même lundi : le format « gagnant » de cette page n'était pas forcément
-// celui du rapport. `<CeQuiMarche />` affiche le seul qui reste
-// (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
+// réponse ici, en TypeScript, sur la fenêtre affichée, pendant que deux autres
+// moteurs la posaient ailleurs avec d'autres seuils — trois réponses possibles
+// le même lundi. Les deux autres moteurs sont partis avec les recommandations
+// le 2026-09-21 : **plus personne ne répond à cette question.** La rouvrir
+// demande de décider d'abord où elle se calcule, une seule fois.
 import {
   getInstaDash,
   type DashParams,
@@ -25,8 +23,6 @@ import { themesChoisis } from "@/lib/commandes";
 import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
 import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
-import { CeQuiMarche } from "@/components/ce-qui-marche";
-import { Carnet } from "@/components/carnet";
 import { lienDash } from "@/lib/liens";
 
 import { Triangle, sensPente } from "@/components/pente";
@@ -477,7 +473,6 @@ export default async function InstagramPage({
           gagnant et le créneau en or sont toujours là — ce sont deux des
           constats que ce bloc affiche — mais calculés une seule fois, sur tout
           l'historique, avec les seuils du rapport. */}
-      <CeQuiMarche page="instagram" />
 
       {/* ── POSTS DE LA PÉRIODE ── */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
@@ -539,7 +534,6 @@ export default async function InstagramPage({
       {/* ── TON CARNET — même module que sur les pages payantes, sans campagne :
           l'organique n'en a pas. Le thème du bandeau le filtre, et c'est tout ce
           que cette page peut lui apporter. */}
-      <Carnet themes={themes} />
     </main>
   );
 }

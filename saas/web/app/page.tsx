@@ -1,21 +1,16 @@
-// Rapport hebdo — données réelles (même Supabase que le dashboard actuel).
-// Les conseils viennent de weekly_reports, publié en headless par
-// saas/traitement/build_report.py (fetch cron) : même contenu partout.
+// Le point de la semaine — données réelles, lues dans `weekly_reports`, publié
+// en headless par `saas/traitement/build_report.py` (cron du Jour de travail).
+//
+// CETTE PAGE NE CONSEILLE RIEN, ELLE CONSTATE. Les conseils, le suivi des
+// actions, le carnet et le module « À faire » ont été retirés du produit : ce
+// qui reste est ce qui se mesure — le verdict, la boussole, l'anneau des
+// thèmes, la frise, les cartes de thème et ce qui a bougé sur les plateformes.
 
 import Link from "next/link";
-import {
-  getWeeklyData,
-  feedbackKey,
-  type ReportPayload,
-} from "@/lib/report";
+import { getWeeklyData, type ReportPayload } from "@/lib/report";
 import { getChangementsApi } from "@/lib/changements-api";
 import { getCouverture } from "@/lib/couverture";
-import { actionsOuvertes, composerAFaire, estNoteOuverte, etatAFaire } from "@/lib/a-faire";
-import { AFaire } from "@/components/a-faire";
-import { RailActions } from "@/components/rail-actions";
 import { TroisDates } from "@/components/trois-dates";
-import { BilanDuCarnet } from "@/components/carnet";
-import { AjoutAFaire } from "@/components/a-faire-lignes";
 import { getThemeEvenements } from "@/lib/channels";
 import { AlerteThemes } from "@/components/alerte-themes";
 import { CanalMuetAlerte } from "@/components/canal-muet";
@@ -28,11 +23,9 @@ import { ThemeCard, ecartTheme, penteNeutre } from "@/components/theme-card";
 import { ancreTheme } from "@/lib/liens";
 import { ThemesCarrousel } from "@/components/themes-carrousel";
 import { KpiFocusCard } from "@/components/kpi-focus";
-import { HorsTheme } from "@/components/hors-theme";
+import { Changements, trierChangements } from "@/components/changements";
 import { ThemeDonut } from "@/components/theme-donut";
 import { FriseSemaine } from "@/components/frise-semaine";
-import { RecoCard } from "@/components/reco-card";
-import { PourAllerPlusLoin } from "@/components/pour-aller-plus-loin";
 import { Triangle } from "@/components/pente";
 
 
@@ -48,48 +41,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />
       {children}
     </h2>
-  );
-}
-
-// Le résumé de la semaine — sans carte : au milieu de blocs encadrés, un bloc
-// nu attire l'œil plus fort qu'un cadre de plus.
-//
-// IL EST DESCENDU, ET IL EST REPLIÉ. Il vivait collé sous le verdict, en prose
-// nue, et mangeait tout l'écran restant. C'est le dernier rang de l'ordre
-// décidé par la refonte (`10-l-entree-premier-ecran.md` point 6), et la raison
-// n'est pas graphique : **la prose IA est ce qu'il y a de moins vérifiable sur
-// la page, et elle occupait les pixels les plus chers** — ceux où le lecteur
-// cherche « ma semaine a été bonne ? » puis « qu'est-ce que je fais ». Contre
-// la trame du lundi matin, le « pourquoi » ne se lit que si le verdict a
-// inquiété : il descend d'un cran et s'ouvre à la demande.
-//
-// LE REPLI EST UN `<details>`, FERMÉ. Pas d'état React, pas de JavaScript : le
-// texte est dans le document, donc lisible même si rien ne charge, et le geste
-// est celui que le navigateur connaît déjà.
-//
-// Sa première phrase n'est plus mise en avant. Elle l'était, et elle disait la
-// même chose que le verdict juste au-dessus — le worker demande à l'IA « une
-// phrase de synthèse » alors que le verdict EST déjà une phrase de synthèse,
-// calculée de façon déterministe. Deux affirmations identiques et de poids
-// proche, collées l'une à l'autre : le doublon retiré de la section 2 vivait
-// encore ici. Le résumé garde tout son texte, il cesse seulement de se
-// disputer le niveau 1.
-function ResumeSemaine({ brief }: { brief: string }) {
-  return (
-    <details className="group mb-9">
-      <summary className="cursor-pointer select-none text-[12.5px] font-semibold text-brand hover:underline">
-        <span className="group-open:hidden">Lire le résumé de la semaine ▾</span>
-        <span className="hidden group-open:inline">Replier le résumé ▴</span>
-      </summary>
-      <div className="mt-3 max-w-[68ch]">
-        <p className="text-[14px] sm:text-[15px] leading-relaxed text-muted whitespace-pre-line">
-          {brief}
-        </p>
-        <p className="text-[10.5px] text-faint mt-2.5">
-          Résumé écrit par l&apos;IA à partir de tous tes posts et campagnes de la semaine.
-        </p>
-      </div>
-    </details>
   );
 }
 
@@ -128,24 +79,6 @@ function Verdict({ report }: { report: ReportPayload }) {
     </div>
   );
 }
-
-// LE RACCOURCI DU HERO A ÉTÉ RETIRÉ — « ▸ 2 actions en cours · 1 à juger —
-// y aller ↓ ». Il pointait vers la carte du thème de la plus urgente, et le
-// module « À faire » est maintenant posé juste en dessous du verdict : un
-// renvoi vers ce qui tient dans le même écran ne fait plus gagner un scroll, il
-// ajoute un quatrième endroit où le même chiffre se lit. Or c'est très
-// exactement ce que ce module existe pour empêcher — et le raccourci comptait
-// déjà FAUX au regard de la frontière décidée : il annonçait « à juger » ce qui
-// était en observation (`status === "done" && !a.due`), et il comptait comme
-// t'attendant les actions en cours, qui n'attendent rien de toi. Le comptage
-// vit désormais dans `lib/a-faire.ts`, à un seul endroit.
-
-// LE FILET — « Hors de tes thèmes » — a quitté cette page pour
-// `components/hors-theme.tsx`. Il y était écrit en dur, donc invisible à tout
-// écran de contrôle : la page entière est derrière `middleware.ts` et lit un
-// vrai compte, on ne pouvait ni lui donner vingt-cinq lignes ni zéro pour voir
-// ce que ça fait. C'est la règle du projet depuis `components/couts-modules.tsx`
-// — une page compose, elle ne dessine pas.
 
 export default async function Page() {
   // CE QUE LES PLATEFORMES DÉCLARENT ELLES-MÊMES. Nos cinq faits déduits de la
@@ -187,6 +120,20 @@ export default async function Page() {
   const periode = report?.matrice?.period ?? null;
   const fenetreBilan =
     periode?.since && periode?.until ? { from: periode.since, to: periode.until } : null;
+  // « depuis le 1 jan » — la MÊME fenêtre, dite au lecteur. Elle voyageait dans
+  // `vision.period_label`, publié en double du `since` de la matrice ; le bloc
+  // `vision` est parti avec les constats, la phrase se refait ici sur la seule
+  // source qui reste.
+  const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun",
+                   "jul", "aoû", "sep", "oct", "nov", "déc"];
+  const fenetreTexte = periode?.since
+    ? (() => {
+        const d = new Date(periode.since + "T00:00:00");
+        return isNaN(d.getTime())
+          ? null
+          : `depuis le ${d.getDate()} ${MOIS_FR[d.getMonth()]}`;
+      })()
+    : null;
   const conversionsParTheme = new Map(evenements.themes.map((t) => [t.label, t.principaux]));
 
   // Thèmes prioritaires — le fil qui relie la vision aux conseils. Plus de
@@ -197,17 +144,6 @@ export default async function Page() {
     .map((k) => k.split(":").slice(1).join(":"));
 
   const themesFocus = report?.themes_focus ?? [];
-  const reglages = report?.reglages ?? [];
-  // LE PLAFOND DE TROIS CHANTIERS EST MORT ICI, et il n'était écrit dans aucun
-  // ticket. Il bloquait « ▶ Je le teste » dès trois actions non faites : avec
-  // CINQ conseils par semaine (`saas/recos_ia/composition.py`), la liste ne
-  // pouvait structurellement pas se vider par « fait » — deux conseils sur cinq
-  // n'avaient d'autre sortie que le refus, c'est-à-dire exactement le raccourci
-  // que le module « À faire » redoutait. Ce qui borne la charge, désormais,
-  // c'est la COMPOSITION des cinq (jamais plus de deux gestes à effort ≥ 1 h),
-  // et elle regarde ce que les lignes pèsent au lieu de les compter. Décidé par
-  // `.scratch/refonte/issues/20-a-faire-cette-semaine.md`.
-
   // TOUS les thèmes ont désormais une carte, qu'ils aient une courbe ou non :
   // c'est la carte qui décide de montrer sa courbe. Deux cartes pour le même
   // thème — une pour le bilan, une pour les conseils — obligeaient le lecteur
@@ -243,7 +179,6 @@ export default async function Page() {
   const etoiles = new Set(priorities);
   const etoilees = themesFocus.filter((t) => etoiles.has(t.label));
   const cartes = etoiles.size > 0 && etoilees.length > 0 ? etoilees : themesFocus;
-  const gardeAJoue = cartes.length < themesFocus.length;
   const themesRendus = new Set(cartes.map((t) => t.label));
 
   const avecCourbe = cartes.filter((t) => t.series && t.series.points.length > 1);
@@ -268,27 +203,6 @@ export default async function Page() {
     .filter((x): x is { label: string; ecart: number } => x.ecart !== null && x.ecart < -8)
     .sort((a, b) => a.ecart - b.ecart)[0];
 
-  // LES ACTIONS QUI N'ONT PLUS DE MAISON.
-  //
-  // Le complément EXACT du filtre des cartes (`a.theme === theme.label`), donc
-  // ni doublon ni trou par construction. Trois causes, toutes réelles : un
-  // conseil pris depuis « Réglages de base » n'a pas de thème du tout ; un
-  // thème peut sortir des trois prioritaires ; un thème renommé laisse ses
-  // actions derrière lui.
-  //
-  // Sans ce filet, ces actions seraient invisibles ET inatteignables : plus un
-  // seul endroit pour les marquer faites ou les abandonner, donc des actions
-  // ouvertes à vie. (Elles saturaient en plus le plafond de trois actions, mort
-  // avec le module « À faire ».)
-  //
-  // `themesRendus` est calculé plus haut, avec `cartes` : c'est le même
-  // ensemble, et c'est ce qui garantit que retirer une carte DÉPLACE ce qui la
-  // concernait ici au lieu de le perdre.
-  //
-  // Les changements de plateforme suivent EXACTEMENT la même répartition que
-  // les actions : au thème quand il a une carte, au filet sinon. Une campagne
-  // non étiquetée n'a pas de thème — elle atterrit donc dans le filet, et
-  // c'est bien là qu'on veut la voir : c'est le signe qu'il faut la classer.
   const tousChangements = report?.changements ?? [];
   const chgParTheme = (label: string) => tousChangements.filter((c) => c.theme === label);
   const chgOrphelins = tousChangements.filter(
@@ -298,38 +212,11 @@ export default async function Page() {
   const apiOrphelins = changementsApi.filter(
     (c) => !c.theme || !themesRendus.has(c.theme)
   );
-
-  const orphelines = [...data.actions, ...data.actionsArchived]
-    .filter((a) => !a.theme || !themesRendus.has(a.theme))
-    // Une ligne qu'on s'est écrite sans thème attend une décision, pas
-    // une maison : elle vit au module « À faire ». Sans ce filtre, le filet la
-    // COMPTERAIT (`survenusOrphelins`, juste en dessous) sans pouvoir l'afficher
-    // — le rail la retire de son côté — et le chiffre du module mentirait sur ce
-    // qu'il montre.
-    .filter((a) => !estNoteOuverte(a));
-  // Ce qui s'est RÉELLEMENT passé hors thème, par opposition à ce qui attend.
-  // Vingt lignes « est programmée — aucune dépense encore » remplissaient le
-  // bloc et noyaient les trois faits qui comptaient : elles ne comptent donc
-  // pas dans le chiffre du module, elles se replient sous lui.
-  const progOrphelines = chgOrphelins.filter((c) => c.type === "planifiee");
-  const survenusOrphelins =
-    orphelines.length + (chgOrphelins.length - progOrphelines.length) + apiOrphelins.length;
-  // Le filet s'affiche aussi quand il est VIDE et qu'aucun thème n'a de carte :
-  // sans lui, un compte qui n'a rien classé n'a aucun endroit où écrire une
-  // note — et une note sans thème ne pourrait jamais naître, faute d'un bloc
-  // pour l'accueillir.
-  const filetPlein =
-    orphelines.length + chgOrphelins.length + apiOrphelins.length > 0 || cartes.length === 0;
-
-  // CE QUI ATTEND UNE DÉCISION DE TOI. Le tri et le comptage sont dans
-  // `lib/a-faire.ts` — la page ne fait que les lui demander, et elle a besoin
-  // de l'état AVANT la numérotation : un module qui disparaît ne prend pas de
-  // numéro.
-  const aFaire = composerAFaire(report, data.actions, data.suivis, data.feedback);
-  const etatAFaireModule = etatAFaire(aFaire, priorities.length === 0, data.decouvertes);
-  // CE QUI COURT ET N'ATTEND RIEN DE TOI — l'autre moitié exacte des actions
-  // vivantes, calculée par le même module pour que les deux ne divergent pas.
-  const enCours = actionsOuvertes(data.actions);
+  // CE QU'AUCUN THÈME NE PREND — le complément EXACT du filtre des cartes, donc
+  // ni doublon ni trou par construction. Une campagne non étiquetée n'a pas de
+  // thème : elle atterrit ici, et c'est bien là qu'on veut la voir — c'est le
+  // signe qu'il faut la classer.
+  const { survenus: survenusOrphelins } = trierChangements(chgOrphelins, apiOrphelins);
 
   // L'HEURE DU RENDU, LUE UNE FOIS. La troisième des trois dates (« mis à jour
   // le ») se calcule à partir d'elle ; la figer ici garantit que toute la ligne
@@ -340,7 +227,6 @@ export default async function Page() {
   // disparaissent quand ils sont vides. Numéroter en dur faisait commencer la
   // page à 2, et un lecteur qui voit un 2 cherche le 1.
   let _n = 0;
-  const nAFaire = etatAFaireModule.visible ? ++_n : undefined;
   const nSemaine = report?.kpi_focus || report?.themes ? ++_n : undefined;
   const nThemes = cartes.length > 0 ? ++_n : undefined;
 
@@ -376,16 +262,11 @@ export default async function Page() {
   // le `▾` du sommaire) : c'était la parade à un couloir de six mille pixels.
   // Il n'y a plus de couloir — `ThemesCarrousel` n'en montre qu'une — et un
   // repli qui ne replie rien est un geste de plus à comprendre pour rien.
-  const themesVivants = new Set(
-    data.actions.map((a) => a.theme).filter((t): t is string => !!t)
-  );
   const cartesOrdonnees = cartes
     .map((t, rangWorker) => ({ t, rangWorker }))
     .sort(
       (a, b) =>
-        Number(b.t.is_priority) - Number(a.t.is_priority) ||
-        Number(themesVivants.has(b.t.label)) - Number(themesVivants.has(a.t.label)) ||
-        a.rangWorker - b.rangWorker
+        Number(b.t.is_priority) - Number(a.t.is_priority) || a.rangWorker - b.rangWorker
     )
     .map((x) => x.t);
 
@@ -489,88 +370,9 @@ export default async function Page() {
             au-dessus de la première carte de thème (section 2). */}
       </div>
 
-      {/* LE BILAN DU CARNET — deuxième marche de l'ordre décidé par la refonte :
-          verdict → BILAN DU CARNET → à faire → rail des actions → résumé IA
-          replié (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). C'est
-          un COMPTAGE des verdicts déjà persistés, pas une mesure : le moteur qui
-          remesurait ce bilan sur le compte entier est mort avec ce ticket, parce
-          qu'il pouvait contredire le rail sur la même décision. Le module de
-          Carnet complet, lui, ne monte PAS ici : le rail des cartes de thème
-          porte déjà la chronologie avec l'effet chiffré, et la relire en liste
-          ferait deux lectures du même fil. */}
-      <BilanDuCarnet />
-
-      {/* À FAIRE CETTE SEMAINE — POSÉ ICI, ET PAS PLUS HAUT NI PLUS BAS.
-          L'ordre décidé par la refonte est : verdict → bilan du Carnet →
-          À FAIRE → rail des actions → résumé IA replié
-          (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`). Les cinq
-          marches sont en place : le bilan depuis le ticket 12, le rail et la
-          descente du résumé depuis le 13. Le verdict répond à « ma
-          semaine a été bonne ? » ; ouvrir le rapport sur ce qui reste à faire en
-          aurait fait une corvée dès la première ligne, d'où sa place SOUS le
-          hero et pas dedans. */}
-      {etatAFaireModule.visible ? (
-        <section id="a-faire" className="mb-9 scroll-mt-4">
-          <SectionTitle>
-            <span className="text-faint font-mono mr-1.5">{nAFaire}</span> À faire cette
-            semaine
-          </SectionTitle>
-          <AFaire liste={aFaire} etat={etatAFaireModule} themesRendus={themesRendus} />
-          <AjoutAFaire themes={data.labels} />
-        </section>
-      ) : (
-        /* LE MODULE DISPARAÎT, LA PORTE RESTE. Un compte à jour — rien à
-           décider, plus rien à faire découvrir — n'a pas de module ; mais la
-           porte d'écriture vivait DEDANS, et une fois le module effacé plus rien
-           n'aurait pu le faire revenir : on ne pouvait plus s'écrire une ligne,
-           donc plus rien n'entrait, donc le module restait effacé. C'était un
-           cul-de-sac, et cette carte n'en veut aucun. Ce qui disparaît, c'est le
-           module — son titre, ses compteurs, son cadre ; pas le geste. */
-        <div className="mb-9">
-          <AjoutAFaire themes={data.labels} />
-        </div>
-      )}
-
-      {/* LE RAIL DES CHANTIERS EN COURS — quatrième marche de l'ordre décidé
-          par la refonte, et la règle qu'elle applique était tranchée depuis
-          longtemps sans jamais avoir été appliquée ici : **une action décidée
-          vit en haut jusqu'à être faite**. Avant lui, ce qu'on avait lancé
-          n'existait nulle part sur la page qu'on ouvre — il fallait entrer
-          dans la carte de son thème pour le revoir.
-
-          C'EST LE MÊME RAIL, PAS UN DEUXIÈME OBJET. `RailActions` est le module
-          des cartes de thème, servi ici sans thème courant (chaque ligne porte
-          donc le sien) et SANS faits de plateforme : ceux-là racontent ce qui a
-          bougé sur un thème, ils se lisent dans sa carte, et les remonter ici
-          referait la chronologie entière en tête de page.
-
-          CE QU'IL NE MONTRE PAS, ET POURQUOI : les Verdicts tombés et les
-          lignes que tu t'es écrites. Le module « À faire » juste au-dessus les
-          porte déjà — le rail montre le temps qui passe, le module ce qui
-          attend une décision de toi (`lib/a-faire.ts`, `actionsOuvertes`, où
-          la partition est calculée une seule fois pour que les deux moitiés ne
-          puissent pas se contredire). */}
-      {enCours.length > 0 && (
-        <section className="mb-9">
-          <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5">
-            <p className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">
-              En cours
-            </p>
-            <RailActions actions={enCours} maxH="max-h-[320px]" />
-          </div>
-        </section>
-      )}
-
-      {/* LE RÉSUMÉ DE LA SEMAINE, DERNIÈRE MARCHE DU PREMIER ÉCRAN ET REPLIÉ.
-          Il était collé sous le verdict : la prose la moins vérifiable de la
-          page occupait les pixels les plus chers. Il se lit maintenant après ce
-          qui est calculé et après ce qu'il y a à faire — le « pourquoi » ne
-          s'ouvre que si le verdict a inquiété. */}
-      {report?.brief && <ResumeSemaine brief={report.brief} />}
-
       {/* 1 · LA SEMAINE, TOUS THÈMES CONFONDUS — la vue d'ensemble : un seul
              indicateur en grand, et où part l'argent. Rien de filtré ici. */}
-      {(report?.kpi_focus || (report?.themes && report.themes.rows.length > 0) || filetPlein) && (
+      {(report?.kpi_focus || (report?.themes && report.themes.rows.length > 0)) && (
         <section className="mb-9">
           <SectionTitle>
             <span className="text-faint font-mono mr-1.5">{nSemaine}</span> Ta semaine, tous
@@ -580,53 +382,7 @@ export default async function Page() {
             La vue d&apos;ensemble du compte : tout ce que tu publies et achètes, sans
             filtre. Choisis l&apos;indicateur que tu veux suivre.
           </p>
-          {/* LA BOUSSOLE ET LE FILET SUR UNE MÊME LIGNE.
-              Le bloc « hors de tes thèmes » était une bande pleine largeur en
-              bas de page : on y arrivait après tout le reste, alors qu'il
-              contient les seules actions qu'aucune carte de thème ne prend.
-              Il passe à GAUCHE de la boussole — même section, même fenêtre, même
-              périmètre (tout le compte, rien de filtré), et surtout : la courbe
-              qui bouge et l'explication de pourquoi elle bouge dans le même
-              écran.
-              La boussole garde deux tiers, parce que sa courbe est l'intérêt du
-              module et qu'un tiers l'écraserait. Sur téléphone la boussole passe
-              en premier — c'est elle qu'on vient lire.
-
-              LES DEUX CARTES FONT LA MÊME HAUTEUR. La grille était en
-              `items-start` : chacune finissait où elle voulait et un vide de
-              200 px s'ouvrait sous la plus courte. `items-stretch` étire les
-              deux cellules sur la hauteur de la rangée, et c'est la BOUSSOLE
-              qui la fixe — la cellule du filet porte `lg:relative` pour que sa
-              carte s'y pose en `absolute` et cesse de peser dans le calcul.
-              Sans quoi vingt-cinq lignes hors thème tireraient la rangée à
-              2 000 px et la boussole flotterait dans le vide : l'inverse exact
-              de ce qu'on corrige. Le détail est écrit dans `hors-theme.tsx`,
-              qui en dépend ; ici on ne pose que la cellule.
-              Sans boussole, le filet reste seul et pleine largeur — donc en
-              flux normal, avec sa hauteur à lui (`rangee={false}`). */}
-          <div className="grid gap-3 lg:grid-cols-3 items-stretch">
-            {report?.kpi_focus && (
-              <div className="lg:col-span-2 lg:order-2 min-w-0">
-                <KpiFocusCard k={report.kpi_focus} />
-              </div>
-            )}
-            {filetPlein && (
-              <div
-                className={`lg:order-1 min-w-0 ${
-                  report?.kpi_focus ? "lg:relative" : "lg:col-span-3"
-                }`}
-              >
-                <HorsTheme
-                  actions={orphelines}
-                  changements={chgOrphelins}
-                  changementsApi={apiOrphelins}
-                  survenus={survenusOrphelins}
-                  programmees={progOrphelines.length}
-                  rangee={!!report?.kpi_focus}
-                />
-              </div>
-            )}
-          </div>
+          {report?.kpi_focus && <KpiFocusCard k={report.kpi_focus} />}
           {report?.themes && report.themes.rows.length > 0 && (
             <div className="mt-3">
               <ThemeDonut rows={report.themes.rows} orphan={report.themes.orphan} univers={data.labels} />
@@ -697,38 +453,14 @@ export default async function Page() {
               d'introduction se borne à ce qu'il est seul à dire — ce que la
               section contient. */}
           <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 max-w-[68ch]">
-            Pour chaque thème : où il en est, ce qui peut le faire bouger, et ce que tes
-            actions passées ont donné.
+            Pour chaque thème : où il en est, comment il évolue, et ce qui a bougé
+            sur ses campagnes.
           </p>
-          {/* LA PHRASE DE PASSAGE, ET SEULEMENT QUAND ELLE EST ENCORE VRAIE.
-              Elle est écrite par le worker et NOMME les premiers thèmes du
-              rapport (« voilà les leviers sur A, B et C »). Si le garde-fou
-              vient d'en retirer un, elle annonce une carte qui n'est plus là :
-              une phrase de liaison qui ment sur ce qu'elle relie vaut moins que
-              pas de phrase. Elle revient exacte au prochain rechargement — et
-              cette condition disparaît avec le garde-fou. */}
-          {!gardeAJoue && report?.themes_intro && (
-            <p className="text-[13.5px] text-muted leading-relaxed mb-4 -mt-1.5">
-              {report.themes_intro}
-            </p>
-          )}
-
           {/* LE SOMMAIRE EST DEVENU LA BARRE D'ONGLETS — il vit maintenant dans
               `ThemesCarrousel`, plus bas, avec les flèches et le « 2 / 5 ».
               C'était déjà la liste des noms de tous les thèmes : en faire la
               navigation évitait d'ajouter un troisième dispositif à côté. */}
 
-          {/* « SI TU NE FAIS QUE TROIS CHOSES » N'EST PLUS ICI.
-              C'était une sélection cross-thème rendue en tête, qui pointait vers
-              les cartes. Elle en désignait trois quand douze conseils sortaient ;
-              il y en a CINQ au maximum depuis le plafond de semaine
-              (`saas/recos_ia/composition.py`), sur trois thèmes au maximum — un
-              renvoi vers cinq choses qui tiennent dans le même écran n'aide
-              plus, il double. David a déplacé l'objet, il ne l'a pas supprimé :
-              « cela devrait être plus une notification "tu as encore X recos" ;
-              cette notification peut vivre sur l'app, elle ne doit pas être
-              rattachée à la page hebdomadaire ». C'est le module de commandes,
-              `.scratch/refonte/issues/12-module-de-commandes.md`. */}
 
           {/* L'OBJECTIF DU COMPTE ET L'OBJECTIF PAR THÈME NE SE RÈGLENT PLUS ICI.
               La carte globale (`ObjectifTheme`) qui vivait à cet endroit — un
@@ -751,21 +483,15 @@ export default async function Page() {
               <ThemeCard
                 key={t.label}
                 theme={t}
-                actions={data.actions}
-                archived={data.actionsArchived}
                 changements={chgParTheme(t.label)}
                 changementsApi={apiParTheme(t.label)}
                 rows={report?.themes?.rows ?? null}
-                fenetre={report?.vision?.period_label || null}
+                fenetre={fenetreTexte}
                 fenetreDates={fenetreBilan}
                 decroche={pire?.label === t.label}
                 labels={data.labels}
-                feedback={data.feedback}
-                comments={data.comments}
-                suivis={data.suivis}
                 conversionsTheme={conversionsParTheme.get(t.label) ?? []}
                 objectifEffectif={t.objectif ?? data.objectif ?? null}
-                aucunePriorite={priorities.length === 0}
               />
             ))}
           </ThemesCarrousel>
@@ -828,36 +554,29 @@ export default async function Page() {
             </div>
           )}
 
-          {/* POUR ALLER PLUS LOIN — le savoir-faire de fond, par thème.
-              Publié par le worker depuis des mois (`themes_tips`) et rendu par
-              AUCUN composant, pendant que `reco-actions.tsx` promettait par
-              écrit que « ◇ Trop compliqué » y remonterait la semaine suivante.
-              Les deux bouts sont raccordés : le worker passe maintenant les
-              conseils marqués trop compliqués au prompt (`bloques`). */}
-          <PourAllerPlusLoin themes={report?.themes_tips ?? []} />
-
-          {/* Réglages de base — prérequis (GA4, funnel) sortis du flux par thème */}
-          {reglages.length > 0 && (
-            /* `id` : le module « À faire » renvoie ici quand la ligne est un
-               réglage de base — il n'a pas de carte de thème où s'expliquer. */
-            <details id="reglages" className="mb-8 scroll-mt-4" open>
-              <summary className="text-[14px] font-semibold text-ink cursor-pointer select-none mb-3">
-                Réglages de base ({reglages.length}){" "}
-                <span className="text-faint font-normal">· à mettre en place une fois pour tout débloquer</span>
-              </summary>
-              <div className="space-y-3 mt-2">
-                {reglages.map((r) => (
-                  <RecoCard
-                    key={r.key}
-                    r={r}
-                    current={data.feedback[feedbackKey(r.key, null)] ?? data.feedback[r.key] ?? null}
-                    comment={data.comments[feedbackKey(r.key, null)] ?? data.comments[r.key] ?? null}
-                    theme={null}
-                    action={data.suivis[r.key] ?? null}
-                  />
-                ))}
+          {/* CE QU'AUCUN THÈME NE PREND — les faits de plateforme dont la
+              campagne n'a pas d'étiquette, ou dont le thème n'a pas de carte.
+              C'est le complément exact des cartes ci-dessus, donc rien ne se
+              perd et rien ne se lit deux fois. Ici vivaient « Pour aller plus
+              loin » (le savoir-faire rédigé par Gemini) et les « Réglages de
+              base » : deux blocs de conseils, partis avec le moteur. */}
+          {survenusOrphelins.length + apiOrphelins.length > 0 && (
+            <section className="mb-9">
+              <SectionTitle>Ce qu&apos;aucun thème ne prend</SectionTitle>
+              <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
+                Ce qui a bougé sur des campagnes qu&apos;aucun de tes thèmes ne
+                couvre. Les classer sur la page{" "}
+                <Link href="/labels" className="text-brand font-semibold hover:underline">◫ Thèmes</Link>{" "}
+                les fera remonter dans la bonne carte.
+              </p>
+              <div className="bg-white border border-line rounded-xl shadow-card px-4 py-3.5">
+                <Changements
+                  changements={chgOrphelins}
+                  changementsApi={apiOrphelins}
+                  maxH="max-h-[320px]"
+                />
               </div>
-            </details>
+            </section>
           )}
         </>
       )}

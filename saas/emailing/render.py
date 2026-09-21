@@ -17,10 +17,6 @@ POS = "#1a7a4a"
 BRAND = "#1a56ff"
 WARN = "#8b6f00"   # ambre — « à reconnecter », pas « au feu »
 
-CHANNEL_COLOR = {"instagram": "#7b4fff", "meta": "#1a56ff", "google": "#1a7a4a",
-                 "pub": "#1a56ff", "ia": "#8b6f00"}
-CHANNEL_LABEL = {"instagram": "Instagram", "meta": "Meta Ads", "google": "Google",
-                 "pub": "Pub (Meta + Google)", "ia": "Piste"}
 
 
 def _kpi_cell(label: str, value: str, sub: str = "") -> str:
@@ -35,22 +31,6 @@ def _kpi_cell(label: str, value: str, sub: str = "") -> str:
     )
 
 
-def _todo_row(n: int, title: str, channel: str) -> str:
-    color = CHANNEL_COLOR.get(channel, FAINT)
-    chan = CHANNEL_LABEL.get(channel, "")
-    return (
-        f'<tr><td style="padding:9px 0;border-bottom:1px solid {LINE};" valign="top">'
-        f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
-        f'<td valign="top" style="padding-right:10px;font-family:Menlo,Consolas,monospace;'
-        f'font-size:13px;color:{FAINT};">{n}</td>'
-        f'<td valign="top" style="padding-right:8px;">'
-        f'<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
-        f'background:{color};margin-top:5px;"></span></td>'
-        f'<td valign="top">'
-        f'<div style="font-size:14px;color:{INK};font-weight:500;line-height:1.4;">{title}</div>'
-        f'<div style="font-size:11px;color:{FAINT};margin-top:1px;">{chan}</div>'
-        f'</td></tr></table></td></tr>'
-    )
 
 
 def _fmt(n: float) -> str:
@@ -121,13 +101,9 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
         "followers": (f"{fdelta:+d}" if fdelta is not None else "—"),
     }
 
-    # « Ce qui a marché » = brief (IA ou fallback), précédé du verdict pour le contexte.
-    verdict = payload.get("verdict") or ""
-    brief = payload.get("brief") or ""
-    wins = f"{verdict} {brief}".strip()
-
-    todos = [{"title": t["title"], "channel": t.get("platform", "ia")}
-             for t in (payload.get("todo") or []) if not t.get("done")]
+    # « Ta semaine » = le verdict, déterministe. Le brief rédigé par Gemini qui
+    # le complétait est parti avec le reste de l'IA.
+    wins = payload.get("verdict") or ""
 
     # ── LE CANAL MUET CHANGE L'OBJET DE L'EMAIL (ticket 20) ──────────────────
     # Un email au sujet habituel est ouvert comme d'habitude, et les « — » à la
@@ -164,8 +140,7 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
             phrases.append(
                 f"{_sans_reponse(durent)}, et ce n'est plus la première semaine. "
                 f"Tant que ça dure, Pulse ne peut rien dire de ta publicité — ni "
-                f"dépense, ni coût par clic, ni ROAS, et aucun conseil qui en "
-                f"dépendrait.")
+                f"dépense, ni coût par clic, ni ROAS.")
         if recents:
             _noms = " et ".join(_nom(c) for c in recents)
             phrases.append(
@@ -179,7 +154,6 @@ def email_from_payload(account_name: str, payload: dict, app_url: str) -> tuple[
         week_label=payload.get("week_label", ""),
         kpis=kpis,
         wins_text=wins,
-        todos=todos,
         app_url=app_url,
         alerte=alerte,
     )
@@ -203,14 +177,12 @@ def build_email_html(
     week_label: str,
     kpis: dict,
     wins_text: str,
-    todos: list[dict],
     app_url: str = "#",
     alerte: str = "",
 ) -> str:
     """Construit le HTML complet de l'email hebdo.
 
     kpis   : {"spend": "CHF 465", "clicks": "3 342", "ctr": "3.59%", "followers": "+119"}
-    todos  : [{"title": "...", "channel": "meta"|"instagram"|"google"|"ia"}, ...]
     alerte : la phrase du canal muet, vide quand la récolte a tout lu. Elle
              passe AVANT les KPI — c'est elle qui explique leurs « — »
              (ticket 20). Défaut vide : les appelants d'avant ce ticket, et
@@ -224,13 +196,7 @@ def build_email_html(
         + _kpi_cell("Abonnés", kpis.get("followers", "—"))
     )
 
-    todo_rows = "".join(_todo_row(i + 1, t["title"], t.get("channel", "ia"))
-                        for i, t in enumerate(todos)) or (
-        f'<tr><td style="padding:9px 0;font-size:13px;color:{FAINT};">'
-        "Rien d'urgent — tes comptes tournent dans tes normes.</td></tr>"
-    )
-
-    wins_block = wins_text or "Pas de signal positif marquant cette semaine."
+    wins_block = wins_text or "Pas de signal marquant cette semaine."
 
     # Ambre et pas rouge : ce n'est pas une catastrophe, c'est une connexion à
     # refaire. Le rouge est réservé à ce qui coûte de l'argent maintenant.
@@ -289,17 +255,10 @@ def build_email_html(
         <tr><td style="padding:16px 18px;background:#f2faf5;border-left:3px solid {POS};
                        border-radius:8px;">
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;
-                      color:{POS};font-weight:700;margin-bottom:8px;">Ce qui a marché</div>
+                      color:{POS};font-weight:700;margin-bottom:8px;">Ta semaine</div>
           <div style="font-size:14px;color:{INK};line-height:1.55;">{wins_block}</div>
         </td></tr>
       </table>
-    </td></tr>
-
-    <!-- À faire -->
-    <tr><td style="padding:14px 28px 4px;">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;
-                  color:{BRAND};font-weight:700;margin-bottom:6px;">À faire cette semaine</div>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{todo_rows}</table>
     </td></tr>
 
     <!-- CTA -->

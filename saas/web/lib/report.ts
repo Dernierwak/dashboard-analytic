@@ -11,48 +11,6 @@ import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 
 const MOIS_FR = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
 
-// Payload publié en headless par saas/traitement/build_report.py (weekly_reports.payload).
-export type PayloadReco = {
-  key: string;
-  platform: "instagram" | "meta" | "google" | "pub" | "ia";
-  title: string;
-  observation: string;
-  pourquoi: string;
-  verifier: string;
-  repere?: string;
-  angle_mort?: string;
-  confidence: "solide" | "creuser" | "piste";
-  priority: number;
-  source?: "rule" | "ai";
-  // Suivi « ▶ Je le teste » : indicateur-cible + sa valeur du moment (photo).
-  metric?: string | null;
-  metric_label?: string | null;
-  direction?: string | null;
-  baseline?: number | null;
-  // Temps à prévoir pour l'appliquer (« 10 min », « 30 min », « 1 h », « 2 h+ »).
-  effort?: string | null;
-  // LA PREUVE : le délai auquel on saura (voir `ROLES`, `build_report.py`).
-  //   generale  — un geste, constatable demain à l'œil dans la plateforme.
-  //   hypothese — une hypothèse, dont le verdict tombe à 14 jours.
-  // Portée par TOUTES les règles depuis le ticket 06 de la construction
-  // (`_GESTE_REGLE`) — avant, seule une piste IA se le déclarait, et les
-  // pistes sont coupées depuis le ticket 08.
-  role?: "generale" | "hypothese" | null;
-  // LE GESTE : couper, augmenter, tester, créer, corriger (voir `NATURES`).
-  // Même portée que `role`. Un conseil sans geste n'existe pas — c'est un
-  // constat, et il n'est jamais servi (`_est_conseil`, `build_report.py`).
-  nature?: "couper" | "augmenter" | "tester" | "créer" | "corriger" | null;
-  // LE LEVIER : sur quoi le conseil demande d'agir — argent, contenu, tempo,
-  // audience, ou `socle` pour un prérequis de mesure. Il sert à ne pas servir
-  // trois conseils qui disent la même chose, et il repart avec le clic
-  // « ▶ Je le teste » pour nourrir la mémoire du thème.
-  levier?: string | null;
-  // L'objet NOMMÉ que le conseil vise — une campagne, une annonce, un
-  // groupe d'annonces. `null` quand le conseil porte sur le thème entier.
-  // C'est la moitié de l'empreinte qui l'empêche de revenir à l'identique
-  // (`saas/recos_ia/composition.py`).
-  cible?: string | null;
-};
 
 // « Ta boussole » — l'indicateur qui compte, choisi selon l'objectif du compte,
 // avec sa trajectoire sur 10 semaines et les zones qui le rendent lisible.
@@ -110,104 +68,11 @@ export type KpiFocus = {
   labels: string[];
   defaut: string;
   options: KpiOption[];
-  // Semaines où une action a été appliquée, tous thèmes confondus. Absent des
-  // payloads publiés avant — la courbe s'affiche alors sans repères.
-  markers?: number[];
-  marqueurs?: RepereAction[];
 };
 
-// Un conseil de la sélection « les 3 du moment » — il porte son thème avec lui.
-export type TopReco = PayloadReco & { theme: string | null; is_priority?: boolean };
 
-// Une action décidée depuis un conseil. Cinq états :
-//   running  = à faire (elle vit en haut du rapport) — un clic client
-//   done     = faite le done_at, on observe 14 jours à partir de ce jour — un clic client
-//   auto     = STATUT HÉRITÉ, plus jamais écrit ni relu (ticket 06 de la
-//              construction). C'était l'Hypothèse d'un thème posée par le
-//              WORKER à la publication, sans aucun clic, qui recevait un
-//              verdict à l'échéance que le client l'ait faite ou non — un
-//              mouvement de chiffres attribué à un geste que personne n'a
-//              confirmé (`CLAUDE.md` §7). `build_report.py` ne lit plus ces
-//              lignes : elles restent en base, elles n'arrivent plus ici. Les
-//              branches qui les gèrent encore (ci-dessous et dans les
-//              composants) sont donc inertes, pas actives.
-//   archived = verdict vu, rangée dans l'historique
-//   dropped  = abandonnée — elle quitte la liste mais reste dans l'historique
-export type TrackedAction = {
-  id: string;
-  reco_key?: string;
-  /** `note` = écrite à la main, elle ne sera jamais jugée. Absent avant la
-   *  migration `suivi_actions_notes.sql` — tout est alors une `action`. */
-  kind?: "action" | "note";
-  title: string;
-  theme: string | null;
-  metric_label: string | null;
-  decided_at: string;
-  check_at: string;
-  done_at?: string | null;
-  status?: "running" | "done" | "auto" | "archived" | "dropped";
-  /**
-   * MARQUEUR D'ORIGINE DURABLE — distinct de `status` (rejet du checker,
-   * 3e passe). `status` porte le cycle de vie ET, pour `"auto"`, l'origine —
-   * mais deux gestes client parfaitement normaux (« ✓ Vu — je range »,
-   * « × j'abandonne ») écrasent `status="auto"` sans que le client ait
-   * jamais rien décidé lui-même. `origin` vient de `detail.origin` (posé une
-   * fois par le worker, jamais réécrit par `resolveAction` — voir
-   * `build_report.py`) : il reste `"auto"` même après un archivage ou un
-   * abandon. Un `done_at` posé (uniquement via `resolveAction(id,"done")`,
-   * donc un clic « ✓ Je l'ai fait ») fait quand même de la ligne une vraie
-   * décision client, quelle que soit son origine — voir `estDecisionClient`.
-   */
-  origin?: "auto";
-  due?: boolean;
-  then?: number;
-  now?: number;
-  delta?: number | null;
-  verdict?: "better" | "worse" | "stable";
-  // Photo du conseil au moment de la décision — pour s'en souvenir plus tard.
-  detail?: {
-    observation?: string;
-    pourquoi?: string;
-    verifier?: string;
-    effort?: string | null;
-    /** Copie brute de l'origine — `origin` (ci-dessus) est la forme lue par
-     *  le reste du produit ; ce champ n'existe que parce que `detail` est
-     *  l'endroit où le worker l'écrit (jsonb déjà en place, sans migration). */
-    origin?: "auto";
-  } | null;
-  /**
-   * LE POINT D'ÉTAPE À SEPT JOURS — à mi-parcours, pas un verdict.
-   * Écrit par le worker seulement si l'action est faite depuis 7 jours pleins
-   * ET que le mouvement dépasse 10 % : sous ce seuil, sept jours de données ne
-   * distinguent pas un effet d'un lundi calme.
-   */
-  etape?: { jours: number; delta: number; sens: "bon" | "mauvais" } | null;
-};
 
-/**
- * VRAIE DÉCISION CLIENT, PEU IMPORTE LE `status` ACTUEL.
- *
- * Utilisée partout où compter/étiqueter une ligne de suivi comme « ce que TU
- * as fait » ne doit PAS inclure une hypothèse auto-suivie que le client n'a
- * fait que ranger ou abandonner (rejet du checker, 3e passe) : `origin` seul
- * ne suffit pas, parce qu'une hypothèse auto que le client confirme via
- * « ✓ Je l'ai fait » (`done_at` posé) DEVIENT une vraie décision — c'est
- * justement le seul geste qui écrit `done_at`, et lui seul.
- */
-export function estDecisionClient(a: TrackedAction): boolean {
-  return a.origin !== "auto" || Boolean(a.done_at);
-}
 
-/**
- * UNE VEILLE N'EST PAS UN CONSEIL — c'est un constat qu'on surveille, et il ne
- * demande aucun geste. D'où deux conséquences qui vivent ailleurs : la carte ne
- * lui donne ni « ▶ Je le teste » ni état de suivi (`reco-card.tsx`), et le
- * module « À faire » ne l'inscrit pas (`lib/a-faire.ts`) — une liste qui se
- * vide ne peut pas porter une ligne qu'aucun geste ne retire.
- */
-export function estVeille(key: string): boolean {
-  return key.startsWith("veille_");
-}
 
 export type ThemeRow = { label: string; spend: number; rev: number };
 
@@ -263,43 +128,7 @@ export function noteSerie(
   return note;
 }
 
-// Constat de la vision globale (« Ce qui fonctionne pour toi ») — clé stable,
-// verdict du client persistant (insight_feedback).
-//
-// C'EST LA SEULE RÉPONSE À « QU'EST-CE QUI MARCHE CHEZ TOI » DEPUIS LE
-// 2026-09-12. Elle se calculait trois fois : ici (`saas/recos_ia/insights.py`),
-// dans deux règles du moteur, et une troisième fois EN TYPESCRIPT sur
-// `/instagram` — trois jeux de seuils qui pouvaient se contredire le même
-// lundi. Les deux autres sont mortes ; cette page ne recalcule plus rien, elle
-// lit (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
-export type VisionConstat = {
-  key: string;
-  // theme_best | theme_worst | format_best | slot_best | campagne_locomotive
-  // | cout_conversion | angle_mort
-  kind: string;
-  title: string;
-  detail: string;
-  /** La page de plateforme où ce constat CONCLUT (rang 4 du gabarit) :
-   *  « instagram », « meta », « google », « pub » (les deux régies), ou absent
-   *  quand il parle d'un THÈME — un thème traverse les régies et l'organique,
-   *  c'est même ce qu'aucune régie ne sait dire. */
-  platform?: string | null;
-  /** Ce que le chiffre NE compte pas. Un seul genre le porte aujourd'hui
-   *  (`cout_conversion`) : son coût par conversion est une borne haute, jamais
-   *  une mesure complète, et l'afficher sans cette phrase le ferait lire comme
-   *  une mesure (`CLAUDE.md` §7). */
-  angle_mort?: string | null;
-  status: "new" | "agree" | "reject";
-};
 
-export type VisionBlock = {
-  generated_at: string;
-  period_label: string; // « depuis le 1 jan »
-  // Thèmes étoilés page Thèmes, dans l'ORDRE D'ÉTOILAGE — plus de plafond
-  // depuis le 14 août 2026. Les trois premiers seuls reçoivent des conseils.
-  priorities?: string[];
-  constats: VisionConstat[];
-};
 
 export type MatriceCoverage = {
   posts_labeled: number;
@@ -340,41 +169,17 @@ export type ThemeSummary = {
   n_campaigns: number;
 };
 
-/**
- * Un repère d'action sur une courbe. `markers` ne portait que l'index de la
- * semaine — de quoi tracer un pointillé, pas de quoi écrire ce qu'on a fait.
- * `titre` est vide quand plusieurs actions tombent la même semaine : elles
- * partagent un seul repère, et `n` dit combien elles sont.
- * Absent des payloads publiés avant août 2026.
- */
-export type RepereAction = { i: number; date: string; titre: string; n: number };
 
 export type ThemeSeries = {
   metric_label: string;
   // Pourquoi ce n'est pas l'indicateur de ton objectif qu'on suit ici.
   note?: string | null;
   points: { label: string; value: number }[];
-  markers: number[]; // index de semaine où une action a été lancée
-  marqueurs?: RepereAction[];
 };
 
 export type ThemeFocus = {
   label: string;
   is_priority: boolean;
-  /**
-   * CE THÈME REÇOIT-IL DES CONSEILS ?
-   *
-   * Le filtre dur : Pulse conseille sur les trois thèmes que le client a
-   * désignés, et seulement sur eux (`_THEMES_CONSEILLES`, `build_report.py` —
-   * `CLAUDE.md` §1, ADR 0003). Un thème `conseille: false` garde sa carte, ses
-   * chiffres, sa courbe et sa veille ; à la place de ses conseils, la carte
-   * affiche un module VERROUILLÉ qui dit ce qui le déverrouille.
-   *
-   * ABSENT VAUT « OUI ». Les payloads publiés avant ce filtre ne le portent
-   * pas, et leurs cartes avaient bien des conseils : traiter l'absence comme un
-   * « non » verrouillerait rétroactivement des dizaines d'anciens rapports.
-   */
-  conseille?: boolean;
   /**
    * L'objectif EFFECTIF de ce thème — celui qui pilote réellement sa courbe
    * (`series.metric_label`) et l'ordre de ses conseils, PAS forcément celui du
@@ -412,7 +217,6 @@ export type ThemeFocus = {
   summary: ThemeSummary;
   series?: ThemeSeries | null;
   campaigns: ThemeCampaign[];
-  recos: PayloadReco[];
 };
 
 /**
@@ -477,7 +281,6 @@ export type ReportPayload = {
   canaux_muets?: CanalMuet[] | null;
   changements?: ChangementPlateforme[] | null;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
-  vision?: VisionBlock | null;
   /** `period` EST LA FENÊTRE DU BILAN DE CHAQUE CARTE DE THÈME : les chiffres
    *  de `ThemeFocus.summary` sortent tous de cette matrice
    *  (`matrix_themes_by`, `build_report.py`), et `vision.period_label`
@@ -491,27 +294,6 @@ export type ReportPayload = {
     period?: { since: string; until: string; days: number } | null;
   } | null;
   themes_focus?: ThemeFocus[] | null;
-  // Phrase de passage : relie le constat de la semaine aux conseils qui suivent.
-  themes_intro?: string | null;
-  // Savoir-faire de fond par thématique — durable, pas lié à la semaine.
-  themes_tips?: { theme: string; tips: { titre: string; texte: string }[] }[] | null;
-  /**
-   * HISTORIQUE — plus jamais écrit, encore lu.
-   *
-   * C'était « Si tu ne fais que trois choses », une sélection cross-thème en
-   * tête des conseils. Elle avait un sens quand douze conseils sortaient ; il y
-   * en a cinq au maximum depuis le plafond de semaine, sur trois thèmes au
-   * maximum. David a déplacé l'objet plutôt que de le supprimer : « cette
-   * notification peut vivre sur l'app, elle ne doit pas être rattachée à la
-   * page hebdomadaire » — c'est le module de commandes
-   * (`.scratch/refonte/issues/12-module-de-commandes.md`).
-   *
-   * Le champ reste lu pour une seule chose : retrouver la photo d'un conseil
-   * (`recoDetail`) dans un payload déjà publié.
-   */
-  top_recos?: TopReco[] | null;
-  reglages?: PayloadReco[] | null;
-  tracking?: { running: TrackedAction[]; verified: TrackedAction[] } | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).
   metrics_read?: {
     trafic: number | null;
@@ -552,10 +334,6 @@ export type ReportPayload = {
   verdict_pct?: number | null;
   verdict_metric?: string | null;
   verdict_tone?: "pos" | "neg" | "stable" | null;
-  brief: string | null;
-  suivi: { applique: number; utile: number; ecarte: number };
-  todo: { key: string; title: string; platform: string; done: boolean }[];
-  recos: PayloadReco[];
   themes?: { rows: ThemeRow[]; orphan: number } | null;
   // `preuve` A ÉTÉ RETIRÉ LE 2026-09-13, avec le moteur qui l'écrivait.
   //
@@ -568,28 +346,17 @@ export type ReportPayload = {
   // encore le champ ; rien ne le lit, il s'éteint de lui-même.
 };
 
-/** LE GESTE QUI N'A JAMAIS SERVI — ce que le module « À faire » vide peut
- *  encore faire découvrir (`lib/a-faire.ts`, `nudge`). Lu une fois en base,
- *  jamais dans le temps : un conseil d'usage éteint par le premier usage du
- *  geste ne peut pas devenir un décor, un conseil d'usage qui revient chaque
- *  semaine, si. */
-export type Decouvertes = {
-  /** Vrai dès qu'une Note a été écrite, une seule fois, un jour. */
-  note: boolean;
-  /** Vrai dès qu'un budget a été posé (`channel_budgets`). */
-  budget: boolean;
-};
 
 export type WeeklyData = {
   email: string;
   weekLabel: string;
   hasData: boolean;
   /** IL N'Y A NI TUILES KPI NI DÉPENSE PAR CANAL ICI, et ce n'est pas un oubli
-   *  (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`). Le rapport a été réorganisé PAR THÈME : son premier écran a
-   *  un ordre tranché — verdict, bilan du Carnet, à faire, rail, résumé replié
-   *  (`.scratch/refonte/issues/10-l-entree-premier-ecran.md`) — où une rangée
-   *  de totaux tous canaux confondus n'a pas de place. La dépense par
-   *  plateforme, elle, est vivante sur `/couts`.
+   *  (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`).
+   *  Le rapport est organisé PAR THÈME — les trois dates, le verdict, la
+   *  boussole, l'anneau, la frise, puis les cartes — où une rangée de totaux
+   *  tous canaux confondus n'a pas de place. La dépense par plateforme, elle,
+   *  est vivante sur `/couts`.
    *
    *  Leur calcul avait survécu à leur retrait, donc plus rien ne le
    *  vérifiait. Les rebrancher demande de reprendre la décision d'ordre
@@ -612,31 +379,14 @@ export type WeeklyData = {
   /** Le Jour de travail du compte regardé (`profiles.fetch_schedule`), en
    *  anglais comme en base. C'est de lui que sort la troisième date. */
   jourDeTravail: string;
-  // Dernière réaction par type de conseil (4 semaines) — live, comme le Streamlit.
-  // Deux formats de clé cohabitent (TASK-025, voir `feedbackKey`) : la clé
-  // COMPOSITE `${reco_key}::${theme}` (précise, une clé-règle générique porte
-  // une ligne par thème) et la clé PLATE `reco_key` seul (repli). Lire avec
-  // `feedback[feedbackKey(key, theme)] ?? feedback[key] ?? null`.
-  feedback: Record<string, string>;
-  // Verdicts sur les constats de la vision globale — live (le payload peut dater).
+  /** Les thèmes que le client a étoilés — stockés dans `insight_feedback` sous
+   *  la clé `priority_label:<nom>`, lus en direct parce que le payload peut
+   *  dater d'un étoilage plus ancien. */
   insightFeedback: Record<string, string>;
-  // Commentaires de la semaine courante (pré-remplissage) + objectif du compte.
-  // Même double clé que `feedback` ci-dessus.
-  comments: Record<string, string>;
   objectif: string | null;
   onboarded: boolean;
   // Liste maîtresse des thèmes (étape « priorités » du parcours de démarrage).
   labels: string[];
-  // Clés des conseils actuellement suivis (« ▶ Je le teste » → en cours).
-  trackedKeys: string[];
-  // L'action produite par un conseil, par clé de conseil — la carte a besoin
-  // de l'objet, pas seulement de savoir qu'il existe.
-  suivis: Record<string, TrackedAction>;
-  // Actions en cours / faites — lues en direct (le bloc du haut s'affiche au clic).
-  actions: TrackedAction[];
-  // Actions rangées (verdict vu) — l'historique de la section Suivi.
-  actionsArchived: TrackedAction[];
-  decouvertes: Decouvertes;
 };
 
 function iso(d: Date): string {
@@ -657,59 +407,12 @@ export function fmtCHF(n: number): string {
   return n.toLocaleString("fr-CH", { maximumFractionDigits: 0 }).replace(/ /g, " ");
 }
 
-// LA CLÉ DE LOOKUP « current »/« comment » D'UNE CARTE (TASK-025) — `reco_key`
-// seul ne suffit plus : une clé-règle générique (ex. « gaspillage ») porte
-// maintenant une ligne PAR THÈME (`reco_feedback_uq2`, migration
-// `reco_feedback_contexte.sql`). `""` est le sentinel « pas de thème »
-// (réglages compte entier), le même que côté écriture (`actions.ts`).
-export function feedbackKey(recoKey: string, theme: string | null): string {
-  return `${recoKey}::${theme ?? ""}`;
-}
-
-// Lit `reco_feedback` avec repli si la colonne `theme` n'existe pas encore
-// (migration `reco_feedback_contexte.sql` pas jouée) — sans repli, AJOUTER
-// `theme` à la sélection ferait échouer TOUTE la requête (donc perdre
-// `reaction`/`comment` aussi, pas seulement le thème) tant que la migration
-// n'est pas passée.
-//
-// `migrationOk` REMONTE la distinction jusqu'à l'appelant (rejet du checker,
-// 3e passe) — sans ça, la clé plate `reco_key` (repli légitime SEULEMENT
-// quand la migration est absente) était aussi peuplée quand elle était
-// juste ABSENTE POUR CE THÈME PRÉCIS (migration active, mais rien cliqué sur
-// CE thème) : un refus sur le thème A s'affichait alors comme actif sur le
-// thème B, et le désactiver ne supprimait aucune ligne (aucune n'existe pour
-// B) — plus « transféré » comme au 1er rejet, mais « impossible à poser sur
-// un 2e thème ». `migrationOk` permet à l'appelant de ne peupler la clé
-// plate QUE quand la migration est réellement absente.
-async function fetchRecoFeedbackRows(
-  supabase: ReturnType<typeof createClient>,
-  uid: string,
-  cutoff: string
-) {
-  const withTheme = await supabase
-    .from("reco_feedback")
-    .select("reco_key, reaction, week_start, comment, theme")
-    .eq("user_id", uid)
-    .gte("week_start", cutoff)
-    .order("week_start", { ascending: false });
-  if (!withTheme.error) return { ...withTheme, migrationOk: true as const };
-  const sansTheme = await supabase
-    .from("reco_feedback")
-    .select("reco_key, reaction, week_start, comment")
-    .eq("user_id", uid)
-    .gte("week_start", cutoff)
-    .order("week_start", { ascending: false });
-  return { ...sansTheme, migrationOk: false as const };
-}
 
 export async function getWeeklyData(): Promise<WeeklyData> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
 
-  // On lit ~1 mois de réactions : assez pour les 4 semaines que `feedback`
-  // expose.
-  const fbCutoff = iso(addDays(new Date(), -28));
   //
   // LES DEUX RÉGIES NE SE LISENT PLUS QU'À UNE LIGNE CHACUNE
   // (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`), et
@@ -721,7 +424,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // Le `limit(3000)` d'avant était en outre une fiction — PostgREST plafonne à
   // 1 000 lignes et tronque EN SILENCE (`CLAUDE.md` §8) : les sommes que ce
   // ticket supprime se calculaient sur un mois tronqué sans le dire.
-  const [metaRes, googleRes, followersRes, reportRes, fbRes, profileRes, insightRes, trackRes, noteRes, budgetRes, canauxMuets] =
+  const [metaRes, googleRes, followersRes, reportRes, profileRes, insightRes, canauxMuets] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -756,7 +459,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .eq("user_id", uid)
       .order("week_start", { ascending: false })
       .limit(1),
-    fetchRecoFeedbackRows(supabase, uid, fbCutoff),
     // `fetch_schedule` ENTRE DANS CETTE LECTURE, et c'est sans risque ici : la
     // colonne est celle que `_due_today` lit pour décider qui est récolté
     // (`saas/collecte/automatisation/fetch_all.py`). Une base qui ne l'aurait
@@ -774,20 +476,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .from("insight_feedback")
       .select("insight_key, verdict")
       .eq("user_id", uid),
-    // Actions décidées (« ▶ Je le teste ») — lues en entier et en direct : le
-    // bloc « ce que tu dois faire » s'affiche au clic, sans attendre le worker.
-    supabase
-      .from("suivi_actions")
-      .select("*")
-      .eq("user_id", uid)
-      .order("decided_at", { ascending: false })
-      .limit(60),
-    // A-T-IL DÉJÀ ÉCRIT UNE NOTE, UN JOUR ? La lecture des actions juste
-    // au-dessus est bornée à 60 lignes et ne peut donc pas répondre : « jamais »
-    // ne se déduit pas d'une fenêtre. Une ligne suffit, on ne lit que son id.
-    supabase.from("suivi_actions").select("id").eq("user_id", uid).eq("kind", "note").limit(1),
-    // A-T-IL DÉJÀ POSÉ UN BUDGET ? Même question, même forme.
-    supabase.from("channel_budgets").select("id").eq("user_id", uid).limit(1),
     // QUELLE RÉCOLTE A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48). Dans le même
     // lot que le reste : la lecture ne coûte rien de plus en temps.
     //
@@ -822,125 +510,6 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const insightFeedback: Record<string, string> = {};
   for (const row of insightRes.data ?? []) {
     if (row.insight_key && row.verdict) insightFeedback[row.insight_key] = row.verdict;
-  }
-
-  // Les chiffres du verdict (avant → après) sont calculés par le worker : on
-  // les rapatrie par id sur les lignes lues en direct.
-  const todayIso = iso(new Date());
-  const measured = new Map<string, TrackedAction>();
-  for (const v of report?.tracking?.verified ?? []) measured.set(String(v.id), v);
-  // Le point d'étape vit sur les actions ENCORE en cours : il n'est pas dans
-  // `verified`, qui ne contient que ce dont le verdict est tombé.
-  const etapes = new Map<string, TrackedAction["etape"]>();
-  for (const v of report?.tracking?.running ?? [])
-    if (v.etape) etapes.set(String(v.id), v.etape);
-
-  // Les actions prises AVANT que la photo du conseil existe n'ont pas de
-  // detail : on le retrouve dans le rapport courant tant que le conseil y est
-  // encore (même clé). Mieux qu'un titre orphelin.
-  const recoDetail = new Map<string, TrackedAction["detail"]>();
-  const collecte = (x?: PayloadReco | null) => {
-    if (x?.key && !recoDetail.has(x.key))
-      recoDetail.set(x.key, {
-        observation: x.observation,
-        pourquoi: x.pourquoi,
-        verifier: x.verifier,
-        effort: x.effort ?? null,
-      });
-  };
-  for (const tf of report?.themes_focus ?? []) for (const x of tf.recos) collecte(x);
-  for (const x of report?.reglages ?? []) collecte(x);
-  for (const x of report?.top_recos ?? []) collecte(x);
-  for (const x of report?.recos ?? []) collecte(x);
-
-  const allActions: TrackedAction[] = (trackRes.data ?? []).map((r: any) => {
-    const status = String(r.status ?? "running") as TrackedAction["status"];
-    const check = String(r.check_at ?? "").slice(0, 10);
-    const m = measured.get(String(r.id));
-    return {
-      id: String(r.id),
-      reco_key: String(r.reco_key ?? ""),
-      kind: r.kind === "note" ? "note" : "action",
-      title: String(r.title ?? ""),
-      theme: (r.theme as string | null) ?? null,
-      metric_label: (r.metric_label as string | null) ?? null,
-      decided_at: String(r.decided_at ?? "").slice(0, 10),
-      check_at: check,
-      done_at: r.done_at ? String(r.done_at).slice(0, 10) : null,
-      status,
-      // Lu UNIQUEMENT depuis la ligne elle-même — jamais depuis le repli
-      // `recoDetail` (la photo d'un conseil du rapport courant, qui ne sait
-      // pas qui a créé la ligne de suivi). Absent avant que le worker n'ait
-      // commencé à l'écrire (migration §11 déjà en place, mais rapports
-      // publiés avant cette tâche) : ces lignes-là n'ont simplement pas
-      // d'origine connue, traitées comme manuelles par défaut — c'était déjà
-      // leur seul comportement possible.
-      origin: r.detail && typeof r.detail === "object" && r.detail.origin === "auto"
-        ? "auto"
-        : undefined,
-      // `"auto"` (l'hypothèse auto-suivie) reçoit son verdict à l'échéance
-      // exactement comme `"done"` — sans jamais dépendre d'un clic client.
-      due: (status === "done" || status === "auto") && check !== "" && check <= todayIso,
-      detail:
-        (r.detail as TrackedAction["detail"]) ??
-        recoDetail.get(String(r.reco_key ?? "")) ??
-        null,
-      etape: etapes.get(String(r.id)) ?? null,
-      then: m?.then,
-      now: m?.now,
-      delta: m?.delta ?? null,
-      verdict: m?.verdict,
-    };
-  });
-  const vivantes = (st?: string) => st !== "archived" && st !== "dropped";
-  const actions = allActions.filter((a) => vivantes(a.status));
-  const actionsArchived = allActions.filter((a) => !vivantes(a.status));
-  // L'ACTION QU'UN CONSEIL A PRODUITE, indexée par sa clé.
-  //
-  // La carte du conseil ne recevait qu'un booléen « déjà pris ». Il lui faut
-  // désormais l'objet : son `id` (pour la résoudre), son état, son échéance. Bâti
-  // sur les VIVANTES seulement — une action rangée ne re-verrouille pas son
-  // conseil, il peut être repris. `trackRes` est trié `decided_at` décroissant,
-  // donc la première vue est la plus récente.
-  const suivis: Record<string, TrackedAction> = {};
-  for (const a of actions)
-    if (a.kind !== "note" && a.reco_key && !(a.reco_key in suivis)) suivis[a.reco_key] = a;
-  // Un conseil reste « en test » tant que son action n'est pas rangée.
-  const trackedKeys: string[] = Object.keys(suivis);
-
-  // Dernière réaction par clé (tri desc → première vue = la plus récente),
-  // même logique que fetch_reco_feedback côté Python. Clé COMPOSITE
-  // (`feedbackKey`, précise — une clé-règle générique comme « gaspillage »
-  // porte une ligne par thème) TOUJOURS peuplée. La clé PLATE (`reco_key`
-  // seul, ancien comportement compte-entier) n'est peuplée QUE si
-  // `!fbRes.migrationOk` (rejet du checker, 3e passe) : sinon, dès que la
-  // migration est active, l'ABSENCE de ligne pour CE thème précis (rien
-  // cliqué ici) se voyait recouverte par la clé plate d'un AUTRE thème —
-  // un refus sur A s'affichait comme actif sur B, et le désactiver sur B ne
-  // supprimait aucune ligne (aucune n'existe pour B). La clé plate ne doit
-  // servir de repli QUE quand la migration est réellement absente.
-  const feedback: Record<string, string> = {};
-  for (const row of fbRes.data ?? []) {
-    if (!row.reco_key || !row.reaction) continue;
-    const composite = feedbackKey(row.reco_key, (row as { theme?: string | null }).theme ?? null);
-    if (!(composite in feedback)) feedback[composite] = row.reaction;
-    if (!fbRes.migrationOk && !(row.reco_key in feedback)) feedback[row.reco_key] = row.reaction;
-  }
-
-  // Commentaires de la semaine courante (lundi) — pré-remplissent les cartes.
-  // Même règle de clé (composite toujours, plate seulement si `!migrationOk`)
-  // que `feedback` ci-dessus.
-  const nowLocal = new Date();
-  const mondayLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
-  mondayLocal.setDate(mondayLocal.getDate() - ((mondayLocal.getDay() + 6) % 7));
-  const p2 = (n: number) => String(n).padStart(2, "0");
-  const mondayIso = `${mondayLocal.getFullYear()}-${p2(mondayLocal.getMonth() + 1)}-${p2(mondayLocal.getDate())}`;
-  const comments: Record<string, string> = {};
-  for (const row of fbRes.data ?? []) {
-    if (!row.reco_key || !row.comment || String(row.week_start).slice(0, 10) !== mondayIso) continue;
-    const composite = feedbackKey(row.reco_key, (row as { theme?: string | null }).theme ?? null);
-    if (!(composite in comments)) comments[composite] = row.comment;
-    if (!fbRes.migrationOk && !(row.reco_key in comments)) comments[row.reco_key] = row.comment;
   }
 
   // Si la colonne business_type n'existe pas encore (migration §7 pas passée),
@@ -1013,24 +582,10 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     report,
     publieLe,
     jourDeTravail,
-    feedback,
     insightFeedback,
-    comments,
     objectif,
     onboarded,
     labels,
-    trackedKeys,
-    suivis,
-    actions,
-    actionsArchived,
     canauxMuets,
-    // UNE ERREUR VAUT « DÉJÀ FAIT », jamais « jamais fait » : si la colonne
-    // `kind` ou la table manquent (migration pas passée), on ne pousse pas vers
-    // un geste dont on ne sait pas s'il est possible. Un conseil d'usage de trop
-    // se paie plus cher qu'un conseil d'usage manquant — il devient un décor.
-    decouvertes: {
-      note: Boolean(noteRes.error) || (noteRes.data ?? []).length > 0,
-      budget: Boolean(budgetRes.error) || (budgetRes.data ?? []).length > 0,
-    },
   };
 }

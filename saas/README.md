@@ -1,13 +1,16 @@
-# saas/ — le produit (Next.js + collecte/recos_ia/traitement headless)
+# saas/ — le produit (Next.js + collecte/traitement headless)
 
 Ce dossier porte **Pulse** : `web/` (le portail Next.js, déployé sur Vercel),
 `collecte/` (récolte brute par plateforme, lancée par GitHub Actions),
-`recos_ia/` (décide quoi recommander — moteur de recos, labellisation IA,
-catégorisation IA, persona, constats), `traitement/` (assemble le rapport
-depuis ce que `collecte/` et `recos_ia/` ont produit), `commun/` (lecture/
-écriture Supabase + secrets, utilisé par les trois) et `emailing/` (email
-hebdo). L'ancien Streamlit a été retiré (voir `STREAMLIT_REMOVAL.md` à la
-racine).
+`traitement/` (assemble et publie le rapport depuis ce que `collecte/` a
+récolté), `commun/` (lecture/écriture Supabase + secrets, utilisé par les deux)
+et `emailing/` (email hebdo). L'ancien Streamlit a été retiré (voir
+`STREAMLIT_REMOVAL.md` à la racine).
+
+**`recos_ia/` N'EXISTE PLUS** (2026-09-21). Le moteur de recommandations, les
+règles payantes, les constats, la labellisation IA, la catégorisation IA, le
+persona et la mémoire de thème ont été retirés du produit. Pulse constate, il
+ne conseille pas, et plus aucun appel à un modèle de langage n'y subsiste.
 
 ## ⚡ Fetch automatique (le « ça marche sans moi ») — FAIT
 
@@ -42,9 +45,9 @@ Meta Ads + Instagram n'ont besoin d'aucun secret app (token utilisateur en base)
 
 | Phase | Quoi | Statut |
 |-------|------|--------|
-| 1 | Cron : fetch auto (`collecte/`) + recos (`recos_ia/`) + **rapport précalculé** (`traitement/build_report.py` → table `weekly_reports`) | ✅ câblé au cron quotidien |
+| 1 | Cron : fetch auto (`collecte/`) + **rapport précalculé** (`traitement/build_report.py` → table `weekly_reports`) | ✅ câblé au cron quotidien |
 | 2 | **Email hebdo** responsive — lit le même payload `weekly_reports` | 🟡 rendu OK, envoi à brancher |
-| 3 | Portail **Next.js** (Vercel) : `web/` = **Pulse** | ✅ en prod (auth, KPIs, conseils, réactions) |
+| 3 | Portail **Next.js** (Vercel) : `web/` = **Pulse** | ✅ en prod (auth, dashboards, rapport hebdo) |
 
 ## Structure
 
@@ -53,36 +56,26 @@ saas/
 ├── collecte/            récolte brute, rien d'autre — voir collecte/CLAUDE.md
 │   ├── meta/             fetch_meta_ads.py, fetch_instagram.py
 │   ├── google/           fetch_google_ads.py
-│   ├── ga4/              fetch_ga4.py + ga4.py (orchestration fetch + contexte recos)
+│   ├── ga4/              fetch_ga4.py + ga4.py (orchestration fetch + contexte du rapport)
 │   ├── commun/           fetch_token.py (OAuth Google, collecte-only)
-│   └── automatisation/   fetch_all.py (cron) + run_weekly.py (démo) + suivi.py
-├── recos_ia/             décide quoi recommander — voir recos_ia/CLAUDE.md
-│   reco_engine.py (moteur, déterministe), insights.py (constats, déterministe),
-│   labeling.py (thèmes, IA), categorizing.py (conversions GA4, IA), user_persona.py (profil, IA)
-├── traitement/           assemble et publie le rapport depuis collecte/ + recos_ia/ — voir traitement/CLAUDE.md
-│   build_report.py
-├── commun/               lecture/écriture Supabase + secrets, utilisé par les 3 domaines ci-dessus — voir commun/CLAUDE.md
+│   └── automatisation/   fetch_all.py (cron) + suivi.py
+├── traitement/           assemble et publie le rapport depuis collecte/ — voir traitement/CLAUDE.md
+│   build_report.py, lecteur.py (le seam hors ligne), matrice.py (full-history)
+├── commun/               lecture/écriture Supabase + secrets, utilisé par les 2 domaines ci-dessus — voir commun/CLAUDE.md
 │   app_secrets.py, fetch_data.py, insert_data.py
 ├── emailing/             render.py (email « L'essentiel ») + send.py (envoi) — voir emailing/CLAUDE.md
 └── web/                  portail Next.js — voir web/CLAUDE.md
 ```
 
-## Tester l'email de démo (sans compte, sans risque)
+## Prévisualiser l'email
 
-`collecte/automatisation/run_weekly.py::run()` (chargement multi-users) n'est
-pas câblé — voir « Ce qui reste à câbler » plus bas. Son `__main__` reste utile
-pour prévisualiser le rendu email sur un utilisateur fictif :
+`run_weekly.py`, la démo bout-en-bout qui servait à ça, est partie avec les
+recommandations : elle n'était câblée à aucun cron et son `run()` levait
+`NotImplementedError`. Le seul chemin d'envoi est désormais
+`traitement/build_report.py::publish_weekly_report`, atteint par `fetch_all.py`.
 
-```bash
-cd saas
-pip install -r requirements.txt
-python collecte/automatisation/run_weekly.py
-```
-
-- Sans clé d'email configurée → **mode `dry-run`** : rien n'est envoyé, mais
-  un aperçu est écrit dans `saas/collecte/automatisation/_preview.html`. Ouvre-le
-  dans un navigateur pour voir l'email (teste-le aussi en réduisant la fenêtre =
-  vue mobile).
+Sans `RESEND_API_KEY`, `send.py` passe en **mode `dry`** : rien ne part, et la
+ligne est quand même rangée dans `email_envois` en disant que rien n'est parti.
 
 ## Brancher l'envoi réel (Resend)
 
@@ -93,20 +86,10 @@ jusqu'à 3 000 mails/mois. Une fois le compte créé + le domaine connecté :
 export EMAIL_PROVIDER=resend
 export RESEND_API_KEY=re_xxxxxxxx
 export EMAIL_FROM="rapport@ton-domaine.ch"
-python collecte/automatisation/run_weekly.py
 ```
 
 `send.py` est **agnostique** : pour passer à Postmark ou autre, on ajoute un cas,
 le reste ne bouge pas.
-
-## Ce qui reste à câbler (Phase 1)
-
-- `run()` (`collecte/automatisation/run_weekly.py`) : lister les users Supabase
-  (service key) + charger leurs données (réutiliser les requêtes de
-  `commun/fetch_data.py`) puis appeler `weekly_for_user`.
-- Brancher `run()` sur un cron (Railway cron / Supabase scheduled / GitHub Actions), lundi 07:00.
-- Optionnel : remplacer `build_wins_text` (déterministe) par l'IA, comme dans
-  `traitement/build_report.py` (`_call_gemini`).
 
 ## Variables d'environnement
 

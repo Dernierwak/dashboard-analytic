@@ -234,8 +234,8 @@ def fetch_google_ads_ad_insights(supabase: Client, user_id: str) -> list[dict]:
     PAGINÉ DEPUIS QUE LE RAPPORT LA LIT. Un seul `.execute()` s'arrête au
     plafond PostgREST de 1 000 lignes, et il s'y arrête EN SILENCE : un compte à
     40 annonces perd tout ce qui précède les 25 derniers jours, et les règles
-    qui comparent des Annonces (`saas/recos_ia/regles_payantes.py`) auraient
-    comparé un échantillon tronqué sans que rien ne le dise (`CLAUDE.md` §8).
+    qui comparaient des Annonces auraient comparé un échantillon tronqué sans
+    que rien ne le dise (`CLAUDE.md` §8).
     """
     try:
         return _all_pages(
@@ -248,64 +248,6 @@ def fetch_google_ads_ad_insights(supabase: Client, user_id: str) -> list[dict]:
         return []
 
 
-def fetch_platform_budgets(supabase: Client, user_id: str) -> list[dict]:
-    """Le budget POSÉ sur chaque campagne, au dernier relevé connu de son canal.
-
-    `platform_budgets` est une suite de PHOTOS hebdomadaires : aucune API ne dit
-    ce qu'un budget valait il y a trois semaines, on ne connaît que sa valeur au
-    moment du relevé (voir `upsert_platform_budgets`). On rend donc le relevé le
-    plus récent, et la date de ce relevé avec — un conseil qui s'appuie dessus
-    doit pouvoir dire de quand il parle.
-
-    LE RELEVÉ EST CHOISI PAR CANAL, jamais un seul pour les deux. Même raison
-    que `getBudgetPlanifie` (`saas/web/lib/budgets.ts`) : le jour où le jeton
-    Google expire, seul Meta est photographié — un relevé commun ferait
-    s'effondrer le budget posé, puis doubler la semaine suivante, sans que rien
-    n'ait bougé chez le client.
-
-    [] si la table n'existe pas encore : la règle qui la lit se tait, elle
-    n'invente pas un budget de zéro.
-    """
-    lignes: list[dict] = []
-    for canal in ("meta", "google"):
-        try:
-            dernier = (
-                supabase.table("platform_budgets")
-                .select("captured_on")
-                .eq("user_id", user_id)
-                .eq("channel", canal)
-                .order("captured_on", desc=True)
-                .limit(1)
-                .execute()
-                .data
-            ) or []
-        except Exception:
-            # `continue`, PAS `return []` : une panne sur la requête Google ne
-            # doit pas jeter les lignes Meta déjà lues (relevé du repost de la
-            # revue de code). Si c'est la table qui manque, les deux canaux
-            # échouent de la même façon et la fonction rend `[]` toute seule —
-            # `theme_hors_budget` se tait alors, elle n'invente pas un zéro.
-            continue
-        if not dernier:
-            continue
-        jour = str(dernier[0].get("captured_on") or "")[:10]
-        if not jour:
-            continue
-        try:
-            lignes += _all_pages(
-                lambda _c=canal, _j=jour: supabase.table("platform_budgets")
-                .select("channel, campaign_id, campaign_name, daily_budget, "
-                        "total_budget, start_date, end_date, status, captured_on")
-                .eq("user_id", user_id)
-                .eq("channel", _c)
-                .eq("captured_on", _j)
-                # Pagination sans ordre stable = lignes répétées ou sautées :
-                # PostgREST ne garantit rien sur l'ordre par défaut.
-                .order("campaign_id", desc=False)
-            )
-        except Exception:
-            continue
-    return lignes
 
 
 def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
@@ -521,8 +463,11 @@ def fetch_objectif(supabase: Client, user_id: str) -> str | None:
 
 def fetch_onboarding_profile(supabase: Client, user_id: str) -> dict[str, str | None]:
     """Les 4 réponses de l'onboarding express (secteur, budget, temps,
-    frustration) — la base fixe du profil client vivant (`user_persona.py`),
-    saisie une fois à l'inscription et jamais redérivée."""
+    frustration), saisies une fois à l'inscription et jamais redérivées.
+
+    PLUS PERSONNE NE LES LIT depuis que le profil client vivant est parti avec
+    les recommandations (2026-09-21). La lecture reste parce que les réponses,
+    elles, sont toujours écrites par l'onboarding."""
     try:
         res = (
             supabase.table("profiles")
@@ -564,159 +509,12 @@ def fetch_theme_objectifs(supabase: Client, user_id: str) -> dict[str, str]:
     return out
 
 
-def fetch_reco_feedback(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:
-    """Dernière réaction connue par type de conseil, sur les `recent_weeks` semaines.
-    Returns: {reco_key: "useful"|"not_for_me"|"done"} (la plus récente par key).
-    """
-    from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
-    out: dict[str, str] = {}
-    try:
-        res = (
-            supabase.table("reco_feedback")
-            .select("reco_key, reaction, week_start")
-            .eq("user_id", user_id)
-            .gte("week_start", cutoff)
-            .order("week_start", desc=True)
-            .execute()
-        )
-        for row in (res.data or []):
-            key = row.get("reco_key")
-            if key and key not in out:  # 1re vue = la plus récente (tri desc)
-                out[key] = row.get("reaction")
-    except Exception:
-        pass
-    return out
 
 
-def fetch_reco_theme_context(supabase: Client, user_id: str, recent_weeks: int = 4) -> list[dict] | None:
-    """Feedback contextualisé par thème (migration `reco_feedback_contexte.sql`
-    — colonnes `theme`/`title`, NOT NULL DEFAULT '' pour `theme`). Sert deux
-    besoins distincts du Graphe B (`build_report.py`) :
-      - museler `not_for_me` par (reco_key, thème) plutôt que par reco_key
-        seul sur tout le compte (voir `build_recos`, `saas/recos_ia/reco_engine.py`) ;
-      - donner à `_theme_ai_recos` le TEXTE des pistes IA récemment écartées
-        ou appliquées sur SON thème — les clés `ai_<theme>_<i>` sont
-        positionnelles (l'ordre de Gemini change d'une semaine à l'autre),
-        seul ce texte survit d'une semaine à l'autre.
-    Returns: [{reco_key, theme, title, reaction, week_start}] du plus récent
-    au plus ancien, filtré aux lignes qui portent un thème réel (`theme <> ''`
-    — `''` est le sentinel « pas de thème », voir la migration).
-
-    `None` (PAS `[]`) SI LA REQUÊTE ÉCHOUE — distinction volontaire (rejet du
-    checker, 2e passe) : `[]` doit vouloir dire « interrogé avec succès, rien
-    à raconter » (aucun museau à appliquer, c'est correct et attendu tant que
-    personne n'a encore cliqué). Une exception (migration pas encore jouée,
-    colonne absente) veut dire autre chose : « je ne sais pas », et NE DOIT
-    PAS être lu comme « rien n'a jamais été refusé » — sinon `not_for_me`
-    perdrait tout effet sur les cartes de thème tant que la migration n'est
-    pas jouée (régression relevée par le checker, 2e passe). L'appelant
-    (`build_payload`) retombe sur l'ancien museau compte-entier quand ce
-    signal vaut `None`.
-    """
-    from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
-    try:
-        res = (
-            supabase.table("reco_feedback")
-            .select("reco_key, theme, title, reaction, week_start")
-            .eq("user_id", user_id)
-            .gte("week_start", cutoff)
-            .neq("theme", "")
-            .order("week_start", desc=True)
-            .execute()
-        )
-        return res.data or []
-    except Exception:
-        return None
 
 
-def fetch_theme_plan(supabase: Client, user_id: str) -> dict[str, dict]:
-    """L'hypothèse ACTIVE d'un thème (table `theme_plan`) — pas l'historique,
-    l'état courant : depuis quand elle tourne, quel levier, et sa carte
-    complète (`snapshot`) pour la réafficher fidèlement tant que la fenêtre
-    d'attente (`ATTENTE_MIN_NOUVELLE_HYPOTHESE`, `build_report.py`) n'est pas
-    écoulée — sans ça, `_theme_ai_recos` proposerait une nouvelle hypothèse
-    chaque semaine et « suivre une théorie » resterait une façade (wayfinder
-    `.scratch/recos-labels/issues/03-suivi-hypothese.md`).
-
-    Ramène AUSSI la seconde couche du plan, la mémoire narrative du thème
-    (`resume`, voir `saas/recos_ia/theme_memoire.py`) : une seule lecture pour
-    l'état et la mémoire, celle-ci n'étant déjà faite qu'une fois par rapport.
-
-    Returns: {thème normalisé (minuscules) : {reco_key, levier, decided_at,
-    snapshot, resume}}. {} si la table n'est pas encore migrée ou si rien
-    n'est suivi.
-    """
-    # `resume` est arrivé après la table : demander une colonne absente fait
-    # échouer la requête ENTIÈRE côté PostgREST, pas seulement la colonne. Sans
-    # ce repli, un déploiement du code en avance sur la migration ferait perdre
-    # aussi l'ÉTAT — donc le blocage d'une nouvelle hypothèse.
-    #
-    # LE REPLI NE VAUT QUE POUR UNE COLONNE INCONNUE (42703), pas pour
-    # n'importe quel échec : sur un timeout ou un 5xx, retenter sans `resume`
-    # peut réussir et publier un rapport SANS mémoire alors que la base en a
-    # une — indiscernable d'un thème qui n'en a pas encore. Une vraie panne
-    # doit rendre {} comme avant, pas une demi-lecture silencieuse.
-    for cols in ("theme, reco_key, levier, decided_at, snapshot, resume",
-                 "theme, reco_key, levier, decided_at, snapshot"):
-        try:
-            res = (
-                supabase.table("theme_plan")
-                .select(cols)
-                .eq("user_id", user_id)
-                .execute()
-            )
-        except Exception as err:
-            _msg = str(err).lower()
-            if "42703" in _msg or "does not exist" in _msg:
-                continue
-            return {}
-        return {str(r["theme"]).strip().lower(): r for r in (res.data or []) if r.get("theme")}
-    return {}
 
 
-def fetch_reco_verdicts(supabase: Client, user_id: str, recent_weeks: int = 4) -> dict[str, str]:
-    """Le dernier verdict PERSISTÉ (migration `suivi_actions_verdict.sql`) par
-    reco_key, sur les `recent_weeks` semaines — écrit une seule fois par
-    `build_report.py`, au moment où la boucle de mesure calcule le verdict
-    d'une action `done`/`auto`. Alimente la repondération du feedback `done`
-    dans `build_recos` (`saas/recos_ia/reco_engine.py`) : un verdict qui confirme
-    l'effet dépriorise fortement, un verdict qui le contredit ne dépriorise
-    pas, et tant qu'aucun verdict n'est encore tombé (colonne NULL, ou
-    migration pas encore passée) la clé est simplement absente d'ici —
-    repondération neutre par défaut.
-
-    LE FILTRE PORTE SUR `check_at`, PAS `decided_at` (rejet du checker, 2e
-    passe) : le verdict n'est calculé/écrit qu'à `today >= check_at`, et
-    `check_at` est RECALCULÉ à `done_at + 14j` au clic « ✓ C'est fait »
-    (`saas/web/app/actions.ts::resolveAction`) — `done_at` est postérieur à
-    `decided_at` (le jour de « ▶ Je le teste »), parfois de bien plus de 14
-    jours. Filtrer sur `decided_at` rendait donc le verdict illisible dès que
-    le délai entre les deux clics dépassait `recent_weeks` : `check_at` est la
-    SEULE date qui dit fidèlement quand le verdict est réellement tombé.
-    Returns: {reco_key: "better"|"worse"|"stable"} (le plus récent par clé).
-    """
-    from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(weeks=recent_weeks)).isoformat()
-    out: dict[str, str] = {}
-    try:
-        res = (
-            supabase.table("suivi_actions")
-            .select("reco_key, verdict, check_at")
-            .eq("user_id", user_id)
-            .gte("check_at", cutoff)
-            .not_.is_("verdict", "null")
-            .order("check_at", desc=True)
-            .execute()
-        )
-        for row in (res.data or []):
-            key = row.get("reco_key")
-            if key and key not in out:
-                out[key] = row.get("verdict")
-    except Exception:
-        pass
-    return out
 
 
 # `fetch_reco_decisions` A ÉTÉ RETIRÉE LE 2026-09-13.
@@ -751,25 +549,6 @@ def fetch_insight_feedback(supabase: Client, user_id: str) -> dict[str, str]:
         return {}
 
 
-def fetch_reco_comments(supabase: Client, user_id: str, limit: int = 60) -> list[dict]:
-    """Commentaires libres laissés sur les conseils (les plus récents d'abord).
-
-    Alimente le persona utilisateur ([[comment-profil-user-ia]]) et le pré-remplissage
-    du champ commentaire. Returns: [{reco_key, comment, reaction, week_start, created_at}]
-    """
-    try:
-        res = (
-            supabase.table("reco_feedback")
-            .select("reco_key, comment, reaction, week_start, created_at")
-            .eq("user_id", user_id)
-            .not_.is_("comment", "null")
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-        )
-        return [r for r in (res.data or []) if (r.get("comment") or "").strip()]
-    except Exception:
-        return []
 
 
 def fetch_user_profile(supabase: Client, user_id: str) -> tuple[str | None, str | None]:

@@ -39,7 +39,7 @@
 --
 -- LE LABEL EST STOCKÉ PAR SON NOM, comme partout ailleurs dans Pulse
 -- (`meta_campaign_config.label`, `instagram_organic_posts.labels`,
--- `suivi_actions.theme`). Renommer ou supprimer un thème doit donc propager
+-- `theme_objectifs.label`). Renommer ou supprimer un thème doit donc propager
 -- ici aussi — c'est fait dans `renameLabel` / `deleteLabel`
 -- (saas/web/app/actions.ts). Sans ça, un thème renommé emporterait ses
 -- campagnes et laisserait ses événements orphelins.

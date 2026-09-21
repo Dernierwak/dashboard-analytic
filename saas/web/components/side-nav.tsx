@@ -101,7 +101,6 @@ const GROUPES: Groupe[] = [
 ];
 
 export type InfosNav = {
-  aFaire: number;
   fraicheur: string | null; // « données au 27 jul »
 };
 
@@ -205,22 +204,6 @@ function Contenu({
                       </span>
                       {!replie && <span className="truncate">{e.label}</span>}
 
-                      {tete && infos.aFaire > 0 && (
-                        <span
-                          title={`${infos.aFaire} action${infos.aFaire > 1 ? "s" : ""} à faire`}
-                          className={
-                            replie
-                              ? `absolute top-1.5 right-2.5 h-[7px] w-[7px] rounded-full ${
-                                  on ? "bg-white" : "bg-brand"
-                                }`
-                              : `ml-auto text-[10.5px] font-bold rounded-full px-1.5 py-0.5 ${
-                                  on ? "bg-white/20 text-white" : "bg-brand text-white"
-                                }`
-                          }
-                        >
-                          {replie ? "" : infos.aFaire}
-                        </span>
-                      )}
                     </Link>
 
                     {/* La fraîcheur qualifie le rapport : elle se range sous
@@ -393,11 +376,6 @@ export function SideNav({
           <span className="block h-[1.6px] w-[15px] rounded-full bg-ink" />
         </button>
         <Logo />
-        {infos.aFaire > 0 && (
-          <span className="text-[10.5px] font-bold rounded-full px-1.5 py-0.5 bg-brand text-white">
-            {infos.aFaire}
-          </span>
-        )}
         {/* `place="compact"` : dans 52 px de haut, la pastille dit qu'une
             récolte tourne et rien de plus. Le détail est dans le tiroir, qui
             rend le même module en `flux`. */}

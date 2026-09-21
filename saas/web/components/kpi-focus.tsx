@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LineChart } from "@/components/line-chart";
-import { marqueursCourbe, SOURCE } from "@/components/etat-action";
+import { SOURCE } from "@/components/etat-action";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
 
@@ -343,18 +343,6 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
   const delta = ecartPct(o);
   const groupe = terrain(o.key)?.groupe;
 
-  // Les repères d'action, NOMMÉS quand le rapport porte leur date et leur titre.
-  // Une date exacte est écrite comme une date (« 24 jun ») ; à défaut, seul
-  // l'index de semaine est connu et on écrit « semaine finissant le 24 jun » —
-  // un seau hebdomadaire présenté comme un jour serait un chiffre présenté pour
-  // autre chose que ce qu'il mesure.
-  const marqueurs = marqueursCourbe(
-    k.marqueurs,
-    k.markers,
-    k.labels.length,
-    (i) => k.labels[i]
-  );
-
   // Les groupes réellement présents, dans l'ordre. Un rapport ancien qui porte
   // un ROAS en fait apparaître DEUX côte à côte — « Tes deux régies » pour le
   // seul ROAS, « Meta et Google confondus » pour ses quatre clés nues — et
@@ -424,12 +412,8 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           fmt={(v) => fmtVal(o, v)}
           unit={o.unite}
           ariaLabel={`${o.titre} sur 10 semaines`}
-          marqueurs={marqueurs}
           bandes={bandes.length > 0 ? bandes : undefined}
         />
-        {/* Le comptage « N semaines où tu as appliqué une action » a disparu :
-            il renvoyait à une section supprimée depuis, et chaque repère porte
-            désormais son nom au survol de son point. */}
       </div>
 
       {/* Comment lire cet indicateur. Ce texte existait déjà, mais dans un

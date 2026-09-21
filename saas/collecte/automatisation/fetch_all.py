@@ -557,10 +557,10 @@ def _note_ecriture_sautee(uid: str) -> None:
 # pour une poignée de comptes serait de l'outillage d'exploitation avant d'avoir
 # la preuve qu'on en a besoin. Tranché avec `vision-produit` le 2026-09-20.
 #
-# `report_only` ET `label_only` LE REMPLISSENT AUSSI, et c'est voulu : ce sont
-# les modes par lesquels on republie un rapport à la main, donc ceux par
-# lesquels on vérifie. Taire le signal exactement là où on vient le chercher
-# serait le rendre invisible au seul moment où on le regarde.
+# `report_only` LE REMPLIT AUSSI, et c'est voulu : c'est le mode par lequel on
+# republie un rapport à la main, donc celui par lequel on vérifie. Taire le
+# signal exactement là où on vient le chercher serait le rendre invisible au
+# seul moment où on le regarde.
 #
 # Rempli dans la boucle des profils, qui se suivent en SÉRIE — pas de verrou,
 # contrairement à `_ECRITURES_SAUTEES`, que les fils Meta touchent.
@@ -660,8 +660,8 @@ def a_relever(envoi: dict | None, maintenant: datetime) -> bool:
     le reste. La plupart des ouvertures arrivent APRÈS le premier jour : figer
     la réponse au premier relevé — comme le faisait la version d'avant, qui
     s'arrêtait dès que `releve_a` était posé — perdrait systématiquement le
-    fait qu'on cherche, et d'autant plus sûrement qu'un `label_only` lancé à la
-    main 25 h après l'envoi suffisait à le figer pour de bon.
+    fait qu'on cherche, et d'autant plus sûrement qu'un `report_only` lancé à
+    la main 25 h après l'envoi suffisait à le figer pour de bon.
     """
     from saas.emailing.evenements import (ETATS_DEFINITIFS,
                                           FOURNISSEURS_RELISIBLES,
@@ -1030,7 +1030,6 @@ def _fil(taches: list, suivi: Suivi) -> list[tuple[str, str]]:
 
 
 def run(force: bool = False, only_user: str | None = None,
-        label_only: bool = False, categorize_only: bool = False,
         report_only: bool = False, meta_since: date | None = None) -> None:
     sb = _service_client()
     profiles = (sb.table("profiles")
@@ -1040,14 +1039,12 @@ def run(force: bool = False, only_user: str | None = None,
         # Bouton « Mes données » de Pulse : un seul user, sans attendre son jour
         profiles = [p for p in profiles if p["id"] == only_user]
         force = True
-    _mode = (" · labels seulement" if label_only
-             else " · catégories seulement" if categorize_only
-             else " · rapport seulement" if report_only else "")
+    _mode = " · rapport seulement" if report_only else ""
     print(f"[{datetime.utcnow():%Y-%m-%d %H:%M} UTC] {len(profiles)} profils{_mode}")
 
     # Sans ces secrets, le refresh du token Google echoue et TOUT Google Ads +
     # GA4 est saute en silence. On le dit fort une fois, en tete de run.
-    if not (label_only or categorize_only or report_only):
+    if not report_only:
         _needed = {
             "GOOGLE_ADS_CLIENT_ID": "google_ads.client_id",
             "GOOGLE_ADS_CLIENT_SECRET": "google_ads.client_secret",
@@ -1091,40 +1088,6 @@ def run(force: bool = False, only_user: str | None = None,
                 _note_canaux_qui_durent(uid, _muets)
             except Exception as e:
                 logs.append(f"rapport KO: {e}")
-            print(f"  {uid} → " + " | ".join(logs))
-            continue
-
-        # `label_only` : labellisation IA + republication du rapport, sans
-        # re-fetch réseau (~1 min au lieu de 2-3). Mode de test lui aussi — la
-        # labellisation du client tourne dans la récolte complète, ci-dessous.
-        if label_only:
-            _relever_ouverture(sb, uid, logs)
-            try:
-                from saas.recos_ia.labeling import auto_label
-                logs.append(auto_label(sb, uid))
-            except Exception as e:
-                logs.append(f"labels KO: {e}")
-            try:
-                from saas.traitement.build_report import publish_weekly_report
-                _mot, _muets = publish_weekly_report(sb, uid)
-                logs.append(_mot)
-                _note_canaux_qui_durent(uid, _muets)
-            except Exception as e:
-                logs.append(f"rapport KO: {e}")
-            print(f"  {uid} → " + " | ".join(logs))
-            continue
-
-        # `categorize_only` (mode de test) : classement IA des événements GA4
-        # sans catégorie, sans re-fetch réseau. Ne republie
-        # PAS le rapport : une catégorie de conversion n'influence aucun conseil
-        # ni aucun chiffre du rapport, contrairement à un thème (label_only,
-        # ci-dessus, republie parce que le thème EST ce que le rapport lit).
-        if categorize_only:
-            try:
-                from saas.recos_ia.categorizing import auto_categorize
-                logs.append(auto_categorize(sb, uid))
-            except Exception as e:
-                logs.append(f"categories KO: {e}")
             print(f"  {uid} → " + " | ".join(logs))
             continue
 
@@ -1263,7 +1226,7 @@ def run(force: bool = False, only_user: str | None = None,
         # dédoublonne en gardant l'ordre.
         prevus = list(dict.fromkeys(c for f in fils for c, _ in f))
         if a_tente:
-            prevus += ["labels", "rapport"]
+            prevus += ["rapport"]
         suivi.planifie(sb, prevus)
         for canal, pourquoi in non_appeles:
             suivi.saute(sb, canal, pourquoi)
@@ -1276,22 +1239,6 @@ def run(force: bool = False, only_user: str | None = None,
                 for sorties in ex.map(lambda f: _fil(f, suivi), fils):
                     journal += [(_rang.get(canal, len(CANAUX)), mot)
                                 for canal, mot in sorties]
-
-        # Labellisation IA des nouveaux contenus (posts + campagnes sans thème).
-        # Best-effort : jamais bloquant, ne touche jamais un label posé à la main.
-        # Séquentiel et sur le client principal : il lit ce que les trois fils
-        # viennent d'écrire, il ne peut donc pas partir avant leur jointure.
-        if a_tente:
-            suivi.commence(sb, "labels")
-            try:
-                from saas.recos_ia.labeling import auto_label
-                _mot = auto_label(sb, uid)
-                journal.append((_rang["labels"], _mot))
-                suivi.termine(sb, "labels", "fini", _mot)
-            except Exception as e:
-                _mot = f"labels KO: {e}"
-                journal.append((_rang["labels"], _mot))
-                suivi.termine(sb, "labels", "echec", _mot)
 
         # Rapport hebdo précalculé → weekly_reports (lu par Pulse) + email hebdo.
         # Données fraîches du jour → le rapport publié est à jour lui aussi.
@@ -1364,16 +1311,8 @@ if __name__ == "__main__":
     only_user = None
     if "--user" in sys.argv:       # un seul utilisateur (bouton Pulse), force implicite
         only_user = sys.argv[sys.argv.index("--user") + 1]
-    label_only = False
-    if "--label-only" in sys.argv:  # labellisation IA + republication, sans fetch
-        only_user = sys.argv[sys.argv.index("--label-only") + 1]
-        label_only = True
-    categorize_only = False
-    if "--categorize-only" in sys.argv:  # catégorisation IA des conversions GA4, sans fetch
-        only_user = sys.argv[sys.argv.index("--categorize-only") + 1]
-        categorize_only = True
     report_only = False
-    if "--report-only" in sys.argv:  # republie juste le rapport (conseils), ~30 s
+    if "--report-only" in sys.argv:  # republie juste le rapport, ~30 s
         only_user = sys.argv[sys.argv.index("--report-only") + 1]
         report_only = True
     meta_since = None
@@ -1399,8 +1338,7 @@ if __name__ == "__main__":
             sys.exit(1)
         force = True
     try:
-        run(force=force, only_user=only_user, label_only=label_only,
-            categorize_only=categorize_only, report_only=report_only,
+        run(force=force, only_user=only_user, report_only=report_only,
             meta_since=meta_since)
     except Exception:
         traceback.print_exc()

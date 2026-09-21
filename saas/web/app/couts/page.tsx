@@ -55,7 +55,6 @@ import { aveuglesSur } from "@/lib/canaux-muets";
 import { dateCourte } from "@/components/etat-action";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeDonut } from "@/components/theme-donut";
-import { Carnet } from "@/components/carnet";
 import { Chiffre } from "@/components/chiffre";
 import { type Teinte } from "@/lib/palette";
 
@@ -515,7 +514,6 @@ export default async function CoutsPage({
           ici (la page ne descend pas sous le thème), et c'est très bien : ce
           qu'on écrit en regardant une enveloppe parle d'un budget, donc d'un
           thème ou de rien. */}
-      <Carnet themes={data.labelsChoisis} />
     </main>
   );
 }

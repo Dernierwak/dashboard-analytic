@@ -1,23 +1,16 @@
 import Link from "next/link";
 import type { ChangementApi } from "@/lib/changements-api";
 import {
-  estDecisionClient,
-  feedbackKey,
   fmtCHF,
   noteSerie,
   revenuTheme,
   type ChangementPlateforme,
   type ThemeFocus,
   type ThemeRow,
-  type TrackedAction,
 } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Triangle, sensPente } from "@/components/pente";
-import { dateCourte, marqueursCourbe } from "@/components/etat-action";
-import { RailActions } from "@/components/rail-actions";
-import { NoteAjout } from "@/components/note-ajout";
-import { RecoCard } from "@/components/reco-card";
-import { ConseilsVerrouilles } from "@/components/conseils-verrouilles";
+import { Changements } from "@/components/changements";
 import { CampaignLabelSelect } from "@/components/campaign-label-select";
 import { ScrollList } from "@/components/scroll-list";
 import { ThemeObjectifMini } from "@/components/theme-objectif-mini";
@@ -104,22 +97,8 @@ export function ecartTheme(vals: number[]): number | null {
   return avant > 0 ? ((recent - avant) / avant) * 100 : null;
 }
 
-/**
- * CE THÈME REÇOIT-IL DES CONSEILS ?
- *
- * Le filtre dur du worker (`conseille`, voir `_THEMES_CONSEILLES` dans
- * `saas/traitement/build_report.py`). ABSENT VAUT « OUI » : les payloads
- * publiés avant ce filtre avaient bien des conseils sur toutes leurs cartes,
- * et les verrouiller rétroactivement serait mentir sur ce qu'ils contiennent.
- */
-function recoitDesConseils(theme: ThemeFocus): boolean {
-  return theme.conseille !== false;
-}
-
 export function ThemeCard({
   theme,
-  actions,
-  archived,
   changements = [],
   changementsApi = [],
   rows,
@@ -127,16 +106,10 @@ export function ThemeCard({
   fenetreDates = null,
   decroche = false,
   labels,
-  feedback,
-  comments,
-  suivis,
   conversionsTheme = [],
   objectifEffectif = null,
-  aucunePriorite = false,
 }: {
   theme: ThemeFocus;
-  actions: TrackedAction[];
-  archived: TrackedAction[];
   /** Ce qu'on a DÉDUIT de la dépense, pour CE thème. */
   changements?: ChangementPlateforme[];
   /** Ce que les plateformes DÉCLARENT sur ce thème — prime sur le déduit. */
@@ -154,10 +127,6 @@ export function ThemeCard({
   fenetreDates?: { from: string; to: string } | null;
   decroche?: boolean;
   labels: string[];
-  feedback: Record<string, string>;
-  comments: Record<string, string>;
-  /** L'action produite par un conseil, par clé de conseil. */
-  suivis: Record<string, TrackedAction>;
   /** Les événements GA4 que CE thème suit comme conversions (`theme_ga4_events`,
    *  rang 'principal') — lu à part du payload du rapport, voir `app/page.tsx`. */
   conversionsTheme?: string[];
@@ -167,11 +136,6 @@ export function ThemeCard({
    *  reproduire le repli lui-même — même raison que `objectif-theme.tsx` avant
    *  lui, qui recevait `objectifEffectif` tout calculé pour la même raison. */
   objectifEffectif?: string | null;
-  /** Le COMPTE n'a aucune étoile — distinct de « ce thème-ci n'en a pas ». Les
-   *  deux verrouillent les conseils, mais la phrase qui déverrouille n'est pas
-   *  la même : poser une première étoile, ou en échanger une des trois. Une
-   *  carte ne peut pas trancher seule, elle ne voit que son propre thème. */
-  aucunePriorite?: boolean;
 }) {
   const s = theme.series && theme.series.points.length > 1 ? theme.series : null;
   const vals = s ? s.points.map((p) => p.value) : [];
@@ -206,46 +170,6 @@ export function ThemeCard({
     if (som.eng_avg != null && exclure !== "Engagement")
       cases.push({ cle: "Engagement", valeur: som.eng_avg.toFixed(1), unite: "%" });
   }
-
-  // Les actions de CE thème. Le rail les répartit lui-même entre ce qui court
-  // et ce qui est clos ; ici on ne calcule que ce qui se lit AVANT lui.
-  //
-  // `miennes` reste TOUT — y compris `"auto"` (l'hypothèse posée par le worker
-  // sans clic, voir `build_report.py`) — parce que le rail doit continuer à
-  // la montrer et à porter son verdict (confirmé correct par le checker).
-  const miennes = [...actions, ...archived].filter((a) => a.theme === theme.label);
-  // `miennesManuelles` : ce que LE CLIENT a réellement décidé de tenter.
-  // Rejet du checker (2e ET 3e passe) : le ratio « ce que tu as tenté a bougé
-  // l'indicateur », la date de dernière décision et l'alerte de carence ne
-  // peuvent pas compter une hypothèse que personne n'a cliquée, sous peine
-  // de fabriquer un chiffre (CLAUDE.md §7) et de désactiver ces deux alertes
-  // en silence. `a.status !== "auto"` NE SUFFIT PAS (3e passe) : « ✓ Vu — je
-  // range » et « × j'abandonne » changent `status` sans que le client ait
-  // rien décidé — `estDecisionClient` lit `origin` (durable, survit à ces
-  // deux gestes) au lieu de `status` (voir `lib/report.ts`).
-  const miennesManuelles = miennes.filter(estDecisionClient);
-  // Ce qui a MARCHÉ sur ce thème, pas ce qui a été coché : le verdict vient du
-  // worker quatorze jours après coup, pas du clic.
-  const jugees = miennesManuelles.filter((a) => a.verdict);
-  const gagnantes = jugees.filter((a) => a.verdict === "better").length;
-  const prochain = miennes
-    // Ici, en revanche, `"auto"` reste inclue : « prochain verdict le… » est
-    // informatif sur CE QUI VA ÊTRE JUGÉ, peu importe qui l'a déclenché — ce
-    // n'est pas un chiffre attribué au client, juste une date.
-    .filter((a) => (a.status === "done" || a.status === "auto") && !a.due)
-    .map((a) => a.check_at)
-    .filter(Boolean)
-    .sort()[0];
-  const derniereDecision = miennesManuelles.map((a) => a.decided_at).sort().pop();
-  const semainesDepuis = derniereDecision
-    ? Math.floor(
-        (Date.now() - new Date(derniereDecision + "T00:00:00").getTime()) / (7 * 864e5)
-      )
-    : null;
-
-  const marqueurs = s
-    ? marqueursCourbe(s.marqueurs, s.markers, s.points.length, (i) => s.points[i].label)
-    : [];
 
   // ── LE PLI A DISPARU ──────────────────────────────────────────────────────
   //
@@ -384,7 +308,6 @@ export function ThemeCard({
               fmt={cadre.fmt}
               unit={cadre.unite}
               ariaLabel={`${s.metric_label} du thème ${theme.label} sur ${s.points.length} semaines`}
-              marqueurs={marqueurs}
             />
             {/* Le comptage « N semaines où tu as lancé une action » a disparu
                 avec le plafond de deux étiquettes qui le rendait nécessaire :
@@ -398,168 +321,23 @@ export function ThemeCard({
           </div>
         )}
 
-        {/* LES DEUX COLONNES. À gauche ce qui peut faire bouger la courbe, à
-            droite ce qui a déjà essayé et ce que ça a donné. Sur téléphone
-            elles s'empilent, les conseils d'abord. */}
-        <div className="border-t border-line px-4 py-4 grid gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2 min-w-0">
-            <h4 className="text-[11px] uppercase tracking-wide text-brand font-bold mb-2.5">
-              Comment l&apos;améliorer cette semaine
-            </h4>
-            {theme.recos.length > 0 ? (
-              /* UNE SEULE RANGÉE QUI GLISSE, plus une grille qui empile.
-                 En `sm:grid-cols-2`, trois conseils donnaient deux lignes dont
-                 la seconde était à moitié vide, et le troisième conseil passait
-                 sous la ligne de flottaison de la carte : on ne savait pas
-                 qu'il existait. Alignés, ils se comparent — c'est la seule
-                 chose qu'on fait avec trois conseils.
-
-                 Largeur FIXE et hauteur commune : une rangée dont les cartes
-                 respirent chacune à sa taille se lit comme un empilement raté.
-                 `grid` sur l'enveloppe plutôt que `flex` — c'est ce qui étire
-                 la carte aux deux dimensions sans toucher à `RecoCard`.
-                 `scroll-snap` sur chaque carte : le glissement s'arrête sur une
-                 carte entière, jamais sur un tiers de carte. */
-              <div className="defile-x -mx-1 px-1 pb-1.5 snap-x snap-mandatory">
-                <div className="flex gap-3 items-stretch w-max">
-                  {[...theme.recos]
-                    .sort(
-                      (a, b) => (suivis[b.key] ? 1 : 0) - (suivis[a.key] ? 1 : 0)
-                    )
-                    .map((r) => (
-                      <div
-                        key={r.key}
-                        className="grid w-[268px] sm:w-[300px] shrink-0 snap-start"
-                      >
-                        <RecoCard
-                          r={r}
-                          current={feedback[feedbackKey(r.key, theme.label)] ?? feedback[r.key] ?? null}
-                          comment={comments[feedbackKey(r.key, theme.label)] ?? comments[r.key] ?? null}
-                          theme={theme.label}
-                          action={suivis[r.key] ?? null}
-                        />
-                      </div>
-                    ))}
-                </div>
-              </div>
-            ) : recoitDesConseils(theme) ? (
-              <p className="text-[12.5px] text-faint">
-                Rien d&apos;urgent sur ce thème cette semaine — il tourne dans ses normes.
-              </p>
-            ) : null}
-
-            {/* LE MODULE VERROUILLÉ PREND EXACTEMENT LA PLACE DES CONSEILS.
-                C'est la seule position qui réponde à la question au moment où
-                elle se pose : un lecteur qui compare deux cartes voit d'abord
-                qu'il n'y a rien à faire ici, et il le voit ICI.
-
-                IL NE MANGE PAS LA VEILLE. Une carte hors priorités peut quand
-                même porter une veille — une campagne lancée il y a trois jours,
-                un thème qui s'est arrêté net. Ça ne demande aucun geste, donc ce
-                n'est pas un conseil, donc le filtre dur ne la retire pas : elle
-                reste au-dessus, et le cadenas se lit comme ce qu'il est, une
-                explication de ce qui manque.
-
-                ET « RIEN D'URGENT » NE S'AFFICHE PLUS ICI, c'est la condition
-                juste au-dessus : cette phrase est le verdict des règles, et sur
-                un thème hors priorités aucune règle n'a tourné. L'écrire quand
-                même ferait dire à Pulse qu'il a regardé. */}
-            {!recoitDesConseils(theme) && (
-              <div className="mt-3">
-                <ConseilsVerrouilles
-                  etat={aucunePriorite ? "aucune-priorite" : "hors-priorites"}
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="min-w-0">
+        {/* CE QUI A BOUGÉ SUR CE THÈME — des faits datés, rien d'autre.
+            Ici vivaient deux colonnes : à gauche les conseils, à droite les
+            actions décidées et leur verdict. Les deux sont parties avec les
+            recommandations. Ce qui reste répond à la seule question qu'une
+            courbe pose : qu'est-ce qui a changé pendant qu'elle bougeait. */}
+        {changements.length + changementsApi.length > 0 && (
+          <div className="border-t border-line px-4 py-4">
             <h4 className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">
-              Tes actions sur ce thème
+              Ce qui a bougé sur ce thème
             </h4>
-
-            {/* Le chiffre de la colonne. En 20 px : 1,7 fois plus petit que le
-                34 px de tête, donc un chiffre de bilan, pas un second titre.
-                ET IL NE S'AFFICHE QU'À PARTIR DE DEUX VERDICTS — un ratio sur
-                n = 1 n'est pas une mesure, et « 0/1 » condamnerait un thème
-                pour un seul essai. À un verdict, on écrit le fait, qui est plus
-                fort que la fraction. */}
-            {jugees.length >= 2 ? (
-              <div className="mb-2.5">
-                <span className="font-mono text-[20px] leading-none font-medium text-ink">
-                  {gagnantes}
-                  <span className="text-faint">/{jugees.length}</span>
-                </span>
-                <span className="text-[11.5px] text-muted ml-2">
-                  de ce que tu as tenté ici a bougé l&apos;indicateur
-                </span>
-              </div>
-            ) : jugees.length === 1 ? (
-              <p className="text-[11.5px] text-muted mb-2.5">
-                <span className="font-semibold text-ink">1 action jugée</span> sur ce thème —
-                trop peu pour un taux, assez pour un enseignement.
-              </p>
-            ) : null}
-
-            {prochain && (
-              <p className="text-[11.5px] text-muted mb-2">
-                Prochain verdict le{" "}
-                <span className="font-semibold text-ink">{dateCourte(prochain)}</span>
-              </p>
-            )}
-
-            {/* Le rail montre TOUT ce qui vit sur ce thème — y compris une
-                hypothèse `"auto"` sans aucune action manuelle. L'alerte
-                juste en dessous, elle, ne parle que de ce que LE CLIENT a
-                tenté : les deux ne sont plus le même test (rejet du checker,
-                2e passe) — sinon une hypothèse auto-suivie masquait en
-                silence le rappel « tu n'as encore rien lancé toi-même ». */}
-            {miennes.length + changements.length + changementsApi.length > 0 && (
-              <RailActions
-                actions={miennes}
-                changements={changements}
-                changementsApi={changementsApi}
-                themeCourant={theme.label}
-              />
-            )}
-            {/* « PRENDS UN CONSEIL À GAUCHE » NE SE DIT QUE S'IL Y EN A UN.
-                Sur un thème hors priorités, la colonne de gauche porte un
-                cadenas : envoyer le lecteur y chercher un conseil lui ferait
-                traverser la carte pour rien, et lui ferait croire à une panne.
-                On garde le fait — rien n'a été tenté — et on le laisse sans
-                consigne : la consigne est déjà écrite sur le cadenas. */}
-            {miennesManuelles.length === 0 &&
-              changements.length === 0 &&
-              changementsApi.length === 0 && (
-                <p className="text-[11.5px] text-warn font-semibold leading-relaxed">
-                  Rien n&apos;a encore été tenté sur ce thème
-                  {theme.is_priority && <> — alors qu&apos;il est dans tes priorités</>}.
-                  {recoitDesConseils(theme) && (
-                    <> Prends un conseil à gauche : tu sauras dans deux semaines ce
-                    qu&apos;il a donné.</>
-                  )}
-                </p>
-              )}
-
-            {miennesManuelles.length > 0 && semainesDepuis !== null && semainesDepuis >= 6 && (
-              <p className="text-[11.5px] text-warn font-semibold mt-2">
-                Rien de nouveau lancé depuis {semainesDepuis} semaines.
-              </p>
-            )}
-
-            {/* La troisième voix du fil : ce que Pulse ne peut pas deviner. */}
-            <NoteAjout theme={theme.label} />
-
-            {/* La phrase qui rend le chiffre honnête. Elle vivait dans
-                « Ton historique d'actions » et serait morte avec lui. */}
-            {jugees.length > 0 && (
-              <p className="text-[10.5px] text-faint/80 mt-2.5 leading-relaxed">
-                Avant/après honnête, pas une preuve absolue — la saisonnalité et le contenu
-                jouent aussi.
-              </p>
-            )}
+            <Changements
+              changements={changements}
+              changementsApi={changementsApi}
+              themeCourant={theme.label}
+            />
           </div>
-        </div>
+        )}
 
         {/* LA SORTIE, ET ELLE EST EN PIED — c'est-à-dire à la fin de ce qu'on
             vient de lire. Le profil qu'elle sert est celui qui prend l'hebdo

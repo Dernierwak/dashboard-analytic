@@ -1,5 +1,27 @@
 # Refonte : reprendre les bases de Pulse
 
+> ## ⚠️ LA MOITIÉ « CONSEIL » DE CE DOCUMENT EST CADUQUE — 2026-09-21
+>
+> Le moteur de recommandations a été retiré de Pulse, sur demande de David
+> (« je n'arrive plus à suivre cette application »). Tout ce que ce document
+> dit du **conseil**, de la **composition de la semaine**, du **suivi des
+> actions**, du **Carnet**, du **module À faire**, du **brief IA**, des
+> **règles payantes** et de la **labellisation IA** décrit un produit qui
+> n'existe plus.
+>
+> Ce qui reste vrai : le regroupement par thème, les thèmes prioritaires, la
+> fenêtre de sept jours pleins, le Jour de travail, le canal muet, et tout ce
+> qui CHIFFRE.
+>
+> Le document n'est pas réécrit : c'est une carte de travail, pas la carte du
+> savoir. Le nouvel état du produit est dans `CLAUDE.md` §1. Ce que le retrait
+> rouvre est noté dans `BACKLOG.md`, section « Le retrait des recommandations ».
+>
+> **Tickets encore ouverts après le tri** : construction 22, 28, 29, 34, 35,
+> 40, 41, 44, 49, 53 · refonte 18, 30. Les vingt-et-un autres sont partis avec
+> leur sujet (retrouvables par `git log --diff-filter=D -- .scratch/`).
+
+
 ## Destination
 
 Un document unique qui dit, dans cet ordre : **le but de Pulse en une phrase**,

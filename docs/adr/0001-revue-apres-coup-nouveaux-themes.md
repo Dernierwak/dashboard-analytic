@@ -1,5 +1,11 @@
 # Les nouveaux thèmes de l'IA se revoient après coup, jamais avant
 
+> **⚠️ CADUQUE — 2026-09-21.** Le classement IA (`labeling.py`) a été retiré du
+> produit avec les recommandations : un thème se pose désormais à la main, sur
+> la page Thèmes. Cette fiche reste au dépôt parce qu'une décision et sa raison
+> ne s'effacent pas — elle dit pourquoi l'application appliquait puis laissait
+> revoir, et ce qu'on acceptait en échange. Elle ne décrit plus le produit.
+
 Le classement IA (`labeling.py`) tourne comme un job GitHub Actions
 asynchrone, suivi par polling depuis le navigateur (`triggerClassify` /
 `checkFetchStatus`, `classify-button.tsx`) — au moment où le résultat revient,

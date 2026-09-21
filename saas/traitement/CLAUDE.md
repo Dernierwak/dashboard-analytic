@@ -1,14 +1,40 @@
 # CLAUDE.md — saas/traitement/
 
-Ce dossier a un seul fichier, `build_report.py`, et un seul travail :
-**assembler et publier le rapport hebdo précalculé** (`weekly_reports.payload`)
-à partir de ce que `saas/collecte/` a récolté et de ce que `saas/recos_ia/` a
-décidé de recommander. Il ne va chercher aucune donnée à l'extérieur et ne
-décide pas lui-même des règles de reco (`_rule_*` vit dans
-`saas/recos_ia/reco_engine.py`) — il les appelle et met en forme le résultat
-pour l'écran (`saas/web/`) et l'email (`saas/emailing/`).
+Ce dossier **assemble et publie le rapport hebdo précalculé**
+(`weekly_reports.payload`) à partir de ce que `saas/collecte/` a récolté. Il ne
+va chercher aucune donnée à l'extérieur : il lit, il chiffre, il publie.
 
 Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
+
+| Fichier | Ce qu'il fait |
+|---|---|
+| `build_report.py` | Le payload entier, et sa publication (`publish_weekly_report`). |
+| `lecteur.py` | **Le seam.** Toute lecture et toute écriture passent par lui, donc `build_payload` tourne sans base, sans secret et sans réseau dès qu'on lui donne un faux lecteur. |
+| `matrice.py` | La matrice full-history — tout l'historique croisé par format, campagne et créneau. Elle chiffre les cartes de thème. |
+
+## CE DOSSIER NE CONSEILLE RIEN
+
+Le moteur de recommandations (`saas/recos_ia/`) a été retiré du produit le
+2026-09-21. Avec lui sont partis : les dix règles déterministes, les six règles
+payantes, les constats « ce qui fonctionne pour toi », la composition de la
+semaine, le profil client vivant, la mémoire d'un thème, le brief rédigé par
+Gemini, le suivi des actions et le savoir-faire de fond.
+
+`build_payload` est passée de 5 900 à ~2 200 lignes. **Aucun appel à un modèle
+de langage ne subsiste** dans ce dossier.
+
+Ce que le payload porte encore, et rien d'autre : le verdict de la semaine
+(déterministe), la boussole (`kpi_focus`), l'anneau des thèmes (`themes`), la
+frise (`frise`), les cartes de thème (`themes_focus` : chiffres, courbe,
+campagnes), les faits de plateforme (`changements`), les canaux muets
+(`canaux_muets`), la matrice compacte (`matrice`) et les métriques de lecture
+rapide (`metrics_read`, `metrics_prev`, `metrics_series`).
+
+**Les payloads DÉJÀ PUBLIÉS gardent leurs clés mortes** (`recos`, `brief`,
+`tracking`, `vision`, `reglages`, `themes_tips`, `top_recos`…). Plus personne ne
+les lit ; elles s'éteignent d'elles-mêmes à la prochaine publication. Ne pas
+écrire de migration pour les nettoyer : ça coûterait une réécriture de tous les
+payloads pour gagner des octets que personne ne paie.
 
 ## Pourquoi ce n'est pas Next.js qui construit le rapport
 
@@ -30,38 +56,31 @@ rapport côté Next.js sans repasser par cette décision.
 ## Usage
 
 ```bash
-python saas/traitement/build_report.py --user <uuid> [--print]
-python saas/traitement/build_report.py --all
+python3.12 saas/traitement/build_report.py --user <uuid> [--print]
+python3.12 saas/traitement/build_report.py --all
 ```
 
 `publish_weekly_report(sb, user_id, email_to=None)` (fin de fichier) est la
 fonction appelée par `saas/collecte/automatisation/fetch_all.py` en fin de
 récolte — imports locaux dans `fetch_all.py` pour éviter un cycle.
 
-## `build_payload` — le cœur, et il est gros
+`SEUIL_ESCALADE` est lue par `fetch_all.py` **par import local**, depuis
+`_note_canaux_qui_durent`. Aucun appelant ne se voit dans ce fichier : une
+analyse de code mort la déclarera inatteignable, et elle ne l'est pas.
 
-`build_payload(sb, user_id)` fait à peu près tout le travail (plusieurs
-milliers de lignes) : KPIs 7 jours pleins ancrés sur la dernière donnée
-(jamais aujourd'hui — la comparaison exclut toujours le jour du fetch, voir
-`CLAUDE.md` § 7), deltas vs la période précédente, dépense par canal, recos
-par thème (organiques ET pub, via `saas/recos_ia/reco_engine.py`),
-diversification des recos affichées (`_diversifier`), brief IA
-(`_call_gemini`, calibré par le profil client vivant de
-`saas/recos_ia/user_persona.py`, fallback déterministe si Gemini échoue ou
-n'a pas de clé), contexte GA4 par thème
-(`saas/collecte/ga4/ga4.py::build_ga4_context`).
+## Le seam, et comment on le rejoue
 
-**Ne pas essayer de tout retenir de ce fichier avant d'y toucher** — il est
-dense et chaque fonction `_reco_*` / `_orga_*` porte sa propre justification
-en commentaire à côté d'elle. Chercher la fonction concernée plutôt que lire
-le fichier en entier.
+`build_payload` prend un `Lecteur` (`lecteur.py`), pas un client Supabase :
+**une propriété du payload s'exécute au lieu de se lire dans le texte.** Le faux
+lecteur et les harnais vivent dans `.scratch/construction/harnais/` — un dossier
+par ticket, `python3.12 test_x.py`, ni base, ni secret, ni réseau.
 
-## Le profil client vivant calibre le brief IA
+Les deux qui couvrent ce dossier :
 
-Le brief IA de `build_report.py` est calibré par le profil client vivant
-(`saas/recos_ia/user_persona.py::build_user_persona`) — onboarding, objectif,
-réactions/verdicts, avis sur les constats généraux et avis par thème
-(gardés séparés, pas fondus), recalculé une fois par semaine puisque ce
-module n'est appelé qu'à la génération du rapport. Fallback déterministe si
-Gemini échoue, comme partout ailleurs dans le produit : jamais d'erreur qui
-casse le rapport pour un conseil manqué.
+```bash
+cd .scratch/construction/harnais/16-le-seam-du-payload
+python3.12 test_le_seam.py            # l'injection est complète
+python3.12 test_chiffres_du_payload.py # ce que la construction CHIFFRE
+```
+
+Toucher au traitement sans les rejouer, c'est se priver du seul filet qu'on ait.

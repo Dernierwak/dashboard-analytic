@@ -941,13 +941,11 @@ export type InstaDash = {
   // « Engagement du compte », deux lectures d'HISTORIQUE assumées.
   followersSeries: FollowerPoint[];
   // `formats`, `heatmap` et `bestSlot` VIVAIENT ICI, ET ILS SONT MORTS LE
-  // 2026-09-12. Ils répondaient en TypeScript, sur la fenêtre affichée, à la
-  // question que `saas/recos_ia/insights.py` traite sur TOUT l'historique avec
-  // ses propres seuils : « quel format marche », « quel créneau porte ». Deux
-  // moteurs pour une question, donc deux réponses possibles le même lundi —
-  // la page affiche maintenant les constats du rapport (`<CeQuiMarche />`) au
-  // lieu de les recalculer
-  // (`.scratch/construction/issues/09-trois-moteurs-un-seul.md`).
+  // 2026-09-12 : ils répondaient en TypeScript, sur la fenêtre affichée, à une
+  // question qu'un autre moteur traitait sur TOUT l'historique avec ses propres
+  // seuils — deux réponses possibles le même lundi. Cet autre moteur est parti
+  // avec les recommandations le 2026-09-21 : plus personne ne répond à « quel
+  // format marche », et c'est assumé.
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
   topMetric: string;       // métrique qui pilote le top 3 et les thèmes
   byLabel: PostLabelAgg[];

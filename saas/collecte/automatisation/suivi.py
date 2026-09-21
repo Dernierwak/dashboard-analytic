@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 # Les canaux, dans l'ordre où l'écran doit les lire. C'est aussi l'ordre dans
 # lequel `run()` trie son journal : en parallèle, l'ordre d'exécution n'est plus
 # un ordre, c'est le hasard des latences réseau.
-CANAUX = ("meta", "instagram", "google", "ga4", "labels", "rapport")
+CANAUX = ("meta", "instagram", "google", "ga4", "rapport")
 
 # Combien de temps au minimum entre deux écritures d'ÉTAPE sur un même canal.
 # Instagram appelle `note()` à chaque post ; sans ce plancher, un compte à

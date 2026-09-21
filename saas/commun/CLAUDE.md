@@ -1,9 +1,8 @@
 # CLAUDE.md — saas/commun/
 
 Ce n'est pas un domaine métier — c'est la **couche d'accès Supabase et
-secrets** que `saas/collecte/`, `saas/recos_ia/` et `saas/traitement/`
-utilisent tous les trois. Rien ici ne décide, ne récolte ni ne recommande ;
-ce dossier lit et écrit, point.
+secrets** que `saas/collecte/` et `saas/traitement/` utilisent tous les deux.
+Rien ici ne décide ni ne récolte ; ce dossier lit et écrit, point.
 
 Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 
@@ -14,13 +13,15 @@ Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
   puis `.env` **à la racine du dépôt** (gitignoré, cas local) puis un défaut.
   **Seul endroit du produit qui lit un credential** — aucune clé ne se
   recopie ailleurs.
-- **`fetch_data.py`** — toutes les lectures Supabase partagées (33 fonctions
-  au moment où ce fichier est écrit) : dernières dates par table (pour le
-  recouvrement de `collecte/`), données pour construire le rapport
-  (`traitement/`), commentaires de feedback (`recos_ia/user_persona.py`).
-- **`insert_data.py`** — toutes les écritures Supabase partagées (34
-  fonctions) : upserts par plateforme, écriture du rapport publié
-  (`upsert_weekly_report`), sauvegarde du profil persona.
+- **`fetch_data.py`** — toutes les lectures Supabase partagées : dernières
+  dates par table (pour le recouvrement de `collecte/`) et données pour
+  construire le rapport (`traitement/`).
+- **`insert_data.py`** — toutes les écritures Supabase partagées : upserts par
+  plateforme et écriture du rapport publié (`upsert_weekly_report`).
+
+**Il reste ici des fonctions que plus personne n'appelle** — héritage de
+l'ancien Streamlit, antérieur au retrait des recommandations. Elles n'ont pas
+été touchées : les retirer est un ménage à part, pas un effet de bord.
 
 ## Piège déjà payé cher : `_ROOT_ENV` dépend de la profondeur du fichier
 
@@ -37,7 +38,7 @@ absolu avant de committer — pas en confiance.
 
 ## Qui appelle ce dossier
 
-Tout le monde côté Python : `saas/collecte/**`, `saas/recos_ia/**`,
+Tout le monde côté Python : `saas/collecte/**`,
 `saas/traitement/build_report.py`. Rien dans `saas/web/` (TypeScript, accès
 Supabase direct via `@supabase/ssr`) ni `saas/emailing/` (ne touche pas à
 Supabase, voir `saas/emailing/CLAUDE.md`) — c'est ici, et pas là-bas, que

@@ -25,15 +25,13 @@ CASCADE = pulse.lire(pulse.SOURCE_CASCADE)
 # ÉCRIT la raison — et cette vérification-ci est ce qui empêche une trente et
 # unième d'arriver en silence.
 
+# LES DEUX DERNIÈRES SONT PARTIES AVEC LES RECOMMANDATIONS (2026-09-21) : le
+# repli de `marquerApplique` écrivait dans `reco_feedback`, l'amorce de persona
+# dans `profiles.user_profile`. Plus aucune écriture nue ne subsiste, et cette
+# vérification devient un seuil à zéro — c'est ce qui empêche la prochaine
+# d'arriver en silence.
 NUES = [l.strip() for l in CODE.split("\n") if re.match(r"^\s*await supabase", l)]
-t.egal("il ne reste que deux écritures nues dans actions.ts", len(NUES), 2)
-t.ok("la première est le repli de `marquerApplique`",
-     NUES[0].startswith('await supabase.from("reco_feedback").upsert('))
-t.ok("la seconde est l'amorce de persona de l'onboarding",
-     'user_profile: seed' in NUES[1])
-t.ok("la première dit noir sur blanc pourquoi elle reste nue",
-     "LA SEULE ÉCRITURE DE CE FICHIER QUI A LE DROIT DE RESTER NUE" in A)
-t.ok("la seconde aussi", "Nue, et c'est la seconde des deux seules du fichier" in A)
+t.egal("il ne reste aucune écriture nue dans actions.ts", len(NUES), 0)
 
 # ── 2 · FAMILLE 1 · UNE COLLISION SE VOIT — LE COMPTE DE LIGNES SE LIT ──────
 #
@@ -228,28 +226,22 @@ t.ok("la date de prise en compte ne s'écrit plus sur un refus",
 #
 # Une seconde chance qui rate est un échec. Ces replis étaient nus : les DEUX
 # tentatives pouvaient rater et l'action répondait `{ ok: true }`.
+# `saveRecoFeedback` et `saveComment` sont parties avec les recommandations.
 for nom, signature in [
-    ("saveRecoFeedback", "export async function saveRecoFeedback("),
-    ("saveComment", "export async function saveComment("),
     ("setCampaignLabel", "export async function setCampaignLabel("),
     ("setPostLabel", "export async function setPostLabel("),
 ]:
     corps = pulse.corps(CODE, signature)
     t.ok(f"`{nom}` lit l'erreur de son repli", "repli.error" in corps)
+# `saveInsightFeedback` (le verdict d'un constat) et `startTracking` (« ▶ Je le
+# teste ») sont parties avec les recommandations. `togglePriorityLabel` reste :
+# c'est l'étoile d'un thème prioritaire, et elle survit au retrait.
 for nom, signature in [
-    ("saveInsightFeedback", "export async function saveInsightFeedback("),
     ("togglePriorityLabel", "export async function togglePriorityLabel("),
     ("saveBudget", "export async function saveBudget("),
-    ("startTracking", "export async function startTracking("),
 ]:
     corps = pulse.corps(CODE, signature)
     t.ok(f"`{nom}` lit l'erreur de son écriture", re.search(r"\br\.error|retire\.error", corps))
-
-ST = pulse.corps(CODE, "export async function startTracking(")
-t.ok("`startTracking` relit avant de dire pourquoi rien n'a été retiré",
-     'select("status")' in ST and "DEJA[" in ST)
-t.ok("`startTracking` ne se plaint pas quand l'état voulu est déjà atteint",
-     "if (!reste.error && ligne)" in ST)
 
 # ── 8 · AUCUN CHIFFRE, AUCUN FAIT FABRIQUÉ DANS LES NOUVEAUX MESSAGES ──────
 #

@@ -2,8 +2,8 @@
 
 Ce dossier fait de la **récolte brute, et rien d'autre**. Il va chercher les
 données chez les plateformes et les écrit dans Supabase, telles quelles. Il ne
-choisit pas de thème, ne calcule pas de conseil, ne rédige rien — ça, c'est le
-travail de `saas/recos_ia/` et `saas/traitement/`, qui LISENT ce que la
+choisit pas de thème et ne met rien en forme — ça, c'est le travail de
+`saas/traitement/`, qui LIT ce que la
 récolte a écrit. Une ligne qui juge, classe ou résume n'a rien à faire ici.
 
 Le projet est **Pulse**, un SaaS d'analyse marketing (voir `CLAUDE.md` à la
@@ -15,9 +15,9 @@ racine du dépôt pour le produit dans son ensemble).
 |---|---|---|
 | `meta/` | Meta Ads + Instagram organique — même token utilisateur, même API Graph. | `fetch_meta_ads.py`, `fetch_instagram.py` |
 | `google/` | Google Ads. | `fetch_google_ads.py` |
-| `ga4/` | Google Analytics 4 — fetch ET le peu de contexte que le moteur de recos lit directement depuis les données GA4 stockées (voir plus bas). | `fetch_ga4.py`, `ga4.py` |
+| `ga4/` | Google Analytics 4 — fetch ET le contexte que le rapport lit directement depuis les données GA4 stockées (voir plus bas). | `fetch_ga4.py`, `ga4.py` |
 | `commun/` | OAuth Google, partagé par `google/` et `ga4/` — rien d'autre ici, le reste (secrets, lecture/écriture Supabase) a été remonté en `saas/commun/`, utilisé par tout le produit et pas seulement la récolte. | `fetch_token.py` |
-| `automatisation/` | Orchestration — appelle les quatre canaux, gère le parallélisme, décide qui doit être récolté aujourd'hui, déclenche la suite (labellisation, catégorisation, publication du rapport). | `fetch_all.py`, `run_weekly.py`, `suivi.py` |
+| `automatisation/` | Orchestration — appelle les quatre canaux, gère le parallélisme, décide qui doit être récolté aujourd'hui, publie le rapport. | `fetch_all.py`, `suivi.py` |
 
 ## Les quatre plateformes
 
@@ -36,9 +36,8 @@ racine du dépôt pour le produit dans son ensemble).
   plus.
 
 Chaque plateforme documente ses propres contraintes dans son fichier — ne pas
-les recopier ici, elles se périment vite. `docs/references/plateformes.md`
-(quand il existe — absent du disque au moment où ce fichier est écrit, voir
-note en fin de fichier) est censé les archiver une fois payées cher.
+les recopier ici, elles se périment vite. Ce qui ne se périme pas, c'est ce
+qu'on ne saura **jamais** mesurer : `docs/mesures-impossibles.md`.
 
 ## Le recouvrement — LA règle à connaître avant de toucher une date de reprise
 
@@ -66,14 +65,13 @@ anciennes par upsert — elles ne s'additionnent pas.
 que les comptes dont c'est le jour, `profiles.fetch_schedule`). Il récolte les
 quatre canaux **en parallèle** (trois fils : Meta+Instagram en série, Google
 Ads, GA4 — le detail et pourquoi *pas* quatre fils est commenté en tête du
-fichier), puis enchaîne sur la labellisation IA, la catégorisation IA et la
-publication du rapport (`saas/recos_ia/` et `saas/traitement/build_report.py`
-— importés localement pour éviter un cycle).
+fichier), puis publie le rapport (`saas/traitement/build_report.py` — importé
+localement pour éviter un cycle).
 
-`run_weekly.py` est un chemin séparé et **pas encore câblé au cron** : démo de
-bout en bout (recos → email → envoi) sur un utilisateur fictif, utile pour
-prévisualiser le rendu email (`python collecte/automatisation/run_weekly.py`,
-depuis `saas/` — écrit un aperçu dans `_preview.html`, gitignoré).
+**LA LABELLISATION ET LA CATÉGORISATION IA ONT DISPARU** avec le reste des
+recommandations (2026-09-21), et avec elles les modes `--label-only` et
+`--categorize-only`. Un thème se pose désormais à la main, sur la page Thèmes.
+`run_weekly.py`, une démo bout-en-bout que personne n'appelait, est parti aussi.
 
 `suivi.py` tient le journal de ce qui a été récolté par canal (`CANAUX`), lu
 par `saas/web/app/comptes/page.tsx` pour afficher où en est chaque compte.
@@ -88,12 +86,3 @@ par `saas/web/app/comptes/page.tsx` pour afficher où en est chaque compte.
   dur, ni dans un commentaire.
 - **Chaque plateforme échoue seule.** Une erreur sur un canal n'empêche pas
   les trois autres de finir (voir `try/except` par fil dans `fetch_all.py`).
-
-## Note sur `docs/references/plateformes.md`
-
-Le `CLAUDE.md` racine et ce fichier renvoient vers `docs/references/` pour les
-contraintes des plateformes déjà payées cher. Au moment où ce `CLAUDE.md` a
-été écrit, `docs/` n'existe plus sur le disque (suppression non commitée,
-antérieure à cette réorganisation) — si un agent cherche cette référence et
-ne la trouve pas, ce n'est pas une nouvelle panne, remonte-le à David plutôt
-que de la recréer de mémoire.
