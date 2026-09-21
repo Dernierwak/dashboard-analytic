@@ -1,6 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+// Les trois documents légaux doivent répondre SANS session : Google exige des
+// URL publiques HTTPS pour la politique et les CGU, Meta exige en plus une page
+// d'instructions de suppression. Sans cette liste, la redirection ci-dessous
+// renvoie le reviewer sur l'écran de connexion, et il en conclut que la
+// politique n'est pas publiée.
+const CHEMINS_PUBLICS = ["/privacy", "/terms", "/suppression"];
+
 // Rafraîchit la session Supabase à chaque requête et protège les routes :
 // pas connecté → /login ; connecté sur /login → rapport.
 export async function middleware(request: NextRequest) {
@@ -31,8 +38,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLogin = request.nextUrl.pathname.startsWith("/login");
-  if (!user && !isLogin) {
+  const chemin = request.nextUrl.pathname;
+  const isLogin = chemin.startsWith("/login");
+  const estPublic = CHEMINS_PUBLICS.some((p) => chemin === p || chemin.startsWith(`${p}/`));
+  if (!user && !isLogin && !estPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Les paramètres ne suivent pas : si la session expire pendant un retour

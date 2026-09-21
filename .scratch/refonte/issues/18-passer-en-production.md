@@ -396,3 +396,101 @@ allume les trois pages) · vérifier le palier Gemini → [26](26-gemini-palier-
 vérifier le domaine dans Search Console · trancher `ads_management` → `ads_read` ·
 basculer en Production et lancer le test des 7 jours · déposer la vérification
 Google (CASA comprise) · passer l'app Meta en Live.
+
+
+## Avancement — session du 2026-09-21
+
+**Rien de neuf à construire : tout ce qu'un agent peut faire sur ce ticket était
+déjà fait, et cette session l'a vérifié au lieu de le croire.** Le ticket reste
+ouvert — il se clôt aux statuts de publication atteints et au verdict du test
+des 7 jours, et les huit gestes restants demandent tous un compte que David seul
+possède.
+
+### Le chemin que personne n'avait jamais vu : le document servi
+
+Les trois sessions du 2026-09-11 ont mesuré que `/privacy`, `/terms` et
+`/suppression` répondent **200 sans session**. Ce qu'elles n'ont pas pu mesurer,
+c'est ce qui sortirait **une fois les placeholders remplis** : la garde éteint
+les trois documents, donc le rendu réel n'avait jamais été observé. C'est
+précisément le geste qui reste à David, et il allume trois pages d'un coup sur
+l'URL qu'un reviewer Google tient déjà.
+
+Vérifié le 2026-09-21, `legal/` sauvegardé puis restauré à l'identique
+(`diff -r` vide) :
+
+- Les huit placeholders remplis de valeurs factices et les deux marqueurs
+  `À VÉRIFIER AVANT PUBLICATION` neutralisés, **la garde se lève et les trois
+  documents sont servis** — 71 kB, 48 kB et 29 kB de HTML.
+- **Aucune syntaxe markdown ne fuit dans le rendu** : ni `**`, ni backtick, ni
+  `|` de tableau, ni `[texte](lien)`, ni `<!-- -->`, ni `<PLACEHOLDER>`, sur
+  aucune des trois pages.
+- **Aucun fragment du `.md` ne manque à l'écran.** Chaque ligne source — titres,
+  paragraphes, items de liste, et chaque cellule de chaque tableau — a été
+  recherchée dans le HTML rendu, aux espaces près : **0 absent sur 3 pages**.
+- **Les liens croisés sont tous des chemins de site** (`/privacy`, `/terms`,
+  `/suppression`), aucun `.md` résiduel, donc aucun 404 sur le trajet
+  CGU → politique qu'un reviewer suit. Les deux liens externes
+  (`developers.google.com/terms/api-services-user-data-policy`,
+  `myaccount.google.com/permissions`) sortent en absolu.
+- `legal/` restauré, **la garde est retombée** : `/privacy` réaffiche « pas
+  encore publié ».
+
+### Le reste de la vérification
+
+- `rm -rf .next tsconfig.tsbuildinfo`, `npx tsc --noEmit` **vert**,
+  `npm run build` **vert**, **19 routes** — le compte de référence de
+  `CLAUDE.md` §9 est bien celui du build.
+- `/privacy`, `/terms`, `/suppression` → **200** sans cookie ; `/comptes` et `/`
+  → **307 vers /login**. Le middleware n'a pas ouvert plus que les trois.
+- **Les trois pages sont liées depuis l'app** : `app/login/page.tsx` l. 192-194,
+  soit le seul écran qu'un reviewer non connecté atteint. Ce n'était écrit nulle
+  part dans le ticket ; c'est vrai.
+- Les journaux du serveur portent bien la raison exacte du refus de publier, et
+  l'écran ne la porte pas.
+
+### Ce que la vérification a trouvé, et qui devient un ticket
+
+**[30](30-markdown-legal-avocat.md)** — `decouper()` rend six constructions
+markdown ; une liste numérotée, une citation `>` ou un `####` sont publiés en
+clair. Mesuré sur une sonde du découpage : trois clauses `1.` `2.` `3.` fondent
+en **un seul paragraphe**. Les trois `.md` servis n'en emploient aucune
+aujourd'hui — l'équilibre tient jusqu'à la relecture d'avocat que le README
+réclame lui-même. Pas corrigé ici : `CLAUDE.md` §4, ce qui n'était pas demandé
+devient un ticket, pas un détour.
+
+### Ce qui reste, et que personne d'autre ne peut faire — inchangé
+
+Créer l'entreprise · **remplir les placeholders d'entreprise** (c'est ce qui
+allume les trois pages, et le rendu est maintenant vérifié) · vérifier le palier
+Gemini → [26](26-gemini-palier-payant.md) · vérifier le domaine dans Search
+Console · trancher `ads_management` → `ads_read` · basculer en Production et
+lancer le test des 7 jours · déposer la vérification Google (CASA comprise) ·
+passer l'app Meta en Live.
+
+### Revue de code, et la seule correction qu'elle a valu ici
+
+Huit remarques, confrontées une à une aux trois `.md` réellement servis :
+**sept ne sont déclenchées par aucun document d'aujourd'hui** et rejoignent
+[30](30-markdown-legal-avocat.md), qui passe de trois cas à huit — dont la
+**continuation de puce**, le plus probable de tous puisque le dépôt entier est
+composé à 80 colonnes.
+
+La huitième n'était pas une construction markdown, et elle touchait la promesse
+de ce ticket : **la lecture du `.md` n'était pas gardée.** Un fichier absent du
+bundle serverless — le scénario même que `outputFileTracingIncludes` existe pour
+éviter — remontait hors du composant serveur ; comme il n'existe ni `error.tsx`
+ni `global-error.tsx`, la page aurait servi le **500 par défaut de Next sur
+l'URL déposée chez Google**, au lieu du message « pas encore publié » que tout
+le reste du module s'attache à rendre. Un filet qui ne dépend pas d'un réglage
+de build vaut mieux qu'un écran d'erreur.
+
+Corrigé dans `lib/legal.ts`, et **vérifié en retirant le fichier serveur
+tournant** : `/terms` répond **200** avec le message d'attente, l'`ENOENT` part
+dans les journaux, le fichier remis la page redevient normale.
+
+Noté au même endroit, sans code : `experimental.outputFileTracingIncludes` est
+l'emplacement de **Next 14**. En Next 15 la clé passe à la racine et celle-ci
+est ignorée **en silence** — une montée de version sortirait les `.md` du bundle
+sans casser le build. Écrit dans `next.config.mjs`, à côté du réglage.
+
+Après correction : `npx tsc --noEmit` vert, `npm run build` vert, **19 routes**.
