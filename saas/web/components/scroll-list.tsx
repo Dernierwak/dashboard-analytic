@@ -25,7 +25,7 @@ export function ScrollList({
   return (
     <div className={className}>
       <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-[11px] uppercase tracking-wide text-faint font-bold">
+        <h3 className="text-[12.5px] text-faint font-semibold">
           {title}
           {count !== undefined && <span className="text-faint/70"> ({count})</span>}
         </h3>

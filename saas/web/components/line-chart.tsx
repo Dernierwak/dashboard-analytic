@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { COULEURS } from "@/lib/couleurs";
 
 // Courbe réutilisable — un seul rendu pour tous les graphes de l'app.
 //
@@ -38,9 +39,9 @@ export type BandeZone = { max: number | null; label: string; tone: "neg" | "warn
 export type Marqueur = { i: number; label: string };
 
 export const TON_ZONE: Record<string, string> = {
-  neg: "#c0392b",
-  warn: "#b86b00",
-  pos: "#1a7a4a",
+  neg: COULEURS.neg,
+  warn: COULEURS.warn,
+  pos: COULEURS.pos,
 };
 
 // LES REPÈRES D'ACTION (points pleins sur la ligne du haut, cf. git blame
@@ -283,7 +284,7 @@ export function LineChart({
               y1={PAD_T + (1 - f) * plotH}
               x2={W - PAD_R}
               y2={PAD_T + (1 - f) * plotH}
-              stroke="#e6e6e9"
+              stroke={COULEURS.quadrillage}
               strokeDasharray="4 4"
               vectorEffect="non-scaling-stroke"
             />
@@ -293,7 +294,7 @@ export function LineChart({
             y1={PAD_T + plotH}
             x2={W - PAD_R}
             y2={PAD_T + plotH}
-            stroke="#d8d8de"
+            stroke={COULEURS.axe}
             vectorEffect="non-scaling-stroke"
           />
 
@@ -303,7 +304,7 @@ export function LineChart({
               y1={y(repere.value)}
               x2={W - PAD_R}
               y2={y(repere.value)}
-              stroke={repere.color ?? "#b86b00"}
+              stroke={repere.color ?? COULEURS.warn}
               strokeWidth="1.5"
               strokeDasharray="6 3"
               vectorEffect="non-scaling-stroke"
@@ -403,7 +404,7 @@ export function LineChart({
               top: `${py(repere.value)}%`,
               transform:
                 py(repere.value) < 12 ? "translateY(3px)" : "translateY(calc(-100% - 3px))",
-              color: repere.color ?? "#b86b00",
+              color: repere.color ?? COULEURS.warn,
             }}
           >
             {repere.label}
@@ -625,7 +626,7 @@ export function LineChart({
 // `DayPoint` correspondant) ; sans elle, la bulle se contente de la valeur.
 export function Sparkline({
   values,
-  color = "#1a56ff",
+  color = COULEURS.encre,
   height = 26,
   labels,
   unite,

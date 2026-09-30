@@ -1,0 +1,30 @@
+# Identité visuelle — la carte
+
+## Destination
+
+Une identité visuelle propre à Pulse, au standard actuel (Notion, Linear) :
+légère, « papier », écrite, avec des icônes et des petits dessins qui font
+pro. Demande de David du 2026-09-30.
+
+## Notes
+
+La référence est `docs/identite-visuelle.md`. La source des couleurs est
+`saas/web/lib/couleurs.ts`.
+
+## Decisions so far
+
+- **01 — le socle** (résolu) : direction « le relevé » (papier millimétré,
+  encre, surligneur), tokens, typographie, icônes, dessins, navigation,
+  connexion, Connexions, Équipe, bandeaux de données manquantes.
+  → `issues/01-le-socle.md`
+
+## Fog
+
+- Le rapport (`app/page.tsx`) et les dashboards n'ont reçu que la cascade des
+  tokens : leurs modules (verdict, boussole, frise) méritent un passage
+  écran par écran une fois le retrait du thème commité (`issues/02`).
+- Trouvé en chemin, hors design : `equipe-manager.tsx` décrit encore le rôle
+  « Peut agir » par « coche les actions, reclasse les campagnes, choisit les
+  priorités » — les actions sont parties le 2026-09-21. Texte à réécrire.
+- Mode sombre : les tokens sont prêts à devenir des variables CSS, rien de
+  plus n'est fait.

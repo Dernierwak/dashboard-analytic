@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { CanalMuet } from "@/lib/report";
+import { PriseDebranchee } from "@/components/illustrations";
+import { IconeAttention, IconeConnexions } from "@/components/icones";
 
 // « CE QU'ON N'A PAS PU LIRE » — le trou de récolte, dit au client.
 //
@@ -57,8 +59,13 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
   const recents = tus.filter((c) => (c.semaines_muettes ?? 1) < 2);
 
   return (
-    <div className="rounded-2xl border border-warn/25 bg-warn/[0.06] px-5 py-4 sm:px-6 mb-3">
-      <p className="text-[11px] uppercase tracking-widest text-warn font-semibold mb-1.5">
+    // La prise débranchée à gauche dit la nature du trou avant qu'on ait lu
+    // un mot : une connexion à refaire, pas une panne de Pulse.
+    <div className="flex gap-5 items-start rounded-2xl border border-warn/20 bg-alerte shadow-card px-5 py-4 sm:px-6 mb-3">
+      <PriseDebranchee className="hidden sm:block w-[92px] shrink-0 mt-1" />
+      <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-[14px] text-warn font-semibold mb-1.5">
+        <IconeAttention taille={16} />
         Ce qu&apos;on n&apos;a pas pu lire
       </p>
       <p className="text-[13.5px] text-ink leading-relaxed max-w-[68ch]">
@@ -68,7 +75,7 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
             {durent.length > 1 ? "ne répondent" : "ne répond"} toujours pas, et
             ce n&apos;est plus la première semaine. Tant que ça dure, Pulse ne
             peut rien dire de ta publicité — ni dépense, ni coût par clic, ni
-            ROAS, et aucun conseil qui en dépendrait.{" "}
+            ROAS.{" "}
           </>
         )}
         {recents.length > 0 && (
@@ -108,10 +115,12 @@ export function CanalMuetAlerte({ canaux }: { canaux?: CanalMuet[] | null }) {
           quitte pas le module, il répare sa cause. */}
       <Link
         href="/comptes"
-        className="inline-block mt-3 text-[12.5px] font-medium text-brand hover:underline"
+        className="inline-flex items-center gap-2 mt-3.5 rounded-lg bg-white border border-line shadow-card px-3 py-1.5 text-[13px] font-medium text-ink hover:border-brand/40 hover:text-brand transition-colors"
       >
-        Reconnecter depuis Comptes &rarr;
+        <IconeConnexions taille={16} className="text-brand" />
+        Reconnecter dans Connexions
       </Link>
+      </div>
     </div>
   );
 }

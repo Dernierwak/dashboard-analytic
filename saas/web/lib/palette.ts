@@ -13,9 +13,9 @@
 export type Teinte = { trait: string; aplat: string; nom: string };
 
 export const SERIES: Teinte[] = [
-  { nom: "bleu", trait: "#1a56ff", aplat: "rgba(26, 86, 255, 0.14)" },
-  { nom: "violet", trait: "#7b4fff", aplat: "rgba(123, 79, 255, 0.14)" },
-  { nom: "vert", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
+  { nom: "bleu", trait: "#2f44d0", aplat: "rgba(47, 68, 208, 0.14)" },
+  { nom: "violet", trait: "#7a4de8", aplat: "rgba(122, 77, 232, 0.14)" },
+  { nom: "vert", trait: "#177a55", aplat: "rgba(23, 122, 85, 0.14)" },
   { nom: "ambre", trait: "#e08b1a", aplat: "rgba(224, 139, 26, 0.16)" },
   { nom: "rose", trait: "#e0459b", aplat: "rgba(224, 69, 155, 0.14)" },
   { nom: "turquoise", trait: "#0d9aa8", aplat: "rgba(13, 154, 168, 0.14)" },

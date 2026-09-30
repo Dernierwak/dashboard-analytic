@@ -37,7 +37,7 @@ export function CompteSwitch({
     <div className="flex flex-col gap-1.5 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         {invite && (
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-warn bg-warn/10 rounded-full px-2 py-1 whitespace-nowrap">
+          <span className="shrink-0 text-[12px] font-semibold text-warn bg-warn/10 rounded-full px-2 py-1 whitespace-nowrap">
             {courant?.role === "viewer" ? "lecture seule" : "invité"}
           </span>
         )}

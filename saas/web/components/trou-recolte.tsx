@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { CanalMuetLive } from "@/lib/canaux-muets";
+import { PriseDebranchee } from "@/components/illustrations";
+import { IconeAttention, IconeConnexions } from "@/components/icones";
 
 // « CE QU'ON N'A PAS PU LIRE », SUR LES PAGES QUI CALCULENT ELLES-MÊMES.
 //
@@ -38,10 +40,13 @@ export function TrouDeRecolte({
   if (muets.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-warn/25 bg-warn/[0.06] px-4 py-3 mb-4">
-      <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1.5">
+    <div className="flex gap-5 items-start rounded-2xl border border-warn/20 bg-alerte shadow-card px-5 py-4 mb-4">
+      <PriseDebranchee className="hidden sm:block w-[84px] shrink-0 mt-1" />
+      <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-[14px] text-warn font-semibold mb-1.5">
+        <IconeAttention taille={16} />
         Ce qu&apos;on n&apos;a pas pu lire
-      </div>
+      </p>
       <p className="text-[12.5px] text-ink leading-relaxed max-w-[68ch]">
         <strong className="font-semibold">{muets.map((c) => c.nom).join(" et ")}</strong>{" "}
         {muets.length > 1 ? "n'ont" : "n'a"} pas répondu au dernier passage. {taisent} —
@@ -67,10 +72,12 @@ export function TrouDeRecolte({
           module, il répare sa cause. */}
       <Link
         href="/comptes"
-        className="inline-block mt-2.5 text-[12px] font-medium text-brand hover:underline"
+        className="inline-flex items-center gap-2 mt-3.5 rounded-lg bg-white border border-line shadow-card px-3 py-1.5 text-[13px] font-medium text-ink hover:border-brand/40 hover:text-brand transition-colors"
       >
-        Reconnecter depuis Comptes &rarr;
+        <IconeConnexions taille={16} className="text-brand" />
+        Reconnecter dans Connexions
       </Link>
+      </div>
     </div>
   );
 }

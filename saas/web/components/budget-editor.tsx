@@ -39,7 +39,7 @@ export function BudgetEditor({
 
   return (
     <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-      <label className="text-[10.5px] text-faint font-semibold uppercase tracking-wide">
+      <label className="text-[12px] text-faint font-semibold">
         {titre}
       </label>
       {/* UNE VALEUR ABSENTE NE S'ÉCRIT PAS « 0 ».

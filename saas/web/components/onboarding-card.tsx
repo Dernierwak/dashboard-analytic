@@ -160,7 +160,7 @@ export function OnboardingCard() {
   return (
     <div className="bg-white border border-brand/20 rounded-xl shadow-card p-6 mb-8">
       <div className="flex items-center justify-between gap-3 mb-4">
-        <span className="text-[10px] uppercase tracking-widest text-brand font-bold">
+        <span className="text-[12px] text-brand font-semibold">
           Bienvenue — 30 secondes pour calibrer tes conseils
         </span>
         <span className="font-mono text-[11px] text-faint shrink-0">
@@ -223,7 +223,7 @@ export function OnboardingCard() {
               role="alert"
               className="mt-3 rounded-xl border border-neg/25 bg-neg/[0.04] px-4 py-3"
             >
-              <div className="text-[10px] uppercase tracking-widest text-neg font-bold mb-1">
+              <div className="text-[12px] text-neg font-semibold mb-1">
                 Rien n&apos;a été enregistré
               </div>
               <p className="text-[12.5px] text-ink leading-relaxed">

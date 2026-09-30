@@ -14,6 +14,21 @@ import {
   NAV_LARGEUR_MIN,
 } from "@/lib/nav-largeur";
 import type { CompteActif } from "@/lib/account";
+import { Logo } from "@/components/logo";
+import {
+  IconeConnexions,
+  IconeConversions,
+  IconeCouts,
+  IconeEquipe,
+  IconeFermer,
+  IconeGoogle,
+  IconeInstagram,
+  IconeMenu,
+  IconeMeta,
+  IconePanneau,
+  IconeRapport,
+  IconeSortie,
+} from "@/components/icones";
 
 // La navigation passe sur le côté. Trois raisons, dans l'ordre d'importance :
 //  · six onglets alignés en haut se lisent comme une frise indistincte ; en
@@ -33,8 +48,9 @@ import type { CompteActif } from "@/lib/account";
 //    besoin d'être nommé, et l'isoler dit sa primauté mieux qu'un titre. Les
 //    sept autres se rangent en trois groupes qui répondent chacun à une
 //    question différente :
-//      · « Où va l'argent » (Thèmes, Coûts) — les deux lectures TRANSVERSALES,
-//        celles qui additionnent les trois canaux ;
+//      · « Où va l'argent » (Conversions, Coûts) — les lectures TRANSVERSALES,
+//        celles qui additionnent les trois canaux. « Thèmes » en est sorti le
+//        2026-09-30 avec le thème lui-même (`.scratch/meta-ads/map.md`) ;
 //      · « Tes canaux » (Meta, Google, Instagram) — le détail par plateforme,
 //        où l'on ne descend qu'une fois qu'une lecture transversale a désigné
 //        un coupable ;
@@ -60,33 +76,28 @@ import type { CompteActif } from "@/lib/account";
 //    colonne groupée que sur écran. Il se ferme sur navigation, sur Échap et au
 //    clic sur le fond.
 
-type Entree = { href: string; label: string; glyphe: string; proprio?: true };
+type Entree = { href: string; label: string; Icone: typeof IconeRapport; proprio?: true };
 type Groupe = { titre: string | null; entrees: Entree[] };
 
-// Les glyphes de canal viennent du lexique commun (▣ Meta, ◆ Google,
-// ◎ Instagram, ◫ Thèmes) — jamais réinventés ici. Les autres sont choisis pour
-// se distinguer À 13 PX, taille à laquelle cinq carrés hachurés se ressemblent
-// tous : ▤ la page écrite du rapport, ◔ la part d'enveloppe consommée (le
-// geste même des anneaux de la page Coûts), ◈ la conversion visée (un losange,
-// pour ne pas se confondre avec les carrés/cercles déjà pris), ⧉ deux vues du
-// même tableau pour le partage d'équipe. C'est la seule chose qui reste quand
-// la colonne est repliée — il faut donc que ça se reconnaisse.
+// Les icônes viennent de `components/icones.tsx` — un seul dessin pour toute
+// l'application. Elles remplacent des glyphes Unicode (▤ ◔ ◈ ⚯ ⧉) dont le
+// rendu changeait avec la police de repli. C'est la seule chose qui reste quand
+// la colonne est repliée : il faut donc qu'elles se reconnaissent à 18 px.
 const GROUPES: Groupe[] = [
-  { titre: null, entrees: [{ href: "/", label: "Rapport", glyphe: "▤" }] },
+  { titre: null, entrees: [{ href: "/", label: "Rapport", Icone: IconeRapport }] },
   {
     titre: "Où va l'argent",
     entrees: [
-      { href: "/labels", label: "Thèmes", glyphe: "◫" },
-      { href: "/conversions", label: "Conversions", glyphe: "◈" },
-      { href: "/couts", label: "Coûts", glyphe: "◔" },
+      { href: "/conversions", label: "Conversions", Icone: IconeConversions },
+      { href: "/couts", label: "Coûts", Icone: IconeCouts },
     ],
   },
   {
     titre: "Tes canaux",
     entrees: [
-      { href: "/meta", label: "Meta", glyphe: "▣" },
-      { href: "/google", label: "Google", glyphe: "◆" },
-      { href: "/instagram", label: "Instagram", glyphe: "◎" },
+      { href: "/meta", label: "Meta", Icone: IconeMeta },
+      { href: "/google", label: "Google", Icone: IconeGoogle },
+      { href: "/instagram", label: "Instagram", Icone: IconeInstagram },
     ],
   },
   {
@@ -94,8 +105,8 @@ const GROUPES: Groupe[] = [
     entrees: [
       // Les connexions ne se gèrent que sur son propre compte : sur celui d'un
       // autre, l'entrée disparaît au lieu de mener à un refus.
-      { href: "/comptes", label: "Connexions", glyphe: "⚯", proprio: true },
-      { href: "/equipe", label: "Équipe", glyphe: "⧉" },
+      { href: "/comptes", label: "Connexions", Icone: IconeConnexions, proprio: true },
+      { href: "/equipe", label: "Équipe", Icone: IconeEquipe },
     ],
   },
 ];
@@ -103,29 +114,6 @@ const GROUPES: Groupe[] = [
 export type InfosNav = {
   fraicheur: string | null; // « données au 27 jul »
 };
-
-function Logo({ mot = true }: { mot?: boolean }) {
-  return (
-    <span className="flex items-center gap-2 shrink-0">
-      <span
-        className="h-[26px] w-[26px] rounded-[8px] bg-brand flex items-center justify-center shrink-0"
-        aria-hidden
-      >
-        <svg viewBox="0 0 16 16" className="h-[14px] w-[14px]">
-          <path
-            d="M1.6 8.6h2.6l1.5-4.2 2.5 8 1.6-3.8h4.6"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-      {mot && <span className="text-[15px] font-bold tracking-tight text-ink">Pulse</span>}
-    </span>
-  );
-}
 
 /** Le contenu de la colonne — le même sur écran et dans le tiroir du téléphone. */
 function Contenu({
@@ -139,23 +127,23 @@ function Contenu({
   infos: InfosNav;
   path: string;
   replie: boolean;
-  bouton: { signe: string; titre: string; action: () => void };
+  bouton: { Icone: typeof IconeRapport; titre: string; action: () => void };
 }) {
   const actif = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
     <div className="flex flex-col h-full px-3 py-4">
-      <div className={`flex items-center mb-4 ${replie ? "flex-col gap-2" : "gap-2"}`}>
+      <div className={`flex items-center mb-6 ${replie ? "flex-col gap-3" : "gap-2 pl-2"}`}>
         <Logo mot={!replie} />
         <button
           onClick={bouton.action}
           aria-label={bouton.titre}
           title={bouton.titre}
-          className={`flex h-7 w-7 items-center justify-center rounded-lg text-faint hover:bg-black/[0.05] hover:text-ink text-[13px] shrink-0 ${
+          className={`flex h-8 w-8 items-center justify-center rounded-lg text-faint hover:bg-ink/[0.05] hover:text-ink transition-colors shrink-0 ${
             replie ? "" : "ml-auto"
           }`}
         >
-          {bouton.signe}
+          <bouton.Icone taille={17} />
         </button>
       </div>
 
@@ -164,7 +152,7 @@ function Contenu({
           const entrees = g.entrees.filter((e) => !e.proprio || compte.uid === compte.moi);
           if (entrees.length === 0) return null;
           return (
-            <div key={g.titre ?? "tete"} className={i > 0 ? "mt-4" : ""}>
+            <div key={g.titre ?? "tete"} className={i > 0 ? "mt-5" : ""}>
               {/* Replié, un titre de 10 px n'a pas la place d'exister : le
                   groupe se dit alors par un filet, qui garde le rythme sans
                   mentir sur ce qu'il sépare. */}
@@ -172,7 +160,9 @@ function Contenu({
                 (replie ? (
                   <div className="h-px bg-line mx-2 mb-2.5" aria-hidden />
                 ) : (
-                  <div className="text-[10px] uppercase tracking-widest text-faint font-bold px-3 mb-1.5">
+                  // En casse de phrase : un titre de groupe en capitales
+                  // espacées criait plus fort que les entrées qu'il range.
+                  <div className="text-[11.5px] text-faint font-medium px-3 mb-1">
                     {g.titre}
                   </div>
                 ))}
@@ -186,22 +176,22 @@ function Contenu({
                       href={e.href}
                       title={replie ? e.label : undefined}
                       aria-current={on ? "page" : undefined}
-                      className={`relative flex items-center rounded-lg transition-colors ${
-                        replie ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2"
-                      } ${tete ? "text-[14px]" : "text-[13px]"} ${
+                      // L'entrée active est une FEUILLE posée sur la colonne —
+                      // blanche, levée, son icône à l'encre. La pilule noire
+                      // qu'elle remplace était l'élément le plus lourd de tout
+                      // l'écran, plus lourd que le verdict de la semaine.
+                      className={`relative flex items-center rounded-[10px] transition-[background-color,box-shadow,color] duration-150 ${
+                        replie ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-[7px]"
+                      } ${tete ? "text-[14.5px]" : "text-[14px]"} ${
                         on
-                          ? "bg-ink text-white font-semibold"
-                          : "text-ink/75 hover:bg-black/[0.05] font-medium"
+                          ? "bg-white shadow-card text-ink font-semibold"
+                          : "text-ink/70 hover:bg-ink/[0.045] hover:text-ink font-medium"
                       }`}
                     >
-                      <span
-                        className={`text-[13px] w-[15px] text-center shrink-0 ${
-                          on ? "text-white/75" : "text-faint"
-                        }`}
-                        aria-hidden
-                      >
-                        {e.glyphe}
-                      </span>
+                      <e.Icone
+                        taille={18}
+                        className={`shrink-0 transition-colors ${on ? "text-brand" : "text-ink/45"}`}
+                      />
                       {!replie && <span className="truncate">{e.label}</span>}
 
                     </Link>
@@ -209,7 +199,7 @@ function Contenu({
                     {/* La fraîcheur qualifie le rapport : elle se range sous
                         lui, pas dans un bloc à part qui redemanderait un titre. */}
                     {tete && !replie && infos.fraicheur && (
-                      <div className="text-[10.5px] text-faint pl-[42px] pr-3 pt-1 pb-0.5">
+                      <div className="text-[11px] text-faint pl-[42px] pr-3 pt-1 pb-0.5">
                         {infos.fraicheur}
                       </div>
                     )}
@@ -230,7 +220,7 @@ function Contenu({
           <button
             onClick={bouton.action}
             title={`${compte.email} — déplier pour agir`}
-            className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg border border-line text-[12px] font-bold text-muted uppercase hover:bg-black/[0.05] hover:text-ink transition-colors"
+            className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-brand/10 text-[13px] font-semibold text-brand uppercase hover:bg-brand/15 transition-colors"
           >
             {(compte.email || "?").charAt(0)}
           </button>
@@ -248,17 +238,30 @@ function Contenu({
                 ne tourne — le bloc du bas retrouve alors la hauteur qu'il
                 avait. */}
             {compte.peutEditer && <SuiviRecolte place="flux" />}
-            <span className="text-[10.5px] text-faint truncate" title={compte.email}>
-              {compte.email}
-            </span>
-            <form action="/auth/signout" method="post">
-              <button
-                type="submit"
-                className="w-full text-[11px] text-muted border border-line rounded-full px-3 py-1.5 hover:bg-black/[0.03] transition-colors"
+            {/* Qui regarde, et la porte de sortie, sur une seule ligne — la
+                pastille pleine largeur « Se déconnecter » donnait au geste le
+                plus rare de l'application la plus grande cible de la colonne. */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[13px] font-semibold text-brand uppercase"
+                aria-hidden
               >
-                Se déconnecter
-              </button>
-            </form>
+                {(compte.email || "?").charAt(0)}
+              </span>
+              <span className="flex-1 min-w-0 text-[12px] text-muted truncate" title={compte.email}>
+                {compte.email}
+              </span>
+              <form action="/auth/signout" method="post" className="shrink-0">
+                <button
+                  type="submit"
+                  aria-label="Se déconnecter"
+                  title="Se déconnecter"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-faint hover:bg-ink/[0.05] hover:text-ink transition-colors"
+                >
+                  <IconeSortie taille={17} />
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>
@@ -369,11 +372,9 @@ export function SideNav({
           onClick={() => setOuvert(true)}
           aria-label="Ouvrir la navigation"
           aria-expanded={ouvert}
-          className="h-8 w-8 -ml-1 flex flex-col items-center justify-center gap-[3.5px] rounded-lg hover:bg-black/[0.05] transition-colors"
+          className="h-9 w-9 -ml-1.5 flex items-center justify-center rounded-lg text-ink hover:bg-ink/[0.05] transition-colors"
         >
-          <span className="block h-[1.6px] w-[15px] rounded-full bg-ink" />
-          <span className="block h-[1.6px] w-[15px] rounded-full bg-ink" />
-          <span className="block h-[1.6px] w-[15px] rounded-full bg-ink" />
+          <IconeMenu taille={20} />
         </button>
         <Logo />
         {/* `place="compact"` : dans 52 px de haut, la pastille dit qu'une
@@ -410,7 +411,7 @@ export function SideNav({
             infos={infos}
             path={path}
             replie={false}
-            bouton={{ signe: "✕", titre: "Fermer la navigation", action: () => setOuvert(false) }}
+            bouton={{ Icone: IconeFermer, titre: "Fermer la navigation", action: () => setOuvert(false) }}
           />
         </div>
       </div>
@@ -470,7 +471,7 @@ export function SideNav({
         // `relative` : le poignée de redimensionnement s'y ancre en `absolute`.
         // Pas de transition pendant le glissement (`enGlissement`) : sinon la
         // colonne suit la souris avec 200 ms de retard.
-        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto relative border-r border-line bg-white/70 backdrop-blur ${
+        className={`hidden lg:flex lg:flex-col lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto relative border-r border-line bg-[#f9f9f7]/90 backdrop-blur ${
           enGlissement ? "" : "transition-[width] duration-200"
         } ${replie ? "lg:w-[64px]" : ""}`}
         style={replie ? undefined : { width: `${largeur}px` }}
@@ -481,7 +482,7 @@ export function SideNav({
           path={path}
           replie={replie}
           bouton={{
-            signe: replie ? "»" : "«",
+            Icone: IconePanneau,
             titre: replie ? "Déplier la navigation" : "Replier la navigation",
             action: basculer,
           }}

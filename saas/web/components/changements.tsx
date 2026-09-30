@@ -70,7 +70,7 @@ function LigneFait({
       >
         {ca.glyphe}
       </span>
-      <div className="text-[10px] uppercase tracking-widest text-faint font-semibold">
+      <div className="text-[12px] text-faint font-semibold">
         {dateCourte(f.date)}
         <span className="text-muted normal-case tracking-normal">
           {" "}· sur {ca.nom}

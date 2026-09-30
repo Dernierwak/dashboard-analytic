@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LineChart } from "@/components/line-chart";
+import { COULEURS } from "@/lib/couleurs";
 import { SOURCE } from "@/components/etat-action";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
@@ -283,7 +284,7 @@ function Cellule({
     >
       <span className="flex items-center gap-1.5">
         <span
-          className={`block text-[9.5px] uppercase tracking-wide font-bold truncate ${
+          className={`block text-[11px] font-semibold truncate ${
             actif ? "text-white/60" : "text-faint"
           }`}
         >
@@ -338,7 +339,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           : null
         : `au-dessus de ${(bandes[iz - 1].max ?? 0).toLocaleString("fr-CH")}${o.unite}`;
   const couleur =
-    zone?.tone === "pos" ? "#1a7a4a" : zone?.tone === "neg" ? "#c0392b" : "#b86b00";
+    zone?.tone === "pos" ? COULEURS.pos : zone?.tone === "neg" ? COULEURS.neg : COULEURS.warn;
 
   const delta = ecartPct(o);
   const groupe = terrain(o.key)?.groupe;
@@ -357,7 +358,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
   return (
     <div className="bg-white border border-line rounded-2xl shadow-card overflow-hidden">
       <div className="p-5 sm:p-6">
-        <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-3">
+        <div className="text-[12px] text-faint font-semibold mb-3">
           Ta boussole <span className="text-ink">· {o.titre}</span>
         </div>
 
@@ -407,7 +408,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
       <div className="border-t border-line bg-black/[0.012] px-3 pt-3 pb-1.5">
         <LineChart
           labels={k.labels}
-          series={[{ name: o.titre, color: "#1a56ff", values: o.points }]}
+          series={[{ name: o.titre, color: COULEURS.encre, values: o.points }]}
           height={210}
           fmt={(v) => fmtVal(o, v)}
           unit={o.unite}
@@ -454,7 +455,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
           return (
             <div key={g.nom} className="rounded-xl border border-line bg-white/60 p-2">
               <div className="flex items-baseline gap-2 px-0.5 pb-1.5">
-                <span className="text-[9.5px] uppercase tracking-widest text-ink font-bold">
+                <span className="text-[11px] text-ink font-semibold">
                   {g.nom}
                 </span>
                 <Glyphes sources={sources} />
@@ -488,7 +489,7 @@ export function KpiFocusCard({ k }: { k: KpiFocus }) {
         })}
         {orphelines.length > 0 && (
           <div className="rounded-xl border border-line bg-white/60 p-2">
-            <div className="text-[9.5px] uppercase tracking-widest text-ink font-bold px-0.5 pb-1.5">
+            <div className="text-[11px] text-ink font-semibold px-0.5 pb-1.5">
               Autres
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">

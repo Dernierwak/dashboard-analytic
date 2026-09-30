@@ -91,7 +91,7 @@ L'effet waouh de Pulse ne viendra pas de la décoration. Il vient de trois chose
 
 **Le mouvement juste.** Une courbe qui se lit d'un coup d'œil, un survol qui répond, une transition courte. Jamais d'animation qui fait attendre.
 
-Et la retenue : le nuancier existe (`lib/palette.ts`, principe de l'aplat dilué et du trait plein), les couleurs sémantiques sont posées — `brand #1a56ff`, `pos #1a7a4a`, `neg #c0392b`, `warn #b86b00`, `ig #7b4fff`. Travaille dedans. Une proposition qui a besoin d'une couleur nouvelle doit justifier ce que cette couleur signifie.
+Et la retenue : l'identité est posée — **lis `docs/identite-visuelle.md` avant toute proposition visuelle** (« le relevé » : papier millimétré, encre, surligneur ; ses tokens, ses polices, ses icônes `components/icones.tsx`, ses dessins `components/illustrations.tsx`). Les couleurs vivent dans `saas/web/lib/couleurs.ts`, le nuancier des séries dans `lib/palette.ts`. Travaille dedans. Une proposition qui a besoin d'une couleur nouvelle doit justifier ce que cette couleur signifie.
 
 ## Ce que tu ne casses jamais
 

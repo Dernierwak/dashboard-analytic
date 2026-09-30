@@ -1,6 +1,7 @@
 // Équipe — donner l'accès à son dashboard à quelqu'un d'autre.
 // Les données ne sont jamais dupliquées : on élargit la règle de lecture au
 // compte de l'invité. Les jetons Meta/Google, eux, ne sont jamais partagés.
+import { IconeConnexions } from "@/components/icones";
 import { getCompteActif } from "@/lib/account";
 import { listerMembres } from "@/app/actions";
 import { EquipeManager } from "@/components/equipe-manager";
@@ -16,14 +17,11 @@ export default async function EquipePage() {
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
 
-      <div className="mb-7">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          Partage d&apos;accès
-        </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
+      <div className="mb-8">
+        <h1 className="font-serif text-[36px] sm:text-[42px] leading-[1.05] tracking-[-0.02em] text-ink">
           Ton équipe.
         </h1>
-        <p className="text-[13px] text-muted mt-2 leading-relaxed max-w-[68ch]">
+        <p className="text-[14.5px] text-muted mt-3 leading-relaxed max-w-[64ch]">
           Une personne invitée voit <span className="font-semibold text-ink">tes données
           et ton rapport</span>, depuis son propre compte. Rien n&apos;est dupliqué : elle
           regarde le tien. Tu peux retirer l&apos;accès à tout moment, et elle perd la vue
@@ -46,15 +44,18 @@ export default async function EquipePage() {
         <EquipeManager membres={membres} />
       )}
 
-      <div className="mt-8 rounded-xl border border-line bg-black/[0.015] p-4">
-        <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">
+      <div className="mt-8 flex gap-3.5 items-start rounded-2xl border border-dashed border-ink/15 p-5">
+        <IconeConnexions taille={20} className="shrink-0 mt-0.5 text-brand" />
+        <div className="min-w-0">
+        <h2 className="text-[14px] text-ink font-semibold mb-1">
           Ce qui n&apos;est jamais partagé
-        </div>
-        <p className="text-[12.5px] text-muted leading-relaxed">
+        </h2>
+        <p className="text-[13px] text-muted leading-relaxed max-w-[68ch]">
           Tes connexions Meta et Google Analytics restent à toi seul. Une personne
           invitée voit les chiffres récoltés, jamais de quoi aller les chercher — elle
           ne peut donc rien faire sur tes comptes publicitaires en dehors de Pulse.
         </p>
+        </div>
       </div>
     </main>
   );

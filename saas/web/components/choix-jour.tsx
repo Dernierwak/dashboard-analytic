@@ -64,7 +64,7 @@ export function ChoixJour({
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-faint font-bold">
+        <span className="text-[12px] text-faint font-semibold">
           {titre}
         </span>
         {pending && <span className="text-[10.5px] text-faint">enregistrement…</span>}

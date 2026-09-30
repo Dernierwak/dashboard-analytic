@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { COULEURS } from "@/lib/couleurs";
 
 // Barplot pour des événements DISCRETS — un post, une campagne, une annonce —
 // par opposition à `LineChart` (`components/line-chart.tsx`), réservé aux
@@ -28,7 +29,7 @@ function ancrage(pct: number): string {
 
 export function BarChart({
   items,
-  color = "#7b4fff",
+  color = COULEURS.instagram,
   height = 190,
   fmt = (v: number) => String(Math.round(v)),
   unit = "",
@@ -86,7 +87,7 @@ export function BarChart({
               y1={PAD_T + (1 - f) * plotH}
               x2={W - PAD_R}
               y2={PAD_T + (1 - f) * plotH}
-              stroke="#e6e6e9"
+              stroke={COULEURS.quadrillage}
               strokeDasharray="4 4"
               vectorEffect="non-scaling-stroke"
             />
@@ -96,7 +97,7 @@ export function BarChart({
             y1={PAD_T + plotH}
             x2={W - PAD_R}
             y2={PAD_T + plotH}
-            stroke="#d8d8de"
+            stroke={COULEURS.axe}
             vectorEffect="non-scaling-stroke"
           />
 

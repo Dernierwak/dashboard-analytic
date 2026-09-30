@@ -2,10 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
-html { -webkit-font-smoothing: antialiased; }
-body { background: theme(colors.canvas); color: theme(colors.ink); }
+@layer base {
+  html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+  /* LE PAPIER MILLIMÉTRÉ. Pulse mesure : son fond est celui d'un carnet de
+     relevés, pas un aplat. Un carreau de 24 px — l'unité de rythme de la page —
+     à 5 % d'encre, assez pour se sentir, jamais assez pour se lire derrière un
+     chiffre : tout ce qui se lit est posé sur une feuille blanche. */
+  body {
+    color: theme(colors.ink);
+    background-color: theme(colors.canvas);
+    background-image:
+      linear-gradient(rgba(47, 68, 208, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(47, 68, 208, 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  /* Les titres serif prennent la coupe « display » de Newsreader à grande
+     taille (axe optique) : les fûts s'affinent, le titre se lit comme imprimé. */
+  .font-serif { font-optical-sizing: auto; letter-spacing: -0.012em; }
+
+  /* Chiffres tabulaires partout où `font-mono` portait un chiffre : les
+     colonnes restent alignées sans police de terminal. Le zéro barré de DM
+     Mono ne se regrette pas — il n'y a pas de « O » à confondre dans un
+     tableau de dépense. */
+  .font-mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+  /* Le surligneur comme sélection : le seul endroit où l'accent apparaît sans
+     qu'on l'ait posé, et le geste exact de quelqu'un qui relit un rapport. */
+  ::selection { background: rgba(255, 227, 110, 0.75); color: theme(colors.ink); }
+
+  /* Un focus clavier qui se voit, sur tout ce qui se clique. `focus-visible`
+     seulement : la souris ne déclenche pas l'anneau. */
+  :focus-visible {
+    outline: 2px solid theme(colors.brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* LE SURLIGNEUR — l'unique accent de l'identité. Un trait jaune sous la
+     moitié basse du texte, légèrement débordant et incliné, comme posé à la
+     main. Pour un mot ou un chiffre qu'on veut faire lire en premier ; jamais
+     un paragraphe, sinon il ne surligne plus rien. */
+  .surligne {
+    background-image: linear-gradient(
+      100deg,
+      rgba(255, 227, 110, 0) 0.4em,
+      rgba(255, 227, 110, 0.9) 0.55em,
+      rgba(255, 220, 90, 0.75) 88%,
+      rgba(255, 227, 110, 0) 100%
+    );
+    background-size: 100% 0.5em;
+    background-position: 0 88%;
+    background-repeat: no-repeat;
+    padding: 0 0.12em;
+    margin: 0 -0.12em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+}
 
 @layer components {
+  /* Le trait de la courbe du logo, qui s'écrit une fois au chargement de la
+     page de connexion — le seul mouvement non demandé de l'application. */
+  .trace-pouls {
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
+    animation: trace-pouls 1.1s 0.25s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  }
+  @keyframes trace-pouls { to { stroke-dashoffset: 0; } }
+
   /* UNE BOÎTE QUI DÉFILE DOIT LE DIRE.
      Sur macOS la barre de défilement est invisible au repos : un contenu coupé
      net se lit comme un contenu fini, et personne ne pense à faire glisser.

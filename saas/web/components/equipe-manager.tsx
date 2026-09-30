@@ -25,7 +25,7 @@ export function EquipeManager({ membres }: { membres: Membre[] }) {
     <>
       {/* Inviter */}
       <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-6">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-3">
+        <div className="text-[12px] text-faint font-semibold mb-3">
           Donner l&apos;accès à quelqu&apos;un
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -80,7 +80,7 @@ export function EquipeManager({ membres }: { membres: Membre[] }) {
       </div>
 
       {/* Qui a accès */}
-      <h2 className="text-[11px] uppercase tracking-widest text-faint font-bold mb-2.5">
+      <h2 className="text-[12.5px] text-faint font-semibold mb-2.5">
         Qui a accès ({membres.length})
       </h2>
       {membres.length === 0 ? (

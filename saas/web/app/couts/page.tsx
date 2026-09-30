@@ -64,7 +64,7 @@ function Titre({ children, sur }: { children: React.ReactNode; sur?: string }) {
   return (
     <div className="mb-3">
       {sur && (
-        <div className="text-[10px] uppercase tracking-widest text-faint font-bold mb-1">{sur}</div>
+        <div className="text-[12px] text-faint font-semibold mb-1">{sur}</div>
       )}
       <h2 className="font-serif text-[19px] sm:text-[21px] leading-tight text-ink flex items-center gap-2.5">
         <span className="h-4 w-[3px] rounded-full bg-brand shrink-0" />

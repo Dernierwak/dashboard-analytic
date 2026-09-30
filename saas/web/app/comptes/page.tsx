@@ -24,6 +24,8 @@ import { SuiviRecolte } from "@/components/suivi-recolte";
 import { JourRecolte } from "@/components/jour-recolte";
 import { SiteClient } from "@/components/site-client";
 import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actions";
+import { CANAL } from "@/lib/couleurs";
+import { IconeFleche, IconeGoogle, IconeInstagram, IconeMeta, IconeSite } from "@/components/icones";
 
 export const dynamic = "force-dynamic";
 
@@ -83,28 +85,51 @@ function Pastille({ ok }: { ok: boolean }) {
   );
 }
 
+// Le logo et la teinte de chaque source — la même paire que la navigation.
+const VISAGE: Record<EtatCanal["cle"], { Icone: typeof IconeMeta; teinte: string }> = {
+  meta: { Icone: IconeMeta, teinte: CANAL.meta },
+  instagram: { Icone: IconeInstagram, teinte: CANAL.instagram },
+  google_ads: { Icone: IconeGoogle, teinte: CANAL.google },
+  ga4: { Icone: IconeSite, teinte: CANAL.site },
+};
+
 function LigneCanal({ c }: { c: EtatCanal }) {
+  const { Icone, teinte } = VISAGE[c.cle];
   return (
-    <div className="flex items-start gap-3 px-4 py-3.5 border-b border-line last:border-b-0">
-      <span className="mt-1.5">
-        <Pastille ok={c.connecte} />
+    <div className="flex items-center gap-4 px-5 py-4 border-b border-line last:border-b-0">
+      {/* La tuile se grise tant que la source n'est pas branchée : on voit
+          d'un coup d'œil ce qui manque, avant d'avoir lu un statut. */}
+      <span
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+        style={{
+          color: c.connecte ? teinte : "#8a8f9a",
+          background: c.connecte ? `${teinte}14` : "rgba(27, 29, 36, 0.04)",
+        }}
+      >
+        <Icone taille={21} />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-[13.5px] font-semibold text-ink">{c.nom}</span>
-          {c.connecte ? (
-            <span className="text-[11.5px] text-pos font-semibold">connecté</span>
-          ) : (
-            <span className="text-[11.5px] text-faint">à brancher</span>
-          )}
+          <span className="text-[14.5px] font-semibold text-ink">{c.nom}</span>
           {c.connecte && c.detail && (
-            <span className="font-mono text-[11px] text-faint truncate">{c.detail}</span>
+            <span className="font-mono text-[12px] text-faint truncate">{c.detail}</span>
           )}
         </div>
-        <p className="text-[12px] text-muted leading-relaxed mt-0.5">
+        <p className="text-[13px] text-muted leading-relaxed mt-0.5">
           {c.connecte ? c.apporte : (c.manque ?? c.apporte)}
         </p>
       </div>
+      {c.connecte ? (
+        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-pos/[0.08] px-2.5 py-1 text-[12px] font-medium text-pos">
+          <Pastille ok />
+          Branché
+        </span>
+      ) : (
+        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-ink/[0.05] px-2.5 py-1 text-[12px] font-medium text-muted">
+          <Pastille ok={false} />
+          À brancher
+        </span>
+      )}
     </div>
   );
 }
@@ -223,18 +248,15 @@ export default async function ComptesPage({
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-      <div className="mb-7">
-        <p className="text-[11px] uppercase tracking-widest text-faint font-semibold mb-1.5">
-          Sources de données
-        </p>
-        <h1 className="font-serif text-3xl sm:text-[34px] leading-tight text-ink">
+      <div className="mb-8">
+        <h1 className="font-serif text-[36px] sm:text-[42px] leading-[1.05] tracking-[-0.02em] text-ink">
           Tes connexions.
         </h1>
-        <p className="text-[13px] text-muted mt-2 leading-relaxed max-w-[68ch]">
+        <p className="text-[14.5px] text-muted mt-3 leading-relaxed max-w-[64ch]">
           Pulse ne récolte que ce que tu l&apos;autorises à lire, et seulement en
           lecture — il ne peut ni modifier ni lancer une campagne.{" "}
           {restants === 0 ? (
-            <span className="font-semibold text-pos">Tout est branché.</span>
+            <span className="font-semibold text-ink surligne">Tout est branché.</span>
           ) : (
             <>
               Il reste{" "}
@@ -249,7 +271,7 @@ export default async function ComptesPage({
 
       {erreur && (
         <div className="mb-5 rounded-xl border border-neg/25 bg-neg/[0.04] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-widest text-neg font-bold mb-1">
+          <div className="text-[12px] text-neg font-semibold mb-1">
             La connexion s&apos;est arrêtée
           </div>
           <p className="text-[12.5px] text-ink leading-relaxed">{erreur}</p>
@@ -293,7 +315,7 @@ export default async function ComptesPage({
           />
         ) : (
           <div className="mb-5 rounded-xl border border-warn/25 bg-warn/[0.05] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1">
+            <div className="text-[12px] text-warn font-semibold mb-1">
               Google Ads
             </div>
             <p className="text-[12.5px] text-ink leading-relaxed">{choixAds.erreur}</p>
@@ -315,7 +337,7 @@ export default async function ComptesPage({
           />
         ) : (
           <div className="mb-5 rounded-xl border border-warn/25 bg-warn/[0.05] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1">
+            <div className="text-[12px] text-warn font-semibold mb-1">
               Google Analytics
             </div>
             <p className="text-[12.5px] text-ink leading-relaxed">{choixGa4.erreur}</p>
@@ -325,7 +347,7 @@ export default async function ComptesPage({
 
       {/* ── L'état des quatre sources ─────────────────────────────────────── */}
 
-      <div className="bg-white border border-line rounded-xl shadow-card overflow-hidden mb-5">
+      <div className="bg-white border border-line rounded-2xl shadow-card overflow-hidden mb-5">
         {cx.canaux.map((c) => (
           <LigneCanal key={c.cle} c={c} />
         ))}
@@ -334,40 +356,46 @@ export default async function ComptesPage({
       {/* ── Les deux gestes ───────────────────────────────────────────────── */}
 
       <div className="grid gap-3 sm:grid-cols-2 mb-8">
-        <div className="bg-white border border-line rounded-xl shadow-card p-4">
-          <div className="flex items-baseline justify-between gap-2 mb-1.5">
-            <span className="text-[13px] font-semibold text-ink">Meta</span>
+        <div className="bg-white border border-line rounded-2xl shadow-card p-5">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="flex items-center gap-2.5 text-[15px] font-semibold text-ink">
+              <IconeMeta taille={20} style={{ color: CANAL.meta }} />
+              Meta
+            </span>
             {cx.canaux[0].connecte && <DeconnecterBouton canal="meta" nom="Meta" />}
           </div>
-          <p className="text-[12px] text-muted leading-relaxed mb-3">
+          <p className="text-[13px] text-muted leading-relaxed mb-4">
             Campagnes Facebook et Instagram, plus tes publications.
           </p>
           <a
             href="/api/oauth/meta/start"
-            className={`inline-block text-[12.5px] font-semibold rounded-full px-4 py-2 transition-colors ${
+            className={`inline-flex items-center gap-2 text-[13.5px] font-semibold rounded-lg px-4 py-2 transition-colors ${
               cx.canaux[0].connecte
-                ? "text-brand border border-brand/30 hover:bg-brand/[0.06]"
-                : "text-white bg-brand hover:bg-brand/90"
+                ? "text-ink bg-white border border-line shadow-card hover:border-brand/40 hover:text-brand"
+                : "text-white bg-brand hover:bg-brand/90 shadow-[0_6px_16px_-8px_rgba(47,68,208,0.6)]"
             }`}
           >
             {cx.canaux[0].connecte ? "Reconnecter" : "Connecter Meta"}
           </a>
         </div>
 
-        <div className="bg-white border border-line rounded-xl shadow-card p-4">
-          <div className="flex items-baseline justify-between gap-2 mb-1.5">
-            <span className="text-[13px] font-semibold text-ink">Google</span>
+        <div className="bg-white border border-line rounded-2xl shadow-card p-5">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="flex items-center gap-2.5 text-[15px] font-semibold text-ink">
+              <IconeGoogle taille={20} style={{ color: CANAL.google }} />
+              Google
+            </span>
             {cx.canaux[2].connecte && <DeconnecterBouton canal="google" nom="Google" />}
           </div>
-          <p className="text-[12px] text-muted leading-relaxed mb-3">
+          <p className="text-[13px] text-muted leading-relaxed mb-4">
             Google Ads et Analytics — une seule autorisation pour les deux.
           </p>
           <a
             href="/api/oauth/google/start"
-            className={`inline-block text-[12.5px] font-semibold rounded-full px-4 py-2 transition-colors ${
+            className={`inline-flex items-center gap-2 text-[13.5px] font-semibold rounded-lg px-4 py-2 transition-colors ${
               cx.canaux[2].connecte
-                ? "text-brand border border-brand/30 hover:bg-brand/[0.06]"
-                : "text-white bg-brand hover:bg-brand/90"
+                ? "text-ink bg-white border border-line shadow-card hover:border-brand/40 hover:text-brand"
+                : "text-white bg-brand hover:bg-brand/90 shadow-[0_6px_16px_-8px_rgba(47,68,208,0.6)]"
             }`}
           >
             {cx.canaux[2].connecte ? "Reconnecter" : "Connecter Google"}
@@ -407,20 +435,23 @@ export default async function ComptesPage({
           seul. Ce qui reste est l'AFFICHEUR : le panneau ne paraît que pendant
           qu'une récolte tourne, et il vit précisément là où on vient de
           brancher quelque chose — c'est l'écran sur lequel on attend. */}
-      <div id="recolter" className="scroll-mt-16 rounded-xl border border-line bg-black/[0.015] p-4">
-        <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">
+      <div id="recolter" className="scroll-mt-16 rounded-2xl border border-dashed border-ink/15 p-5">
+        <h2 className="font-serif text-[20px] leading-tight text-ink mb-1.5">
           {restants === 0 ? "Et maintenant" : "Une fois tout branché"}
-        </div>
-        <p className="text-[12.5px] text-muted leading-relaxed mb-3">
+        </h2>
+        <p className="text-[13px] text-muted leading-relaxed mb-3 max-w-[68ch]">
           Chaque source branchée va chercher son historique tout de suite — compte 5 à
           8 minutes, tu peux fermer la page, elle continue de son côté. Ensuite, tes
-          chiffres et tes conseils sont refaits le jour choisi ci-dessus, et ce jour-là
-          seulement.
+          chiffres sont refaits le jour choisi ci-dessus, et ce jour-là seulement.
         </p>
         <div className="flex flex-col gap-3">
           <SuiviRecolte place="flux" />
-          <Link href="/" className="text-[12.5px] font-semibold text-brand hover:underline">
-            Voir mon rapport →
+          <Link
+            href="/"
+            className="group inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-brand"
+          >
+            Voir mon rapport
+            <IconeFleche taille={16} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
       </div>

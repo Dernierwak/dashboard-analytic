@@ -1,4 +1,5 @@
 import type { ChangementPlateforme } from "@/lib/report";
+import { COULEURS } from "@/lib/couleurs";
 
 // Le lexique des plateformes, en un seul endroit : leur glyphe, leur teinte,
 // leur nom, la date courte et la phrase qu'on écrit d'un changement.
@@ -29,15 +30,15 @@ export function dateCourte(iso: string): string {
 // couper Google Ads à qui croit lire son trafic.
 //
 // `surSombre` n'est pas un raffinement : ces teintes sont choisies pour du
-// texte sur blanc, et #1a56ff sur un fond encre est illisible. Une cellule
+// texte sur blanc, et l'encre sur un fond graphite est illisible. Une cellule
 // sélectionnée s'inverse — il lui faut la version claire.
 export const SOURCE: Record<
   string,
   { glyphe: string; couleur: string; surSombre: string; nom: string }
 > = {
-  meta: { glyphe: "▣", couleur: "#1a56ff", surSombre: "#8fadff", nom: "Meta" },
-  google: { glyphe: "◆", couleur: "#1a7a4a", surSombre: "#5fd09a", nom: "Google" },
-  instagram: { glyphe: "◎", couleur: "#7b4fff", surSombre: "#bda6ff", nom: "Instagram" },
+  meta: { glyphe: "▣", couleur: COULEURS.encre, surSombre: "#9aa8ff", nom: "Meta" },
+  google: { glyphe: "◆", couleur: COULEURS.pos, surSombre: "#5fd09a", nom: "Google" },
+  instagram: { glyphe: "◎", couleur: COULEURS.instagram, surSombre: "#bda6ff", nom: "Instagram" },
   site: { glyphe: "◇", couleur: "#5b6472", surSombre: "#c2c8d2", nom: "Google Analytics" },
 };
 

@@ -1,5 +1,6 @@
 import { Sparkline } from "@/components/line-chart";
 import { Pente } from "@/components/pente";
+import { COULEURS } from "@/lib/couleurs";
 
 // La tuile-chiffre, une seule fois.
 //
@@ -22,10 +23,10 @@ const CLS: Record<Ton, string> = {
   warn: "text-warn",
 };
 const TRAIT: Record<Ton, string> = {
-  ink: "#1a56ff",
-  pos: "#1a7a4a",
-  neg: "#c0392b",
-  warn: "#b86b00",
+  ink: COULEURS.encre,
+  pos: COULEURS.pos,
+  neg: COULEURS.neg,
+  warn: COULEURS.warn,
 };
 
 export function Chiffre({
@@ -62,9 +63,9 @@ export function Chiffre({
   const utile = (serie ?? []).filter((v) => v !== null && v > 0).length >= 2;
 
   return (
-    <div className="bg-white border border-line rounded-xl min-w-[180px] shrink-0 sm:min-w-0 sm:shrink overflow-hidden flex flex-col">
+    <div className="bg-white border border-line rounded-xl shadow-card min-w-[180px] shrink-0 sm:min-w-0 sm:shrink overflow-hidden flex flex-col">
       <div className="p-4 pb-3 flex-1">
-        <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
+        <div className="text-[12px] text-faint font-semibold mb-1.5">
           {titre}
         </div>
         <div className="flex items-baseline gap-2 flex-wrap">

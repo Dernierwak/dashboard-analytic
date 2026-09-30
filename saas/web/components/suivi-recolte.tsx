@@ -1,5 +1,6 @@
 "use client";
 
+import { COULEURS } from "@/lib/couleurs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { checkFetchStatus, checkFetchProgress } from "@/app/actions";
 import type { CanalRecolte } from "@/app/actions";
@@ -355,7 +356,7 @@ export function SuiviRecolte({ place = "flux" }: { place?: Place } = {}) {
           rang 2 · le compteur de contexte, à sa droite. Le chronomètre part de
           la date du run GitHub : c'est une durée mesurée, pas un avancement. */}
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-faint">
+        <span className="text-[12px] font-semibold text-faint">
           Récolte
         </span>
         <span className="font-mono text-[10.5px] text-faint shrink-0">{mmss(elapsed)}</span>
@@ -389,8 +390,8 @@ export function SuiviRecolte({ place = "flux" }: { place?: Place } = {}) {
         <span
           className="inline-block mt-2 text-[10px] font-bold rounded-full px-2 py-0.5 text-neg"
           /* Recette maison de la pastille de verdict : `color: X` /
-             `background: X + "14"` — X est ici `neg` (#c0392b) du thème. */
-          style={{ background: "#c0392b14" }}
+             `background: X + "14"` — X est ici `neg` du thème (`lib/couleurs.ts`). */
+          style={{ background: `${COULEURS.neg}14` }}
         >
           {interrompus.length > 0
             ? `${interrompus.length} interrompue${interrompus.length > 1 ? "s" : ""}`

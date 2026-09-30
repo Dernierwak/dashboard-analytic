@@ -158,7 +158,7 @@ export function SiteClient({
       {/* rang 8 — le pilotage, en bas */}
       <div className="mt-5 pt-4 border-t border-line">
         <div className="flex items-baseline justify-between gap-2 mb-2">
-          <span className="text-[10px] uppercase tracking-widest text-faint font-bold">
+          <span className="text-[12px] text-faint font-semibold">
             {enregistre ? "Changer d'adresse" : "Ajouter ton adresse"}
           </span>
           {pending && <span className="text-[10.5px] text-faint">enregistrement…</span>}
