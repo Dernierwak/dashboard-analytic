@@ -157,18 +157,7 @@ def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
         ).execute()
 
 
-# ── Tab Coût — labels & budgets ────────────────────────────────────────────────
-
-def update_campaign_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
-    """Master list UNIFIÉE des labels → profiles.labels (partagée Meta/Google/Instagram)."""
-    update_labels(supabase, user_id, labels)
-
-
-def update_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
-    """Écrit la liste maîtresse unique des labels (profiles.labels)."""
-    clean = sorted({str(l).strip() for l in labels if str(l).strip()})
-    supabase.table("profiles").update({"labels": clean}).eq("id", user_id).execute()
-
+# ── Tab Coût — budgets ─────────────────────────────────────────────────────────
 
 def upsert_channel_budget(supabase: Client, user_id: str, channel: str, month_iso: str, amount: float) -> None:
     """Budget mensuel d'un canal (channel_budgets). month_iso = 'YYYY-MM-01'."""
@@ -207,14 +196,11 @@ def upsert_campaign_config(
     user_id: str,
     campaign_name: str,
     *,
-    label: str | None = None,
     budget_max: float | None = None,
     effective_status: str | None = None,
 ) -> None:
     """Upsert ligne meta_campaign_config. Met à jour seulement les champs fournis."""
     payload: dict = {"user_id": user_id, "campaign_name": campaign_name}
-    if label is not None:
-        payload["label"] = label if label else None
     if budget_max is not None:
         payload["budget_max"] = float(budget_max or 0)
     if effective_status is not None:
@@ -383,16 +369,6 @@ def upsert_platform_changes(
         raise
 
 
-def rename_campaign_label(supabase: Client, user_id: str, old_label: str, new_label: str) -> None:
-    """Renomme un label dans toutes les lignes meta_campaign_config de l'utilisateur."""
-    supabase.table("meta_campaign_config").update({"label": new_label}).eq("user_id", user_id).eq("label", old_label).execute()
-
-
-def clear_campaign_label(supabase: Client, user_id: str, label: str) -> None:
-    """Met à NULL le label dans meta_campaign_config (utilisé quand on supprime un label)."""
-    supabase.table("meta_campaign_config").update({"label": None}).eq("user_id", user_id).eq("label", label).execute()
-
-
 # ── Google Ads — helpers ──────────────────────────────────────────────────────
 
 def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
@@ -459,11 +435,6 @@ def upsert_google_ads_ad_insights(supabase: Client, user_id: str, rows: list[dic
     ).execute()
 
 
-def update_google_campaign_labels(supabase: Client, user_id: str, labels: list[str]) -> None:
-    """Master list UNIFIÉE → profiles.labels (partagée Meta/Google/Instagram)."""
-    update_labels(supabase, user_id, labels)
-
-
 def update_google_budget_global(supabase: Client, user_id: str, value: float) -> None:
     supabase.table("profiles").update({"google_budget_global": float(value or 0)}).eq("id", user_id).execute()
 
@@ -474,15 +445,12 @@ def upsert_google_campaign_config(
     campaign_id: str,
     *,
     campaign_name: str | None = None,
-    label: str | None = None,
     budget_max: float | None = None,
     effective_status: str | None = None,
 ) -> None:
     payload: dict = {"user_id": user_id, "campaign_id": str(campaign_id)}
     if campaign_name is not None:
         payload["campaign_name"] = campaign_name
-    if label is not None:
-        payload["label"] = label if label else None
     if budget_max is not None:
         payload["budget_max"] = float(budget_max or 0)
     if effective_status is not None:
@@ -517,14 +485,6 @@ def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: 
         supabase.table("google_campaign_config").upsert(
             records, on_conflict="user_id,campaign_id"
         ).execute()
-
-
-def rename_google_campaign_label(supabase: Client, user_id: str, old: str, new: str) -> None:
-    supabase.table("google_campaign_config").update({"label": new}).eq("user_id", user_id).eq("label", old).execute()
-
-
-def clear_google_campaign_label(supabase: Client, user_id: str, label: str) -> None:
-    supabase.table("google_campaign_config").update({"label": None}).eq("user_id", user_id).eq("label", label).execute()
 
 
 def _upsert_google_account(supabase: Client, user_id: str, payload: dict) -> None:
@@ -670,10 +630,6 @@ def upsert_ga4_event_catalog(supabase: Client, user_id: str, evenements: list[di
     il y a six mois, que le client pourrait encore cocher — et qui ne
     remonterait jamais aucune ligne.
 
-    Le choix du client, lui, n'est pas touché : il vit dans `theme_ga4_events`
-    et un événement disparu du catalogue y reste coché. C'est voulu — l'écran
-    le signale plutôt que de décocher tout seul un réglage qu'on n'a pas posé.
-
     NE LÈVE JAMAIS, MAIS NE SE TAIT PLUS. La récolte ne doit pas échouer pour un
     cache — c'était déjà la règle, et elle ne change pas. Ce qui change, c'est
     qu'un `except: pass` rendait l'échec INVISIBLE : une colonne absente, et la
@@ -721,10 +677,6 @@ def update_objectif(supabase: Client, user_id: str, objectif: str | None) -> Non
     ).eq("id", user_id).execute()
 
 
-
-
-
-
 def save_user_profile(supabase: Client, user_id: str, profile_text: str | None) -> None:
     """Stocke le persona utilisateur dérivé par l'IA (profiles.user_profile)."""
     from datetime import datetime, timezone
@@ -734,10 +686,6 @@ def save_user_profile(supabase: Client, user_id: str, profile_text: str | None) 
             "user_profile_updated_at": datetime.now(timezone.utc).isoformat(),
         }
     ).eq("id", user_id).execute()
-
-
-
-
 
 
 # CE QU'EST DEVENU L'EMAIL HEBDO (ticket 50). Deux écritures, à une semaine

@@ -14,99 +14,18 @@ from datetime import date, timedelta
 import pulse  # noqa: F401
 from t import ok, egal, proche, bilan
 
-from lecteur_fige import compte, Campagne, Annonce, JOURS
+from lecteur_fige import compte, Campagne
 from saas.traitement.build_report import build_payload
 
 AUJOURD_HUI = date(2026, 9, 13)
 DERNIERE_DONNEE = AUJOURD_HUI - timedelta(days=1)
 
 
-def carte(payload, label):
-    for t in payload["themes_focus"]:
-        if t["label"] == label:
-            return t
-    return None
-
-
-# ── 1 · LE ROAS D'UN THÈME BI-RÉGIE (ticket 01) ──────────────────────────────
-
-def test_le_roas_d_un_theme_couvre_le_meme_perimetre_des_deux_cotes():
-    """Le défaut d'origine : un revenu Meta+Google divisé par une dépense Meta
-    seule. Ici le thème dépense sur les DEUX régies, et les deux montants du
-    payload doivent contenir les deux.
-    """
-    google = Campagne("Été – Google", theme="Été", canal="google",
-                      depense_jour=20.0, clics_jour=60, impressions_jour=3000,
-                      revenu_jour=50.0)
-    meta = Campagne("Été – Meta", theme="Été", canal="meta",
-                    depense_jour=10.0, clics_jour=40, impressions_jour=2000,
-                    revenu_jour=30.0)
-    p = build_payload(compte([google, meta], etoiles=["Été"],
-                             aujourd_hui=AUJOURD_HUI))
-    bilan_theme = carte(p, "Été")["summary"]
-
-    depense_attendue = (20.0 + 10.0) * JOURS
-    revenu_attendu = (50.0 + 30.0) * JOURS
-    proche("la dépense porte les deux régies", bilan_theme["spend"], depense_attendue)
-    proche("le revenu porte les deux régies", bilan_theme["revenue"], revenu_attendu)
-    proche("et le ROAS est bien leur quotient", bilan_theme["roas"],
-           round(revenu_attendu / depense_attendue, 2))
-    ok("une seule régie ne suffirait pas à ce chiffre",
-       bilan_theme["spend"] > 20.0 * JOURS,
-       f"{bilan_theme['spend']} vs {20.0 * JOURS}")
-
-
-def test_le_roas_ne_se_prononce_pas_sous_le_seuil_de_jugement():
-    """Le seuil des 100 CHF vit dans la vue (`juge`), plus en Python. Sous lui,
-    pas de ROAS du tout — pas un ROAS « prudent »."""
-    petite = Campagne("Test – Google", theme="Test", canal="google",
-                      depense_jour=0.5, clics_jour=2, impressions_jour=100,
-                      revenu_jour=1.0)
-    lecteur = compte([petite], etoiles=["Test"], aujourd_hui=AUJOURD_HUI)
-    vue = {l["label"]: l for l in lecteur.themes_regroupes()}
-    ok("la vue dit que le thème n'est pas jugeable", vue["Test"]["juge"] is False)
-    egal("et elle ne rend aucun ROAS", vue["Test"]["roas"], None)
-    p = build_payload(lecteur)
-    egal("le payload non plus", carte(p, "Test")["summary"]["roas"], None)
-
-
-# ── 2 · UN THÈME SANS REVENU CONFIRMÉ NE PORTE AUCUN REVENU ──────────────────
-
-def test_un_theme_sans_revenu_confirme_ne_porte_ni_zero_ni_estimation():
-    """Sans réponse de la vue, pas de revenu — et on le dit (spec, § « le seul
-    endroit où le regroupement est implémenté »).
-
-    UNE EXCEPTION MESURÉE ET TICKETÉE : `payload.themes.rows[].rev` écrit `0.0`
-    au lieu de rien. Elle est nommée ici plutôt que contournée — voir le
-    ticket 40, ouvert par ce harnais.
-    """
-    avec = Campagne("Été – Google", theme="Été", canal="google",
-                    depense_jour=30.0, clics_jour=100, impressions_jour=4000,
-                    revenu_jour=60.0)
-    sans = Campagne("Muet – Google", theme="Muet", canal="google",
-                    depense_jour=15.0, clics_jour=30, impressions_jour=1500,
-                    revenu_jour=None)
-    p = build_payload(compte([avec, sans], etoiles=["Été", "Muet"],
-                             aujourd_hui=AUJOURD_HUI))
-
-    muet = carte(p, "Muet")["summary"]
-    egal("aucun revenu sur la carte", muet["revenue"], None)
-    egal("aucun ROAS non plus", muet["roas"], None)
-    ok("mais la dépense, elle, est bien là", (muet["spend"] or 0) > 0)
-
-    matrice = {t["label"]: t for t in p["matrice"]["themes"]}
-    egal("aucun revenu dans la matrice", matrice["Muet"]["revenue"], None)
-    egal("aucun ROAS dans la matrice", matrice["Muet"]["roas"], None)
-    ok("le thème qui en a, lui, l'affiche", matrice["Été"]["revenue"] is not None)
-
-
-# ── 4 · LA FENÊTRE, LES DATES, ET LA PUBLICATION IDEMPOTENTE (ticket 13) ────
-
 def _fixture_meta(**kw):
-    return compte([Campagne("Été – Meta", theme="Été", canal="meta",
+    return compte([Campagne("Été – Meta", canal="meta",
                             depense_jour=30.0, clics_jour=100,
                             impressions_jour=4000, revenu_jour=40.0)],
-                  etoiles=["Été"], aujourd_hui=AUJOURD_HUI, **kw)
+                  aujourd_hui=AUJOURD_HUI, **kw)
 
 
 def test_la_fenetre_fait_sept_jours_pleins_et_exclut_le_jour_en_cours():
@@ -153,25 +72,20 @@ def test_les_bornes_de_la_fenetre_sont_dans_le_payload_et_lisibles():
        str(DERNIERE_DONNEE.day) in p["week_label"])
 
 
-# ── 5 · AUCUN CHIFFRE QUI NE SORTE DES LIGNES D'ENTRÉE ───────────────────────
+# ── AUCUN CHIFFRE QUI NE SORTE DES LIGNES D'ENTRÉE ───────────────────────
 
-def test_les_montants_d_un_theme_se_rebatissent_a_la_main():
+def test_les_montants_du_compte_se_rebatissent_a_la_main():
     """La propriété qui protège le §7 : chaque montant du payload se recalcule
     depuis les lignes servies au lecteur, sans rien connaître du code qui l'a
     produit."""
     campagnes = [
-        Campagne("Été – Google", theme="Été", canal="google", depense_jour=20.0,
+        Campagne("Été – Google", canal="google", depense_jour=20.0,
                  clics_jour=60, impressions_jour=3000, revenu_jour=50.0),
-        Campagne("Été – Meta", theme="Été", canal="meta", depense_jour=10.0,
+        Campagne("Été – Meta", canal="meta", depense_jour=10.0,
                  clics_jour=40, impressions_jour=2000, revenu_jour=30.0),
     ]
-    p = build_payload(compte(campagnes, etoiles=["Été"], aujourd_hui=AUJOURD_HUI))
-    bilan_theme = carte(p, "Été")["summary"]
+    p = build_payload(compte(campagnes, aujourd_hui=AUJOURD_HUI))
 
-    proche("la dépense de la SEMAINE = sept jours de dépense",
-           bilan_theme["spend_week"], (20.0 + 10.0) * 7)
-    proche("la dépense TOTALE = tout l'historique servi",
-           bilan_theme["spend"], (20.0 + 10.0) * JOURS)
     proche("les clics du compte sur la semaine",
            p["kpis"]["clicks"], (60 + 40) * 7)
     proche("la dépense du compte sur la semaine",
@@ -181,8 +95,8 @@ def test_les_montants_d_un_theme_se_rebatissent_a_la_main():
 
 
 def test_aucun_infini_aucun_nan_nulle_part_dans_le_payload():
-    """« Un +∞ % n'existe pas » (`CLAUDE.md` §7). Un thème dont la semaine
-    précédente était à zéro est exactement le cas qui en fabriquait un."""
+    """« Un +∞ % n'existe pas » (`CLAUDE.md` §7). Une campagne dont la
+    semaine précédente était à zéro est exactement le cas qui en fabriquait un."""
     import math
 
     def balaie(valeur, chemin="payload"):
@@ -196,10 +110,10 @@ def test_aucun_infini_aucun_nan_nulle_part_dans_le_payload():
             ok(f"{chemin} est un nombre fini", math.isfinite(valeur), valeur)
 
     # Une campagne qui DÉMARRE dans la fenêtre : la semaine précédente est à zéro.
-    neuve = Campagne("Neuve – Meta", theme="Neuve", canal="meta",
+    neuve = Campagne("Neuve – Meta", canal="meta",
                      depense_jour=25.0, clics_jour=80, impressions_jour=2500,
                      revenu_jour=40.0)
-    lecteur = compte([neuve], etoiles=["Neuve"], aujourd_hui=AUJOURD_HUI)
+    lecteur = compte([neuve], aujourd_hui=AUJOURD_HUI)
     lecteur._meta_ads = [l for l in lecteur._meta_ads
                          if l["date_start"] >= (DERNIERE_DONNEE
                                                 - timedelta(days=6)).isoformat()]

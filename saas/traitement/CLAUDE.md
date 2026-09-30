@@ -10,7 +10,7 @@ Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 |---|---|
 | `build_report.py` | Le payload entier, et sa publication (`publish_weekly_report`). |
 | `lecteur.py` | **Le seam.** Toute lecture et toute écriture passent par lui, donc `build_payload` tourne sans base, sans secret et sans réseau dès qu'on lui donne un faux lecteur. |
-| `matrice.py` | La matrice full-history — tout l'historique croisé par format, campagne et créneau. Elle chiffre les cartes de thème. |
+| `matrice.py` | La matrice full-history — tout l'historique croisé par format, campagne et créneau. |
 
 ## CE DOSSIER NE CONSEILLE RIEN
 
@@ -20,18 +20,24 @@ payantes, les constats « ce qui fonctionne pour toi », la composition de la
 semaine, le profil client vivant, la mémoire d'un thème, le brief rédigé par
 Gemini, le suivi des actions et le savoir-faire de fond.
 
-`build_payload` est passée de 5 900 à ~2 200 lignes. **Aucun appel à un modèle
+`build_payload` est passée de 5 900 à ~2 200 lignes, puis le fichier à ~1 400
+avec le départ du thème. **Aucun appel à un modèle
 de langage ne subsiste** dans ce dossier.
 
+Le thème — l'étiquette posée sur des campagnes et des publications, les
+étoiles des thèmes prioritaires, la vue `theme_regroupement` — est parti à son
+tour (`.scratch/meta-ads/issues/01-…`), **et rien ne l'a remplacé** : ni
+cartes, ni anneau, ni regroupement, ni objectif ou événement GA4 par thème.
+
 Ce que le payload porte encore, et rien d'autre : le verdict de la semaine
-(déterministe), la boussole (`kpi_focus`), l'anneau des thèmes (`themes`), la
-frise (`frise`), les cartes de thème (`themes_focus` : chiffres, courbe,
-campagnes), les faits de plateforme (`changements`), les canaux muets
-(`canaux_muets`), la matrice compacte (`matrice`) et les métriques de lecture
-rapide (`metrics_read`, `metrics_prev`, `metrics_series`).
+(déterministe), la boussole (`kpi_focus`), la frise (`frise`), les faits de
+plateforme (`changements`), les canaux muets (`canaux_muets`), la matrice
+compacte (`matrice` : formats, campagnes, créneaux, couverture) et les
+métriques de lecture rapide (`metrics_read`, `metrics_prev`, `metrics_series`).
 
 **Les payloads DÉJÀ PUBLIÉS gardent leurs clés mortes** (`recos`, `brief`,
-`tracking`, `vision`, `reglages`, `themes_tips`, `top_recos`…). Plus personne ne
+`tracking`, `vision`, `reglages`, `themes_tips`, `top_recos`, `themes_focus`,
+`themes`, `matrice.themes`, le `theme` des campagnes de la frise…). Plus personne ne
 les lit ; elles s'éteignent d'elles-mêmes à la prochaine publication. Ne pas
 écrire de migration pour les nettoyer : ça coûterait une réécriture de tous les
 payloads pour gagner des octets que personne ne paie.

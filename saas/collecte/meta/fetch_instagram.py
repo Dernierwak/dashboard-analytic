@@ -146,8 +146,8 @@ class OrganicInstagramm():
         insert_instagram_total_posts_id(supabase=self.supabase_client, user_id=self.supabase_user_id, total_posts_id=self.total_posts)
 
         is_paid = self.supabase_client.table("profiles").select("is_paid").eq("id", self.supabase_user_id).execute().data[0].get("is_paid", False)
-        # 200 en payant : la matrice « tout l'historique » et la labellisation IA
-        # ont besoin de profondeur (le backfill se fait en plusieurs fetchs).
+        # 200 en payant : la matrice « tout l'historique » a besoin de
+        # profondeur (le backfill se fait en plusieurs fetchs).
         self.limit = 200 if is_paid else 10
         all_post_ids = df["id"][:self.limit].tolist()
 
@@ -313,7 +313,7 @@ class OrganicInstagramm():
             results.append({
                 "post_id": post_id,
                 "type": info.get("media_type"),
-                "caption": info.get("caption", "")[:500],  # assez pour labelliser par thème
+                "caption": info.get("caption", "")[:500],
                 "date": info.get("timestamp", ""),
                 "media_url": self._image_du_post(post_id, info),
                 "follows": metrics.get("follows", 0),

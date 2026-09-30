@@ -8,12 +8,9 @@ import {
   CampaignTable,
   MetricChart,
   MoyennesAds,
-  ByLabelTable,
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
-import { RetourRapport } from "@/components/retour-rapport";
-import { themesChoisis } from "@/lib/commandes";
 
 export const dynamic = "force-dynamic";
 
@@ -42,17 +39,12 @@ export default async function GooglePage({
           from: searchParams?.from ? d.windowDebut : undefined,
           to: searchParams?.to ? d.windowFin : undefined,
         }}
-        themes={d.labels}
-        themesActifs={themesChoisis(searchParams)}
         statuts={d.statusOptions}
         statutActif={d.filters.status}
         campagnes={d.campOptions}
         campActive={d.filters.camp}
       />
 
-      {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
-          et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
-      <RetourRapport de={searchParams?.de} />
 
       {/* CE QU'ON N'A PAS PU LIRE, AVANT LES CHIFFRES QU'IL EXPLIQUE (ticket
           48). Les chiffres de cette page restent justes quand la récolte a
@@ -77,18 +69,13 @@ export default async function GooglePage({
           même question doivent la poser dans le même ordre. */}
       <MoyennesAds d={d} path="/google" />
       <MetricChart d={d} path="/google" />
-      {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
-          qu'une comparaison, dès qu'elle est posée — et rien de plus quand
-          elle ne l'est pas. */}
-      <ByLabelTable d={d} path="/google" />
+      {/* La table qui suit porte l'écart des mêmes deux périodes qu'une
+          comparaison, dès qu'elle est posée — et rien de plus quand elle ne
+          l'est pas. */}
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
           sur Google le détail par groupe d'annonces n'est pas toujours là. */}
       <CampaignTable d={d} channel="google" path="/google" />
-      <p className="text-[11.5px] text-faint mt-3 leading-relaxed">
-        Le thème relie tes campagnes cross-canal (page Labels) — même liste que Meta
-        et Instagram.
-      </p>
     </main>
   );
 }

@@ -61,48 +61,6 @@ _CATALOGUE_JOURS = 90
 _RECOUVREMENT_JOURS_GA4 = 12
 
 
-def fetch_theme_ga4_events(supabase, user_id: str) -> dict[str, list[dict]]:
-    """Les événements GA4 rattachés à chaque thème.
-
-    SA PLACE EST DISCUTABLE ET ELLE EST ASSUMÉE : toutes les autres lectures
-    Supabase de GA4 vivent dans `scripts/fetch_data.py`, et celle-ci ferait un
-    voisin naturel de `fetch_ga4_events`. Elle est ici parce que ce module est
-    le SEUL consommateur côté Python — la récolte s'en sert pour savoir quoi
-    demander à l'API, le worker la réutilise via `build_ga4_context`, et Pulse
-    lit la table directement en SQL (`lib/channels.ts::getThemeEvenements`).
-    Une lecture à un seul appelant se range avec son appelant.
-
-    Returns: {label: [{"event_name": str, "rang": "principal"|"secondaire"}]},
-    les principaux d'abord dans chaque liste. {} si la table est absente
-    (migration `theme_ga4_events.sql` pas passée) — l'appelant retombe alors sur
-    le seul plancher `FUNNEL_EVENTS`, exactement comme avant cette
-    fonctionnalité. C'est ce qui rend la migration non bloquante.
-    """
-    try:
-        rows = (
-            supabase.table("theme_ga4_events")
-            .select("label, event_name, rang")
-            .eq("user_id", user_id)
-            .execute()
-            .data
-        ) or []
-    except Exception:
-        return {}
-    out: dict[str, list[dict]] = {}
-    for r in rows:
-        lbl = (r.get("label") or "").strip()
-        nom = (r.get("event_name") or "").strip()
-        if not lbl or not nom:
-            continue
-        out.setdefault(lbl, []).append({
-            "event_name": nom,
-            "rang": r.get("rang") or "secondaire",
-        })
-    for lst in out.values():
-        lst.sort(key=lambda e: (e["rang"] != "principal", e["event_name"]))
-    return out
-
-
 def run_ga4_fetch(
     supabase,
     user_id: str,
@@ -169,19 +127,6 @@ def run_ga4_fetch(
         """
         return f"{msg} · {catalogue_note}" if catalogue_note else msg
 
-    # Les événements que le client a rattachés à ses thèmes : ce sont EUX qu'on
-    # récolte au jour le jour, en plus du plancher du funnel. Voir
-    # `collecte/ga4/fetch_ga4.py::fetch_ga4_events` pour le raisonnement de
-    # volumétrie qui interdit de tout prendre.
-    try:
-        _choisis = sorted({
-            e["event_name"]
-            for lst in (fetch_theme_ga4_events(supabase, user_id) or {}).values()
-            for e in lst
-        })
-    except Exception:
-        _choisis = []
-
     # LE MÊME DÉPART QUE META ET GOOGLE, ET LA MÊME FONCTION — pas une seconde
     # copie de la règle. L'import est LOCAL parce qu'il serait circulaire au
     # niveau du module : `saas/collecte/automatisation/fetch_all.py` importe `run_ga4_fetch` d'ici.
@@ -221,7 +166,7 @@ def run_ga4_fetch(
         rows += chunk_rows
         # Détail par événement (best-effort : ne bloque pas le fetch principal)
         chunk_events, _ev_err = fetch_ga4_events(
-            access_token, property_id, c_since, c_until, event_names=_choisis)
+            access_token, property_id, c_since, c_until)
         if not _ev_err:
             event_rows += chunk_events
 
@@ -314,8 +259,7 @@ def build_ga4_context(
     #                         `_rule_funnel` (« des paniers, zéro achat »), un
     #                         conseil sur le SITE : il n'a pas à être découpé
     #                         par campagne.
-    # `events_by_campaign`  — par campagne UTM. C'est le seul pont possible vers
-    #                         un thème, et il ne franchit pas l'organique.
+    # `events_by_campaign`  — par campagne UTM. Il ne franchit pas l'organique.
     # `events_sans_campagne`— ce qui n'a AUCUNE campagne. Ces événements ont eu
     #                         lieu ; ils ne sont attribuables à personne. On les
     #                         garde pour pouvoir DIRE combien on ne rattache

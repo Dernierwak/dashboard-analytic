@@ -117,9 +117,9 @@ export function horodatage(x: string | null | undefined): Date | null {
 
 // ── LA PHRASE D'UN RÉGLAGE QUI ATTEND LE JOUR DE TRAVAIL ─────────────────────
 //
-// Trois réglages s'enregistrent à la seconde et ne changent le rapport qu'au
-// prochain passage du worker : les priorités de thèmes, l'objectif du compte,
-// les catégories de conversions. Ils ne sont pas du REGROUPEMENT (qui se relit
+// Des réglages s'enregistrent à la seconde et ne changent le rapport qu'au
+// prochain passage du worker : l'objectif du compte, les catégories de
+// conversions. Ils ne sont pas du REGROUPEMENT (qui se relit
 // tout de suite, partout) mais de la RÉDACTION — et ce qui se rédige attend le
 // jour dit (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md` §2).
 //

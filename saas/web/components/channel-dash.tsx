@@ -1,16 +1,14 @@
 // Blocs partagés des dashboards par canal (server components).
 // Même base que les onglets Streamlit : hero + 7 KPIs (coûts « baisse = bon »),
 // graphe journalier à métrique sélectionnable, campagnes avec statut et
-// drill-down adset/groupe → annonce, vue Par thème.
+// drill-down adset/groupe → annonce.
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
 import type {
-  Campaign, ChannelDash, DashParams, DayPoint, InstaDash, InstaPost, LabelAgg, PostLabelAgg,
+  Campaign, ChannelDash, DashParams, DayPoint, InstaDash, InstaPost,
 } from "@/lib/channels";
 import { lienDash } from "@/lib/liens";
-import { CampaignLabelSelect } from "@/components/campaign-label-select";
-import { SummaryStop } from "@/components/summary-stop";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import {
   CelluleEcart,
@@ -756,223 +754,6 @@ function valeurAds(
     : x.spend;
 }
 
-export function ByLabelTable({ d, path }: { d: ChannelDash; path: string }) {
-  if (d.byLabel.length === 0) return null;
-
-  // `ouvrirEcart` rend `null` dès que la comparaison ne tient pas — la table
-  // reprend alors exactement la forme qu'elle avait, sans colonne ni pied.
-  const e = ouvrirEcart(d.comparaison, "theme", METRIQUES_ECART[d.metric] ?? METRIQUES_ECART.spend);
-  const trie = e !== null && triParEcart(d.params);
-  const valeur = (x: LabelAgg) => valeurAds(x, d.metric);
-  const lignes = e && trie ? trierParEcart(d.byLabel, e, (x) => x.label, valeur) : d.byLabel;
-  const disparues = e ? e.disparues(d.byLabel.map((x) => x.label)) : [];
-
-  const thc = "font-semibold py-3 sticky top-0 bg-white z-10 border-b border-line";
-  return (
-    <div className="mb-8">
-      <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Par thème{" "}
-        <span className="text-faint font-normal">
-          · période filtrée · {d.periodLabel}
-          {mentionEcart(e, trie)}
-        </span>
-      </h2>
-      {/* Règle maison : une liste longue scrolle DANS sa boîte, jamais la page.
-          Et `.defile-x` plutôt que `overflow-x-auto` nu : la colonne d'écart
-          élargit la table, donc une partie peut sortir du cadre — une rangée
-          coupée à droite ne se devine pas (docs/03-grammaire-des-modules.md). */}
-      <div className="bg-white border border-line rounded-xl shadow-card defile-x">
-        <div className={`max-h-[46vh] overflow-y-auto ${e ? "min-w-[620px]" : "min-w-[480px]"}`}>
-        <table className="w-full text-[12.5px]">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-faint">
-              <th className={`text-left px-5 ${thc}`}>Thème</th>
-              <th className={`text-right px-2 ${thc}`}>Dépensé</th>
-              <th className={`text-right px-2 ${thc}`}>Clics</th>
-              <th className={`text-right px-2 ${thc}`}>CTR</th>
-              <th className={`text-right ${e ? "px-2" : "px-5"} ${thc}`}>CPC</th>
-              {e && (
-                <th className={`text-right px-5 ${thc}`}>
-                  <EnteteEcart path={path} sp={d.params} metriqueParDefaut="spend" trie={trie} />
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {lignes.map((l) => (
-              <tr key={l.label}>
-                <td className="px-5 py-3 font-semibold text-brand">{l.label}</td>
-                <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.spend)} CHF</td>
-                <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.clicks)}</td>
-                <td className="px-2 py-3 text-right font-mono text-muted">{l.ctr.toFixed(2)} %</td>
-                <td className={`${e ? "px-2" : "px-5"} py-3 text-right font-mono text-muted`}>
-                  {l.cpc > 0 ? l.cpc.toFixed(2) : "—"}
-                </td>
-                {e && (
-                  <td className="px-5 py-3 text-right">
-                    <CelluleEcart e={e.ligne(l.label, valeur(l))} l={e} />
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-        {/* Rang 9 — il n'existe QUE quand il y a un écart à rendre honnête. */}
-        {e && (
-          <p className="text-[10.5px] text-faint px-5 py-2.5 border-t border-line leading-relaxed">
-            {phraseEcart(e, disparues, trie, { ligne: "thème", lignes: "thèmes" })} Le thème d&apos;une
-            campagne est celui d&apos;aujourd&apos;hui, des deux côtés : on ne garde pas l&apos;histoire
-            des étiquettes, donc une campagne ré-étiquetée hier emporte tout son passé avec elle.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── LA MÊME TABLE, CÔTÉ INSTAGRAM ────────────────────────────────────────────
-//
-// Elle était écrite à même `app/instagram/page.tsx`, donc invérifiable autrement
-// qu'en production — la page est derrière `middleware.ts` et lit un vrai compte.
-// C'est la raison déjà écrite dans la grammaire pour `couts-modules` et
-// `hors-theme` : une page compose, elle ne dessine pas. Elle rejoint ici ses deux
-// sœurs publicitaires, ce qui garantit accessoirement que les trois disent
-// l'écart avec les mêmes mots.
-//
-// CE QUI CHANGE PAR RAPPORT À LA PUBLICITÉ, et c'est le seul point qui compte :
-// ses colonnes sont des MOYENNES PAR PUBLICATION, pas des totaux de fenêtre. Le
-// dénominateur est déjà le post, donc `ramenerAuJour: false` partout — diviser
-// une moyenne par post par un nombre de jours ne corrigerait rien, ça
-// fabriquerait un chiffre que personne ne pourrait relire.
-//
-// `engSomme` est la somme des taux d'engagement POST PAR POST : c'est ce que la
-// colonne « Eng. » affiche (`avgEng`, une moyenne de taux). Le module
-// « Comparer », lui, calcule l'engagement sur les TOTAUX de la fenêtre — deux
-// nombres légitimes, qu'on n'a pas le droit de comparer l'un à l'autre.
-const METRIQUES_INSTA: Record<string, MetriqueEcart> = {
-  reach: { titre: "Portée", valeur: (b) => (b.posts > 0 ? b.reach / b.posts : 0), ramenerAuJour: false, fmt: fmtCHF },
-  views: { titre: "Vues", valeur: (b) => (b.posts > 0 ? b.views / b.posts : 0), ramenerAuJour: false, fmt: fmtCHF },
-  likes: { titre: "J'aime", valeur: (b) => (b.posts > 0 ? b.likes / b.posts : 0), ramenerAuJour: false, fmt: fmtCHF },
-  comments: { titre: "Commentaires", valeur: (b) => (b.posts > 0 ? b.comments / b.posts : 0), ramenerAuJour: false, fmt: fmtCHF },
-  saved: { titre: "Enregistrements", valeur: (b) => (b.posts > 0 ? b.saved / b.posts : 0), ramenerAuJour: false, fmt: fmtCHF },
-  eng: {
-    titre: "Engagement", valeur: (b) => (b.posts > 0 ? b.engSomme / b.posts : 0),
-    ramenerAuJour: false, fmt: (v) => v.toFixed(1), unite: "%",
-  },
-};
-
-const INSTA_NOMS: Record<string, string> = {
-  reach: "portée", views: "vues", likes: "j'aime",
-  comments: "comm.", saved: "enreg.", eng: "engagement",
-};
-
-/** La valeur AFFICHÉE d'une ligne de thème, pour la métrique qui pilote la page. */
-function valeurInsta(l: PostLabelAgg, cle: string): number {
-  return cle === "views" ? l.mViews
-    : cle === "likes" ? l.mLikes
-    : cle === "comments" ? l.mComments
-    : cle === "saved" ? l.mSaved
-    : cle === "eng" ? l.avgEng
-    : l.mReach;
-}
-
-export function ByLabelInsta({ d }: { d: InstaDash }) {
-  if (d.byLabel.length === 0) return null;
-
-  // `scope === "historique"` COUPE l'écart, et c'est la même règle que partout :
-  // sous deux publications dans la fenêtre, cette table retombe sur TOUT
-  // l'historique. Elle ne montre alors plus la période affichée — lui coller
-  // l'écart d'une référence comparerait l'historique entier à sept jours de
-  // juillet, sous une colonne qui prétendrait le contraire.
-  const e =
-    d.scope === "periode"
-      ? ouvrirEcart(d.comparaison, "theme", METRIQUES_INSTA[d.topMetric] ?? METRIQUES_INSTA.reach)
-      : null;
-  const trie = e !== null && triParEcart(d.params);
-  const valeur = (l: PostLabelAgg) => valeurInsta(l, d.topMetric);
-  const lignes = e && trie ? trierParEcart(d.byLabel, e, (l) => l.label, valeur) : d.byLabel;
-  const disparues = e ? e.disparues(d.byLabel.map((l) => l.label)) : [];
-
-  const thc = "font-semibold py-3 sticky top-0 bg-white z-10 border-b border-line";
-  return (
-    <div className="mb-8">
-      <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Performance par thème{" "}
-        <span className="text-faint font-normal">
-          · moyennes par post · triée par {INSTA_NOMS[d.topMetric] ?? INSTA_NOMS.reach}
-          {d.scope === "historique" ? " · tout l'historique" : " · période filtrée"}
-          {mentionEcart(e, trie)}
-        </span>
-      </h2>
-      <div className="bg-white border border-line rounded-xl shadow-card defile-x">
-        <div className={`max-h-[46vh] overflow-y-auto ${e ? "min-w-[780px]" : "min-w-[640px]"}`}>
-          <table className="w-full text-[12.5px]">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-wide text-faint">
-                {["Thème", "Posts", "Portée", "Vues", "J'aime", "Comm.", "Enreg.", "Eng."].map((h, hi) => (
-                  <th
-                    key={h}
-                    className={`${hi === 0 ? "text-left px-5" : "text-right px-2"} ${hi === 7 && !e ? "pr-5" : ""} ${thc}`}
-                  >
-                    {h}
-                  </th>
-                ))}
-                {e && (
-                  <th className={`text-right px-5 ${thc}`}>
-                    <EnteteEcart path="/instagram" sp={d.params} metriqueParDefaut="reach" trie={trie} />
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {lignes.map((l) => (
-                <tr key={l.label}>
-                  <td className="px-5 py-3 font-semibold text-brand">{l.label}</td>
-                  <td className="px-2 py-3 text-right font-mono text-muted">{l.count}</td>
-                  <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mReach)}</td>
-                  <td className="px-2 py-3 text-right font-mono text-ink">{fmtCHF(l.mViews)}</td>
-                  <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mLikes)}</td>
-                  <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mComments)}</td>
-                  <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(l.mSaved)}</td>
-                  <td className={`px-2 ${e ? "" : "pr-5"} py-3 text-right font-mono text-ink`}>
-                    {l.avgEng.toFixed(1)} %
-                  </td>
-                  {e && (
-                    <td className="px-5 py-3 text-right">
-                      <CelluleEcart e={e.ligne(l.label, valeur(l))} l={e} />
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {/* Rang 9 — il n'existe qu'avec l'écart, et il dit ce qui le rend honnête
-            ICI : le dénominateur est la publication, pas le jour. */}
-        {e && (
-          <p className="text-[10.5px] text-faint px-5 py-2.5 border-t border-line leading-relaxed">
-            {phraseEcart(e, disparues, trie, { ligne: "thème", lignes: "thèmes" })} Ces colonnes sont
-            des moyennes PAR PUBLICATION : rien n&apos;est ramené au jour, même quand les deux
-            fenêtres n&apos;ont pas la même longueur — le dénominateur est déjà le post. Un post
-            porte tous ses thèmes, donc les lignes ne s&apos;additionnent pas.
-          </p>
-        )}
-      </div>
-      {/* Une comparaison posée sur une table retombée sur l'historique n'aurait
-          comparé ni la même fenêtre ni le même périmètre : on le dit, plutôt que
-          de laisser la colonne manquer en silence. */}
-      {!e && d.scope === "historique" && d.comparaison.ventilations && (
-        <p className="text-[11px] text-faint mt-2 leading-relaxed">
-          Pas d&apos;écart sur cette table : la fenêtre affichée porte moins de deux publications,
-          elle est donc calculée sur tout l&apos;historique. Comparer tout l&apos;historique à une
-          période de référence n&apos;aurait aucun sens.
-        </p>
-      )}
-    </div>
-  );
-}
-
 function StatusChip({ status }: { status: string | null }) {
   const s = (status ?? "").toUpperCase();
   if (s === "ACTIVE")
@@ -1028,7 +809,7 @@ export function CampaignTable({
   channel: "meta" | "google";
   path: string;
 }) {
-  // Le titre vit DANS le module, comme celui de `ByLabelTable` : son sous-titre
+  // Le titre vit DANS le module : son sous-titre
   // dit le classement en cours, et le classement change avec l'URL. Écrit dans
   // les deux pages, il aurait fallu y recopier le test — deux copies d'une
   // condition finissent par ne plus dire la même chose que la table.
@@ -1097,8 +878,8 @@ export function CampaignTable({
   // seulement à l'éloigner de ses chiffres.
   const NOM_MAX = 420;
   const COLS = isMeta
-    ? [150, 90, 90, 80, 70, 70, 70, 100] // thème · impr. · portée · clics · CTR · CPM · CPC · dépensé
-    : [150, 90, 80, 70, 70, 70, 100];    // idem sans la portée (Google ne la suit pas)
+    ? [90, 90, 80, 70, 70, 70, 100] // impr. · portée · clics · CTR · CPM · CPC · dépensé
+    : [90, 80, 70, 70, 70, 100];    // idem sans la portée (Google ne la suit pas)
   const cols = e ? [...COLS, 124] : COLS;
   const grid = `minmax(${NOM_MIN}px,${NOM_MAX}px) ${cols.map((c) => `${c}px`).join(" ")}`;
   // + 24 : le `px-3` que chaque rangée porte de part et d'autre de la grille.
@@ -1160,7 +941,6 @@ export function CampaignTable({
           style={{ gridTemplateColumns: grid }}
         >
           <span className="px-2">Campagne</span>
-          <span className="px-2">Thème</span>
           <span className="text-right px-2">Impr.</span>
           {isMeta && <span className="text-right px-2">Portée</span>}
           <span className="text-right px-2">Clics</span>
@@ -1168,8 +948,6 @@ export function CampaignTable({
           <span className="text-right px-2">CPM</span>
           <span className="text-right px-2">CPC</span>
           <span className="text-right px-2">Dépensé</span>
-          {/* L'en-tête n'est pas dans un `<summary>` : pas de `SummaryStop` ici,
-              il annulerait le clic du lien de tri (`preventDefault`). */}
           {e && (
             <span className="text-right px-2">
               <EnteteEcart path={path} sp={d.params} metriqueParDefaut="spend" trie={trie} />
@@ -1203,16 +981,6 @@ export function CampaignTable({
                   </span>
                   <StatusChip status={c.status} />
                 </span>
-                <SummaryStop className="px-2">
-                  <CampaignLabelSelect
-                    channel={channel}
-                    campaignKey={c.key}
-                    campaignName={c.name}
-                    current={c.label}
-                    labels={d.labels}
-                    source={c.labelSource}
-                  />
-                </SummaryStop>
                 <Nums
                   impressions={c.impressions}
                   reach={c.reach}
@@ -1262,7 +1030,6 @@ export function CampaignTable({
                       ▸ {s.name}
                       <span className="text-faint font-normal text-[10px]"> · {groupWord}</span>
                     </span>
-                    <span />
                     <Nums
                       impressions={s.impressions}
                       clicks={s.clicks}
@@ -1288,7 +1055,6 @@ export function CampaignTable({
                         <span className="px-2 pl-12 text-muted truncate" title={a.name}>
                           {a.name}
                         </span>
-                        <span />
                         <Nums
                           impressions={a.impressions}
                           clicks={a.clicks}

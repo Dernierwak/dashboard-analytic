@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 // Liste réutilisable — même hiérarchie partout : un en-tête (titre + compteur),
 // puis une box à hauteur fixe qui SCROLLE en interne (façon feed). Utilisée
-// pour les thèmes, les campagnes, les posts, toute liste longue.
+// pour les campagnes, les posts, toute liste longue.
 export function ScrollList({
   title,
   count,

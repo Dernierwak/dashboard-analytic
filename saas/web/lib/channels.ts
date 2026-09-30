@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { aveuglesSur, fetchCanauxMuets, type CanalMuetLive, type CanalPub } from "@/lib/canaux-muets";
-import { themesChoisis } from "@/lib/commandes";
 import { getCompteActif } from "@/lib/account";
 import {
   addDays,
@@ -18,7 +17,7 @@ export type { Days } from "@/lib/fenetre-canal";
 // Couche données des dashboards par canal — mêmes règles que le Streamlit :
 // fenêtre de N jours PLEINS ancrée sur la dernière date de données (jamais
 // aujourd'hui), delta vs la fenêtre précédente ; « Tout » = tout l'historique.
-// Filtres statut / campagne / thème appliqués AVANT les agrégats (KPIs, graphe
+// Filtres statut / campagne appliqués AVANT les agrégats (KPIs, graphe
 // et tables suivent le filtre, comme dans l'app actuelle).
 
 
@@ -27,13 +26,6 @@ export type DashParams = {
   m?: string;       // métrique du graphe
   status?: string;  // filtre statut
   camp?: string;    // filtre campagne (key)
-  label?: string;   // filtre thème — ANCIEN NOM, encore lu, plus jamais écrit
-  /** Filtre thème, PLUSIEURS et répété (`?l=a&l=b`). Le vocabulaire tranché par
-   *  le ticket 12 de la refonte : un seul nom de filtre sur toutes les pages,
-   *  et celui-là est déjà celui de `/couts`. Répété plutôt que séparé par des
-   *  virgules parce qu'un thème peut en contenir une — voir l'en-tête de
-   *  `lib/commandes.ts`. */
-  l?: string | string[];
   from?: string;    // période custom : YYYY-MM-DD
   to?: string;
   s?: string;       // tri des tables (Instagram)
@@ -41,12 +33,6 @@ export type DashParams = {
   cfrom?: string;   // plage de référence choisie : YYYY-MM-DD
   cto?: string;
   tri?: string;     // tri des tables comparables : "ecart" | absent (la période affichée)
-  /** D'OÙ ON VIENT — le thème de la carte du rapport qui a ouvert cette page.
-   *  Un fil d'Ariane, pas un filtre : AUCUN calcul ne le lit, seul
-   *  `components/retour-rapport.tsx` l'affiche. Distinct de `l`, qui filtre :
-   *  `l` est un réglage que la personne change en arrivant, `de` reste vrai
-   *  quand elle le change. Posé par `porteVersCanal` (`lib/liens.ts`). */
-  de?: string;
 };
 
 export function periodDays(sp: DashParams | undefined): Days {
@@ -111,7 +97,7 @@ export function pct(cur: number, prev: number): number | null {
 // EN REVANCHE, LA DÉPENSE, LES CLICS ET LES IMPRESSIONS SONT DATÉS PAR CAMPAGNE.
 // `meta_ads_insights` et `google_ads_insights` portent une ligne par campagne et
 // par jour — c'est ce qui permet aux tables posées sous ce module de montrer le
-// même écart, campagne par campagne et thème par thème, sans rien inventer. La
+// même écart, campagne par campagne, sans rien inventer. La
 // limite de `by_campaign` porte sur le REVENU, pas sur les métriques de régie ;
 // les confondre aurait interdit une comparaison que les données portent.
 
@@ -155,8 +141,8 @@ export const FRISE_MAX = 120;
 /**
  * CE QUE LA FENÊTRE DE RÉFÉRENCE A PORTÉ, **LIGNE PAR LIGNE**.
  *
- * C'est ce qui permet aux tables posées SOUS le module « Comparer » (par thème,
- * par campagne) de montrer le même écart que lui sans refaire sa cuisine. Elles
+ * C'est ce qui permet aux tables posées SOUS le module « Comparer » (par
+ * campagne, par publication) de montrer le même écart que lui sans refaire sa cuisine. Elles
  * ne recalculent ni la fenêtre de référence, ni les refus, ni le rognage du jour
  * en cours : `batirComparaison` les a déjà tranchés une fois, ici, et rend `null`
  * dès que la comparaison ne tient pas. Un second exemplaire de cette liste de
@@ -386,8 +372,6 @@ export type AdsetRow = AdRow & { ads: AdRow[] };
 export type Campaign = {
   key: string;   // meta : campaign_name · google : campaign_id
   name: string;
-  label: string | null;
-  labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
   status: string | null;
   spend: number;
   clicks: number;
@@ -407,15 +391,6 @@ export type DayPoint = {
   impressions: number;
 };
 
-export type LabelAgg = {
-  label: string;
-  spend: number;
-  clicks: number;
-  impressions: number;
-  ctr: number;
-  cpc: number;
-};
-
 export type ChannelDash = {
   email: string;
   /** LES PARAMÈTRES D'URL TELS QUELS. Ils voyagent avec le dashboard pour que
@@ -431,9 +406,7 @@ export type ChannelDash = {
   windowFin: string;
   days: Days;
   metric: string;
-  /** Ce que la page filtre, tel que le bandeau doit le réafficher. Le THÈME
-   *  n'y est pas : il vit dans l'URL (`l`, répété) et se lit avec
-   *  `themesChoisis` — le mettre ici en aurait fait une seconde source. */
+  /** Ce que la page filtre, tel que le bandeau doit le réafficher. */
   filters: { status: string; camp: string };
   statusOptions: string[];
   campOptions: { key: string; name: string }[];
@@ -459,8 +432,6 @@ export type ChannelDash = {
    *  contenter d'un échantillon sans mentir sur ce qu'elle a moyenné. */
   dailyComplet: DayPoint[];
   campaigns: Campaign[];
-  byLabel: LabelAgg[];
-  labels: string[];
   comparaison: Comparaison;
   /** LA RÉCOLTE DE CE CANAL A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48), ou `null`
    *  si tout va bien.
@@ -486,14 +457,13 @@ type RawAd = {
   reach: number;
 };
 
-type Cfg = Map<string, { name: string; label: string | null; labelSource: string | null; status: string | null }>;
+type Cfg = Map<string, { name: string; status: string | null }>;
 
 /** Ce qui change d'un canal à l'autre et qu'un tableau de bord ne calcule pas
  *  lui-même. Regroupé parce que `buildDash` en portait déjà sept, et qu'une
  *  fonction à huit paramètres positionnels s'appelle à l'aveugle. */
 type Contexte = {
   cfg: Cfg;
-  labels: string[];
   email: string;
   muet: CanalMuetLive | null;
 };
@@ -505,7 +475,7 @@ function buildDash(
   sp: DashParams | undefined,
   ctx: Contexte
 ): ChannelDash {
-  const { cfg, labels, email, muet } = ctx;
+  const { cfg, email, muet } = ctx;
   const lastIso = rows[0]?.date ?? null;
   const firstIso = rows.length ? rows[rows.length - 1].date : null;
   const w = customWindow(sp, muet?.depuis ?? null) ?? makeWindow(lastIso, firstIso, days);
@@ -521,15 +491,10 @@ function buildDash(
 
   const fStatus = sp?.status ?? "";
   const fCamp = sp?.camp ?? "";
-  // Cocher deux thèmes veut dire « cache-moi le reste », pas « compare-les » :
-  // la comparaison côte à côte a son lieu à elle (la table Par thème), et deux
-  // lieux pour une même lecture est exactement ce qu'on est en train de défaire.
-  const themesRetenus = themesChoisis(sp);
   const keep = (campKey: string): boolean => {
     const c = cfg.get(campKey);
     if (fStatus && (c?.status ?? "") !== fStatus) return false;
     if (fCamp && campKey !== fCamp) return false;
-    if (themesRetenus.length && !themesRetenus.includes(c?.label ?? "")) return false;
     return true;
   };
 
@@ -605,8 +570,6 @@ function buildDash(
       return {
         key,
         name: conf?.name || key,
-        label: conf?.label ?? null,
-        labelSource: conf?.labelSource ?? null,
         status: conf?.status ?? null,
         spend: c.spend,
         clicks: c.clicks,
@@ -618,17 +581,6 @@ function buildDash(
         adsets,
       };
     })
-    .sort((a, b) => b.spend - a.spend);
-
-  const lblAgg = new Map<string, { spend: number; clicks: number; impressions: number }>();
-  for (const c of campaigns) {
-    if (!c.label) continue;
-    const a = lblAgg.get(c.label) ?? { spend: 0, clicks: 0, impressions: 0 };
-    a.spend += c.spend; a.clicks += c.clicks; a.impressions += c.impressions;
-    lblAgg.set(c.label, a);
-  }
-  const byLabel: LabelAgg[] = [...lblAgg.entries()]
-    .map(([label, a]) => ({ label, ...a, ...finish(a) }))
     .sort((a, b) => b.spend - a.spend);
 
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
@@ -683,42 +635,29 @@ function buildDash(
       // qui distingue « tu dépenses peu » de « tu dépenses sur peu de jours ».
       return (cle: string) => parJour.get(cle) ?? { spend: 0, clicks: 0, impressions: 0 };
     })(),
-    // LA VENTILATION — ce que la référence a porté PAR CAMPAGNE et PAR THÈME.
+    // LA VENTILATION — ce que la référence a porté PAR CAMPAGNE.
     //
     // Une seule passe sur les lignes DÉJÀ CHARGÉES : aucune requête de plus, la
     // seconde fenêtre ne coûte donc pas un aller-retour de base mais un parcours
     // en mémoire. Le plafond reste celui du `.limit(12000)` du chargement, et il
     // n'est pas contourné en silence — une référence antérieure à la plus vieille
     // ligne chargée tombe sur le refus « tes données ne remontent qu'au … ».
-    //
-    // LE THÈME D'UNE CAMPAGNE EST CELUI D'AUJOURD'HUI, des deux côtés. C'est le
-    // seul qu'on ait : `meta/google_campaign_config` porte l'étiquette courante,
-    // pas son histoire. Une campagne ré-étiquetée hier déplace donc tout son
-    // passé avec elle — le pied de la table le dit.
     (since, until) => {
       const campagne: VentilationCompare = { reference: {}, premiere: {} };
-      const theme: VentilationCompare = { reference: {}, premiere: {} };
       const vide = () => ({ spend: 0, clicks: 0, impressions: 0, reach: 0 });
       for (const r of rows) {
         if (!keep(r.campaign)) continue;
         const j = r.date.slice(0, 10);
-        const lbl = cfg.get(r.campaign)?.label ?? null;
         // La première date se prend sur TOUT l'historique chargé, pas sur la
         // fenêtre : c'est une naissance qu'on cherche, pas une présence.
         if (!campagne.premiere[r.campaign] || j < campagne.premiere[r.campaign])
           campagne.premiere[r.campaign] = j;
-        if (lbl && (!theme.premiere[lbl] || j < theme.premiere[lbl])) theme.premiere[lbl] = j;
         if (!inWin(r.date, since, until)) continue;
         const c = campagne.reference[r.campaign] ?? vide();
         c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
         campagne.reference[r.campaign] = c;
-        if (lbl) {
-          const t = theme.reference[lbl] ?? vide();
-          t.spend += r.spend; t.clicks += r.clicks; t.impressions += r.impressions; t.reach += r.reach;
-          theme.reference[lbl] = t;
-        }
       }
-      return { campagne, theme };
+      return { campagne };
     }
   );
 
@@ -752,8 +691,6 @@ function buildDash(
     daily,
     dailyComplet,
     campaigns,
-    byLabel,
-    labels,
     comparaison,
     muet,
   };
@@ -765,14 +702,14 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [rowsRes, cfgRes, labelsRes, muets] = await Promise.all([
+  const [rowsRes, cfgRes, muets] = await Promise.all([
     supabase.from("meta_ads_insights")
       .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
+    // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
+    // doit pas faire tomber la lecture entière.
     supabase.from("meta_campaign_config")
       .select("*").eq("user_id", uid),
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
     fetchCanauxMuets(supabase, uid),
   ]);
 
@@ -791,18 +728,14 @@ export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDa
       String(c.campaign_name),
       {
         name: String(c.campaign_name),
-        label: (c.label as string | null) ?? null,
-        labelSource: (c.label_source as string | null) ?? null,
         status: (c.effective_status as string | null) ?? null,
       },
     ])
   );
-  const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
   // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
   return buildDash(rows, rows, days, sp, {
     cfg,
-    labels,
     email: compte.email,
     muet: muetDu(muets, "meta"),
   });
@@ -814,17 +747,17 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [rowsRes, adsRes, cfgRes, labelsRes, muets] = await Promise.all([
+  const [rowsRes, adsRes, cfgRes, muets] = await Promise.all([
     supabase.from("google_ads_insights")
       .select("date_start, campaign_id, cost_micros, clicks, impressions")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
     supabase.from("google_ads_ad_insights")
       .select("date_start, campaign_id, ad_group_name, ad_name, cost_micros, clicks, impressions")
       .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
+    // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
+    // doit pas faire tomber la lecture entière.
     supabase.from("google_campaign_config")
       .select("*").eq("user_id", uid),
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
     fetchCanauxMuets(supabase, uid),
   ]);
 
@@ -854,17 +787,13 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
       String(c.campaign_id),
       {
         name: (c.campaign_name as string) || `Campagne ${c.campaign_id}`,
-        label: (c.label as string | null) ?? null,
-        labelSource: (c.label_source as string | null) ?? null,
         status: (c.effective_status as string | null) ?? null,
       },
     ])
   );
-  const labels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
 
   return buildDash(rows, drillRows, days, sp, {
     cfg,
-    labels,
     email: compte.email,
     muet: muetDu(muets, "google"),
   });
@@ -897,19 +826,9 @@ export type InstaPost = {
   comments: number;
   saved: number;
   eng: number;       // %
-  labels: string[];
-  labelSource: string | null; // 'user' | 'ai' — pastille IA sur les thèmes proposés
 };
 
 export type FollowerPoint = { date: string; followers: number };
-export type PostLabelAgg = {
-  label: string;
-  count: number;
-  avgReach: number;   // moyenne de la MÉTRIQUE PILOTE (tri de la table)
-  avgEng: number;
-  // Toutes les moyennes par post, pour la table complète.
-  mReach: number; mViews: number; mLikes: number; mComments: number; mSaved: number;
-};
 
 export type InstaDash = {
   email: string;
@@ -923,8 +842,7 @@ export type InstaDash = {
   windowDebut: string;
   windowFin: string;
   days: Days;
-  labels: string[]; // liste maîtresse (assignation de thème par post)
-  // Périmètre réellement utilisé pour le top 3 et la performance par thème :
+  // Périmètre réellement utilisé pour le top 3 :
   // « periode » sauf si la fenêtre compte moins de 2 posts.
   scope: "periode" | "historique";
   followers: number;
@@ -947,8 +865,7 @@ export type InstaDash = {
   // avec les recommandations le 2026-09-21 : plus personne ne répond à « quel
   // format marche », et c'est assumé.
   topPosts: InstaPost[];   // top 3 de la fenêtre (fallback : historique)
-  topMetric: string;       // métrique qui pilote le top 3 et les thèmes
-  byLabel: PostLabelAgg[];
+  topMetric: string;       // métrique qui pilote le top 3
   posts: InstaPost[];
   allPosts: InstaPost[];
   postsEng: number | null;
@@ -969,8 +886,9 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [postsRes, followsRes, labelsRes] = await Promise.all([
-    // "*" : tolérant au schéma (label_source peut ne pas encore exister en base)
+  const [postsRes, followsRes] = await Promise.all([
+    // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
+    // doit pas faire tomber la lecture entière.
     supabase.from("instagram_organic_posts")
       .select("*")
       // Pas de plafond : « Tout l'historique » doit dire la vérité. À 600 posts
@@ -979,10 +897,8 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     supabase.from("followers_history")
       .select("fetched_at, followers")
       .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(90),
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
   ]);
-  const masterLabels = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
-  const tous: InstaPost[] = (postsRes.data ?? []).map((p) => {
+  const all: InstaPost[] = (postsRes.data ?? []).map((p) => {
     const reach = Number(p.reach) || 0;
     const likes = Number(p.likes) || 0;
     const comments = Number(p.comments) || 0;
@@ -997,29 +913,12 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
       views: Number(p.views) || 0,
       likes, comments, saved,
       eng: reach > 0 ? ((likes + comments + saved) / reach) * 100 : 0,
-      labels: ((p.labels as string[] | null) ?? []),
-      labelSource: ((p as Record<string, unknown>).label_source as string | null) ?? null,
     };
   });
   const follows = followsRes.data ?? [];
 
-  // LA FENÊTRE SE CALCULE SUR LES POSTS NON FILTRÉS. Sinon « 30 j » désignerait
-  // trente jours différents selon le thème coché — l'ancre est la date du
-  // dernier post du COMPTE, pas celle du dernier post du thème.
-  const w = customWindow(sp) ?? makeWindow(tous[0]?.date ?? null, tous.length ? tous[tous.length - 1].date : null, days);
+  const w = customWindow(sp) ?? makeWindow(all[0]?.date ?? null, all.length ? all[all.length - 1].date : null, days);
 
-  // LE THÈME FILTRE, IL NE COMPARE PAS : cocher deux thèmes veut dire
-  // « cache-moi le reste » (ticket 12 §4). Un post porte PLUSIEURS thèmes
-  // (`instagram_organic_posts.labels`), là où une campagne n'en porte qu'un —
-  // il suffit donc qu'un seul corresponde. Le filtre s'applique à `all` et pas
-  // seulement à la fenêtre : les modules qui retombent sur l'historique quand
-  // la période est vide (top 3, performance par thème — voir `scope`) doivent
-  // parler du même périmètre que les autres, sinon la page mélange deux
-  // périmètres sans le dire.
-  const themesRetenus = themesChoisis(sp);
-  const all = themesRetenus.length
-    ? tous.filter((p) => p.labels.some((l) => themesRetenus.includes(l)))
-    : tous;
   const posts = all.filter((p) => inWin(p.date, w.since, w.until));
 
   const followers = follows.length ? Number(follows[0].followers) || 0 : 0;
@@ -1044,8 +943,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     .map((f) => ({ date: String(f.fetched_at).slice(0, 10), followers: Number(f.followers) || 0 }))
     .reverse();
 
-  // La métrique choisie en haut de page pilote TOUTE la page : top 3 et
-  // performance par thème. Filtrer sur les vues et voir ensuite des classements
+  // La métrique choisie en haut de page pilote le top 3. Filtrer sur les vues et voir ensuite des classements
   // par portée, c'est répondre à côté de la question.
   const _METRICS = ["reach", "views", "likes", "comments", "saved", "eng"] as const;
   const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
@@ -1059,11 +957,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     : topMetric === "eng" ? p.eng
     : p.reach;
 
-  // LA PÉRIODE PILOTE AUSSI TOUTE LA PAGE. C'est le pendant de la règle
-  // ci-dessus, et il manquait : la performance par thème se calculait sur tout
-  // l'historique, si bien que changer la période ne bougeait rien à l'écran —
-  // le filtre avait l'air cassé parce qu'il l'était.
-  // Une seule réserve : sous 2 posts
+  // LA PÉRIODE PILOTE AUSSI LE TOP 3. Une seule réserve : sous 2 posts
   // dans la fenêtre, aucune moyenne ne veut rien dire, alors on retombe sur
   // l'historique — et on le DIT, au lieu de laisser croire au contraire.
   const pool = posts.length >= 2 ? posts : all;
@@ -1071,36 +965,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
 
   // Top 3 posts de la période filtrée (fallback historique, même signal).
   const topPosts = [...pool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
-
-  // Performance par thème, sur la période retenue — TOUTES les métriques,
-  // triées sur celle qui pilote la page.
-  const lblMap = new Map<string, {
-    count: number; pilote: number; eng: number;
-    reach: number; views: number; likes: number; comments: number; saved: number;
-  }>();
-  for (const p of pool)
-    for (const l of p.labels) {
-      const x = lblMap.get(l) ?? {
-        count: 0, pilote: 0, eng: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0,
-      };
-      x.count += 1; x.pilote += _mval(p); x.eng += p.eng;
-      x.reach += p.reach; x.views += p.views; x.likes += p.likes;
-      x.comments += p.comments; x.saved += p.saved;
-      lblMap.set(l, x);
-    }
-  const byLabel: PostLabelAgg[] = [...lblMap.entries()]
-    .map(([label, x]) => ({
-      label,
-      count: x.count,
-      avgReach: x.count ? x.pilote / x.count : 0,
-      avgEng: x.count ? x.eng / x.count : 0,
-      mReach: x.count ? x.reach / x.count : 0,
-      mViews: x.count ? x.views / x.count : 0,
-      mLikes: x.count ? x.likes / x.count : 0,
-      mComments: x.count ? x.comments / x.count : 0,
-      mSaved: x.count ? x.saved / x.count : 0,
-    }))
-    .sort((a, b) => b.avgReach - a.avgReach);
 
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
@@ -1161,36 +1025,10 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
       return (cle: string) =>
         parJour.get(cle) ?? { posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0 };
     })(),
-    // LA VENTILATION — ce que la référence a porté PAR THÈME.
-    //
-    // Un seul découpage ici, là où la publicité en a deux : une publication
-    // n'existe que dans la période où elle a été publiée, donc une table de
-    // POSTS n'a pas d'écart à montrer — elle n'aurait que des naissances. C'est
-    // écrit sur la page plutôt que contourné par un « +100 % » par ligne.
-    //
-    // `engSomme` est la somme des taux d'engagement POST PAR POST, et c'est
-    // volontaire : la table des thèmes affiche `avgEng`, une moyenne de taux.
-    // Comparer sa moyenne de taux au taux calculé sur les totaux (celui du module
-    // « Comparer ») opposerait deux nombres différents sous le même nom.
-    (since, until) => {
-      const theme: VentilationCompare = { reference: {}, premiere: {} };
-      for (const p of all) {
-        const j = String(p.date).slice(0, 10);
-        for (const l of p.labels)
-          if (!theme.premiere[l] || j < theme.premiere[l]) theme.premiere[l] = j;
-        if (!inWin(p.date, since, until)) continue;
-        for (const l of p.labels) {
-          const x = theme.reference[l] ?? {
-            posts: 0, reach: 0, views: 0, likes: 0, comments: 0, saved: 0, engSomme: 0,
-          };
-          x.posts += 1; x.reach += p.reach; x.views += p.views;
-          x.likes += p.likes; x.comments += p.comments; x.saved += p.saved;
-          x.engSomme += p.eng;
-          theme.reference[l] = x;
-        }
-      }
-      return { theme };
-    }
+    // PAS DE VENTILATION ICI : une publication n'existe que dans la période où
+    // elle a été publiée, donc une table de POSTS n'a pas d'écart à montrer —
+    // elle n'aurait que des naissances.
+    () => ({})
   );
 
   return {
@@ -1200,7 +1038,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     windowDebut: iso(w.since),
     windowFin: iso(w.until),
     days,
-    labels: masterLabels,
     scope,
     followers,
     followersDelta,
@@ -1210,7 +1047,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     followersSeries,
     topPosts,
     topMetric,
-    byLabel,
     posts,
     allPosts: all,
     postsEng: posts.length ? mean(posts.map((p) => p.eng)) : null,
@@ -1219,74 +1055,11 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   };
 }
 
-// ── Labels (liste + compteurs d'usage) ───────────────────────────────────────
-
-export type LabelRowData = { name: string; meta: number; google: number; instagram: number };
-
-export async function getLabelsData(): Promise<{
-  email: string;
-  rows: LabelRowData[];
-  /**
-   * TOUS les thèmes étoilés (insight_feedback priority_label:*), DU PLUS ANCIEN
-   * ÉTOILAGE AU PLUS RÉCENT. Il y avait un `.slice(0, 3)` ici : il coupait la
-   * liste à l'affichage pendant que le worker en coupait une autre de son côté,
-   * si bien qu'une quatrième étoile était posée en base, invisible sur la page
-   * qui l'avait posée, et absente du rapport.
-   *
-   * L'ORDRE EST CHARGÉ DE SENS et ne doit pas être retrié : les trois premiers
-   * de cette liste sont exactement les thèmes dont l'IA rédige les pistes (voir
-   * `_THEMES_IA` dans `saas/traitement/build_report.py`). Un `sort()` ailleurs
-   * ferait mentir les rangs affichés sur la page Thèmes.
-   */
-  priorities: string[];
-}> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const uid = compte.uid;
-
-  const [labelsRes, metaRes, googleRes, instaRes, prioRes] = await Promise.all([
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
-    supabase.from("meta_campaign_config").select("label").eq("user_id", uid),
-    supabase.from("google_campaign_config").select("label").eq("user_id", uid),
-    supabase.from("instagram_organic_posts").select("labels").eq("user_id", uid),
-    supabase.from("insight_feedback").select("insight_key, created_at")
-      .eq("user_id", uid).like("insight_key", "priority_label:%")
-      .order("created_at", { ascending: true }),
-  ]);
-  const priorities = (prioRes.data ?? [])
-    .map((r) => String(r.insight_key).split(":").slice(1).join(":"))
-    .filter(Boolean);
-  const master = ((labelsRes.data?.[0]?.labels as string[] | null) ?? []);
-  const counts = new Map<string, LabelRowData>();
-  const bump = (name: string | null, ch: "meta" | "google" | "instagram") => {
-    if (!name) return;
-    const row = counts.get(name) ?? { name, meta: 0, google: 0, instagram: 0 };
-    row[ch] += 1;
-    counts.set(name, row);
-  };
-  for (const r of metaRes.data ?? []) bump(r.label, "meta");
-  for (const r of googleRes.data ?? []) bump(r.label, "google");
-  for (const r of instaRes.data ?? [])
-    for (const l of (r.labels as string[] | null) ?? []) bump(l, "instagram");
-
-  const rows: LabelRowData[] = master.map(
-    (name) => counts.get(name) ?? { name, meta: 0, google: 0, instagram: 0 }
-  );
-  for (const [name, row] of counts) if (!master.includes(name)) rows.push(row);
-
-  return { email: compte.email, rows, priorities };
-}
-
-// ── Les conversions GA4 d'un thème ───────────────────────────────────────────
+// ── Le catalogue des événements GA4 (page /conversions) ─────────────────────
 //
-// CE QUE CETTE LECTURE RASSEMBLE, ET POURQUOI EN UN SEUL ENDROIT.
-// Le module a besoin de quatre choses qui vivent dans quatre tables : la liste
-// des thèmes (profiles.labels), leurs campagnes (meta/google_campaign_config —
-// c'est ce qui décide si un thème peut PORTER une conversion), le catalogue des
-// événements que la propriété émet (profiles.ga4_event_catalog, rempli par la
-// récolte) et le choix déjà fait (theme_ga4_events). Les recomposer dans le
-// composant obligerait à passer quatre listes brutes à un composant client ;
-// ici on rend un objet déjà lisible, et le composant ne calcule rien.
+// Ce que la propriété GA4 émet (`profiles.ga4_event_catalog`, rempli par la
+// récolte) et si une propriété est choisie. Le choix des événements PAR THÈME
+// (`theme_ga4_events`) est parti avec le thème.
 
 export type EvenementCatalogue = {
   nom: string;
@@ -1301,53 +1074,26 @@ export type EvenementCatalogue = {
   cle: boolean | null;
 };
 
-export type ThemeEvenements = {
-  label: string;
-  /** Le thème porte-t-il au moins une campagne Meta ou Google ? */
-  attribuable: boolean;
-  /** Publications Instagram portant ce thème — sert à nommer le cas organique. */
-  posts: number;
-  principaux: string[];
-  secondaires: string[];
-};
-
-export type EvenementsData = {
+export type CatalogueGa4 = {
   /** Une propriété GA4 est-elle choisie sur ce compte ? */
   ga4Connecte: boolean;
-  /** Date de la dernière mise à jour du catalogue (ISO), ou null. */
-  catalogueMaj: string | null;
   catalogue: EvenementCatalogue[];
-  themes: ThemeEvenements[];
   /**
-   * Événements cochés qui ne figurent PLUS au catalogue : le site ne les émet
-   * plus depuis 90 jours. On ne les décoche pas tout seuls — on les signale.
-   */
-  disparus: string[];
-  peutEditer: boolean;
-  /**
-   * La migration n'a pas été jouée : `profiles.ga4_event_catalog` ou la table
-   * `theme_ga4_events` n'existent pas. À NE PAS confondre avec « jamais
-   * récolté » — c'est la confusion qui a coûté le plus cher ici : l'écran
-   * envoyait relancer une récolte qui ne pouvait rien écrire, indéfiniment.
-   *
-   * Et l'effet ne s'arrête pas au catalogue : PostgREST refuse le `select`
-   * ENTIER quand une seule colonne demandée manque, donc `profiles.labels`
-   * tombe avec lui et les thèmes disparaissent aussi de cet écran.
+   * La migration n'a pas été jouée : `profiles.ga4_event_catalog` n'existe pas.
+   * À NE PAS confondre avec « jamais récolté » — c'est la confusion qui a coûté
+   * le plus cher ici : l'écran envoyait relancer une récolte qui ne pouvait
+   * rien écrire, indéfiniment.
    */
   migrationManquante: boolean;
 };
 
-export async function getThemeEvenements(): Promise<EvenementsData> {
+export async function getCatalogueGa4(): Promise<CatalogueGa4> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
 
-  const [profRes, metaRes, googleRes, instaRes, choixRes, connRes] = await Promise.all([
-    supabase.from("profiles").select("labels, ga4_event_catalog").eq("id", uid).limit(1),
-    supabase.from("meta_campaign_config").select("label").eq("user_id", uid),
-    supabase.from("google_campaign_config").select("label").eq("user_id", uid),
-    supabase.from("instagram_organic_posts").select("labels").eq("user_id", uid),
-    supabase.from("theme_ga4_events").select("label, event_name, rang").eq("user_id", uid),
+  const [profRes, connRes] = await Promise.all([
+    supabase.from("profiles").select("ga4_event_catalog").eq("id", uid).limit(1),
     supabase.from("connected_accounts").select("ga4_property_id").eq("user_id", uid),
   ]);
 
@@ -1355,20 +1101,12 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
   // ou table absente du cache de schéma). 42703 : `undefined_column` remonté
   // par Postgres lui-même. Les trois disent la même chose — la migration n'est
   // pas passée — et aucun n'est une panne : c'est une installation inachevée.
-  const codeSchema = (e: { code?: string } | null | undefined) =>
-    ["PGRST204", "PGRST205", "42703"].includes(e?.code ?? "");
-  const migrationManquante = codeSchema(profRes.error) || codeSchema(choixRes.error);
-
-  const prof = profRes.data?.[0] as
-    | { labels: string[] | null; ga4_event_catalog: unknown }
-    | undefined;
+  const migrationManquante = ["PGRST204", "PGRST205", "42703"].includes(profRes.error?.code ?? "");
 
   // Le catalogue est un cache écrit par la récolte : on le lit défensivement.
-  // `{}` (jamais récolté) et `{evenements: []}` (récolté, propriété muette) ne
-  // se lisent pas pareil — d'où `catalogueMaj`, qui distingue les deux.
-  const brut = (prof?.ga4_event_catalog ?? {}) as {
-    maj?: string;
-    evenements?: { nom?: string; volume?: number; valeur?: number; cle?: boolean | null }[];
+  const brut = ((profRes.data?.[0] as { ga4_event_catalog?: unknown } | undefined)
+    ?.ga4_event_catalog ?? {}) as {
+    evenements?: { nom?: string; volume?: number; cle?: boolean | null }[];
   };
   const catalogue: EvenementCatalogue[] = (brut.evenements ?? [])
     .filter((e) => typeof e?.nom === "string" && e.nom.trim() !== "")
@@ -1378,180 +1116,19 @@ export async function getThemeEvenements(): Promise<EvenementsData> {
       cle: e.cle === true ? true : e.cle === false ? false : null,
     }));
 
-  const master = prof?.labels ?? [];
-  const pub = new Map<string, number>();
-  const posts = new Map<string, number>();
-  for (const r of metaRes.data ?? [])
-    if (r.label) pub.set(r.label, (pub.get(r.label) ?? 0) + 1);
-  for (const r of googleRes.data ?? [])
-    if (r.label) pub.set(r.label, (pub.get(r.label) ?? 0) + 1);
-  for (const r of instaRes.data ?? [])
-    for (const l of (r.labels as string[] | null) ?? [])
-      posts.set(l, (posts.get(l) ?? 0) + 1);
-
-  const parTheme = new Map<string, { principaux: string[]; secondaires: string[] }>();
-  const coches = new Set<string>();
-  for (const r of choixRes.data ?? []) {
-    const lbl = String(r.label ?? "");
-    const nom = String(r.event_name ?? "");
-    if (!lbl || !nom) continue;
-    coches.add(nom);
-    const slot = parTheme.get(lbl) ?? { principaux: [], secondaires: [] };
-    (r.rang === "principal" ? slot.principaux : slot.secondaires).push(nom);
-    parTheme.set(lbl, slot);
-  }
-  for (const slot of parTheme.values()) {
-    slot.principaux.sort();
-    slot.secondaires.sort();
-  }
-
-  // L'ordre : les thèmes qui peuvent porter une conversion d'abord, et parmi
-  // eux ceux à qui il en manque une. C'est la seule liste où l'ordre alphabé-
-  // tique aurait desservi — le travail restant doit être en haut.
-  const noms = Array.from(new Set([...master, ...pub.keys(), ...posts.keys()]));
-  const themes: ThemeEvenements[] = noms
-    .map((label) => {
-      const slot = parTheme.get(label) ?? { principaux: [], secondaires: [] };
-      return {
-        label,
-        attribuable: (pub.get(label) ?? 0) > 0,
-        posts: posts.get(label) ?? 0,
-        principaux: slot.principaux,
-        secondaires: slot.secondaires,
-      };
-    })
-    .sort((a, b) => {
-      const manque = (t: ThemeEvenements) =>
-        t.attribuable && t.principaux.length === 0 ? 0 : t.attribuable ? 1 : 2;
-      const d = manque(a) - manque(b);
-      return d !== 0 ? d : a.label.localeCompare(b.label, "fr");
-    });
-
-  const auCatalogue = new Set(catalogue.map((e) => e.nom));
-  const disparus = Array.from(coches)
-    .filter((n) => !auCatalogue.has(n))
-    .sort();
-
   return {
     ga4Connecte: (connRes.data ?? []).some((l) => Boolean(l.ga4_property_id)),
-    catalogueMaj: typeof brut.maj === "string" ? brut.maj : null,
     catalogue,
-    themes,
-    disparus,
-    peutEditer: compte.peutEditer,
-    migrationManquante,
-  };
-}
-
-// ── L'objectif d'un thème prioritaire ────────────────────────────────────────
-//
-// CE QUE CE MODULE COMPOSE, ET POURQUOI IL NE REFAIT PAS `getThemeEvenements`.
-// L'objectif propre d'un thème (`theme_objectifs`) se choisit et se lit à côté
-// des conversions GA4 de CE thème : sans elles, savoir « ce thème vise plus de
-// ventes » ne dit toujours pas quel événement porte ce verdict. Plutôt que de
-// recopier ici les quatre lectures qui construisent `ThemeEvenements`
-// (labels, campagnes Meta/Google, catalogue GA4, choix déjà fait), on COMPOSE
-// au-dessus de son résultat — `getThemeEvenements` elle-même reste inchangée,
-// seule source de vérité des conversions par thème.
-//
-// `evenements` ARRIVE DÉJÀ CHARGÉ, EN PARAMÈTRE, plutôt que d'être relu ici :
-// `/conversions` (`app/conversions/page.tsx`) appelle déjà `getThemeEvenements`
-// pour son propre camembert et son propre catalogue, et refaire le même appel
-// doublerait cinq requêtes Supabase pour la même réponse.
-//
-// UNIQUEMENT LES THÈMES ÉTOILÉS : ce réglage n'a de sens que pour les thèmes
-// prioritaires (le reste du rapport suit l'objectif du compte sans exception).
-
-export type ThemeObjectifRow = {
-  label: string;
-  /** Choix propre à ce thème. `null` = aucun — il hérite de l'objectif du compte. */
-  objectif: string | null;
-  attribuable: boolean;
-  posts: number;
-  principaux: string[];
-  secondaires: string[];
-};
-
-export type ThemesObjectifsData = {
-  /** L'objectif du compte — c'est lui que « hérite » désigne. */
-  accountObjectif: string | null;
-  catalogue: EvenementCatalogue[];
-  ga4Connecte: boolean;
-  catalogueMaj: string | null;
-  /** Uniquement les thèmes étoilés — voir l'en-tête ci-dessus. */
-  themes: ThemeObjectifRow[];
-  peutEditer: boolean;
-  /** `theme_objectifs` absente (migration `theme_objectifs.sql` pas jouée),
-   * ou `getThemeEvenements` déjà en panne de migration — les deux se lisent
-   * pareil ici : le réglage est indisponible tant que le SQL n'est pas rejoué. */
-  migrationManquante: boolean;
-};
-
-export async function getThemeObjectifs(
-  evenements: EvenementsData
-): Promise<ThemesObjectifsData> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const uid = compte.uid;
-
-  const [profRes, choixRes, prioRes] = await Promise.all([
-    supabase.from("profiles").select("objectif").eq("id", uid).limit(1),
-    supabase.from("theme_objectifs").select("label, objectif").eq("user_id", uid),
-    supabase
-      .from("insight_feedback")
-      .select("insight_key")
-      .eq("user_id", uid)
-      .like("insight_key", "priority_label:%"),
-  ]);
-
-  const codeSchema = (e: { code?: string } | null | undefined) =>
-    ["PGRST204", "PGRST205", "42703"].includes(e?.code ?? "");
-  const migrationManquante = evenements.migrationManquante || codeSchema(choixRes.error);
-
-  const priorites = new Set(
-    (prioRes.data ?? [])
-      .map((r) => String(r.insight_key).split(":").slice(1).join(":"))
-      .filter(Boolean)
-  );
-
-  const objParTheme = new Map<string, string>();
-  for (const r of choixRes.data ?? []) {
-    const lbl = String(r.label ?? "");
-    if (lbl && r.objectif) objParTheme.set(lbl, String(r.objectif));
-  }
-
-  // `evenements.themes` couvre déjà TOUS les thèmes de `profiles.labels` (pas
-  // seulement ceux qui portent une campagne) : un thème étoilé y figure donc
-  // toujours, qu'il soit attribuable ou pas.
-  const themes: ThemeObjectifRow[] = evenements.themes
-    .filter((t) => priorites.has(t.label))
-    .map((t) => ({
-      label: t.label,
-      objectif: objParTheme.get(t.label) ?? null,
-      attribuable: t.attribuable,
-      posts: t.posts,
-      principaux: t.principaux,
-      secondaires: t.secondaires,
-    }));
-
-  return {
-    accountObjectif: (profRes.data?.[0]?.objectif as string | null) ?? null,
-    catalogue: evenements.catalogue,
-    ga4Connecte: evenements.ga4Connecte,
-    catalogueMaj: evenements.catalogueMaj,
-    themes,
-    peutEditer: compte.peutEditer,
     migrationManquante,
   };
 }
 
 // ── Les catégories de conversions (page /conversions) ───────────────────────
 //
-// LA CATÉGORIE EST UNE PROPRIÉTÉ DE L'ÉVÉNEMENT, PAS DU COUPLE (THÈME,
-// ÉVÉNEMENT) : `purchase` veut dire la même chose quel que soit le thème qui
-// le suit. C'est ce qui permet au camembert de /conversions de compter « mes
-// conversions par catégorie » sur tout le compte, sans regarder les thèmes un
-// par un — voir l'en-tête de `conversion_categories.sql`.
+// LA CATÉGORIE EST UNE PROPRIÉTÉ DE L'ÉVÉNEMENT : `purchase` veut dire la même
+// chose partout. C'est ce qui permet au camembert de /conversions de compter
+// « mes conversions par catégorie » sur tout le compte — voir l'en-tête de
+// `conversion_categories.sql`.
 
 export type ConversionCategoryRow = {
   name: string;

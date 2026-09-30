@@ -8,12 +8,9 @@ import {
   CampaignTable,
   MetricChart,
   MoyennesAds,
-  ByLabelTable,
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
-import { RetourRapport } from "@/components/retour-rapport";
-import { themesChoisis } from "@/lib/commandes";
 // PROTOTYPE, À RETIRER — quatre façons de poser tes notes sur la courbe
 // (`?variant=A|B|C|D`). Sans le paramètre, la page est exactement celle
 // d'avant. Ticket 19 de `.scratch/refonte/`.
@@ -54,17 +51,12 @@ export default async function MetaPage({
           from: searchParams?.from ? d.windowDebut : undefined,
           to: searchParams?.to ? d.windowFin : undefined,
         }}
-        themes={d.labels}
-        themesActifs={themesChoisis(searchParams)}
         statuts={d.statusOptions}
         statutActif={d.filters.status}
         campagnes={d.campOptions}
         campActive={d.filters.camp}
       />
 
-      {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
-          et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
-      <RetourRapport de={searchParams?.de} />
 
       {/* CE QU'ON N'A PAS PU LIRE, AVANT LES CHIFFRES QU'IL EXPLIQUE (ticket
           48). Les chiffres de cette page restent justes quand la récolte a
@@ -90,19 +82,14 @@ export default async function MetaPage({
           silhouette de la fenêtre affichée. */}
       <MoyennesAds d={d} path="/meta" />
       <MetricChart d={d} path="/meta" />
-      {/* Les deux tables qui suivent portent l'écart des mêmes deux périodes
-          qu'une comparaison, dès qu'elle est posée — et rien de plus quand
-          elle ne l'est pas. */}
-      <ByLabelTable d={d} path="/meta" />
+      {/* La table qui suit porte l'écart des mêmes deux périodes qu'une
+          comparaison, dès qu'elle est posée — et rien de plus quand elle ne
+          l'est pas. */}
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé, et son
           titre dit son classement — promettre ici un dépliage ou un tri que la
           donnée ne permet pas fait chercher une panne. */}
       <CampaignTable d={d} channel="meta" path="/meta" />
-      <p className="text-[11.5px] text-faint mt-3 leading-relaxed">
-        Le thème relie tes campagnes cross-canal (page Labels) — c&apos;est lui qui permet
-        le « ce que chaque thème rapporte » du rapport.
-      </p>
     </main>
   );
 }

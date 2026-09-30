@@ -26,16 +26,12 @@ LES `try/except` SONT RESTÉS CHEZ L'APPELANT, ET C'EST DÉLIBÉRÉ. Un lecteur 
 avalerait les pannes changerait le comportement du rapport : chaque `except` de
 `build_payload` porte un commentaire qui dit quoi faire du vide — rester muet,
 publier quand même, ne pas confondre une migration manquante avec une coupure
-réseau. `themes_regroupes()` laisse donc remonter `VueRegroupementAbsente` : une
-vue absente ne doit pas publier un rapport sans aucune carte de thème, qui se
-lirait comme un compte qui n'a rien fait (`saas/commun/fetch_data.py`).
+réseau.
 
-IL PORTE AUSSI DEUX ÉCRITURES ET L'HORLOGE, alors qu'il s'appelle « lecteur ».
-Les deux écritures (le plan de thème, le verdict persisté) sont ce qui reste de
-sortant dans `build_payload` : les laisser dehors ferait écrire en base un test
-censé tourner hors ligne. L'horloge est du même genre — sans elle, la propriété
-« rejouer la construction un autre jour de la semaine ne change pas la semaine
-déclarée » (§ Testing de `.scratch/construction/spec.md`) ne se vérifie pas.
+IL PORTE AUSSI L'HORLOGE, alors qu'il s'appelle « lecteur » : sans elle, la
+propriété « rejouer la construction un autre jour de la semaine ne change pas la
+semaine déclarée » (§ Testing de `.scratch/construction/spec.md`) ne se vérifie
+pas.
 """
 
 from __future__ import annotations
@@ -45,11 +41,8 @@ from typing import Protocol
 
 from saas.commun.fetch_data import (
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_theme_objectifs, fetch_google_ads,
-    fetch_campaign_config, fetch_google_campaign_config,
-    fetch_insight_feedback, fetch_theme_regroupement,
-    fetch_ga4_events, fetch_ga4_insights,
-    fetch_canaux_muets,
+    fetch_objectif, fetch_google_ads, fetch_google_campaign_config,
+    fetch_ga4_insights, fetch_canaux_muets,
 )
 
 
@@ -69,26 +62,16 @@ class Lecteur(Protocol):
 
     # ── Les réglages du compte ───────────────────────────────────────────────
     def objectif(self) -> str | None: ...
-    def objectifs_par_theme(self) -> dict[str, str]: ...
-    def config_meta(self) -> dict[str, dict]: ...
     def config_google(self) -> dict[str, dict]: ...
-    def themes_regroupes(self) -> list[dict]: ...
     def canaux_muets(self) -> dict[str, str]: ...
-
-    def insight_feedback(self) -> dict[str, str]: ...
-    def priorites_datees(self) -> list[dict]: ...
 
     # ── GA4 ──────────────────────────────────────────────────────────────────
     def ga4_contexte(self, since: date, until: date) -> dict | None: ...
-    def ga4_evenements_par_theme(self) -> dict[str, list[dict]]: ...
-    def ga4_lignes(self) -> list[dict]: ...
     def ga4_insights(self) -> list[dict]: ...
 
     # ── Les lectures qui passaient par `sb.table(...)` en clair ──────────────
     def dates_declarees(self, table: str) -> list[dict]: ...
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]: ...
-
-
 
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self) -> date: ...
@@ -125,22 +108,8 @@ class LecteurSupabase:
     def objectif(self) -> str | None:
         return fetch_objectif(self.sb, self.user_id)
 
-
-    def objectifs_par_theme(self) -> dict[str, str]:
-        return fetch_theme_objectifs(self.sb, self.user_id)
-
-    def config_meta(self) -> dict[str, dict]:
-        return fetch_campaign_config(self.sb, self.user_id)
-
     def config_google(self) -> dict[str, dict]:
         return fetch_google_campaign_config(self.sb, self.user_id)
-
-
-    def themes_regroupes(self) -> list[dict]:
-        """La vue `theme_regroupement`. LAISSE REMONTER `VueRegroupementAbsente`
-        — voir l'en-tête du module : une migration qui manque n'est pas un
-        compte sans données."""
-        return fetch_theme_regroupement(self.sb, self.user_id)
 
     def canaux_muets(self) -> dict[str, str]:
         """Les canaux dont la récolte a échoué au dernier passage.
@@ -153,25 +122,6 @@ class LecteurSupabase:
         """
         return fetch_canaux_muets(self.sb, self.user_id)
 
-
-
-
-
-    def insight_feedback(self) -> dict[str, str]:
-        return fetch_insight_feedback(self.sb, self.user_id)
-
-    def priorites_datees(self) -> list[dict]:
-        """Les étoiles, DANS L'ORDRE OÙ ELLES ONT ÉTÉ POSÉES.
-
-        C'est cet ordre — et pas l'alphabétique — qui décide des thèmes qui
-        reçoivent des conseils (`_labels_prioritaires`, `build_report.py`)."""
-        return (self.sb.table("insight_feedback")
-                .select("insight_key, created_at")
-                .eq("user_id", self.user_id)
-                .like("insight_key", "priority_label:%")
-                .order("created_at")
-                .execute().data) or []
-
     # ── GA4 ──────────────────────────────────────────────────────────────────
 
     def ga4_contexte(self, since: date, until: date) -> dict | None:
@@ -179,13 +129,6 @@ class LecteurSupabase:
         # module est chargé par le web comme par le worker.
         from saas.collecte.ga4.ga4 import build_ga4_context
         return build_ga4_context(self.sb, self.user_id, since, until)
-
-    def ga4_evenements_par_theme(self) -> dict[str, list[dict]]:
-        from saas.collecte.ga4.ga4 import fetch_theme_ga4_events
-        return fetch_theme_ga4_events(self.sb, self.user_id)
-
-    def ga4_lignes(self) -> list[dict]:
-        return fetch_ga4_events(self.sb, self.user_id)
 
     def ga4_insights(self) -> list[dict]:
         return fetch_ga4_insights(self.sb, self.user_id)
@@ -207,20 +150,12 @@ class LecteurSupabase:
 
         `avant` est le `week_start` du rapport qu'on fabrique : c'est cette
         ligne-là, et elle seule, qu'il faut tenir hors de son propre historique
-        — sinon un thème calme le matin se compterait lui-même l'après-midi."""
+        — sinon un rapport republié se compterait lui-même dans sa série."""
         return (self.sb.table("weekly_reports").select("week_start, payload")
                 .eq("user_id", self.user_id)
                 .lt("week_start", avant)
                 .order("week_start", desc=True)
                 .limit(limite).execute().data) or []
-
-
-
-
-
-
-
-
 
     # ── L'horloge ────────────────────────────────────────────────────────────
 

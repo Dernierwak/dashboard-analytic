@@ -1,5 +1,15 @@
 # Harnais du ticket 16 — le seam du payload
 
+> **État au 2026-09-30 — lire ceci avant le reste.** Le thème et les conseils
+> ont quitté le produit (`.scratch/meta-ads/map.md`). Ce qui suit décrit le
+> harnais tel qu'il était avant : `test_conseils_du_payload.py` n'existe plus,
+> le faux lecteur ne grée plus ni thème, ni étoiles, ni vue de regroupement, ni
+> écriture. Il reste deux fichiers, rejoués verts ce jour-là :
+> `test_le_seam.py` (le seam fermé, chaque lecture renvoyée à l'identique —
+> **71 vérifications**) et `test_chiffres_du_payload.py` (la fenêtre de sept
+> jours pleins, la semaine déclarée, les montants du compte rebâtis à la main,
+> aucun `inf`/`NaN` — **23 vérifications**).
+
 **C'est le premier harnais du dépôt qui EXÉCUTE `build_payload`.** Les neuf
 autres écrivaient tous la même limite, ticket après ticket : *« `build_payload`
 n'a pas tourné — elle prend un client Supabase vivant »*. Elle prend maintenant

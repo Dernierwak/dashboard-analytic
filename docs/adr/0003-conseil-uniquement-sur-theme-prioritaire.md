@@ -1,5 +1,12 @@
 # Un conseil ne naît que sur un thème prioritaire
 
+> **⛔ REMPLACÉE — 2026-09-30.** Le thème et le label ont quitté tout le produit
+> (écran, code, email ; la base suit au ticket 02) : décision de David pendant le
+> chartage de [la carte du dashboard Meta Ads](../../.scratch/meta-ads/map.md),
+> ticket « Le thème et le label quittent l'écran et le code ». Cette fiche reste
+> au dépôt pour sa raison, et ce qui a été perdu est noté au `BACKLOG.md`
+> (« Ce que la refonte Meta Ads met de côté »). Elle ne décrit plus le produit.
+
 > **⚠️ CADUQUE — 2026-09-21.** Pulse ne conseille plus rien du tout : le moteur
 > entier a été retiré du produit. Cette fiche reste au dépôt parce qu'une
 > décision et sa raison ne s'effacent pas — elle dit pourquoi on refusait que

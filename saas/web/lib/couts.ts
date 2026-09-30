@@ -114,33 +114,6 @@ export type PointSerie = {
 /** Ce qui a été dépensé par plateforme — la même forme partout sur cette page. */
 export type ParCanal = { meta: number | null; google: number | null };
 
-// Budget par thème : réutilise channel_budgets avec channel = "label:<nom>"
-// pour le mensuel et "an:label:<nom>" pour l'annuel (même carry-forward que
-// les canaux, zéro migration).
-//
-// AUCUNE ESTIMATION D'ENVELOPPE. `budgetYear` retombait sur la somme des douze
-// budgets mensuels du thème quand rien n'était saisi. Effet à l'écran : un thème
-// dont le champ ENVELOPPE affichait 0 se voyait quand même reprocher « 61 % de
-// l'enveloppe », pendant que douze autres thèmes n'avaient ni barre ni
-// pourcentage — la page semblait juger certains thèmes et pas d'autres, sur un
-// dénominateur que personne n'avait tapé. Une enveloppe est maintenant SAISIE ou
-// absente ; sans elle, un thème affiche sa dépense et se tait.
-export type ThemeSpend = {
-  label: string;
-  /** `null` quand une régie muette traverse l'année : un cumul amputé se lirait
-   *  comme un thème qu'on a arrêté de financer. */
-  spendYear: number | null;
-  budgetYear: number;   // enveloppe d'année SAISIE (0 = aucune, et rien ne la remplace)
-  /** Ce que l'ancienne estimation aurait produit — affiché pour dire qu'il ne
-   *  compte plus, jamais pour fabriquer un dénominateur. */
-  budgetYearHerite: number;
-  spendPeriode: number | null; // dépense sur la période filtrée — ce que montre l'anneau
-  /** Sur QUELLE plateforme l'argent de ce thème est parti, depuis janvier.
-   *  Un thème qui pèse 4 000 CHF ne se pilote pas pareil selon qu'il est à
-   *  100 % sur Google ou partagé — et rien ne le disait. */
-  parCanalAn: ParCanal;
-};
-
 // Un jour dont la dépense dépasse le budget quotidien. C'est le garde-fou que
 // le budget mensuel seul ne donne pas : à la fin du mois il est trop tard, et
 // une seule journée emballée peut manger une semaine d'enveloppe.
@@ -151,7 +124,7 @@ export type AlerteJour = {
   ratio: number; // 1.8 = 80 % au-dessus du budget du jour
 };
 
-/** Ce que l'utilisateur a demandé de voir — période et thèmes. */
+/** Ce que l'utilisateur a demandé de voir — la période. */
 export type FiltreCouts = {
   /** La fenêtre en JOURS GLISSANTS — le vocabulaire du bandeau (`d`) :
    *  7 / 14 / 30 / 90, et 0 pour « depuis le début ». Absent vaut 7, comme
@@ -159,12 +132,10 @@ export type FiltreCouts = {
   jours?: number;
   /** L'ANCIEN nom de la période de cette page ("30" | "90" | "mois" | "an").
    *  Encore LU pour qu'aucun favori ni lien partagé ne casse, plus jamais
-   *  écrit — même extinction que `label` sur les pages canal (12 §5). */
+   *  écrit. */
   p?: string;
   from?: string;
   to?: string;
-  /** Thèmes retenus ; vide = tous. */
-  labels?: string[];
 };
 
 export type CoutsData = {
@@ -174,9 +145,6 @@ export type CoutsData = {
    *  tiret sans raison se lit comme un bug de Pulse, pas comme une connexion à
    *  refaire. Vide quand tout va bien, et la page ne dit alors rien. */
   muets: CanalMuetLive[];
-  // Liste maîtresse des thèmes (profiles.labels) — elle fixe la couleur de
-  // chacun, la même ici que dans le rapport.
-  labels: string[];
   annee: number;
   elapsed: number;    // fraction du MOIS écoulée (repère), 0..1
   elapsedAn: number;  // fraction de l'ANNÉE écoulée, en jours et non en mois
@@ -219,16 +187,12 @@ export type CoutsData = {
 
   // ── Ce que le filtre commande ─────────────────────────────────────────────
   periode: PeriodeCouts;
-  labelsChoisis: string[];
   serie: PointSerie[];       // la courbe, au pas de la période
   /** Le dernier point est une semaine incomplète — il faut le dire. */
   dernierePartielle: boolean;
   totalPeriode: number | null;
   /** La même dépense de période, ventilée par plateforme — le second anneau. */
   parCanalPeriode: ParCanal;
-  filtreActif: boolean;      // au moins un thème sélectionné
-
-  byTheme: ThemeSpend[];
 };
 
 // PostgREST plafonne chaque requête à 1000 lignes : on pagine, sinon la
@@ -325,17 +289,13 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     google: canalTu(muets, "google", fin) ? null : v.google,
   });
 
-  const labelsChoisis = (filtre.labels ?? []).filter(Boolean);
-  const filtreActif = labelsChoisis.length > 0;
-  const retenu = new Set(labelsChoisis);
-
   // Une période personnalisée peut commencer avant le 1er janvier : on remonte
   // la fenêtre de récolte jusqu'à elle, sinon la courbe démarre dans le vide.
   const depuis = periode.from < yearStart ? periode.from : yearStart;
 
   type MetaRow = { date_start: string; campaign_name: string | null; spend: number | null };
   type GoogRow = { date_start: string; campaign_id: string | number; cost_micros: number | null };
-  const [metaRows, googleRaw, budgetsRes, labelsRes, metaCfgRes, googCfgRes] = await Promise.all([
+  const [metaRows, googleRaw, budgetsRes] = await Promise.all([
     fetchAllRows<MetaRow>(() =>
       supabase
         .from("meta_ads_insights")
@@ -353,24 +313,17 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
         .order("date_start", { ascending: false })
     ),
     supabase.from("channel_budgets").select("channel, month, amount").eq("user_id", uid),
-    supabase.from("profiles").select("labels").eq("id", uid).limit(1),
-    supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
-    supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
   ]);
 
-  const metaLbl = new Map((metaCfgRes.data ?? []).map((c) => [String(c.campaign_name), c.label as string | null]));
-  const googLbl = new Map((googCfgRes.data ?? []).map((c) => [String(c.campaign_id), c.label as string | null]));
-
-  // Toutes les lignes ramenées à la même forme : une date, un canal, un montant,
-  // un thème. Les six agrégats qui suivent lisent cette liste une seule fois.
-  type Ligne = { date: string; canal: "meta" | "google"; chf: number; theme: string | null };
+  // Toutes les lignes ramenées à la même forme : une date, un canal, un
+  // montant. Les agrégats qui suivent lisent cette liste une seule fois.
+  type Ligne = { date: string; canal: "meta" | "google"; chf: number };
   const lignes: Ligne[] = [];
   for (const r of metaRows) {
     lignes.push({
       date: String(r.date_start).slice(0, 10),
       canal: "meta",
       chf: Number(r.spend) || 0,
-      theme: metaLbl.get(String(r.campaign_name)) ?? null,
     });
   }
   for (const r of googleRaw) {
@@ -378,15 +331,11 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       date: String(r.date_start).slice(0, 10),
       canal: "google",
       chf: (Number(r.cost_micros) || 0) / 1_000_000,
-      theme: googLbl.get(String(r.campaign_id)) ?? null,
     });
   }
 
   const parJourMois = new Map<string, { meta: number; google: number }>();
   const parJourPeriode = new Map<string, { meta: number; google: number }>();
-  const themeAn = new Map<string, number>();
-  const themeCanalAn = new Map<string, { meta: number; google: number }>();
-  const themePeriode = new Map<string, number>();
   const parMoisCanal = new Map<string, { meta: number; google: number }>();
   let metaSpent = 0, googleSpent = 0;        // mois en cours
   let metaYear = 0, googleYear = 0;          // depuis janvier
@@ -405,12 +354,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       const v = parMoisCanal.get(mo) ?? { meta: 0, google: 0 };
       v[l.canal] += l.chf;
       parMoisCanal.set(mo, v);
-      if (l.theme) {
-        themeAn.set(l.theme, (themeAn.get(l.theme) ?? 0) + l.chf);
-        const c = themeCanalAn.get(l.theme) ?? { meta: 0, google: 0 };
-        c[l.canal] += l.chf;
-        themeCanalAn.set(l.theme, c);
-      }
     }
     if (dansMois) {
       if (l.canal === "meta") metaSpent += l.chf;
@@ -419,16 +362,13 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
       v[l.canal] += l.chf;
       parJourMois.set(l.date, v);
     }
-    // La période, elle, obéit au filtre par thèmes. Une ligne sans thème sort
-    // dès qu'un filtre est posé : la garder ferait mentir le total de l'anneau.
-    if (dansPeriode && (!filtreActif || (l.theme && retenu.has(l.theme)))) {
+    if (dansPeriode) {
       const cle = periode.pas === "semaine" ? dLundi(l.date) : l.date;
       const v = parJourPeriode.get(cle) ?? { meta: 0, google: 0 };
       v[l.canal] += l.chf;
       parJourPeriode.set(cle, v);
       totalPeriode += l.chf;
       canalPeriodeBrut[l.canal] += l.chf;
-      if (l.theme) themePeriode.set(l.theme, (themePeriode.get(l.theme) ?? 0) + l.chf);
     }
   }
 
@@ -485,43 +425,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     for (let mm = 0; mm < 12; mm++) t += budgetFor(channel, `${y}-${String(mm + 1).padStart(2, "0")}-01`);
     return t;
   };
-
-  // Thèmes budgétés sans dépense : on les montre quand même (c'est justement
-  // quand un thème ne consomme pas son enveloppe qu'on veut le voir).
-  for (const b of budgets) {
-    const ch = String(b.channel ?? "");
-    if ((Number(b.amount) || 0) <= 0) continue;
-    const name = ch.startsWith("an:label:")
-      ? ch.slice(9)
-      : ch.startsWith("label:")
-        ? ch.slice(6)
-        : null;
-    if (name && !themeAn.has(name)) themeAn.set(name, 0);
-  }
-
-  const byTheme: ThemeSpend[] = [...themeAn.entries()]
-    .map(([label, spendYear]) => {
-      const saisi = budgetFor(`an:label:${label}`, anneeIso);
-      const mensuels = sommeDouze(`label:${label}`);
-      return {
-        label,
-        spendYear: tuSi(spendYear, aujourdhui),
-        // `saisi`, jamais `saisi || mensuels` : douze mensuels ne font pas une
-        // enveloppe d'année, ils font une moyenne qu'on présenterait comme une
-        // décision.
-        budgetYear: saisi,
-        budgetYearHerite: saisi > 0 ? 0 : mensuels,
-        spendPeriode: tuSi(themePeriode.get(label) ?? 0, periode.to),
-        parCanalAn: parCanalTu(themeCanalAn.get(label) ?? { meta: 0, google: 0 }, aujourdhui),
-      };
-    })
-    // Le tri reste sur la dépense MESURÉE : quand elle se tait, il n'y a plus
-    // d'ordre à défendre et l'alphabet vaut mieux qu'un classement arbitraire.
-    .sort((a, b) =>
-      a.spendYear !== null && b.spendYear !== null
-        ? b.spendYear - a.spendYear
-        : a.label.localeCompare(b.label)
-    );
 
   // La forme de l'année, mois par mois — la sparkline de la tuile « Budget
   // annuel ». La table « détail mois par mois » a disparu avec le dépliant des
@@ -622,7 +525,6 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     // `chiffres_tus` côté rapport, appliquée ici à la fenêtre la plus large de
     // la page, l'année.
     muets: aveuglesSur(muets, aujourdhui),
-    labels: (labelsRes.data?.[0]?.labels as string[] | null) ?? [],
     annee: y,
     elapsed,
     elapsedAn,
@@ -640,12 +542,9 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
     daily,
     parMois,
     periode,
-    labelsChoisis,
     serie,
     dernierePartielle,
     totalPeriode: tuSi(totalPeriode, periode.to),
     parCanalPeriode: parCanalTu(canalPeriodeBrut, periode.to),
-    filtreActif,
-    byTheme,
   };
 }

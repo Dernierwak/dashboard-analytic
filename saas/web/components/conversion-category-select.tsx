@@ -3,10 +3,8 @@
 import { useState, useTransition } from "react";
 import { saveCategoryForEvent } from "@/app/actions";
 
-// Assigne une catégorie à une conversion, directement dans la table —
-// MÊME PATRON QUE `CampaignLabelSelect` (thème d'une campagne), sur
-// `ga4_event_categories` au lieu de `meta_campaign_config.label` : même
-// select inline, même code couleur (rempli = brand, vide = faint).
+// Assigne une catégorie à une conversion, directement dans la table
+// (`ga4_event_categories`) : un select inline, rempli = brand, vide = faint.
 export function ConversionCategorySelect({
   eventName,
   current,

@@ -142,9 +142,9 @@ def fetch_ga4_insights(
 # `demande_devis`…) ne remontait donc RIEN, sans qu'aucun message ne le dise.
 # On devinait les noms d'un tiers à sa place.
 #
-# Ils restent, mais comme PLANCHER et non comme filtre : `fetch_ga4_events`
-# récolte désormais l'union de ce plancher et des événements que le client a
-# choisis pour ses thèmes. Le plancher est ce qui fait vivre `_rule_funnel`
+# Ils restent, et redeviennent la liste entière depuis que le thème est parti
+# du produit : le client choisissait des événements PAR THÈME, et c'était la
+# seule autre source de noms. Le plancher est ce qui fait vivre `_rule_funnel`
 # (« des paniers mais zéro achat »), écrite sur ces noms-là et sur eux seuls ;
 # le retirer casserait un conseil qui marche chez qui utilise le tag e-commerce
 # standard de GA4. Il ne coûte rien à qui n'émet pas ces événements : une ligne
@@ -253,12 +253,6 @@ def list_ga4_key_events(
     GA4 importé dans Google Ads y arrive d'ailleurs EN SECONDAIRE par défaut,
     pour ne pas compter deux fois la même conversion dans les enchères.
 
-    C'est pourquoi le rang principal/secondaire de nos thèmes est un CHOIX du
-    client, stocké dans `theme_ga4_events.rang`, et non une donnée importée :
-    l'importer voudrait dire lire l'API Google Ads, qui parle de campagnes et
-    d'actions de conversion — pas de thèmes Pulse. On n'invente pas une
-    distinction que la plateforme ne donne pas à ce niveau.
-
     Returns: ({eventName, …}, error_or_None). Un ensemble vide sans erreur veut
     dire « aucun événement clé déclaré », ce qui est une information, pas une
     panne.
@@ -335,16 +329,13 @@ def fetch_ga4_events(
     property_id: str,
     since: "date",
     until: "date",
-    event_names: list[str] | None = None,
 ) -> tuple[list[dict], str | None]:
     """Fetch le détail par ÉVÉNEMENT : jour × source/medium/campagne × event_name.
 
-    `event_names` : les événements à récolter EN PLUS du plancher `FUNNEL_EVENTS`
-    — en pratique ceux que le client a rattachés à ses thèmes. Le filtre reste
-    volontairement fermé : sans lui, la volumétrie de cette table est multipliée
-    par le nombre de noms distincts de la propriété, alors qu'on ne sait rien
-    faire des événements que personne n'a choisis. Le catalogue, lui, est
-    complet et coûte un appel — voir `list_ga4_event_names`.
+    Filtré sur `FUNNEL_EVENTS`, et le filtre reste volontairement fermé : sans
+    lui, la volumétrie de cette table est multipliée par le nombre de noms
+    distincts de la propriété. Le catalogue, lui, est complet et coûte un
+    appel — voir `list_ga4_event_names`.
 
     Returns: (rows, error_or_None) — rows: {date, source, medium, campaign,
     event_name, event_count, event_value}.
@@ -353,13 +344,7 @@ def fetch_ga4_events(
     if not pid:
         return [], "GA4 property_id manquant"
 
-    # Union ordonnée : le plancher d'abord (l'ordre du funnel a du sens à la
-    # lecture des logs), les choix du client ensuite, sans doublon.
     noms = list(FUNNEL_EVENTS)
-    for n in (event_names or []):
-        n = str(n or "").strip()
-        if n and n not in noms:
-            noms.append(n)
 
     body = {
         "dateRanges": [{"startDate": since.isoformat(), "endDate": until.isoformat()}],

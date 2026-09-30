@@ -44,22 +44,13 @@ type Fait = {
   date: string;
   canal: string;
   campagne: string;
-  theme: string | null;
   phrase: string;
   detail?: string | null;
   /** « budget », « mot-clé »… — absent des faits déduits, qui ne le savent pas. */
   quoi?: string | null;
 };
 
-function LigneFait({
-  f,
-  themeCourant,
-  dense = false,
-}: {
-  f: Fait;
-  themeCourant: string | null;
-  dense?: boolean;
-}) {
+function LigneFait({ f, dense = false }: { f: Fait; dense?: boolean }) {
   const ca = CANAL[f.canal] ?? CANAL.meta;
   return (
     <div className={`relative pl-6 ${dense ? "py-1" : "py-2.5"}`}>
@@ -77,7 +68,6 @@ function LigneFait({
           {/* Ce que la plateforme dit avoir touché. Absent d'un fait déduit,
               qui ne le sait pas — et on ne le devine pas. */}
           {f.quoi && <> · {f.quoi}</>}
-          {f.theme && f.theme !== themeCourant && <> · {f.theme}</>}
         </span>
       </div>
       <div className="text-[13px] text-muted leading-snug mt-0.5">
@@ -91,8 +81,8 @@ function LigneFait({
 /** Sépare les faits survenus des campagnes simplement programmées.
  *
  *  Exporté parce que la page d'accueil a besoin de compter les deux avant de
- *  décider si le module vaut d'être rendu, et le fait pour l'ensemble du compte
- *  comme pour un thème. Deux comptages écrits séparément finiraient par diverger.
+ *  décider si le module vaut d'être rendu. Deux comptages écrits séparément
+ *  finiraient par diverger.
  */
 export function trierChangements(
   changements: ChangementPlateforme[] = [],
@@ -136,7 +126,6 @@ const faitDeduit = (c: ChangementPlateforme): Fait => ({
   date: c.date,
   canal: c.canal,
   campagne: c.campagne,
-  theme: c.theme,
   phrase: phraseChangement(c),
   detail: c.detail,
 });
@@ -144,17 +133,12 @@ const faitDeduit = (c: ChangementPlateforme): Fait => ({
 export function Changements({
   changements = [],
   changementsApi = [],
-  themeCourant = null,
   maxH = "max-h-[420px] lg:max-h-[46vh]",
 }: {
   /** Ce qu'on a DÉDUIT de la dépense quotidienne. */
   changements?: ChangementPlateforme[];
   /** Ce que les plateformes DÉCLARENT elles-mêmes. Prime sur le déduit. */
   changementsApi?: ChangementApi[];
-  /** Quand le thème d'un fait est celui de la carte, on ne le réécrit pas : il
-   *  est déjà en titre plus haut. Hors thème, il varie d'une ligne à l'autre —
-   *  c'est là qu'il est utile. */
-  themeCourant?: string | null;
   maxH?: string;
 }) {
   const { programmees, survenus } = trierChangements(changements, changementsApi);
@@ -172,7 +156,6 @@ export function Changements({
         date: c.date,
         canal: c.canal,
         campagne: c.campagne ?? "Le compte",
-        theme: c.theme,
         phrase: c.phrase,
         quoi: MOT_CATEGORIE[c.categorie] ?? null,
       } satisfies Fait,
@@ -188,13 +171,13 @@ export function Changements({
             bord : un trait qui déborde promet une suite. */}
         <div className="absolute left-[3px] top-[22px] bottom-[22px] w-px bg-ink/[0.14]" />
         {lignes.map((l) => (
-          <LigneFait key={l.cle} f={l.fait} themeCourant={themeCourant} />
+          <LigneFait key={l.cle} f={l.fait} />
         ))}
 
         {/* CE QUI ATTEND, replié. En dessous de deux, le repli coûterait plus
             qu'il ne range. */}
         {programmees.length === 1 && (
-          <LigneFait f={faitDeduit(programmees[0])} themeCourant={themeCourant} />
+          <LigneFait f={faitDeduit(programmees[0])} />
         )}
         {programmees.length > 1 && (
           <details className="group relative pl-6 py-2">
@@ -215,7 +198,6 @@ export function Changements({
                 <LigneFait
                   key={`pl-${c.canal}-${c.campagne}-${i}`}
                   f={faitDeduit(c)}
-                  themeCourant={themeCourant}
                   dense
                 />
               ))}

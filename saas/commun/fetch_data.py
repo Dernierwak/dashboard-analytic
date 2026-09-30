@@ -53,99 +53,7 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) ->
     return _all_pages(q)
 
 
-# ── Le regroupement par thème — la vue SQL ────────────────────────────────────
-
-class VueRegroupementAbsente(RuntimeError):
-    """La vue `theme_regroupement` n'est pas en base : la migration
-    `supabase/migrations/theme_regroupement.sql` n'a pas été jouée.
-
-    ELLE NE SE RATTRAPE PAS PAR UN REPLI. Recalculer les thèmes en Python
-    ressusciterait la seconde implémentation que la vue existe pour supprimer —
-    et elle dériverait en silence, parce qu'un repli qui marche ne se remarque
-    pas. Le rapport ne se publie donc pas : une carte de thème vide se lit comme
-    un compte qui n'a rien fait, pas comme une migration qui manque.
-    """
-
-
-def fetch_theme_regroupement(supabase: Client, user_id: str) -> list[dict]:
-    """Le total de chaque thème, recalculé en base à la lecture.
-
-    Une ligne par thème : dépense, clics, impressions, CTR, revenu attribué,
-    publications, portée et engagement moyens, le drapeau `juge` (assez de
-    dépense pour qu'on se prononce) et le `roas` qu'il autorise. Voir
-    `supabase/migrations/theme_regroupement.sql` pour la règle exacte.
-
-    LE FILTRE `user_id` N'EST PAS DÉCORATIF. La vue est `security_invoker` :
-    elle protège l'appelant qui passe par un jeton d'utilisateur (Pulse), pas
-    celui qui passe par la clé de service (le worker), pour qui la RLS ne
-    s'applique pas. Sans ce filtre, le worker lirait les thèmes de tous les
-    comptes et les attribuerait à un seul.
-
-    PAGINÉE, et l'ordre est posé AVANT la pagination : PostgREST plafonne à
-    1 000 lignes et tronque en silence (CLAUDE.md §8), et sans ordre stable deux
-    pages successives peuvent répéter ou sauter des lignes. Un compte n'a pas
-    mille thèmes aujourd'hui — la pagination coûte trois lignes et évite d'avoir
-    à le vérifier.
-    """
-    try:
-        return _all_pages(
-            lambda: supabase.table("theme_regroupement")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("label")
-        )
-    except Exception as e:
-        # 42P01 = « undefined_table » côté Postgres ; PGRST205 = « la table est
-        # introuvable dans le cache de schéma » côté PostgREST, ce qu'il rend
-        # quand la vue vient d'être créée ou n'existe pas. Toute autre panne
-        # remonte telle quelle : une coupure réseau n'est pas une migration
-        # manquante, et la traiter comme telle enverrait David jouer du SQL
-        # pour rien.
-        if getattr(e, "code", None) in ("42P01", "PGRST205"):
-            raise VueRegroupementAbsente(
-                "vue theme_regroupement absente — jouer "
-                "supabase/migrations/theme_regroupement.sql (ou "
-                "000_run_me_all.sql), puis relancer.") from e
-        raise
-
-
-# ── Tab Coût — labels & budgets ────────────────────────────────────────────────
-
-def fetch_labels(supabase: Client, user_id: str) -> list[str]:
-    """Liste maîtresse UNIQUE des labels (profiles.labels) — partagée Meta/Google/Instagram.
-
-    Fallback : si profiles.labels n'existe pas encore (migration non passée) ou est
-    vide, on reconstruit la liste à partir des anciennes colonnes campaign_labels +
-    google_campaign_labels → la page Labels n'est jamais vide à tort. L'écriture
-    (create/delete) continue d'exiger la colonne labels (donc la migration).
-    """
-    try:
-        res = supabase.table("profiles").select("labels").eq("id", user_id).execute()
-        if res.data and res.data[0].get("labels"):
-            return list(res.data[0]["labels"])
-    except Exception:
-        pass
-    # Fallback lecture seule : union des anciennes listes.
-    try:
-        res = (
-            supabase.table("profiles")
-            .select("campaign_labels, google_campaign_labels")
-            .eq("id", user_id)
-            .execute()
-        )
-        if res.data:
-            row = res.data[0]
-            union = (row.get("campaign_labels") or []) + (row.get("google_campaign_labels") or [])
-            return sorted({str(l).strip() for l in union if str(l).strip()})
-    except Exception:
-        pass
-    return []
-
-
-def fetch_campaign_labels(supabase: Client, user_id: str) -> list[str]:
-    """Compat — pointe désormais sur la liste unifiée profiles.labels."""
-    return fetch_labels(supabase, user_id)
-
+# ── Tab Coût — budgets ─────────────────────────────────────────────────────────
 
 def fetch_channel_budgets(supabase: Client, user_id: str) -> list[dict]:
     """Budgets mensuels par canal : [{channel, month: 'YYYY-MM-DD', amount}].
@@ -191,29 +99,6 @@ def fetch_meta_budget_global(supabase: Client, user_id: str) -> float:
     return 0.0
 
 
-def fetch_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
-    """Retourne {campaign_name: {"label", "label_source", "budget_max", "effective_status"}}."""
-    try:
-        # "*" : tolérant au schéma (label_source peut ne pas exister avant migration)
-        res = (
-            supabase.table("meta_campaign_config")
-            .select("*")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return {
-            row["campaign_name"]: {
-                "label": row.get("label"),
-                "label_source": row.get("label_source"),
-                "budget_max": float(row.get("budget_max") or 0),
-                "effective_status": row.get("effective_status"),
-            }
-            for row in (res.data or [])
-        }
-    except Exception:
-        return {}
-
-
 # ── Google Ads ────────────────────────────────────────────────────────────────
 
 def fetch_google_ads(supabase: Client, user_id: str) -> list[dict]:
@@ -248,8 +133,6 @@ def fetch_google_ads_ad_insights(supabase: Client, user_id: str) -> list[dict]:
         return []
 
 
-
-
 def fetch_google_ads_latest_date(supabase: Client, user_id: str) -> str | None:
     res = (
         supabase.table("google_ads_insights")
@@ -278,11 +161,6 @@ def fetch_google_ads_ad_insights_latest_date(supabase: Client, user_id: str) -> 
     return res.data[0]["date_start"] if res.data else None
 
 
-def fetch_google_campaign_labels(supabase: Client, user_id: str) -> list[str]:
-    """Compat — pointe désormais sur la liste unifiée profiles.labels."""
-    return fetch_labels(supabase, user_id)
-
-
 def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
     try:
         res = supabase.table("profiles").select("google_budget_global").eq("id", user_id).execute()
@@ -294,9 +172,8 @@ def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
 
 
 def fetch_google_campaign_config(supabase: Client, user_id: str) -> dict[str, dict]:
-    """Retourne {campaign_id: {"campaign_name", "label", "label_source", "budget_max", "effective_status"}}."""
+    """Retourne {campaign_id: {"campaign_name", "budget_max", "effective_status"}}."""
     try:
-        # "*" : tolérant au schéma (label_source peut ne pas exister avant migration)
         res = (
             supabase.table("google_campaign_config")
             .select("*")
@@ -306,8 +183,6 @@ def fetch_google_campaign_config(supabase: Client, user_id: str) -> dict[str, di
         return {
             str(row["campaign_id"]): {
                 "campaign_name": row.get("campaign_name") or "",
-                "label": row.get("label"),
-                "label_source": row.get("label_source"),
                 "budget_max": float(row.get("budget_max") or 0),
                 "effective_status": row.get("effective_status"),
             }
@@ -482,41 +357,6 @@ def fetch_onboarding_profile(supabase: Client, user_id: str) -> dict[str, str | 
     return {}
 
 
-def fetch_theme_objectifs(supabase: Client, user_id: str) -> dict[str, str]:
-    """L'objectif propre d'un thème, quand il diffère de celui du compte.
-
-    Returns: {label: 'ventes'|'notoriete'|'engagement'}. {} si la table est
-    absente (migration `theme_objectifs.sql` pas passée) ou si rien n'a été
-    choisi — l'appelant retombe alors sur `fetch_objectif` (l'objectif du
-    compte), exactement comme avant cette fonctionnalité.
-    """
-    try:
-        res = (
-            supabase.table("theme_objectifs")
-            .select("label, objectif")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        rows = res.data or []
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for r in rows:
-        lbl = (r.get("label") or "").strip()
-        obj = r.get("objectif")
-        if lbl and obj:
-            out[lbl] = obj
-    return out
-
-
-
-
-
-
-
-
-
-
 # `fetch_reco_decisions` A ÉTÉ RETIRÉE LE 2026-09-13.
 #
 # Elle n'alimentait que la « boucle de la preuve » de `build_report.py` — un
@@ -529,26 +369,6 @@ def fetch_theme_objectifs(supabase: Client, user_id: str) -> dict[str, str]:
 # Le bilan au niveau du compte est désormais un COMPTAGE de
 # `suivi_actions.verdict`, fait à la lecture côté web : aucune mesure nouvelle,
 # donc rien à récolter ici.
-
-
-def fetch_insight_feedback(supabase: Client, user_id: str) -> dict[str, str]:
-    """Validation des constats de la vision globale — permanente (pas de fenêtre).
-    Returns: {insight_key: "agree"|"reject"} — un constat rejeté reste écarté
-    même quand le worker le régénère à l'identique.
-    """
-    try:
-        res = (
-            supabase.table("insight_feedback")
-            .select("insight_key, verdict")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return {r["insight_key"]: r["verdict"]
-                for r in (res.data or []) if r.get("insight_key") and r.get("verdict")}
-    except Exception:
-        return {}
-
-
 
 
 def fetch_user_profile(supabase: Client, user_id: str) -> tuple[str | None, str | None]:

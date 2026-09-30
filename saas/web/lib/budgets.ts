@@ -29,10 +29,6 @@ import { getCompteActif } from "@/lib/account";
 export type BudgetPlanifie = {
   /** Budget posé sur la période, par canal. */
   parCanal: Record<"meta" | "google", number>;
-  /** Budget posé sur la période, par thème (clé = label). */
-  parTheme: Record<string, number>;
-  /** Ce qui n'est rattaché à aucun thème. */
-  horsTheme: number;
   total: number;
   /** Aucun relevé en base : le worker n'a pas encore tourné depuis la bascule. */
   vide: boolean;
@@ -42,8 +38,6 @@ export type BudgetPlanifie = {
 
 export const BUDGET_PLANIFIE_VIDE: BudgetPlanifie = {
   parCanal: { meta: 0, google: 0 },
-  parTheme: {},
-  horsTheme: 0,
   total: 0,
   vide: true,
   releveLe: null,
@@ -141,10 +135,9 @@ function montantSurFenetre(l: LigneBudget, from: string, to: string): number {
 }
 
 /**
- * Le budget planifié sur une fenêtre, ventilé par canal et par thème.
+ * Le budget planifié sur une fenêtre, ventilé par canal.
  *
- * Lit `platform_budgets` (relevés hebdomadaires) et les deux tables de config
- * de campagnes pour rattacher chaque campagne à son thème. Renvoie
+ * Lit `platform_budgets` (relevés hebdomadaires). Renvoie
  * `BUDGET_PLANIFIE_VIDE` tant qu'aucun relevé n'existe — jamais une exception :
  * la page Coûts doit s'afficher entièrement même sans un seul relevé.
  */
@@ -193,45 +186,28 @@ export async function getBudgetPlanifie(
   const releveLe = retenus.map((c) => releves[c]!).sort()[0];
 
   let lignes: LigneBudget[] = [];
-  let metaCfg: { campaign_name: string | null; label: string | null }[] = [];
-  let googCfg: { campaign_id: string | number | null; label: string | null }[] = [];
   try {
-    const [parCanalLignes, m, g] = await Promise.all([
-      Promise.all(
-        retenus.map((c) =>
-          fetchAllRows<LigneBudget>(() =>
-            supabase
-              .from("platform_budgets")
-              .select(
-                "channel, campaign_id, campaign_name, daily_budget, total_budget, start_date, end_date, status"
-              )
-              .eq("user_id", uid)
-              .eq("channel", c)
-              .eq("captured_on", releves[c]!)
-          )
+    const parCanalLignes = await Promise.all(
+      retenus.map((c) =>
+        fetchAllRows<LigneBudget>(() =>
+          supabase
+            .from("platform_budgets")
+            .select(
+              "channel, campaign_id, campaign_name, daily_budget, total_budget, start_date, end_date, status"
+            )
+            .eq("user_id", uid)
+            .eq("channel", c)
+            .eq("captured_on", releves[c]!)
         )
-      ),
-      supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
-      supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
-    ]);
-    if (m.error) throw m.error;
-    if (g.error) throw g.error;
+      )
+    );
     lignes = parCanalLignes.flat();
-    metaCfg = m.data ?? [];
-    googCfg = g.data ?? [];
   } catch {
     return BUDGET_PLANIFIE_VIDE;
   }
   if (lignes.length === 0) return BUDGET_PLANIFIE_VIDE;
 
-  // Meta se rattache par NOM de campagne, Google par IDENTIFIANT — c'est la clé
-  // que chaque table de config utilise, et les mélanger perdrait tous les thèmes.
-  const metaLbl = new Map(metaCfg.map((c) => [String(c.campaign_name), c.label]));
-  const googLbl = new Map(googCfg.map((c) => [String(c.campaign_id), c.label]));
-
   const parCanal: Record<Canal, number> = { meta: 0, google: 0 };
-  const parTheme: Record<string, number> = {};
-  let horsTheme = 0;
   let total = 0;
 
   for (const l of lignes) {
@@ -244,14 +220,7 @@ export async function getBudgetPlanifie(
 
     parCanal[canal] += chf;
     total += chf;
-
-    const theme =
-      canal === "meta"
-        ? metaLbl.get(String(l.campaign_name)) ?? null
-        : googLbl.get(String(l.campaign_id)) ?? null;
-    if (theme) parTheme[theme] = (parTheme[theme] ?? 0) + chf;
-    else horsTheme += chf;
   }
 
-  return { parCanal, parTheme, horsTheme, total, vide: false, releveLe };
+  return { parCanal, total, vide: false, releveLe };
 }
