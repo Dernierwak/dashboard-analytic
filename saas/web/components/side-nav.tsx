@@ -28,6 +28,7 @@ import {
   IconePanneau,
   IconeRapport,
   IconeSortie,
+  IconeThemes,
 } from "@/components/icones";
 
 // La navigation passe sur le côté. Trois raisons, dans l'ordre d'importance :
@@ -48,9 +49,8 @@ import {
 //    besoin d'être nommé, et l'isoler dit sa primauté mieux qu'un titre. Les
 //    sept autres se rangent en trois groupes qui répondent chacun à une
 //    question différente :
-//      · « Où va l'argent » (Conversions, Coûts) — les lectures TRANSVERSALES,
-//        celles qui additionnent les trois canaux. « Thèmes » en est sorti le
-//        2026-09-30 avec le thème lui-même (`.scratch/meta-ads/map.md`) ;
+//      · « Où va l'argent » (Thèmes, Conversions, Coûts) — les lectures
+//        TRANSVERSALES, celles qui additionnent les trois canaux ;
 //      · « Tes canaux » (Meta, Google, Instagram) — le détail par plateforme,
 //        où l'on ne descend qu'une fois qu'une lecture transversale a désigné
 //        un coupable ;
@@ -88,6 +88,7 @@ const GROUPES: Groupe[] = [
   {
     titre: "Où va l'argent",
     entrees: [
+      { href: "/labels", label: "Thèmes", Icone: IconeThemes },
       { href: "/conversions", label: "Conversions", Icone: IconeConversions },
       { href: "/couts", label: "Coûts", Icone: IconeCouts },
     ],

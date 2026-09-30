@@ -21,7 +21,7 @@ chantier « retrait du thème » (non commité dans le checkout principal le
 - `components/icones.tsx`, `components/illustrations.tsx`, `components/logo.tsx`
   (nouveaux).
 - `side-nav.tsx` — icônes, onglet actif en feuille levée, pied avatar +
-  sortie, entrée « Thèmes » retirée.
+  sortie.
 - `app/login/page.tsx`, `app/comptes/page.tsx`, `app/equipe/page.tsx`.
 - `canal-muet.tsx`, `trou-recolte.tsx` — bandeau illustré, lien renommé
   « Reconnecter dans Connexions », phrase « aucun conseil » retirée.

@@ -64,6 +64,17 @@ export function IconeConversions(p: Props) {
   );
 }
 
+/** Les thèmes : l'étiquette qu'on pose sur une campagne ou une publication. */
+export function IconeThemes(p: Props) {
+  return (
+    <Svg {...p}>
+      <path {...APLAT} d="M3.5 4.5v6.3a1 1 0 0 0 .3.7l8.7 8.7a1 1 0 0 0 1.4 0l6.3-6.3a1 1 0 0 0 0-1.4L11.5 3.8a1 1 0 0 0-.7-.3H4.5a1 1 0 0 0-1 1z" />
+      <path d="M3.5 4.5v6.3a1 1 0 0 0 .3.7l8.7 8.7a1 1 0 0 0 1.4 0l6.3-6.3a1 1 0 0 0 0-1.4L11.5 3.8a1 1 0 0 0-.7-.3H4.5a1 1 0 0 0-1 1z" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 /** Les coûts : l'enveloppe de l'année, et la part déjà consommée. */
 export function IconeCouts(p: Props) {
   return (
