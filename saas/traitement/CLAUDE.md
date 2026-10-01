@@ -77,16 +77,9 @@ analyse de code mort la déclarera inatteignable, et elle ne l'est pas.
 ## Le seam, et comment on le rejoue
 
 `build_payload` prend un `Lecteur` (`lecteur.py`), pas un client Supabase :
-**une propriété du payload s'exécute au lieu de se lire dans le texte.** Le faux
-lecteur et les harnais vivent dans `.scratch/construction/harnais/` — un dossier
-par ticket, `python3.12 test_x.py`, ni base, ni secret, ni réseau.
+**une propriété du payload s'exécute au lieu de se lire dans le texte.** Un
+faux lecteur suffit à construire le rapport sans base, sans secret, sans réseau.
 
-Les deux qui couvrent ce dossier :
-
-```bash
-cd .scratch/construction/harnais/16-le-seam-du-payload
-python3.12 test_le_seam.py            # l'injection est complète
-python3.12 test_chiffres_du_payload.py # ce que la construction CHIFFRE
-```
-
-Toucher au traitement sans les rejouer, c'est se priver du seul filet qu'on ait.
+Les harnais qui le faisaient ont quitté l'arbre le 2026-10-01 ; ils restent dans
+l'historique (`git log --diff-filter=D -- .scratch/construction`). Toucher au
+traitement, c'est écrire le harnais du ticket, pas en supposer un.

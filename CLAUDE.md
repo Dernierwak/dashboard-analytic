@@ -73,7 +73,7 @@ qualité des agents qui le construisent.**
 
 Le dépôt est **public** : les tickets restent en markdown local, jamais en
 GitHub Issues. Voir `docs/agents/issue-tracker.md` pour les conventions, et
-`.claude/skills/wayfinder/SKILL.md` pour charter et travailler une carte.
+la skill `/mattpocock-skills:wayfinder` pour charter et travailler une carte.
 
 ## 5 · Les agents
 
@@ -113,7 +113,6 @@ chercher**, et leur `.md` doit le leur dire.
 | `CONTEXT.md` | **Le vocabulaire.** Ce que veut dire chaque mot du produit (compte, jour de travail, fenêtre…) et le mot qu'on n'emploie pas. |
 | `docs/mesures-impossibles.md` | **Ce qu'on ne saura jamais mesurer**, et pourquoi. Un écran qui affiche une de ces valeurs ment. Application directe de §7. |
 | `docs/adr/` | Les décisions durables et **leur raison**, une fiche par décision. Ce qui a été tranché ne se re-litige pas sans y revenir. |
-| `.scratch/refonte/plan-de-refonte.md` | **La direction du produit** : la phrase de Pulse, ce qui se valide en premier, la version la plus simple qui le valide, et l'ordre des briques avec leur condition d'entrée. Chaque affirmation pointe le ticket qui l'a tranchée. |
 | `.scratch/<chantier>/map.md` | **Où en est un chantier** : sa destination, ce qui est tranché, ce qui reste à décider. |
 | `saas/web/legal/` | Les documents requis pour passer l'OAuth Google en mode Production (Privacy Policy, CGU, script vidéo de démo) — templates à compléter, pas encore publiés. |
 
@@ -174,14 +173,15 @@ tout son échafaudage. `git grep` doit être propre.
 
 - `saas/web` : `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et
   `npm run build` verts, **18 routes** (un écart signale une page de contrôle
-  oubliée).
+  oubliée) — **19** tant que vit `/meta/prototype-modules`, le prototype de la
+  carte `meta-ads`, qui part quand sa spec est écrite.
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
 - **Le rapport se construit hors ligne** : `build_payload` prend un `Lecteur`
   (`saas/traitement/lecteur.py`), donc une propriété du payload **s'exécute au
-  lieu de se lire dans le texte**. Le faux lecteur et les harnais vivent dans
-  `.scratch/construction/harnais/` — un dossier par ticket, `python3.12
-  test_x.py`, ni base, ni secret, ni réseau. Toucher au traitement sans les
-  rejouer, c'est se priver du seul filet qu'on ait.
+  lieu de se lire dans le texte**. Les harnais qui l'exploitaient ont quitté
+  l'arbre le 2026-10-01 (David : une base propre) ; ils restent dans
+  l'historique (`git log --diff-filter=D -- .scratch/construction`). Toucher au
+  traitement, c'est donc écrire le harnais du ticket, pas en supposer un.
 - **Le client ne déclenche rien, donc rien ne se vérifie en cliquant.** Une
   correction du traitement ou de la récolte **ne se voit qu'après un passage du
   worker** — le cron du Jour de travail (07:00 UTC), ou un lancement à la main

@@ -1,7 +1,7 @@
 # Trois harnais testent ce qui est parti
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Venu de : la carte `.scratch/meta-ads/` — rangé ici le 2026-10-01 : c'est une réparation, pas une décision.
 
@@ -29,3 +29,9 @@ jeu, sur `Campagne(..., theme=...)` :
 Rien à décider sur le fond : réécrire 20 et 47 pour qu'ils observent le canal
 muet là où il vit encore (`canaux_muets`, le verdict, la frise), décider du sort
 du 18, et rejouer. Sans ça, le seul filet du canal muet ne tient plus.
+
+## Answer
+
+Sans objet : tous les harnais de `.scratch/construction/` ont quitté l'arbre le
+2026-10-01, à la demande de David (une base propre). Ils restent dans
+l'historique git.
