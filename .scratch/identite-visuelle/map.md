@@ -31,6 +31,19 @@ La référence est `docs/identite-visuelle.md`. La source des couleurs est
   https://claude.ai/artifact/JJYLFUar1KiDfcAR9neRc2 (version 5). Le code de la
   branche porte encore « le relevé » : à reporter une fois la direction validée.
 
+- **2026-10-01, plus tard — la piste journal.** Après une planche de huit
+  maquettes (https://claude.ai/artifact/9xEZLsnecEsocjcDgSMtzF), David ne garde
+  que **Journal** (« Le Pulse », titre serif pleine largeur, colonnes,
+  graphique en trame de points) et **Gazette** (la même, plus fine : chiffres
+  Archivo légers, bleu clair `#5b78f0`, corail pour le week-end, papier blanc
+  cassé, repères d'imprimerie, mini-courbes 8 semaines). Écartés : Équilibre,
+  Collage, Affiche suisse, Calque, Supplément, Gazette+.
+  **Leçon de Gazette+** : il demandait « un petit élément » (un point, une
+  touche dans les graphiques) pour plus de vie ; la réponse a ajouté tampon,
+  surligneur, couleurs vives et barres fantômes d'un coup — rejetée, « trop
+  de choses d'un coup ». **Itérer par UN détail à la fois** sur cette piste.
+  En pause à la demande de David : il n'arrive pas encore à formuler la suite.
+
 ## Fog
 
 - Le rapport (`app/page.tsx`) et les dashboards n'ont reçu que la cascade des
