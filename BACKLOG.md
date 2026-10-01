@@ -36,10 +36,11 @@ nulle part ailleurs, puisque les tickets correspondants sont partis :
   décisions qui n'existent nulle part ailleurs — notamment les seuils des
   règles payantes et la grammaire d'un conseil. Ils sont dans l'historique git
   du dépôt (`git log --diff-filter=D -- .scratch/`), pas dans l'arbre.
-- **`insight_feedback` survit** parce qu'elle porte les thèmes prioritaires
-  (clé `priority_label:<nom>`) en plus des verdicts de constats. Les lignes de
-  verdict y dorment, mortes ; le nettoyage optionnel est en bas de
-  `supabase/migrations/999_supprimer_les_recommandations.sql`.
+- **`insight_feedback` a survécu à ce retrait**, le temps que le thème parte à
+  son tour : elle portait aussi les thèmes prioritaires (clé
+  `priority_label:<nom>`). Le thème parti, plus rien ne la lisait ; elle est
+  supprimée en entier par `998_supprimer_le_theme.sql` (validé par David le
+  2026-10-01).
 - **`saas/commun/` garde des fonctions que plus personne n'appelle**, héritées
   de l'ancien Streamlit et antérieures à ce retrait. Pas touchées : c'est un
   ménage à part.
@@ -234,6 +235,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   `theme_objectifs`, `theme_ga4_events`, et les ADR 0001, 0002, 0003 qui le
   cadraient. Avant de le réinventer, relire pourquoi il a échoué : il exigeait un
   travail manuel du client **avant** que le produit lui serve à quelque chose.
+  **Les étiquettes posées par les clients ne sont pas archivées** : la `998`
+  les détruit sans copie (David, 2026-10-01 : « rien, on perd »). Si le thème
+  revient, il repart de zéro — une table `archive_labels` remplie juste avant
+  les `DROP` aurait coûté quelques lignes, c'est l'idée écartée.
 - **Le rapport hebdo est vide et doit se refaire.** La page `/` garde les trois
   dates, le verdict, la frise et les chiffres du compte ; l'anneau, le carrousel
   et les cartes sont partis sans remplacement (décision assumée : « on met vide,

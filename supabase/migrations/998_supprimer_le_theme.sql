@@ -8,8 +8,8 @@
 --
 --     AUCUNE ARCHIVE N'EST FAITE, ET C'EST UNE DÉCISION : David, le 2026-09-30,
 --     à la question « faut-il archiver les thèmes posés par les clients avant
---     de les détruire ? » — « Rien, on perd ». Ce qui a été étiqueté disparaît.
---     L'idée, elle, est notée au `BACKLOG.md`.
+--     de les détruire ? » — « Rien, on perd », reconfirmé le 2026-10-01. Ce
+--     qui a été étiqueté disparaît. L'idée, elle, est notée au `BACKLOG.md`.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- QUAND LE JOUER — PAS AVANT QUE LE CODE SOIT DÉPLOYÉ

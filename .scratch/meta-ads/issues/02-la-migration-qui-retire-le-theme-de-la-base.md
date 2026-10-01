@@ -1,7 +1,7 @@
 # La migration qui retire le thème de la base
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 01
 
 ## Question
@@ -82,3 +82,38 @@ le thème comme vivant : rangé en `.scratch/corrections/issues/05-…`.
    disait « les lignes, pas la table ». Plus aucun code ne la lit ni ne
    l'écrit (les verdicts sont morts le 2026-09-21, les étoiles avec le thème),
    mais `BACKLOG.md` affirme encore « `insight_feedback` survit ». À valider.
+
+## Answer
+
+**La migration est `supabase/migrations/998_supprimer_le_theme.sql`, hors du
+`000`**, sur le modèle du `999` : le `000` installe et doit rester rejouable,
+celle-ci démolit et se joue une fois, à la main. Le `000_run_me_all.sql` cesse
+en même temps d'installer le thème — sinon son prochain passage le ferait
+renaître.
+
+**Ce qu'elle détruit** : la vue `theme_regroupement` ; les tables
+`theme_ga4_events`, `theme_objectifs` et `insight_feedback` **en entier** ; les
+colonnes `label`/`labels`, `label_source`, `label_at` de `meta_campaign_config`,
+`google_campaign_config` et `instagram_organic_posts` ; `profiles.labels`,
+`campaign_labels`, `google_campaign_labels` ; les déclencheurs `trg_*_label_at`
+et les fonctions `stamp_label_at*()` ; les lignes `fetch_progress` 'labels'.
+Une transaction, aucun `CASCADE` : une dépendance oubliée fait échouer le
+fichier sans rien supprimer. Un contrôle de 20 lignes suit, à jouer seul.
+
+**Tranché avec David le 2026-10-01** :
+- **aucune archive** des étiquettes (« rien, on perd ») — l'idée écartée est au
+  `BACKLOG.md` ;
+- **`insight_feedback` part en entier**, pas seulement ses lignes
+  `priority_label:` : plus aucun code ne la lit ni ne l'écrit.
+
+**Vérifié** sur PostgreSQL 15 jetable (détail dans le commentaire du
+2026-10-01 ci-dessus) : 998 sur une base « prod » chargée → 20 ✓, budgets et
+posts intacts ; nouveau `000` rejoué deux fois après elle et deux fois sur base
+vierge → exit 0, rien ne renaît. **Pas vérifié sur la vraie base Supabase** :
+c'est David qui la joue.
+
+**Quand la jouer** : le code qui ne lit plus le thème est sur `main` (PR #3).
+Attendre que Vercel ait déployé ce `main` **et** qu'un passage du worker ait
+tourné dessus — le cron du jour de travail, ou `weekly-fetch.yml` lancé à la
+main depuis l'onglet GitHub Actions. Puis : SQL editor → coller la `998` →
+exécuter → jouer le bloc CONTRÔLE seul, toutes les lignes doivent dire ✓.

@@ -109,6 +109,12 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   encore `*_campaign_config.label`, aurait perdu tous ses faits en silence.
   [Le thème et le label quittent l'écran et le code](issues/01-le-theme-quitte-l-ecran-et-le-code.md)
 
+- **La base perd le thème par une migration à jouer à la main**, `998`, hors du
+  `000` qui cesse de l'installer. Sans archive (« rien, on perd ») et avec
+  `insight_feedback` en entier — validés par David. Vérifiée sur un PostgreSQL
+  jetable ; reste à la **jouer** sur Supabase, après un passage du worker.
+  [La migration qui retire le thème de la base](issues/02-la-migration-qui-retire-le-theme-de-la-base.md)
+
 ## Pas encore spécifié
 
 - **L'écriture de la spec elle-même.** Une fois 03 à 08 clos, il reste à assembler
