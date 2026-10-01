@@ -133,6 +133,31 @@ _Avoid_: Filtres, barre de filtres, header — « filtres » désigne les valeur
 choisies, pas l'objet qui les porte ; et il ne filtre pas que des listes, il
 gouverne les chiffres et la courbe.
 
+**Clic** :
+Sur une plateforme payante, **tous les clics** sur l'annonce — le chiffre le
+plus large que la plateforme rende, « Clics (tous) » dans Ads Manager. Le CTR
+(clics ÷ impressions) et le CPC (dépense ÷ clics) se calculent sur ce même clic,
+et nulle part ailleurs sur un autre : c'est aussi la définition des champs `ctr`
+et `cpc` de Meta. L'écran l'écrit là où il affiche un clic.
+_Avoid_: Clic sur le lien pour désigner le clic — c'en est un sous-ensemble, qui
+se nomme en entier quand on le montre.
+
+**Module** :
+Un bloc d'une page de plateforme payante, désigné par un nom qui ne change pas
+d'une plateforme à l'autre. **Le nom, le rôle et la place sont les mêmes sur
+Meta et sur Google ; le contenu, lui, s'adapte** — chaque plateforme y met ses
+propres métriques et ses propres graphes. Dans l'ordre :
+1. **Bandeau de commandes** — quoi, sur quelle période.
+2. **Sélecteur de vue** — Notoriété, Trafic ou Conversion.
+3. **Tendance** — comment évolue le total.
+4. **Comparaison** — ce qui fait mieux que quoi.
+5. **Tableau détaillé** — tout le détail, à exporter.
+
+Le **Panneau latéral** n'a pas de place : il s'ouvre depuis un module, pour lire
+le contenu d'une annonce ou les changements d'un jour.
+_Avoid_: Section, bloc, widget ; « Vue d'ensemble » pour la Tendance — le mot
+« vue » désigne déjà Notoriété / Trafic / Conversion.
+
 **Mesure prise** :
 Un chiffre **enregistré à une date**, et qui ne rétroagit pas — même quand on
 saurait le recalculer. Un chiffre publié dans un rapport de la semaine 37 juge

@@ -284,6 +284,23 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   périmètre. C'est probablement la voie des annonces Advantage+ / flexible format.
   Non documenté = inutilisable en l'état, mais c'est là qu'il faudra regarder le jour
   où Advantage+ compte pour un client.
+- **La portée et la fréquence du dashboard Meta** (ticket 07, 2026-10-01).
+  Retirées de la vue Notoriété, qui garde impressions et CPM. David : « on a
+  meilleur temps de ne pas la prendre ». Ce qui est établi, pour ne pas refaire
+  l'analyse : la portée compte des personnes uniques, **dédupliquées par Meta sur
+  la période demandée** (« saw your ads at least once », « This metric is
+  estimated », référence Insights) — la somme des portées journalières est donc
+  fausse dès qu'une personne revient. Pulse ne récolte aujourd'hui que la portée
+  par annonce et par jour. Les deux voies honnêtes : récolter la portée par jour
+  **au niveau** compte / campagne / ad set (une courbe juste, trois appels de
+  plus), et la portée **de la période** pour des raccourcis fixes (un chiffre
+  juste, une période sur mesure à « — »). Au-delà de 13 mois, Meta ne la rend
+  plus ventilée.
+- **Laisser le client choisir ce qui compte comme conversion** (ticket 07,
+  2026-10-01). Pour l'instant Pulse affiche ce qu'Ads Manager affiche
+  (« Résultats »). Choisir un type d'action (achat, lead…) parmi ceux que Meta
+  rend est possible plus tard sans re-récolter, si les types d'action sont
+  stockés — la table `meta_ads_actions` proposée par la recherche 04.
 - **Six questions sur l'API Meta que la documentation ne répond pas.** Relevées par
   la recherche du 2026-09-28
   ([rapport](.scratch/meta-ads/recherche/champs-api-meta.md)), et notées parce

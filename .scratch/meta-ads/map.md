@@ -38,7 +38,7 @@ qu'on ne saura jamais mesurer. `docs/adr/` pour les décisions durables, dont la
 0010 posée par cette carte.
 
 **Skills à appeler à chaque session.** `grilling` et `domain-modeling` en cas de
-doute. `research` pour les tickets 03 et 04. `prototype` pour 05, 06 et 08.
+doute. `research` pour les tickets 03, 04 et 15. `prototype` pour 05, 06 et 08.
 
 **Les règles qui ne se négocient pas dans cette carte.**
 - **Meta et rien que Meta.** Aucune jointure GA4, aucun chiffre d'une autre
@@ -122,6 +122,14 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   partagé avec les changements.
   [Aller lire le texte d'un asset sans quitter Pulse](issues/06-aller-lire-le-texte-d-un-asset-sans-quitter-pulse.md)
 
+- **Le socle est une structure de modules nommés, pas une forme de données
+  commune**, et chaque niveau Meta est identifié par son ID. Mêmes noms, rôles et
+  places sur toutes les plateformes, code propre à chacune ; ratios recalculés
+  total ÷ total ; le clic = tous les clics ; les conversions = « Résultats »
+  d'Ads Manager ; portée et fréquence retirées ; migration en deux étapes,
+  proposée et non jouée. Fiche : `docs/adr/0011`.
+  [Le socle commun Meta / Google : des modules nommés, et la clé par ID](issues/07-le-contrat-de-donnees-commun-meta-google.md)
+
 ## Pas encore spécifié
 
 - **L'écriture de la spec elle-même.** Une fois 03 à 08 clos, il reste à assembler
@@ -130,14 +138,11 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   tickets de construction.
 - **La fenêtre de lecture.** Le prototype propose des raccourcis de 7 jours à
   12 semaines plus une période sur mesure, toujours comparées à la période
-  d'avant. Reste ouvert : faut-il aussi une période « Tout » (voir la frontière
-  des 13 mois ci-dessous), et « la semaine mesurée » doit-elle être un raccourci ?
-- **Ce que Google Ads doit changer pour entrer dans le socle.** Visible dès que le
-  contrat du ticket 07 existe, pas avant.
-- **La frontière des 13 mois sur la portée.** `reach` n'est plus rendu avec un
-  breakdown au-delà de 13 mois depuis le 10 juin 2025 (job asynchrone plafonné à
-  10/jour/compte sinon). `/meta` propose une période « Tout ». Ce que la période la
-  plus large peut honnêtement afficher se décidera avec les modules (ticket 05).
+  d'avant. Reste ouvert : faut-il aussi une période « Tout » (la frontière
+  des 13 mois ne joue plus depuis que la portée est retirée, ticket 07), et « la semaine mesurée » doit-elle être un raccourci ?
+- **Ce que Google Ads doit changer pour entrer dans le socle.** Depuis le ticket
+  07, le socle est la liste des modules : la question devient, module par
+  module, ce que Google y met — à écrire avec la spec, pas avant.
 - **Les quotas de l'API Meta : mesurés, et ce n'est pas eux qui coûtent.** 7 appels
   Graph par passage pour 20 annonces, soit 2,4 % du plafond Ads Management standard.
   **Le poste cher est le stockage des images**, pas l'API — ce qui déplace la question
@@ -163,5 +168,8 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   donne que six métriques pour les annonces bâties sur un `asset_feed_spec`. Le
   **contenu** des assets reste, lui, dans le périmètre (ticket 06). Ticket clos :
   [Meta donne-t-il des métriques par asset ?](issues/03-meta-donne-t-il-des-metriques-par-asset.md)
+- **La portée et la fréquence.** Retirées du dashboard au ticket 07 : la somme
+  des portées journalières est fausse, et la vraie demande un appel par période.
+  Au `BACKLOG.md` avec les deux voies honnêtes.
 - **Le tri des campagnes par objectif déclaré.** Bonne idée, trop de complexité
   pour maintenant. Au `BACKLOG.md`.
