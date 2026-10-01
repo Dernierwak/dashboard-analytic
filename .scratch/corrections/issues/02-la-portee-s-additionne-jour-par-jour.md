@@ -3,6 +3,7 @@
 Type: task
 Status: open
 Blocked by: —
+Venu de : la carte `.scratch/meta-ads/` — rangé ici le 2026-10-01 : c'est une réparation, pas une décision.
 
 ## Question
 

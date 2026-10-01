@@ -95,7 +95,7 @@ ce changement de traitement ne se verra qu'au prochain passage du worker (cron
 du Jour de travail, ou `weekly-fetch.yml` lancé à la main avec `report_only`).
 
 **Trouvé en chemin, devenu ticket.**
-- [Trois harnais testent ce qui est parti](13-trois-harnais-testent-ce-qui-est-parti.md)
+- [Trois harnais testent ce qui est parti](../../corrections/issues/04-trois-harnais-testent-ce-qui-est-parti.md)
   — 18, 20 et 47 tombent sur `Campagne(theme=…)` ; 20 et 47 couvrent le canal
   muet, fonction vivante.
 - [La page d'arrivée d'une campagne n'a plus d'écran](14-la-page-d-arrivee-d-une-campagne-n-a-plus-d-ecran.md)

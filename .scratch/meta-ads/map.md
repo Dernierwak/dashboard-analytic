@@ -21,6 +21,12 @@ destination l'exige : la **purge du thème** (tickets 01 et 02 — David : « on
 supprime de partout ») et la **fondation de données** qui en découle. Le
 dashboard lui-même s'arrête à la spec.
 
+**Cette carte ne porte que des décisions** (et les deux exécutions ci-dessus).
+Une réparation trouvée en chemin — un bug du `/meta` actuel, un test à
+reprendre — part dans `.scratch/corrections/`, pas ici. Quatre tickets y ont
+été rangés le 2026-10-01 : `link_click` absent compté zéro, portée additionnée
+jour par jour, `/meta` tronqué à 1 000 lignes, harnais 18/20/47 à reprendre.
+
 **Le brief d'origine est dans [`brief.md`](brief.md).** Tout prototype ou
 spec de cette carte part de LUI, bloc par bloc et dans son ordre — pas des
 résumés que les tickets en font. Deux prototypes ont été rejetés le 2026-09-30

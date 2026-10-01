@@ -3,10 +3,11 @@
 Type: task
 Status: open
 Blocked by: —
+Venu de : la carte `.scratch/meta-ads/` — rangé ici le 2026-10-01 : c'est une réparation, pas une décision.
 
 ## Question
 
-Trouvé en chemin par le ticket 04, et **vérifié à la main** : ce n'est pas un
+Trouvé en chemin par le ticket 04 de `.scratch/meta-ads/`, et **vérifié à la main** : ce n'est pas un
 rapport d'agent pris au mot.
 
 `saas/collecte/automatisation/fetch_all.py:886-887`
