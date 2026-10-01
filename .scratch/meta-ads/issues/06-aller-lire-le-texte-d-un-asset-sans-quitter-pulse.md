@@ -1,7 +1,7 @@
 # Aller lire le texte d'un asset sans quitter Pulse
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: —
 
 ## Question
