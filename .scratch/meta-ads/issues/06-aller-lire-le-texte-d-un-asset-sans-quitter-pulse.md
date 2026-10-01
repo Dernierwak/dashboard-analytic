@@ -1,7 +1,7 @@
 # Aller lire le texte d'un asset sans quitter Pulse
 
 Type: prototype
-Status: claimed
+Status: open
 Blocked by: —
 
 ## Question
@@ -90,3 +90,9 @@ chaque case cochée et ne sert pas celui qui part du tableau.
 **Vérifié** : `tsc` est vert sur ces fichiers, et la page compile et répond 200
 en `next dev`. **Pas vérifié à l'écran** : l'extension Chrome a décroché
 (« Not attached to an active page »), donc aucune capture.
+
+**2026-10-01 — réservation libérée.** La session qui l'avait prise ne tourne
+plus. Le prototype (trois variantes P, T, S ; recommandation P, voir plus haut)
+est construit mais **pas commité** : il vit dans la copie de travail de `main`,
+`/Users/David.GILLIARD/DAVID/Moi_Hobbies/08_Data analyse/05_Mes Projets/03_Agence_Dashboard/saas/web/app/meta/prototype-modules/`. Ce qui reste est le côté humain
+du ticket — que David regarde les trois variantes et tranche.

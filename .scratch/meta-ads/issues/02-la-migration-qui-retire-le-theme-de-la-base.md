@@ -1,7 +1,7 @@
 # La migration qui retire le thème de la base
 
 Type: task
-Status: claimed
+Status: open
 Blocked by: 01
 
 ## Question
@@ -35,3 +35,18 @@ la joue à la main, une fois, comme `999_supprimer_les_recommandations.sql`.
 sur un `update` ne renvoie aucune erreur et touche zéro ligne (`CLAUDE.md` §8) —
 du code qui lit une colonne disparue, lui, casse franchement, et c'est le bon
 ordre.
+
+## Comments
+
+**2026-10-01 — réservation libérée.** La session qui l'avait prise ne tourne
+plus. Son travail est commencé mais **pas commité** : il vit dans la copie de
+travail de `main` (`/Users/David.GILLIARD/DAVID/Moi_Hobbies/08_Data analyse/05_Mes Projets/03_Agence_Dashboard/`), pas dans une branche — une session partie d'un
+worktree neuf ne le voit pas, elle doit aller le lire là :
+- `supabase/migrations/998_supprimer_le_theme.sql` (non suivi) ;
+- des modifications de `000_run_me_all.sql`, `equipe_partage.sql`,
+  `meta_campaign_config.sql`, `partage_tables_manquantes.sql` ;
+- `theme_ga4_events.sql` renommé `ga4_event_catalog.sql`, et la suppression de
+  `labels_origine.sql`, `theme_objectifs.sql`, `theme_regroupement.sql`,
+  `unified_labels.sql`, `vision_labels_ia.sql`.
+Rien n'en a été vérifié. Le ticket 01 est résolu : plus aucun code ne lit ce que
+cette migration supprime, l'ordre « code d'abord, base ensuite » est tenu.
