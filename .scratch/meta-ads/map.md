@@ -100,7 +100,7 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
 
 - **La structure du dashboard est validée**, dans l'ordre du brief : barre
   collante, choix de la vue sur trois cartes, vue d'ensemble du total, comparaison
-  classée avec deux métriques, tableau jusqu'à l'asset.
+  classée avec deux métriques, tableau jusqu'à l'annonce (l'asset en est sorti au ticket 06).
   [Les 3-4 modules du dashboard, et leur ordre](issues/05-les-modules-du-dashboard-et-leur-ordre.md)
   — la mise en page de la comparaison (C1 ou C2) reste à choisir.
 
@@ -114,6 +114,13 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   `insight_feedback` en entier — validés par David. Vérifiée sur un PostgreSQL
   jetable ; reste à la **jouer** sur Supabase, après un passage du worker.
   [La migration qui retire le thème de la base](issues/02-la-migration-qui-retire-le-theme-de-la-base.md)
+
+- **Le texte d'une annonce se lit dans le panneau latéral, ouvert depuis le
+  module Comparaison et nulle part ailleurs** — une cible de clic visible,
+  distincte de la case qui coche ; pas de bande de créas sous les graphes ; le
+  tableau reste une table d'export qui s'arrête à l'annonce ; un seul panneau,
+  partagé avec les changements.
+  [Aller lire le texte d'un asset sans quitter Pulse](issues/06-aller-lire-le-texte-d-un-asset-sans-quitter-pulse.md)
 
 ## Pas encore spécifié
 

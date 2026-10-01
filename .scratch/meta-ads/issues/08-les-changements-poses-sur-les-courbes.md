@@ -50,3 +50,11 @@ Donc rien à récolter. Ce qui reste est une question de **forme et de vérité*
 
 **Ce que le prototype doit rendre** : la maquette des points et du panneau sur une
 courbe réelle, et les réponses écrites aux cinq points ci-dessus.
+
+## Comments
+
+**2026-10-01 — le point 4 a sa moitié de réponse.** Le ticket 06 a choisi le
+panneau latéral pour lire une annonce, ouvert depuis le module Comparaison
+(voir son `## Answer`). Le panneau des changements doit donc être **le même
+mécanisme** : ce ticket décide seulement ce qu'il montre pour un jour, pas s'il
+en faut un second.
