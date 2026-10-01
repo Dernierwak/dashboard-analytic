@@ -1,7 +1,7 @@
 // Dashboard Instagram organique :
 // Ta page (abonnés, courbe, croissance 30 j) · Tes moyennes (une seule fois, et
-// sur la période affichée) · Tes posts un par un · Top 3 posts · Par thème ·
-// Ce qui marche pour toi · Posts de la période vs ton post moyen · Vue globale.
+// sur la période affichée) · Tes posts un par un · Top 3 posts ·
+// Posts de la période vs ton post moyen · Vue globale.
 //
 // « TES FORMATS » ET « QUAND PUBLIER ? » ONT ÉTÉ RETIRÉS LE 2026-09-12.
 // Les deux répondaient à « qu'est-ce qui marche chez toi » en RECALCULANT la
@@ -16,13 +16,10 @@ import {
   type InstaPost,
 } from "@/lib/channels";
 import { fmtCHF } from "@/lib/report";
-import { PostLabelSelect } from "@/components/post-label-select";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
-import { RetourRapport } from "@/components/retour-rapport";
-import { themesChoisis } from "@/lib/commandes";
 import { ScrollList } from "@/components/scroll-list";
 import { BarChart } from "@/components/bar-chart";
-import { ByLabelInsta, CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
+import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 
 import { Triangle, sensPente } from "@/components/pente";
@@ -178,13 +175,11 @@ function PostsTable({
   histReach,
   sort,
   params,
-  labels,
 }: {
   posts: InstaPost[];
   histReach: number;
   sort: string;
   params: DashParams;
-  labels: string[];
 }) {
   const th = (s: { key: string; label: string }, align: string, px: string) => (
     <th
@@ -208,7 +203,6 @@ function PostsTable({
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-faint">
             {th(SORTS[0], "text-left", "px-5")}
-            <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Thème</th>
             <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Format</th>
             {th(SORTS[1], "text-right", "px-2")}
             {th(SORTS[2], "text-right", "px-2")}
@@ -242,14 +236,6 @@ function PostsTable({
                       <div className="text-[10.5px] text-faint mt-0.5">{fmtDate(p.date)}</div>
                     </div>
                   </div>
-                </td>
-                <td className="px-2 py-3">
-                  <PostLabelSelect
-                    postId={p.id}
-                    current={p.labels[0] ?? null}
-                    labels={labels}
-                    source={p.labelSource}
-                  />
                 </td>
                 <td className="px-2 py-3 text-muted">{p.type}</td>
                 <td className="px-2 py-3 text-right font-mono">
@@ -286,7 +272,6 @@ export default async function InstagramPage({
   searchParams: DashParams;
 }) {
   const d = await getInstaDash(searchParams);
-  const themes = themesChoisis(searchParams);
   const metric = ["reach", "views", "likes", "comments", "saved", "eng"].includes(
     searchParams?.m ?? ""
   )
@@ -326,29 +311,12 @@ export default async function InstagramPage({
           from: searchParams?.from,
           to: searchParams?.to,
         }}
-        themes={d.labels}
-        themesActifs={themes}
       />
 
-      {/* D'où l'on vient, quand on vient de la carte d'un thème du rapport —
-          et rien du tout sinon. Voir `components/retour-rapport.tsx`. */}
-      <RetourRapport de={searchParams?.de} />
 
-      {/* ── TA PAGE ──
-          LES TROIS TUILES CI-DESSOUS SONT CELLES DU COMPTE, jamais celles d'un
-          thème : `followers_history` compte des abonnés, et un abonné ne
-          s'attache à aucun thème — il n'y a rien à filtrer, donc rien à
-          promettre. On l'écrit dès qu'un thème est posé, sinon les trois
-          chiffres se lisent comme ceux du thème (CLAUDE.md §7 : on dit ce
-          qu'on ne sait pas mesurer). */}
+      {/* ── TA PAGE ── */}
       <div className="flex items-baseline gap-2 flex-wrap mb-3 mt-5">
         <h2 className="text-[14px] font-semibold text-ink">Ta page</h2>
-        {themes.length > 0 && (
-          <span className="text-[11.5px] text-faint">
-            ces trois chiffres sont ceux du compte entier — un abonné n&apos;appartient à
-            aucun thème
-          </span>
-        )}
       </div>
       <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
         <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
@@ -459,21 +427,6 @@ export default async function InstagramPage({
         </div>
       )}
 
-      {/* ── PAR LABEL ──
-          Le module vit dans `channel-dash.tsx` et non ici : dessiné dans une page
-          que `middleware.ts` protège, il ne serait vérifiable qu'en production
-          (même raison que `couts-modules` et `hors-theme`). Une page compose. */}
-      <ByLabelInsta d={d} />
-
-      {/* ── CE QUI MARCHE POUR TOI (rang 4) ──
-          À la place de « Tes formats » et « Quand publier ? », et APRÈS « par
-          thème » : Instagram plaçait sa conclusion AVANT le thème, seul des
-          trois dashboards à le faire
-          (`.scratch/refonte/issues/07-gabarit-de-plateforme.md`). Le format
-          gagnant et le créneau en or sont toujours là — ce sont deux des
-          constats que ce bloc affiche — mais calculés une seule fois, sur tout
-          l'historique, avec les seuils du rapport. */}
-
       {/* ── POSTS DE LA PÉRIODE ── */}
       <h2 className="text-[14px] font-semibold text-ink mb-3">
         Posts de la période{" "}
@@ -496,7 +449,7 @@ export default async function InstagramPage({
         </div>
       ) : (
         <div className="mb-4">
-          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} params={d.params} labels={d.labels} />
+          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} params={d.params} />
         </div>
       )}
 
@@ -506,7 +459,7 @@ export default async function InstagramPage({
           ▸ Vue globale — tous tes posts ({d.allPosts.length})
         </summary>
         <div className="mt-3">
-          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} params={d.params} labels={d.labels} />
+          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} params={d.params} />
         </div>
       </details>
 
@@ -525,15 +478,11 @@ export default async function InstagramPage({
             Ces deux tables ne portent pas d&apos;écart contre {cmpPosts} : une publication
             appartient à UNE période, celle où elle a été publiée — elle n&apos;a pas d&apos;avant.
             Une colonne d&apos;écart n&apos;aurait donc que des naissances, ligne après ligne, et
-            « nouveau » répété cent fois n&apos;est pas une comparaison. Ce qui SE compare
-            d&apos;une période à l&apos;autre est au-dessus : la table « Performance par thème ».
+            « nouveau » répété cent fois n&apos;est pas une comparaison.
           </>
         )}
       </p>
 
-      {/* ── TON CARNET — même module que sur les pages payantes, sans campagne :
-          l'organique n'en a pas. Le thème du bandeau le filtre, et c'est tout ce
-          que cette page peut lui apporter. */}
     </main>
   );
 }

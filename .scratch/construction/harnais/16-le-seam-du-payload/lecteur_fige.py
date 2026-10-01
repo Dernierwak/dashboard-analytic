@@ -2,14 +2,13 @@
 
 C'est ce que le ticket 16 appelle « un faux lecteur gréé sur des lignes fixes » :
 il rend le contrat de `saas/traitement/lecteur.py` sans base, sans secret, sans
-réseau — et il **enregistre** les deux écritures au lieu de les jouer.
+réseau.
 
 DEUX RÈGLES QUE CE FICHIER S'IMPOSE, parce qu'elles décident de ce que les tests
 valent :
 
-1. **Tout descend des lignes d'entrée.** Les totaux par thème (ce que la vue
-   `theme_regroupement` rendrait) et le contexte GA4 sont CALCULÉS ici à partir
-   des campagnes décrites, jamais posés à la main à côté d'elles. Sans ça, la
+1. **Tout descend des lignes d'entrée.** Le contexte GA4 est CALCULÉ ici à
+   partir des campagnes décrites, jamais posé à la main à côté d'elles. Sans ça, la
    propriété « aucun nombre du payload n'est absent des lignes d'entrée »
    (`CLAUDE.md` §7) se vérifierait contre des chiffres qu'on aurait écrits pour
    qu'elle passe.
@@ -43,7 +42,6 @@ class Annonce:
 @dataclass
 class Campagne:
     nom: str
-    theme: str
     canal: str = "google"          # "meta" ou "google"
     depense_jour: float = 0.0
     clics_jour: int = 0
@@ -60,31 +58,16 @@ class LecteurFige:
     """Le contrat de `Lecteur`, servi depuis des listes en mémoire."""
 
     def __init__(self, *, aujourd_hui: date, meta_ads, google_ads,
-                 google_annonces, config_meta, config_google,
-                 themes_regroupes, insight_feedback, priorites_datees,
-                 ga4_par_campagne, rapports_publies=(), suivi=(),
-                 notes=(), plan_de_theme=None, budgets=(), objectif="ventes",
-                 redige=None):
+                 google_annonces, config_google, ga4_par_campagne,
+                 rapports_publies=(), objectif="ventes"):
         self._aujourd_hui = aujourd_hui
         self._meta_ads = list(meta_ads)
         self._google_ads = list(google_ads)
         self._google_annonces = list(google_annonces)
-        self._config_meta = dict(config_meta)
         self._config_google = dict(config_google)
-        self._themes_regroupes = list(themes_regroupes)
-        self._insight_feedback = dict(insight_feedback)
-        self._priorites_datees = list(priorites_datees)
         self._ga4_par_campagne = dict(ga4_par_campagne)   # nom → revenu/jour
         self._rapports_publies = list(rapports_publies)
-        self._suivi = list(suivi)
-        self._notes = list(notes)
-        self._plan_de_theme = dict(plan_de_theme or {})
-        self._budgets = list(budgets)
         self._objectif = objectif
-        self._redige = redige
-        # Ce que la construction a voulu ÉCRIRE. Rien ne part en base : c'est ce
-        # qui rend l'écriture vérifiable au lieu d'être seulement empêchée.
-        self.ecrits: list[tuple] = []
 
     # ── La récolte ───────────────────────────────────────────────────────────
     def meta_ads(self): return self._meta_ads
@@ -95,24 +78,11 @@ class LecteurFige:
 
     # ── Les réglages du compte ───────────────────────────────────────────────
     def objectif(self): return self._objectif
-    def profil_onboarding(self): return {}
-    def objectifs_par_theme(self): return {}
-    def config_meta(self): return self._config_meta
     def config_google(self): return self._config_google
-    def budgets_poses(self): return self._budgets
-    def themes_regroupes(self): return self._themes_regroupes
     # Aucun canal muet par défaut : le compte de référence est un compte
     # dont la récolte a réussi. Le ticket 20 grée le trou par-dessus
     # (`../20-canal-muet/gree.py`), il ne le pose pas ici.
     def canaux_muets(self): return {}
-
-    # ── Ce que le client a répondu ───────────────────────────────────────────
-    def reco_feedback(self): return {}
-    def verdicts(self): return {}
-    def contexte_theme(self): return []
-    def plan_de_theme(self): return self._plan_de_theme
-    def insight_feedback(self): return self._insight_feedback
-    def priorites_datees(self): return self._priorites_datees
 
     # ── GA4 ──────────────────────────────────────────────────────────────────
     def ga4_contexte(self, since: date, until: date):
@@ -149,8 +119,6 @@ class LecteurFige:
             "events_by_campaign": {}, "events_sans_campagne": {},
         }
 
-    def ga4_evenements_par_theme(self): return {}
-    def ga4_lignes(self): return []
     def ga4_insights(self): return []
 
     # ── Les lectures brutes ──────────────────────────────────────────────────
@@ -160,62 +128,25 @@ class LecteurFige:
         return [r for r in self._rapports_publies
                 if str(r.get("week_start") or "") < avant][:limite]
 
-    def suivi_actions(self): return self._suivi
-
-    def suivi_en_cours(self):
-        return [a for a in self._suivi if a.get("status") in ("running", "done")]
-
-    # LES PLUS RÉCENTES, pas les plus vieilles — le faux lecteur tenait la
-    # même coupe que le vrai, donc il n'aurait jamais vu le ticket 37.
-    def notes_archivees(self, limite=200): return self._notes[-limite:]
-
-    # ── L'IA ─────────────────────────────────────────────────────────────────
-    def redige(self, prompt):
-        return self._redige(prompt) if callable(self._redige) else None
-
-    def persona(self, **kwargs): return None
-
-    def memoire_theme(self, theme, historique, faits): return None
-
-    # ── Les deux écritures ───────────────────────────────────────────────────
-    def ecrire_plan_de_theme(self, theme, reco_key, levier, decided_at, carte):
-        self.ecrits.append(("plan_de_theme", theme, reco_key, levier, decided_at))
-
-    def ecrire_verdict(self, action_id, verdict):
-        """Rend `True` : une base saine touche bien la ligne. Le vrai lecteur
-        rend `False` quand l'`update` n'atteint personne (refus RLS, colonne
-        pas migrée) et l'appelant en dépend — la mémoire du thème ne se nourrit
-        que d'un verdict réellement figé."""
-        self.ecrits.append(("verdict", action_id, verdict))
-        return True
-
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self): return self._aujourd_hui
 
 
 # ── Le constructeur de compte ────────────────────────────────────────────────
 
-def compte(campagnes, *, etoiles=(), aujourd_hui=date(2026, 9, 13), **reste):
-    """Un `LecteurFige` cohérent, entièrement dérivé de `campagnes`.
-
-    `etoiles` est l'ordre d'étoilage — c'est lui, et pas l'alphabétique, qui
-    décide des thèmes conseillés (`_labels_prioritaires`).
-    """
+def compte(campagnes, *, aujourd_hui=date(2026, 9, 13), **reste):
+    """Un `LecteurFige` cohérent, entièrement dérivé de `campagnes`."""
     derniere = aujourd_hui - timedelta(days=1)
     jours = [derniere - timedelta(days=n) for n in range(JOURS)]
     fenetre = [derniere - timedelta(days=n) for n in range(7)]
 
     meta_ads, google_ads, google_annonces = [], [], []
-    config_meta, config_google, ga4 = {}, {}, {}
+    config_google, ga4 = {}, {}
 
     for c in campagnes:
-        if c.canal == "meta":
-            config_meta[c.nom] = {"label": c.theme, "label_source": "manual",
-                                  "budget_max": 0.0, "effective_status": "ACTIVE"}
-        else:
+        if c.canal == "google":
             config_google[c.identifiant] = {
-                "campaign_name": c.nom, "label": c.theme,
-                "label_source": "manual", "budget_max": 0.0,
+                "campaign_name": c.nom, "budget_max": 0.0,
                 "effective_status": "ENABLED"}
         if c.revenu_jour:
             ga4[c.nom] = c.revenu_jour
@@ -252,74 +183,5 @@ def compte(campagnes, *, etoiles=(), aujourd_hui=date(2026, 9, 13), **reste):
 
     return LecteurFige(
         aujourd_hui=aujourd_hui, meta_ads=meta_ads, google_ads=google_ads,
-        google_annonces=google_annonces, config_meta=config_meta,
-        config_google=config_google,
-        themes_regroupes=_vue_regroupement(campagnes, len(jours)),
-        insight_feedback={f"priority_label:{n}": "agree" for n in etoiles},
-        priorites_datees=[
-            {"insight_key": f"priority_label:{n}",
-             "created_at": (date(2026, 1, 1) + timedelta(days=i)).isoformat()}
-            for i, n in enumerate(etoiles)],
+        google_annonces=google_annonces, config_google=config_google,
         ga4_par_campagne=ga4, **reste)
-
-
-def _vue_regroupement(campagnes, jours: int) -> list[dict]:
-    """Ce que la vue `theme_regroupement` rendrait sur ces campagnes.
-
-    Les mêmes règles que `supabase/migrations/theme_regroupement.sql`, et elles
-    ne sont pas décoratives : le seuil de 100 CHF (`juge`), le ROAS qui n'existe
-    QUE sous ce seuil, et surtout **pas de revenu du tout** quand GA4 ne répond
-    pas — ni zéro, ni estimation (`CLAUDE.md` §7).
-    """
-    # GOOGLE ANALYTICS RÉPOND-IL POUR CE COMPTE ? La question se pose AU COMPTE,
-    # pas au thème — c'est le `ga4_present` de la vue
-    # (`supabase/migrations/theme_regroupement.sql`, bloc 2). Un compte sans
-    # réponse ne peut pas dire d'un thème qu'il n'a rien rapporté, ni combien de
-    # sa dépense est muette : il ne sait rien. Un compte qui répond, lui, sait
-    # les deux — y compris pour un thème dont AUCUNE campagne n'est rattachable.
-    ga4_repond = any(c.revenu_jour is not None for c in campagnes)
-
-    par_theme: dict[str, dict] = {}
-    for c in campagnes:
-        t = par_theme.setdefault(c.theme, {
-            "label": c.theme, "spend": 0.0, "clicks": 0, "impressions": 0,
-            "posts": 0, "reach_avg": None, "eng_avg": None, "revenue": None,
-            "spend_muette": 0.0, "campagnes_muettes": 0})
-        t["spend"] += c.depense_jour * jours
-        t["clicks"] += c.clics_jour * jours
-        t["impressions"] += c.impressions_jour * jours
-        if c.revenu_jour is not None:
-            t["revenue"] = (t["revenue"] or 0.0) + c.revenu_jour * jours
-        else:
-            # LA PART MUETTE (ticket 18) : une campagne dont GA4 ne connaît pas
-            # le nom verse sa dépense au dénominateur du ROAS sans pouvoir
-            # jamais verser son revenu au numérateur. `revenu_jour=None` est
-            # exactement ce cas ici ; `revenu_jour=0.0` est l'autre cas — un nom
-            # que GA4 connaît et qui n'a rien rapporté, qui lui est mesuré.
-            t["spend_muette"] += c.depense_jour * jours
-            t["campagnes_muettes"] += 1
-
-    lignes = []
-    for t in par_theme.values():
-        t["spend"] = round(t["spend"], 2)
-        if t["revenue"] is not None:
-            t["revenue"] = round(t["revenue"], 2)
-        t["ctr"] = (round(t["clicks"] / t["impressions"] * 100, 2)
-                    if t["impressions"] else None)
-        t["juge"] = t["spend"] >= 100
-        t["roas"] = (round(t["revenue"] / t["spend"], 2)
-                     if t["juge"] and t["revenue"] is not None and t["spend"]
-                     else None)
-        # Même règle que la vue : sans réponse de GA4 SUR LE COMPTE, on ne dit
-        # pas « 0 CHF non rattachable » — ce serait affirmer que tout est
-        # rattaché, l'inverse de la vérité (CLAUDE.md §7). Le critère est bien
-        # le compte et non le thème : un thème entièrement muet dans un compte
-        # qui répond a une part muette de 100 %, et c'est précisément le chiffre
-        # qu'on veut voir (ticket 18).
-        if not ga4_repond:
-            t["spend_muette"] = None
-            t["campagnes_muettes"] = None
-        else:
-            t["spend_muette"] = round(t["spend_muette"], 2)
-        lignes.append(t)
-    return sorted(lignes, key=lambda l: l["label"])

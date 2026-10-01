@@ -19,8 +19,8 @@
 // forme : « les laisser aussi quand on scrolle, qu'ils soient toujours là, que
 // je peux les utiliser après ». Un filtre qu'on ne peut plus toucher sans
 // remonter en haut de page n'est pas replié, il est retiré — et c'est
-// justement en bas de page, devant la table des campagnes, qu'on veut cocher
-// un thème. Les deux lignes deviennent donc une seule, et tout y reste vivant.
+// justement en bas de page, devant la table des campagnes, qu'on veut choisir
+// une campagne. Les deux lignes deviennent donc une seule, et tout y reste vivant.
 //
 // MÉCANIQUE DU REPLI : un seul conteneur `flex-wrap` et une COUPURE de largeur
 // pleine (`basis-full`) insérée au repos, retirée au défilement. Rien ne se
@@ -35,7 +35,7 @@
 // période avait deux commandes qui ne se parlaient pas (les présélections d'un
 // côté, la plage libre de l'autre) sans que rien ne dise qu'elles gouvernaient
 // la même chose ni que poser l'une effaçait l'autre ; elles vivent maintenant
-// sous un seul bouton. Un thème posé est un jeton qu'on retire, pas une
+// sous un seul bouton. Un filtre posé est un jeton qu'on retire, pas une
 // pastille de plus dans une rangée de huit.
 //
 // LE MONO EST RÉSERVÉ AUX DONNÉES — les bornes de la fenêtre. « 30 derniers
@@ -79,14 +79,6 @@ function useEcriture() {
       q.set("to", a);
       q.delete("d");
       q.delete("p");
-      pousser(q);
-    },
-    theme: (t: string, actifs: string[]) => {
-      const q = depart();
-      q.delete("l");
-      q.delete("label"); // l'ancien nom reste lu, plus jamais écrit (12 §5)
-      const suivant = actifs.includes(t) ? actifs.filter((x) => x !== t) : [...actifs, t];
-      for (const x of suivant) q.append("l", x);
       pousser(q);
     },
     simple: (cle: string, valeur: string) => {
@@ -219,35 +211,6 @@ function MenuPeriode({
           Voir cette période
         </button>
       </div>
-    </div>
-  );
-}
-
-function MenuThemes({ themes, actifs }: { themes: string[]; actifs: string[] }) {
-  const ecrire = useEcriture();
-  return (
-    <div className="w-[232px] p-1.5 max-h-[320px] overflow-y-auto defile">
-      {themes.map((t) => {
-        const on = actifs.includes(t);
-        return (
-          <button
-            key={t}
-            onClick={() => ecrire.theme(t, actifs)}
-            className={`w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-left transition-colors motion-reduce:transition-none ${ANNEAU} ${
-              on ? "text-ink font-semibold" : "text-muted hover:bg-black/[0.04]"
-            }`}
-          >
-            <span
-              className={`h-[15px] w-[15px] rounded-[5px] border shrink-0 flex items-center justify-center text-[10px] leading-none ${
-                on ? "bg-brand border-brand text-white" : "border-line bg-white"
-              }`}
-            >
-              {on ? "✓" : ""}
-            </span>
-            <span className="truncate">{t}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -453,14 +416,6 @@ export function BandeauCommandes(c: Commandes) {
           </>
         )}
 
-        {c.themesActifs.map((t) => (
-          <Jeton
-            key={t}
-            mot={t}
-            petit={defile}
-            retirer={() => ecrire.theme(t, c.themesActifs)}
-          />
-        ))}
         {statutActif && (
           <Jeton
             mot={nomStatut(statutActif)}
@@ -476,12 +431,6 @@ export function BandeauCommandes(c: Commandes) {
           />
         )}
 
-        {c.themes.length > 0 &&
-          porte(
-            "t",
-            c.themesActifs.length === 0 ? "Filtrer par thème" : "+ Thème",
-            <MenuThemes themes={c.themes} actifs={c.themesActifs} />
-          )}
         {statuts.length > 1 &&
           porte(
             "s",

@@ -180,3 +180,113 @@ et commandes de reproduction : `.scratch/refonte/etat-des-lieux.md`.
   `compte.uid` directement) est mécanique et sans risque ; à faire quand on ouvre
   `actions.ts` pour la colonne `author_id`, pas avant. Le vocabulaire juste est
   déjà dans `CONTEXT.md` : **Compte** ≠ **Propriétaire** ≠ **Membre**.
+
+## Relevé en chemin le 2026-09-21 (ticket `.scratch/parcours-themes/issues/14`)
+
+- **Le `.env` à la racine vise une base Supabase qui n'existe plus.** Son
+  `SUPABASE_URL` porte un hôte **qui ne résout pas** (`socket.gethostbyname` →
+  `Errno 8`), alors que le `NEXT_PUBLIC_SUPABASE_URL` de `saas/web/.env.local`
+  résout. Conséquence : **aucun script Python local n'atteint la base** —
+  `build_report.py` lancé à la main, un harnais qui voudrait lire du réel, une
+  requête de vérification. Ce n'est qu'un fichier local, gitignoré, donc rien
+  n'est cassé en production (GitHub Actions porte ses propres secrets) ; mais
+  tant qu'il n'est pas remis à jour, toute vérification côté Python doit passer
+  par l'éditeur SQL de Supabase, à la main. À noter aussi : `app_secrets.secret`
+  résout `"supabase.service_role"` en `SUPABASE_SERVICE_ROLE`, quand le `.env`
+  écrit `SUPABASE_SERVICE_ROLE_KEY` — les deux noms ne se rencontrent jamais.
+
+## Relevé en chemin le 2026-09-21 (ticket `.scratch/parcours-themes/issues/15`)
+
+- **Une invitation donne par défaut le droit de tout reclasser.**
+  `dashboard_members.role` est `NOT NULL DEFAULT 'editor'` (`equipe_partage.sql`)
+  et `equipe-manager.tsx` ouvre sur `useState<"editor" | "viewer">("editor")`.
+  Inviter quelqu'un sans toucher au sélecteur lui donne « reclasse les campagnes,
+  choisit les priorités » — sur le compte de quelqu'un d'autre. Le sens sûr est
+  l'inverse : on donne la lecture, on **accorde** l'écriture exprès. Coût : une
+  migration (le `DEFAULT`) plus une ligne de TSX ; les invitations déjà posées ne
+  bougent pas — les rétro-basculer serait retirer un droit dans le dos de
+  quelqu'un, ça se décide à part.
+- **Le sélecteur de rôle décrit un geste qui n'existe plus.** L'aide de
+  *Peut agir* dit « coche les actions, reclasse les campagnes, choisit les
+  priorités » (`equipe-manager.tsx`). Cocher une action est parti avec les
+  recommandations le 2026-09-21. À corriger en même temps que le défaut.
+- **`conversions-themes.tsx` confond « pas maintenant » et « pas toi ».**
+  Trois `disabled={pending || !d.peutEditer}`. `pending` est transitoire — grisé
+  est juste. `!peutEditer` ne revient jamais sur ce compte — le contrôle doit être
+  **absent**. La règle est écrite au ticket 15 de `parcours-themes` ; c'est le
+  seul endroit du dépôt qui la viole aujourd'hui, la page Thèmes ne gérant pas le
+  rôle du tout.
+
+---
+
+## Ce que la refonte Meta Ads met de côté (2026-09-28)
+
+Déposé en chartant [la carte du dashboard Meta Ads](.scratch/meta-ads/map.md).
+Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
+
+- **Le thème, et la seule chose qu'il faisait bien.** Il part de tout le produit
+  parce qu'il ajoutait une étape à chaque geste sans jamais être fini (David :
+  « on se marche sur les pattes et ça ne veut plus rien dire »). Mais il **réduisait
+  quarante campagnes à cinq sujets**, et c'est un vrai problème qui revient intact
+  le jour où on rouvre le rapport hebdo. Ce qui existait et qui est mesuré :
+  l'étiquette à la main sur `/labels`, les thèmes prioritaires
+  (`insight_feedback`, clé `priority_label:<nom>`), la vue `theme_regroupement`,
+  `theme_objectifs`, `theme_ga4_events`, et les ADR 0001, 0002, 0003 qui le
+  cadraient. Avant de le réinventer, relire pourquoi il a échoué : il exigeait un
+  travail manuel du client **avant** que le produit lui serve à quelque chose.
+- **Le rapport hebdo est vide et doit se refaire.** La page `/` garde les trois
+  dates, le verdict, la frise et les chiffres du compte ; l'anneau, le carrousel
+  et les cartes sont partis sans remplacement (décision assumée : « on met vide,
+  il n'y a rien qui apparaît »). La question qui reste ouverte est celle du pivot :
+  **par quoi le rapport découpe-t-il ce qui a bougé**, maintenant que ce n'est plus
+  le thème ? La campagne est le candidat évident et le mauvais — quarante cartes
+  n'est pas un rapport, c'est un export.
+- **Trier les campagnes par leur objectif déclaré.** `fetch_campaign_budgets`
+  demande déjà `objective` à l'API Meta (`saas/collecte/meta/fetch_meta_ads.py:94`)
+  et **ne l'écrit nulle part** : `meta_campaign_config` n'a pas la colonne. On jette
+  donc, depuis le début, l'information qui dirait quelles métriques ont un sens pour
+  quelle campagne. Écarté maintenant pour ne pas compliquer (la bascule reste libre,
+  toutes les campagnes dans les trois modules), mais la donnée est à un `ADD COLUMN`
+  de distance.
+- **Le dashboard organique / Instagram.** La moitié « DASHBOARD 2 » du brief, mise
+  de côté entière. Trois trous déjà mesurés, pour ne pas refaire le travail :
+  **(1)** `followers_history` existe, mais **la portée de la page n'est récoltée
+  nulle part** — seulement la portée par post ; **(2)** `instagram_organic_posts`
+  porte `likes, comments, saved, reach, views, follows` : pas de partages, pas de
+  visites de profil, pas de clics sur le lien, donc la catégorie « Croissance » du
+  brief n'a presque aucune donnée ; **(3)** **les stories n'existent nulle part**,
+  et l'API ne les rend que sur une fenêtre courte — chaque jour sans job planifié
+  est un jour d'historique perdu définitivement, et ça ne se rattrape pas.
+- **Le revenu réel, mesuré par GA4.** `docs/adr/0010` interdit la jointure GA4 ↔
+  Meta par nom de campagne, et donc aussi le revenu. C'est une perte réelle : Meta
+  ne connaît pas le chiffre d'affaires. Ce qui manque n'est pas l'envie, c'est une
+  **clé fiable** entre les deux mondes — pas un nom d'UTM saisi à la main.
+- **Trois questions sur l'API Meta que seule une mesure réelle tranchera.** La
+  recherche du 2026-09-28
+  ([rapport](.scratch/meta-ads/recherche/metriques-par-asset.md)) a buté sur trois
+  points que la documentation ne dit pas : **(1)** ce que l'API rend comme
+  ventilation par asset pour une annonce à **créa unique** (ni oui, ni non, ni
+  exemple) ; **(2)** si `time_increment=1` se combine à un breakdown d'asset — donc
+  s'il peut exister une courbe quotidienne par asset ; **(3)** le mode d'échec d'une
+  combinaison de breakdowns non supportée, rejet total ou troncature silencieuse
+  (le second est le dangereux, et c'est celui que Google Ads pratique sur
+  `change_event`). Aucun ne se règle par de la lecture : il faut un appel réel sur
+  un compte branché. À faire seulement si le niveau asset revient au programme.
+- **Une famille de breakdowns Meta non documentée.** `flexible_format_asset_type`,
+  `creative_automation_asset_id`, `gen_ai_asset_type`, `media_type`,
+  `media_text_content` existent dans l'énumération de référence de l'API mais
+  n'apparaissent nulle part dans le guide : ni définition, ni métriques admises, ni
+  périmètre. C'est probablement la voie des annonces Advantage+ / flexible format.
+  Non documenté = inutilisable en l'état, mais c'est là qu'il faudra regarder le jour
+  où Advantage+ compte pour un client.
+- **Six questions sur l'API Meta que la documentation ne répond pas.** Relevées par
+  la recherche du 2026-09-28
+  ([rapport](.scratch/meta-ads/recherche/champs-api-meta.md)), et notées parce
+  qu'elles reviendront : **(1)** aucun exemple JSON avec `actions` n'existe sur
+  developers.facebook.com — 8 pages vérifiées, la forme connue est **déduite des
+  types**, pas copiée ; **(2)** la page `AdsInsightsResult` rend 404, alors que
+  `objective_result_rate` est peut-être la meilleure réponse à « quelle est LA
+  conversion » ; **(3)** `cost_per_conversion` n'a aucune description ; **(4)** la
+  fenêtre d'attribution par défaut d'un ad set neuf n'est pas documentée ; **(5)** le
+  tier d'accès de l'app Pulse est inconnu et il change le plafond de quota ;
+  **(6)** l'expansion de champs sur `creative` n'est vérifiable qu'avec un jeton.

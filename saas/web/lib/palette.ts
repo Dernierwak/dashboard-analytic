@@ -44,40 +44,11 @@ export function teinte(i: number): Teinte {
   return SERIES[i % SERIES.length];
 }
 
-// Le gris des parts qui ne sont pas un thème (« autres », « sans thème »).
-// Volontairement hors de SERIES : aucun vrai thème ne doit pouvoir le porter,
+// Le gris des parts qui ne sont pas une catégorie (« autres »).
+// Volontairement hors de SERIES : aucune vraie part ne doit pouvoir le porter,
 // sinon on croit lire une catégorie là où il n'y en a pas.
 export const NEUTRE: Teinte = {
   nom: "neutre",
   trait: "#a8a8b0",
   aplat: "rgba(168, 168, 176, 0.14)",
 };
-
-// UNE COULEUR PAR LABEL, la même partout et d'une semaine à l'autre.
-//
-// La couleur venait du RANG dans la vue courante : position dans l'anneau
-// (trié par dépense de la semaine), dans la frise, dans la liste des coûts
-// (triée par dépense de l'année). Trois tris différents, donc trois couleurs
-// différentes pour le même thème — et une couleur qui changeait dès qu'un
-// thème dépensait plus qu'un autre. Une légende qu'il fallait relire à chaque
-// bloc n'est pas une légende.
-//
-// On indexe donc sur la liste maîtresse des thèmes (profiles.labels), qui est
-// stable et partagée par toute l'application. Un thème absent de cette liste —
-// un label supprimé mais encore porté par d'anciennes campagnes — retombe sur
-// une empreinte de son nom : arbitraire, mais constante.
-// Le pas d'avancement dans la gamme. La liste maîtresse est alphabétique :
-// sans pas, deux thèmes voisins dans l'alphabet — « Gamme » et « Gastronomie »
-// — prendraient deux teintes voisines dans la roue, donc presque la même. Un
-// pas premier avec la taille de la gamme parcourt les 20 sans jamais en
-// répéter une, en sautant chaque fois à l'opposé.
-const PAS = 7;
-
-export function teinteLabel(label: string | null | undefined, univers?: string[]): Teinte {
-  if (!label) return NEUTRE;
-  const i = (univers ?? []).indexOf(label);
-  if (i >= 0) return teinte(i * PAS);
-  let h = 0;
-  for (let k = 0; k < label.length; k++) h = (h * 31 + label.charCodeAt(k)) >>> 0;
-  return teinte(h);
-}

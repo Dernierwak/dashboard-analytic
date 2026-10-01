@@ -38,7 +38,6 @@ export type Frise = {
   campagnes: {
     nom: string;
     canal: string;
-    theme: string | null;
     /** Premier et dernier jour où la campagne a RÉELLEMENT dépensé. */
     debut: string;
     fin: string;
@@ -61,7 +60,7 @@ export type Frise = {
    * `plateforme` est absente des payloads publiés avant août 2026 — l'affichage
    * retombe alors sur « instagram », qui était la seule source.
    */
-  posts: { date: string; theme: string | null; type: string; plateforme?: string }[];
+  posts: { date: string; type: string; plateforme?: string }[];
 };
 
 export type KpiFocus = {
@@ -73,151 +72,6 @@ export type KpiFocus = {
 
 
 
-
-export type ThemeRow = { label: string; spend: number; rev: number };
-
-/**
- * LE REVENU RÉELLEMENT CONSTATÉ SUR UN THÈME, quelle que soit la source qui le
- * porte.
- *
- * Deux endroits du payload le connaissent, et ils ne sont pas remplis par le
- * même chemin : `themes.rows[].rev` (la ventilation GA4 du compte) et
- * `themes_focus[].summary.revenue` (le bilan de la carte). Un rapport peut
- * porter l'un sans l'autre selon la version du worker qui l'a publié — on prend
- * donc le plus grand des deux plutôt que d'en élire un et de rater le cas où
- * c'est l'autre qui sait.
- */
-export function revenuTheme(theme: ThemeFocus, rows?: ThemeRow[] | null): number {
-  const bilan = theme.summary?.revenue ?? 0;
-  const ligne = (rows ?? []).find((r) => r.label === theme.label)?.rev ?? 0;
-  return Math.max(bilan > 0 ? bilan : 0, ligne > 0 ? ligne : 0);
-}
-
-/**
- * LA NOTE DE LA SÉRIE, MAIS SEULEMENT QUAND ELLE EST VRAIE.
- *
- * Défaut vu sur le rapport de David : la carte « Audio Tour » affichait
- * « 4 521 CHF dépensé · 820 CHF revenu · 0,2 ROAS » et, deux lignes plus bas,
- * « Le ROAS de ce thème n'est pas mesurable ». Les deux ne peuvent pas être
- * vrais en même temps.
- *
- * La cause est dans le worker (`_theme_series`, `saas/traitement/build_report.py`) :
- * quand l'objectif est « ventes », aucune branche n'essaie de construire une
- * série de ROAS — on tombe directement sur `has_spend`, la courbe passe en
- * « Dépense (CHF) » et la note est écrite sans qu'on ait regardé si le thème a
- * du revenu. Le rapport ne se régénérant qu'à la demande, la correction du
- * worker ne suffirait pas : les payloads déjà publiés porteraient la note
- * fausse pendant des semaines. Pulse la filtre donc à l'affichage.
- *
- * Le juge est le revenu du thème, pas la présence d'un ROAS : un thème avec du
- * revenu et sans ROAS calculé n'est pas un thème « non mesurable », c'est un
- * thème dont on n'a pas fait la division.
- *
- * Le test sur « ROAS » n'est pas une précaution de style : c'est le seul motif
- * de note que le worker écrit aujourd'hui, mais il en écrira d'autres — « on
- * suit la portée faute d'engagement », par exemple — et celles-là ne sont pas
- * démenties par un revenu.
- */
-export function noteSerie(
-  serie: ThemeSeries | null | undefined,
-  revenu: number
-): string | null {
-  const note = serie?.note;
-  if (!note) return null;
-  if (revenu > 0 && /roas/i.test(note)) return null;
-  return note;
-}
-
-
-
-export type MatriceCoverage = {
-  posts_labeled: number;
-  posts_total: number;
-  campaigns_labeled: number;
-  campaigns_total: number;
-  ga4: boolean;
-};
-
-// Carte « par thème » du rapport v2 — le cœur : un label, ses chiffres, ses
-// campagnes (éditables) et ≤3 conseils cross-canal.
-export type ThemeCampaign = {
-  name: string;
-  channel: "meta" | "google";
-  key: string; // campaign_name (Meta) | campaign_id (Google) — clé d'édition
-  label: string | null;
-  label_source: string | null;
-  spend: number;
-  revenue: number | null;
-  ctr: number;
-  cpc: number;
-};
-
-export type ThemeSummary = {
-  spend: number | null;
-  revenue: number | null;
-  roas: number | null;
-  ctr: number | null;
-  posts: number | null;
-  reach_avg: number | null;
-  eng_avg: number | null;
-  /** `null` quand un canal payant était muet cette semaine : la dépense
-   *  hebdo du thème traverse alors un trou de récolte et ne se publie pas
-   *  amputée (ticket 20). `theme-card.tsx` teste `> 0`, que `null` ne
-   *  passe pas — la ligne disparaît, elle n'affiche pas 0 CHF. */
-  spend_week: number | null;
-  best_campaign: string | null;
-  n_campaigns: number;
-};
-
-
-export type ThemeSeries = {
-  metric_label: string;
-  // Pourquoi ce n'est pas l'indicateur de ton objectif qu'on suit ici.
-  note?: string | null;
-  points: { label: string; value: number }[];
-};
-
-export type ThemeFocus = {
-  label: string;
-  is_priority: boolean;
-  /**
-   * L'objectif EFFECTIF de ce thème — celui qui pilote réellement sa courbe
-   * (`series.metric_label`) et l'ordre de ses conseils, PAS forcément celui du
-   * compte. Absent des payloads publiés avant cette fonctionnalité : le front
-   * retombe alors sur l'objectif du compte, exactement le comportement d'avant.
-   */
-  objectif?: string | null;
-  /**
-   * `true` seulement si CE thème a un réglage propre (`theme_objectifs`) ET
-   * qu'il est toujours étoilé — un thème qui perd son étoile retombe sur
-   * l'objectif du compte sans que sa ligne soit effacée (voir le worker).
-   * Absent ou `false` = hérité du compte.
-   */
-  objectif_propre?: boolean;
-  /**
-   * Le jugement assemblé du thème — où il en est sur son indicateur (GA4 pour
-   * ventes/engagement, portée pour notoriété, faute d'équivalent GA4 —
-   * décision de David : la notoriété n'est pas une conversion), en vrai % de
-   * variation MESURÉ vs la semaine précédente (aucune cible chiffrée
-   * n'existe pour un objectif de thème). `mode: "cible"` = le thème se
-   * dégrade au-delà du seuil, les recos ont été réordonnées pour mettre en
-   * avant le levier le plus impactant. `null` si la métrique n'était pas
-   * mesurable cette semaine (pas de baseline) — jamais un chiffre inventé.
-   * Absent des payloads publiés avant cette fonctionnalité.
-   */
-  jugement?: {
-    objectif: string;
-    metric: string;
-    metric_label: string;
-    variation_pct: number;
-    mode: "tout" | "cible";
-    explication: string;
-    levier_impactant: string | null;
-  } | null;
-  summary: ThemeSummary;
-  series?: ThemeSeries | null;
-  campaigns: ThemeCampaign[];
-};
 
 /**
  * CE QUI A BOUGÉ SUR TES PLATEFORMES, sans passer par Pulse.
@@ -231,7 +85,6 @@ export type ChangementPlateforme = {
   date: string;
   canal: string;
   campagne: string;
-  theme: string | null;
   /**
    * `planifiee` = son début est À VENIR. `jamais_lancee` = son début est passé
    * et elle n'a jamais rien dépensé — deux faits opposés que le worker écrivait
@@ -281,19 +134,6 @@ export type ReportPayload = {
   canaux_muets?: CanalMuet[] | null;
   changements?: ChangementPlateforme[] | null;
   // v2 (worker) — absents des payloads v1 : tout est optionnel.
-  /** `period` EST LA FENÊTRE DU BILAN DE CHAQUE CARTE DE THÈME : les chiffres
-   *  de `ThemeFocus.summary` sortent tous de cette matrice
-   *  (`matrix_themes_by`, `build_report.py`), et `vision.period_label`
-   *  — « depuis le 1 jan » — n'est que son `since` mis en français. Le champ
-   *  était calculé et publié depuis toujours (`insights.py`) mais n'était pas
-   *  déclaré ici ; il l'est parce que la porte vers la plateforme emporte
-   *  cette fenêtre-là, et aucune autre. Absent des payloads v1 : sans lui la
-   *  porte ne s'ouvre pas, plutôt que de s'ouvrir sur une autre période. */
-  matrice?: {
-    coverage?: MatriceCoverage;
-    period?: { since: string; until: string; days: number } | null;
-  } | null;
-  themes_focus?: ThemeFocus[] | null;
   // Lecture simple des métriques clés de la semaine (section « Où on en est »).
   metrics_read?: {
     trafic: number | null;
@@ -334,7 +174,6 @@ export type ReportPayload = {
   verdict_pct?: number | null;
   verdict_metric?: string | null;
   verdict_tone?: "pos" | "neg" | "stable" | null;
-  themes?: { rows: ThemeRow[]; orphan: number } | null;
   // `preuve` A ÉTÉ RETIRÉ LE 2026-09-13, avec le moteur qui l'écrivait.
   //
   // C'était le bilan des actions AU NIVEAU DU COMPTE, remesuré par un second
@@ -353,9 +192,9 @@ export type WeeklyData = {
   hasData: boolean;
   /** IL N'Y A NI TUILES KPI NI DÉPENSE PAR CANAL ICI, et ce n'est pas un oubli
    *  (`.scratch/construction/issues/51-les-tuiles-kpi-du-rapport-ne-sont-lues-par-personne.md`).
-   *  Le rapport est organisé PAR THÈME — les trois dates, le verdict, la
-   *  boussole, l'anneau, la frise, puis les cartes — où une rangée de totaux
-   *  tous canaux confondus n'a pas de place. La dépense par plateforme, elle,
+   *  Le rapport dit ce qui a bougé — les trois dates, le verdict, la
+   *  boussole, la frise, les faits survenus — et une rangée de totaux tous
+   *  canaux confondus n'y a pas de place. La dépense par plateforme, elle,
    *  est vivante sur `/couts`.
    *
    *  Leur calcul avait survécu à leur retrait, donc plus rien ne le
@@ -379,14 +218,8 @@ export type WeeklyData = {
   /** Le Jour de travail du compte regardé (`profiles.fetch_schedule`), en
    *  anglais comme en base. C'est de lui que sort la troisième date. */
   jourDeTravail: string;
-  /** Les thèmes que le client a étoilés — stockés dans `insight_feedback` sous
-   *  la clé `priority_label:<nom>`, lus en direct parce que le payload peut
-   *  dater d'un étoilage plus ancien. */
-  insightFeedback: Record<string, string>;
   objectif: string | null;
   onboarded: boolean;
-  // Liste maîtresse des thèmes (étape « priorités » du parcours de démarrage).
-  labels: string[];
 };
 
 function iso(d: Date): string {
@@ -424,7 +257,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   // Le `limit(3000)` d'avant était en outre une fiction — PostgREST plafonne à
   // 1 000 lignes et tronque EN SILENCE (`CLAUDE.md` §8) : les sommes que ce
   // ticket supprime se calculaient sur un mois tronqué sans le dire.
-  const [metaRes, googleRes, followersRes, reportRes, profileRes, insightRes, canauxMuets] =
+  const [metaRes, googleRes, followersRes, reportRes, profileRes, canauxMuets] =
     await Promise.all([
     supabase
       .from("meta_ads_insights")
@@ -467,15 +300,9 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     // sur le défaut du worker lui-même, lundi, et pas sur une invention.
     supabase
       .from("profiles")
-      .select("objectif, business_type, labels, fetch_schedule")
+      .select("objectif, business_type, fetch_schedule")
       .eq("id", uid)
       .limit(1),
-    // Verdicts ✓/✗ sur les constats de la vision (table absente avant la
-    // migration → error, on dégrade en {}).
-    supabase
-      .from("insight_feedback")
-      .select("insight_key, verdict")
-      .eq("user_id", uid),
     // QUELLE RÉCOLTE A ÉCHOUÉ AU DERNIER PASSAGE (ticket 48). Dans le même
     // lot que le reste : la lecture ne coûte rien de plus en temps.
     //
@@ -507,26 +334,19 @@ export async function getWeeklyData(): Promise<WeeklyData> {
   const publieLe: string | null =
     (reportRes.data?.[0]?.updated_at as string | undefined) ?? null;
 
-  const insightFeedback: Record<string, string> = {};
-  for (const row of insightRes.data ?? []) {
-    if (row.insight_key && row.verdict) insightFeedback[row.insight_key] = row.verdict;
-  }
-
   // Si la colonne business_type n'existe pas encore (migration §7 pas passée),
   // la requête combinée échoue → on retombe sur objectif seul, onboarding masqué.
   let profRow: {
     objectif?: string | null;
     business_type?: string | null;
-    labels?: string[] | null;
     fetch_schedule?: string | null;
   } | null = profileRes.data?.[0] ?? null;
   let migrated = !profileRes.error;
   if (profileRes.error) {
-    const retry = await supabase.from("profiles").select("objectif, labels").eq("id", uid).limit(1);
+    const retry = await supabase.from("profiles").select("objectif").eq("id", uid).limit(1);
     profRow = retry.data?.[0] ?? null;
   }
   const objectif: string | null = profRow?.objectif ?? null;
-  const labels: string[] = profRow?.labels ?? [];
   // LE JOUR DE TRAVAIL DU COMPTE REGARDÉ, jamais celui de la personne qui
   // regarde : un Membre invité lit les dates du compte dont il voit les
   // chiffres, et c'est `user_id` que le worker compare (`_due_today`). D'où
@@ -582,10 +402,8 @@ export async function getWeeklyData(): Promise<WeeklyData> {
     report,
     publieLe,
     jourDeTravail,
-    insightFeedback,
     objectif,
     onboarded,
-    labels,
     canauxMuets,
   };
 }

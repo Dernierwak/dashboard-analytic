@@ -1,15 +1,11 @@
 """La matrice full-history : tout l'historique croisé par format, campagne et
 créneau, avec le revenu GA4 quand il existe — déterministe, zéro IA.
 
-LE CROISEMENT PAR THÈME NE SE CALCULE PAS ICI, IL SE LIT : la vue
-`theme_regroupement` est la seule implémentation du regroupement, lue aussi bien
-par ce module que par Pulse (`supabase/migrations/theme_regroupement.sql`).
-
 Ce module vivait dans `saas/recos_ia/insights.py` aux côtés des constats
 (« Ce qui fonctionne pour toi »). Les constats sont partis avec les
-recommandations ; la matrice, elle, n'a jamais rien conseillé — elle CHIFFRE
-les cartes de thème du rapport. Elle suit donc son seul appelant restant,
-`build_report.py`.
+recommandations, et le croisement par thème avec le thème lui-même ; la
+matrice, elle, n'a jamais rien conseillé. Elle suit donc son seul appelant
+restant, `build_report.py`.
 
 Les deux seuils et la table de formats qu'elle lisait dans `reco_engine.py`
 sont recopiés ci-dessous : ils ne servaient plus qu'ici.
@@ -35,32 +31,18 @@ def _norm(s) -> str:
     return str(s or "").strip().lower()
 
 
-def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
-                 ga4_full, last_full_day, themes) -> dict | None:
+def build_matrix(df_meta_raw, df_google, df_insta, goog_cfg,
+                 ga4_full, last_full_day) -> dict | None:
     """Vue agrégée de tout l'historique. None si aucune donnée exploitable.
 
     df_meta_raw   : meta_ads_insights complet (date_start, campaign_name, spend, …)
     df_google     : google_ads_insights complet (date_start, campaign_id, cost_micros, …)
     df_insta      : instagram_organic_posts complet (date, type, reach, likes,
-                    comments, saved, labels, …) — PAS de colonne `eng` : c'est un
+                    comments, saved, …) — PAS de colonne `eng` : c'est un
                     taux, il se recalcule ici (`CONTEXT.md`, « Engagement »).
-    meta_cfg      : {campaign_name: {label, …}} · goog_cfg : {campaign_id: {campaign_name, label, …}}
+    goog_cfg      : {campaign_id: {campaign_name, …}} — le nom qu'affiche la
+                    matrice, que `google_ads_insights` ne porte pas.
     ga4_full      : build_ga4_context sur TOUT l'historique (ou None)
-    themes        : les lignes de la vue `theme_regroupement`, déjà lues et déjà
-                    filtrées sur ce compte (`fetch_theme_regroupement`).
-
-    LE TOTAL PAR THÈME NE SE CALCULE PLUS ICI, ET C'EST LE CŒUR DU TICKET 04.
-    Un Thème ne produit aucune donnée : il change par quoi des chiffres déjà en
-    base sont additionnés, donc son total se recalcule À LA LECTURE, tout de
-    suite, sur tout l'historique — y compris les semaines passées (CONTEXT.md,
-    « Regroupement »). Pulse doit savoir le faire aussi, et l'écrire une seconde
-    fois en TypeScript aurait donné deux jeux de seuils qui dérivent. Une seule
-    implémentation existe désormais, en SQL, et les deux langages la lisent :
-    `supabase/migrations/theme_regroupement.sql`.
-
-    Ce qui reste ici — campagnes, formats, créneaux, couverture — n'alimente que
-    des constats RÉDIGÉS, qui attendent le Jour de travail de toute façon : les
-    descendre en SQL serait un gros refactor pour zéro fraîcheur gagnée.
     """
     campaigns: list[dict] = []
     dates: list = []
@@ -76,15 +58,10 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         agg = m.groupby("campaign_name", as_index=False).agg(
             spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum"))
         for _, r in agg.iterrows():
-            cfg = meta_cfg.get(r["campaign_name"], {}) or {}
             campaigns.append({
-                # key = clé d'édition du thème (campaign_name pour Meta) → rend la
-                # campagne réassignable depuis le rapport (CampaignLabelSelect)
                 "name": str(r["campaign_name"]), "channel": "meta",
-                "key": str(r["campaign_name"]),
                 "spend": float(r["spend"]), "clicks": int(r["clicks"]),
                 "impressions": int(r["impressions"]),
-                "label": cfg.get("label"), "label_source": cfg.get("label_source"),
             })
 
     # Google : agrégat par campagne sur tout l'historique
@@ -101,15 +78,12 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         for _, r in agg.iterrows():
             cfg = goog_cfg.get(r["_cid"], {}) or {}
             campaigns.append({
-                # key = campaign_id pour Google (clé d'édition du thème)
                 "name": cfg.get("campaign_name") or f"Campagne {r['_cid']}", "channel": "google",
-                "key": str(r["_cid"]),
                 "spend": float(r["spend"]) / 1_000_000.0, "clicks": int(r["clicks"]),
                 "impressions": int(r["impressions"]),
-                "label": cfg.get("label"), "label_source": cfg.get("label_source"),
             })
 
-    # Revenu GA4 par campagne (matching nom normalisé, comme le bloc thèmes 7 j)
+    # Revenu GA4 par campagne : le seul pont est le nom, normalisé.
     has_ga4 = bool(ga4_full and ga4_full.get("by_campaign"))
     rev_by_name = {}
     if has_ga4:
@@ -126,7 +100,6 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
     formats: list[dict] = []
     slots: list[dict] = []
     posts_total = 0
-    posts_labeled = 0
     account_reach_avg = 0.0
     if df_insta is not None and not df_insta.empty and "date" in df_insta.columns:
         p = df_insta.copy()
@@ -137,8 +110,8 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
         # `instagram_organic_posts.eng` n'a jamais existé : `r.get("eng") or 0`
         # repliait donc CHAQUE post sur 0, et `eng_avg` de chaque format sortait
         # à `None` — une colonne vide publiée depuis l'origine (ticket 44). La
-        # formule est celle de la vue `theme_regroupement` et de
-        # `lib/channels.ts` l. 1001 : les trois bougent ensemble ou pas du tout.
+        # formule est celle de `lib/channels.ts` : les deux bougent ensemble ou
+        # pas du tout.
         if {"reach", "likes", "comments", "saved"} <= set(p.columns):
             p["eng"] = ((p["likes"] + p["comments"] + p["saved"])
                         / p["reach"].where(p["reach"] > 0) * 100).fillna(0.0)
@@ -176,25 +149,9 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
                                   "posts": int(r["count"]), "reach_avg": round(float(r["mean"]), 1)})
         except Exception:
             pass
-        # Combien de publications portent au moins un thème — la couverture,
-        # pas leur bilan : celui-là vient de la vue.
-        if "labels" in p.columns:
-            posts_labeled = int(sum(1 for _, r in p.iterrows() if len(r.get("labels") or []) > 0))
 
     if not campaigns and posts_total == 0:
         return None
-
-    # LES THÈMES VIENNENT DE LA VUE, pas d'ici (voir le docstring). L'ordre
-    # reste le contrat de cette fonction : `build_report` s'appuie sur
-    # « trié par dépense décroissante ».
-    #
-    # `user_id` REPART : la matrice est déjà l'objet d'UN compte, et ses six
-    # premiers thèmes finissent tels quels dans le payload publié, donc dans
-    # l'écran et dans l'email. Un identifiant qui n'y sert à rien n'a rien à
-    # faire dans ce qu'on expédie.
-    themes = sorted(({k: v for k, v in (t or {}).items() if k != "user_id"}
-                     for t in (themes or [])),
-                    key=lambda t: -(t.get("spend") or 0))
 
     for c in campaigns:
         c["spend"] = round(c["spend"], 2)
@@ -210,14 +167,11 @@ def build_matrix(df_meta_raw, df_google, df_insta, meta_cfg, goog_cfg,
             "until": last_full_day.isoformat(),
             "days": max(1, (last_full_day - since).days + 1),
         },
-        "themes": themes,
         "formats": formats,
         "campaigns": campaigns,
         "slots": slots,
         "coverage": {
-            "posts_labeled": posts_labeled,
             "posts_total": posts_total,
-            "campaigns_labeled": sum(1 for c in campaigns if c["label"]),
             "campaigns_total": len(campaigns),
             "ga4": has_ga4,
         },

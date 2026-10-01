@@ -7,8 +7,9 @@ Fenêtre de 7 jours pleins ancrés sur la dernière donnée, jamais aujourd'hui.
 CE RAPPORT NE CONSEILLE RIEN, IL CONSTATE. Le moteur de recommandations, les
 règles payantes, les constats « ce qui marche », le brief rédigé par Gemini et
 le suivi des actions ont été retirés du produit. Ce qui reste est ce qui se
-mesure : le verdict de la semaine, la boussole, l'anneau des thèmes, la frise,
-les cartes de thème et ce qui a bougé sur les plateformes.
+mesure : le verdict de la semaine, la boussole, la frise et ce qui a bougé sur
+les plateformes. Le thème — l'étiquette posée sur des campagnes et des
+publications — est parti à son tour, et rien ne l'a remplacé.
 
 Usage :
   python saas/traitement/build_report.py --user <uuid> [--print]
@@ -36,138 +37,12 @@ from saas.traitement.matrice import build_matrix  # noqa: E402
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
              7: "jul", 8: "aoû", 9: "sep", 10: "oct", 11: "nov", 12: "déc"}
 
-
-
-
-
-
-
-
-
 # Le nom qu'un canal porte DEVANT LE CLIENT. `meta` et `ga4` sont des noms de
 # colonnes ; personne n'a connecté « ga4 ». Posé au niveau module parce que le
 # verdict et la liste `canaux_muets` doivent nommer la même panne du même mot
 # (ticket 20).
 NOMS_CANAUX = {"meta": "Meta Ads", "google": "Google Ads",
                "instagram": "Instagram", "ga4": "Google Analytics"}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _labels_prioritaires(lecteur, ins_fb: dict) -> list:
-    """Les thèmes étoilés par le client, DU PLUS ANCIEN ÉTOILAGE AU PLUS RÉCENT.
-
-    L'ordre n'est pas décoratif : c'est lui qui décide des `_THEMES_CONSEILLES`
-    thèmes qui reçoivent des conseils. Trois candidats se présentaient, et deux
-    ont été écartés.
-
-    L'ALPHABÉTIQUE — ce qu'on faisait — ne veut rien dire, et le fichier le dit
-    déjà ailleurs (`_rang_theme` : « les thèmes prioritaires arrivent triés par
-    ordre alphabétique, ce qui ne veut rien dire »). Tant que le tri ne servait
-    qu'à couper à trois une liste de trois, c'était sans conséquence ; il
-    tranche maintenant entre six thèmes.
-
-    LE POIDS (dépense + publications, `_poids_theme`) est le critère que le
-    produit utilise partout ailleurs pour classer, et il serait défendable —
-    sauf sur le seul point qui compte ici : le client ne peut pas AGIR dessus.
-    La carte d'un thème sans conseils doit dire ce qu'il faut faire pour en
-    avoir ; sous le poids, la réponse serait « dépense plus sur ce thème », ce
-    qui est un conseil absurde et, pire, un conseil qui nous arrange.
-
-    L'ORDRE DE L'ÉTOILAGE est le seul qui soit à la fois stable, déjà en base
-    (`insight_feedback.created_at`) et RÉVERSIBLE PAR LE CLIENT : pour faire
-    monter un thème, il retire une étoile posée avant. C'est aussi celui qui
-    respecte le premier critère d'`_importance` — « ce que le client a désigné,
-    on ne le corrige pas ».
-
-    Le repli alphabétique n'est pas un choix, c'est un filet : si la relecture
-    datée échoue (table absente, colonne absente), on préfère un ordre arbitraire
-    à un thème perdu. Aucun thème étoilé ne disparaît de cette liste.
-    """
-    noms = {k.split(":", 1)[1] for k, v in (ins_fb or {}).items()
-            if k.startswith("priority_label:") and v == "agree" and ":" in k}
-    if not noms:
-        return []
-    ordre: list = []
-    try:
-        rows = lecteur.priorites_datees()
-        for r in rows:
-            nom = str(r.get("insight_key") or "").split(":", 1)[-1]
-            if nom in noms and nom not in ordre:
-                ordre.append(nom)
-    except Exception:
-        ordre = []
-    ordre += sorted(n for n in noms if n not in ordre)
-    return ordre
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # À PARTIR DE COMBIEN DE RAPPORTS MUETS L'ESCALADE SORT DU CYCLE HEBDOMADAIRE.
 # Deux, et pas un : une panne d'une SEULE semaine se rattrape toute seule au
@@ -212,44 +87,24 @@ def semaines_muettes(canal: str, historique: list[dict]) -> int:
 def build_payload(lecteur: Lecteur) -> dict | None:
     """Prépare le payload du rapport hebdo. None si pas assez de données.
 
-    2700+ lignes, ~30 sections marquées `# ── ... ──`, variables partagées
-    d'un bout à l'autre (pas de découpage sûr sans tests de non-régression —
-    voir la section « Recos PAR THÈME » pour la logique IA la plus récente
-    et la plus fragile). Carte pour naviguer sans tout lire :
+    Une seule fonction, des sections marquées `# ── ... ──` et des variables
+    partagées d'un bout à l'autre. Carte pour naviguer sans tout lire :
 
-      1.  Chargement           — fetch Meta/Google/Instagram/followers
-      2.  Fenêtre              — 7 jours pleins, jamais le jour du fetch
-      3.  Meta Ads             — agrégats + par campagne
-      4.  Google Ads           — mêmes fenêtres, fusion dans df_camp
+      1.  Chargement           — Meta / Google / Instagram / abonnés
+      2.  Canal muet           — jusqu'où chaque canal payant a réellement écrit
+      3.  Fenêtre              — 7 jours pleins, jamais le jour du fetch
+      4.  Meta Ads, Google Ads — agrégats de la semaine et de la précédente
       5.  Instagram            — agrégats posts
-      6.  Profil + GA4 + recos — même moteur que le rapport
-      7.  Configs campagnes    — labels, sert matrice + bloc thèmes
-      8.  Événements par thème — ceux rattachés par le client
-      9.  Objectif par thème   — quand il diffère de celui du compte
-      10. Vision globale       — thèmes lus dans la vue `theme_regroupement`,
-                                  matrice full-history + constats validables
-      11. Recos PAR THÈME      — label par label, cross-canal
-      12. Poids d'un thème     — part du compte
-      13. Dates déclarées      — par les plateformes
-      14. Rapports publiés     — lus une seule fois
-      15. Campagnes neuves     — ≤ 14 jours, thème pas encore ajouté
-      16. Frise (Phase 2)      — série hebdo + repères d'actions, événement
-                                  principal semaine par semaine, événements
-                                  choisis ramenés aux campagnes du thème
-      17. Ce qui passe par un thème, semaine par semaine — composition
-          100 % Gemini (27 août 2026), filet anti-carte-muette, fallback
-          quand un thème n'est pas rédigé par Gemini
-      18. Verdict déterministe — même logique que le rapport
-      19. Sélection            — 2 insta + 3 pub, digest 3
-      20. Brief IA             — sans persona en headless + fallback
-      21. Thèmes               — dépense par label × revenu GA4 (la vue)
-      22. Suivi des actions    — « Je le teste », et le verdict à l'échéance
-      23. Hypothèse de la semaine — entre automatiquement en suivi
-      24. Les 3 du moment
-      25. Vision + matrice compacte pour le payload
-      26. Boussole             — LE chiffre qui compte, avec son échelle
-      27. Frise                — ce qui tournait pendant ces semaines, dates
+      6.  Profil + GA4
+      7.  Matrice full-history — formats, campagnes, créneaux, couverture
+      8.  Dates déclarées      — par les plateformes
+      9.  Rapports publiés     — lus une seule fois
+      10. Verdict déterministe
+      11. Matrice compacte et métriques de lecture rapide
+      12. Boussole             — LE chiffre qui compte, avec son échelle
+      13. Frise                — ce qui tournait pendant ces semaines, dates
                                   déclarées, ce qui a bougé sur les plateformes
+      14. Canaux muets         — ce qu'on n'a pas pu lire, dit au client
     """
     today = lecteur.aujourd_hui()
 
@@ -409,10 +264,10 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # LES CANAUX PAYANTS MUETS SUR LA SEMAINE DU RAPPORT (ticket 20). Posé ICI,
     # dès que la fenêtre est connue et avant le premier chiffre qui en dépend :
     # tout ce qui publie une dépense, un CPC ou un ROAS de cette semaine le
-    # teste, des cartes de thème jusqu'aux KPI de l'email. Vide = rien à taire.
+    # teste, jusqu'aux KPI de l'email. Vide = rien à taire.
     _aveugle_semaine = _pub_aveugle(cur_since, last_full_day)
 
-    # ── Meta Ads : agrégats + par campagne ────────────────────────────────────
+    # ── Meta Ads : agrégats de la semaine et de la précédente ────────────────
     total_spend = 0.0
     total_clicks = 0
     total_impr = 0
@@ -420,7 +275,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     m_impr_prev = 0
     avg_ctr = 0.0
     clicks_delta_pct = None
-    df_camp = pd.DataFrame()
     if df_meta_raw is not None and not df_meta_raw.empty:
         for col in ["impressions", "clicks", "spend"]:
             if col in df_meta_raw.columns:
@@ -445,16 +299,8 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 m_impr_prev = int(df_meta_prev["impressions"].sum())
                 if prev_clicks > 0:
                     clicks_delta_pct = round((total_clicks - prev_clicks) / prev_clicks * 100)
-            df_camp = df_meta.groupby("campaign_name", as_index=False).agg(
-                spend=("spend", "sum"), clicks=("clicks", "sum"), impressions=("impressions", "sum")
-            )
-            df_camp["ctr"] = df_camp.apply(
-                lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
-            df_camp["cpc"] = df_camp.apply(
-                lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
 
-    # ── Google Ads : mêmes fenêtres (KPIs email) + FUSION dans df_camp ────────
-    # → le moteur voit toute la pub (ROAS = revenu payant / dépense Meta+Google).
+    # ── Google Ads : mêmes fenêtres (KPIs email) ─────────────────────────────
     g_spend = 0.0
     g_clicks = 0
     g_impr = 0
@@ -481,25 +327,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             g_spend = float(df_g["cost_micros"].sum()) / 1_000_000.0
             g_clicks = int(df_g["clicks"].sum())
             g_impr = int(df_g["impressions"].sum())
-            if "campaign_id" in df_g.columns:
-                try:
-                    gnames = {str(k): (v or {}).get("campaign_name") or f"Campagne {k}"
-                              for k, v in (lecteur.config_google() or {}).items()}
-                except Exception:
-                    gnames = {}
-                df_g["_cid"] = df_g["campaign_id"].astype(str)
-                gagg = df_g.groupby("_cid", as_index=False).agg(
-                    spend=("cost_micros", "sum"), clicks=("clicks", "sum"),
-                    impressions=("impressions", "sum"))
-                gagg["spend"] = gagg["spend"] / 1_000_000.0
-                gagg["campaign_name"] = gagg["_cid"].map(lambda c: gnames.get(c, f"Campagne {c}"))
-                gagg["ctr"] = gagg.apply(
-                    lambda r: r["clicks"] / r["impressions"] * 100 if r["impressions"] > 0 else 0, axis=1)
-                gagg["cpc"] = gagg.apply(
-                    lambda r: r["spend"] / r["clicks"] if r["clicks"] > 0 else 0, axis=1)
-                gcols = ["campaign_name", "spend", "clicks", "impressions", "ctr", "cpc"]
-                df_camp = (pd.concat([df_camp, gagg[gcols]], ignore_index=True)
-                           if not df_camp.empty else gagg[gcols])
 
     # ── Instagram ─────────────────────────────────────────────────────────────
     followers_current = 0
@@ -573,89 +400,18 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     except Exception:
         ga4_prev = None
 
-    # ── Configs campagnes (labels) — servent la matrice ET le bloc thèmes ─────
+    # ── Les noms des campagnes Google — la matrice les affiche ───────────────
+    # `google_ads_insights` ne porte que l'identifiant de campagne : le nom que
+    # le client reconnaît vit dans `google_campaign_config`.
     try:
-        meta_cfg = lecteur.config_meta() or {}
         goog_cfg = {str(k): v for k, v in (lecteur.config_google() or {}).items()}
     except Exception:
-        meta_cfg, goog_cfg = {}, {}
+        goog_cfg = {}
 
-    # ── LES ÉVÉNEMENTS QUE LE CLIENT A RATTACHÉS À SES THÈMES ────────────────
-    #
-    # {label: [{event_name, rang}]}, les principaux d'abord. Vide quand la
-    # migration `theme_ga4_events.sql` n'est pas passée, ou quand rien n'a été
-    # choisi — et dans ce cas TOUT ce qui suit se tait : aucune règle nouvelle
-    # ne se déclenche, la courbe garde son indicateur d'avant. C'est la
-    # propriété qui rend cette fonctionnalité non bloquante pour les comptes
-    # existants.
-    try:
-        theme_events = lecteur.ga4_evenements_par_theme() or {}
-    except Exception:
-        theme_events = {}
-
-    # ── L'OBJECTIF PROPRE D'UN THÈME, QUAND IL DIFFÈRE DE CELUI DU COMPTE ────
-    #
-    # {label: 'ventes'|'notoriete'|'engagement'}. Vide quand la migration
-    # `theme_objectifs.sql` n'est pas passée, ou quand rien n'a été choisi — et
-    # dans ce cas `_obj_theme` ci-dessous retombe systématiquement sur
-    # `objectif`, l'objectif du compte. C'est ce qui rend la fonctionnalité non
-    # bloquante pour les comptes existants : un thème sans réglage propre se
-    # comporte exactement comme avant elle.
-    try:
-        theme_objectifs = lecteur.objectifs_par_theme() or {}
-    except Exception:
-        theme_objectifs = {}
-
-    # `_obj_theme` est défini ICI mais lit `priority_labels`, calculée plus bas
-    # (§ vision globale) — Python résout les variables libres d'une closure au
-    # MOMENT DE L'APPEL, pas à la définition, et `_obj_theme` n'est jamais
-    # appelée avant que `priority_labels` existe (le premier appel réel est dans
-    # `_theme_series`, définie bien après). Voir `priority_labels: list = []`
-    # plus bas pour la valeur de repli si la lecture échoue.
-    def _obj_theme(lbl: str) -> str | None:
-        """L'objectif EFFECTIF d'un thème : le sien s'il en a un ET que le
-        thème est ENCORE prioritaire, sinon celui du compte.
-
-        UNIQUEMENT SI ÉTOILÉ : ce réglage n'a de sens que pour les thèmes
-        prioritaires (voir la tâche d'origine). Un thème qui perd son étoile
-        retombe donc silencieusement sur l'objectif du compte — sans que sa
-        ligne `theme_objectifs` soit effacée : le choix dort, il ne s'annule
-        pas, et se réapplique tout seul si le thème redevient prioritaire un
-        jour (voir le commentaire de `theme_objectifs.sql`)."""
-        if lbl not in priority_labels:
-            return objectif
-        return theme_objectifs.get(lbl) or objectif
-
-    # Les lignes datées de `ga4_events`, lues UNE fois. `build_ga4_context`
-    # agrège sur une fenêtre et perd les dates ; la courbe d'un thème, elle, a
-    # besoin de la ventilation par semaine — c'est exactement ce qui manquait au
-    # revenu (voir la note de `_theme_series` : « by_campaign donne un revenu
-    # total par campagne, sans dates »). Un événement choisi n'a pas ce défaut.
-    try:
-        ga4_event_rows = lecteur.ga4_lignes() or []
-    except Exception:
-        ga4_event_rows = []
-
-    # ── Vision globale : matrice full-history + constats validables ──────────
+    # ── Matrice full-history ─────────────────────────────────────────────────
     # Toute la profondeur disponible (Ads depuis le 1er janvier, posts stockés),
-    # pas la fenêtre 7 jours. Les verdicts du client (insight_feedback) sont
-    # réappliqués à chaque régénération — un constat rejeté reste écarté.
-    #
-    # LE TOTAL PAR THÈME SE LIT, IL NE SE CALCULE PLUS ICI. La vue
-    # `theme_regroupement` est la seule implémentation du regroupement — Pulse
-    # lit la même, ce qui est tout l'objet du ticket 04.
-    #
-    # CETTE LECTURE EST HORS DU `try` QUI SUIT, EXPRÈS. La vue absente est une
-    # migration qui manque, pas un compte sans données : l'avaler donnerait un
-    # rapport SANS AUCUNE CARTE DE THÈME, publié et envoyé par email, qui se
-    # lirait comme un compte qui n'a rien fait. `publish_weekly_report` la
-    # laisse remonter, le canal « rapport » finit en échec, et le journal dit
-    # quelle migration jouer.
-    themes_regroupes = lecteur.themes_regroupes()
-
+    # pas la fenêtre 7 jours.
     matrix = None
-    priority_labels: list = []
-    ins_fb: dict = {}
     try:
         hist_since = date(today.year, 1, 1)
         try:
@@ -664,70 +420,9 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             ga4_full = None
         matrix = build_matrix(df_meta_raw, df_google,
                               df_insta if not df_insta.empty else None,
-                              meta_cfg, goog_cfg, ga4_full, last_full_day,
-                              themes_regroupes)
-        ins_fb = lecteur.insight_feedback()
-        # TOUS les thèmes étoilés (page Thèmes), dans l'ordre où ils ont été
-        # étoilés — stockés dans insight_feedback sous la clé
-        # priority_label:<nom>. Le `[:3]` qui coupait ici jetait la quatrième
-        # étoile en silence : elle s'affichait sur la page Thèmes et le rapport
-        # l'ignorait. Le plafond de LECTURE n'existe donc plus ici : toutes les
-        # étoiles sont lues, et c'est `_THEMES_CONSEILLES` qui décide, plus bas,
-        # lesquelles reçoivent des conseils.
-        priority_labels = _labels_prioritaires(lecteur, ins_fb)
+                              goog_cfg, ga4_full, last_full_day)
     except Exception:
         matrix = None
-
-    # ── Cartes PAR THÈME : le client lit label par label, cross-canal ────────
-    # Chaque thème reçoit sa carte, calculée sur SES campagnes (Meta+Google) et
-    # SES posts seulement : ses chiffres, sa courbe, ses campagnes.
-    def _nrm(s):
-        return str(s or "").strip().lower()
-
-    name2label = {}
-    for _n, _c in (meta_cfg or {}).items():
-        if (_c or {}).get("label"):
-            name2label[_nrm(_n)] = _c["label"]
-    for _cid, _c in (goog_cfg or {}).items():
-        if (_c or {}).get("label") and (_c or {}).get("campaign_name"):
-            name2label[_nrm(_c["campaign_name"])] = _c["label"]
-
-    # ── LE POIDS D'UN THÈME — ce qui passe par lui, en part du compte ────────
-    #
-    # Sert deux fois : à choisir les thèmes du rapport, et à classer les
-    # conseils entre eux (`_importance`). On ne convertit RIEN : une part de
-    # dépense et une part de publications restent deux grandeurs différentes,
-    # on prend simplement la plus grande des deux. C'est un ordre d'attention,
-    # jamais une mesure — il ne sort pas d'ici et ne s'affiche nulle part.
-    _themes_matrice = (matrix or {}).get("themes", [])
-    _tot_spend = sum(float(t.get("spend") or 0) for t in _themes_matrice)
-    _tot_posts = sum(int(t.get("posts") or 0) for t in _themes_matrice)
-
-    def _poids_theme(t):
-        part_argent = (float(t.get("spend") or 0) / _tot_spend) if _tot_spend > 0 else 0.0
-        part_contenu = (int(t.get("posts") or 0) / _tot_posts) if _tot_posts > 0 else 0.0
-        return max(part_argent, part_contenu)
-
-    theme_list = list(priority_labels)
-    if not theme_list and _themes_matrice:
-        # `spend > 0` EXCLUAIT L'ORGANIQUE, deux fois plutôt qu'une :
-        # `matrix["themes"]` est trié par dépense décroissante, donc un thème
-        # qui ne fait que publier arrivait dernier — puis le filtre le retirait.
-        # Un compte sans publicité n'avait alors AUCUN thème, donc aucune carte,
-        # donc aucun conseil : tout le rapport tenait dans son verdict. On
-        # classe désormais par le poids ci-dessus, qui compte les publications
-        # comme il compte les francs.
-        #
-        # Ce `[:3]`-ci RESTE. Ce n'est pas le plafond qu'on vient de lever : le
-        # précédent jetait un choix explicite du client, celui-ci est un défaut
-        # pour un compte qui n'a rien choisi. Personne n'a demandé quinze cartes
-        # sans avoir posé une seule étoile.
-        theme_list = [t["label"] for t in
-                      sorted(_themes_matrice, key=_poids_theme, reverse=True)
-                      if _poids_theme(t) > 0][:3]
-
-    matrix_campaigns = (matrix or {}).get("campaigns", [])
-    matrix_themes_by = {_nrm(t["label"]): t for t in (matrix or {}).get("themes", [])}
 
     # ── Les dates DÉCLARÉES par les plateformes ──────────────────────────────
     # Lues UNE fois, ici, parce que deux blocs en ont besoin : la veille des
@@ -757,17 +452,13 @@ def build_payload(lecteur: Lecteur) -> dict | None:
 
     # ── LES RAPPORTS DÉJÀ PUBLIÉS, LUS UNE SEULE FOIS ────────────────────────
     #
-    # Deux blocs les lisaient — le savoir-faire de fond (« conseils proposés
-    # semaine après semaine sans jamais être appliqués ») et, maintenant, le
-    # filet des thèmes calmes, qui a besoin de savoir depuis combien de semaines
-    # un thème n'a rien à dire. Deux requêtes sur la même table pouvaient rendre
-    # deux vérités différentes si une publication passait entre les deux.
+    # L'escalade du canal muet (ticket 47) en a besoin pour compter depuis
+    # combien de rapports un canal se tait.
     #
     # LA SEMAINE EN COURS EST EXCLUE, et ce n'est pas un détail : ce worker
     # publie au cron du Jour de travail, et une republication à la main
     # (GitHub Actions, `report_only`) repasse par-dessus. Sans ce filtre, un
-    # thème calme le matin se serait compté lui-même l'après-midi, et la carte
-    # aurait changé de texte sans qu'aucune donnée n'ait bougé.
+    # rapport republié l'après-midi se compterait lui-même dans sa propre série.
     #
     # LA BORNE EST CELLE DU RAPPORT QU'ON FABRIQUE, pas le lundi d'aujourd'hui :
     # c'est sous `week_start_rapport` que cette publication va s'écrire, donc
@@ -775,11 +466,9 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # historique. Les deux valeurs ne diffèrent que pour un compte servi le
     # lundi, mais c'est exactement le compte qui se serait relu lui-même.
     #
-    # LES LIGNES SONT GARDÉES ENTIÈRES, `week_start` COMPRIS. Les consommateurs
-    # historiques (les thèmes calmes, l'horizon) ne lisent que le payload, mais
-    # l'escalade du canal muet (ticket 47) a besoin de l'ordre des semaines pour
-    # compter une série — et le déduire d'une liste dont on a jeté la date
-    # reviendrait à faire confiance à l'ordre d'une requête.
+    # LES LIGNES SONT GARDÉES ENTIÈRES, `week_start` COMPRIS : compter une série
+    # sur une liste dont on a jeté la date reviendrait à faire confiance à
+    # l'ordre d'une requête.
     _historique_publie = []
     try:
         _historique_publie = list(
@@ -827,415 +516,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 _ajoute(getattr(_r, "campaign_name", None), "google", _r.jourdt.date(),
                         _cout, getattr(_r, "clicks", 0), getattr(_r, "impressions", 0))
         return agg
-
-    _WK = 10
-    _serie_start = last_full_day - timedelta(days=7 * _WK - 1)
-
-    def _wk_idx(d):
-        n = (d - _serie_start).days
-        return n // 7 if 0 <= n < 7 * _WK else None
-
-    def _theme_series(lbl, revenu=None):
-        """La courbe d'un theme. `revenu` = ce que le bilan du theme a constate.
-
-        Il n'est PAS decoratif : sans lui, la note « le ROAS de ce theme n'est
-        pas mesurable » s'ecrivait sous un bilan qui affichait « 820 CHF de
-        revenu · ROAS 0,2 ». Les deux ne peuvent pas etre vrais en meme temps.
-        """
-        nlbl = _nrm(lbl)
-        spend_w = [0.0] * _WK
-        reach_w = [[] for _ in range(_WK)]
-        eng_w = [[] for _ in range(_WK)]
-        has_spend = False
-        if df_meta_raw is not None and not df_meta_raw.empty:
-            mm = df_meta_raw[df_meta_raw["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
-            for _d, _sp in zip(mm["date_start"], mm["spend"]):
-                _dd = _d.date() if hasattr(_d, "date") else _d
-                _wi = _wk_idx(_dd) if _dd is not None else None
-                if _wi is not None:
-                    spend_w[_wi] += float(_sp or 0); has_spend = True
-        if df_google is not None and not df_google.empty and "campaign_id" in df_google.columns:
-            gg = df_google[df_google["campaign_id"].astype(str).map(
-                lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
-            for _d, _cm in zip(gg["date_start"], gg["cost_micros"]):
-                _dd = _d.date() if hasattr(_d, "date") else _d
-                _wi = _wk_idx(_dd) if _dd is not None else None
-                if _wi is not None:
-                    spend_w[_wi] += float(_cm or 0) / 1e6; has_spend = True
-        if df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
-            _dtp = pd.to_datetime(df_insta["date"], errors="coerce")
-            for _i in range(len(df_insta)):
-                _lb = df_insta.iloc[_i].get("labels")
-                if not (isinstance(_lb, (list, tuple)) and lbl in _lb):
-                    continue
-                _d = _dtp.iloc[_i]
-                if pd.isna(_d):
-                    continue
-                _wi = _wk_idx(_d.date())
-                if _wi is not None:
-                    reach_w[_wi].append(float(df_insta.iloc[_i].get("reach") or 0))
-                    eng_w[_wi].append(float(df_insta.iloc[_i].get("eng") or 0))
-        # ── L'ÉVÉNEMENT PRINCIPAL, SEMAINE PAR SEMAINE ──────────────────────
-        #
-        # C'est la seule série de ce module qui vienne d'un choix EXPLICITE du
-        # client : il a désigné, pour ce thème, l'événement sur lequel il veut
-        # être jugé. Elle passe donc devant la dépense.
-        #
-        # QUAND PLUSIEURS ÉVÉNEMENTS SONT PRINCIPAUX, on prend celui qui a le
-        # plus gros volume sur la fenêtre. Une courbe ne porte qu'une grandeur
-        # (grammaire des modules : une seule forme par module), et additionner
-        # `purchase` et `generate_lead` fabriquerait un total qui ne veut rien
-        # dire. Le nom de l'événement retenu est ÉCRIT sur l'axe — sans lui, le
-        # lecteur ne saurait pas lequel des deux il regarde.
-        ev_pts = None
-        ev_nom = None
-        _princ = [c["event_name"] for c in (theme_events.get(lbl) or [])
-                  if c["rang"] == "principal"]
-        if _princ and ga4_event_rows:
-            _par_nom: dict = {}
-            for _r in ga4_event_rows:
-                _nom = _r.get("event_name") or ""
-                if _nom not in _princ:
-                    continue
-                # Le pont : l'événement n'appartient au thème que si sa campagne
-                # UTM est une campagne étiquetée de ce thème. Pas de campagne,
-                # ou campagne inconnue → il n'est attribué à personne.
-                if name2label.get(_nrm(_r.get("campaign") or "")) != lbl:
-                    continue
-                try:
-                    _dd = date.fromisoformat(str(_r.get("date"))[:10])
-                except Exception:
-                    continue
-                _wi = _wk_idx(_dd)
-                if _wi is None:
-                    continue
-                _par_nom.setdefault(_nom, [0] * _WK)[_wi] += int(_r.get("event_count") or 0)
-            if _par_nom:
-                ev_nom, ev_pts = max(_par_nom.items(), key=lambda kv: sum(kv[1]))
-
-        # L'indicateur suit l'objectif DU THÈME — le sien s'il en a un, sinon
-        # celui du compte (`_obj_theme`, héritage silencieux). Quand celui
-        # qu'on VOULAIT suivre n'est pas mesurable (le ROAS sans valeur de
-        # conversion GA4), on se rabat sur le meilleur substitut ET on le dit —
-        # plutôt que d'afficher un 0,0 qui ressemble a une catastrophe.
-        obj = _obj_theme(lbl)
-        note = None
-        if ev_pts is not None and obj not in ("notoriete", "engagement"):
-            pts = list(ev_pts)
-            metric_label = f"« {ev_nom} » par semaine"
-        elif obj == "notoriete" and any(x for x in reach_w):
-            pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
-            metric_label = "Portée moyenne"
-        elif obj == "engagement" and any(x for x in eng_w):
-            pts = [round(sum(x) / len(x), 2) if x else 0 for x in eng_w]
-            metric_label = "Engagement moyen (%)"
-        elif ev_pts is not None:
-            # L'objectif visé (portée, engagement) n'a rien à mesurer sur ce
-            # thème — pas de publication organique. L'événement principal
-            # reprend la main plutôt que de laisser la dépense décrire un thème
-            # dont on sait ce qu'il rapporte.
-            pts = list(ev_pts)
-            metric_label = f"« {ev_nom} » par semaine"
-        elif has_spend:
-            pts = [round(v, 2) for v in spend_w]
-            metric_label = "Dépense (CHF)"
-            # LA NOTE NE S'ECRIT QUE SI ELLE EST VRAIE. Un theme qui a du revenu
-            # a un ROAS : dire « pas mesurable » au-dessus d'un « 0,2 ROAS »
-            # affiche a l'ecran deux affirmations contradictoires, et c'est la
-            # note qui a tort. Ce qui manque dans ce cas n'est pas la mesure,
-            # c'est la VENTILATION PAR SEMAINE : `by_campaign` de GA4 donne un
-            # revenu total par campagne, sans dates. La courbe reste donc sur la
-            # depense — mais en silence, parce qu'il n'y a rien a corriger cote
-            # GA4 et qu'envoyer l'utilisateur y regler ses evenements cles
-            # serait l'envoyer chercher un probleme qu'il n'a pas.
-            if obj == "ventes" and not (revenu and float(revenu) > 0):
-                # DEUX MANQUES DIFFÉRENTS, DEUX PHRASES. On sait maintenant les
-                # distinguer, et envoyer quelqu'un régler la valeur de ses
-                # conversions dans GA4 alors qu'il n'a désigné AUCUN événement
-                # pour ce thème, c'est l'envoyer au mauvais endroit.
-                note = ("Le ROAS de ce thème n'est pas mesurable : Google Analytics "
-                        "remonte tes conversions sans leur valeur en CHF. On suit la "
-                        "dépense en attendant — configure la valeur de tes événements "
-                        "clés dans GA4 et cette courbe passera au ROAS."
-                        if _princ else
-                        "Aucun événement n'est désigné comme principal pour ce thème : "
-                        "on suit donc sa dépense, faute de savoir ce qu'elle doit "
-                        "produire. Va sur la page Thèmes choisir la conversion qui "
-                        "compte pour lui, et cette courbe la suivra.")
-        else:
-            pts = [round(sum(x) / len(x)) if x else 0 for x in reach_w]
-            metric_label = "Portée moyenne"
-        if sum(1 for v in pts if v > 0) < 3:
-            return None  # trop clairsemé → pas de frise
-        # ÉTIQUETÉ PAR LA FIN DE SEMAINE, PAS SON DÉBUT. Le dernier point porte
-        # sinon une date jusqu'à 6 jours plus vieille que `last_full_day` — le
-        # texte des recos (`week_label`) affiche « 24 → 30 août » pendant que le
-        # point le plus récent du graphe disait « 24 août » (son propre début de
-        # semaine), donnant l'impression fausse d'un graphe perimé (David,
-        # TASK-039). Chaque étiquette est donc le dernier jour de son bucket —
-        # le même jour que `last_full_day` pour le point le plus récent.
-        labels = [(lambda d: f"{d.day} {MONTHS_FR[d.month]}")(_serie_start + timedelta(days=7 * j + 6))
-                  for j in range(_WK)]
-        return {
-            "metric_label": metric_label,
-            "note": note,
-            "points": [{"label": labels[j], "value": pts[j]} for j in range(_WK)],
-        }
-
-    # Un theme ne doit voir QUE ses propres conversions GA4. Sans ce filtre, la
-    # regle ROAS/CPA divise la depense DU THEME par les conversions DU COMPTE
-    # ENTIER : chaque theme se voyait attribuer toutes les conversions, d'ou un
-    # cout par conversion beaucoup trop flatteur et en contradiction avec le
-    # resume de la semaine.
-    def _theme_ga4(lbl):
-        if not ga4_ctx:
-            return None
-        by = ga4_ctx.get("by_campaign") or {}
-        conv = 0.0
-        rev = 0.0
-        sub = {}
-        for _cname, _d in by.items():
-            if name2label.get(_nrm(_cname)) != lbl:
-                continue
-            sub[_cname] = _d
-            conv += float((_d or {}).get("conversions") or 0)
-            rev += float((_d or {}).get("revenue") or 0)
-        ctx = dict(ga4_ctx)
-        ctx["by_campaign"] = sub
-        if sub:
-            ctx["paid_conversions"] = conv
-            ctx["paid_revenue"] = rev
-        else:
-            # Rien de rattachable a ce theme (UTM absents ou differents des noms
-            # de campagne) : on se tait plutot que d'afficher un chiffre faux.
-            ctx["paid_conversions"] = None
-            ctx["paid_revenue"] = None
-
-        # ── LES ÉVÉNEMENTS CHOISIS, RAMENÉS AUX CAMPAGNES DE CE THÈME ────────
-        #
-        # Même pont que le revenu ci-dessus, même limite : `events_by_campaign`
-        # est indexé par utm_campaign, et seul un nom qui correspond à une
-        # campagne étiquetée franchit le pont. L'organique n'a pas de campagne,
-        # donc il n'a pas d'événement de thème — jamais.
-        #
-        # ON NE MET DANS `evenements` QUE CE QUI A ÉTÉ MESURÉ. Un événement
-        # choisi qui n'a aucune ligne sur la fenêtre n'entre pas avec un zéro :
-        # il entre dans `mesure_absente`, et les règles savent qu'elles ne
-        # doivent pas en parler. Un zéro mesuré (« l'événement existe, il n'a
-        # pas eu lieu ») et un zéro faute de données ne sont pas la même
-        # information, et ici on ne sait pas distinguer les deux — l'absence de
-        # ligne GA4 peut venir d'un tag cassé comme d'un vrai zéro.
-        choisis = theme_events.get(lbl) or []
-        ctx["evenements"] = {}
-        ctx["evenements_principaux"] = []
-        ctx["mesure_absente"] = []
-        # Les principaux CHOISIS par l'utilisateur qui restent muets (aucune
-        # ligne mesurée) — distinct de `mesure_absente` qui mélange principaux
-        # et secondaires, et distinct de `evenements_principaux` qui ne contient
-        # QUE les principaux mesurés. C'est ce sous-ensemble précis que
-        # `_reco_evenements` doit lire pour détecter « principal choisi, resté
-        # muet, alors qu'un secondaire a des lignes ».
-        ctx["principaux_absents"] = []
-        if choisis:
-            ev_by_camp = ga4_ctx.get("events_by_campaign") or {}
-            cumul: dict = {}
-            for _cname, _evs in ev_by_camp.items():
-                if name2label.get(_nrm(_cname)) != lbl:
-                    continue
-                for _nom, _d in (_evs or {}).items():
-                    slot = cumul.setdefault(_nom, {"count": 0, "value": 0.0})
-                    slot["count"] += int((_d or {}).get("count") or 0)
-                    slot["value"] += float((_d or {}).get("value") or 0)
-            for _c in choisis:
-                _nom = _c["event_name"]
-                _vu = cumul.get(_nom)
-                if _vu is None:
-                    ctx["mesure_absente"].append(_nom)
-                    if _c["rang"] == "principal":
-                        ctx["principaux_absents"].append(_nom)
-                    continue
-                ctx["evenements"][_nom] = {
-                    "count": _vu["count"], "value": _vu["value"], "rang": _c["rang"],
-                }
-                if _c["rang"] == "principal":
-                    ctx["evenements_principaux"].append(_nom)
-        return ctx
-
-    # ── CE QUI PASSE PAR UN THÈME, SEMAINE PAR SEMAINE ───────────────────────
-    #
-    # Les règles du moteur regardent la semaine du rapport et rien d'autre : un
-    # thème ne se compare qu'aux campagnes qui tournent en même temps que lui.
-    # Les deux lecteurs ci-dessous ouvrent la seule autre comparaison honnête —
-    # le thème contre LUI-MÊME, les semaines d'avant. Aucune donnée nouvelle :
-    # ce sont les mêmes lignes que la frise, lues sur une autre fenêtre.
-    #
-    # ADDITIONNER META ET GOOGLE EST PERMIS ICI, et seulement parce qu'on
-    # additionne des dépenses et des clics — deux grandeurs que chaque régie
-    # mesure elle-même, comme le fait déjà `_rule_roas`. C'est le REVENU qu'on
-    # ne saurait pas ventiler entre les deux, jamais le coût.
-    #
-    # `lbl=None` NE FILTRE RIEN : c'est toute la pub du compte sur la fenêtre.
-    # Ce cas existe pour `_kpis_window`, qui mesure aussi bien un thème que le
-    # compte entier et qui doit lire le même périmètre dans les deux cas.
-    def _pub_fenetre(lbl, d1, d2):
-        sp = im = 0.0
-        cl = 0
-        canaux = set()
-        if df_meta_raw is not None and not df_meta_raw.empty:
-            _m = df_meta_raw[(df_meta_raw["date_start"] >= pd.Timestamp(d1))
-                             & (df_meta_raw["date_start"] <= pd.Timestamp(d2))]
-            if lbl is not None:
-                _m = _m[_m["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)]
-            if not _m.empty:
-                sp += float(_m["spend"].sum())
-                cl += int(_m["clicks"].sum())
-                im += float(_m["impressions"].sum())
-                canaux.add("meta")
-        if (df_google is not None and not df_google.empty
-                and "date_start" in df_google.columns):
-            _g = df_google[(df_google["date_start"] >= pd.Timestamp(d1))
-                           & (df_google["date_start"] <= pd.Timestamp(d2))]
-            # L'identifiant de campagne prime sur le nom : c'est lui que porte
-            # `google_campaign_config`, et deux campagnes Google peuvent
-            # partager un nom.
-            if lbl is not None:
-                if "campaign_id" in _g.columns:
-                    _g = _g[_g["campaign_id"].astype(str).map(
-                        lambda c: (goog_cfg.get(c, {}) or {}).get("label") == lbl)]
-                elif "campaign_name" in _g.columns:
-                    _g = _g[_g["campaign_name"].map(
-                        lambda n: name2label.get(_nrm(n)) == lbl)]
-                else:
-                    _g = _g.iloc[0:0]
-            if not _g.empty:
-                sp += float(_g["cost_micros"].sum()) / 1e6
-                cl += int(_g["clicks"].sum())
-                im += float(_g["impressions"].sum())
-                canaux.add("google")
-        # `aveugle` : les canaux payants qui auraient dû écrire sur cette
-        # fenêtre et ne l'ont pas fait (ticket 20). `spend`, `clics` et
-        # `impressions` restent des nombres — ce sont les sommes de ce qu'on a
-        # VU, et les fenêtres de référence en ont besoin — mais dès que cet
-        # ensemble n'est pas vide, ce ne sont plus des TOTAUX : les publier tels
-        # quels revient à présenter un trou comme une baisse. C'est au lecteur
-        # de se taire, pas à la somme de mentir ; chaque appelant qui publie un
-        # de ces nombres teste donc `aveugle` avant.
-        return {"spend": sp, "clics": cl, "impressions": im, "canaux": canaux,
-                "aveugle": _pub_aveugle(d1, d2)}
-
-    def _posts_theme(lbl, d1, d2):
-        """Nombre de publications du thème sur la fenêtre, et leur portée."""
-        if df_insta is None or df_insta.empty or "labels" not in df_insta.columns:
-            return {"posts": 0, "reach": None}
-        _j = pd.to_datetime(df_insta["date"], errors="coerce").dt.date
-        _sel = df_insta[(_j >= d1) & (_j <= d2)
-                        & df_insta["labels"].map(
-                            lambda L: isinstance(L, (list, tuple)) and lbl in L)]
-        return {
-            "posts": int(len(_sel)),
-            "reach": (float(_sel["reach"].mean())
-                      if len(_sel) and "reach" in _sel.columns else None),
-        }
-
-    def _semaine_theme(lbl, d1, d2):
-        _p = _pub_fenetre(lbl, d1, d2)
-        _p.update(_posts_theme(lbl, d1, d2))
-        return _p
-
-    themes_focus = []
-    for lbl in theme_list:
-        nlbl = _nrm(lbl)
-        t_camps = [c for c in matrix_campaigns if _nrm(c.get("label")) == nlbl]
-        # L'objectif EFFECTIF de ce thème (le sien, sinon celui du compte) —
-        # il pilote les règles (`build_recos`, plus bas) et l'indicateur de sa
-        # courbe.
-        _obj_lbl = _obj_theme(lbl)
-        # Écrit dans le payload (voir `themes_focus.append` plus bas) pour que
-        # le module du rapport (`objectif-theme.tsx`) puisse dire la vérité :
-        # « propre à ce thème » seulement quand c'est vraiment le cas — jamais
-        # quand le thème a perdu son étoile (`_obj_theme` l'ignore alors).
-        _obj_propre = lbl in priority_labels and lbl in theme_objectifs
-
-        # Sous-ensembles de la semaine pour faire tourner les règles sur ce thème
-        tc = None
-        if df_camp is not None and not df_camp.empty:
-            _mask = df_camp["campaign_name"].map(lambda n: name2label.get(_nrm(n)) == lbl)
-            tc = df_camp[_mask]
-            tc = tc if not tc.empty else None
-
-        def _has(labels, _l=lbl):
-            return isinstance(labels, (list, tuple)) and _l in labels
-        ti = pd.DataFrame()
-        tw = pd.DataFrame()
-        if df_insta is not None and not df_insta.empty and "labels" in df_insta.columns:
-            ti = df_insta[df_insta["labels"].map(_has)]
-        if df_week_posts is not None and not df_week_posts.empty and "labels" in df_week_posts.columns:
-            tw = df_week_posts[df_week_posts["labels"].map(_has)]
-
-        tt = matrix_themes_by.get(nlbl, {})
-        # CE QUE LE ROAS DE CE THÈME NE PEUT PAS VOIR (ticket 18).
-        #
-        # `spend_muette` est la part de `spend` dépensée par des campagnes dont
-        # Google Analytics ne connaît pas le nom : elle pèse sur le dénominateur
-        # et ne pourra jamais rien apporter au numérateur. Le ROAS n'est pas
-        # faux, il est INCOMPLET — et sur le compte de production, 10 thèmes
-        # jugés sur 17 sont dans ce cas (mesuré le 2026-09-13). Le taire serait
-        # publier un ratio en sachant qu'un de ses deux côtés est amputé.
-        #
-        # ON PUBLIE LE ROAS ET ON ÉCRIT LA LIMITE, tranché avec David : se taire
-        # complètement aurait vidé 59 % des thèmes de leur seul chiffre de
-        # rentabilité.
-        #
-        # `None` veut dire « on ne sait pas », jamais « rien n'est muet » : la
-        # vue rend NULL sur un compte où Google Analytics n'attribue aucune
-        # campagne payante, et un payload d'avant ce ticket n'a pas la colonne.
-        _muette = tt.get("spend_muette")
-        _spend = tt.get("spend")
-        summary = {
-            "spend": _spend, "revenue": tt.get("revenue"), "roas": tt.get("roas"),
-            "spend_muette": _muette,
-            "campagnes_muettes": tt.get("campagnes_muettes"),
-            # La part, calculée ici plutôt qu'à l'affichage : c'est elle qui dit
-            # si le ROAS mérite d'être lu, et deux écrans ne doivent pas la
-            # recalculer chacun à sa façon.
-            "part_muette": (round(float(_muette) / float(_spend), 4)
-                            if _muette is not None and _spend not in (None, 0)
-                            else None),
-            "ctr": tt.get("ctr"), "posts": tt.get("posts"),
-            "reach_avg": tt.get("reach_avg"), "eng_avg": tt.get("eng_avg"),
-            # LA DÉPENSE DE LA SEMAINE SE TAIT QUAND UN CANAL EST MUET
-            # (ticket 20) — contrairement aux agrégats full-history juste
-            # au-dessus, qui viennent de la vue et qu'une semaine trouée ne
-            # déplace qu'à la marge, celui-ci EST la semaine trouée. Le publier
-            # amputé le ferait comparer à la semaine d'avant et lire comme une
-            # coupe de budget que personne n'a décidée.
-            "spend_week": (None if _aveugle_semaine
-                           else round(float(tc["spend"].sum()), 2)
-                           if tc is not None else 0.0),
-            "best_campaign": t_camps[0]["name"] if t_camps else None,
-            "n_campaigns": len(t_camps),
-        }
-        try:
-            _series = _theme_series(lbl, summary.get("revenue"))
-        except Exception:
-            _series = None
-        themes_focus.append({
-            "label": lbl,
-            "is_priority": lbl in priority_labels,
-            # L'objectif EFFECTIF de ce thème (celui qui pilote réellement sa
-            # courbe), et s'il lui est PROPRE ou hérité du compte. Absent des payloads publiés avant cette
-            # fonctionnalité : le front traite l'absence comme « hérité »,
-            # exactement ce qu'était le comportement avant elle.
-            "objectif": _obj_lbl,
-            "objectif_propre": _obj_propre,
-            "summary": summary,
-            "series": _series,
-            "campaigns": [
-                {k: c.get(k) for k in ("name", "channel", "key", "label",
-                                       "label_source", "spend", "revenue", "ctr", "cpc")}
-                for c in t_camps[:8]
-            ],
-        })
 
     # ── Verdict déterministe (même logique que le rapport) ───────────────────
     _signals = []
@@ -1291,74 +571,11 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                    + " n'a pas répondu, les chiffres de pub manquent.")
     else:
         verdict = "Première semaine de données — le rapport s'affinera avec l'historique."
-    # ── Thèmes : dépense par label × revenu GA4 (même logique que le rapport) ─
-    # (meta_cfg / goog_cfg déjà chargés plus haut pour la matrice)
-    themes = None
-    if ga4_ctx and ga4_ctx.get("by_campaign"):
-        def _norm(s):
-            return str(s or "").strip().lower()
-        sp_lbl: dict = {}
-        meta_labeled = 0.0
-        if not df_camp.empty:
-            for _, r in df_camp.iterrows():
-                lbl = (meta_cfg.get(r["campaign_name"], {}) or {}).get("label")
-                if lbl:
-                    sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(r["spend"])
-                    meta_labeled += float(r["spend"])
-        google_labeled = 0.0
-        if not df_google.empty and "campaign_id" in df_google.columns:
-            gw = df_google[
-                (df_google["date_start"] >= pd.Timestamp(cur_since))
-                & (df_google["date_start"] <= pd.Timestamp(last_full_day))
-            ].copy()
-            if not gw.empty:
-                gw["_cid"] = gw["campaign_id"].astype(str)
-                gw["_chf"] = pd.to_numeric(gw["cost_micros"], errors="coerce").fillna(0) / 1_000_000.0
-                for cid, chf in gw.groupby("_cid")["_chf"].sum().items():
-                    lbl = (goog_cfg.get(cid, {}) or {}).get("label")
-                    if lbl and chf > 0:
-                        sp_lbl[lbl] = sp_lbl.get(lbl, 0.0) + float(chf)
-                        google_labeled += float(chf)
-        # Ce qui n'est rattaché à AUCUN thème — le même bucket « autres » que
-        # sur la page Coûts (`couts/page.tsx` : total de la fenêtre moins ce
-        # qui est étiqueté). AVANT ce correctif, cette place était prise par
-        # le revenu GA4 sans correspondance de campagne — une notion
-        # entièrement différente (du CHF de VENTE, pas de la DÉPENSE non
-        # étiquetée) — donc les campagnes sans thème posé disparaissaient
-        # purement et simplement du camembert au lieu d'apparaître en
-        # « autres » : la ou les campagnes étiquetées se retrouvaient à tort
-        # à 100 % du budget affiché.
-        spend_orphan = max(0.0, (total_spend - meta_labeled) + (g_spend - google_labeled))
-        name_lbl = {_norm(n): (c or {}).get("label")
-                    for n, c in meta_cfg.items() if (c or {}).get("label")}
-        for cid, c in goog_cfg.items():
-            if (c or {}).get("label") and c.get("campaign_name"):
-                name_lbl.setdefault(_norm(c["campaign_name"]), c["label"])
-        rv_lbl: dict = {}
-        for camp, dd in ga4_ctx["by_campaign"].items():
-            rev = float(dd.get("revenue") or 0)
-            lbl = name_lbl.get(_norm(camp))
-            if lbl:
-                rv_lbl[lbl] = rv_lbl.get(lbl, 0.0) + rev
-        # Pas de troncature ici : `ThemeDonut` regroupe déjà lui-même tout ce
-        # qui dépasse les 5 premières parts dans « autres » (même logique que
-        # la page Coûts, qui lui passe tous les thèmes sans les couper avant).
-        # Couper à 4 ici les aurait fait disparaître purement et simplement,
-        # au lieu de les regrouper visiblement.
-        t_rows = sorted(
-            ({"label": lbl, "spend": round(s, 2), "rev": round(rv_lbl.get(lbl, 0.0), 2)}
-             for lbl, s in sp_lbl.items() if s > 0),
-            key=lambda r: -r["spend"],
-        )
-        if t_rows:
-            themes = {"rows": t_rows, "orphan": round(spend_orphan, 2)}
-
     # ── Matrice compacte pour le payload ─────────────────────────────────────
     matrice = None
     if matrix:
         matrice = {
             "period": matrix["period"],
-            "themes": matrix["themes"][:6],
             "formats": matrix["formats"][:6],
             "campaigns": matrix["campaigns"][:6],
             "slots": matrix["slots"][:3],
@@ -1500,9 +717,8 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         _cle = _unite = _titre = _repere = None
         _sens = "up"
         for (d1, _d2) in _sems:
-            # Fin de semaine, pas début — même raison qu'à `_theme_series`
-            # (TASK-039) : le dernier point doit porter `last_full_day`, pas
-            # une date jusqu'à 6 jours plus vieille.
+            # Fin de semaine, pas début (TASK-039) : le dernier point doit
+            # porter `last_full_day`, pas une date jusqu'à 6 jours plus vieille.
             _lab.append(f"{_d2.day} {MONTHS_FR[_d2.month]}")
         _rev_now = _revenu_semaine(*_sems[-1])
         if objectif == "ventes" and _rev_now is not None and _rev_now > 0:
@@ -1746,9 +962,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         _f_fin = date(today.year, 12, 31)
         _f_debut = date(today.year - 1, 1, 1)
 
-        def _f_theme(nom):
-            return name2label.get(_nrm(nom)) or None
-
         _camps = {}
 
         def _ajoute(nom, canal, jour, montant):
@@ -1757,7 +970,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             if not (_f_debut <= jour <= _f_fin):
                 return
             c = _camps.setdefault((canal, str(nom)), {
-                "nom": str(nom)[:60], "canal": canal, "theme": _f_theme(nom),
+                "nom": str(nom)[:60], "canal": canal,
                 "debut": jour, "fin": jour, "jours": set(), "depense": 0.0,
                 # Le montant JOUR PAR JOUR. La frise n'en a pas besoin, le
                 # registre des changements si : un budget doublé ne se voit
@@ -1814,7 +1027,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
             if not (_f_debut <= _dep <= _f_fin):
                 continue
             _camps[(_canal, _nom)] = {
-                "nom": str(_nom)[:60], "canal": _canal, "theme": _f_theme(_nom),
+                "nom": str(_nom)[:60], "canal": _canal,
                 "debut": _dep, "fin": _dep, "jours": set(), "depense": 0.0,
                 "parjour": {}, "planifiee": True,
             }
@@ -1823,7 +1036,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
 
         def _sortie(c):
             out = {
-                "nom": c["nom"], "canal": c["canal"], "theme": c["theme"],
+                "nom": c["nom"], "canal": c["canal"],
                 "debut": c["debut"].isoformat(), "fin": c["fin"].isoformat(),
                 "jours": len(c["jours"]),
                 # Un trou au milieu d'une diffusion (campagne coupee puis
@@ -1854,7 +1067,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 _dj = _r.jourdt.date()
                 if not (_f_debut <= _dj <= _f_fin):
                     continue
-                _lbls = getattr(_r, "labels", None) or []
                 _pubs.append({
                     # La plateforme est portee explicitement, meme si une seule
                     # source existe aujourd'hui : le jour ou TikTok ou LinkedIn
@@ -1863,7 +1075,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                     # rabat sur le format du post, qui lui differencie vraiment.
                     "plateforme": "instagram",
                     "date": _dj.isoformat(),
-                    "theme": str(_lbls[0]) if len(_lbls) else None,
                     "type": str(getattr(_r, "type", "") or ""),
                 })
         _pubs.sort(key=lambda x: x["date"])
@@ -1923,7 +1134,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
 
         for _c in _camps.values():
             _canal, _nom = _c["canal"], _c["nom"]
-            _base = {"canal": _canal, "campagne": _nom, "theme": _c["theme"]}
+            _base = {"canal": _canal, "campagne": _nom}
 
             if _c.get("planifiee"):
                 # « PROGRAMMÉE » PROMET UN ÉVÉNEMENT À VENIR. Le test ne portait
@@ -2078,9 +1289,6 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         "verdict_pct": verdict_pct,
         "verdict_metric": verdict_metric,
         "verdict_tone": verdict_tone,
-        # Le cœur du rapport : les chiffres regroupés PAR THÈME (cross-canal).
-        "themes_focus": themes_focus,
-        "themes": themes,
     }
 
 
@@ -2125,7 +1333,7 @@ def publish_weekly_report(sb, user_id: str,
     week_start = (payload.get("week_start")
                   or (date.today() - timedelta(days=date.today().weekday())).isoformat())
     upsert_weekly_report(sb, user_id, week_start, payload)
-    log = f"rapport publié ({len(payload.get('themes_focus') or [])} thèmes)"
+    log = "rapport publié"
 
     if email_to:
         import os

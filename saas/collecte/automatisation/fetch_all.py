@@ -1070,7 +1070,7 @@ def run(force: bool = False, only_user: str | None = None,
         logs = []
 
         # `report_only` : republie juste le rapport à partir des données déjà
-        # en base (ni fetch réseau, ni relabel) — ~30 s. Plus aucun bouton de
+        # en base (aucun fetch réseau) — ~30 s. Plus aucun bouton de
         # l'app ne le déclenche ; c'est un mode de TEST, lancé depuis l'onglet
         # GitHub Actions
         # (.scratch/construction/issues/15-le-client-ne-declenche-plus-rien.md).
@@ -1343,8 +1343,8 @@ if __name__ == "__main__":
     except Exception:
         traceback.print_exc()
         sys.exit(1)
-    # LE ROUGE TOMBE ICI, APRÈS TOUT LE RESTE. Google, GA4, Instagram, les
-    # labels et le rapport ont fini leur travail — on ne perd pas une récolte
+    # LE ROUGE TOMBE ICI, APRÈS TOUT LE RESTE. Google, GA4, Instagram et le
+    # rapport ont fini leur travail — on ne perd pas une récolte
     # entière parce qu'une colonne Meta manque. Mais la run ne ment pas sur ce
     # qu'elle a écrit.
     #

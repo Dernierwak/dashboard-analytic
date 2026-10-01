@@ -118,12 +118,6 @@ def test_build_payload_ne_touche_plus_rien_dehors():
          [a.arg for a in fn.args.args], ["lecteur"])
 
 
-def test_labels_prioritaires_ne_touche_plus_rien_dehors():
-    fn = _fonction(ARBRE, "_labels_prioritaires")
-    egal("aucune sortie en clair dans son corps", sorted(_noms_libres(fn)), [])
-    egal("elle prend le lecteur", [a.arg for a in fn.args.args][0], "lecteur")
-
-
 def test_plus_aucun_import_local_dans_la_construction():
     """Les `from saas.collecte…` cachés au milieu de la fonction ont disparu.
 
@@ -181,15 +175,8 @@ RENVOIS = {
     "abonnes": ("fetch_daily_followers", "fetch_daily_followers(sb, user_id)"),
     "google_ads": ("fetch_google_ads", "fetch_google_ads(sb, user_id)"),
     "objectif": ("fetch_objectif", "fetch_objectif(sb, user_id)"),
-    "objectifs_par_theme": ("fetch_theme_objectifs",
-                            "fetch_theme_objectifs(sb, user_id)"),
-    "config_meta": ("fetch_campaign_config", "fetch_campaign_config(sb, user_id)"),
     "config_google": ("fetch_google_campaign_config",
                       "fetch_google_campaign_config(sb, user_id)"),
-    "themes_regroupes": ("fetch_theme_regroupement",
-                         "fetch_theme_regroupement(sb, user_id)"),
-    "insight_feedback": ("fetch_insight_feedback", "fetch_insight_feedback(sb, user_id)"),
-    "ga4_lignes": ("fetch_ga4_events", "_db_ga4_ev(sb, user_id)"),
     "ga4_insights": ("fetch_ga4_insights", "_fga4(sb, user_id)"),
 }
 
@@ -257,14 +244,6 @@ class FauxSb:
 
 
 CHAINES = {
-    "priorites_datees": (
-        lambda l: l.priorites_datees(),
-        [("table", "insight_feedback"),
-         ("select", "insight_key, created_at"),
-         ("eq", "user_id", UID),
-         ("like", "insight_key", "priority_label:%"),
-         ("order", "created_at"),
-         ("execute",)]),
     "rapports_publies": (
         lambda l: l.rapports_publies("2026-09-07"),
         [("table", "weekly_reports"),
@@ -305,8 +284,6 @@ def test_chaque_lecture_brute_rejoue_la_meme_requete():
                morceau in AVANT_TOUT, morceau)
 
 
-# ── Les deux écritures : détournées, jamais perdues ──────────────────────────
-
 # ── Le contrat, et rien de plus ──────────────────────────────────────────────
 
 def test_le_faux_lecteur_honore_le_meme_contrat_que_le_vrai():
@@ -315,7 +292,7 @@ def test_le_faux_lecteur_honore_le_meme_contrat_que_le_vrai():
     une source au lieu de la lire."""
     from lecteur_fige import LecteurFige
     contrat = {n for n in dir(Lecteur) if not n.startswith("_")}
-    ok("le contrat n'est pas vide", len(contrat) >= 15, f"{len(contrat)} méthodes")
+    ok("le contrat n'est pas vide", len(contrat) >= 10, f"{len(contrat)} méthodes")
     for methode in sorted(contrat):
         ok(f"le vrai lecteur rend `{methode}`", hasattr(LecteurSupabase, methode))
         ok(f"le faux lecteur rend `{methode}`", hasattr(LecteurFige, methode))

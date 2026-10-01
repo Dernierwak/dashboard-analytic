@@ -1,34 +1,32 @@
-// UNE ÉCRITURE QUI EN ENTRAÎNE SIX — ET CE QU'ON DIT QUAND ELLE S'ARRÊTE AU
-// MILIEU.
+// UNE ÉCRITURE QUI EN ENTRAÎNE PLUSIEURS — ET CE QU'ON DIT QUAND ELLE
+// S'ARRÊTE AU MILIEU.
 //
-// Renommer ou supprimer un thème touche jusqu'à SIX tables : la liste maîtresse
-// (`profiles.labels`), les assignations Meta et Google, les actions décidées,
-// les événements GA4 du thème, son objectif, et les posts Instagram. PostgREST
-// n'a pas de transaction : ce sont six requêtes distinctes, et rien n'annule
-// les précédentes quand la troisième échoue.
+// Renommer ou supprimer une catégorie de conversions touche plusieurs tables
+// (la liste des catégories, les événements GA4 qui la portent). PostgREST n'a
+// pas de transaction : ce sont des requêtes distinctes, et rien n'annule les
+// précédentes quand la suivante échoue.
 //
-// Avant ce module, ces six `await` étaient NUS — leur résultat n'était même pas
-// capturé. Une panne au milieu laissait le compte avec un thème à moitié
-// renommé, et l'écran répondait « renommé partout ». C'est le piège de
-// `CLAUDE.md` §8 posé six fois d'affilée, et le plus cher des trois : il produit
-// un état incohérent, pas seulement un silence.
+// Le module est né pour le renommage d'un thème, qui en touchait six (parti le
+// 2026-09-30) : ces `await` étaient NUS, une panne au milieu laissait le compte
+// à moitié renommé et l'écran répondait « renommé partout ». C'est le piège de
+// `CLAUDE.md` §8, et le plus cher : il produit un état incohérent, pas
+// seulement un silence.
 //
 // ── POURQUOI PAS UNE FONCTION SQL `SECURITY DEFINER` ────────────────────────
 //
-// Le ticket 19 pose la question, et elle est juste : six écritures qui doivent
+// Le ticket 19 pose la question, et elle est juste : des écritures qui doivent
 // tenir ensemble SONT une transaction. Elle reste la bonne réponse le jour où
 // la base se joue. Elle n'est pas prenable aujourd'hui — aucun accès à la base,
 // donc une migration écrite et NON JOUÉE (c'est déjà le cas des tickets 03, 04
 // et 05), et un `actions.ts` qui appellerait une fonction inexistante : le
-// renommage d'un thème cesserait de marcher en production au lieu d'être
-// seulement silencieux. On ne remplace pas un mensonge par une panne.
+// renommage cesserait de marcher en production au lieu d'être seulement
+// silencieux. On ne remplace pas un mensonge par une panne.
 //
-// Ce que ce module fait à la place est le patron déjà retenu et écrit dans
-// `_fusionnerLabels` (`app/actions.ts`) : la séquence s'ARRÊTE à la première
-// panne, elle DIT sur quelle étape, et l'ordre des étapes la rend REJOUABLE —
-// la liste maîtresse en dernier, pour qu'un arrêt laisse le thème visible et
-// donc relançable, au lieu de le faire disparaître en laissant des campagnes
-// pointer vers un nom introuvable. C'est un arbitrage, pas une préférence :
+// Ce que ce module fait à la place : la séquence s'ARRÊTE à la première panne,
+// elle DIT sur quelle étape, et l'ordre des étapes la rend REJOUABLE — la liste
+// en dernier, pour qu'un arrêt laisse la catégorie visible et donc relançable,
+// au lieu de la faire disparaître en laissant des événements pointer vers un
+// nom introuvable. C'est un arbitrage, pas une préférence :
 // `arretCascade` est là pour que le client sache TOUJOURS qu'il doit relancer.
 
 /** Ce qu'une écriture PostgREST rend quand elle a échoué — `null` sinon. On ne

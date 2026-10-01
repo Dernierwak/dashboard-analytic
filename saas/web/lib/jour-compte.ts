@@ -6,14 +6,14 @@ import { JOUR_DEFAUT, enFrancais, prochainPassage } from "@/lib/jour-de-travail"
 // ── LE PROCHAIN JOUR DE TRAVAIL, POUR LES PAGES QUI NE LISENT PAS LE RAPPORT ──
 //
 // `lib/report.ts` rapporte déjà `fetch_schedule` avec le reste du payload, et
-// les trois dates en tête du rapport s'en servent. Mais /labels, /conversions
-// et les autres écrans de réglage ne lisent pas `weekly_reports` : ils ont
+// les trois dates en tête du rapport s'en servent. Mais /conversions et les
+// autres écrans de réglage ne lisent pas `weekly_reports` : ils ont
 // besoin de la même date sans le rapport qui va avec.
 //
 // POURQUOI CETTE DATE EST DEVENUE NÉCESSAIRE PARTOUT. Le client ne déclenche
-// plus rien ; trois réglages s'enregistrent tout de suite mais ne changent le
-// rapport qu'au Jour de travail — les priorités de thèmes, l'objectif du
-// compte, les catégories de conversions. « Le geste s'enregistre tout de suite,
+// plus rien ; des réglages s'enregistrent tout de suite mais ne changent le
+// rapport qu'au Jour de travail — l'objectif du compte, les catégories de
+// conversions. « Le geste s'enregistre tout de suite,
 // mais son effet est daté : un message dit qu'il sera pris en compte le
 // <jour> » (`.scratch/refonte/issues/13-entre-deux-jours-de-travail.md` §2).
 // Sans la date, le message serait « plus tard », ce qui ne répond à personne.

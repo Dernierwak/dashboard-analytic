@@ -13,23 +13,24 @@ Règle de rédaction de ce fichier : une ligne n'y reste que si la réponse à
 ## 1 · Le produit
 
 **Pulse** est un SaaS d'analyse marketing. Il récolte les données publicitaires
-et organiques d'un client, les range par **thème** (une étiquette posée sur des
-campagnes et des publications), et publie chaque semaine — le jour que le client
-choisit — **ce qui a bougé chez lui.**
+et organiques d'un client, et publie chaque semaine — le jour que le client
+choisit — **ce qui a bougé chez lui.** Chaque plateforme se lit avec ses propres
+chiffres (`docs/adr/0010`).
 
 **Pulse ne conseille rien.** Le moteur de recommandations, les règles payantes,
 les constats « ce qui marche », le brief rédigé par une IA, le suivi des actions
 et le carnet ont été retirés du produit le 2026-09-21, sur demande de David :
 « je n'arrive plus à suivre cette application ». Ce qui reste est ce qui se
-mesure — le verdict de la semaine, la boussole, l'anneau des thèmes, la frise,
-les cartes de thème et les faits survenus sur les plateformes.
+mesure — le verdict de la semaine, la boussole, la frise et les faits survenus
+sur les plateformes.
 
-**Aucun appel à un modèle de langage ne subsiste dans le produit**, la
-thématisation comprise : un thème se pose à la main, sur la page Thèmes.
+**Le thème et le label n'existent plus** (2026-09-30, carte
+`.scratch/meta-ads/map.md`) : ni page Thèmes, ni étoiles, ni regroupement, ni
+cartes par thème. Rien ne les remplace dans le rapport hebdo, qui se refera
+ailleurs. Ne pas les réintroduire par la bande — ce qui est parti est au
+`BACKLOG.md`.
 
-Le client désigne toujours ses **thèmes prioritaires** (étoiles rangées dans
-`insight_feedback`, clé `priority_label:<nom>`) : c'est ce qui décide des cartes
-affichées en tête du rapport. Rien d'autre n'en dépend plus.
+**Aucun appel à un modèle de langage ne subsiste dans le produit.**
 
 ## 2 · Le dépôt
 
@@ -109,7 +110,7 @@ chercher**, et leur `.md` doit le leur dire.
 | Fichier | Ce qu'il porte |
 |---|---|
 | `BACKLOG.md` | **La source de savoir et de brainstorming.** Les idées notées en chemin, à reprendre. Elle évolue — on y ajoute, on n'y efface pas sans raison. |
-| `CONTEXT.md` | **Le vocabulaire.** Ce que veut dire chaque mot du produit (compte, thème, classement…) et le mot qu'on n'emploie pas. |
+| `CONTEXT.md` | **Le vocabulaire.** Ce que veut dire chaque mot du produit (compte, jour de travail, fenêtre…) et le mot qu'on n'emploie pas. |
 | `docs/mesures-impossibles.md` | **Ce qu'on ne saura jamais mesurer**, et pourquoi. Un écran qui affiche une de ces valeurs ment. Application directe de §7. |
 | `docs/adr/` | Les décisions durables et **leur raison**, une fiche par décision. Ce qui a été tranché ne se re-litige pas sans y revenir. |
 | `.scratch/refonte/plan-de-refonte.md` | **La direction du produit** : la phrase de Pulse, ce qui se valide en premier, la version la plus simple qui le valide, et l'ordre des briques avec leur condition d'entrée. Chaque affirmation pointe le ticket qui l'a tranchée. |
@@ -172,7 +173,7 @@ tout son échafaudage. `git grep` doit être propre.
 ## 9 · Vérifier avant de dire que c'est fait
 
 - `saas/web` : `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et
-  `npm run build` verts, **19 routes** (un écart signale une page de contrôle
+  `npm run build` verts, **18 routes** (un écart signale une page de contrôle
   oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
 - **Le rapport se construit hors ligne** : `build_payload` prend un `Lecteur`
@@ -187,8 +188,7 @@ tout son échafaudage. `git grep` doit être propre.
   depuis l'onglet **GitHub Actions** (`weekly-fetch.yml` : `report_only`,
   `force`, `user_id`, `meta_since`). Le dire à chaque fois,
   et dire **lequel des deux** il faudra. Les quatre boutons de l'app sont
-  partis ; ce qui se regroupe par thème, en revanche, se voit **tout de suite**,
-  à la lecture.
+  partis.
 - Ce qui n'a pas pu être vérifié se dit franchement — pas de vérification
   supposée, pas de résultat prédit.
 

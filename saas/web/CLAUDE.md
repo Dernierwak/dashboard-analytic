@@ -24,19 +24,18 @@ npm run dev
 Vérifier avant de dire que c'est fait (règle de la racine, rappelée ici parce
 qu'elle s'applique à CHAQUE changement dans ce dossier) :
 `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et `npm run build`
-verts, **19 routes** — un écart signale une page de contrôle oubliée.
+verts, **18 routes** — un écart signale une page de contrôle oubliée.
 
 ## Les pages (`app/`)
 
 | Route | Ce qu'elle montre |
 |---|---|
-| `/` (`page.tsx`) | Le rapport hebdo, organisé PAR THÈME — les trois dates, le verdict, la boussole, l'anneau, la frise, puis les cartes de thème, puis ce qu'aucun thème ne prend. Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Il ne conseille rien** : les conseils, le module « À faire », le rail des actions, le Carnet et le résumé IA sont partis le 2026-09-21. **Pas de tuiles KPI ni de dépense par canal** non plus (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
+| `/` (`page.tsx`) | Le rapport hebdo : ce qui a bougé — les trois dates, le verdict, la boussole, la frise, puis les faits survenus sur les plateformes. Le thème, l'anneau et les cartes par thème sont partis le 2026-09-30 sans remplacement (`.scratch/meta-ads/map.md`). Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Il ne conseille rien** : les conseils, le module « À faire », le rail des actions, le Carnet et le résumé IA sont partis le 2026-09-21. **Pas de tuiles KPI ni de dépense par canal** non plus (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
 | `/meta` | Dashboard Meta Ads — périodes 7→Tout, filtres, hero impressions, KPIs, évolution quotidienne, campagnes → adsets → annonces. |
 | `/google` | Dashboard Google Ads — même structure que Meta, jusqu'aux annonces (`google_ads_ad_insights`). |
-| `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts, par thème. Ses modules « formats » et « créneaux » sont morts le 2026-09-12, et le bloc « ce qui marche pour toi » avec les constats le 2026-09-21. |
-| `/labels` | Le copilote des thèmes — sans eux, pas de bilan par thème. Une campagne non étiquetée disparaît de presque toute l'analyse. **C'est le seul endroit où un thème se pose** depuis que la labellisation IA est partie. |
-| `/conversions` | Sélection et catégorisation des conversions GA4 — vivait éclaté sur `/labels` avant, regroupé ici. |
-| `/couts` | Budget publicitaire — un seul horizon piloté, l'année (pas jour ni mois). |
+| `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts. Ses modules « formats » et « créneaux » sont morts le 2026-09-12, et le bloc « ce qui marche pour toi » avec les constats le 2026-09-21. |
+| `/conversions` | Sélection et catégorisation des conversions GA4. |
+| `/couts` | Budget publicitaire — un seul horizon piloté, l'année (pas jour ni mois), et la dépense par plateforme. |
 | `/comptes` | Brancher Meta/Google sur Pulse. Une autorisation OAuth accordée n'est pas une source de données branchée — voir le compte publicitaire ET la propriété Analytics, chacun sa propre étape. |
 | `/equipe` | Inviter un membre. Les données ne sont jamais dupliquées (on élargit la règle de lecture) ; les jetons Meta/Google, eux, ne sont jamais partagés — voir `CLAUDE.md` § 7. |
 | `/login` | Auth Supabase. |
@@ -91,7 +90,7 @@ déjà connectés à re-consentir).
 - `lib/` — logique partagée : `channels.ts` (dashboards Meta/Google/Instagram),
   `report.ts` (payload `weekly_reports` — il ne porte plus ni conseil ni
   action), `budgets.ts`, `couts.ts`,
-  `couverture.ts`, `changements-api.ts`, `oauth.ts`/`oauth-api.ts`, `account.ts`,
+  `changements-api.ts`, `oauth.ts`/`oauth-api.ts`, `account.ts`,
   `connexions.ts`, `palette.ts`, `liens.ts`, `nav-cookie.ts`, `nav-largeur.ts`,
   `jour-de-travail.ts`/`jour-compte.ts` (le jour servi et les dates qu'il
   donne à lire), `github-workflow.ts` (le seul chemin vers GitHub Actions).

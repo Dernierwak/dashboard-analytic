@@ -8,10 +8,8 @@ import {
 } from "@/app/actions";
 import type { ConversionCategoryRow } from "@/lib/channels";
 
-// MÊME PATRON QUE `label-manager.tsx` (createLabel/renameLabel/deleteLabel),
-// sur les catégories de conversions au lieu des thèmes — même geste, deux
-// vocabulaires différents (aucune étoile ici : une catégorie n'a pas de
-// priorité, contrairement à un thème).
+// Créer, renommer, supprimer une catégorie de conversions. Une catégorie n'a
+// pas de priorité : aucune étoile ici.
 
 export function CreateCategory() {
   const [name, setName] = useState("");

@@ -156,7 +156,7 @@ _ACTIVITES = {
 
 # Les événements portés par la campagne elle-même. Pour les autres, on laisse
 # `campaign_id` vide plutôt que d'y ranger l'identifiant d'un ad set : le
-# rattachement au thème se ferait sur une clé fausse, en silence.
+# rattachement à la campagne se ferait sur une clé fausse, en silence.
 _NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status"}
 
 _ETATS_META = {

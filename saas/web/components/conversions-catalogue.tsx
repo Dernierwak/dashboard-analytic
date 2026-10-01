@@ -4,25 +4,14 @@ import { ScrollList } from "@/components/scroll-list";
 import { ConversionCategorySelect } from "@/components/conversion-category-select";
 import type { EvenementCatalogue } from "@/lib/channels";
 
-// « TOUTES TES CONVERSIONS » — module séparé, indépendant de tout thème.
+// « TOUTES TES CONVERSIONS » — le catalogue GA4 complet (`getCatalogueGa4`),
+// page_view et scroll compris : une catégorie doit pouvoir se poser sur
+// n'importe quel événement, même AVANT qu'il soit marqué « clé » par GA4 —
+// sinon impossible de catégoriser en premier ce qui deviendra un jour une
+// conversion reconnue.
 //
-// POURQUOI CE MODULE EXISTE. Retour direct de David après usage réel de la
-// page : le SEUL sélecteur de catégorie vivait dans `conversions-themes.tsx`,
-// à droite de chaque conversion déjà cochée sur un thème étoilé — impossible
-// donc de catégoriser tout le reste du catalogue GA4, celui qui n'est encore
-// suivi par aucun thème. Ce module liste TOUT `evenements.catalogue` (comme
-// l'ancien sélecteur inline le faisait déjà, sans filtre — le catalogue
-// couvre tout ce que la propriété GA4 émet, page_view et scroll compris, pas
-// seulement ce qu'on appelle une conversion, voir l'en-tête de
-// `getThemeEvenements`), pour qu'une catégorie puisse se poser sur n'importe
-// quel événement, qu'il soit déjà suivi par un thème ou non, et même AVANT
-// qu'il soit marqué « clé » par GA4 — sinon impossible de catégoriser en
-// premier ce qui deviendra un jour une conversion reconnue.
-//
-// MÊME PATRON QUE LES DEUX LISTES DE /labels (`labels-listes.tsx`) : une
-// liste « à faire » (sans catégorie) ouverte par défaut, une liste
-// « déjà fait » repliée par défaut — même sélecteur inline que
-// `CampaignLabelSelect`, ici `ConversionCategorySelect`.
+// Deux listes : « à faire » (sans catégorie) ouverte par défaut, « déjà fait »
+// repliée par défaut.
 export function ConversionsCatalogueModule({
   catalogue,
   categories,

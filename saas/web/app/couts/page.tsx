@@ -14,32 +14,32 @@
 //
 // LES COMMANDES NE SONT PLUS SUR LA PAGE, ELLES SONT DANS LE BANDEAU — et il
 // faut savoir ce que ça change, parce que ce n'est pas un déménagement neutre.
-// La période et les thèmes ne gouvernent PAS toute la page : ni l'enveloppe de
-// l'année, ni les cartes par thème ne lisent la période, et l'enveloppe ne lit
-// pas non plus les thèmes. Tant que le filtre était posé DANS la section 2,
+// La période ne gouverne PAS toute la page : l'enveloppe de l'année ne la lit
+// pas. Tant que le filtre était posé DANS la section 2,
 // sa portée se lisait à sa position ; en haut de page, elle doit s'écrire —
 // c'est le rôle de la phrase qui ouvre cette section. Ticket 28.
 //
-// Trois lectures, dans cet ordre, et pas une de plus :
+// Deux lectures, dans cet ordre, et pas une de plus :
 //   1 · TENIR L'ANNÉE — trois chiffres de cadrage, puis DEUX modules côte à
-//       côte : l'enveloppe fixée et sa répartition à gauche (1/3, aucune
-//       forme), la dépense avec sa barre et le trait du calendrier à droite
-//       (2/3). Décider une enveloppe et surveiller une dépense ne se font ni au
-//       même rythme ni dans le même état d'esprit.
-//   2 · OÙ ÇA PART — la SEULE que le bandeau commande : deux anneaux (par
-//       plateforme, par thème) disent la répartition, la courbe dit le rythme.
-//   3 · PAR THÈME — la seule décision de la page, à l'année elle aussi, en
-//       grille de trois colonnes et toujours défilante.
+//       côte : l'enveloppe fixée à gauche (1/3, aucune forme), la dépense avec
+//       sa barre et le trait du calendrier à droite (2/3). Décider une
+//       enveloppe et surveiller une dépense ne se font ni au même rythme ni
+//       dans le même état d'esprit.
+//   2 · OÙ ÇA PART — la SEULE que le bandeau commande : l'anneau par
+//       plateforme dit la répartition, la courbe dit le rythme.
+//
+// La section « Par thème » et l'anneau par thème sont partis avec le thème
+// (2026-09-30, `.scratch/meta-ads/map.md`) : rien ne les remplace.
 //
 // IL N'Y A PLUS DE SECTION « RÉGLAGES ». Ce qui s'y saisissait — l'enveloppe du
-// mois, les budgets mensuels par thème, la table mois par mois — demandait douze
+// mois, les budgets mensuels, la table mois par mois — demandait douze
 // nombres pour en produire un seul, et le premier de ces nombres primait
 // silencieusement sur l'enveloppe d'année. Tout se règle maintenant à l'endroit
 // où le chiffre se lit. Les modules vivent dans
 // `components/couts-modules.tsx` : cette page les compose, elle n'en dessine
 // aucun.
 
-import { getCoutsData, type ThemeSpend } from "@/lib/couts";
+import { getCoutsData } from "@/lib/couts";
 import { getBudgetPlanifie } from "@/lib/budgets";
 import { fmtCHF } from "@/lib/report";
 import {
@@ -47,14 +47,11 @@ import {
   CourbeDepense,
   DepenseAnnee,
   EnveloppeAnnee,
-  LigneTheme,
 } from "@/components/couts-modules";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { aveuglesSur } from "@/lib/canaux-muets";
-import { dateCourte } from "@/components/etat-action";
-import { ScrollList } from "@/components/scroll-list";
-import { ThemeDonut } from "@/components/theme-donut";
+import { Anneau } from "@/components/anneau";
 import { Chiffre } from "@/components/chiffre";
 import { type Teinte } from "@/lib/palette";
 
@@ -98,11 +95,9 @@ function sousBudget(
   return dejaFixe ? "consommation inconnue — une régie n'a pas répondu" : aFixer;
 }
 
-// Les couleurs de canal, forcées sur l'anneau par plateforme. `teinteLabel`
-// indexe sur la liste des THÈMES : Meta et Google y prendraient deux teintes
-// arbitraires, et Google pourrait sortir en bleu — la couleur de Meta dans
-// dix-huit autres endroits de l'application. Les thèmes, eux, gardent leur
-// teinte dans l'anneau ; le bandeau les coche sans couleur, comme partout.
+// Les couleurs de canal, forcées sur l'anneau par plateforme. Sans elles
+// l'anneau teinte ses parts par rang : Google pourrait sortir en bleu — la
+// couleur de Meta dans dix-huit autres endroits de l'application.
 const TEINTE_CANAL: Record<string, Teinte> = {
   Meta: { nom: "meta", trait: "#1a56ff", aplat: "rgba(26, 86, 255, 0.14)" },
   Google: { nom: "google", trait: "#1a7a4a", aplat: "rgba(26, 122, 74, 0.14)" },
@@ -116,10 +111,6 @@ function joindre(noms: string[]): string {
 
 function unSeul(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
-}
-function plusieurs(v: string | string[] | undefined): string[] {
-  if (Array.isArray(v)) return v.filter(Boolean);
-  return v ? [v] : [];
 }
 
 export default async function CoutsPage({
@@ -137,7 +128,6 @@ export default async function CoutsPage({
     p: unSeul(sp.p),
     from: unSeul(sp.from),
     to: unSeul(sp.to),
-    labels: plusieurs(sp.l),
   });
 
   const annee = data.annee;
@@ -153,7 +143,6 @@ export default async function CoutsPage({
     data.totalBudget > 0 && data.totalSpent !== null ? data.totalSpent / data.totalBudget : null;
   const ratioAn =
     data.budgetAnnuel > 0 && data.spentYear !== null ? data.spentYear / data.budgetAnnuel : null;
-  const attribue = data.byTheme.reduce((a, t) => a + t.budgetYear, 0);
   // La sparkline du mois : un jour dont une régie manque vaut `null`, pas 0 —
   // sinon il dessine un creux qui se lit comme une journée sans dépense.
   const jours = data.daily.map((j) =>
@@ -163,30 +152,14 @@ export default async function CoutsPage({
   // taisent l'année, et le seul dont la section « Où ça part » puisse parler.
   const muetsPeriode = aveuglesSur(data.muets, data.periode.to);
 
-  // L'univers des thèmes filtrables : la liste maîtresse, plus tout thème qui a
-  // dépensé sans y figurer. Un label posé sur une campagne mais pas encore
-  // remonté dans `profiles.labels` disparaîtrait sinon du filtre alors qu'il
-  // pèse dans l'anneau.
-  const univers = [
-    ...data.labels,
-    ...data.byTheme.map((t) => t.label).filter((l) => !data.labels.includes(l)),
-  ];
-
-  const vus: ThemeSpend[] = data.filtreActif
-    ? data.byTheme.filter((t) => data.labelsChoisis.includes(t.label))
-    : data.byTheme;
-
   // Le budget de référence de la courbe : par jour, ou par semaine selon le pas.
-  // Il tombe dès qu'un filtre par thèmes est posé — voir le pied du module.
-  const repereCourbe = data.filtreActif
-    ? 0
-    : data.budgetJour * (data.periode.pas === "semaine" ? 7 : 1);
+  const repereCourbe = data.budgetJour * (data.periode.pas === "semaine" ? 7 : 1);
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`. Les grilles de cette
     // page sont déjà en fractions (`minmax(...)`, jamais un pixel fixe), donc
-    // gagner de la largeur profite aux anneaux et à la liste de thèmes au lieu
-    // d'être plafonné avant qu'ils n'en aient besoin.
+    // gagner de la largeur profite à l'anneau et à la courbe au lieu d'être
+    // plafonné avant qu'ils n'en aient besoin.
     <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
       {/* LE TITRE EST LE BANDEAU. Il ne se pose pas au-dessus, il l'absorbe —
           la page n'a donc plus de `<h1>` à elle. Le sur-titre du mois est parti
@@ -200,14 +173,12 @@ export default async function CoutsPage({
           to: data.periode.preset === "custom" ? data.periode.to : undefined,
           max: data.periode.max,
         }}
-        themes={univers}
-        themesActifs={data.labelsChoisis}
       />
 
       <div className="mb-7 mt-3">
         <p className="text-[13px] text-muted leading-relaxed max-w-[68ch]">
           Une seule enveloppe publicitaire, fixée pour l&apos;année. Le mois et le jour en
-          découlent — et la vraie question est de savoir dans quels thèmes elle part.
+          découlent.
         </p>
       </div>
 
@@ -299,7 +270,6 @@ export default async function CoutsPage({
             annee={annee}
             budgetAnnuel={data.budgetAnnuel}
             budgetAnnuelHerite={data.budgetAnnuelHerite}
-            attribue={attribue}
           />
           <DepenseAnnee
             annee={annee}
@@ -319,10 +289,9 @@ export default async function CoutsPage({
             gouverne qu'un tiers. Ce qui se lisait à la POSITION du filtre doit
             donc s'écrire — une fois, ici, et pas sous chaque module. */}
         <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
-          Le bandeau, en haut de page, commande cette section : les deux anneaux disent
-          la répartition — par plateforme, puis par thème — et la courbe dit le rythme.
-          Les chiffres de l&apos;année, plus haut, et la liste des thèmes, plus bas, ne
-          bougent pas : ils restent sur l&apos;année entière.
+          Le bandeau, en haut de page, commande cette section : l&apos;anneau dit la
+          répartition par plateforme, et la courbe dit le rythme. Les chiffres de
+          l&apos;année, plus haut, ne bougent pas : ils restent sur l&apos;année entière.
         </p>
 
         {/* AUCUN ANNEAU SUR UNE RÉPARTITION TROUÉE (ticket 48). Un camembert est
@@ -346,52 +315,23 @@ export default async function CoutsPage({
             restent. Elle revient d&apos;elle-même au prochain passage réussi.
           </p>
         ) : data.totalPeriode > 0 ? (
-          /* DEUX ANNEAUX, PAS UN. « Où ça part » a deux réponses qui ne se
-             déduisent pas l'une de l'autre : sur quelle RÉGIE, et sur quel
-             THÈME. Un compte à 80 % sur Google et un compte partagé ne se
-             pilotent pas pareil, et cette question-là n'avait aucune réponse
-             sur la page — il fallait aller sur les pages canal les lire une par
-             une. Les deux obéissent au même filtre de période et de thèmes, et
-             affichent donc exactement le même total au centre : c'est ce qui
-             fait qu'on les lit comme deux découpes d'un seul gâteau.
-             La plateforme est à GAUCHE parce que c'est la découpe la plus
-             grossière — deux parts contre dix. */
-          <div className="grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3 mb-4 items-stretch">
-            <ThemeDonut
+          <div className="mb-4 max-w-[560px]">
+            <Anneau
               rows={[
-                { label: "Meta", spend: data.parCanalPeriode.meta ?? 0 },
-                { label: "Google", spend: data.parCanalPeriode.google ?? 0 },
+                { nom: "Meta", spend: data.parCanalPeriode.meta ?? 0 },
+                { nom: "Google", spend: data.parCanalPeriode.google ?? 0 },
               ]}
               teintes={TEINTE_CANAL}
               titre="Dépensé par plateforme"
               sousTitre={data.periode.titre}
               unite="plateforme"
               montants
-              etroit
-              note={
-                data.filtreActif
-                  ? "Sur les thèmes que tu as choisis uniquement — les campagnes sans thème sont exclues, comme dans l'anneau voisin."
-                  : "Tout le compte sur la période. Un déséquilibre n'est pas un défaut en soi : c'est une question à se poser quand il n'a jamais été décidé."
-              }
-            />
-            <ThemeDonut
-              rows={vus.map((t) => ({ label: t.label, spend: t.spendPeriode ?? 0 }))}
-              orphan={Math.max(
-                0,
-                data.totalPeriode - vus.reduce((a, t) => a + (t.spendPeriode ?? 0), 0)
-              )}
-              univers={data.labels}
-              titre="Dépensé par thème"
-              sousTitre={data.periode.titre}
-              montants
-              etroit
-              note="La part grise « autres » est ce qui n'est rattaché à aucun thème — des campagnes qu'il reste à étiqueter."
+              note="Tout le compte sur la période. Un déséquilibre n'est pas un défaut en soi : c'est une question à se poser quand il n'a jamais été décidé."
             />
           </div>
         ) : (
           <p className="text-[12.5px] text-muted leading-relaxed mb-4">
-            Aucune dépense sur cette période
-            {data.filtreActif ? " pour les thèmes choisis" : ""}.
+            Aucune dépense sur cette période.
           </p>
         )}
 
@@ -400,91 +340,9 @@ export default async function CoutsPage({
           pas={data.periode.pas}
           titre={data.periode.titre}
           repere={repereCourbe}
-          filtreActif={data.filtreActif}
           dernierePartielle={data.dernierePartielle}
         />
       </section>
-
-      {/* ══ 3 · PAR THÈME ═══════════════════════════════════════════════════ */}
-      {vus.length > 0 && (
-        <section className="mb-9">
-          <Titre sur="La vraie question">Dans quels thèmes ça part</Titre>
-          <p className="text-[12.5px] text-muted leading-relaxed mb-3.5 -mt-1 max-w-[68ch]">
-            C&apos;est ici que se prend la seule décision de la page : quel thème mérite
-            l&apos;enveloppe de l&apos;année, et lequel en consomme sans la rendre. Un thème
-            sans enveloppe affiche sa dépense et rien d&apos;autre — aucun pourcentage
-            n&apos;est estimé à partir d&apos;anciens réglages.
-          </p>
-          {/* Le PIED DE SECTION, monté d'un cran : il serait identique sous les
-              trente-cinq cartes, et la grammaire dit qu'un pied qui se répète
-              appartient à la section. « Réglé dans Meta et Google » était écrit
-              « Posé sur ses campagnes », que personne ne reliait à un réglage de
-              régie ; et son état vide ne disait pas que le chiffre finit par
-              arriver tout seul.
-
-              RESSERRÉ, parce que le pied de `DepenseAnnee` définit déjà ce
-              nombre mot pour mot, huit cents pixels plus haut, et que le
-              lecteur passe par là avant d'arriver ici. Ce qui restait à dire
-              n'est pas la définition mais le LIEN : c'est le même relevé,
-              découpé par thème. On garde quand même de quoi comprendre sans
-              remonter — « pas ce qui en est parti » est la confusion que ce
-              libellé existe pour éviter, elle ne se sous-entend pas.
-
-              La date passe par `dateCourte` : `releveLe` sort de la base en ISO
-              (`2026-08-10`), illisible au milieu d'une phrase française. Le
-              repli tient la valeur `null`, que `vide === false` n'exclut pas
-              formellement. */}
-          <p className="text-[11.5px] text-faint leading-relaxed mb-3 max-w-[68ch]">
-            « Budget réglé dans Meta et Google » est le même relevé qu&apos;en haut de
-            page, découpé thème par thème : ce que tu prévois d&apos;y mettre, pas ce qui
-            en est parti.
-            {planifie.vide
-              ? " Le premier passage hebdomadaire n'a pas encore eu lieu — le chiffre apparaîtra tout seul."
-              : ` Relevé le ${planifie.releveLe ? dateCourte(planifie.releveLe) : "—"}.`}
-          </p>
-
-          {/* TROIS COLONNES, ET TOUJOURS DÉFILANTE. Une ligne par thème sur
-              toute la largeur donnait 35 lignes de 90 px pour un contenu qui en
-              occupe 300 : on faisait défiler pendant dix secondes pour comparer
-              deux thèmes qui auraient tenu côte à côte.
-
-              LES CARTES SE DÉTACHENT. Elles étaient collées, séparées par un
-              seul filet partagé (`gap-px bg-line`) qui ne courait pas sur les
-              quatre côtés : deux cartes voisines se lisaient comme une seule
-              zone, et la troisième colonne se confondait avec le bord du cadre.
-              Chacune a maintenant sa bordure complète, son arrondi et son air
-              autour. Le fond du contenu reste TRANSPARENT — `.defile` peint ses
-              ombres de défilement derrière lui, un fond opaque les éteindrait. */}
-          <ScrollList
-            title={`Par thème · l'année ${annee}`}
-            count={vus.length}
-            maxH="max-h-[70vh]"
-            divise={false}
-          >
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 p-3">
-              {vus.map((t) => (
-                <div
-                  key={t.label}
-                  className="min-w-0 rounded-xl border border-line bg-white shadow-card"
-                >
-                  <LigneTheme
-                    t={t}
-                    part={
-                      data.spentYear !== null && data.spentYear > 0 && t.spendYear !== null
-                        ? (t.spendYear / data.spentYear) * 100
-                        : null
-                    }
-                    elapsedAn={data.elapsedAn}
-                    annee={annee}
-                    univers={data.labels}
-                    planifie={planifie}
-                  />
-                </div>
-              ))}
-            </div>
-          </ScrollList>
-        </section>
-      )}
 
       {/* IL N'Y A PLUS QU'UN SEUL CHAMP D'ENVELOPPE SUR CETTE PAGE, ET C'EST LE
           FIL À PLOMB DE TOUT LE RESTE. Trois suppressions successives y mènent,
@@ -500,20 +358,12 @@ export default async function CoutsPage({
             branche de préséance part avec lui. `lib/couts.ts` n'a donc plus
             aucune règle de préséance sur l'année : `budgetAnnuel` vaut ce qui a
             été tapé, ou zéro ;
-          · l'estimation d'enveloppe PAR THÈME, qui retombait sur la somme des
-            douze mensuels du thème. Elle ne touchait que les thèmes ayant un
-            vieux mensuel : la page semblait juger certains thèmes et pas
-            d'autres, sur un dénominateur que personne n'avait tapé.
+          · l'enveloppe PAR THÈME, partie avec le thème (2026-09-30).
 
           Ce qui est en base n'est pas détruit et l'écran le DIT :
-          `budgetAnnuelHerite` et `ThemeSpend.budgetYearHerite` ne servent qu'à
-          écrire « ces montants ne comptent plus », là où le nombre a disparu. Un
-          réglage qu'on abandonne se raconte, il ne s'efface pas en silence. */}
-
-      {/* ── TON CARNET — le même module que sur les dashboards. Aucune campagne
-          ici (la page ne descend pas sous le thème), et c'est très bien : ce
-          qu'on écrit en regardant une enveloppe parle d'un budget, donc d'un
-          thème ou de rien. */}
+          `budgetAnnuelHerite` ne sert qu'à écrire « ces montants ne comptent
+          plus », là où le nombre a disparu. Un réglage qu'on abandonne se
+          raconte, il ne s'efface pas en silence. */}
     </main>
   );
 }

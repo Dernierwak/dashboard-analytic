@@ -76,7 +76,6 @@ const GROUPES: Groupe[] = [
   {
     titre: "Où va l'argent",
     entrees: [
-      { href: "/labels", label: "Thèmes", glyphe: "◫" },
       { href: "/conversions", label: "Conversions", glyphe: "◈" },
       { href: "/couts", label: "Coûts", glyphe: "◔" },
     ],

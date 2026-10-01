@@ -1,10 +1,9 @@
 import { fmtCHF } from "@/lib/report";
-import type { AlerteJour, PointSerie, ThemeSpend } from "@/lib/couts";
+import type { AlerteJour, PointSerie } from "@/lib/couts";
 import type { BudgetPlanifie } from "@/lib/budgets";
 import { BudgetEditor } from "@/components/budget-editor";
 import { LineChart } from "@/components/line-chart";
-import { CANAL, dateCourte } from "@/components/etat-action";
-import { teinteLabel } from "@/lib/palette";
+import { dateCourte } from "@/components/etat-action";
 
 // LES MODULES DE LA PAGE COÛTS.
 //
@@ -95,8 +94,8 @@ export function BarreBudget({
 // (chaque semaine, en un coup d'œil). Le champ de saisie se retrouvait donc
 // enterré sous une barre, trois chiffres de bilan et deux plateformes.
 //
-//   · `EnveloppeAnnee` — à GAUCHE, sur 1/3 : ce que tu t'autorises, ce que tu
-//     en as promis aux thèmes, et le champ pour le changer. AUCUNE FORME ;
+//   · `EnveloppeAnnee` — à GAUCHE, sur 1/3 : ce que tu t'autorises, et le champ
+//     pour le changer. AUCUNE FORME ;
 //   · `DepenseAnnee`   — à DROITE, sur 2/3 : ce qui est parti, la barre et le
 //     trait du calendrier. C'est lui qui garde la forme.
 //
@@ -138,46 +137,21 @@ function Planifie({ p, montant }: { p: BudgetPlanifie; montant: number }) {
   );
 }
 
-// La phrase de la répartition. Elle vivait sous CHAQUE carte de thème — treize
-// cartes répétaient treize fois le même nombre — et se contentait d'annoncer
-// « 74 950 CHF encore à répartir » sans jamais dire répartir QUOI ni POURQUOI.
-// Elle remonte ici, une seule fois, et dit maintenant le GESTE et son effet :
-// promettre une part de l'enveloppe à un thème, c'est ce qui permet à la page
-// de juger ce thème ensuite. Un nombre qui demande une action doit dire
-// laquelle.
-function phraseRepartition(attribue: number, reste: number): string {
-  if (attribue <= 0) {
-    return "Aucune part de cette enveloppe n'est encore promise à un thème. Promettre un montant à un thème, c'est ce qui permet à la page de dire ensuite lequel tient son budget et lequel dérape — ça se règle thème par thème, dans la liste plus bas.";
-  }
-  if (reste > 0) {
-    return `Tu as promis ${fmtCHF(attribue)} CHF de ton enveloppe à des thèmes précis ; ${fmtCHF(reste)} CHF ne sont promis à personne. Tant qu'un thème n'a pas sa part, la page ne peut pas dire s'il tient son budget — elle ne montre que sa dépense. Le reste se place dans la liste plus bas.`;
-  }
-  if (reste === 0) {
-    return "Toute ton enveloppe est promise à des thèmes : chacun peut donc être jugé sur la sienne, dans la liste plus bas.";
-  }
-  return `Tu as promis ${fmtCHF(attribue)} CHF à tes thèmes pour une enveloppe de ${fmtCHF(attribue + reste)} CHF, soit ${fmtCHF(-reste)} CHF de plus que ce que tu t'autorises. Remonte l'enveloppe, ou baisse un thème dans la liste plus bas.`;
-}
-
 /**
  * L'ENVELOPPE — la seule décision de haut de page, et le seul champ.
  *
- * Rangs : 1 identité · 3 le chiffre · 7 la répartition et sa phrase · 8 le
- * champ · 9 le pied. Pas de rang 6 : la forme appartient à `DepenseAnnee`.
+ * Rangs : 1 identité · 3 le chiffre · 8 le champ · 9 le pied. Pas de rang 6 : la forme appartient à `DepenseAnnee`.
  */
 export function EnveloppeAnnee({
   annee,
   budgetAnnuel,
   budgetAnnuelHerite,
-  attribue,
 }: {
   annee: number;
   budgetAnnuel: number;
   /** Ce que l'ancienne préséance aurait calculé — pour l'écrire, pas pour le servir. */
   budgetAnnuelHerite: number;
-  attribue: number;
 }) {
-  const reste = budgetAnnuel - attribue;
-
   return (
     /* `min-w-0` : élément de grille dont le contenu est un nombre en mono qui
        ne se coupe pas. Sans lui, `min-width: auto` l'empêche de rétrécir et
@@ -205,53 +179,6 @@ export function EnveloppeAnnee({
           ? `Ce que tu t'autorises à dépenser en publicité sur ${annee}, tous canaux confondus.`
           : `Personne n'a encore fixé d'enveloppe pour ${annee}. Tant qu'elle vaut zéro, la page ne peut ni juger un rythme ni signaler un dérapage : elle ne sait que compter.`}
       </p>
-
-      {/* Rang 7 — le détail : ce qui est déjà promis, et ce qui ne l'est pas.
-          Deux nombres à 19 px contre 34, sur UN seul fond — la grammaire
-          l'autorise à cette condition, ce qu'elle interdit c'est la concurrence
-          entre deux chiffres de même taille, pas la densité. */}
-      {budgetAnnuel > 0 ? (
-        <div className="mt-4 rounded-xl bg-black/[0.025] px-4 py-3">
-          <div className="flex gap-x-6 gap-y-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="font-mono text-[19px] leading-none font-medium text-ink">
-                {fmtCHF(attribue)}
-                <span className="text-[11.5px] text-faint"> CHF</span>
-              </div>
-              <div className="text-[9.5px] uppercase tracking-wide text-faint font-semibold mt-1">
-                Promis à des thèmes
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div
-                className={`font-mono text-[19px] leading-none font-medium ${
-                  reste < 0 ? "text-neg" : "text-ink"
-                }`}
-              >
-                {reste >= 0 ? fmtCHF(reste) : `−${fmtCHF(-reste)}`}
-                <span className="text-[11.5px] text-faint"> CHF</span>
-              </div>
-              <div
-                className={`text-[9.5px] uppercase tracking-wide font-semibold mt-1 ${
-                  reste < 0 ? "text-neg" : reste > 0 ? "text-warn" : "text-pos"
-                }`}
-              >
-                {reste < 0 ? "Promis en trop" : reste > 0 ? "Encore libres" : "Tout est promis"}
-              </div>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted mt-3 pt-3 border-t border-line leading-relaxed">
-            {phraseRepartition(attribue, reste)}
-          </p>
-        </div>
-      ) : (
-        attribue > 0 && (
-          <p className="text-[11px] text-warn mt-3 leading-relaxed">
-            {fmtCHF(attribue)} CHF sont déjà promis à des thèmes, sans enveloppe globale pour
-            les borner : rien ne dit encore si c&apos;est trop.
-          </p>
-        )
-      )}
 
       {/* Rang 8 — le pilotage, en bas, collé au bas de la carte pour que les
           deux modules de la rangée finissent à la même ligne. */}
@@ -288,7 +215,7 @@ export function EnveloppeAnnee({
  * répartition est d'abord une affaire de surfaces.
  *
  * Il y avait pire que la redite. Ces lignes lisaient `spentYear` — l'année
- * entière, toujours — quand l'anneau obéit au filtre de période et de thèmes.
+ * entière, toujours — quand l'anneau obéit au filtre de période.
  * Dès qu'on filtrait sur 30 jours, la même page affichait deux partages Meta /
  * Google différents sans dire lequel répondait à quoi.
  *
@@ -480,14 +407,12 @@ export function CourbeDepense({
   pas,
   titre,
   repere,
-  filtreActif,
   dernierePartielle = false,
 }: {
   serie: PointSerie[];
   pas: "jour" | "semaine";
   titre: string;
   repere: number;
-  filtreActif: boolean;
   /** La dernière semaine est en cours : sans ça, elle se lit comme une chute. */
   dernierePartielle?: boolean;
 }) {
@@ -567,14 +492,6 @@ export function CourbeDepense({
             canal : elles peuvent passer dessous chacune tout en dépassant une fois
             additionnées.
           </>
-        ) : filtreActif ? (
-          // Le seuil disparaît dès qu'on filtre, et il faut le dire : comparer la
-          // dépense de deux thèmes au budget de TOUT le compte ferait passer pour
-          // vertueux n'importe quel sous-ensemble.
-          <>
-            Pas de trait de budget ici : ton budget porte sur l&apos;ensemble du compte, le
-            comparer à une sélection de thèmes n&apos;aurait aucun sens.
-          </>
         ) : (
           <>Fixe une enveloppe d&apos;année pour voir apparaître ton budget sur la courbe.</>
         )}
@@ -593,210 +510,6 @@ export function CourbeDepense({
           </>
         )}
       </p>
-    </div>
-  );
-}
-
-// ── UNE LIGNE DE LA LISTE PAR THÈME, à l'année ────────────────────────────
-//
-// C'est ici que se prend la seule décision de la page. Un seul éditeur par
-// thème, celui de l'année : le mensuel par thème demandait douze nombres pour
-// en obtenir un qui vaut le mensuel × 12 dans presque tous les cas.
-//
-// DEUX AJOUTS, ET LE MÊME MOTIF DERRIÈRE LES DEUX — on posait un budget sans
-// rien savoir de ce qu'on était en train de faire :
-//
-//  · SUR QUELLE PLATEFORME l'argent de ce thème est parti. Un thème à 100 % sur
-//    Google et un thème partagé ne se pilotent pas de la même façon, et rien ne
-//    permettait de le voir sans changer de page ;
-//  · CE QUI EST RÉGLÉ sur ses campagnes en ce moment, quand le relevé existe.
-//
-// UN TROISIÈME EST PARTI : l'enveloppe totale et le reste à répartir, écrits
-// sous le champ. C'était juste en intention et faux en pratique — treize cartes
-// répétaient treize fois le même nombre, et le lecteur ne lisait plus rien. La
-// phrase remonte dans `EnveloppeAnnee`, une seule fois, reformulée.
-//
-// Ce qu'on n'affiche PAS, et il faut le dire : le réglé n'est pas ventilé par
-// plateforme AU SEIN d'un thème. `BudgetPlanifie` donne `parCanal` (tout le
-// compte) et `parTheme` (tous canaux confondus), pas le croisement des deux.
-// Le croiser au prorata de la dépense fabriquerait un nombre que personne n'a
-// mesuré — c'est exactement ce que la page s'interdit.
-//
-// AUCUNE ENVELOPPE ESTIMÉE. Un thème sans enveloppe saisie affiche sa dépense
-// et se tait : ni barre, ni pourcentage, ni dénominateur. Elle retombait avant
-// sur la somme des douze mensuels du thème, ce qui produisait à l'écran un
-// « 61 % de l'enveloppe » sur un thème dont le champ affichait 0 — un reproche
-// adossé à un nombre que personne n'avait tapé, et seulement sur les thèmes qui
-// avaient un vieux mensuel. Soit on juge tout le monde, soit personne.
-export function LigneTheme({
-  t,
-  part,
-  elapsedAn,
-  annee,
-  univers,
-  planifie,
-}: {
-  t: ThemeSpend;
-  /** `null` quand la dépense du compte n'est pas connue : une part de quelque
-   *  chose qu'on ne mesure pas n'est pas une part. */
-  part: number | null;
-  elapsedAn: number;
-  annee: number;
-  univers: string[];
-  planifie: BudgetPlanifie;
-}) {
-  // Le verdict d'enveloppe se désarme avec la dépense (ticket 48) : un thème
-  // dont on n'a pas lu la semaine afficherait « 40 % de l'enveloppe » sur un
-  // cumul amputé, et c'est précisément sur ces pourcentages qu'on décide de
-  // remettre de l'argent quelque part.
-  const r = t.budgetYear > 0 && t.spendYear !== null ? t.spendYear / t.budgetYear : null;
-  const teinte = teinteLabel(t.label, univers);
-  const pose = planifie.parTheme[t.label] ?? 0;
-  const canaux = ([
-    ["meta", t.parCanalAn.meta],
-    ["google", t.parCanalAn.google],
-  ] as const).filter((entree): entree is readonly ["meta" | "google", number] =>
-    entree[1] !== null && entree[1] > 0
-  );
-
-  return (
-    <div className="px-4 py-4 h-full flex flex-col min-w-0">
-      {/* Rang 1 — l'identité, et rang 2 à sa droite : le compteur de contexte. */}
-      <div className="flex items-baseline gap-2 min-w-0">
-        <span
-          className="h-2.5 w-2.5 rounded-full shrink-0 border-2 translate-y-[1px]"
-          style={{ background: teinte.aplat, borderColor: teinte.trait }}
-        />
-        <span className="text-[13.5px] font-semibold text-ink truncate min-w-0">{t.label}</span>
-        <span className="ml-auto text-[10.5px] text-faint whitespace-nowrap shrink-0">
-          {part === null ? "part inconnue" : `${part.toFixed(0)} % du total`}
-        </span>
-      </div>
-
-      {/* Rang 3 — le chiffre. Il était en 15 px, la taille d'une ligne de
-          détail : la grammaire demande 22 px au minimum, et c'est le seul
-          nombre que cette carte existe pour montrer. Il porte sa fenêtre et son
-          mot — une somme dit « au total ». */}
-      <div className="font-mono text-[22px] leading-none font-medium text-ink mt-2.5">
-        {t.spendYear === null ? "—" : fmtCHF(t.spendYear)}
-        {t.spendYear !== null && <span className="text-[12px] text-faint"> CHF</span>}
-      </div>
-      <div className="text-[10.5px] text-faint mt-1">
-        {t.spendYear === null ? `${annee} — une régie n'a pas répondu` : `dépensés en ${annee}, au total`}
-        {t.budgetYear > 0 && (
-          <span className="text-muted"> · enveloppe {fmtCHF(t.budgetYear)} CHF</span>
-        )}
-      </div>
-
-      {r !== null ? (
-        <>
-          <BarreBudget ratio={r} repere={elapsedAn} />
-          <div
-            className={`text-[11px] mt-1 font-semibold ${
-              r > 1 ? "text-neg" : r > elapsedAn + 0.1 ? "text-warn" : "text-muted"
-            }`}
-          >
-            {r > 1
-              ? `dépassé de ${fmtCHF((t.spendYear ?? 0) - t.budgetYear)} CHF`
-              : `${Math.round(r * 100)} % de l'enveloppe · ${Math.round(elapsedAn * 100)} % de l'année`}
-          </div>
-        </>
-      ) : (
-        // Rang 7 — et le pied d'hier est venu s'y fondre.
-        //
-        // « Tes budgets mensuels ne font plus une enveloppe d'année » vivait au
-        // rang 9, sous le champ. Deux torts : ce n'est pas une convention de
-        // lecture du module, c'est un fait sur la DONNÉE de ce thème — la même
-        // nature que la phrase juste au-dessus, qui dit qu'il n'a pas
-        // d'enveloppe ; et surtout, posé après le champ, il faisait remonter ce
-        // champ de sa propre hauteur. Deux cartes sur une rangée de trois le
-        // portaient : leurs champs se retrouvaient 114 px plus haut que les
-        // autres, dans un module dont le rang 8 écrit noir sur blanc que des
-        // champs à trois hauteurs différentes se cherchent.
-        //
-        // Fondues, les deux phrases se suivent naturellement : il n'y a pas
-        // d'enveloppe, ET voilà ce qui n'en tient pas lieu. Le champ redevient
-        // le dernier élément de la carte, `mt-auto` ne pousse plus que lui.
-        <div className="text-[11px] text-faint mt-1.5 leading-relaxed">
-          Pas d&apos;enveloppe pour ce thème — sans elle, il n&apos;y a rien à quoi comparer
-          cette dépense.
-          {t.budgetYearHerite > 0 && (
-            <>
-              {" "}
-              Tes budgets mensuels sur ce thème ({fmtCHF(t.budgetYearHerite)} CHF sur douze
-              mois) n&apos;en fabriquent plus une : seul le montant tapé ci-dessous compte.
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Rang 7 — le détail : où c'est parti, et ce qui est réglé dans les
-          régies. Le libellé était « Posé sur ses campagnes », que personne ne
-          reliait à un réglage Meta ou Google. */}
-      <div className="mt-3 pt-2.5 border-t border-line space-y-1">
-        {canaux.length > 0 ? (
-          canaux.map(([cle, montant]) => {
-            const ca = CANAL[cle];
-            return (
-              <div key={cle} className="flex items-baseline gap-1.5 text-[11.5px] min-w-0">
-                <span style={{ color: ca.couleur }}>{ca.glyphe}</span>
-                <span className="text-muted truncate">{ca.nom}</span>
-                <span className="ml-auto font-mono text-ink whitespace-nowrap">
-                  {fmtCHF(montant)}
-                  <span className="text-faint">
-                    {" "}
-                    · {Math.round((montant / Math.max(1, t.spendYear ?? montant)) * 100)} %
-                  </span>
-                </span>
-              </div>
-            );
-          })
-        ) : (
-          <div className="text-[11.5px] text-faint">
-            rien de dépensé sur ce thème en {annee}
-          </div>
-        )}
-        {/* DEUX VIDES, DEUX MOTS — et surtout pas le même.
-            · `planifie.vide` : aucun relevé n'existe encore, on ne SAIT pas.
-              « au prochain relevé » dit que le chiffre arrive.
-            · `pose === 0` avec un relevé : on sait, et la réponse est zéro.
-              Ce zéro-là est mesuré, il n'est donc pas faux — mais « 0 CHF » se
-              lit « rien de prévu », alors que le fait est « aucun budget n'est
-              réglé EN CE MOMENT sur les campagnes de ce thème » : elles sont
-              finies, en pause, ou aucune ne porte ce label. On écrit le fait.
-            Les confondre, c'est faire passer une ignorance pour un constat, ou
-            l'inverse — et le second est le plus grave, parce qu'il se lit comme
-            la ligne honnête de la carte. */}
-        <div className="flex items-baseline gap-2 text-[11.5px] pt-0.5 min-w-0">
-          <span className="text-faint min-w-0">Budget réglé dans Meta et Google</span>
-          <span className="ml-auto whitespace-nowrap">
-            {planifie.vide ? (
-              <span className="text-faint">au prochain relevé</span>
-            ) : pose > 0 ? (
-              <span className="font-mono text-ink">{fmtCHF(pose)} CHF</span>
-            ) : (
-              <span className="text-muted">rien de réglé en ce moment</span>
-            )}
-          </span>
-        </div>
-      </div>
-
-      {/* Rang 8 — le pilotage, en bas, poussé au bas de la carte : dans une
-          grille, des champs de saisie alignés se comparent, des champs qui
-          flottent à trois hauteurs différentes se cherchent.
-          `mt-auto` ne tient cette promesse QUE s'il pousse le champ SEUL. Rien
-          ne se pose plus sous lui — le module n'a pas de rang 9, sa seule
-          phrase d'honnêteté est remontée au rang 7 avec les autres faits sur la
-          donnée du thème. */}
-      <div className="mt-auto pt-3">
-        <BudgetEditor
-          channel={`label:${t.label}`}
-          current={t.budgetYear}
-          periode="an"
-          annee={annee}
-          libelle={`Enveloppe ${annee}`}
-        />
-      </div>
     </div>
   );
 }

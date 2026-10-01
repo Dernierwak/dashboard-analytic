@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Frise } from "@/lib/report";
-import { teinteLabel } from "@/lib/palette";
 
 // « Ce qui tournait » — le temps, enfin visible.
 //
@@ -57,9 +56,8 @@ function mois(iso: string): string {
 const CANAL: Record<string, string> = { meta: "▣", google: "◆" };
 
 // Le format d'une publication. Un point unique disait « il s'est passé quelque
-// chose » ; il ne disait pas quoi. Le glyphe porte le format, la couleur
-// continue de porter le thème — ce sont deux questions différentes et elles
-// tiennent dans le même badge.
+// chose » ; il ne disait pas quoi. Le glyphe porte le format, dans le même
+// badge que la plateforme.
 const FORMAT: Record<string, { glyphe: string; nom: string }> = {
   IMAGE: { glyphe: "▢", nom: "Image" },
   CAROUSEL_ALBUM: { glyphe: "▤", nom: "Carrousel" },
@@ -152,7 +150,7 @@ function Fond({ r }: { r: Repere }) {
   );
 }
 
-export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
+export function FriseSemaine({ f }: { f: Frise }) {
   const cadre = useRef<HTMLDivElement>(null);
   const grille = jours(f.debut, f.fin);
   const n = grille.length;
@@ -233,7 +231,6 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
   if (n < 7) return null;
 
   const x = (i: number) => i * PX;
-  const couleur = (theme: string | null) => (theme ? teinteLabel(theme, univers) : null);
 
   // Jusqu'où chaque source est réellement à jour. Au-delà, on ne sait rien —
   // et une barre qui s'arrête là ne veut pas dire que la campagne s'est arrêtée.
@@ -494,7 +491,6 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
             {f.campagnes.map((c) => {
               const a = Math.max(0, idx(c.debut));
               const b = Math.min(n - 1, idx(c.fin));
-              const t = couleur(c.theme);
               const lim = limite(c.canal);
               const coupe = b >= lim && lim < n - 1;
 
@@ -532,8 +528,8 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                     style={{
                       left: x(a),
                       width: Math.max(5, (b - a + 1) * PX),
-                      background: t?.aplat ?? "rgba(0,0,0,0.06)",
-                      border: `1px solid ${t?.trait ?? "#d8d8de"}`,
+                      background: "rgba(0,0,0,0.06)",
+                      border: "1px solid #d8d8de",
                       maskImage: coupe ? "linear-gradient(90deg,#000 90%,transparent)" : undefined,
                       WebkitMaskImage: coupe
                         ? "linear-gradient(90deg,#000 90%,transparent)"
@@ -551,7 +547,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                       style={{
                         left: x(plan.de),
                         width: Math.max(5, (plan.a - plan.de + 1) * PX),
-                        borderColor: t?.trait ?? "#d8d8de",
+                        borderColor: "#d8d8de",
                       }}
                       title={`${c.nom} · programmée jusqu'au ${libelle(c.fin_prevue!)} — rien de dépensé sur cette portion`}
                     />
@@ -626,9 +622,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                 const bulle = `${periode} · ${liste
                   .map(
                     (q) =>
-                      `${plateforme(q.plateforme).nom} ${format(q.type).nom} — ${
-                        q.theme ?? "sans thème"
-                      }`
+                      `${plateforme(q.plateforme).nom} ${format(q.type).nom}`
                   )
                   .join(" · ")}`;
                 return (
@@ -639,7 +633,6 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                     title={bulle}
                   >
                     {visibles.map((q, k) => {
-                      const t = couleur(q.theme);
                       const pf = plateforme(q.plateforme);
                       const fm = format(q.type);
                       return (
@@ -654,9 +647,9 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                               width: 14,
                               fontSize: 9,
                               lineHeight: 1,
-                              background: t?.aplat ?? "rgba(0,0,0,0.06)",
-                              borderColor: t?.trait ?? "#8a8a94",
-                              color: t?.trait ?? "#5a5d66",
+                              background: "rgba(0,0,0,0.06)",
+                              borderColor: "#8a8a94",
+                              color: "#5a5d66",
                             }}
                           >
                             {pf.glyphe}
@@ -666,7 +659,7 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
                           {parJour && (
                             <span
                               className="font-bold leading-none mt-[2px]"
-                              style={{ fontSize: 8, color: t?.trait ?? "#8b8e98", opacity: 0.85 }}
+                              style={{ fontSize: 8, color: "#8b8e98", opacity: 0.85 }}
                             >
                               {fm.glyphe}
                             </span>
@@ -717,10 +710,11 @@ export function FriseSemaine({ f, univers }: { f: Frise; univers: string[] }) {
             })}
           </>
         )}
-        <span className="text-faint/70 font-normal">
-          la couleur porte le thème
-          {paquetDeborde && " · +N = d'autres publications sur la même colonne, survole pour les lire"}
-        </span>
+        {paquetDeborde && (
+          <span className="text-faint/70 font-normal">
+            +N = d&apos;autres publications sur la même colonne, survole pour les lire
+          </span>
+        )}
       </div>
 
       {/* Une légende par nature de trait. Quatre traits différents cohabitent

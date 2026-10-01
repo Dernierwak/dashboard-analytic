@@ -35,8 +35,6 @@ export type ChangementApi = {
   /** YYYY-MM-DD, en heure locale du compte. */
   date: string;
   campagne: string | null;
-  /** Le thème de la campagne, quand elle en a un. */
-  theme: string | null;
   categorie: CategorieChangement;
   /** Déjà rédigé, prêt à poser dans le fil : « le CPC cible est passé de 0,40 à 0,55 CHF ». */
   phrase: string;
@@ -86,43 +84,28 @@ type LigneChangement = {
  * Renvoie `[]` tant que la table `platform_changes` est vide ou absente —
  * jamais une exception : le fil doit s'afficher entièrement sans elle.
  */
-export async function getChangementsApi(
-  depuis: string,
-  theme?: string | null
-): Promise<ChangementApi[]> {
+export async function getChangementsApi(depuis: string): Promise<ChangementApi[]> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
 
+  // Le thème de chaque campagne se lisait ici dans `*_campaign_config.label`.
+  // Il est parti (2026-09-30), et la lecture avec lui : la colonne tombe au
+  // ticket 02 de `.scratch/meta-ads/`, et une requête sur une colonne absente
+  // aurait vidé le fil EN SILENCE par le `catch` ci-dessous.
   let lignes: LigneChangement[] = [];
-  let metaCfg: { campaign_name: string | null; label: string | null }[] = [];
-  let googCfg: { campaign_id: string | number | null; label: string | null }[] = [];
   try {
-    const [l, m, g] = await Promise.all([
-      fetchAllRows<LigneChangement>(() =>
-        supabase
-          .from("platform_changes")
-          .select("channel, change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
-          .eq("user_id", uid)
-          .gte("occurred_at", depuis)
-          .order("occurred_at", { ascending: false })
-      ),
-      supabase.from("meta_campaign_config").select("campaign_name, label").eq("user_id", uid),
-      supabase.from("google_campaign_config").select("campaign_id, label").eq("user_id", uid),
-    ]);
-    if (m.error) throw m.error;
-    if (g.error) throw g.error;
-    lignes = l;
-    metaCfg = m.data ?? [];
-    googCfg = g.data ?? [];
+    lignes = await fetchAllRows<LigneChangement>(() =>
+      supabase
+        .from("platform_changes")
+        .select("channel, change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
+        .eq("user_id", uid)
+        .gte("occurred_at", depuis)
+        .order("occurred_at", { ascending: false })
+    );
   } catch {
     return []; // table absente (migration pas passée) — le fil s'affiche sans
   }
-
-  // Meta se rattache par NOM de campagne, Google par IDENTIFIANT : c'est la clé
-  // de chaque table de config, et les intervertir perdrait tous les thèmes.
-  const metaLbl = new Map(metaCfg.map((c) => [String(c.campaign_name), c.label]));
-  const googLbl = new Map(googCfg.map((c) => [String(c.campaign_id), c.label]));
 
   const out: ChangementApi[] = [];
   for (const l of lignes) {
@@ -130,15 +113,6 @@ export async function getChangementsApi(
     if (!canal || !l.change_id || !l.occurred_at || !l.resume) continue;
 
     const campagne = l.campaign_name?.trim() || null;
-    const lien =
-      canal === "meta"
-        ? metaLbl.get(String(l.campaign_name)) ?? null
-        : googLbl.get(String(l.campaign_id)) ?? null;
-
-    // Un filtre par thème ne garde QUE ce qui est rattaché à ce thème. Laisser
-    // passer les changements sans campagne « pour ne rien perdre » ferait
-    // remonter des faits d'un autre thème sous le titre de celui-ci.
-    if (theme && lien !== theme) continue;
 
     const brute = String(l.categorie ?? "");
     const categorie = (CATEGORIES as string[]).includes(brute)
@@ -156,7 +130,6 @@ export async function getChangementsApi(
       // lendemain, et le fil la poserait sur le mauvais point de la courbe.
       date: String(l.occurred_at).slice(0, 10),
       campagne,
-      theme: lien,
       categorie,
       phrase: l.resume.trim(),
     });
