@@ -1,0 +1,32 @@
+-- ============================================================================
+-- LE CATALOGUE DES ÉVÉNEMENTS GA4 — profiles.ga4_event_catalog
+-- (copie autonome de la section 14bis de 000_run_me_all.sql —
+--  exécuter l'un OU l'autre, jamais les deux dans la même session)
+--
+-- POURQUOI CE FICHIER EXISTE
+-- `ga4_events` sait compter les événements par jour × source × medium ×
+-- campagne. Le funnel, lui, était une liste de six noms écrits en dur dans
+-- `collecte/ga4/fetch_ga4.py` (view_item, add_to_cart, begin_checkout,
+-- add_payment_info, purchase, generate_lead), devinés pour un site e-commerce
+-- standard. Un site qui nomme ses conversions autrement ne remontait rien, en
+-- silence.
+--
+-- `profiles.ga4_event_catalog` est LA LISTE des événements que la propriété
+-- émet vraiment, rafraîchie à chaque récolte. Un cache, pas une donnée
+-- relationnelle : on la lit toujours en entier, pour un seul utilisateur, et
+-- on ne la joint jamais. D'où le jsonb. /conversions la lit.
+--
+-- Ce fichier s'appelait `theme_ga4_events.sql` : il créait aussi la table qui
+-- rattachait ces événements à un thème. Le thème a quitté le produit le
+-- 2026-09-30 ; la table est détruite par `998_supprimer_le_theme.sql`.
+--
+-- Idempotent : rejouable sans risque. Aucun DROP, aucun DELETE.
+-- ============================================================================
+
+-- Forme : {"maj": "2026-08-18", "evenements": [{"nom","volume","valeur","cle"}]}
+-- `maj` vit DANS le jsonb et non dans une colonne à côté : une colonne nommée
+-- `..._refreshed_at` déclencherait le contrôle de sécurité du bundle, qui
+-- refuse toute colonne de `profiles` dont le nom contient token/secret/refresh
+-- — cette table étant partagée avec les invités.
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS ga4_event_catalog jsonb NOT NULL DEFAULT '{}'::jsonb;

@@ -64,19 +64,16 @@ DECLARE
         'instagram_organic_posts', 'followers_history',
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
-        'weekly_reports', 'insight_feedback',
+        'weekly_reports',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
-        -- le profil : objectif, labels unifiés (profiles.labels), persona IA
+        -- le profil : objectif, persona IA
         'profiles'
     ];
     -- NB : 'meta_campaign_status' figurait dans la liste d'origine. Ce n'est
     -- pas une table, c'est le nom d'une migration qui ajoute une colonne à
     -- meta_campaign_config. La boucle la sautait sans rien dire ; on l'a
     -- retirée plutôt que de laisser croire à une table oubliée.
-    --
-    -- 'unified_labels' non plus n'est pas une table : les labels unifiés vivent
-    -- dans profiles.labels, déjà couvert par la ligne 'profiles'.
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         IF NOT EXISTS (SELECT 1 FROM information_schema.tables

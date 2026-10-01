@@ -1,7 +1,7 @@
 # La migration qui retire le thème de la base
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: 01
 
 ## Question
@@ -50,3 +50,35 @@ worktree neuf ne le voit pas, elle doit aller le lire là :
   `unified_labels.sql`, `vision_labels_ia.sql`.
 Rien n'en a été vérifié. Le ticket 01 est résolu : plus aucun code ne lit ce que
 cette migration supprime, l'ordre « code d'abord, base ensuite » est tenu.
+
+**2026-10-01 — repris, vérifié, en attente de David.** Le travail resté dans
+la copie de `main` est importé tel quel dans la branche
+`worktree-meta-ads-02-migration-theme`, puis joué sur un PostgreSQL 15 local
+et jetable (stub minimal de `auth` et des trois tables que Supabase crée avant
+le `000`) :
+- ancien `000` → données de test (campagne étiquetée avec budget, verdict
+  `priority_label:`, post Instagram étiqueté, `fetch_progress` 'labels' et
+  'meta') → `998` : **exit 0, 20 lignes ✓** au contrôle ;
+- après la `998`, le budget, le post et la ligne 'meta' sont **intacts** ;
+- nouveau `000` joué **deux fois** sur cette base, puis deux fois sur une base
+  vierge : exit 0, aucun objet du thème ne renaît ; seul ✗ du contrôle,
+  `followers_history` absente, qui vient du stub (l'ancien `000` le signalait
+  déjà).
+- Code : `git grep` ne trouve plus aucune lecture ni écriture des objets
+  supprimés dans `saas/` ni `.github/`.
+
+Corrections au passage : le ticket citait `ga4_insights.campaign_labels` —
+la colonne n'a jamais existé, les deux listes vivent dans `profiles` (créées
+par `meta_campaign_config.sql` et `google_ads.sql`), et c'est là que la `998`
+les supprime. Le commentaire de `conversion_categories.sql` renvoyait vers
+deux fichiers supprimés : réécrit. `docs/mesures-impossibles.md` décrit encore
+le thème comme vivant : rangé en `.scratch/corrections/issues/05-…`.
+
+**Ce qui bloque la résolution — deux points que le dépôt ne prouve pas :**
+1. La `998` dit « AUCUNE ARCHIVE, décision de David le 2026-09-30 : “Rien, on
+   perd” » et « l'idée est notée au `BACKLOG.md` ». Ni la phrase ni l'idée
+   n'apparaissent nulle part dans le dépôt. À confirmer par David.
+2. La `998` supprime `insight_feedback` **en entier**, alors que ce ticket
+   disait « les lignes, pas la table ». Plus aucun code ne la lit ni ne
+   l'écrit (les verdicts sont morts le 2026-09-21, les étoiles avec le thème),
+   mais `BACKLOG.md` affirme encore « `insight_feedback` survit ». À valider.

@@ -22,7 +22,7 @@
 --     `/conversions` de compter « mes conversions par catégorie » sur tout le
 --     compte, sans se demander quel thème regarder.
 --
--- MÊME PATRON QUE `theme_ga4_events.sql` / `theme_objectifs.sql` :
+-- LE PATRON :
 --   · le nom est stocké tel quel, comme partout ailleurs dans Pulse — renommer
 --     ou supprimer une catégorie doit donc propager dans
 --     `ga4_event_categories.category` (fait dans `renameConversionCategory` /

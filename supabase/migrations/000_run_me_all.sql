@@ -23,7 +23,6 @@
 --
 --   0)     Socle publicitaire : meta_ads_insights, meta_campaign_config,
 --          google_ads_insights, google_campaign_config
---   1)     profiles.labels — la liste maîtresse unique (Meta + Google + Insta)
 --   2)     GA4 : ga4_insights (+ campagne UTM) et ga4_events (funnel)
 --   3)     profiles.objectif + fetch_schedule
 --   3bis)  google_ads_ad_insights — le détail par annonce
@@ -31,31 +30,28 @@
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   6)     weekly_reports — le rapport hebdo précalculé
 --   7)     Onboarding express (secteur, budget, temps, frustration)
---   8)     label_source + insight_feedback — la labellisation IA validable
 --   12)    Partage d'accès : dashboard_members + a_acces() / peut_editer()
 --   13)    platform_budgets — le budget PLANIFIÉ, relevé par relevé
 --   14)    platform_changes — ce que les plateformes déclarent avoir changé
---   14bis) theme_ga4_events + profiles.ga4_event_catalog — les événements GA4
---          rattachés à un thème. AVANT la section 15, qui doit la partager.
+--   14bis) profiles.ga4_event_catalog — les événements que GA4 émet vraiment
 --   14ter) fetch_progress — l'avancement RÉEL de la récolte, canal par canal.
 --          AVANT la section 15 elle aussi, même raison.
---   14quater) theme_objectifs — l'objectif propre d'un thème prioritaire, quand
---          il diffère de celui du compte. AVANT la section 15, même raison.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   17)    landing_url — la page d'arrivée d'une campagne
 --   18)    profiles.site_url — le site du client
---   20)    label_at + triggers — QUAND une étiquette a été posée
 --   21)    (volontairement absent — voir la section, il faut ta décision)
---   24)    theme_regroupement — LA VUE du regroupement par thème. APRÈS la
---          section 15 : `security_invoker` la fait lire avec les droits de
---          l'appelant, donc elle n'a de sens qu'une fois les politiques de
---          partage posées sur les tables qu'elle agrège.
 --   26)    email_envois — ce qu'est devenu l'email hebdo (ticket 50). APRÈS la
 --          section 15, et sans jamais y entrer : RLS activée, aucune policy,
 --          service_role seul. Mesure d'exploitation, pas information produit.
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
+--
+--   Les sections 1, 8, 14quater, 20 et 24 portaient le thème et le label.
+--   Le thème a quitté le produit le 2026-09-30 : elles sont retirées d'ici, et
+--   ce qu'elles avaient installé est détruit par `998_supprimer_le_theme.sql`,
+--   joué une fois, à la main. Les laisser ici les ferait RENAÎTRE au prochain
+--   passage de ce fichier.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -72,9 +68,9 @@
 -- une base qui porte de vraies données. Tout est donc écrit pour qu'un second
 -- passage ne casse rien et n'efface rien : `IF NOT EXISTS` partout où PostgreSQL
 -- le propose, et le motif `DO $$ … EXCEPTION WHEN duplicate_object THEN NULL`
--- pour ce qui n'en dispose pas (les CHECK). Les trois backfills (labels,
--- label_source, budgets) sont gardés par une condition qui les rend muets au
--- deuxième passage : ils ne réécrasent jamais ce que tu auras saisi entre-temps.
+-- pour ce qui n'en dispose pas (les CHECK). Le backfill des budgets
+-- est gardé par une condition qui le rend muet au deuxième passage : il ne
+-- réécrase jamais ce que tu auras saisi entre-temps.
 --
 -- Une seule instruction de ce fichier retire quelque chose : la section 4
 -- supprime de `profiles` les trois colonnes Google APRÈS les avoir recopiées
@@ -123,12 +119,10 @@ $$ LANGUAGE plpgsql;
 --    POURQUOI CETTE SECTION EXISTE, ALORS QU'ELLE EST LA PLUS ANCIENNE.
 --    Elle manquait. Le fichier commençait à la section 1 en supposant ces
 --    tables déjà là — ce qui est vrai sur la base de production, et faux
---    partout ailleurs. Deux endroits en particulier ne pardonnaient pas :
---      · la section 3ter lit `profiles.meta_budget_global` et
---        `profiles.google_budget_global` pour reprendre les budgets existants ;
---      · la section 8 pose `label_source` sur `meta_campaign_config` et
---        `google_campaign_config`.
---    Sans le socle, ces deux sections échouent — donc tout ce qui suit aussi,
+--    partout ailleurs. La section 3ter, en particulier, ne pardonnait pas :
+--    elle lit `profiles.meta_budget_global` et `profiles.google_budget_global`
+--    pour reprendre les budgets existants. Sans le socle, elle échoue — donc
+--    tout ce qui suit aussi,
 --    l'éditeur SQL de Supabase jouant le fichier d'un bloc.
 -- ============================================================================
 
@@ -211,15 +205,13 @@ ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights
 ALTER TABLE public.meta_ads_insights
     ADD CONSTRAINT meta_ads_insights_uq2 UNIQUE (user_id, date_start, ad_id);
 
--- ── Meta : la config par campagne (étiquette, budget, statut) ───────────────
+-- ── Meta : la config par campagne (budget, statut) ──────────────────────────
 ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS campaign_labels    text[] NOT NULL DEFAULT '{}',
     ADD COLUMN IF NOT EXISTS meta_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS public.meta_campaign_config (
     user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     campaign_name text NOT NULL,
-    label         text,
     budget_max    numeric(12, 2) NOT NULL DEFAULT 0,
     updated_at    timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, campaign_name)
@@ -298,7 +290,6 @@ CREATE TABLE IF NOT EXISTS public.google_campaign_config (
     user_id          uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     campaign_id      text NOT NULL,
     campaign_name    text NOT NULL DEFAULT '',
-    label            text,
     budget_max       numeric(12, 2) NOT NULL DEFAULT 0,
     effective_status text,
     updated_at       timestamptz NOT NULL DEFAULT now(),
@@ -335,40 +326,7 @@ CREATE POLICY "google_campaign_config_delete_own" ON public.google_campaign_conf
 -- connected_accounts, puis les retire de profiles. Les poser ici ne ferait que
 -- les créer pour les supprimer trente lignes plus bas.
 ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS google_campaign_labels text[] NOT NULL DEFAULT '{}',
-    ADD COLUMN IF NOT EXISTS google_budget_global   numeric(12, 2) NOT NULL DEFAULT 0;
-
-
--- ============================================================================
--- 1) LABELS UNIFIÉS  →  profiles.labels (liste maîtresse Meta+Google+Insta)
--- ============================================================================
-
--- On garantit la présence des anciennes listes pour un backfill sûr
--- (no-op si elles existent déjà).
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS campaign_labels        text[] DEFAULT '{}',
-    ADD COLUMN IF NOT EXISTS google_campaign_labels text[] DEFAULT '{}';
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS labels text[] NOT NULL DEFAULT '{}';
-
--- Backfill UNE FOIS : union dédupliquée des anciennes listes (sans vides).
--- Guard `labels = '{}'` → ne réécrase pas ce que l'utilisateur ajoutera ensuite.
-UPDATE public.profiles p
-SET labels = sub.arr
-FROM (
-    SELECT id, ARRAY(
-        SELECT DISTINCT x
-        FROM unnest(
-            coalesce(campaign_labels,        '{}'::text[]) ||
-            coalesce(google_campaign_labels, '{}'::text[])
-        ) AS x
-        WHERE x IS NOT NULL AND btrim(x) <> ''
-    ) AS arr
-    FROM public.profiles
-) sub
-WHERE p.id = sub.id
-  AND (p.labels IS NULL OR p.labels = '{}');
+    ADD COLUMN IF NOT EXISTS google_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
 
 
 -- ============================================================================
@@ -650,65 +608,6 @@ ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS budget_range  text,
     ADD COLUMN IF NOT EXISTS time_budget   text,
     ADD COLUMN IF NOT EXISTS frustration   text;
-
--- ============================================================================
--- 8) Vision globale + labellisation IA — voir vision_labels_ia.sql
---    • label_source ('user'/'ai') : l'IA ne réécrit jamais un label humain
---    • insight_feedback : validation ✓/✗ des constats « Ce qui fonctionne
---      pour toi » — permanente, survit aux recalculs hebdo
--- ============================================================================
-
-ALTER TABLE public.meta_campaign_config
-    ADD COLUMN IF NOT EXISTS label_source text;
-ALTER TABLE public.google_campaign_config
-    ADD COLUMN IF NOT EXISTS label_source text;
-ALTER TABLE public.instagram_organic_posts
-    ADD COLUMN IF NOT EXISTS label_source text;
-
--- Backfill UNE FOIS : tout label déjà posé l'a été à la main.
-UPDATE public.meta_campaign_config
-    SET label_source = 'user'
-    WHERE label IS NOT NULL AND btrim(label) <> '' AND label_source IS NULL;
-UPDATE public.google_campaign_config
-    SET label_source = 'user'
-    WHERE label IS NOT NULL AND btrim(label) <> '' AND label_source IS NULL;
-UPDATE public.instagram_organic_posts
-    SET label_source = 'user'
-    WHERE labels IS NOT NULL AND labels <> '{}' AND label_source IS NULL;
-
-CREATE TABLE IF NOT EXISTS public.insight_feedback (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    insight_key text NOT NULL,          -- clé stable, ex. 'theme_best:e-bike'
-    verdict     text NOT NULL,          -- 'agree' | 'reject'
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT insight_feedback_uq UNIQUE (user_id, insight_key)
-);
-
-CREATE INDEX IF NOT EXISTS idx_insight_feedback_user
-    ON public.insight_feedback (user_id, created_at DESC);
-
-DROP TRIGGER IF EXISTS trg_insight_feedback_updated_at ON public.insight_feedback;
-CREATE TRIGGER trg_insight_feedback_updated_at
-    BEFORE UPDATE ON public.insight_feedback
-    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-ALTER TABLE public.insight_feedback ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "insight_fb_select_own" ON public.insight_feedback;
-DROP POLICY IF EXISTS "insight_fb_insert_own" ON public.insight_feedback;
-DROP POLICY IF EXISTS "insight_fb_update_own" ON public.insight_feedback;
-DROP POLICY IF EXISTS "insight_fb_delete_own" ON public.insight_feedback;
-CREATE POLICY "insight_fb_select_own" ON public.insight_feedback
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "insight_fb_insert_own" ON public.insight_feedback
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "insight_fb_update_own" ON public.insight_feedback
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "insight_fb_delete_own" ON public.insight_feedback
-    FOR DELETE USING (auth.uid() = user_id);
-
 
 -- ============================================================================
 -- 12) PARTAGE D'ACCÈS — inviter quelqu'un sur son dashboard.
@@ -1055,101 +954,28 @@ END $$;
 
 
 -- ============================================================================
--- 14bis) LES ÉVÉNEMENTS GA4 D'UN THÈME — voir theme_ga4_events.sql.
+-- 14bis) LE CATALOGUE DES ÉVÉNEMENTS GA4 — profiles.ga4_event_catalog.
 --
---     POURQUOI « 14bis » ET PAS « 22 » : c'est la seule section ajoutée depuis
---     longtemps qui CRÉE UNE TABLE, et la boucle de partage de la section 15
---     est une liste fermée jouée une fois. Une table née après elle n'aurait
---     aucune politique `partage_*` : elle s'afficherait vide chez l'invité,
---     sans erreur nulle part. Les sections 16 à 21 pouvaient se ranger après —
---     elles n'ajoutent que des colonnes à des tables déjà couvertes. Celle-ci
---     non. Elle se pose donc AVANT la section 15, et son nom figure dans la
---     liste de celle-ci.
---
---     CE QU'ELLE INSTALLE, ET POURQUOI DEUX OBJETS PLUTÔT QU'UN.
 --     Le funnel GA4 était une liste de six noms écrits en dur dans
 --     `collecte/ga4/fetch_ga4.py`, devinés pour un e-commerce standard. Un
 --     site qui nomme ses conversions autrement ne remontait rien, en silence.
---       · `profiles.ga4_event_catalog` (jsonb) — LA LISTE des événements que la
---         propriété émet vraiment, avec leur volume et la marque « événement
---         clé » de GA4. C'est un cache : lu en entier, pour un seul
---         utilisateur, jamais joint. D'où le jsonb plutôt qu'une table.
---       · `theme_ga4_events` — LE CHOIX : quels événements comptent pour quel
---         thème, et lequel porte le verdict.
---     Deux besoins différents, et un seul des deux coûte cher à récolter :
---     savoir QUELS événements existent tient en un appel d'API qui rend une
---     ligne par nom ; en stocker le détail quotidien × source × campagne
---     multiplie `ga4_events` par le nombre de noms.
+--     Ce catalogue est LA LISTE des événements que la propriété émet vraiment,
+--     avec leur volume et la marque « événement clé » de GA4. /conversions la
+--     lit. C'est un cache : lu en entier, pour un seul utilisateur, jamais
+--     joint. D'où le jsonb plutôt qu'une table.
 --
---     PRIMAIRE / SECONDAIRE EST UN CHOIX, PAS UN IMPORT.
---     GA4 ne connaît qu'un booléen : un événement est « clé » (key event,
---     l'ancien « conversion ») ou ne l'est pas. La ressource Admin
---     `properties.keyEvents` porte eventName, custom, deletable,
---     countingMethod, defaultValue — et AUCUN champ primaire/secondaire ; la
---     dimension `isKeyEvent` est binaire elle aussi. Le couple vient de GOOGLE
---     ADS et de ses actions de conversion (`primary_for_goal` : primaire =
---     utilisée par les enchères, secondaire = observée seulement). Un événement
---     clé GA4 importé dans Google Ads y arrive même en secondaire par défaut.
---     `rang` est donc rempli par le client, par thème.
---
---     LE LABEL EST STOCKÉ PAR SON NOM, comme partout ailleurs
---     (`meta_campaign_config.label`, `theme_objectifs.label`). Renommer ou
---     supprimer un thème propage ici — voir `renameLabel` / `deleteLabel`
---     dans saas/web/app/actions.ts.
+--     Il est né avec `theme_ga4_events`, qui disait quel événement comptait
+--     pour quel thème. Le thème a quitté le produit le 2026-09-30 ; la table
+--     est détruite par `998_supprimer_le_theme.sql`, le catalogue reste.
 -- ============================================================================
 
--- Le catalogue. `maj` vit DANS le jsonb et non dans une colonne à côté : une
--- colonne nommée `..._refreshed_at` déclencherait le contrôle de sécurité de
--- fin de fichier, qui refuse toute colonne de `profiles` dont le nom contient
+-- `maj` vit DANS le jsonb et non dans une colonne à côté : une colonne nommée
+-- `..._refreshed_at` déclencherait le contrôle de sécurité de fin de fichier,
+-- qui refuse toute colonne de `profiles` dont le nom contient
 -- token/secret/refresh — cette table étant partagée avec les invités.
 -- Forme : {"maj": "2026-08-18", "evenements": [{"nom","volume","valeur","cle"}]}
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS ga4_event_catalog jsonb NOT NULL DEFAULT '{}'::jsonb;
-
-CREATE TABLE IF NOT EXISTS public.theme_ga4_events (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    label       text NOT NULL,
-    event_name  text NOT NULL,
-    rang        text NOT NULL DEFAULT 'secondaire',
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT theme_ga4_events_uq UNIQUE (user_id, label, event_name)
-);
-
-DO $$
-BEGIN
-    ALTER TABLE public.theme_ga4_events
-        ADD CONSTRAINT theme_ga4_events_rang_ck
-        CHECK (rang IN ('principal', 'secondaire'));
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_theme_ga4_events_user
-    ON public.theme_ga4_events (user_id, label);
-
-DROP TRIGGER IF EXISTS trg_theme_ga4_events_updated_at ON public.theme_ga4_events;
-CREATE TRIGGER trg_theme_ga4_events_updated_at
-    BEFORE UPDATE ON public.theme_ga4_events
-    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
--- « Chacun ses lignes ». Le partage d'équipe est posé par la section 15, qui
--- suit immédiatement et qui porte cette table dans sa liste.
-ALTER TABLE public.theme_ga4_events ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "tge_select_own" ON public.theme_ga4_events;
-DROP POLICY IF EXISTS "tge_insert_own" ON public.theme_ga4_events;
-DROP POLICY IF EXISTS "tge_update_own" ON public.theme_ga4_events;
-DROP POLICY IF EXISTS "tge_delete_own" ON public.theme_ga4_events;
-CREATE POLICY "tge_select_own" ON public.theme_ga4_events
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "tge_insert_own" ON public.theme_ga4_events
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "tge_update_own" ON public.theme_ga4_events
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "tge_delete_own" ON public.theme_ga4_events
-    FOR DELETE USING (auth.uid() = user_id);
 
 
 -- ============================================================================
@@ -1188,70 +1014,10 @@ CREATE TABLE IF NOT EXISTS public.fetch_progress (
     PRIMARY KEY (user_id, canal)
 );
 
--- « Chacun ses lignes » n'est PAS posé ici : contrairement à theme_ga4_events,
--- cette table est neuve et n'a jamais eu d'autre règle. La section 15, juste en
+-- « Chacun ses lignes » n'est PAS posé ici : cette table est neuve et n'a
+-- jamais eu d'autre règle. La section 15, juste en
 -- dessous, lui pose ses politiques `partage_*` et c'est la seule source.
 ALTER TABLE public.fetch_progress ENABLE ROW LEVEL SECURITY;
-
-
--- ============================================================================
--- 14quater) theme_objectifs — l'objectif propre d'un thème prioritaire (voir
---           theme_objectifs.sql, source de vérité).
---
---           AVANT LA SECTION 15, qui doit la partager, même raison que 14bis.
---
---           `profiles.objectif` fixe UN objectif pour tout le compte. Deux
---           thèmes prioritaires n'ont pourtant pas toujours la même vocation :
---           cette table laisse en choisir un DIFFÉRENT par thème. L'absence de
---           ligne EST le « pas de réglage propre » — le thème hérite alors en
---           silence de `profiles.objectif`, exactement comme un compte qui n'a
---           jamais touché à ce réglage aujourd'hui.
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.theme_objectifs (
-    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    label       text NOT NULL,
-    objectif    text NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT theme_objectifs_uq UNIQUE (user_id, label)
-);
-
-DO $$
-BEGIN
-    ALTER TABLE public.theme_objectifs
-        ADD CONSTRAINT theme_objectifs_objectif_ck
-        CHECK (objectif IN ('ventes', 'notoriete', 'engagement'));
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_theme_objectifs_user
-    ON public.theme_objectifs (user_id, label);
-
-DROP TRIGGER IF EXISTS trg_theme_objectifs_updated_at ON public.theme_objectifs;
-CREATE TRIGGER trg_theme_objectifs_updated_at
-    BEFORE UPDATE ON public.theme_objectifs
-    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
--- « Chacun ses lignes », comme theme_ga4_events (contrairement à
--- fetch_progress, ce réglage existe déjà en dehors du partage d'équipe dans le
--- fichier autonome, donc on garde le même filet).
-ALTER TABLE public.theme_objectifs ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "to_select_own" ON public.theme_objectifs;
-DROP POLICY IF EXISTS "to_insert_own" ON public.theme_objectifs;
-DROP POLICY IF EXISTS "to_update_own" ON public.theme_objectifs;
-DROP POLICY IF EXISTS "to_delete_own" ON public.theme_objectifs;
-CREATE POLICY "to_select_own" ON public.theme_objectifs
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "to_insert_own" ON public.theme_objectifs
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "to_update_own" ON public.theme_objectifs
-    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "to_delete_own" ON public.theme_objectifs
-    FOR DELETE USING (auth.uid() = user_id);
 
 
 -- ============================================================================
@@ -1259,13 +1025,11 @@ CREATE POLICY "to_delete_own" ON public.theme_objectifs
 --              de conversions (voir conversion_categories.sql, source de vérité).
 --
 --              AVANT LA SECTION 15, qui doit les partager, même raison que
---              14bis/14ter/14quater.
+--              14ter.
 --
---              `theme_ga4_events` dit quel événement GA4 compte pour quel
---              THÈME. Ceci dit à quel GENRE de conversion appartient chaque
---              événement (Ventes, Contacts…) — PAR NOM D'ÉVÉNEMENT, PAS PAR
---              THÈME : un même événement signifie la même chose quel que soit
---              le thème qui le suit, et c'est ce qui permet au camembert de
+--              Ceci dit à quel GENRE de conversion appartient chaque
+--              événement (Ventes, Contacts…) — PAR NOM D'ÉVÉNEMENT : un même
+--              événement signifie la même chose partout, et c'est ce qui permet au camembert de
 --              /conversions de compter « conversions par catégorie » sur tout
 --              le compte. `category_source` rejoue la règle d'or de la
 --              labellisation IA : un choix humain n'est jamais écrasé par la
@@ -1408,24 +1172,20 @@ DECLARE
         'instagram_organic_posts', 'followers_history',
         'ga4_insights', 'ga4_events',
         -- ce que Pulse produit et ce que l'utilisateur y répond
-        'weekly_reports', 'insight_feedback',
-        'theme_ga4_events', 'theme_objectifs',
+        'weekly_reports',
         -- les catégories de conversions
         'conversion_categories', 'ga4_event_categories',
         -- budgets et journal des plateformes
         'channel_budgets', 'platform_budgets', 'platform_changes',
         -- l'avancement de la récolte, lu par le panneau de « ↻ Mes données »
         'fetch_progress',
-        -- le profil : objectif, labels unifiés, persona IA, site du client
+        -- le profil : objectif, persona IA, site du client
         'profiles'
     ];
     -- NB : 'meta_campaign_status' figurait dans la liste d'origine. Ce n'est
     -- pas une table, c'est le nom d'une migration qui ajoute une colonne à
     -- meta_campaign_config. La boucle la sautait sans rien dire ; on l'a
     -- retirée plutôt que de laisser croire à une table oubliée.
-    --
-    -- 'unified_labels' non plus n'est pas une table : les labels unifiés vivent
-    -- dans profiles.labels, déjà couvert par la ligne 'profiles'.
     --
     -- 'dashboard_members' n'y est pas non plus, et c'est voulu : elle a ses
     -- propres règles (dm_*). L'ouvrir au partage laisserait un invité lire —
@@ -1651,117 +1411,6 @@ COMMENT ON COLUMN public.profiles.site_url IS
 
 
 -- ============================================================================
--- 20) QUAND UNE ÉTIQUETTE A ÉTÉ POSÉE — label_at. Voir labels_origine.sql.
---
---     La section 8 dit QUI a étiqueté ('user' | 'ai'). Elle ne dit pas QUAND.
---     Tant que « Étiqueter tout via l'IA » demandait une validation, ça
---     suffisait. Il applique maintenant DIRECTEMENT — et une action de masse
---     sans retour en arrière est un piège.
---
---     « Annuler » ne peut pas vouloir dire « effacer tout ce qui porte 'ai' » :
---     ça emporterait les étiquettes IA posées il y a trois semaines et gardées
---     depuis. Ce qu'on annule, c'est CE passage-là. Il faut donc une date.
---
---     ORDRE — LE POINT DÉLICAT DU FICHIER : cette section doit venir APRÈS le
---     backfill de la section 8 (`label_source = 'user'` sur les étiquettes
---     existantes). Les triggers ci-dessous horodatent toute écriture ; posés
---     avant, ils dateraient d'aujourd'hui des étiquettes vieilles de six mois.
---
---     AUCUN BACKFILL DE label_at, ET C'EST VOULU. Les lignes existantes gardent
---     NULL. `NULL >= <date>` est faux en SQL : une étiquette IA antérieure ne
---     peut donc JAMAIS tomber dans le périmètre d'une annulation. On ne sait pas
---     quand elle a été posée, alors on ne le prétend pas — et le doute joue en
---     faveur de ce qui est déjà à l'écran.
--- ============================================================================
-
-ALTER TABLE public.meta_campaign_config
-    ADD COLUMN IF NOT EXISTS label_source text,
-    ADD COLUMN IF NOT EXISTS label_at     timestamptz;
-
-ALTER TABLE public.google_campaign_config
-    ADD COLUMN IF NOT EXISTS label_source text,
-    ADD COLUMN IF NOT EXISTS label_at     timestamptz;
-
-ALTER TABLE public.instagram_organic_posts
-    ADD COLUMN IF NOT EXISTS label_source text,
-    ADD COLUMN IF NOT EXISTS label_at     timestamptz;
-
--- Les campagnes portent UN label (colonne `label`), les posts en portent un
--- tableau (colonne `labels`). Même logique, deux fonctions : une fonction
--- générique devrait passer par `to_jsonb(NEW)`, ce qui coûte une sérialisation
--- de la ligne entière à chaque écriture d'insight.
---
--- LA RÈGLE, EN UNE PHRASE : pas de source, pas de date. C'est ce qui permet à
--- l'annulation de fonctionner — elle remet la ligne à (label NULL,
--- label_source NULL) ; sans cette branche, le trigger verrait « le label a
--- changé » et ré-horodaterait à now() la ligne qu'on vient de vider.
-
-CREATE OR REPLACE FUNCTION public.stamp_label_at()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    IF NEW.label_source IS NULL THEN
-        NEW.label_at := NULL;
-    ELSIF TG_OP = 'INSERT'
-       OR NEW.label        IS DISTINCT FROM OLD.label
-       OR NEW.label_source IS DISTINCT FROM OLD.label_source THEN
-        NEW.label_at := now();
-    END IF;
-    -- Sinon : réécriture à l'identique (le worker ré-upsert la même valeur à
-    -- chaque passage) — la date ne bouge pas, l'étiquette n'a pas changé.
-    RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.stamp_label_at_posts()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    IF NEW.label_source IS NULL THEN
-        NEW.label_at := NULL;
-    ELSIF TG_OP = 'INSERT'
-       OR NEW.labels       IS DISTINCT FROM OLD.labels
-       OR NEW.label_source IS DISTINCT FROM OLD.label_source THEN
-        NEW.label_at := now();
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_meta_campaign_config_label_at ON public.meta_campaign_config;
-CREATE TRIGGER trg_meta_campaign_config_label_at
-    BEFORE INSERT OR UPDATE ON public.meta_campaign_config
-    FOR EACH ROW EXECUTE FUNCTION public.stamp_label_at();
-
-DROP TRIGGER IF EXISTS trg_google_campaign_config_label_at ON public.google_campaign_config;
-CREATE TRIGGER trg_google_campaign_config_label_at
-    BEFORE INSERT OR UPDATE ON public.google_campaign_config
-    FOR EACH ROW EXECUTE FUNCTION public.stamp_label_at();
-
-DROP TRIGGER IF EXISTS trg_instagram_organic_posts_label_at ON public.instagram_organic_posts;
-CREATE TRIGGER trg_instagram_organic_posts_label_at
-    BEFORE INSERT OR UPDATE ON public.instagram_organic_posts
-    FOR EACH ROW EXECUTE FUNCTION public.stamp_label_at_posts();
-
--- Index partiels sur label_source = 'ai' : l'annulation ne cherche jamais autre
--- chose, et l'index reste minuscule même quand tout est étiqueté à la main.
-
-CREATE INDEX IF NOT EXISTS idx_meta_cfg_label_ia
-    ON public.meta_campaign_config (user_id, label_at DESC)
-    WHERE label_source = 'ai';
-
-CREATE INDEX IF NOT EXISTS idx_google_cfg_label_ia
-    ON public.google_campaign_config (user_id, label_at DESC)
-    WHERE label_source = 'ai';
-
-CREATE INDEX IF NOT EXISTS idx_insta_posts_label_ia
-    ON public.instagram_organic_posts (user_id, label_at DESC)
-    WHERE label_source = 'ai';
-
-
--- ============================================================================
 -- 21) instagram_posts_par_user.sql — VOLONTAIREMENT ABSENT DE CE FICHIER.
 --
 --     C'est la seule migration du dossier qui EFFACE des lignes. Elle corrige
@@ -1791,421 +1440,6 @@ CREATE INDEX IF NOT EXISTS idx_insta_posts_label_ia
 
 CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
     ON public.instagram_organic_posts (user_id, date DESC);
-
-
--- ============================================================================
--- 24) theme_regroupement — LE REGROUPEMENT PAR THÈME, CALCULÉ EN BASE.
---     Voir theme_regroupement.sql (source de vérité) — le fichier ci-dessous
---     en est la copie, commentaires compris.
---
---     APRÈS LA SECTION 15, ET CE N'EST PAS UN DÉTAIL. La vue est
---     `security_invoker` : elle ne porte aucun droit à elle, elle emprunte ceux
---     de l'appelant sur les tables qu'elle agrège. Posée avant que la section
---     15 n'ait installé les politiques de partage, elle serait créée sur des
---     tables dont les règles vont changer sous elle.
--- ============================================================================
-
-DROP VIEW IF EXISTS public.theme_regroupement;
-
-CREATE VIEW public.theme_regroupement
-WITH (security_invoker = true) AS
-WITH bornes AS (
-    -- LA JOURNÉE EN COURS EST DEHORS (CLAUDE.md §7) — et ici plus qu'ailleurs :
-    -- la vue est lue à n'importe quelle heure, pas une fois par semaine à
-    -- 07:00. Un thème lu à 23:00 un jour de grosse dépense afficherait la
-    -- dépense du jour contre un revenu que Google Analytics n'a pas encore
-    -- attribué, donc un ROAS effondré qui n'a jamais existé.
-    --
-    -- EUROPE/ZURICH, PAS `current_date`. Le serveur est en UTC, le client est
-    -- suisse, et Zurich est EN AVANCE sur UTC : à 00h30 à Zurich le jour J, il
-    -- est encore 22h30 la veille en UTC. `current_date` vaudrait donc J-1, le
-    -- filtre deviendrait « avant J-1 », et la vue perdrait une journée ENTIÈRE
-    -- et complète de dépense — chaque nuit, pendant une à deux heures. Le trou
-    -- se lirait comme une baisse, ce que §7 interdit précisément.
-    SELECT (now() AT TIME ZONE 'Europe/Zurich')::date AS aujourdhui
-),
-
--- ── 1) Les campagnes des deux régies, ramenées à une seule forme ────────────
--- Le grain est la CAMPAGNE, pas le thème : c'est à ce grain que le revenu
--- Google Analytics se rattache (par nom d'UTM), et le regrouper plus tôt
--- perdrait le lien. Une campagne sans étiquette n'entre pas — elle n'appartient
--- à aucun thème.
-campagnes AS NOT MATERIALIZED (
-    SELECT m.user_id,
-           cfg.label                                  AS label,
-           lower(btrim(m.campaign_name))              AS nom_norm,
-           sum(m.spend)                               AS spend,
-           sum(m.clicks)::bigint                      AS clicks,
-           sum(m.impressions)::bigint                 AS impressions
-      FROM public.meta_ads_insights m
-      JOIN public.meta_campaign_config cfg
-        ON cfg.user_id = m.user_id
-       AND cfg.campaign_name = m.campaign_name
-     CROSS JOIN bornes b
-     WHERE m.date_start < b.aujourdhui
-       AND cfg.label IS NOT NULL
-       AND cfg.label <> ''
-     -- Meta s'agrège par NOM BRUT, pas normalisé : deux campagnes qui ne
-     -- diffèrent que par la casse sont deux campagnes chez Meta, et c'est déjà
-     -- comme ça que `build_matrix` les compte.
-     GROUP BY m.user_id, cfg.label, m.campaign_name
-
-    UNION ALL
-
-    SELECT g.user_id,
-           cfg.label,
-           -- Google s'identifie par `campaign_id` ; son NOM sert au seul
-           -- rattachement Google Analytics. Une campagne dont la config n'a pas
-           -- retenu de nom garde le libellé de repli du rapport, qui ne
-           -- rattachera rien — et c'est honnête : on ne sait pas comment elle
-           -- est taguée.
-           lower(btrim(coalesce(nullif(cfg.campaign_name, ''),
-                                'Campagne ' || g.campaign_id))),
-           sum(g.cost_micros)::numeric / 1000000.0,
-           sum(g.clicks)::bigint,
-           sum(g.impressions)::bigint
-      FROM public.google_ads_insights g
-      JOIN public.google_campaign_config cfg
-        ON cfg.user_id = g.user_id
-       AND cfg.campaign_id = g.campaign_id
-     CROSS JOIN bornes b
-     WHERE g.date_start < b.aujourdhui
-       AND cfg.label IS NOT NULL
-       AND cfg.label <> ''
-     GROUP BY g.user_id, cfg.label, g.campaign_id, cfg.campaign_name
-),
-
--- ── 2) Google Analytics sait-il rattacher quoi que ce soit à ce compte ? ────
--- La question se pose AU COMPTE, pas au thème : un compte dont GA4 n'attribue
--- aucune campagne payante ne peut pas dire qu'un thème a rapporté 0 — il ne
--- sait rien. C'est ce drapeau qui décide entre `revenue = 0` et `revenue NULL`.
-ga4_present AS NOT MATERIALIZED (
-    SELECT DISTINCT g.user_id
-      FROM public.ga4_insights g
-     CROSS JOIN bornes b
-     WHERE g.date < b.aujourdhui
-       AND lower(coalesce(g.medium, '')) LIKE ANY (ARRAY['%cpc%', '%ppc%', '%paid%'])
-       AND btrim(coalesce(g.campaign, '')) <> ''
-),
-
--- ── 2 bis) LES NOMS QUE GOOGLE ANALYTICS CONNAÎT, TOUS MEDIUMS CONFONDUS ───
--- Sert à dire ce qu'on NE SAIT PAS, pas à calculer un revenu.
---
--- Une campagne dont le nom n'apparaît nulle part dans `ga4_insights` verse sa
--- dépense au dénominateur du ROAS sans pouvoir jamais verser son revenu au
--- numérateur : le ratio est écrasé, et rien à l'écran ne le disait. Mesuré sur
--- le compte de production le 2026-09-13 : 10 thèmes jugés sur 17 sont dans ce
--- cas, pour 48 431 CHF de dépense sur 90 515 — 9 à cause de Meta seul, dont
--- les noms de campagne ne reprennent presque jamais l'`utm_campaign`.
---
--- Tranché avec David (ticket 18) : on PUBLIE le ROAS et on écrit la part
--- muette à côté. Se taire complètement aurait vidé 59 % des thèmes ; publier
--- sans le dire est ce que §7 interdit.
---
--- AUCUN FILTRE `medium` ICI, contrairement au revenu du bloc 3. La question
--- posée n'est pas « ce nom a-t-il rapporté ? » mais « ce nom existe-t-il pour
--- Google Analytics ? ». Un nom vu en organique EST rattachable ; qu'il ne porte
--- pas de revenu payant est une autre affaire, et c'est déjà celle du bloc 3.
-noms_ga4_connus AS NOT MATERIALIZED (
-    SELECT DISTINCT g.user_id,
-           lower(btrim(g.campaign))  AS nom_norm
-      FROM public.ga4_insights g
-     CROSS JOIN bornes b
-     WHERE g.date < b.aujourdhui
-       AND btrim(coalesce(g.campaign, '')) <> ''
-),
-
--- ── 3) Le revenu attribué, par campagne ────────────────────────────────────
--- Trafic PAYANT seulement (`medium` contenant cpc / ppc / paid) : c'est la
--- convention du rapport depuis l'origine, et c'est ce qui rend le rapport d'un
--- thème comparable à sa dépense.
-ga4_revenu AS NOT MATERIALIZED (
-    SELECT g.user_id,
-           lower(btrim(g.campaign))  AS nom_norm,
-           sum(g.revenue)            AS revenue
-      FROM public.ga4_insights g
-     CROSS JOIN bornes b
-     WHERE g.date < b.aujourdhui
-       AND lower(coalesce(g.medium, '')) LIKE ANY (ARRAY['%cpc%', '%ppc%', '%paid%'])
-       AND btrim(coalesce(g.campaign, '')) <> ''
-     GROUP BY g.user_id, lower(btrim(g.campaign))
-),
-
--- ── 4) Les événements, par campagne ────────────────────────────────────────
--- AUCUN FILTRE `medium` ICI, contrairement au revenu ci-dessus : un événement
--- se rattache par le NOM de campagne et par rien d'autre. Filtrer sur le medium
--- jetterait en silence les campagnes mal taguées — exactement celles dont on
--- veut parler. (Même raison que `build_ga4_context`, `saas/collecte/ga4/ga4.py`.)
-ga4_evenements AS NOT MATERIALIZED (
-    SELECT e.user_id,
-           lower(btrim(e.campaign))  AS nom_norm,
-           e.event_name,
-           sum(e.event_value)        AS value
-      FROM public.ga4_events e
-     CROSS JOIN bornes b
-     WHERE e.date < b.aujourdhui
-       AND btrim(coalesce(e.campaign, '')) <> ''
-       AND e.event_name <> ''
-     GROUP BY e.user_id, lower(btrim(e.campaign)), e.event_name
-),
-
--- ── 5) UN NOM DE CAMPAGNE, UNE FOIS ────────────────────────────────────────
--- Google Analytics n'attribue pas son revenu à UNE campagne : il l'attribue à
--- un NOM d'UTM. Deux campagnes qui portent le même nom — une Meta et une Google
--- taguées pareil, ou deux campagnes Meta qui ne diffèrent que par la casse —
--- ne sont pas deux sources de revenu, c'est le même revenu vu deux fois.
---
--- ⚠ CE N'EST PAS CE QUE FAISAIT `build_matrix`. Elle donnait à CHAQUE campagne
--- le revenu de son nom, puis les additionnait dans le thème : trois campagnes
--- homonymes triplaient le revenu, donc le ROAS, donc le Verdict rendu dessus.
--- Mesuré sur le jeu de vérification : 1 560 CHF affichés pour 520 CHF
--- réellement attribués. Un chiffre fabriqué est un chiffre fabriqué même quand
--- c'est l'ancien code qui le fabriquait (CLAUDE.md §7) — la vue compte le nom
--- une fois. C'est le motif pour lequel le ticket 17 en fait la SEULE source du
--- revenu d'un thème.
-noms AS NOT MATERIALIZED (
-    SELECT DISTINCT user_id, label, nom_norm FROM campagnes
-),
-
--- ── 6) LA conversion que le client a désignée pour un thème ─────────────────
--- Quand un thème a un événement « principal » MESURÉ ET DOTÉ D'UNE VALEUR, cette
--- valeur remplace le revenu générique du compte pour ce thème : sinon la même
--- campagne « achat » gonfle le ROAS d'un thème « newsletter » qui n'a jamais
--- vendu.
---
--- LA CONDITION PORTE SUR LA VALEUR, JAMAIS SUR LE NOMBRE. Un principal mesuré
--- mais sans valeur (generate_lead, sign_up, contact…) — le cas majoritaire hors
--- e-commerce — ne remplace RIEN : il n'a aucun franc à donner, et écrire 0 CHF
--- affirmerait un revenu nul alors que GA4 attribue peut-être un vrai revenu à
--- ces mêmes campagnes. Bug déjà payé une fois : « ROAS 0.0 » publié pour un
--- thème dont les 40 leads mesurés prouvaient le contraire.
-revenu_choisi AS NOT MATERIALIZED (
-    SELECT c.user_id,
-           c.label,
-           sum(ev.value) AS value
-      FROM noms c
-      JOIN public.theme_ga4_events tge
-        ON tge.user_id = c.user_id
-       AND tge.label = c.label
-       AND tge.rang = 'principal'
-      JOIN ga4_evenements ev
-        ON ev.user_id = c.user_id
-       AND ev.nom_norm = c.nom_norm
-       AND ev.event_name = tge.event_name
-     WHERE EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = c.user_id)
-     GROUP BY c.user_id, c.label
-),
-
--- ── 7) Le côté payant d'un thème ───────────────────────────────────────────
--- La DÉPENSE se somme par campagne — chaque régie mesure la sienne, deux
--- campagnes homonymes ont bien coûté deux fois. Le REVENU se somme par nom,
--- pour la raison du bloc 5.
-pub AS NOT MATERIALIZED (
-    SELECT c.user_id,
-           c.label,
-           sum(c.spend)                              AS spend,
-           sum(c.clicks)                             AS clicks,
-           sum(c.impressions)                        AS impressions,
-           -- LA PART MUETTE, au même endroit que la dépense qu'elle qualifie :
-           -- la dépense des campagnes dont Google Analytics ne connaît pas le
-           -- nom. Elle est DANS `spend`, elle ne s'en retranche pas — la
-           -- dépense affichée reste vraie (ticket 18).
-           sum(c.spend) FILTER (WHERE k.nom_norm IS NULL)   AS spend_muette,
-           count(*) FILTER (WHERE k.nom_norm IS NULL)       AS campagnes_muettes
-      FROM campagnes c
-      LEFT JOIN noms_ga4_connus k
-        ON k.user_id = c.user_id
-       AND k.nom_norm = c.nom_norm
-     GROUP BY c.user_id, c.label
-),
-
-revenu_generique AS NOT MATERIALIZED (
-    SELECT n.user_id,
-           n.label,
-           -- Un nom que GA4 ne rattache pas n'apporte rien ; il ne rend pas le
-           -- total du thème inconnu pour autant.
-           sum(coalesce(r.revenue, 0))               AS revenue
-      FROM noms n
-      LEFT JOIN ga4_revenu r
-        ON r.user_id = n.user_id
-       AND r.nom_norm = n.nom_norm
-     GROUP BY n.user_id, n.label
-),
-
--- ── 8) Le côté organique d'un thème ────────────────────────────────────────
--- Un post porte PLUSIEURS thèmes (colonne `labels`) : il compte pour chacun.
--- Une portée absente compte pour 0 dans la moyenne — c'est ce que fait déjà
--- `build_matrix`, et le diviseur reste le nombre de publications.
---
--- ⚠ LE `::numeric` N'EST PAS DÉCORATIF. `count(*)` rend un `bigint`, et la
--- portée est un compte : `sum(bigint) / count(*)` est une DIVISION ENTIÈRE en
--- PostgreSQL. Une portée moyenne de 1 234,7 s'afficherait 1 234 — un chiffre
--- faux qui a l'air juste, sur une colonne dont le type ne vit pas dans ce
--- dépôt (`instagram_organic_posts` est antérieure aux migrations).
---
--- ⚠ IL N'Y A PAS DE COLONNE `eng`, ET IL N'Y EN AURA PAS. Cette vue en lisait
--- une : la migration échouait en `42703` sur la vraie base, donc la vue
--- n'existait nulle part et le rapport ne se construisait pas (ticket 44).
--- L'engagement est un TAUX recalculé à la lecture — `(j'aime + commentaires +
--- enregistrements) / portée × 100`, `CONTEXT.md` — et la formule ci-dessous est
--- au caractère près celle de `lib/channels.ts` l. 1001, qui alimente `/instagram`.
--- Les deux DOIVENT bouger ensemble : la vue existe pour que la base et l'écran
--- lisent la même arithmétique.
---
--- LA MOYENNE EST CELLE DES TAUX POST PAR POST, pas le taux des totaux du thème :
--- c'est ce que rendait `build_matrix` (`("eng", "mean")`) et ce qu'affiche la
--- colonne « Eng. ». Le module « Comparer » calcule l'autre, délibérément
--- (`channel-dash.tsx` l. 849-852) — les deux ne se mettent jamais en face.
---
--- LE `ELSE 0` EST UN ZÉRO FABRIQUÉ, et il est ici À DESSEIN : un post sans
--- portée n'a pas un engagement nul, il en a un inconnu. Les trois
--- implémentations TypeScript écrivent le même zéro ; le corriger ICI SEULEMENT
--- ferait diverger la vue de l'écran, ce que cette vue existe pour empêcher.
--- Écrit plutôt que corrigé : ticket 53.
-posts AS NOT MATERIALIZED (
-    SELECT p.user_id,
-           lbl                                        AS label,
-           count(*)::integer                          AS posts,
-           sum(coalesce(p.reach, 0))::numeric / count(*)  AS reach_avg,
-           sum(CASE WHEN coalesce(p.reach, 0) > 0
-                    THEN (coalesce(p.likes, 0) + coalesce(p.comments, 0)
-                          + coalesce(p.saved, 0))::numeric / p.reach * 100
-                    ELSE 0
-               END) / count(*)                            AS eng_avg
-      FROM public.instagram_organic_posts p
-     CROSS JOIN LATERAL unnest(p.labels) AS lbl
-     CROSS JOIN bornes b
-     WHERE p.labels IS NOT NULL
-       AND (p.date AT TIME ZONE 'Europe/Zurich')::date < b.aujourdhui
-       AND lbl <> ''
-     GROUP BY p.user_id, lbl
-),
-
--- ── 9) Les deux côtés réunis ───────────────────────────────────────────────
--- LA LISTE DES THÈMES D'ABORD, LEURS CHIFFRES ENSUITE — et c'est une question
--- de performance, pas de style. Un `FULL OUTER JOIN` entre le payant et
--- l'organique aurait donné un `user_id` issu d'un `coalesce()` des deux côtés :
--- PostgreSQL ne sait alors plus de quelle table vient la colonne, et le filtre
--- `WHERE user_id = …` de l'appelant reste tout en haut au lieu de descendre
--- jusqu'aux tables. Mesuré sur 300 comptes × 120 jours : 36 000 lignes lues et
--- agrégées pour en rendre UNE. Avec un `UNION`, la colonne est une vraie
--- colonne et le filtre descend dans les deux branches.
---
--- Même raison pour les `NOT MATERIALIZED` ci-dessus : une CTE lue deux fois est
--- matérialisée par défaut depuis PostgreSQL 12, et une CTE matérialisée est un
--- mur que le filtre ne franchit pas. Cette vue est lue À CHAQUE affichage —
--- c'est tout son intérêt — donc elle ne peut pas lire la table entière.
-cles AS NOT MATERIALIZED (
-    SELECT user_id, label FROM pub
-    UNION
-    SELECT user_id, label FROM posts
-),
-
-themes AS NOT MATERIALIZED (
-    SELECT k.user_id,
-           k.label,
-           round(coalesce(pub.spend, 0), 2)      AS spend,
-           coalesce(pub.clicks, 0)               AS clicks,
-           coalesce(pub.impressions, 0)          AS impressions,
-           coalesce(posts.posts, 0)              AS posts,
-           posts.reach_avg                       AS reach_avg,
-           posts.eng_avg                         AS eng_avg,
-           rg.revenue                            AS revenue_generique,
-           coalesce(pub.spend_muette, 0)         AS spend_muette,
-           coalesce(pub.campagnes_muettes, 0)    AS campagnes_muettes
-      FROM cles k
-      LEFT JOIN pub
-        ON pub.user_id = k.user_id AND pub.label = k.label
-      LEFT JOIN revenu_generique rg
-        ON rg.user_id = k.user_id AND rg.label = k.label
-      LEFT JOIN posts
-        ON posts.user_id = k.user_id AND posts.label = k.label
-)
-SELECT t.user_id,
-       t.label,
-       t.spend,
-       t.clicks,
-       t.impressions,
-       CASE WHEN t.impressions > 0
-            THEN round(t.clicks::numeric / t.impressions * 100, 2)
-       END                                              AS ctr,
-       t.posts,
-       round(t.reach_avg, 1)                            AS reach_avg,
-       round(t.eng_avg, 2)                              AS eng_avg,
-       round(rev.montant, 2)                            AS revenue,
-       -- LE SEUIL DE JUGEMENT, sur la dépense DÉJÀ ARRONDIE : c'est l'ordre que
-       -- suivait `build_matrix`, et 99,995 CHF ne doit pas être jugé ici et
-       -- ignoré ailleurs.
-       (t.spend >= 100) AS juge,
-       CASE WHEN t.spend >= 100 AND rev.montant IS NOT NULL
-            -- Revenu NON arrondi au numérateur, dépense arrondie au
-            -- dénominateur — là encore l'ordre de `build_matrix`.
-            THEN round(rev.montant / t.spend, 2)
-       END                                              AS roas,
-       -- CE QUE LE ROAS CI-DESSUS NE PEUT PAS VOIR (ticket 18).
-       --
-       -- `spend_muette` est la part de `spend` dépensée par des campagnes dont
-       -- Google Analytics ne connaît pas le nom : elle pèse sur le dénominateur
-       -- et ne peut rien apporter au numérateur. Un ROAS dont `spend_muette`
-       -- vaut la moitié de `spend` n'est pas faux, il est INCOMPLET — et ça
-       -- doit se lire à côté du chiffre, jamais se deviner.
-       --
-       -- NULL, ET PAS 0, QUAND ON NE SAIT RIEN. Sur un compte où Google
-       -- Analytics n'attribue aucune campagne payante, `revenue` est déjà NULL
-       -- et aucun ROAS n'est publié : annoncer « 0 CHF non rattachable » y
-       -- affirmerait que tout est rattaché, ce qui est le contraire de la
-       -- vérité (CLAUDE.md §7).
-       CASE WHEN EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = t.user_id)
-            THEN round(t.spend_muette, 2)
-       END                                              AS spend_muette,
-       CASE WHEN EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = t.user_id)
-            THEN t.campagnes_muettes
-       END                                              AS campagnes_muettes
-  FROM themes t
-  LEFT JOIN revenu_choisi rc
-    ON rc.user_id = t.user_id
-   AND rc.label   = t.label
- CROSS JOIN LATERAL (
-     SELECT CASE
-              WHEN NOT EXISTS (SELECT 1 FROM ga4_present p WHERE p.user_id = t.user_id)
-                   THEN NULL
-              -- La conversion choisie prend la place du revenu générique — mais
-              -- seulement si elle a des francs à donner.
-              WHEN rc.value > 0 THEN rc.value
-              ELSE coalesce(t.revenue_generique, 0)
-            END AS montant
- ) rev;
-
-COMMENT ON VIEW public.theme_regroupement IS
-    'Le total par thème, recalculé à la lecture sur tout l''historique moins la '
-    'journée en cours. Source unique du revenu et du ROAS d''un thème, seuil de '
-    'jugement compris (`juge`). Voir .scratch/construction/issues/04-vue-sql-du-regroupement.md.';
-
--- ── Les droits ──────────────────────────────────────────────────────────────
--- `security_invoker = true` fait lire la vue AVEC les droits de l'appelant :
--- les politiques RLS des tables de base s'appliquent, donc un membre invité ne
--- voit que les comptes auxquels `a_acces()` lui ouvre la porte. Sans cette
--- option, la vue lirait avec les droits de son propriétaire et montrerait les
--- chiffres de tout le monde.
---
--- ⚠ LE WORKER, LUI, PASSE PAR LA CLÉ DE SERVICE : la RLS ne le filtre pas. Sa
--- lecture DOIT porter son propre `user_id` — c'est fait dans
--- `fetch_theme_regroupement` (`saas/commun/fetch_data.py`), pas ici.
---
--- Les rôles sont vérifiés plutôt que supposés : ce fichier doit pouvoir se
--- jouer sur un PostgreSQL nu (harnais de vérification), où `anon` n'existe pas.
-DO $$
-DECLARE
-    r text;
-BEGIN
-    FOREACH r IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
-        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-            EXECUTE format('GRANT SELECT ON public.theme_regroupement TO %I', r);
-        ELSE
-            RAISE NOTICE 'rôle % absent — GRANT sauté', r;
-        END IF;
-    END LOOP;
-END $$;
 
 
 -- ============================================================================
@@ -2290,24 +1524,17 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'google_ads_ad_insights',   NULL),
     ('t', 'ga4_insights',             NULL),
     ('t', 'ga4_events',               NULL),
-    ('t', 'insight_feedback',         NULL),
     ('t', 'channel_budgets',          NULL),
     ('t', 'weekly_reports',           NULL),
     ('t', 'email_envois',             NULL),
     ('t', 'dashboard_members',        NULL),
     ('t', 'platform_budgets',         NULL),
     ('t', 'platform_changes',         NULL),
-    ('t', 'theme_ga4_events',         NULL),
     ('t', 'fetch_progress',           NULL),   -- §14ter
-    ('t', 'theme_objectifs',          NULL),   -- §14quater
     ('t', 'conversion_categories',    NULL),   -- §14quinquies
     ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
-    -- `to_regclass` ne distingue pas une vue d'une table : la ligne dit
-    -- « table » dans le tableau, elle vérifie bien la vue de la §24.
-    ('t', 'theme_regroupement',       NULL),   -- §24 (vue)
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
     --    s'enregistrer avec un message d'erreur
-    ('c', 'profiles',                 'labels'),               -- §1
     ('c', 'profiles',                 'objectif'),             -- §3
     ('c', 'profiles',                 'business_type'),        -- §7
     ('c', 'profiles',                 'budget_range'),         -- §7
@@ -2315,31 +1542,22 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'profiles',                 'frustration'),          -- §7
     ('c', 'profiles',                 'site_url'),             -- §18
     ('c', 'profiles',                 'ga4_event_catalog'),    -- §14bis
-    ('c', 'theme_ga4_events',         'rang'),                 -- §14bis
     ('c', 'connected_accounts',       'provider'),             -- §4
     ('c', 'connected_accounts',       'google_refresh_token'), -- §4
     ('c', 'connected_accounts',       'google_customer_id'),   -- §4
     ('c', 'connected_accounts',       'ga4_property_id'),      -- §4
     ('c', 'ga4_insights',             'campaign'),             -- §2
     ('c', 'meta_campaign_config',     'effective_status'),     -- §0
-    ('c', 'meta_campaign_config',     'label_source'),         -- §8
-    ('c', 'meta_campaign_config',     'label_at'),             -- §20
     ('c', 'meta_campaign_config',     'start_date'),           -- §16
     ('c', 'meta_campaign_config',     'end_date'),             -- §16
     ('c', 'meta_campaign_config',     'landing_url'),          -- §17
-    ('c', 'google_campaign_config',   'label_source'),         -- §8
-    ('c', 'google_campaign_config',   'label_at'),             -- §20
     ('c', 'google_campaign_config',   'start_date'),           -- §16
     ('c', 'google_campaign_config',   'end_date'),             -- §16
     ('c', 'google_campaign_config',   'landing_url'),          -- §17
-    ('c', 'instagram_organic_posts',  'label_source'),         -- §8
-    ('c', 'instagram_organic_posts',  'label_at'),             -- §20
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
-    ('f', 'public.peut_editer(uuid)',      NULL),   -- §12
-    ('f', 'public.stamp_label_at()',       NULL),   -- §20
-    ('f', 'public.stamp_label_at_posts()', NULL)    -- §20
+    ('f', 'public.peut_editer(uuid)',      NULL)    -- §12
 ),
 catalogue AS (
     SELECT
@@ -2407,9 +1625,10 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 22 tables de la section 15.
---      (Le chiffre annoncé ici était 20 : il datait d'avant conversion_categories
---      et ga4_event_categories. Compté sur la liste, pas de mémoire.)
+--   A) Ce que l'invité peut lire — doit lister les 17 tables de la section 15.
+--      (Mesuré le 2026-09-30 sur un PostgreSQL local, après le retrait de
+--      insight_feedback, theme_ga4_events et theme_objectifs : 17 tables
+--      distinctes portent une politique `partage_*`.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

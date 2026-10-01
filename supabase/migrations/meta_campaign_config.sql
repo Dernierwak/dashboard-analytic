@@ -1,19 +1,17 @@
 -- ============================================================
--- Migration : labels campagne + persistance budgets
--- 1. Ajoute campaign_labels et meta_budget_global à profiles
--- 2. Crée la table meta_campaign_config (label + budget_max par campagne)
+-- Migration : persistance des budgets
+-- 1. Ajoute meta_budget_global à profiles
+-- 2. Crée la table meta_campaign_config (budget_max par campagne)
 -- ============================================================
 
 -- ── 1. Extension de profiles ───────────────────────────────────
 ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS campaign_labels text[] NOT NULL DEFAULT '{}',
     ADD COLUMN IF NOT EXISTS meta_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
 
 -- ── 2. Table meta_campaign_config ──────────────────────────────
 CREATE TABLE IF NOT EXISTS public.meta_campaign_config (
     user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     campaign_name text NOT NULL,
-    label         text,
     budget_max    numeric(12, 2) NOT NULL DEFAULT 0,
     updated_at    timestamptz NOT NULL DEFAULT now(),
 

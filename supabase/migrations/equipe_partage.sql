@@ -199,7 +199,7 @@ DECLARE
     tables text[] := ARRAY[
         'meta_ads_insights', 'google_ads_insights', 'google_ads_ad_insights',
         'instagram_organic_posts', 'followers_history', 'ga4_insights',
-        'ga4_events', 'weekly_reports', 'insight_feedback',
+        'ga4_events', 'weekly_reports',
         'channel_budgets', 'meta_campaign_config',
         'google_campaign_config', 'meta_campaign_status', 'profiles'
     ];
