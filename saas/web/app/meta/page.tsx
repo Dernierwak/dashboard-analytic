@@ -34,15 +34,16 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
     // colonne latérale ; un plafond fixe finit toujours par redevenir trop
     // étroit dès que l'écran ou la colonne change.
     <main className="px-4 pb-16 sm:px-6 lg:px-8">
+      {/* Jamais remonté par une `key` : la pilule se rattacherait en haut à
+          chaque période choisie en plein défilement. */}
       <BandeauMeta
-        // Remonté à chaque période : ses deux champs de date repartent des
-        // bornes réellement affichées, pas de ce qui avait été tapé.
-        key={`${meta.periode.debut}-${meta.periode.fin}`}
         lecture={meta.lecture}
         params={searchParams}
+        vue={meta.vue}
         campagnes={meta.campagnes}
         campagneChoisie={choisie}
         periode={meta.periode}
+        raccourcis={meta.raccourcis}
         hier={meta.hier}
       />
 

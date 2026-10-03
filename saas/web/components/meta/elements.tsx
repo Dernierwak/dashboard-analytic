@@ -4,8 +4,8 @@ import { formaterEcart, tonEcart, type CleMetrique, type Vue } from "@/lib/meta/
 // se rendent côté serveur comme côté client.
 
 // Dessinées à la main (trait 1,75, 24 px), comme celles du prototype validé :
-// pas de dépendance d'icônes ajoutée pour cinq glyphes.
-export type NomIcone = "oeil" | "clic" | "coche" | "fleche" | "calques" | "calendrier";
+// pas de dépendance d'icônes ajoutée pour huit glyphes.
+export type NomIcone = "oeil" | "clic" | "coche" | "fleche" | "calques" | "calendrier" | "chevron" | "loupe";
 
 export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className?: string }) {
   const t = { fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -17,11 +17,19 @@ export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className
       {nom === "fleche" && <path {...t} d="M5 12h14M12 5l7 7-7 7" />}
       {nom === "calques" && <><path {...t} d="m12 2 10 5-10 5L2 7l10-5Z" /><path {...t} d="m2 17 10 5 10-5M2 12l10 5 10-5" /></>}
       {nom === "calendrier" && <><rect {...t} x="3" y="4" width="18" height="18" rx="2" /><path {...t} d="M16 2v4M8 2v4M3 10h18" /></>}
+      {nom === "chevron" && <path {...t} d="m6 9 6 6 6-6" />}
+      {nom === "loupe" && <><circle {...t} cx="11" cy="11" r="7" /><path {...t} d="m21 21-4.3-4.3" /></>}
     </svg>
   );
 }
 
 export const ICONE_VUE: Record<Vue, NomIcone> = { notoriete: "oeil", trafic: "clic" };
+
+/** L'ancre du Sélecteur de vue : quand ses cartes sortent de l'écran, le
+ *  Bandeau se détache en pilule et la vue active s'y replie (user story 10).
+ *  Ici, sans directive, parce que le serveur (le Sélecteur) et le client (le
+ *  Bandeau) la lisent tous deux (`CLAUDE.md` §8). */
+export const ID_SELECTEUR_VUE = "selecteur-vue";
 
 /** Ce que veut dire un écart « — » : écrit au survol, pour qu'on ne le prenne
  *  pas pour une panne. */

@@ -152,18 +152,100 @@ export function periodeDe(c: Commandes, ctx: Contexte): Periode {
     else if (debut > borne) debut = borne;
     fin = borne;
   }
-  const jours = ecartJours(debut, fin) + 1;
-  const avantFin = decaler(debut, -1);
   return {
     debut,
     fin,
-    avantDebut: decaler(avantFin, -(jours - 1)),
-    avantFin,
-    jours,
+    ...periodeAvant(debut, fin),
     parDefaut,
     rognee,
     arreteeAuDernierJourLu,
   };
+}
+
+/** La durée d'une période et la période d'avant, de même durée, qui finit la
+ *  veille de son premier jour (spec, user story 9). */
+export function periodeAvant(debut: string, fin: string): { jours: number; avantDebut: string; avantFin: string } {
+  const jours = ecartJours(debut, fin) + 1;
+  const avantFin = decaler(debut, -1);
+  return { jours, avantDebut: decaler(avantFin, -(jours - 1)), avantFin };
+}
+
+// ── Les raccourcis de période ────────────────────────────────────────────────
+
+/** Spec, user story 8 : de 7 jours à 12 semaines. */
+export const RACCOURCIS: { jours: number; nom: string }[] = [
+  { jours: 7, nom: "7 derniers jours" },
+  { jours: 14, nom: "14 derniers jours" },
+  { jours: 28, nom: "4 dernières semaines" },
+  { jours: 56, nom: "8 dernières semaines" },
+  { jours: 84, nom: "12 dernières semaines" },
+];
+
+export type Raccourci = {
+  jours: number;
+  nom: string;
+  /** Ce que le lien écrit — toujours des dates, même pour « 7 derniers
+   *  jours » qui égale la semaine mesurée : sans elles, le lien partagé
+   *  rouvrirait la semaine mesurée du jour où on l'ouvre (revue du ticket 07). */
+  from: string;
+  to: string;
+  actif: boolean;
+};
+
+/**
+ * Les raccourcis finissent là où finit la semaine mesurée — la veille du
+ * dernier Jour de travail, ou le dernier jour lu si la récolte a échoué — et
+ * non la veille d'aujourd'hui : la récolte ne passe qu'au Jour de travail, les
+ * jours suivants n'ont encore aucune ligne, et « 4 dernières semaines »
+ * compterait des trous.
+ *
+ * Ils s'écrivent en dates, pas en « 28 j » : un lien partagé rouvre la période
+ * qu'on a vue, pas une autre qui aurait glissé depuis (user story 11).
+ */
+export function raccourcisDe(periode: Periode, ctx: Contexte): Raccourci[] {
+  const defaut = periodeDe({}, ctx);
+  return RACCOURCIS.map(({ jours, nom }) => ({
+    jours,
+    nom,
+    from: decaler(defaut.fin, -(jours - 1)),
+    to: defaut.fin,
+    actif: periode.fin === defaut.fin && periode.jours === jours,
+  }));
+}
+
+/** Deux jours cliqués dans le calendrier, dans n'importe quel ordre :
+ *  `periodeDe` retomberait sur la semaine mesurée si `from` dépassait `to`. */
+export function periodeEntre(a: string, b: string): { from: string; to: string } {
+  return a <= b ? { from: a, to: b } : { from: b, to: a };
+}
+
+// ── Le calendrier ────────────────────────────────────────────────────────────
+
+const MOIS_LONGS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+export type MoisCalendrier = {
+  /** « 2026-09 » */
+  cle: string;
+  /** « septembre 2026 » */
+  nom: string;
+  /** Lundi en tête ; `null` pour les cases d'avant le 1er. */
+  cases: (string | null)[];
+};
+
+/** `cle` : « AAAA-MM ». En UTC, comme toutes les dates de ce module. */
+export function moisCalendrier(cle: string): MoisCalendrier {
+  const [annee, mois] = cle.split("-").map(Number);
+  const premier = Date.UTC(annee, mois - 1, 1);
+  const n = new Date(Date.UTC(annee, mois, 0)).getUTCDate();
+  const vides = (new Date(premier).getUTCDay() + 6) % 7;
+  const cases: (string | null)[] = Array(vides).fill(null);
+  for (let j = 0; j < n; j++) cases.push(new Date(premier + j * JOUR_MS).toISOString().slice(0, 10));
+  return { cle, nom: `${MOIS_LONGS[mois - 1]} ${annee}`, cases };
+}
+
+export function moisVoisin(cle: string, delta: number): string {
+  const [annee, mois] = cle.split("-").map(Number);
+  return new Date(Date.UTC(annee, mois - 1 + delta, 1)).toISOString().slice(0, 7);
 }
 
 // ── Les campagnes, par leur ID ───────────────────────────────────────────────
@@ -176,35 +258,58 @@ export function cleCampagne(l: LigneMeta): string {
   return l.campagneId ?? `${PREFIXE_SANS_ID}${l.campagneNom}`;
 }
 
+/** La palette des pastilles de campagne : celle du prototype validé (ticket
+ *  05), repassée au validateur `dataviz` sur fond blanc dans cet ordre (CVD
+ *  ΔE ≥ 9,1 entre voisins). Trois teintes sont sous 3:1 de contraste : le nom
+ *  est donc toujours écrit à côté de la pastille, jamais la couleur seule. */
+export const PALETTE_CAMPAGNES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+/** Au-delà de huit campagnes : un gris neutre. Une teinte réutilisée ferait
+ *  passer deux campagnes pour une seule ; une teinte générée ne passerait pas
+ *  le validateur. */
+export const PASTILLE_NEUTRE = "#c3c2bb";
+
 export type Campagne = {
   cle: string;
   nom: string;
   /** Une ligne d'avant le rejeu des IDs (ticket 03) : regroupée par son nom,
    *  à part des campagnes identifiées. */
   sansId: boolean;
-  depense: number;
+  /** La dépense de la PÉRIODE lue. `null` = aucune ligne sur la période (la
+   *  campagne n'a tourné qu'avant) : rien de mesuré, pas « 0 CHF ». */
+  depense: number | null;
+  /** La couleur suit la campagne, jamais son rang : elle est donnée dans
+   *  l'ordre des clés (l'ID Meta), pas dans celui de la dépense — un menu
+   *  reclassé ne repeint rien, et choisir une campagne ne repeint pas les
+   *  autres. Elle peut changer d'une période à l'autre si l'ensemble des
+   *  campagnes présentes change. */
+  couleur: string;
 };
 
-/** Les campagnes présentes, la plus dépensière d'abord, chacune sous le nom
- *  porté par sa ligne la plus récente. */
-export function campagnesDe(lignes: LigneMeta[]): Campagne[] {
-  const parCle = new Map<string, Campagne & { dateNom: string }>();
+/** Les campagnes présentes, la plus dépensière sur `courante` d'abord, chacune
+ *  sous le nom porté par sa ligne la plus récente. Sans `courante`, la
+ *  dépense est celle de toutes les lignes reçues. */
+export function campagnesDe(lignes: LigneMeta[], courante?: { debut: string; fin: string }): Campagne[] {
+  const compte = (l: LigneMeta) => !courante || (l.date >= courante.debut && l.date <= courante.fin);
+  const parCle = new Map<string, Omit<Campagne, "couleur"> & { dateNom: string }>();
   for (const l of lignes) {
     const cle = cleCampagne(l);
-    const c = parCle.get(cle);
+    let c = parCle.get(cle);
     if (!c) {
-      parCle.set(cle, { cle, nom: l.campagneNom, sansId: l.campagneId === null, depense: l.depense, dateNom: l.date });
-      continue;
+      c = { cle, nom: l.campagneNom, sansId: l.campagneId === null, depense: null, dateNom: l.date };
+      parCle.set(cle, c);
     }
-    c.depense += l.depense;
+    if (compte(l)) c.depense = (c.depense ?? 0) + l.depense;
     if (l.date > c.dateNom) {
       c.nom = l.campagneNom;
       c.dateNom = l.date;
     }
   }
+  const couleurs = new Map(
+    [...parCle.keys()].sort().map((cle, i) => [cle, PALETTE_CAMPAGNES[i] ?? PASTILLE_NEUTRE])
+  );
   return [...parCle.values()]
-    .sort((a, b) => b.depense - a.depense || a.nom.localeCompare(b.nom, "fr"))
-    .map(({ dateNom: _, ...c }) => c);
+    .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"))
+    .map(({ dateNom: _, ...c }) => ({ ...c, couleur: couleurs.get(c.cle)! }));
 }
 
 // ── Les métriques ────────────────────────────────────────────────────────────
@@ -398,6 +503,7 @@ export type ContenuPage = {
   /** Les dates de la période d'avant, alignées jour pour jour sur `dates`. */
   datesAvant: string[];
   campagnes: Campagne[];
+  raccourcis: Raccourci[];
   /** `null` = toutes les campagnes. */
   campagneChoisie: CampagneChoisie | null;
   cartes: CarteVue[];
@@ -427,7 +533,7 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
   const lues = lignesBrutes.filter(
     (l) => dansPeriode(l, periode.debut, periode.fin) || dansPeriode(l, periode.avantDebut, periode.avantFin)
   );
-  const campagnes = campagnesDe(lues);
+  const campagnes = campagnesDe(lues, periode);
 
   let campagneChoisie: ContenuPage["campagneChoisie"] = null;
   if (c.campagne) {
@@ -472,6 +578,7 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
     dates: Array.from({ length: periode.jours }, (_, i) => decaler(periode.debut, i)),
     datesAvant: Array.from({ length: periode.jours }, (_, i) => decaler(periode.avantDebut, i)),
     campagnes,
+    raccourcis: raccourcisDe(periode, ctx),
     campagneChoisie,
     cartes,
     tendance,

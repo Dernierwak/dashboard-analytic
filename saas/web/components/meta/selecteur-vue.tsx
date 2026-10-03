@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ICONE_VUE, Icone, PastilleEcart } from "@/components/meta/elements";
+import { ICONE_VUE, ID_SELECTEUR_VUE, Icone, PastilleEcart } from "@/components/meta/elements";
 import { METRIQUES, VUES, formaterValeur, type CarteVue, type Vue } from "@/lib/meta/lecture";
 import { lienMeta, type Params } from "@/lib/meta/liens";
 
@@ -28,7 +28,7 @@ export function SelecteurVue({
   params: Params;
 }) {
   return (
-    <section aria-labelledby="titre-vues">
+    <section id={ID_SELECTEUR_VUE} aria-labelledby="titre-vues">
       <p id="titre-vues" className="text-[13px] text-muted mb-3">
         Choisis ce que tu regardes : la vue change toute la page, sans écarter aucune campagne.
       </p>
