@@ -162,19 +162,23 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   `998` détruit `landing_url` avec le thème. Exécuté sur demande de David.
   [La page d'arrivée d'une campagne n'a plus d'écran](issues/14-la-page-d-arrivee-d-une-campagne-n-a-plus-d-ecran.md)
 
+- **La spec est écrite** : [`spec.md`](spec.md), `ready-for-agent`, 60 user
+  stories, deux seams de test (récolte « réponse Meta → lignes », page « lignes →
+  modules »). Trois choix y sont tranchés **par défaut**, à confirmer par David :
+  comparaison en **C2** ; **pas de période « Tout »**, la semaine mesurée par
+  défaut ; le tableau **s'exporte en CSV**. Ce que Google met dans chaque module y
+  est noté.
+
+- **La spec est découpée en 14 tickets de construction**, dans un chantier à
+  part : [`../meta-ads-construction/`](../meta-ads-construction/README.md). 01 et
+  13 attendent David (jouer la `998`, jouer l'étape B) ; après le schéma (02),
+  03, 05 et 06 avancent de front. Le choix du bucket des visuels est posé au
+  ticket 05.
+
 ## Pas encore spécifié
 
-- **L'écriture de la spec elle-même.** Une fois 03 à 08 clos, il reste à assembler
-  la spec en un document exécutable. Sa forme dépend de ce que les prototypes
-  auront produit — on ne peut pas encore dire si c'est un fichier ou une série de
-  tickets de construction.
-- **La fenêtre de lecture.** Le prototype propose des raccourcis de 7 jours à
-  12 semaines plus une période sur mesure, toujours comparées à la période
-  d'avant. Reste ouvert : faut-il aussi une période « Tout » (la frontière
-  des 13 mois ne joue plus depuis que la portée est retirée, ticket 07), et « la semaine mesurée » doit-elle être un raccourci ?
-- **Ce que Google Ads doit changer pour entrer dans le socle.** Depuis le ticket
-  07, le socle est la liste des modules : la question devient, module par
-  module, ce que Google y met — à écrire avec la spec, pas avant.
+- **Le bucket des visuels d'annonces : public comme `post-images`, ou privé** avec
+  URL signées. Noté dans la spec, à trancher au ticket de construction.
 - **Les quotas de l'API Meta : mesurés, et ce n'est pas eux qui coûtent.** 7 appels
   Graph par passage pour 20 annonces, soit 2,4 % du plafond Ads Management standard.
   **Le poste cher est le stockage des images**, pas l'API — ce qui déplace la question
