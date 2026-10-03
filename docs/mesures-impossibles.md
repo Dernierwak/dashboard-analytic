@@ -99,10 +99,11 @@ dimension de page** : ni `fetch_ga4_insights` ni `fetch_ga4_events`
 peut donc constater qu'un écart existe entre les clics payés et les sessions
 arrivées ; on **ne peut pas dire sur quelle page** il se creuse.
 
-Ne pas confondre avec `campagne_landing.sql`, qui stocke l'adresse de
-destination **déclarée par l'utilisateur** pour une campagne. Elle dit où la
-campagne envoie ; elle ne dit rien de ce qui s'y passe, et le serveur ne la
-visite jamais (le fichier explique pourquoi : ce serait une SSRF offerte).
+Ne pas confondre avec l'adresse vers laquelle une annonce Meta envoie, lue
+dans sa créa (`object_story_spec.link_data.link`, carte `.scratch/meta-ads/`,
+ticket 14 — elle remplace l'adresse qu'on saisissait à la main par campagne,
+retirée le 2026-10-03). Elle dit où l'annonce envoie ; elle ne dit rien de ce
+qui s'y passe.
 
 Ce n'est pas une impossibilité de principe — une dimension de page à la récolte
 la lèverait. **Aucun ticket ne la porte aujourd'hui** : celui qui le faisait

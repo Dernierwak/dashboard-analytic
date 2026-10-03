@@ -312,3 +312,12 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   fenêtre d'attribution par défaut d'un ad set neuf n'est pas documentée ; **(5)** le
   tier d'accès de l'app Pulse est inconnu et il change le plafond de quota ;
   **(6)** l'expansion de champs sur `creative` n'est vérifiable qu'avec un jeton.
+- **La page d'arrivée saisie à la main par campagne** (ticket 14, 2026-10-03).
+  `landing_url` sur `meta_campaign_config` / `google_campaign_config`, saisie sur
+  `/labels`, servait à « comprendre ce que la campagne VEND » pour des conseils.
+  Partie avec son écran (David : « on n'en a plus du tout besoin ») ; la `998`
+  détruit la colonne, sans archive. Ce qu'on garde de l'idée : l'adresse vient
+  désormais de la créa Meta, **annonce par annonce** — une saisie par campagne
+  était au mauvais niveau, deux annonces d'une campagne pouvant envoyer vers
+  deux pages. Google la répartit entre `final_urls` et les extensions : à
+  regarder le jour où Google entre dans le socle.

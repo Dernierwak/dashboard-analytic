@@ -130,6 +130,39 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   proposée et non jouée. Fiche : `docs/adr/0011`.
   [Le socle commun Meta / Google : des modules nommés, et la clé par ID](issues/07-le-contrat-de-donnees-commun-meta-google.md)
 
+- **Un petit point par jour sur la courbe, un clic ouvre le jour dans le
+  panneau partagé** ; sous un filtre, seulement la campagne filtrée, ensembles
+  et annonces compris — la récolte devra retrouver le parent par l'ID. Meta
+  déclarait bien enchères et créations : c'est la récolte qui les jetait, elle
+  s'élargit aux enchères, au statut des annonces et aux créations. Ce que le
+  journal ne couvre pas se dit dans une info-bulle « ⓘ ».
+  [Les changements posés sur les courbes](issues/08-les-changements-poses-sur-les-courbes.md)
+
+- **La colonne « Résultats » d'Ads Manager, c'est le champ `results`** — une
+  liste, pas un nombre, qui suit l'attribution de l'ensemble de publicités. Sa
+  forme exacte et ce qu'il rend en notoriété ne sont pas documentés.
+  [Quel champ de l'API Meta rend la colonne « Résultats »](issues/15-quel-champ-de-l-api-rend-la-colonne-resultats.md)
+
+- **`results` se stocke brut, sans appel préalable** : la liste telle que Meta
+  la rend, `NULL` si le champ manque, jamais `0`. Sa forme se lira dans la base
+  après le premier passage du worker.
+  [L'appel réel qui donne la forme de `results`](issues/16-l-appel-reel-qui-donne-la-forme-de-results.md)
+
+- **Pulse recopie Meta pendant 28 jours, et dit à quelle date il l'a lu.** Le
+  recouvrement Meta passe de 7 à 28 jours — au-delà, Meta ne corrige plus rien,
+  donc un jour ancien est identique à Ads Manager. L'écran écrit « Chiffres
+  Meta au <Jour de travail> » ; aucune zone « provisoire », la règle du jour en
+  cours ne s'élargit pas ; `attribution_setting` se dit dans l'info-bulle
+  « ⓘ ». L'appel en direct à Meta est écarté.
+  [La fenêtre de recouvrement, et les 21 jours de conversions qu'on ne verra jamais](issues/09-la-fenetre-de-recouvrement-des-conversions.md)
+
+- **La page d'arrivée ne se saisit plus, elle se lit dans la créa Meta, annonce
+  par annonce** — un lien sortant dans le panneau latéral, à côté du texte. La
+  saisie par campagne, sans lecteur et au mauvais niveau, quitte le code ; la
+  `998` détruit `landing_url` avec le thème. **Décidé ; le code, perdu avec le
+  dossier de travail le 2026-10-03, reste à refaire.**
+  [La page d'arrivée d'une campagne n'a plus d'écran](issues/14-la-page-d-arrivee-d-une-campagne-n-a-plus-d-ecran.md)
+
 ## Pas encore spécifié
 
 - **L'écriture de la spec elle-même.** Une fois 03 à 08 clos, il reste à assembler

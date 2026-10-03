@@ -16,6 +16,11 @@
 //   · la comparaison part de la variante C (classement, on coche, la courbe
 //     apparaît), toujours avec DEUX métriques distinctes, en deux variantes de
 //     mise en page, `?comparaison=C1|C2`.
+//
+// Ticket 08 (les changements posés sur les courbes) : les changements fictifs
+// ont la forme de la vraie récolte, le jour ouvert et l'annonce lue vivent dans
+// l'URL (`?jour=`, `?annonce=`), le panneau range un jour par campagne et
+// compte ce qu'un filtre écarte.
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -202,18 +207,45 @@ const campagneDeAnnonce = (a: Annonce) => CAMPAGNES.find((c) => c.adsets.some((s
 const campagneDeAdSet = (s: AdSet) => CAMPAGNES.find((c) => c.adsets.includes(s))!;
 const annoncesDe = (c: Campagne) => c.adsets.flatMap((s) => s.annonces);
 
-type Changement = { jour: number; campagne: string; objet: string; nature: string; detail: string };
-// Ce que `platform_changes` porte déjà (`fetch_meta_ads.py::fetch_activities`).
+// Ticket 08 : la forme de ce que `fetch_meta_ads.py::fetch_activities` produit
+// VRAIMENT. Quatre natures seulement (`_ACTIVITES`) — pas d'enchère ni de
+// nouvelle annonce tant que la récolte ne les lit pas — et une phrase déjà
+// rédigée. `campagne` est le parent retrouvé PAR L'ID (ticket 07) : null quand
+// Meta ne le rend plus, et alors le changement ne se range sous aucun filtre.
+type Changement = {
+  jour: number; heure: string; campagne: string | null;
+  niveau: "campagne" | "ensemble" | "annonce"; objet: string;
+  nature: "Budget" | "Statut" | "Ciblage" | "Visuel" | "Enchère" | "Création"; detail: string;
+};
+// Enchère, création, statut d'annonce : Meta les déclare (`update_ad_set_bidding`,
+// `create_ad`, `update_ad_run_status`… doc `ad-activity`), mais la récolte les
+// écarte aujourd'hui — `_ACTIVITES` n'en connaît que six. David les a retenus
+// (ticket 08) ; la revue de Meta, non.
 const CHANGEMENTS: Changement[] = [
-  { jour: JOURS - 50, campagne: "Soldes d'automne", objet: "Similaires 1 %", nature: "Budget", detail: "40 € → 60 € par jour" },
-  { jour: JOURS - 38, campagne: "Guides du blog", objet: "Intérêts mode", nature: "Audience", detail: "Ajout de l'intérêt « Mode durable »" },
-  { jour: JOURS - 21, campagne: "Notoriété — Marque", objet: "Reel coulisses", nature: "Créa", detail: "Nouvelle annonce publiée" },
-  { jour: JOURS - 21, campagne: "Notoriété — Marque", objet: "Large FR 25-45", nature: "Budget", detail: "80 € → 120 € par jour" },
-  { jour: JOURS - 12, campagne: "Soldes d'automne", objet: "Acheteurs 30 j", nature: "Enchère", detail: "Coût le plus bas → plafond de coût 18 €" },
-  { jour: JOURS - 4, campagne: "Soldes d'automne", objet: "Vidéo 15 s — essayage", nature: "Statut", detail: "Active → en pause" },
-  { jour: JOURS - 4, campagne: "Soldes d'automne", objet: "Carrousel manteaux", nature: "Créa", detail: "Deuxième carte remplacée" },
-  { jour: JOURS - 4, campagne: "Relance panier", objet: "Paniers abandonnés 7 j", nature: "Budget", detail: "15 € → 25 € par jour" },
+  { jour: JOURS - 50, heure: "09:12", campagne: "Soldes d'automne", niveau: "ensemble", objet: "Similaires 1 %", nature: "Budget", detail: "Le budget est passé de 40,00 à 60,00 CHF" },
+  { jour: JOURS - 38, heure: "16:40", campagne: "Guides du blog", niveau: "ensemble", objet: "Intérêts mode", nature: "Ciblage", detail: "Le ciblage a été modifié" },
+  { jour: JOURS - 21, heure: "10:05", campagne: "Notoriété — Marque", niveau: "annonce", objet: "Reel coulisses", nature: "Visuel", detail: "Le visuel a été remplacé" },
+  { jour: JOURS - 21, heure: "10:07", campagne: "Notoriété — Marque", niveau: "ensemble", objet: "Large FR 25-45", nature: "Budget", detail: "Le budget est passé de 80,00 à 120,00 CHF" },
+  { jour: JOURS - 21, heure: "18:30", campagne: null, niveau: "ensemble", objet: "Test lookalike (supprimé)", nature: "Statut", detail: "L'ensemble a été mis en pause" },
+  { jour: JOURS - 12, heure: "08:55", campagne: "Soldes d'automne", niveau: "campagne", objet: "Soldes d'automne", nature: "Budget", detail: "Le budget est passé de 150,00 à 200,00 CHF" },
+  { jour: JOURS - 4, heure: "11:20", campagne: "Soldes d'automne", niveau: "ensemble", objet: "Acheteurs 30 j", nature: "Statut", detail: "L'ensemble a été mis en pause" },
+  { jour: JOURS - 4, heure: "11:24", campagne: "Soldes d'automne", niveau: "annonce", objet: "Carrousel manteaux", nature: "Visuel", detail: "Le visuel a été remplacé" },
+  { jour: JOURS - 4, heure: "14:02", campagne: "Relance panier", niveau: "ensemble", objet: "Paniers abandonnés 7 j", nature: "Budget", detail: "Le budget est passé de 15,00 à 25,00 CHF" },
+  { jour: JOURS - 16, heure: "09:40", campagne: "Soldes d'automne", niveau: "ensemble", objet: "Acheteurs 30 j", nature: "Enchère", detail: "La stratégie d'enchère est passée à « Plafond de coût », 18,00 CHF" },
+  { jour: JOURS - 16, heure: "09:45", campagne: "Soldes d'automne", niveau: "annonce", objet: "Vidéo 15 s — essayage", nature: "Création", detail: "L'annonce a été créée" },
+  { jour: JOURS - 8, heure: "17:25", campagne: "Guides du blog", niveau: "annonce", objet: "Guide des tailles", nature: "Statut", detail: "L'annonce a été mise en pause" },
 ];
+// Ticket 08, tranché par David : un petit point par jour, un clic ouvre tout
+// le jour ; sous un filtre, seulement la campagne filtrée, ses ensembles et ses
+// annonces compris — donc la récolte devra retrouver le parent par l'ID, car
+// `platform_changes.campaign_id` n'est rempli qu'au niveau campagne
+// (`_NIVEAU_CAMPAGNE`). Ce que le journal ne couvre pas se dit dans une
+// info-bulle « ⓘ » sur la légende, et nulle part ailleurs (choix de David).
+
+// Sans filtre, tout compte — y compris ce qui n'a pas retrouvé sa campagne.
+// Avec un filtre, seul ce qui est rattaché à une campagne filtrée.
+const changementsVus = (noms: Set<string>, tout: boolean) =>
+  CHANGEMENTS.filter((c) => (c.campagne === null ? tout : noms.has(c.campagne)));
 
 type Jour = { imp: number; portee: number; clics: number; conv: number | null; dep: number } | null;
 
@@ -504,14 +536,19 @@ function Courbe({
               strokeDasharray={s.fantome ? "4 4" : undefined} strokeLinecap="round" className={s.fantome ? "" : "trace"} pathLength={s.fantome ? undefined : 1} />
           </g>
         )))}
-        {principal && changements.filter((d) => d >= de && d < a).map((d) => {
+        {principal && [...new Set(changements)].filter((d) => d >= de && d < a).map((d) => {
           const v = principal.pts[d - de];
-          if (v === null || v === undefined) return null;
+          // Un jour sans valeur (« — ») garde sa pastille, posée sur l'axe : une
+          // mise en pause rend justement les jours suivants vides, et c'est le
+          // changement qu'on cherche à voir.
+          const cy = v === null || v === undefined ? y(0) : y(v);
           const actif = jourSurvol === d;
+          // Petit et léger (David) ; il grossit au survol pour qu'on comprenne
+          // qu'il se clique.
           return (
             <g key={d} pointerEvents="none" className="apparait">
-              <circle cx={x(d - de)} cy={y(v)} r={actif ? 9 : 6.5} fill="#fff" stroke="#0e0f12" strokeWidth={actif ? 2 : 1.5} style={{ transition: "r 150ms" }} />
-              <path d={`M${x(d - de) - 2.4},${y(v) + 2.4}l3.6-3.6 1.2 1.2-3.6 3.6-1.6.4Z`} fill="#0e0f12" />
+              {actif && <circle cx={x(d - de)} cy={cy} r={10} fill="#ff7a45" fillOpacity={0.18} />}
+              <circle cx={x(d - de)} cy={cy} r={actif ? 5.5 : 4} fill="#ff7a45" stroke="#fff" strokeWidth={1.5} style={{ transition: "r 150ms" }} />
             </g>
           );
         })}
@@ -544,7 +581,7 @@ function Courbe({
           ))}
           {aChangement && (
             <p className="text-[11.5px] text-[#9db8ff] mt-1.5 pt-1.5 border-t border-white/10 flex items-center gap-1.5">
-              <Icone nom="crayon" className="h-3 w-3" /> {CHANGEMENTS.filter((c) => c.jour === jourSurvol).length} changement(s) · clique pour voir
+              <Icone nom="crayon" className="h-3 w-3" /> {changements.filter((d) => d === jourSurvol).length} changement{changements.filter((d) => d === jourSurvol).length > 1 ? "s" : ""} · clique pour voir
             </p>
           )}
         </div>
@@ -959,7 +996,9 @@ function VueEnsemble({ categorie, annonces, noms, de, a, ouvrirJour }: {
 }) {
   const metriques = CATEGORIES[categorie].metriques;
   const n = a - de;
-  const jours = [...new Set(CHANGEMENTS.filter((c) => noms.has(c.campagne)).map((c) => c.jour))];
+  // Un jour par changement, doublons gardés : la courbe dessine un seul point
+  // par jour et compte les changements pour l'infobulle.
+  const jours = changementsVus(noms, noms.size === CAMPAGNES.length).map((c) => c.jour);
   const s = somme(annonces, de, a), p = somme(annonces, de - n, de);
   const serie = (m: Metrique, depuis: number) => Array.from({ length: n }, (_, i) => {
     const x = somme(annonces, depuis + i, depuis + i + 1);
@@ -994,7 +1033,9 @@ function VueEnsemble({ categorie, annonces, noms, de, a, ouvrirJour }: {
         <div className="flex items-center gap-4 text-[12.5px] text-muted flex-wrap">
           <span className="flex items-center gap-1.5"><span className="h-[2px] w-4 bg-brand rounded-full" /> Cette période</span>
           <span className="flex items-center gap-1.5"><span className="w-4 border-t border-dashed border-[#b7b6af]" /> Période d&apos;avant</span>
-          <span className="flex items-center gap-1.5"><span className="h-4 w-4 rounded-full border-[1.5px] border-ink bg-white flex items-center justify-center"><Icone nom="crayon" className="h-2 w-2" /></span> Un changement, clique pour le voir</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#ff7a45]" /> Un changement, clique pour le voir
+            <span className="text-faint cursor-help" title="Les points viennent du journal de Meta : budget, statut, ciblage, visuel, enchère et création. Un geste que Meta ne déclare pas n'a pas de point.">ⓘ</span>
+          </span>
         </div>
       </EnTeteBloc>
       <div className="grid lg:grid-cols-3 gap-4">
@@ -1340,14 +1381,24 @@ export function Prototype() {
   }, []);
 
   // Un seul panneau pour deux usages : le jour d'un changement, ou une annonce
-  // à lire. Ouvrir l'un ferme l'autre.
-  const [jour, setJourBrut] = useState<number | null>(null);
-  const [lue, setLue] = useState<string | null>(null);
-  const setJour = (j: number | null) => { setLue(null); setJourBrut(j); };
-  const ouvrir = (id: string) => { setJourBrut(null); setLue(id); };
-  const fermer = useMemo(() => () => { setJourBrut(null); setLue(null); }, []);
+  // à lire. Les deux vivent dans l'URL (ticket 08) — un jour ouvert se partage
+  // — et ouvrir l'un ferme l'autre : c'est tout ce que le lien CHANGE.
+  // Un jour hors de la période choisie ne s'ouvre pas : changer la période le
+  // ferme sans qu'aucun lien n'ait à le savoir.
+  const jourBrut = params.get("jour");
+  const jour = jourBrut !== null && Number(jourBrut) >= de && Number(jourBrut) < a ? Number(jourBrut) : null;
+  const lue = params.get("annonce");
+  const setJour = (j: number | null) => changer({ jour: j === null ? null : String(j), annonce: null });
+  const ouvrir = (id: string) => changer({ annonce: id, jour: null });
+  const fermer = () => changer({ jour: null, annonce: null });
   const annonceLue = lue === null ? null : ANNONCES.find((x) => x.id === lue) ?? null;
-  const duJour = jour === null ? [] : CHANGEMENTS.filter((c) => c.jour === jour && noms.has(c.campagne));
+  const tout = !filtre;
+  const duJour = jour === null ? [] : changementsVus(noms, tout).filter((c) => c.jour === jour);
+  // Sous un filtre, ce qui n'a pas retrouvé sa campagne n'est pas montré —
+  // mais il est COMPTÉ : le cacher sans le dire ferait croire que la journée
+  // est complète.
+  const nonRattaches = jour === null || tout ? 0 : CHANGEMENTS.filter((c) => c.jour === jour && c.campagne === null).length;
+  const groupes = [...new Set(duJour.map((c) => c.campagne))].map((k) => ({ campagne: k, lignes: duJour.filter((c) => c.campagne === k) }));
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] pb-24">
@@ -1417,19 +1468,33 @@ export function Prototype() {
           ? `${campagneDeAnnonce(annonceLue).nom} › ${ADSETS.find((s) => s.annonces.includes(annonceLue))!.nom}`
           : `${duJour.length} changement${duJour.length > 1 ? "s" : ""}${filtre ? ` sur ${filtre}` : " sur toutes les campagnes"}`}>
         {annonceLue ? <ContenuAnnonce x={annonceLue} /> : <>
-        <ol className="relative border-l border-line ml-1.5 space-y-6 mt-2">
-          {duJour.map((c, i) => (
-            <li key={i} className="pl-6 relative">
-              <span className="absolute -left-[7px] top-1 h-3.5 w-3.5 rounded-full ring-4 ring-white" style={{ background: CAMPAGNES.find((k) => k.nom === c.campagne)!.couleur }} />
-              <span className="inline-block text-[11.5px] font-semibold text-brand bg-[#eef2ff] rounded-full px-2 py-0.5">{c.nature}</span>
-              <p className="text-[16px] text-ink font-medium mt-1.5">{c.detail}</p>
-              <p className="text-[13px] text-muted mt-0.5">{c.objet} · {c.campagne}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="text-[12.5px] text-faint mt-8 pt-4 border-t border-line leading-relaxed">
-          Ce que Meta déclare. Un changement qu&apos;il ne rapporte pas n&apos;apparaît pas ici : l&apos;absence de point ne prouve pas que rien n&apos;a bougé.
-        </p>
+        {duJour.length === 0 && (
+          <p className="text-[14px] text-muted mt-2">Meta ne déclare aucun changement sur {filtre} ce jour-là.</p>
+        )}
+        {groupes.map((g) => (
+          <div key={g.campagne ?? "aucune"} className="mt-2 mb-7">
+            <p className="text-[12px] font-semibold uppercase tracking-wide text-muted flex items-center gap-2 mb-3">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: g.campagne === null ? "#c3c2bb" : CAMPAGNES.find((k) => k.nom === g.campagne)!.couleur }} />
+              {g.campagne ?? "Campagne introuvable chez Meta"}
+            </p>
+            <ol className="relative border-l border-line ml-1 space-y-5">
+              {g.lignes.map((c, i) => (
+                <li key={i} className="pl-5 relative">
+                  <span className="absolute -left-[4px] top-2 h-2 w-2 rounded-full bg-line ring-4 ring-white" />
+                  <span className="inline-block text-[11.5px] font-semibold text-brand bg-[#eef2ff] rounded-full px-2 py-0.5">{c.nature}</span>
+                  <span className="text-[12px] text-faint ml-2 tabular-nums">{c.heure}</span>
+                  <p className="text-[15.5px] text-ink font-medium mt-1.5">{c.detail}</p>
+                  <p className="text-[13px] text-muted mt-0.5">{c.niveau === "campagne" ? "La campagne" : c.niveau === "ensemble" ? "Ensemble" : "Annonce"}{c.niveau !== "campagne" && <> « {c.objet} »</>}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+        {nonRattaches > 0 && (
+          <p className="text-[13px] text-muted rounded-xl bg-canvas px-4 py-3">
+            {nonRattaches} autre{nonRattaches > 1 ? "s" : ""} changement{nonRattaches > 1 ? "s" : ""} ce jour-là, sur {nonRattaches > 1 ? "des éléments" : "un élément"} dont Meta ne rend plus la campagne. {nonRattaches > 1 ? "Ils ne sont" : "Il n'est"} montré{nonRattaches > 1 ? "s" : ""} que sans filtre.
+          </p>
+        )}
         </>}
       </Panneau>
     </main>

@@ -43,6 +43,15 @@ bouge plus jusqu'au suivant.
 _Avoid_: Jour de récolte, jour du rapport — la récolte et le rapport sont deux
 conséquences du même choix, pas deux réglages.
 
+**Recouvrement** :
+Les jours déjà récoltés qu'un passage **retélécharge et remplace** — une
+recopie de la plateforme, jamais un calcul. Il existe parce qu'une régie
+corrige ses chiffres après coup : un jour n'est identique à la plateforme
+qu'une fois relu après la date où elle cesse de le corriger (28 jours chez
+Meta). Un jour plus jeune est identique à ce que la plateforme affichait **au
+dernier passage**, et l'écran en écrit la date.
+_Avoid_: Rattrapage, estimation, correction — Pulse ne corrige rien, il relit.
+
 **Point de vue de la semaine** :
 Ce que Pulse rend à un compte **sans rien lui demander** : ce qui a
 bougé depuis le dernier Jour de travail — une campagne qui marche, une campagne
