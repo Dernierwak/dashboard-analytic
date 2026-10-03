@@ -87,6 +87,12 @@ export type Commandes = {
   campagne?: string;
   from?: string;
   to?: string;
+  /** La Comparaison : son niveau, ses deux métriques et ses places cochées
+   *  (`comparer`, répété — voir `placesDe`). */
+  niveau?: string;
+  m1?: string;
+  m2?: string;
+  comparer?: string[];
 };
 
 export type Contexte = {
@@ -508,6 +514,7 @@ export type ContenuPage = {
   campagneChoisie: CampagneChoisie | null;
   cartes: CarteVue[];
   tendance: MetriqueTendance[];
+  comparaison: Comparaison;
 };
 
 function parJour(lignes: LigneMeta[]): Map<string, LigneMeta[]> {
@@ -582,7 +589,215 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
     campagneChoisie,
     cartes,
     tendance,
+    comparaison: comparaisonDe(courant, periode, vue, c),
   };
+}
+
+// ── La Comparaison ───────────────────────────────────────────────────────────
+//
+// Spec, § « Comparaison — la mécanique » ; user stories 29 à 33, 35, 36. Une
+// liste classée de groupes d'annonces ou d'annonces, sur la sélection du
+// Bandeau ; on en coche jusqu'à quatre, tracés dans deux graphes, un par
+// métrique.
+
+export type Niveau = "groupes" | "annonces";
+/** Le niveau du prototype validé (ticket 05 de la carte). */
+export const NIVEAU_PAR_DEFAUT: Niveau = "annonces";
+export const NOMS_NIVEAUX: Record<Niveau, { un: string; des: string }> = {
+  groupes: { un: "Groupe d'annonces", des: "Groupes d'annonces" },
+  annonces: { un: "Annonce", des: "Annonces" },
+};
+
+export function niveauDe(x: string | undefined): Niveau {
+  return x === "groupes" || x === "annonces" ? x : NIVEAU_PAR_DEFAUT;
+}
+
+export const MAX_COMPARES = 4;
+/** Pré-cochés quand l'URL ne dit rien : de quoi voir des courbes en arrivant,
+ *  en laissant une case libre. */
+const COCHES_PAR_DEFAUT = 3;
+
+/** Quatre teintes de `PALETTE_CAMPAGNES`, repassées au validateur `dataviz`
+ *  TOUTES PAIRES (`--pairs all`) puisque les quatre partagent un graphe :
+ *  l'orange et le jaune de la palette tombaient à ΔE 13,7 en vision normale
+ *  (plancher 15), le violet les sépare (pire paire 16,3 ; CVD 9,2). Le vert
+ *  est sous 3:1 de contraste : le nom est toujours écrit à côté de la couleur,
+ *  dans la liste comme dans la légende. */
+export const PALETTE_COMPARES = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"];
+
+/**
+ * Une place cochée vide, dans l'URL. Les éléments cochés occupent des PLACES
+ * (1 à 4), et la couleur est celle de la place : décocher le premier ne
+ * repeint pas les autres (règle `dataviz` — la couleur suit l'élément, jamais
+ * son rang). Une place libérée s'écrit « - » tant qu'une place après elle est
+ * prise ; la suivante cochée la reprend. `comparer=-` seul = « rien de coché,
+ * exprès », à distinguer de l'absence du paramètre, qui pré-coche.
+ */
+export const PLACE_VIDE = "-";
+
+export type Places = (string | null)[];
+
+/** La clé d'un élément, par ID Meta. Une ligne sans ID (d'avant le rejeu,
+ *  ticket 03) prend une clé PRÉFIXÉE, dans sa campagne, comme `cleCampagne` :
+ *  elle ne tombe jamais sur celle d'un élément identifié, même homonyme. */
+export function cleElement(l: LigneMeta, niveau: Niveau): string {
+  if (niveau === "groupes") return l.groupeId ?? `${PREFIXE_SANS_ID}${cleCampagne(l)}›${l.groupeNom}`;
+  return l.annonceId ?? `${PREFIXE_SANS_ID}${cleCampagne(l)}›${l.groupeNom}›${l.annonceNom}`;
+}
+
+/** Les deux métriques, toujours distinctes et toujours de la vue. Une métrique
+ *  d'une autre vue (un lien gardé en changeant de vue) est ignorée, pas
+ *  remplacée en silence par une autre dans l'URL. */
+export function metriquesDe(vue: Vue, m1?: string, m2?: string): [CleMetrique, CleMetrique] {
+  const de = VUES[vue].metriques;
+  const est = (x?: string): x is CleMetrique => !!x && (de as string[]).includes(x);
+  const a = est(m1) ? m1 : de[0];
+  const b = est(m2) && m2 !== a ? m2 : de.find((m) => m !== a)!;
+  return [a, b];
+}
+
+/** Choisir pour l'une la métrique de l'autre les ÉCHANGE (user story 32) :
+ *  les deux graphes montrent toujours deux choses différentes. */
+export function choixMetrique(actuelles: [CleMetrique, CleMetrique], rang: 0 | 1, cle: CleMetrique): { m1: CleMetrique; m2: CleMetrique } {
+  const [a, b] = actuelles;
+  if (rang === 0) return cle === b ? { m1: b, m2: a } : { m1: cle, m2: b };
+  return cle === a ? { m1: b, m2: a } : { m1: a, m2: cle };
+}
+
+/** Les places lues dans l'URL, ou `null` quand le paramètre est absent. Une
+ *  clé répétée ne prend qu'une place ; au-delà de quatre, le reste est ignoré. */
+export function placesDe(brut: string[] | undefined): Places | null {
+  if (!brut || brut.length === 0) return null;
+  const vues = new Set<string>();
+  return brut.slice(0, MAX_COMPARES).map((x) => {
+    if (!x || x === PLACE_VIDE || vues.has(x)) return null;
+    vues.add(x);
+    return x;
+  });
+}
+
+/** Cocher ou décocher. Une cinquième case est REFUSÉE (user story 33) : rien
+ *  n'est décoché en silence pour lui faire de la place. */
+export function basculerCoche(places: Places, cle: string): Places | "refus" {
+  const i = places.indexOf(cle);
+  if (i >= 0) return places.map((x, k) => (k === i ? null : x));
+  const libre = places.indexOf(null);
+  if (libre >= 0) return places.map((x, k) => (k === libre ? cle : x));
+  if (places.length < MAX_COMPARES) return [...places, cle];
+  return "refus";
+}
+
+/** Ce que le lien écrit : les places vides de fin tombent, et « rien de
+ *  coché » s'écrit `-` pour ne pas retomber sur le pré-cochage. */
+export function placesVersUrl(places: Places): string[] {
+  const out = places.map((x) => x ?? PLACE_VIDE);
+  while (out.length && out[out.length - 1] === PLACE_VIDE) out.pop();
+  return out.length ? out : [PLACE_VIDE];
+}
+
+export type ElementCompare = {
+  cle: string;
+  /** Le nom le plus récent lu. */
+  nom: string;
+  /** Où il vit : la campagne (et le groupe, pour une annonce). */
+  sous: string;
+  /** L'ID Meta de l'annonce, pour sa vignette ; `null` pour un groupe. */
+  annonceId: string | null;
+  /** Les deux métriques sur la période ; `null` = « — », rangé en bas. */
+  valeurs: [number | null, number | null];
+  /** 0 à 3 quand l'élément est coché — sa couleur ; `null` sinon. */
+  place: number | null;
+};
+
+export type SerieCompare = {
+  cle: string;
+  nom: string;
+  couleur: string;
+  /** Une série par métrique, un point par jour ; `null` = un trou. */
+  series: [(number | null)[], (number | null)[]];
+};
+
+export type Comparaison = {
+  niveau: Niveau;
+  metriques: [CleMetrique, CleMetrique];
+  /** Classés par la métrique 1. */
+  elements: ElementCompare[];
+  /** Les places telles qu'elles s'affichent — c'est d'elles que part un clic. */
+  places: Places;
+  /** Les cochés, dans l'ordre de leur place. */
+  coches: SerieCompare[];
+};
+
+/** Classe par la métrique 1 : décroissant, croissant pour un coût (un CPC bas
+ *  est le meilleur) ; « — » toujours en bas, jamais classé comme un zéro. */
+function classer(a: ElementCompare, b: ElementCompare, m: CleMetrique): number {
+  const x = a.valeurs[0];
+  const y = b.valeurs[0];
+  if (x === null || y === null) {
+    if (x !== y) return x === null ? 1 : -1;
+  } else if (x !== y) {
+    return METRIQUES[m].hausseBonne ? y - x : x - y;
+  }
+  return a.nom.localeCompare(b.nom, "fr") || (a.cle < b.cle ? -1 : 1);
+}
+
+export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, c: Commandes): Comparaison {
+  const niveau = niveauDe(c.niveau);
+  const metriques = metriquesDe(vue, c.m1, c.m2);
+
+  const groupes = new Map<string, { lignes: LigneMeta[]; recente: LigneMeta }>();
+  for (const l of courant) {
+    const cle = cleElement(l, niveau);
+    const g = groupes.get(cle);
+    if (!g) groupes.set(cle, { lignes: [l], recente: l });
+    else {
+      g.lignes.push(l);
+      if (l.date > g.recente.date) g.recente = l;
+    }
+  }
+
+  const elements: ElementCompare[] = [...groupes].map(([cle, { lignes, recente }]) => {
+    const t = totaux(lignes);
+    return {
+      cle,
+      nom: niveau === "groupes" ? recente.groupeNom : recente.annonceNom,
+      sous: niveau === "groupes" ? recente.campagneNom : `${recente.campagneNom} › ${recente.groupeNom}`,
+      annonceId: niveau === "annonces" ? recente.annonceId : null,
+      valeurs: [valeurDe(metriques[0], t), valeurDe(metriques[1], t)],
+      place: null,
+    };
+  });
+  elements.sort((a, b) => classer(a, b, metriques[0]));
+
+  // Une clé qui n'est plus dans la liste (un autre filtre, une autre période)
+  // LIBÈRE sa place sans décaler les autres : les couleurs ne bougent pas.
+  const presentes = new Set(elements.map((e) => e.cle));
+  const lues = placesDe(c.comparer);
+  const places: Places = lues
+    ? lues.map((x) => (x !== null && presentes.has(x) ? x : null))
+    : elements.slice(0, COCHES_PAR_DEFAUT).map((e) => e.cle);
+  for (const e of elements) {
+    const p = places.indexOf(e.cle);
+    e.place = p >= 0 ? p : null;
+  }
+
+  const coches: SerieCompare[] = [];
+  places.forEach((cle, p) => {
+    if (cle === null) return;
+    const e = elements.find((x) => x.cle === cle)!;
+    const jours = parJour(groupes.get(cle)!.lignes);
+    coches.push({
+      cle,
+      nom: e.nom,
+      couleur: PALETTE_COMPARES[p],
+      series: [
+        serieDe(metriques[0], jours, periode.debut, periode.jours),
+        serieDe(metriques[1], jours, periode.debut, periode.jours),
+      ],
+    });
+  });
+
+  return { niveau, metriques, elements, places, coches };
 }
 
 // ── Les dates, pour l'écran ──────────────────────────────────────────────────

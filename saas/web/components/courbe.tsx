@@ -32,11 +32,16 @@ export type SerieCourbe = {
   /** La date de chaque point, telle qu'on la lit dans la bulle. */
   etiquettes: string[];
   pointille?: boolean;
+  /** L'identité d'une série parmi plusieurs (la Comparaison) : une teinte
+   *  validée par l'appelant. Absente, la série est le bleu maison. */
+  couleur?: string;
 };
 
 const BLEU = "#1a56ff";
 const GRIS = "#8b8e98";
 const W = 1000;
+
+const teinte = (s: SerieCourbe) => (s.pointille ? GRIS : s.couleur ?? BLEU);
 
 /** Un pas « rond » (1, 2, 5 × 10ⁿ) qui découpe le maximum en trois ou quatre. */
 function graduation(max: number): { haut: number; pas: number } {
@@ -117,14 +122,16 @@ export function Courbe({
             {ticks.map((t) => (
               <line key={t} x1={0} x2={W} y1={y(t)} y2={y(t)} stroke={t === 0 ? "#dddcd6" : "#f0efeb"} strokeWidth={1} vectorEffect="non-scaling-stroke" />
             ))}
-            {series.map((s) =>
+            {/* Clés par INDEX de série, pas par nom : deux annonces homonymes
+                sont deux séries (user story 35). */}
+            {series.map((s, si) =>
               troncons(s.valeurs).map((tr, k) =>
                 tr.length > 1 ? (
                   <polyline
-                    key={`${s.nom}${k}`}
+                    key={`${si}-${k}`}
                     points={tr.map((p) => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}
                     fill="none"
-                    stroke={s.pointille ? GRIS : BLEU}
+                    stroke={teinte(s)}
                     strokeWidth={s.pointille ? 1.5 : 2}
                     strokeDasharray={s.pointille ? "4 4" : undefined}
                     strokeLinecap="round"
@@ -143,16 +150,16 @@ export function Courbe({
           {/* Les points en HTML : un cercle SVG étiré serait un œuf. Un point
               isolé entre deux trous est TOUJOURS dessiné — sinon un jour
               mesuré seul disparaîtrait de la courbe. */}
-          {series.map((s) =>
+          {series.map((s, si) =>
             troncons(s.valeurs).flatMap((tr) =>
               tr.length === 1 || survol !== null
                 ? tr
                     .filter((p) => tr.length === 1 || p.i === survol)
                     .map((p) => (
                       <span
-                        key={`${s.nom}-${p.i}`}
+                        key={`${si}-${p.i}`}
                         className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white"
-                        style={{ left: `${xPct(p.i)}%`, top: `${yPct(p.v)}%`, background: s.pointille ? GRIS : BLEU }}
+                        style={{ left: `${xPct(p.i)}%`, top: `${yPct(p.v)}%`, background: teinte(s) }}
                       />
                     ))
                 : []
@@ -165,13 +172,16 @@ export function Courbe({
               style={{ left: `${xPct(survol)}%`, transform: xPct(survol) > 55 ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
             >
               {/* La période regardée d'abord, celle d'avant ensuite. */}
-              {[...series].sort((a, b) => Number(!!a.pointille) - Number(!!b.pointille)).map((s) => {
+              {/* Une date ne s'écrit qu'une fois quand plusieurs séries la
+                  partagent (la Comparaison) — quatre fois la même se lirait mal. */}
+              {[...series].sort((a, b) => Number(!!a.pointille) - Number(!!b.pointille)).map((s, k, triees) => {
                 const v = s.valeurs[survol];
+                const date = s.etiquettes[survol];
                 return (
-                  <div key={s.nom} className="py-0.5">
-                    <p className="text-[11px] text-white/60">{s.etiquettes[survol]}</p>
+                  <div key={k} className="py-0.5">
+                    {(k === 0 || triees[k - 1].etiquettes[survol] !== date) && <p className="text-[11px] text-white/60">{date}</p>}
                     <p className="flex min-w-0 items-center gap-2">
-                      <span className={`w-3 shrink-0 ${s.pointille ? "border-t border-dashed" : "h-[2px] rounded-full"}`} style={s.pointille ? { borderColor: GRIS } : { background: BLEU }} />
+                      <span className={`w-3 shrink-0 ${s.pointille ? "border-t border-dashed" : "h-[2px] rounded-full"}`} style={s.pointille ? { borderColor: GRIS } : { background: teinte(s) }} />
                       <span className="text-[13px] font-semibold tabular-nums">{v === null || v === undefined ? "—" : format(v)}</span>
                       <span className="truncate text-[11px] text-white/60">{s.nom}</span>
                     </p>

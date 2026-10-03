@@ -29,7 +29,39 @@ export type DonneesMeta = ContenuPage & {
   /** La récolte Meta a échoué au dernier passage (`lib/canaux-muets.ts`) :
    *  la période s'est arrêtée au dernier jour lu, et la page le dit. */
   muet: CanalMuetLive | null;
+  /** L'image de chaque annonce de la Comparaison, par son ID : celle que la
+   *  récolte des créas (ticket 05) a déposée dans Storage. */
+  vignettes: Record<string, string>;
 };
+
+/**
+ * Les vignettes des annonces listées. Un échec de lecture ne coûte que les
+ * images — la Comparaison montre alors des cases neutres — jamais la page :
+ * ses chiffres viennent d'une autre table.
+ */
+async function lireVignettes(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  ids: string[]
+): Promise<Record<string, string>> {
+  if (ids.length === 0) return {};
+  const out: Record<string, string> = {};
+  // Par paquets : un `in.(…)` de centaines d'IDs dépasserait la longueur
+  // d'URL que PostgREST accepte.
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("meta_ads_creatives")
+      .select("ad_id, vignette_url, image_url")
+      .eq("user_id", uid)
+      .in("ad_id", ids.slice(i, i + 200));
+    if (error) return {};
+    for (const r of (data ?? []) as { ad_id: string; vignette_url: string | null; image_url: string | null }[]) {
+      const url = r.vignette_url ?? r.image_url;
+      if (url) out[r.ad_id] = url;
+    }
+  }
+  return out;
+}
 
 function iso(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -127,9 +159,11 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
 
   const contenu = contenuPage(brutes.map(versLigne), c, ctx);
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
+  const annonces = contenu.comparaison.elements.flatMap((e) => (e.annonceId ? [e.annonceId] : []));
   return {
     ...contenu,
     lecture: phraseLecture(ligneProgres),
     muet,
+    vignettes: await lireVignettes(supabase, uid, annonces),
   };
 }

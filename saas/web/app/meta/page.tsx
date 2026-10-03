@@ -5,10 +5,12 @@
 // elle lit l'identité par ID, pagine au-delà de 1 000 lignes, recalcule ses
 // ratios total ÷ total et dit à quelle date Pulse a lu Meta.
 //
-// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`. Le calcul
+// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, et pour la
+// Comparaison `niveau`, `m1`/`m2` et `comparer` (répété). Le calcul
 // est dans `lib/meta/lecture.ts`, la lecture de la base dans
 // `lib/meta/donnees.ts`.
 import { BandeauMeta } from "@/components/meta/bandeau";
+import { Comparaison } from "@/components/meta/comparaison";
 import { SelecteurVue } from "@/components/meta/selecteur-vue";
 import { Tendance } from "@/components/meta/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
@@ -18,6 +20,8 @@ import type { Params } from "@/lib/meta/liens";
 export const dynamic = "force-dynamic";
 
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+/** `comparer` se répète : une valeur par place cochée. */
+const tous = (v: string | string[] | undefined) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]);
 
 export default async function MetaPage({ searchParams }: { searchParams: Params }) {
   const meta = await getDonneesMeta({
@@ -25,6 +29,10 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
     campagne: un(searchParams.campagne),
     from: un(searchParams.from),
     to: un(searchParams.to),
+    niveau: un(searchParams.niveau),
+    m1: un(searchParams.m1),
+    m2: un(searchParams.m2),
+    comparer: tous(searchParams.comparer),
   });
   const choisie = meta.campagneChoisie;
   const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
@@ -58,6 +66,14 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
       <div className="mt-6 space-y-12">
         <SelecteurVue cartes={meta.cartes} vue={meta.vue} params={searchParams} />
         <Tendance metriques={meta.tendance} dates={meta.dates} datesAvant={meta.datesAvant} sujet={sujet} />
+        <Comparaison
+          comparaison={meta.comparaison}
+          vue={meta.vue}
+          dates={meta.dates}
+          params={searchParams}
+          sujet={sujet}
+          vignettes={meta.vignettes}
+        />
       </div>
     </main>
   );
