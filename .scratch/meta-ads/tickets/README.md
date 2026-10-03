@@ -1,12 +1,12 @@
 # Construction — le dashboard Meta Ads refondu
 
-Ce chantier **construit** ce que la carte `.scratch/meta-ads/` a décidé. Il ne
-décide rien : chaque ticket renvoie à la spec, et la spec renvoie aux tickets
-clos de la carte.
+Ces tickets **construisent** ce que la carte (`../map.md`) a décidé. Ils ne
+décident rien : chacun renvoie à la spec, et la spec renvoie aux tickets clos
+de la carte, rangés à part dans `../issues/`.
 
-- **La spec** : [`../meta-ads/spec.md`](../meta-ads/spec.md) — elle seule fait foi,
-  pas le prototype `/meta/prototype-modules`.
-- **Les tickets** : `issues/01` à `issues/14`, numérotés dans l'ordre des
+- **La spec** : [`../spec.md`](../spec.md) — elle seule fait foi, pas le
+  prototype `/meta/prototype-modules`.
+- **Les tickets** : `01` à `14` dans ce dossier, numérotés dans l'ordre des
   dépendances. Mêmes conventions que partout (`docs/agents/issue-tracker.md`).
 - **La frontière** : un ticket se prend quand tous ceux de sa ligne `Blocked by`
   sont `resolved`. Trois agents au plus en parallèle, jamais deux sur les mêmes

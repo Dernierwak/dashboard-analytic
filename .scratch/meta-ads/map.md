@@ -169,8 +169,8 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   défaut ; le tableau **s'exporte en CSV**. Ce que Google met dans chaque module y
   est noté.
 
-- **La spec est découpée en 14 tickets de construction**, dans un chantier à
-  part : [`../meta-ads-construction/`](../meta-ads-construction/README.md). 01 et
+- **La spec est découpée en 14 tickets de construction**, rangés dans
+  [`tickets/`](tickets/README.md), à part des décisions de la carte. 01 et
   13 attendent David (jouer la `998`, jouer l'étape B) ; après le schéma (02),
   03, 05 et 06 avancent de front. Le choix du bucket des visuels est posé au
   ticket 05.
