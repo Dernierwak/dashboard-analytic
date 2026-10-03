@@ -12,6 +12,7 @@
 import { BandeauMeta } from "@/components/meta/bandeau";
 import { Comparaison } from "@/components/meta/comparaison";
 import { SelecteurVue } from "@/components/meta/selecteur-vue";
+import { TableauDetaille } from "@/components/meta/tableau";
 import { Tendance } from "@/components/meta/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { getDonneesMeta } from "@/lib/meta/donnees";
@@ -74,6 +75,7 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
           sujet={sujet}
           vignettes={meta.vignettes}
         />
+        <TableauDetaille tableau={meta.tableau} />
       </div>
     </main>
   );

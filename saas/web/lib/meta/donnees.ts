@@ -11,6 +11,7 @@ import {
   type ContenuPage,
   type LigneMeta,
 } from "@/lib/meta/lecture";
+import { tableauDe, type Tableau } from "@/lib/meta/tableau";
 
 // ── CE QUE LA PAGE META LIT DANS SUPABASE ────────────────────────────────────
 //
@@ -32,6 +33,8 @@ export type DonneesMeta = ContenuPage & {
   /** L'image de chaque annonce de la Comparaison, par son ID : celle que la
    *  récolte des créas (ticket 05) a déposée dans Storage. */
   vignettes: Record<string, string>;
+  /** Le Tableau détaillé (ticket 09), tiré des mêmes lignes que le reste. */
+  tableau: Tableau;
 };
 
 /**
@@ -157,7 +160,8 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
     supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "meta").limit(1),
   ]);
 
-  const contenu = contenuPage(brutes.map(versLigne), c, ctx);
+  const lignes = brutes.map(versLigne);
+  const contenu = contenuPage(lignes, c, ctx);
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const annonces = contenu.comparaison.elements.flatMap((e) => (e.annonceId ? [e.annonceId] : []));
   return {
@@ -165,5 +169,6 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
     lecture: phraseLecture(ligneProgres),
     muet,
     vignettes: await lireVignettes(supabase, uid, annonces),
+    tableau: tableauDe(lignes, c, ctx),
   };
 }
