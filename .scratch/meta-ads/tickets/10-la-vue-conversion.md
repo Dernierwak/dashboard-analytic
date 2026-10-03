@@ -44,9 +44,11 @@ du harnais du 03.
 
 **Pour débloquer, dans l'ordre :**
 1. David joue le `000` (ticket 02) sur Supabase ;
-2. GitHub Actions → `weekly-fetch.yml` → *Run workflow* avec **`force`** (un
-   lancement à la main ; le cron de 07:00 UTC suffirait aussi, mais sans
-   `force` il ne relit que le recouvrement) ;
+2. un passage du worker **sur le code de cette branche** (celui de `main` ne
+   demande pas `results`). ⚠ Corrigé le jour même : `force` ne touche pas la
+   fenêtre de récolte, il fait passer **tous** les comptes — et tout passage
+   publie le rapport et **envoie l'email** à chaque compte traité. Viser un
+   compte par `user_id` ;
 3. recopier dans le ticket 03 la forme réelle d'un élément de `results`, une
    ligne de campagne de notoriété et les réglages d'attribution présents ;
 4. relancer ce ticket.

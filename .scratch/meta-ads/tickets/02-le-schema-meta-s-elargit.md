@@ -1,7 +1,7 @@
 # 02: Le schéma Meta s'élargit (étape A)
 
 Type: task
-Status: ready-for-human
+Status: resolved
 Blocked by: 01
 
 **What to build:** la base sait porter tout ce que la récolte va rapporter, sans
@@ -26,7 +26,7 @@ recherche de la carte (`.scratch/meta-ads/recherche/champs-api-meta.md`),
 - [x] Aucun `DROP`, `DELETE` ni `TRUNCATE`
 - [x] Le `000` joué deux fois sur un PostgreSQL jetable chargé, et deux fois sur
       une base vierge : exit 0 (précédent : la `998`, ticket 02 de la carte)
-- [ ] David a joué le `000` sur Supabase
+- [x] David a joué le `000` sur Supabase
 
 ## Comment
 
@@ -80,3 +80,11 @@ ont une **clé primaire** (sinon l'éditeur de tables de Supabase les rend en
 lecture seule), et la récolte doit **remplacer** les assets d'une annonce à
 chaque passage, car la clé sur le rang ne retire rien. C'est noté au ticket 05.
 Harnais relancé après ces changements : tout vert.
+
+**2026-10-03 — le `000` est joué** (à la demande de David, par
+`supabase db query --linked -f supabase/migrations/000_run_me_all.sql`).
+Avant : 0 doublon sur `(user_id, date_start, ad_id)`, donc `meta_ads_insights_uq2`
+pouvait se reposer. Après : contrôle final du fichier 51/51 ✓, rejoué une
+seconde fois 51/51 ✓ ; `meta_ads_insights` garde ses 3 473 lignes, les quatre
+colonnes neuves existent (vides : aucune récolte encore), contraintes
+`pkey`, `uq2`, `user_id_fkey`.
