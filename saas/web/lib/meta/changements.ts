@@ -52,7 +52,6 @@ const NATURES: Record<string, string> = {
   creatif: "Visuel",
   enchere: "Enchère",
   creation: "Création",
-  motcle: "Mot-clé",
 };
 const NATURE_INCONNUE = "Réglage";
 

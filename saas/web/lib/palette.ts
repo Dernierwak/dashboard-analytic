@@ -52,3 +52,9 @@ export const NEUTRE: Teinte = {
   trait: "#a8a8b0",
   aplat: "rgba(168, 168, 176, 0.14)",
 };
+
+// Le repère d'un jour sur une courbe (`components/courbe.tsx`) et sa légende.
+// Ici, sans directive, parce que la légende le relit (`CLAUDE.md` §8). L'orange
+// `#ff7a45` du prototype tombait à 2,52:1 sur fond blanc ; celui-ci passe les
+// six contrôles du validateur `dataviz` à côté du bleu maison (ΔE CVD 33,7).
+export const ORANGE_REPERE = "#e8590c";

@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Courbe, type Repere } from "@/components/courbe";
 import { PastilleEcart } from "@/components/meta/elements";
 import type { MarqueJour } from "@/lib/meta/changements";
 import { dateBulle, formaterValeur, type MetriqueTendance } from "@/lib/meta/lecture";
 import { lienMeta, type Params } from "@/lib/meta/liens";
+import { ORANGE_REPERE } from "@/lib/palette";
 
 // ── MODULE 3 · LA TENDANCE ───────────────────────────────────────────────────
 //
@@ -58,6 +59,7 @@ export function Tendance({
 }) {
   const router = useRouter();
   const [enCours, demarrer] = useTransition();
+  const [aide, setAide] = useState(false);
   const ouvrirJour = (i: number) =>
     demarrer(() => router.push(lienMeta(params, { jour: dates[i], annonce: null }), { scroll: false }));
   const reperes: Repere[] = (marques ?? []).map((m) => ({ index: m.index, libelle: libelle(m.nombre) }));
@@ -76,9 +78,32 @@ export function Tendance({
           {marques === null ? (
             <span className="text-warn">Le journal des changements n&apos;a pas pu être lu : aucun point posé</span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-[#e8590c]" /> Un changement dans ton compte
-              <span className="cursor-help text-faint" title={NE_COUVRE_PAS} aria-label={NE_COUVRE_PAS}>ⓘ</span>
+            <span className="relative flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: ORANGE_REPERE }} /> Un changement dans ton compte
+              {/* Un vrai bouton qui déplie le texte : un `title` seul ne
+                  s'ouvre ni au clavier ni au doigt, et c'est la seule place
+                  où cette limite est dite. */}
+              <button
+                type="button"
+                onClick={() => setAide((x) => !x)}
+                onBlur={() => setAide(false)}
+                aria-expanded={aide}
+                aria-controls="aide-journal"
+                aria-label="Ce que le journal des changements ne couvre pas"
+                title={NE_COUVRE_PAS}
+                className="cursor-help rounded-full text-faint hover:text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                ⓘ
+              </button>
+              {aide && (
+                <span
+                  id="aide-journal"
+                  role="note"
+                  className="absolute right-0 top-full z-20 mt-2 w-[min(340px,calc(100vw-32px))] rounded-xl bg-ink/95 px-3 py-2.5 text-[12.5px] leading-snug text-white shadow-xl"
+                >
+                  {NE_COUVRE_PAS}
+                </span>
+              )}
             </span>
           )}
           <span title="Un jour sans aucune ligne récoltée n'est pas un zéro : la courbe s'y interrompt.">Un trou = aucun chiffre ce jour-là</span>

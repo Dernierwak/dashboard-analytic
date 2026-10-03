@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ORANGE_REPERE } from "@/lib/palette";
 
 // ── LA COURBE, BRIQUE NEUTRE ────────────────────────────────────────────────
 //
@@ -27,10 +28,8 @@ import { useState } from "react";
 // teinte. Contraste ≥ 3:1 pour les deux.
 //
 // LES REPÈRES. Un jour peut porter un repère cliquable posé sur la série
-// principale (la page Meta y met les jours où le compte a changé). Orange
-// `#e8590c` : l'orange `#ff7a45` du prototype tombe à 2,52:1 sur fond blanc,
-// celui-ci passe les six contrôles du validateur avec le bleu (ΔE CVD 33,7).
-// Un repère se clique sur toute la hauteur du jour, pas seulement sur ses
+// principale (la page Meta y met les jours où le compte a changé), en
+// `ORANGE_REPERE` (`lib/palette.ts`, qui dit pourquoi cet orange). Un repère se clique sur toute la hauteur du jour, pas seulement sur ses
 // 8 px, et c'est un vrai bouton pour qui navigue au clavier.
 
 export type SerieCourbe = {
@@ -47,8 +46,6 @@ export type SerieCourbe = {
 const BLEU = "#1a56ff";
 const GRIS = "#8b8e98";
 const W = 1000;
-
-const ORANGE_REPERE = "#e8590c";
 
 export type Repere = {
   /** La place du jour dans les séries. */

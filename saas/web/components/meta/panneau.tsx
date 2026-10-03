@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useTransition } from "react";
+import { useCallback, useEffect, useRef, useTransition } from "react";
 
 // ── LE PANNEAU LATÉRAL ───────────────────────────────────────────────────────
 //
@@ -35,18 +35,20 @@ export function PanneauLateral({
   const [enCours, demarrer] = useTransition();
   const bouton = useRef<HTMLButtonElement>(null);
 
+  const fermer = useCallback(
+    () => demarrer(() => router.replace(fermeture, { scroll: false })),
+    [router, fermeture]
+  );
+
   useEffect(() => {
-    const fermer = () => demarrer(() => router.replace(fermeture, { scroll: false }));
     const touche = (e: KeyboardEvent) => e.key === "Escape" && fermer();
     window.addEventListener("keydown", touche);
     return () => window.removeEventListener("keydown", touche);
-  }, [router, fermeture]);
+  }, [fermer]);
 
   // Le focus entre dans le panneau à l'ouverture : au clavier, on lit ce qui
   // vient de s'ouvrir au lieu de rester sur le point de la courbe.
   useEffect(() => bouton.current?.focus({ preventScroll: true }), [titre]);
-
-  const fermer = () => demarrer(() => router.replace(fermeture, { scroll: false }));
 
   return (
     <div className="fixed inset-0 z-50" aria-busy={enCours}>
