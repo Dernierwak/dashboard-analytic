@@ -34,7 +34,7 @@ from supabase import create_client                                        # noqa
 from saas.commun.app_secrets import secret                                    # noqa: E402
 from saas.commun.fetch_data import (                                          # noqa: E402
     fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
-    fetch_google_ads_ad_insights_latest_date,
+    fetch_google_ads_ad_insights_latest_date, fetch_meta_hierarchie,
 )
 from saas.commun.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
@@ -50,6 +50,7 @@ from saas.collecte.google.fetch_google_ads import (                             
 from saas.collecte.meta.fetch_meta_ads import (                                   # noqa: E402
     fetch_campaign_budgets as meta_budgets,
     fetch_activities as meta_changes,
+    hierarchie_depuis_insights,
     lignes_meta_ads,
 )
 from saas.collecte.automatisation.suivi import Suivi, CANAUX                                # noqa: E402
@@ -514,6 +515,26 @@ def _journal_changements(sb, uid, canal: str, recolte) -> None:
         print(f"    changements {canal} KO : {_sans_jeton(str(e))}")
 
 
+def _hierarchie_meta(sb, uid) -> dict:
+    """Ensemble ou annonce → campagne, lu dans meta_ads_insights.
+
+    SEULE L'ABSENCE DES COLONNES (42703, 000 pas encore joué) rend un
+    dictionnaire vide : aucune ligne n'a jamais porté de campagne parente,
+    il n'y a rien à perdre. Tout autre échec LÈVE, et `_journal_changements`
+    saute le journal de ce passage : écrire avec une hiérarchie vide
+    réécrirait par upsert à NULL la campagne de chaque changement déjà
+    rattaché.
+    """
+    try:
+        return hierarchie_depuis_insights(fetch_meta_hierarchie(sb, uid))
+    except Exception as e:
+        if getattr(e, "code", None) == "42703":
+            print("    changements meta : colonnes campaign_id/adset_id absentes, "
+                  "rattachement à la campagne sauté — jouer le 000.")
+            return {}
+        raise
+
+
 def _rien(_etape: str) -> None:
     """Le rapporteur d'étapes par défaut : celui qui ne rapporte à personne.
 
@@ -801,9 +822,14 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # n'aurait plus aucun relevé, et la page Coûts le lirait « rien de prévu ».
     _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
     note("changements")
+    # La hiérarchie se lit en base, AVANT les insights de ce passage : un
+    # ensemble créé depuis le dernier passage reste sans campagne aujourd'hui,
+    # et la gagne au suivant — la fenêtre de 180 jours relit le même changement
+    # et l'upsert sur `change_id` réécrit sa campagne.
     _journal_changements(sb, uid, "meta", lambda: meta_changes(
         token, ad_account_id,
-        (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat()))
+        (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat(),
+        parents=_hierarchie_meta(sb, uid)))
     note("insights")
     # LE GARDE-FOU SE POSE AVANT LA PREMIÈRE REQUÊTE D'INSIGHTS, pas juste
     # avant l'écriture : sans ses colonnes, ces appels ne servent à rien et

@@ -1094,12 +1094,25 @@ CREATE TABLE IF NOT EXISTS public.platform_changes (
     change_id     text NOT NULL,          -- hachage stable (canal, horodatage, ressource, champ)
     occurred_at   timestamptz NOT NULL,
     categorie     text NOT NULL CHECK (categorie IN
-                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'autre')),
+                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre')),
     campaign_id   text,
     campaign_name text,
     resume        text NOT NULL,          -- déjà rédigé en français à la récolte
     PRIMARY KEY (user_id, channel, change_id)
 );
+
+-- « creation » : Meta déclare la création d'une campagne, d'un ensemble ou
+-- d'une annonce (`create_campaign_group`, `create_ad_set`, `create_ad`), que la
+-- récolte garde depuis le ticket 04 de meta-ads. La ranger en « autre » la
+-- ferait lire « réglage » à l'écran. Le CREATE TABLE ci-dessus ne touche pas
+-- une table déjà là : la contrainte se remplace, sans toucher une ligne. Les
+-- lignes existantes satisfont la nouvelle liste, qui ne fait qu'ajouter.
+-- SANS ÇA, le premier passage du worker qui rencontre une création voit TOUT
+-- son lot de changements Meta refusé.
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_categorie_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
+    CHECK (categorie IN
+        ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre'));
 
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);

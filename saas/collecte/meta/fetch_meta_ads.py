@@ -222,12 +222,45 @@ _ACTIVITES = {
     "update_ad_set_run_status":   "statut",
     "update_ad_set_target_spec":  "audience",
     "update_ad_creative":         "creatif",
+    # Élargis par la carte meta-ads (décision `.scratch/meta-ads/issues/08`, construite
+    # au ticket 04) : ce sont les gestes courants
+    # d'Ads Manager, et `/activities` les documente
+    # (https://developers.facebook.com/docs/marketing-api/reference/ad-activity/).
+    # La revue de Meta (`ad_review_*`) n'est pas retenue : ce n'est pas un
+    # geste du client.
+    "update_ad_run_status":       "statut",
+    "update_ad_set_bidding":      "enchere",
+    "update_ad_set_bid_strategy": "enchere",
+    "update_ad_bid_info":         "enchere",
+    "create_campaign_group":      "creation",
+    "create_ad_set":              "creation",
+    "create_ad":                  "creation",
 }
 
-# Les événements portés par la campagne elle-même. Pour les autres, on laisse
-# `campaign_id` vide plutôt que d'y ranger l'identifiant d'un ad set : le
-# rattachement à la campagne se ferait sur une clé fausse, en silence.
-_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status"}
+# LES NOUVEAUX TYPES NE LISENT PAS `extra_data`. Sa forme n'est documentée nulle
+# part et aucun exemple réel n'a encore été lu pour eux : la phrase dit ce que
+# le type d'événement établit à lui seul, sans valeur avant/après. Une valeur ne
+# s'ajoute qu'une fois un `extra_data` réel recopié dans le ticket 04.
+_PHRASES_SANS_VALEUR = {
+    "update_ad_run_status":       'le statut de l\'annonce "{nom}" a été modifié',
+    "update_ad_set_bidding":      'l\'enchère de l\'ensemble "{nom}" a été modifiée',
+    "update_ad_set_bid_strategy": 'la stratégie d\'enchère de l\'ensemble "{nom}" a été modifiée',
+    "update_ad_bid_info":         'l\'enchère de l\'annonce "{nom}" a été modifiée',
+    "create_campaign_group":      'la campagne "{nom}" a été créée',
+    "create_ad_set":              'l\'ensemble "{nom}" a été créé',
+    "create_ad":                  'l\'annonce "{nom}" a été créée',
+}
+
+# Les événements portés par la campagne elle-même : leur `object_id` EST la
+# campagne. Pour les autres, `object_id` est un ensemble ou une annonce, et la
+# campagne se retrouve par l'ID dans la hiérarchie des insights
+# (`hierarchie_depuis_insights`) — jamais en rangeant l'ID d'un ensemble dans
+# `campaign_id`, ce qui rattacherait le changement sur une clé fausse.
+_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status",
+                    "create_campaign_group"}
+
+# Ensemble ou annonce → (campaign_id, campaign_name) : `hierarchie_depuis_insights`.
+Parents = dict[str, tuple[str, str | None]]
 
 _ETATS_META = {
     "PAUSED":   "a été mise en pause",
@@ -281,6 +314,8 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
     # changé » — un bruit qui chasse les lignes utiles du fil.
     if not nom:
         return None
+    if typ in _PHRASES_SANS_VALEUR:
+        return (categorie, _PHRASES_SANS_VALEUR[typ].format(nom=nom))
     extra = _extra(act.get("extra_data"))
     avant, apres = extra.get("old_value"), extra.get("new_value")
     est_campagne = typ in _NIVEAU_CAMPAGNE
@@ -328,11 +363,13 @@ def fetch_activities(
     ad_account_id: str,
     since: str,
     until: str | None = None,
+    parents: Parents | None = None,
 ) -> tuple[list[dict], str | None]:
     """Les changements DÉCLARÉS par Meta entre `since` et `until` (YYYY-MM-DD).
 
     Returns: (rows, error|None) — chaque row : change_id, occurred_at,
-    categorie, campaign_id, campaign_name, resume.
+    categorie, campaign_id, campaign_name, resume. `parents` rattache un
+    changement d'ensemble ou d'annonce à sa campagne (`lignes_activites`).
     Seuls les événements qu'on sait dire en français ressortent : le reste est
     écarté ici, pas filtré à l'affichage.
     """
@@ -376,6 +413,51 @@ def fetch_activities(
         print(f"    activités Meta : arrêt à {_ACTIVITES_PAGES_MAX} pages "
               f"({len(actes)} activités lues), la suite est ignorée.")
 
+    return lignes_activites(actes, parents or {}), None
+
+
+
+def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
+    """Les lignes de meta_ads_insights → {id d'ensemble ou d'annonce : (campaign_id, campaign_name)}.
+
+    Pure. Meta numérote ensembles et annonces dans un même espace d'IDs, d'où
+    un seul dictionnaire. Une ligne sans `campaign_id` (d'avant le rejeu du
+    ticket 03) ne rattache rien : on ne reconstitue jamais une campagne depuis
+    un nom. Le nom gardé est le plus récent, pour qu'une campagne renommée se
+    lise sous un seul nom (spec, user story 51).
+    """
+    noms: dict[str, str | None] = {}
+    for r in sorted(lignes, key=lambda r: str(r.get("date_start") or "")):
+        if r.get("campaign_id"):
+            noms[str(r["campaign_id"])] = r.get("campaign_name") or None
+    parents: Parents = {}
+    for r in lignes:
+        if not r.get("campaign_id"):
+            continue
+        cid = str(r["campaign_id"])
+        for oid in (r.get("adset_id"), r.get("ad_id")):
+            if oid:
+                parents[str(oid)] = (cid, noms[cid])
+    return parents
+
+
+def _campagne_de(act: dict, parents: Parents) -> tuple[str | None, str | None]:
+    oid = str(act.get("object_id") or "")
+    if not oid:
+        return None, None
+    if str(act.get("event_type") or "") in _NIVEAU_CAMPAGNE:
+        return oid, (act.get("object_name") or None)
+    return parents.get(oid, (None, None))
+
+
+def lignes_activites(actes: list[dict], parents: Parents) -> list[dict]:
+    """La réponse de /activities → les lignes de platform_changes.
+
+    Pure, sans réseau : c'est le seam de test du journal (harnais
+    `.scratch/meta-ads/harnais/04-le-journal/`). `parents` vient de
+    `hierarchie_depuis_insights` ; un ID absent laisse la campagne vide, et le
+    changement ne se lit alors que sans filtre campagne.
+    """
     rows: list[dict] = []
     vus: set[str] = set()
     for a in actes:
@@ -386,17 +468,17 @@ def fetch_activities(
         if not traduit:
             continue
         categorie, resume = traduit
-        est_campagne = str(a.get("event_type") or "") in _NIVEAU_CAMPAGNE
         cle = _cle_meta(quand, a.get("event_type"), a.get("object_id"))
         if cle in vus:
             continue
         vus.add(cle)
+        campaign_id, campaign_name = _campagne_de(a, parents)
         rows.append({
             "change_id":     cle,
             "occurred_at":   str(quand),
             "categorie":     categorie,
-            "campaign_id":   str(a.get("object_id")) if (est_campagne and a.get("object_id")) else None,
-            "campaign_name": (a.get("object_name") or None) if est_campagne else None,
+            "campaign_id":   campaign_id,
+            "campaign_name": campaign_name,
             "resume":        resume,
         })
-    return rows, None
+    return rows

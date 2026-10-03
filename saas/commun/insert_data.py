@@ -272,6 +272,21 @@ def upsert_platform_budgets(
 
 # ── Changements DÉCLARÉS par les plateformes — platform_changes ───────────────
 
+def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
+    """Sépare les changements rattachés à une campagne de ceux qui ne le sont pas.
+
+    Chaque passage relit tout le journal (180 jours chez Meta) et l'upsert
+    réécrit chaque colonne envoyée. Un ensemble dont la campagne ne se retrouve
+    plus ce jour-là (insights rejoués, compte reconnecté) remettrait donc à
+    NULL un rattachement déjà acquis. Le lot sans campagne n'envoie pas ces
+    colonnes : PostgREST ne met à jour que celles qu'il reçoit.
+    """
+    avec = [r for r in records if r.get("campaign_id")]
+    sans = [{k: v for k, v in r.items() if k not in ("campaign_id", "campaign_name")}
+            for r in records if not r.get("campaign_id")]
+    return [lot for lot in (avec, sans) if lot]
+
+
 def upsert_platform_changes(
     supabase: Client,
     user_id: str,
@@ -311,9 +326,10 @@ def upsert_platform_changes(
     if not records:
         return
     try:
-        supabase.table("platform_changes").upsert(
-            records, on_conflict="user_id,channel,change_id"
-        ).execute()
+        for lot in lots_sans_effacer_la_campagne(records):
+            supabase.table("platform_changes").upsert(
+                lot, on_conflict="user_id,channel,change_id"
+            ).execute()
     except Exception as e:
         if _table_absente(e, "platform_changes"):
             raise RuntimeError(
