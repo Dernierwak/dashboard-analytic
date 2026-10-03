@@ -3,8 +3,10 @@ import { getCompteActif } from "@/lib/account";
 import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
+import { changementDe, type ChangementMeta, type LigneChangement } from "@/lib/meta/changements";
 import {
   contenuPage,
+  decaler,
   lireToutesLesPages,
   periodeDe,
   type Commandes,
@@ -35,7 +37,43 @@ export type DonneesMeta = ContenuPage & {
   vignettes: Record<string, string>;
   /** Le Tableau détaillé (ticket 09), tiré des mêmes lignes que le reste. */
   tableau: Tableau;
+  /** Les changements que Meta déclare sur la période (ticket 11). `null` =
+   *  le journal n'a pas pu être lu : la page le dit, au lieu de montrer une
+   *  courbe sans point qu'on lirait « rien n'a changé ». */
+  journal: ChangementMeta[] | null;
 };
+
+/**
+ * Le journal des changements Meta de la période, paginé (`CLAUDE.md` §8 : un
+ * compte actif dépasse vite 1 000 changements). La période seulement : les
+ * points ne se posent que sur la courbe de la période, pas sur celle d'avant.
+ */
+async function lireJournal(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<ChangementMeta[] | null> {
+  try {
+    const lignes = await lireToutesLesPages<LigneChangement>((de, a) =>
+      supabase
+        .from("platform_changes")
+        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
+        .eq("user_id", uid)
+        .eq("channel", "meta")
+        // Jours UTC, comme `changementDe` les découpe.
+        .gte("occurred_at", `${debut}T00:00:00Z`)
+        .lt("occurred_at", `${decaler(fin, 1)}T00:00:00Z`)
+        // Un ordre TOTAL, sinon deux pages se recouvrent sur un même instant.
+        .order("occurred_at", { ascending: true })
+        .order("change_id", { ascending: true })
+        .range(de, a)
+    );
+    return lignes.flatMap((r) => changementDe(r) ?? []);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Les vignettes des annonces listées. Un échec de lecture ne coûte que les
@@ -143,7 +181,7 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, progres] = await Promise.all([
+  const [brutes, progres, journal] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("meta_ads_insights")
@@ -158,6 +196,7 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
         .range(de, a)
     ),
     supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "meta").limit(1),
+    lireJournal(supabase, uid, p.debut, p.fin),
   ]);
 
   const lignes = brutes.map(versLigne);
@@ -170,5 +209,6 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
     muet,
     vignettes: await lireVignettes(supabase, uid, annonces),
     tableau: tableauDe(lignes, c, ctx),
+    journal,
   };
 }

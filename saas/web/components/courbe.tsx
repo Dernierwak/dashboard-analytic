@@ -25,6 +25,13 @@ import { useState } from "react";
 // mais un fond de comparaison (motif « une en couleur, le reste en gris ») ;
 // il se distingue par le pointillé et par la légende, jamais par la seule
 // teinte. Contraste ≥ 3:1 pour les deux.
+//
+// LES REPÈRES. Un jour peut porter un repère cliquable posé sur la série
+// principale (la page Meta y met les jours où le compte a changé). Orange
+// `#e8590c` : l'orange `#ff7a45` du prototype tombe à 2,52:1 sur fond blanc,
+// celui-ci passe les six contrôles du validateur avec le bleu (ΔE CVD 33,7).
+// Un repère se clique sur toute la hauteur du jour, pas seulement sur ses
+// 8 px, et c'est un vrai bouton pour qui navigue au clavier.
 
 export type SerieCourbe = {
   nom: string;
@@ -40,6 +47,15 @@ export type SerieCourbe = {
 const BLEU = "#1a56ff";
 const GRIS = "#8b8e98";
 const W = 1000;
+
+const ORANGE_REPERE = "#e8590c";
+
+export type Repere = {
+  /** La place du jour dans les séries. */
+  index: number;
+  /** Ce que la bulle et le lecteur d'écran disent du repère. */
+  libelle: string;
+};
 
 const teinte = (s: SerieCourbe) => (s.pointille ? GRIS : s.couleur ?? BLEU);
 
@@ -70,12 +86,16 @@ export function Courbe({
   format,
   hauteur = 200,
   titre,
+  reperes = [],
+  onRepere,
 }: {
   series: SerieCourbe[];
   format: (v: number) => string;
   hauteur?: number;
   /** Nom accessible du graphe. */
   titre: string;
+  reperes?: Repere[];
+  onRepere?: (index: number) => void;
 }) {
   const [survol, setSurvol] = useState<number | null>(null);
   const n = Math.max(0, ...series.map((s) => s.valeurs.length));
@@ -90,6 +110,14 @@ export function Courbe({
 
   const principale = series.find((s) => !s.pointille) ?? series[0];
   const repereDates = n <= 1 ? [0] : n <= 3 ? Array.from({ length: n }, (_, i) => i) : [0, Math.floor((n - 1) / 2), n - 1];
+
+  const repereSurvole = survol === null ? undefined : reperes.find((r) => r.index === survol);
+  // Sur un jour vide, le repère se pose sur l'axe : une mise en pause rend
+  // justement les jours suivants vides, et c'est le changement qu'on cherche.
+  const yRepere = (i: number) => {
+    const v = principale?.valeurs[i];
+    return yPct(v === null || v === undefined ? 0 : v);
+  };
 
   const bouge = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -112,8 +140,9 @@ export function Courbe({
         </div>
 
         <div
-          className="relative flex-1 min-w-0 cursor-crosshair touch-pan-y"
+          className={`relative flex-1 min-w-0 touch-pan-y ${repereSurvole && onRepere ? "cursor-pointer" : "cursor-crosshair"}`}
           style={{ height: hauteur }}
+          onClick={() => repereSurvole && onRepere?.(repereSurvole.index)}
           onPointerMove={bouge}
           onPointerDown={bouge}
           onPointerLeave={() => setSurvol(null)}
@@ -166,6 +195,27 @@ export function Courbe({
             )
           )}
 
+          {reperes.map((r) => (
+            <button
+              key={r.index}
+              type="button"
+              aria-label={r.libelle}
+              onClick={(e) => {
+                // Le conteneur ouvre déjà le jour survolé : sans ça, un clic
+                // sur le point l'ouvrirait deux fois.
+                e.stopPropagation();
+                onRepere?.(r.index);
+              }}
+              className="group absolute z-[5] flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              style={{ left: `${xPct(r.index)}%`, top: `${yRepere(r.index)}%` }}
+            >
+              <span
+                className={`block h-2 w-2 rounded-full ring-2 ring-white transition-transform duration-150 motion-reduce:transition-none group-hover:scale-150 group-focus-visible:scale-150 ${survol === r.index ? "scale-150" : ""}`}
+                style={{ background: ORANGE_REPERE }}
+              />
+            </button>
+          ))}
+
           {survol !== null && (
             <div
               className="pointer-events-none absolute top-0 z-10 min-w-[170px] rounded-xl bg-ink/95 px-3 py-2.5 text-white shadow-xl"
@@ -188,6 +238,12 @@ export function Courbe({
                   </div>
                 );
               })}
+              {repereSurvole && (
+                <p className="mt-1.5 flex items-center gap-1.5 border-t border-white/10 pt-1.5 text-[11.5px] text-white/80">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORANGE_REPERE }} />
+                  {repereSurvole.libelle}
+                </p>
+              )}
             </div>
           )}
         </div>

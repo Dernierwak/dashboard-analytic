@@ -6,17 +6,20 @@
 // ratios total ÷ total et dit à quelle date Pulse a lu Meta.
 //
 // L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, et pour la
-// Comparaison `niveau`, `m1`/`m2` et `comparer` (répété). Le calcul
+// Comparaison `niveau`, `m1`/`m2` et `comparer` (répété), et `jour`, le jour
+// ouvert dans le Panneau latéral. Le calcul
 // est dans `lib/meta/lecture.ts`, la lecture de la base dans
 // `lib/meta/donnees.ts`.
 import { BandeauMeta } from "@/components/meta/bandeau";
 import { Comparaison } from "@/components/meta/comparaison";
+import { JournalDuJour } from "@/components/meta/journal-du-jour";
 import { SelecteurVue } from "@/components/meta/selecteur-vue";
 import { TableauDetaille } from "@/components/meta/tableau";
 import { Tendance } from "@/components/meta/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { getDonneesMeta } from "@/lib/meta/donnees";
-import type { Params } from "@/lib/meta/liens";
+import { jourOuvertDe, joursMarques, panneauDuJour } from "@/lib/meta/changements";
+import { lienMeta, type Params } from "@/lib/meta/liens";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,10 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
   });
   const choisie = meta.campagneChoisie;
   const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
+  // Le journal suit le filtre du Bandeau, par l'ID (`lib/meta/changements.ts`).
+  const filtre = choisie?.cle ?? null;
+  const marques = meta.journal && joursMarques(meta.journal, filtre, meta.dates);
+  const jour = meta.journal && jourOuvertDe(un(searchParams.jour), meta.periode);
 
   return (
     // Pas de `max-w-*` : le conteneur prend toute la largeur laissée par la
@@ -66,7 +73,14 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
 
       <div className="mt-6 space-y-12">
         <SelecteurVue cartes={meta.cartes} vue={meta.vue} params={searchParams} />
-        <Tendance metriques={meta.tendance} dates={meta.dates} datesAvant={meta.datesAvant} sujet={sujet} />
+        <Tendance
+          metriques={meta.tendance}
+          dates={meta.dates}
+          datesAvant={meta.datesAvant}
+          sujet={sujet}
+          marques={marques}
+          params={searchParams}
+        />
         <Comparaison
           comparaison={meta.comparaison}
           vue={meta.vue}
@@ -77,6 +91,17 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
         />
         <TableauDetaille tableau={meta.tableau} />
       </div>
+
+      {/* Un jour hors de la période, ou un journal illisible, n'ouvre rien :
+          le paramètre reste dans l'URL sans effet, et le prochain lien qui
+          touche `jour` le remplace. */}
+      {meta.journal && jour && (
+        <JournalDuJour
+          panneau={panneauDuJour(meta.journal, jour, filtre, meta.campagnes)}
+          sujet={sujet}
+          fermeture={lienMeta(searchParams, { jour: null })}
+        />
+      )}
     </main>
   );
 }
