@@ -38,7 +38,7 @@ qu'on ne saura jamais mesurer. `docs/adr/` pour les décisions durables, dont la
 0010 posée par cette carte.
 
 **Skills à appeler à chaque session.** `grilling` et `domain-modeling` en cas de
-doute. `research` pour les tickets 03 et 04. `prototype` pour 05, 06 et 08.
+doute. `research` pour les tickets 03, 04 et 15. `prototype` pour 05, 06 et 08.
 
 **Les règles qui ne se négocient pas dans cette carte.**
 - **Meta et rien que Meta.** Aucune jointure GA4, aucun chiffre d'une autre
@@ -100,7 +100,7 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
 
 - **La structure du dashboard est validée**, dans l'ordre du brief : barre
   collante, choix de la vue sur trois cartes, vue d'ensemble du total, comparaison
-  classée avec deux métriques, tableau jusqu'à l'asset.
+  classée avec deux métriques, tableau jusqu'à l'annonce (l'asset en est sorti au ticket 06).
   [Les 3-4 modules du dashboard, et leur ordre](issues/05-les-modules-du-dashboard-et-leur-ordre.md)
   — la mise en page de la comparaison (C1 ou C2) reste à choisir.
 
@@ -115,6 +115,53 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   jetable ; reste à la **jouer** sur Supabase, après un passage du worker.
   [La migration qui retire le thème de la base](issues/02-la-migration-qui-retire-le-theme-de-la-base.md)
 
+- **Le texte d'une annonce se lit dans le panneau latéral, ouvert depuis le
+  module Comparaison et nulle part ailleurs** — une cible de clic visible,
+  distincte de la case qui coche ; pas de bande de créas sous les graphes ; le
+  tableau reste une table d'export qui s'arrête à l'annonce ; un seul panneau,
+  partagé avec les changements.
+  [Aller lire le texte d'un asset sans quitter Pulse](issues/06-aller-lire-le-texte-d-un-asset-sans-quitter-pulse.md)
+
+- **Le socle est une structure de modules nommés, pas une forme de données
+  commune**, et chaque niveau Meta est identifié par son ID. Mêmes noms, rôles et
+  places sur toutes les plateformes, code propre à chacune ; ratios recalculés
+  total ÷ total ; le clic = tous les clics ; les conversions = « Résultats »
+  d'Ads Manager ; portée et fréquence retirées ; migration en deux étapes,
+  proposée et non jouée. Fiche : `docs/adr/0011`.
+  [Le socle commun Meta / Google : des modules nommés, et la clé par ID](issues/07-le-contrat-de-donnees-commun-meta-google.md)
+
+- **Un petit point par jour sur la courbe, un clic ouvre le jour dans le
+  panneau partagé** ; sous un filtre, seulement la campagne filtrée, ensembles
+  et annonces compris — la récolte devra retrouver le parent par l'ID. Meta
+  déclarait bien enchères et créations : c'est la récolte qui les jetait, elle
+  s'élargit aux enchères, au statut des annonces et aux créations. Ce que le
+  journal ne couvre pas se dit dans une info-bulle « ⓘ ».
+  [Les changements posés sur les courbes](issues/08-les-changements-poses-sur-les-courbes.md)
+
+- **La colonne « Résultats » d'Ads Manager, c'est le champ `results`** — une
+  liste, pas un nombre, qui suit l'attribution de l'ensemble de publicités. Sa
+  forme exacte et ce qu'il rend en notoriété ne sont pas documentés.
+  [Quel champ de l'API Meta rend la colonne « Résultats »](issues/15-quel-champ-de-l-api-rend-la-colonne-resultats.md)
+
+- **`results` se stocke brut, sans appel préalable** : la liste telle que Meta
+  la rend, `NULL` si le champ manque, jamais `0`. Sa forme se lira dans la base
+  après le premier passage du worker.
+  [L'appel réel qui donne la forme de `results`](issues/16-l-appel-reel-qui-donne-la-forme-de-results.md)
+
+- **Pulse recopie Meta pendant 28 jours, et dit à quelle date il l'a lu.** Le
+  recouvrement Meta passe de 7 à 28 jours — au-delà, Meta ne corrige plus rien,
+  donc un jour ancien est identique à Ads Manager. L'écran écrit « Chiffres
+  Meta au <Jour de travail> » ; aucune zone « provisoire », la règle du jour en
+  cours ne s'élargit pas ; `attribution_setting` se dit dans l'info-bulle
+  « ⓘ ». L'appel en direct à Meta est écarté.
+  [La fenêtre de recouvrement, et les 21 jours de conversions qu'on ne verra jamais](issues/09-la-fenetre-de-recouvrement-des-conversions.md)
+
+- **La page d'arrivée ne se saisit plus, elle se lit dans la créa Meta, annonce
+  par annonce** — un lien sortant dans le panneau latéral, à côté du texte. La
+  saisie par campagne, sans lecteur et au mauvais niveau, a quitté le code ; la
+  `998` détruit `landing_url` avec le thème. Exécuté sur demande de David.
+  [La page d'arrivée d'une campagne n'a plus d'écran](issues/14-la-page-d-arrivee-d-une-campagne-n-a-plus-d-ecran.md)
+
 ## Pas encore spécifié
 
 - **L'écriture de la spec elle-même.** Une fois 03 à 08 clos, il reste à assembler
@@ -123,14 +170,11 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   tickets de construction.
 - **La fenêtre de lecture.** Le prototype propose des raccourcis de 7 jours à
   12 semaines plus une période sur mesure, toujours comparées à la période
-  d'avant. Reste ouvert : faut-il aussi une période « Tout » (voir la frontière
-  des 13 mois ci-dessous), et « la semaine mesurée » doit-elle être un raccourci ?
-- **Ce que Google Ads doit changer pour entrer dans le socle.** Visible dès que le
-  contrat du ticket 07 existe, pas avant.
-- **La frontière des 13 mois sur la portée.** `reach` n'est plus rendu avec un
-  breakdown au-delà de 13 mois depuis le 10 juin 2025 (job asynchrone plafonné à
-  10/jour/compte sinon). `/meta` propose une période « Tout ». Ce que la période la
-  plus large peut honnêtement afficher se décidera avec les modules (ticket 05).
+  d'avant. Reste ouvert : faut-il aussi une période « Tout » (la frontière
+  des 13 mois ne joue plus depuis que la portée est retirée, ticket 07), et « la semaine mesurée » doit-elle être un raccourci ?
+- **Ce que Google Ads doit changer pour entrer dans le socle.** Depuis le ticket
+  07, le socle est la liste des modules : la question devient, module par
+  module, ce que Google y met — à écrire avec la spec, pas avant.
 - **Les quotas de l'API Meta : mesurés, et ce n'est pas eux qui coûtent.** 7 appels
   Graph par passage pour 20 annonces, soit 2,4 % du plafond Ads Management standard.
   **Le poste cher est le stockage des images**, pas l'API — ce qui déplace la question
@@ -156,5 +200,8 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
   donne que six métriques pour les annonces bâties sur un `asset_feed_spec`. Le
   **contenu** des assets reste, lui, dans le périmètre (ticket 06). Ticket clos :
   [Meta donne-t-il des métriques par asset ?](issues/03-meta-donne-t-il-des-metriques-par-asset.md)
+- **La portée et la fréquence.** Retirées du dashboard au ticket 07 : la somme
+  des portées journalières est fausse, et la vraie demande un appel par période.
+  Au `BACKLOG.md` avec les deux voies honnêtes.
 - **Le tri des campagnes par objectif déclaré.** Bonne idée, trop de complexité
   pour maintenant. Au `BACKLOG.md`.

@@ -38,7 +38,6 @@
 --          AVANT la section 15 elle aussi, même raison.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
---   17)    landing_url — la page d'arrivée d'une campagne
 --   18)    profiles.site_url — le site du client
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   26)    email_envois — ce qu'est devenu l'email hebdo (ticket 50). APRÈS la
@@ -52,6 +51,12 @@
 --   ce qu'elles avaient installé est détruit par `998_supprimer_le_theme.sql`,
 --   joué une fois, à la main. Les laisser ici les ferait RENAÎTRE au prochain
 --   passage de ce fichier.
+--
+--   La section 17 installait `landing_url`, la page d'arrivée saisie à la main
+--   pour une campagne. Son seul écran était `/labels` ; David, le 2026-10-03 :
+--   « on n'en a plus du tout besoin ». L'adresse vers laquelle une annonce
+--   envoie se lit dans sa créa Meta (`object_story_spec.link_data.link`), pas
+--   dans une déclaration. Même sort : la `998` détruit la colonne.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1314,63 +1319,6 @@ ALTER TABLE public.google_campaign_config
 
 
 -- ============================================================================
--- 17) LA PAGE D'ARRIVÉE D'UNE CAMPAGNE — voir campagne_landing.sql.
---
---     Pulse sait ce qu'une campagne COÛTE, pas ce qu'elle VEND : le nom
---     « CH_DE_Prospection_Q3_v2 » ne dit ni le produit, ni le prix, ni la
---     promesse. C'est ce trou qui limite les conseils — on peut dire « ton CPC
---     monte », jamais « ta page d'arrivée demande cinq champs pour un produit
---     à 39 CHF ».
---
---     ON LA STOCKE, ON NE LA VISITE PAS. Aucune requête sortante n'est
---     déclenchée par ce qui est écrit ici. Un champ libre où l'utilisateur colle
---     une adresse, et que le serveur irait chercher tout seul, c'est une SSRF
---     offerte. Le jour où une reco voudra lire la page, ce sera par un chemin
---     explicite avec une liste d'hôtes autorisée.
---
---     LE CHECK N'EST PAS UNE VALIDATION D'URL, C'EST UN GARDE-FOU. La vraie
---     validation vit dans `urlPropre` (saas/web/app/actions.ts). Le CHECK
---     interdit seulement à la base d'accepter ce qui ne ressemble même pas à
---     une adresse — parce qu'un jour un script écrira ici sans passer par
---     l'application.
--- ============================================================================
-
-ALTER TABLE public.meta_campaign_config
-    ADD COLUMN IF NOT EXISTS landing_url text;
-
-ALTER TABLE public.google_campaign_config
-    ADD COLUMN IF NOT EXISTS landing_url text;
-
--- `ADD CONSTRAINT IF NOT EXISTS` n'existe pas pour un CHECK : on rattrape
--- l'erreur de doublon plutôt que de la deviner.
-DO $$
-BEGIN
-    ALTER TABLE public.meta_campaign_config
-        ADD CONSTRAINT meta_campaign_config_landing_url_ck
-        CHECK (
-            landing_url IS NULL
-            OR (landing_url ~* '^https?://[^[:space:]]+\.[^[:space:]]+$'
-                AND length(landing_url) <= 2048)
-        );
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE public.google_campaign_config
-        ADD CONSTRAINT google_campaign_config_landing_url_ck
-        CHECK (
-            landing_url IS NULL
-            OR (landing_url ~* '^https?://[^[:space:]]+\.[^[:space:]]+$'
-                AND length(landing_url) <= 2048)
-        );
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-
--- ============================================================================
 -- 18) LE SITE DU CLIENT — profiles.site_url. Voir site_client.sql.
 --
 --     C'EST LA COLONNE PAR LAQUELLE ON A DÉCOUVERT QUE CE FICHIER MENTAIT :
@@ -1550,10 +1498,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'meta_campaign_config',     'effective_status'),     -- §0
     ('c', 'meta_campaign_config',     'start_date'),           -- §16
     ('c', 'meta_campaign_config',     'end_date'),             -- §16
-    ('c', 'meta_campaign_config',     'landing_url'),          -- §17
     ('c', 'google_campaign_config',   'start_date'),           -- §16
     ('c', 'google_campaign_config',   'end_date'),             -- §16
-    ('c', 'google_campaign_config',   'landing_url'),          -- §17
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

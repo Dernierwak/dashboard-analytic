@@ -43,6 +43,15 @@ bouge plus jusqu'au suivant.
 _Avoid_: Jour de récolte, jour du rapport — la récolte et le rapport sont deux
 conséquences du même choix, pas deux réglages.
 
+**Recouvrement** :
+Les jours déjà récoltés qu'un passage **retélécharge et remplace** — une
+recopie de la plateforme, jamais un calcul. Il existe parce qu'une régie
+corrige ses chiffres après coup : un jour n'est identique à la plateforme
+qu'une fois relu après la date où elle cesse de le corriger (28 jours chez
+Meta). Un jour plus jeune est identique à ce que la plateforme affichait **au
+dernier passage**, et l'écran en écrit la date.
+_Avoid_: Rattrapage, estimation, correction — Pulse ne corrige rien, il relit.
+
 **Point de vue de la semaine** :
 Ce que Pulse rend à un compte **sans rien lui demander** : ce qui a
 bougé depuis le dernier Jour de travail — une campagne qui marche, une campagne
@@ -132,6 +141,31 @@ portée se lisait à sa position ; en haut de page, elle doit se dire.
 _Avoid_: Filtres, barre de filtres, header — « filtres » désigne les valeurs
 choisies, pas l'objet qui les porte ; et il ne filtre pas que des listes, il
 gouverne les chiffres et la courbe.
+
+**Clic** :
+Sur une plateforme payante, **tous les clics** sur l'annonce — le chiffre le
+plus large que la plateforme rende, « Clics (tous) » dans Ads Manager. Le CTR
+(clics ÷ impressions) et le CPC (dépense ÷ clics) se calculent sur ce même clic,
+et nulle part ailleurs sur un autre : c'est aussi la définition des champs `ctr`
+et `cpc` de Meta. L'écran l'écrit là où il affiche un clic.
+_Avoid_: Clic sur le lien pour désigner le clic — c'en est un sous-ensemble, qui
+se nomme en entier quand on le montre.
+
+**Module** :
+Un bloc d'une page de plateforme payante, désigné par un nom qui ne change pas
+d'une plateforme à l'autre. **Le nom, le rôle et la place sont les mêmes sur
+Meta et sur Google ; le contenu, lui, s'adapte** — chaque plateforme y met ses
+propres métriques et ses propres graphes. Dans l'ordre :
+1. **Bandeau de commandes** — quoi, sur quelle période.
+2. **Sélecteur de vue** — Notoriété, Trafic ou Conversion.
+3. **Tendance** — comment évolue le total.
+4. **Comparaison** — ce qui fait mieux que quoi.
+5. **Tableau détaillé** — tout le détail, à exporter.
+
+Le **Panneau latéral** n'a pas de place : il s'ouvre depuis un module, pour lire
+le contenu d'une annonce ou les changements d'un jour.
+_Avoid_: Section, bloc, widget ; « Vue d'ensemble » pour la Tendance — le mot
+« vue » désigne déjà Notoriété / Trafic / Conversion.
 
 **Mesure prise** :
 Un chiffre **enregistré à une date**, et qui ne rétroagit pas — même quand on

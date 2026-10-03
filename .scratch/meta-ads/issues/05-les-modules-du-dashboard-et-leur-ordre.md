@@ -289,6 +289,12 @@ prototype `saas/web/app/meta/prototype-modules/`. La structure suit le brief
 
 **Les métriques par vue** (celles du brief)
 
+> **Modifié par le ticket 07 (2026-10-01)** : la vue Notoriété perd portée et
+> fréquence (impressions, CPM seulement) ; la vue Trafic prend **tous les clics**,
+> pas les clics sur le lien, et le taux de conversion divise par ce même clic.
+> Les modules ont désormais des noms : voir `CONTEXT.md`, entrée **Module** (la
+> « Vue d'ensemble » s'appelle **Tendance**).
+
 | Vue | Métriques |
 |---|---|
 | Notoriété | impressions, CPM, portée, fréquence |

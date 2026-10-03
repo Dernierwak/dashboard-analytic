@@ -45,13 +45,20 @@
 --   Les lignes  `fetch_progress` du canal 'labels' — l'étiquetage par l'IA
 --               ne tourne plus depuis le 2026-09-21 ; ces lignes n'avancent
 --               plus jamais.
+--   La colonne  `landing_url` des deux `*_campaign_config`, et son CHECK — la
+--               page d'arrivée saisie à la main pour une campagne. Pas du
+--               thème, mais son seul écran était `/labels`, et elle ne servait
+--               qu'aux conseils. David, le 2026-10-03 : « on n'en a plus du
+--               tout besoin ». Les adresses déjà tapées sont perdues, même
+--               règle que le thème. Celle vers laquelle une annonce envoie se
+--               lit désormais dans sa créa Meta.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL NE SUPPRIME PAS, ET C'EST DÉLIBÉRÉ
 --
 -- `meta_campaign_config` et `google_campaign_config` RESTENT : elles portent
--- aussi le budget, le statut, les dates déclarées et la page d'arrivée d'une
--- campagne. Seules leurs colonnes de thème partent.
+-- aussi le budget, le statut et les dates déclarées d'une campagne. Seules
+-- leurs colonnes de thème et `landing_url` partent.
 --
 -- `profiles.ga4_event_catalog` RESTE. Il est né dans la même migration que
 -- `theme_ga4_events`, mais il ne parle pas de thème : c'est la liste des
@@ -98,15 +105,24 @@ DROP INDEX IF EXISTS public.idx_meta_cfg_label_ia;
 DROP INDEX IF EXISTS public.idx_google_cfg_label_ia;
 DROP INDEX IF EXISTS public.idx_insta_posts_label_ia;
 
+-- Le CHECK de `landing_url` partirait avec la colonne ; le nommer, comme les
+-- index ci-dessus, rend le fichier lisible sans connaître la règle.
+ALTER TABLE public.meta_campaign_config
+    DROP CONSTRAINT IF EXISTS meta_campaign_config_landing_url_ck;
+ALTER TABLE public.google_campaign_config
+    DROP CONSTRAINT IF EXISTS google_campaign_config_landing_url_ck;
+
 ALTER TABLE public.meta_campaign_config
     DROP COLUMN IF EXISTS label,
     DROP COLUMN IF EXISTS label_source,
-    DROP COLUMN IF EXISTS label_at;
+    DROP COLUMN IF EXISTS label_at,
+    DROP COLUMN IF EXISTS landing_url;
 
 ALTER TABLE public.google_campaign_config
     DROP COLUMN IF EXISTS label,
     DROP COLUMN IF EXISTS label_source,
-    DROP COLUMN IF EXISTS label_at;
+    DROP COLUMN IF EXISTS label_at,
+    DROP COLUMN IF EXISTS landing_url;
 
 ALTER TABLE public.instagram_organic_posts
     DROP COLUMN IF EXISTS labels,
@@ -143,9 +159,11 @@ WITH parti(obj, col) AS (VALUES
     ('meta_campaign_config',    'label'),
     ('meta_campaign_config',    'label_source'),
     ('meta_campaign_config',    'label_at'),
+    ('meta_campaign_config',    'landing_url'),
     ('google_campaign_config',  'label'),
     ('google_campaign_config',  'label_source'),
     ('google_campaign_config',  'label_at'),
+    ('google_campaign_config',  'landing_url'),
     ('instagram_organic_posts', 'labels'),
     ('instagram_organic_posts', 'label_source'),
     ('instagram_organic_posts', 'label_at'),

@@ -324,19 +324,11 @@ export async function saveCategoryForEvent(eventName: string, category: string |
   return { ok: true };
 }
 
-// ── La page d'arrivée d'une campagne ────────────────────────────────────────
+// ── Une adresse saisie par l'utilisateur ────────────────────────────────────
 //
-// CE QU'ELLE SERVIRA : comprendre ce que la campagne VEND. Le nom d'une
-// campagne ne le dit pas, et c'est ce qui plafonne les conseils aujourd'hui —
-// on sait dire « ton CPC monte », pas « ta page d'arrivée demande cinq champs
-// pour un produit à 39 CHF ».
-//
-// ON LA STOCKE, ON NE LA VISITE PAS. Aucun `fetch` serveur ne part vers cette
-// adresse, ni ici ni ailleurs. Un champ libre que le serveur irait chercher
-// tout seul, c'est une SSRF offerte : il suffirait d'y coller une adresse
-// interne pour lui faire lire ce qu'il est le seul à pouvoir atteindre. Le jour
-// où une reco devra vraiment lire la page, ce sera par un chemin explicite avec
-// sa propre liste d'hôtes autorisés — pas en réutilisant ce champ en silence.
+// Le seul contrat d'URL de l'application. Il a servi aussi à la page d'arrivée
+// d'une campagne, retirée le 2026-10-03 : l'adresse vers laquelle une annonce
+// envoie se lit dans sa créa Meta, elle ne se déclare pas.
 function urlPropre(brut: string): { ok: true; url: string } | { ok: false; message: string } {
   const t = (brut ?? "").trim();
   if (!t) return { ok: true, url: "" }; // vide = on efface l'adresse
@@ -355,54 +347,17 @@ function urlPropre(brut: string): { ok: true; url: string } | { ok: false; messa
   if (u.username || u.password)
     return { ok: false, message: "Retire l'identifiant et le mot de passe de l'adresse." };
   // Un hôte sans point n'est pas un domaine public : c'est « localhost », un
-  // nom de machine interne, ou une faute de frappe. Aucun des trois n'est la
-  // page d'arrivée d'une campagne publicitaire.
+  // nom de machine interne, ou une faute de frappe. Aucun des trois n'est le
+  // site d'un client.
   if (!u.hostname.includes(".") || u.hostname.endsWith("."))
     return { ok: false, message: "Il manque le nom de domaine (ex. boutique.ch)." };
   return { ok: true, url: u.toString() };
 }
 
-export async function setCampaignLanding(
-  channel: "meta" | "google",
-  key: string,          // meta : campaign_name · google : campaign_id
-  campaignName: string, // pour créer la ligne google si absente
-  url: string
-): Promise<{ ok: boolean; message?: string; valeur?: string | null }> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  const v = urlPropre(url);
-  if (!v.ok) return { ok: false, message: v.message };
-  const landing_url = v.url || null;
-
-  const r =
-    channel === "meta"
-      ? await supabase.from("meta_campaign_config").upsert(
-          { user_id: compte.uid, campaign_name: key, landing_url },
-          { onConflict: "user_id,campaign_name" }
-        )
-      : await supabase.from("google_campaign_config").upsert(
-          { user_id: compte.uid, campaign_id: key, campaign_name: campaignName, landing_url },
-          { onConflict: "user_id,campaign_id" }
-        );
-  if (r.error)
-    return {
-      ok: false,
-      message: "Enregistrement impossible — rejoue le SQL campagne_landing.sql.",
-    };
-
-  revalidatePath(channel === "meta" ? "/meta" : "/google");
-  return { ok: true, valeur: landing_url };
-}
-
 // ── Le site du client ───────────────────────────────────────────────────────
 //
-// MÊME BESOIN QUE CI-DESSUS, UN CRAN AU-DESSUS. `setCampaignLanding` dit où une
-// campagne ATTERRIT ; ici on dit où le client HABITE. L'onboarding demande déjà
-// le secteur, mais « commerce local » est une case, pas une entreprise : le
-// domaine, lui, porte la gamme, le prix, la langue, le pays et le ton d'un seul
+// Où le client HABITE. L'onboarding demande déjà le secteur, mais « commerce
+// local » est une case, pas une entreprise : le domaine, lui, porte la gamme, le prix, la langue, le pays et le ton d'un seul
 // coup. C'est ce qui sépare un conseil générique d'un conseil qui parle de ce
 // que la personne vend.
 //
@@ -413,9 +368,8 @@ export async function setCampaignLanding(
 // champ, il perd le client.
 //
 // ON LE STOCKE, ON NE LE VISITE PAS. Aucun `fetch` serveur ne part vers cette
-// adresse, ni ici ni ailleurs. C'est la même règle que pour la page d'arrivée
-// d'une campagne, et pour la même raison : un champ libre que le serveur irait
-// chercher tout seul est une SSRF offerte — il suffirait d'y coller une adresse
+// adresse, ni ici ni ailleurs : un champ libre que le serveur irait chercher
+// tout seul est une SSRF offerte — il suffirait d'y coller une adresse
 // interne (169.254.169.254, un service du réseau privé) pour lui faire lire ce
 // qu'il est le seul à pouvoir atteindre. Le jour où une reco devra vraiment
 // lire cette page, ce sera par un chemin explicite avec sa propre liste d'hôtes

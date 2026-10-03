@@ -35,3 +35,11 @@ ligne avec un pied qui dit la règle — la décision de ce qui s'affiche se pre
 
 **Vérification** : `npx tsc --noEmit`, `npm run build`. Ça se voit en cliquant
 (c'est de la lecture, pas de la récolte).
+
+## Tranché ailleurs (2026-10-01)
+
+La carte `meta-ads`, ticket 07, a choisi la seconde sortie : **la portée et la
+fréquence ne s'affichent plus** sur le dashboard Meta, tant que la récolte ne
+les donne pas au bon niveau (David : « on a meilleur temps de ne pas la
+prendre »). Le correctif de `/meta` est donc de les **retirer**, pas de les
+afficher à « — ». Le pourquoi et les voies pour plus tard sont au `BACKLOG.md`.

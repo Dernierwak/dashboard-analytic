@@ -1,7 +1,7 @@
 # Aller lire le texte d'un asset sans quitter Pulse
 
 Type: prototype
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -96,3 +96,38 @@ plus. Le prototype (trois variantes P, T, S ; recommandation P, voir plus haut)
 est construit mais **pas commité** : il vit dans la copie de travail de `main`,
 `/Users/David.GILLIARD/DAVID/Moi_Hobbies/08_Data analyse/05_Mes Projets/03_Agence_Dashboard/saas/web/app/meta/prototype-modules/`. Ce qui reste est le côté humain
 du ticket — que David regarde les trois variantes et tranche.
+
+**2026-10-01 — David a regardé les trois variantes et tranche.** Ses mots :
+« je le ferai directement si on clique sur les assets dans le module
+Comparaison » ; « il manque un peu ce côté : je vois où je peux appuyer » ;
+« je ne veux pas avoir les assets en dessous avec les images, alors qu'on peut
+cliquer pour les voir » ; « oublie l'Excel […] c'est vraiment une table où on
+exporte tout ».
+
+## Answer
+
+**On lit le contenu d'une annonce dans le panneau latéral (P), et on n'y entre
+que par le module Comparaison.**
+
+- **L'entrée unique est l'annonce dans le module Comparaison.** Un clic sur une
+  annonce de la liste comparée ouvre le panneau latéral : l'aperçu tel qu'il
+  s'affiche dans le fil, puis chaque champ en entier avec ses variantes
+  numérotées. Aucun chiffre à côté (ticket 03).
+- **Le clic doit se voir avant d'être tenté.** C'est la réserve de David sur le
+  prototype : on doit savoir où appuyer. Contrainte pour la spec : dans le
+  prototype, la ligne entière d'un élément comparé est déjà le bouton qui le
+  coche (`prototype.tsx`, `c.basculer`). La lecture a donc besoin de **sa
+  propre cible**, visible au repos et pas seulement au survol, distincte de la
+  case à cocher. Sa forme exacte (vignette cliquable, libellé « Lire ») revient
+  à la spec, pas à ce ticket.
+- **La bande « Les créas comparées » sous les graphes ne se construit pas.** Le
+  brief demandait un « aperçu visuel des créas comparées » : David préfère le
+  clic aux images posées sous les courbes. S part avec elle.
+- **Le tableau ne sert pas à lire.** C'est une table d'export de tout le
+  détail : il s'arrête à l'annonce, sans quatrième rang (T part) et sans
+  ouvrir le panneau. Le texte d'une annonce ne s'y lit pas.
+- **Un seul panneau latéral** : celui-ci est le même que celui des changements
+  (point 4 du ticket 08, tranché ici côté lecture).
+
+Le prototype `/meta/prototype-modules` montre encore les trois variantes et la
+bande : il n'a pas été retouché, la décision vit ici.

@@ -9,11 +9,6 @@
 -- à « qui est ce client », et elle ne peut venir que de lui : ni Meta ni Google
 -- ne l'exposent de façon fiable au niveau du compte.
 --
--- Même famille que `campagne_landing.sql`, autre échelle : là-bas c'est la page
--- où une campagne ATTERRIT, ici c'est la maison. Les deux ensemble permettront
--- de dire « ta campagne pousse vers la page d'accueil alors qu'elle vend un
--- produit précis » — un conseil qu'aucune des deux colonnes ne porte seule.
---
 -- FACULTATIF PAR CONSTRUCTION
 -- Colonne nullable, aucune valeur par défaut, aucun NOT NULL. Beaucoup de
 -- clients n'ont qu'une page Instagram, d'autres ne veulent pas donner leur
@@ -31,8 +26,8 @@
 -- autorisée, et ça se décidera à ce moment-là.
 --
 -- LE CHECK N'EST PAS UNE VALIDATION D'URL, C'EST UN GARDE-FOU
--- La vraie validation vit dans `urlPropre` (saas/web/app/actions.ts), partagée
--- avec la page d'arrivée des campagnes : `new URL()`, http(s) seulement, pas
+-- La vraie validation vit dans `urlPropre` (saas/web/app/actions.ts) :
+-- `new URL()`, http(s) seulement, pas
 -- d'identifiant dans l'adresse, un nom de domaine obligatoire. Le CHECK
 -- ci-dessous ne fait qu'interdire à la base d'accepter ce qui ne ressemble même
 -- pas à une adresse — parce qu'un jour un script écrira dans cette colonne sans
