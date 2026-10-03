@@ -31,8 +31,8 @@ verts, **18 routes** — un écart signale une page de contrôle oubliée.
 | Route | Ce qu'elle montre |
 |---|---|
 | `/` (`page.tsx`) | Le rapport hebdo : ce qui a bougé — les trois dates, le verdict, la boussole, la frise, puis les faits survenus sur les plateformes. Le thème, l'anneau et les cartes par thème sont partis le 2026-09-30 sans remplacement (`.scratch/meta-ads/map.md`). Lit `weekly_reports`, publié par `saas/traitement/build_report.py`. **Il ne conseille rien** : les conseils, le module « À faire », le rail des actions, le Carnet et le résumé IA sont partis le 2026-09-21. **Pas de tuiles KPI ni de dépense par canal** non plus (ticket 51) — la dépense par plateforme se lit sur `/couts`. |
-| `/meta` | Dashboard Meta Ads — périodes 7→Tout, filtres, hero impressions, KPIs, évolution quotidienne, campagnes → adsets → annonces. |
-| `/google` | Dashboard Google Ads — même structure que Meta, jusqu'aux annonces (`google_ads_ad_insights`). |
+| `/meta` | Dashboard Meta Ads, refondu par la carte `meta-ads` (spec `.scratch/meta-ads/spec.md`) — Bandeau de commandes, Sélecteur de vue, Tendance ; les autres modules viennent par tickets. Le calcul vit dans `lib/meta/lecture.ts` (pur, harnais `.scratch/meta-ads/harnais/06-la-page-meta-neuve/` et `07-le-bandeau/`), la lecture de la base dans `lib/meta/donnees.ts`. |
+| `/google` | Dashboard Google Ads — la structure de l'ancienne page Meta (avant sa refonte), jusqu'aux annonces (`google_ads_ad_insights`). |
 | `/instagram` | Dashboard Instagram organique — page, courbe abonnés, posts un par un, top posts. Ses modules « formats » et « créneaux » sont morts le 2026-09-12, et le bloc « ce qui marche pour toi » avec les constats le 2026-09-21. |
 | `/conversions` | Sélection et catégorisation des conversions GA4. |
 | `/couts` | Budget publicitaire — un seul horizon piloté, l'année (pas jour ni mois), et la dépense par plateforme. |

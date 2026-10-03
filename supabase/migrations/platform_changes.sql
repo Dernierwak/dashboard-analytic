@@ -32,12 +32,18 @@ CREATE TABLE IF NOT EXISTS public.platform_changes (
     change_id     text NOT NULL,          -- hachage stable (canal, horodatage, ressource, champ)
     occurred_at   timestamptz NOT NULL,
     categorie     text NOT NULL CHECK (categorie IN
-                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'autre')),
+                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre')),
     campaign_id   text,
     campaign_name text,
     resume        text NOT NULL,          -- déjà rédigé en français
     PRIMARY KEY (user_id, channel, change_id)
 );
+
+-- « creation » (meta-ads, ticket 04) : voir la section 14 de 000_run_me_all.sql.
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_categorie_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
+    CHECK (categorie IN
+        ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre'));
 
 -- Le fil lit toujours « les changements depuis telle date, du plus récent au
 -- plus ancien » — c'est exactement ce que cet index sert.

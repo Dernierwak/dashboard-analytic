@@ -47,7 +47,7 @@ NOMS_CANAUX = {"meta": "Meta Ads", "google": "Google Ads",
 # À PARTIR DE COMBIEN DE RAPPORTS MUETS L'ESCALADE SORT DU CYCLE HEBDOMADAIRE.
 # Deux, et pas un : une panne d'une SEULE semaine se rattrape toute seule au
 # prochain passage réussi — `_depart_recolte` déduit le point de reprise des
-# lignes réellement écrites, moins le recouvrement (7 jours côté Meta, 30 côté
+# lignes réellement écrites, moins le recouvrement (28 jours côté Meta, 30 côté
 # Google), donc la semaine trouée est réécrite (ADR 0005). Sonner à la première
 # transférerait simplement le papier peint du client à David.
 #

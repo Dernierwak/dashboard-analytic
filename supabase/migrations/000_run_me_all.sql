@@ -23,6 +23,7 @@
 --
 --   0)     Socle publicitaire : meta_ads_insights, meta_campaign_config,
 --          google_ads_insights, google_campaign_config
+--   0bis)  Les créas Meta : meta_ads_creatives, meta_ads_creative_assets
 --   2)     GA4 : ga4_insights (+ campagne UTM) et ga4_events (funnel)
 --   3)     profiles.objectif + fetch_schedule
 --   3bis)  google_ads_ad_insights — le détail par annonce
@@ -210,6 +211,36 @@ ALTER TABLE public.meta_ads_insights DROP CONSTRAINT IF EXISTS meta_ads_insights
 ALTER TABLE public.meta_ads_insights
     ADD CONSTRAINT meta_ads_insights_uq2 UNIQUE (user_id, date_start, ad_id);
 
+-- ── Meta Ads : l'identité par ID, la fenêtre d'attribution, les résultats ───
+-- Carte meta-ads, spec § « L'identité par ID » (étape A) et § « Les colonnes
+-- et tables nouvelles ». Tout est nullable, sans DEFAULT, pour la même raison
+-- qu'ad_id ci-dessus : les lignes déjà en base n'ont rien de tout ça, et
+-- un '' ou un 0 écrit à leur place serait un chiffre fabriqué.
+--
+-- campaign_id / adset_id : le nom d'une campagne se change dans Ads Manager,
+-- son ID jamais ; deux campagnes peuvent porter le même nom. La récolte les
+-- demande dans la même requête /insights (zéro appel de plus). Les lignes
+-- anciennes se remplissent par un REJEU de la récolte (`weekly-fetch.yml`,
+-- `meta_since`), jamais par une jointure sur le nom.
+--
+-- attribution_setting : la fenêtre que Meta a appliquée à la ligne (« 7d_click_1d_view »…).
+-- NULL quand Meta ne la rend pas — ne se lit jamais comme une fenêtre par défaut.
+--
+-- results : la colonne « Résultats » d'Ads Manager, stockée BRUTE, telle que
+-- Meta la rend — une liste. Sa forme d'élément n'est documentée nulle part
+-- (recherche champs-api-meta.md, « Pas encore établi ») : elle se lira dans la
+-- base après le premier passage du worker. D'où jsonb et pas des colonnes.
+-- Champ absent → NULL, liste vide → '[]' : les deux ne veulent pas dire pareil.
+--
+-- NE SE CONSTRUISENT PAS, décision de la spec : `date_stop` et
+-- `inline_link_clicks` (rien ne les lit), et la table `meta_ads_actions` (les
+-- conversions viennent de `results`, pas de la liste `actions`).
+ALTER TABLE public.meta_ads_insights
+    ADD COLUMN IF NOT EXISTS campaign_id         text,
+    ADD COLUMN IF NOT EXISTS adset_id            text,
+    ADD COLUMN IF NOT EXISTS attribution_setting text,
+    ADD COLUMN IF NOT EXISTS results             jsonb;
+
 -- ── Meta : la config par campagne (budget, statut) ──────────────────────────
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS meta_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
@@ -249,6 +280,14 @@ CREATE POLICY "meta_campaign_config_delete_own" ON public.meta_campaign_config
 -- jour à chaque récolte. Voir meta_campaign_status.sql.
 ALTER TABLE public.meta_campaign_config
     ADD COLUMN IF NOT EXISTS effective_status text DEFAULT NULL;
+
+-- L'ID Meta de la campagne — étape A de la spec meta-ads, § « L'identité par
+-- ID ». Nullable : les lignes en place n'en ont pas, et la clé reste
+-- (user_id, campaign_name) TANT QUE l'étape B n'est pas jouée (ticket 13 de
+-- la carte) — celle-ci refuse de tourner tant qu'une ligne n'a pas d'ID.
+-- Une ligne sans ID n'est jamais rattachée par son nom à une autre.
+ALTER TABLE public.meta_campaign_config
+    ADD COLUMN IF NOT EXISTS campaign_id text;
 
 -- ── Google Ads : insights par campagne × jour, et config par campagne ───────
 CREATE TABLE IF NOT EXISTS public.google_ads_insights (
@@ -332,6 +371,148 @@ CREATE POLICY "google_campaign_config_delete_own" ON public.google_campaign_conf
 -- les créer pour les supprimer trente lignes plus bas.
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS google_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
+
+
+-- ============================================================================
+-- 0bis) LES CRÉAS META — ce que dit une annonce, pas ce qu'elle a mesuré.
+--     Carte meta-ads, spec § « Les colonnes et tables nouvelles » ; la forme
+--     vient de `.scratch/meta-ads/recherche/champs-api-meta.md`, § « Le SQL
+--     proposé » (c) et (d). Remplies par la récolte des créas (ticket 05).
+--
+--     POURQUOI PAS DANS meta_ads_insights : cette table est une ligne par
+--     annonce × JOUR. Le texte d'une annonce ne change pas d'un jour à
+--     l'autre ; l'y mettre le recopierait sur chaque journée et ferait d'un
+--     changement de texte une réécriture de tout l'historique.
+--
+--     AUCUN CHIFFRE ICI, décision de la spec (§ « Les créas ») : pas de
+--     mesure par asset. Le Panneau le dit en une phrase.
+-- ============================================================================
+
+-- ── Une ligne par annonce ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.meta_ads_creatives (
+    user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    ad_id          text NOT NULL,
+    creative_id    text,
+    creative_name  text,
+    -- Lequel des trois montages a répondu : 'flat' | 'object_story' |
+    -- 'asset_feed'. Sans lui, un champ vide et un montage absent se confondent :
+    -- une créa bâtie sur object_story_spec ne rend PAS title/body/image_url au
+    -- niveau racine (« readable fields are the same as those specified when
+    -- you created the object » —
+    -- https://developers.facebook.com/docs/marketing-api/creative/).
+    -- Pas de CHECK, comme email_envois (section 26) : le jour où Meta rend un
+    -- quatrième montage, un CHECK ferait échouer l'écriture sur le fait même
+    -- qu'on cherche à apprendre.
+    montage        text,
+    object_type    text,
+    -- link_data.name / video_data.title / creative.title
+    titre          text,
+    -- link_data.message / video_data.message / creative.body
+    texte          text,
+    -- link_data.description / video_data.link_description / photo_data.caption
+    description    text,
+    -- L'adresse de destination — ce que la section 17 (`landing_url`, retirée)
+    -- faisait saisir à la main.
+    lien_url       text,
+    call_to_action text,
+    -- La SEULE clé stable d'une image chez Meta : AdImage.url est « a temporary
+    -- URL » (https://developers.facebook.com/docs/marketing-api/reference/ad-image/).
+    -- C'est elle qui évite de téléverser deux fois la même image.
+    image_hash     text,
+    -- L'URL de l'image dans Supabase Storage, pas celle de Meta : les URL de
+    -- Meta expirent. Bucket public ou privé : décision ouverte au ticket 05.
+    image_url      text,
+    video_id       text,
+    vignette_url   text,
+    -- Quand la récolte a lu la créa : c'est elle qui l'écrit à chaque passage,
+    -- le DEFAULT ne joue qu'à la première insertion.
+    recolte_le    timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    -- Une clé primaire et pas un simple UNIQUE : sans elle, l'éditeur de
+    -- tables de Supabase rend les lignes en lecture seule. Même forme que
+    -- meta_campaign_config.
+    CONSTRAINT meta_ads_creatives_uq PRIMARY KEY (user_id, ad_id)
+);
+
+DROP TRIGGER IF EXISTS trg_meta_ads_creatives_updated_at ON public.meta_ads_creatives;
+CREATE TRIGGER trg_meta_ads_creatives_updated_at
+    BEFORE UPDATE ON public.meta_ads_creatives
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.meta_ads_creatives ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "meta_ads_creatives_select_own" ON public.meta_ads_creatives;
+DROP POLICY IF EXISTS "meta_ads_creatives_insert_own" ON public.meta_ads_creatives;
+DROP POLICY IF EXISTS "meta_ads_creatives_update_own" ON public.meta_ads_creatives;
+DROP POLICY IF EXISTS "meta_ads_creatives_delete_own" ON public.meta_ads_creatives;
+CREATE POLICY "meta_ads_creatives_select_own" ON public.meta_ads_creatives
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creatives_insert_own" ON public.meta_ads_creatives
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creatives_update_own" ON public.meta_ads_creatives
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creatives_delete_own" ON public.meta_ads_creatives
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- ── Plusieurs assets sous une annonce ───────────────────────────────────────
+-- Couvre les DEUX montages multi-assets :
+--  · asset_feed_spec (Dynamic Creative) — plafonné à 10 images, 10 vidéos,
+--    5 textes, 5 titres.
+--    https://developers.facebook.com/docs/marketing-api/dynamic-creative/asset-feed-spec/
+--  · object_story_spec.link_data.child_attachments — le carrousel, « a 2-5
+--    element array of link objects ».
+--    https://developers.facebook.com/docs/marketing-api/reference/ad-creative-link-data/
+--
+-- LA CLÉ EST LE RANG, PAS UN asset_id. Aucune page de référence des assets
+-- (AdAssetFeedSpecImage/Video/Body/Title/Description) ne documente un champ
+-- `id` : l'identifiant d'un asset n'apparaît que dans les ventilations
+-- d'insights, qui sont de la mesure. Stocker un asset_id qu'on n'a pas serait
+-- un chiffre fabriqué.
+CREATE TABLE IF NOT EXISTS public.meta_ads_creative_assets (
+    user_id      uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    ad_id        text NOT NULL,
+    -- 'asset_feed' | 'child_attachment' : deux montages, deux sens du rang.
+    -- Les confondre mélangerait une variante A/B et une carte de carrousel.
+    provenance   text NOT NULL,
+    -- 'image' | 'video' | 'body' | 'title' | 'description' | 'link_url'
+    -- | 'call_to_action' | 'carousel_card'
+    asset_kind   text NOT NULL,
+    -- Position dans la liste rendue par Meta, à partir de 0. Le seul
+    -- identifiant qu'on ait — voir plus haut.
+    rang         integer NOT NULL,
+    texte        text,
+    image_hash   text,
+    image_url    text,
+    video_id     text,
+    vignette_url text,
+    lien_url     text,
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    -- ⚠ Une clé sur le rang ne retire rien : si une annonce passe de 5 textes
+    -- à 3, un upsert laisse les rangs 3 et 4 en place. La récolte (ticket 05)
+    -- remplace donc TOUS les assets d'une annonce à chaque passage.
+    CONSTRAINT meta_ads_creative_assets_uq
+        PRIMARY KEY (user_id, ad_id, provenance, asset_kind, rang)
+);
+
+DROP TRIGGER IF EXISTS trg_meta_ads_creative_assets_updated_at ON public.meta_ads_creative_assets;
+CREATE TRIGGER trg_meta_ads_creative_assets_updated_at
+    BEFORE UPDATE ON public.meta_ads_creative_assets
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.meta_ads_creative_assets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "meta_ads_creative_assets_select_own" ON public.meta_ads_creative_assets;
+DROP POLICY IF EXISTS "meta_ads_creative_assets_insert_own" ON public.meta_ads_creative_assets;
+DROP POLICY IF EXISTS "meta_ads_creative_assets_update_own" ON public.meta_ads_creative_assets;
+DROP POLICY IF EXISTS "meta_ads_creative_assets_delete_own" ON public.meta_ads_creative_assets;
+CREATE POLICY "meta_ads_creative_assets_select_own" ON public.meta_ads_creative_assets
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creative_assets_insert_own" ON public.meta_ads_creative_assets
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creative_assets_update_own" ON public.meta_ads_creative_assets
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "meta_ads_creative_assets_delete_own" ON public.meta_ads_creative_assets
+    FOR DELETE USING (auth.uid() = user_id);
 
 
 -- ============================================================================
@@ -913,12 +1094,25 @@ CREATE TABLE IF NOT EXISTS public.platform_changes (
     change_id     text NOT NULL,          -- hachage stable (canal, horodatage, ressource, champ)
     occurred_at   timestamptz NOT NULL,
     categorie     text NOT NULL CHECK (categorie IN
-                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'autre')),
+                      ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre')),
     campaign_id   text,
     campaign_name text,
     resume        text NOT NULL,          -- déjà rédigé en français à la récolte
     PRIMARY KEY (user_id, channel, change_id)
 );
+
+-- « creation » : Meta déclare la création d'une campagne, d'un ensemble ou
+-- d'une annonce (`create_campaign_group`, `create_ad_set`, `create_ad`), que la
+-- récolte garde depuis le ticket 04 de meta-ads. La ranger en « autre » la
+-- ferait lire « réglage » à l'écran. Le CREATE TABLE ci-dessus ne touche pas
+-- une table déjà là : la contrainte se remplace, sans toucher une ligne. Les
+-- lignes existantes satisfont la nouvelle liste, qui ne fait qu'ajouter.
+-- SANS ÇA, le premier passage du worker qui rencontre une création voit TOUT
+-- son lot de changements Meta refusé.
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_categorie_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
+    CHECK (categorie IN
+        ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre'));
 
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);
@@ -1173,6 +1367,8 @@ DECLARE
         -- régies publicitaires
         'meta_ads_insights', 'google_ads_insights', 'google_ads_ad_insights',
         'meta_campaign_config', 'google_campaign_config',
+        -- ce que disent les annonces Meta (section 0bis)
+        'meta_ads_creatives', 'meta_ads_creative_assets',
         -- organique et analytics
         'instagram_organic_posts', 'followers_history',
         'ga4_insights', 'ga4_events',
@@ -1470,6 +1666,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'google_ads_insights',      NULL),
     ('t', 'google_campaign_config',   NULL),
     ('t', 'google_ads_ad_insights',   NULL),
+    ('t', 'meta_ads_creatives',       NULL),   -- §0bis
+    ('t', 'meta_ads_creative_assets', NULL),   -- §0bis
     ('t', 'ga4_insights',             NULL),
     ('t', 'ga4_events',               NULL),
     ('t', 'channel_budgets',          NULL),
@@ -1496,6 +1694,11 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'ga4_property_id'),      -- §4
     ('c', 'ga4_insights',             'campaign'),             -- §2
     ('c', 'meta_campaign_config',     'effective_status'),     -- §0
+    ('c', 'meta_campaign_config',     'campaign_id'),          -- §0
+    ('c', 'meta_ads_insights',        'campaign_id'),          -- §0
+    ('c', 'meta_ads_insights',        'adset_id'),             -- §0
+    ('c', 'meta_ads_insights',        'attribution_setting'),  -- §0
+    ('c', 'meta_ads_insights',        'results'),              -- §0
     ('c', 'meta_campaign_config',     'start_date'),           -- §16
     ('c', 'meta_campaign_config',     'end_date'),             -- §16
     ('c', 'google_campaign_config',   'start_date'),           -- §16
@@ -1571,10 +1774,10 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 17 tables de la section 15.
---      (Mesuré le 2026-09-30 sur un PostgreSQL local, après le retrait de
---      insight_feedback, theme_ga4_events et theme_objectifs : 17 tables
---      distinctes portent une politique `partage_*`.)
+--   A) Ce que l'invité peut lire — doit lister les 19 tables de la section 15.
+--      (Mesuré le 2026-10-03 sur un PostgreSQL local, après l'arrivée de
+--      meta_ads_creatives et meta_ads_creative_assets : 19 tables distinctes
+--      portent une politique `partage_*`.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

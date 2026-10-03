@@ -370,7 +370,7 @@ export type AdRow = {
 export type AdsetRow = AdRow & { ads: AdRow[] };
 
 export type Campaign = {
-  key: string;   // meta : campaign_name · google : campaign_id
+  key: string;   // campaign_id (seul Google lit encore cette couche ; Meta a `lib/meta/`)
   name: string;
   status: string | null;
   spend: number;
@@ -380,7 +380,7 @@ export type Campaign = {
   ctr: number;
   cpc: number;
   cpm: number;
-  adsets: AdsetRow[]; // Meta : adsets → ads · Google : groupes d'annonces → annonces
+  adsets: AdsetRow[]; // groupes d'annonces → annonces
 };
 
 export type DayPoint = {
@@ -694,51 +694,6 @@ function buildDash(
     comparaison,
     muet,
   };
-}
-
-export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDash> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const uid = compte.uid;
-  const days = periodDays(sp);
-
-  const [rowsRes, cfgRes, muets] = await Promise.all([
-    supabase.from("meta_ads_insights")
-      .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
-    // doit pas faire tomber la lecture entière.
-    supabase.from("meta_campaign_config")
-      .select("*").eq("user_id", uid),
-    fetchCanauxMuets(supabase, uid),
-  ]);
-
-  const rows: RawAd[] = (rowsRes.data ?? []).map((r) => ({
-    date: String(r.date_start),
-    campaign: String(r.campaign_name ?? ""),
-    adset: String(r.adset_name ?? ""),
-    ad: String(r.ad_name ?? ""),
-    spend: Number(r.spend) || 0,
-    clicks: Number(r.clicks) || 0,
-    impressions: Number(r.impressions) || 0,
-    reach: Number(r.reach) || 0,
-  }));
-  const cfg: Cfg = new Map(
-    (cfgRes.data ?? []).map((c) => [
-      String(c.campaign_name),
-      {
-        name: String(c.campaign_name),
-        status: (c.effective_status as string | null) ?? null,
-      },
-    ])
-  );
-
-  // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
-  return buildDash(rows, rows, days, sp, {
-    cfg,
-    email: compte.email,
-    muet: muetDu(muets, "meta"),
-  });
 }
 
 export async function getGoogleDash(sp: DashParams | undefined): Promise<ChannelDash> {
