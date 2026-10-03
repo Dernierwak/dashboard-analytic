@@ -27,6 +27,7 @@ de la carte, rangés à part dans `../issues/`.
 05 + 08 + 11       → 12 lire une annonce
 03 (après le rejeu) → 13 clé de config par ID (David joue l'étape B)
 07 … 13            → 14 le prototype part, recette Chrome
+06                 → 15 le code Meta mort de channel-dash (trouvé en chemin, à trier)
 ```
 
 Après 02, trois tickets peuvent avancer de front : **03**, **05** et **06**.

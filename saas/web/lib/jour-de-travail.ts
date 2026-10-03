@@ -74,6 +74,23 @@ export function prochainPassage(
   return { date, delta };
 }
 
+/**
+ * Le dernier Jour de travail déjà passé, à minuit UTC — celui qui ancre la
+ * semaine mesurée (`CONTEXT.md`, **Jour de travail** : « les sept jours pleins
+ * qui le précèdent »). Le jour même, il ne compte qu'après l'heure du cron :
+ * avant 07:00 UTC le passage n'a pas eu lieu, et la semaine mesurée est encore
+ * celle d'avant.
+ */
+export function dernierJourDeTravail(jourEn: string, maintenant: Date): Date {
+  const i = JOURS.findIndex((j) => j.en === jourEn);
+  const cible = i < 0 ? 0 : i;
+  let recul = (indexSemaine(maintenant) - cible + 7) % 7;
+  if (recul === 0 && maintenant.getUTCHours() < HEURE_UTC) recul = 7;
+  return new Date(
+    Date.UTC(maintenant.getUTCFullYear(), maintenant.getUTCMonth(), maintenant.getUTCDate() - recul)
+  );
+}
+
 // Les noms sont écrits à la main plutôt que confiés à `Intl` : le serveur (Node)
 // et le navigateur ne portent pas toujours les mêmes données de locale, et deux
 // rendus différents pour la même date, c'est une erreur d'hydratation.

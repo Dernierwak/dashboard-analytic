@@ -74,3 +74,15 @@ body { background: theme(colors.canvas); color: theme(colors.ink); }
   .defile-x::-webkit-scrollbar-thumb { background: rgba(14, 15, 18, 0.18); border-radius: 4px; }
   .defile-x::-webkit-scrollbar-thumb:hover { background: rgba(14, 15, 18, 0.30); }
 }
+
+/* La courbe apparaît quand la vue, la campagne ou la période change : l'œil
+   voit ce qui a bougé. Rien pour qui a réduit les animations (spec, § « La
+   grammaire »). */
+@keyframes courbe-apparait {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.courbe-apparait { animation: courbe-apparait 450ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .courbe-apparait { animation: none; }
+}
