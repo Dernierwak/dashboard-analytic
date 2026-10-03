@@ -1,7 +1,7 @@
 # La page d'arrivée d'une campagne n'a plus d'écran
 
 Type: grilling
-Status: claimed
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -99,3 +99,11 @@ de travail a été supprimé avant le commit. Tickets, réponse, `BACKLOG.md` et
 session ; les cinq changements de code ci-dessus (`actions.ts`,
 `campagne_landing.sql`, `000`, `998`, `site_client.sql`) **ne le sont pas** et
 sont à refaire, puis à revérifier. Le ticket repasse à `claimed` d'ici là.
+
+**2026-10-03 — code refait, sur demande de David.** Les cinq changements sont
+rejoués depuis le journal de la session d'origine, à l'identique. Revérifié :
+`npx tsc --noEmit` et `npm run build` verts, 19 routes ; même scénario
+PostgreSQL 15 jetable — `998` exit 0, 22 lignes ✓ dont les deux `landing_url`,
+campagnes intactes, aucune contrainte `*landing*` restante, nouveau `000`
+deux fois sur base ancienne et vierge sans que `landing_url` renaisse ; seul ✗
+la RLS de `connected_accounts`, qui vient du stub.

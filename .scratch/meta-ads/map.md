@@ -158,9 +158,8 @@ une option de plus décrite sans être construite. Le brief d'origine est une ba
 
 - **La page d'arrivée ne se saisit plus, elle se lit dans la créa Meta, annonce
   par annonce** — un lien sortant dans le panneau latéral, à côté du texte. La
-  saisie par campagne, sans lecteur et au mauvais niveau, quitte le code ; la
-  `998` détruit `landing_url` avec le thème. **Décidé ; le code, perdu avec le
-  dossier de travail le 2026-10-03, reste à refaire.**
+  saisie par campagne, sans lecteur et au mauvais niveau, a quitté le code ; la
+  `998` détruit `landing_url` avec le thème. Exécuté sur demande de David.
   [La page d'arrivée d'une campagne n'a plus d'écran](issues/14-la-page-d-arrivee-d-une-campagne-n-a-plus-d-ecran.md)
 
 ## Pas encore spécifié
