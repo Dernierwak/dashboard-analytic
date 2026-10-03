@@ -22,11 +22,11 @@ du traitement, dans l'historique git).
       raison (Meta corrige jusqu'à 28 jours, `action_report_time=mixed`) et l'ancien
       (« conversion au jour du CLIC ») disparaît
 - [x] `python3.12 -m py_compile` sur ce qui a été touché
-- [ ] **Après un passage du worker** — `weekly-fetch.yml` lancé à la main avec
+- [x] **Après un passage du worker** — `weekly-fetch.yml` lancé à la main avec
       `force` : les 28 derniers jours portent IDs, `results` et attribution dans la
       base ; la forme réelle d'un élément de `results` est recopiée dans ce ticket
       (elle fixe le ticket 10)
-- [ ] **Rejeu** — `weekly-fetch.yml` avec `meta_since` à la plus vieille date en
+- [x] **Rejeu** (compte `11043e9a` seulement, voir plus bas) — `weekly-fetch.yml` avec `meta_since` à la plus vieille date en
       base : les lignes anciennes ont leurs IDs. Aucune n'est remplie par une
       jointure sur le nom. Le nombre de lignes encore sans ID est écrit ici
 
@@ -312,3 +312,43 @@ sys.exit(1 if _KO else 0)
 ```
 
 </details>
+
+**2026-10-03/04 — passage du worker et rejeu faits, sur le code de la branche.**
+
+Le `000` est joué (ticket 02). Deux lancements de `weekly-fetch.yml` à la main,
+`--ref worktree-meta-ads-tickets-construction`, compte `11043e9a-…` seulement
+(choisi par David) — **pas `force`**, qui fait passer tous les comptes et
+publie leur rapport. Le journal dit « email dry : non envoyé (mode test) ».
+- run `37156455844`, `user_id` : vert, 269 lignes Meta (28 jours) ;
+- run `37156805694`, `user_id` + `meta_since=2025-05-18` : vert, 5 751 lignes.
+
+**La forme réelle de `results`** (elle fixe le ticket 10) — toujours une liste
+d'UN élément :
+```json
+[{"indicator": "actions:omni_landing_page_view",
+  "values": [{"attribution_windows": ["default"], "value": "45"}]}]
+[{"indicator": "actions:omni_landing_page_view"}]
+[{"indicator": "total_profile_visits", "values": [{"value": "57"}]}]
+```
+- Meta n'écrit **jamais `"0"`** : un zéro est l'indicateur sans `values`
+  (1 698 lignes de vues de page de destination ; les 8 lignes d'appels n'ont
+  jamais de nombre).
+- Types vus : `actions:omni_landing_page_view` (5 310 lignes),
+  `actions:link_click` (418), `actions:click_to_call_native_call_placed` (8),
+  `total_profile_visits` (15). Un groupe d'annonces n'a jamais qu'un type ;
+  une campagne peut en mêler (`BW_traffic_2025` : trois).
+- `attribution_setting` : `1d_view_7d_click` partout, `1d_click` pour
+  « Velöle Socken » ; `attribution_windows` absent sous `1d_click`.
+- **Aucune campagne de notoriété dans tout l'historique**, aucune liste vide,
+  aucun `results` NULL après le rejeu.
+
+**Le rejeu** : `11043e9a` — 5 751 lignes, **0 sans `campaign_id`**, aucune
+remplie par le nom. ⚠ L'historique a changé de taille : 1 847 lignes avant,
+5 751 après, et des dépenses de campagne bougent fort (`BW_Frühling_Familien_2026`
+10 499 → 14 499 CHF, `BW_traffic_ebike_2025` 206 → 3 163 CHF). Les anciennes
+lignes sans `ad_id` étaient incomplètes ; les chiffres d'avant le rejeu ne
+correspondaient donc pas à Ads Manager. **Pas vérifié contre Ads Manager.**
+
+**Reste** : le compte `0b83e564-…` (le même compte publicitaire) a encore ses
+**1 626 lignes sans ID ni `results`** — même rejeu à lancer pour lui, quand
+David le voudra.

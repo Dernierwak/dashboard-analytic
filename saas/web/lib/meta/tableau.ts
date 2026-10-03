@@ -14,13 +14,18 @@
 //     jamais la moyenne de ses groupes, un groupe jamais celle de ses annonces ;
 //   · un élément est son ID Meta, sous son nom le plus récent ; une ligne sans
 //     ID n'est rattachée par son nom qu'à ses homonymes SANS ID du même parent ;
-//   · le CSV écrit « — » là où l'écran l'écrit, jamais 0.
+//   · le CSV écrit « — » là où l'écran l'écrit, jamais 0 ;
+//   · dans la vue Conversion, le type du résultat voyage avec son nombre, à
+//     l'écran comme dans le CSV ; une ligne qui en mêle deux écrit « — ».
 import {
   campagnesDe,
   cleCampagne,
   DEVISE,
-  ecart,
+  ecartEntre,
+  estMetriqueResultat,
   METRIQUES,
+  nomTypeDe,
+  precisionDe,
   periodeDe,
   TIRET,
   totaux,
@@ -49,6 +54,11 @@ export type LigneTableau = {
   valeurs: (number | null)[];
   /** L'écart du chiffre principal contre la période d'avant. */
   ecart: number | null;
+  /** Vue Conversion : ce que compte le chiffre (« vues de page de
+   *  destination »), `null` quand il n'y a pas de chiffre. */
+  typeResultat: string | null;
+  /** Vue Conversion : pourquoi « — » (types mélangés, rien rendu…). */
+  pourquoi: string | null;
   enfants: LigneTableau[];
 };
 
@@ -119,15 +129,17 @@ export function tableauDe(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contexte
 
   const versLigne = (n: Noeud, niveau: NiveauTableau): LigneTableau => {
     const t = totaux(n.courant);
-    const valeurs = metriques.map((m) => valeurDe(m, t));
+    const conversion = estMetriqueResultat(principale);
     return {
       cle: n.cle,
       niveau,
       nom: n.nom,
       id: n.id,
       couleur: niveau === "campagne" ? couleurs.get(n.cle) ?? null : null,
-      valeurs,
-      ecart: ecart(valeurs[0], valeurDe(principale, totaux(n.avant))),
+      valeurs: metriques.map((m) => valeurDe(m, t)),
+      ecart: ecartEntre(principale, t, totaux(n.avant)),
+      typeResultat: conversion ? nomTypeDe(t) : null,
+      pourquoi: conversion && t && !t.resultats.mesure ? precisionDe(principale, t) : null,
       enfants: [],
     };
   };
@@ -194,12 +206,16 @@ function texte(x: string): string {
  *  « Niveau », et une somme sur un seul niveau ne compte rien deux fois. */
 export function csvDuTableau(t: Tableau): string {
   const principale = METRIQUES[t.metriques[0]];
+  // Un nombre de résultats sans son type ne veut rien dire une fois dans le
+  // tableur : deux lignes voisines peuvent compter deux choses différentes.
+  const avecType = estMetriqueResultat(t.metriques[0]);
   const entete = [
     "Niveau",
     "Campagne",
     "Groupe d'annonces",
     "Annonce",
     "ID Meta",
+    ...(avecType ? ["Type de résultat"] : []),
     ...t.metriques.map((m) => `${METRIQUES[m].nom}${UNITE[METRIQUES[m].format]}`),
     `${principale.nom}, écart contre la période d'avant (%)`,
   ];
@@ -212,6 +228,7 @@ export function csvDuTableau(t: Tableau): string {
       texte(noms[1] ?? ""),
       texte(noms[2] ?? ""),
       l.id ?? TIRET,
+      ...(avecType ? [l.typeResultat ?? TIRET] : []),
       ...t.metriques.map((m, i) => nombreTableur(l.valeurs[i], DECIMALES[METRIQUES[m].format])),
       nombreTableur(l.ecart, 1),
     ]);

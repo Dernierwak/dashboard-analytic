@@ -32,9 +32,13 @@ export function SelecteurVue({
       <p id="titre-vues" className="text-[13px] text-muted mb-3">
         Choisis ce que tu regardes : la vue change toute la page, sans écarter aucune campagne.
       </p>
-      <nav className="grid gap-3 sm:grid-cols-2" aria-label="Vues">
+      <nav className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Vues">
         {cartes.map((c) => {
           const actif = c.vue === vue;
+          // Un chiffre de résultats porte son type à la place du nom de la
+          // métrique ; sans chiffre, la raison passe au survol et la Tendance
+          // l'écrit en toutes lettres.
+          const unite = c.valeur !== null && c.precision ? c.precision : METRIQUES[c.metrique].nom.toLowerCase();
           return (
             <Link
               key={c.vue}
@@ -61,7 +65,12 @@ export function SelecteurVue({
                 <span className={`text-[28px] font-semibold leading-none tracking-tight tabular-nums ${actif ? "text-white" : "text-ink"}`}>
                   {formaterValeur(c.metrique, c.valeur)}
                 </span>
-                <span className={`text-[12.5px] ${actif ? "text-white/60" : "text-muted"}`}>{METRIQUES[c.metrique].nom.toLowerCase()}</span>
+                <span
+                  className={`min-w-0 text-[12.5px] ${actif ? "text-white/60" : "text-muted"}`}
+                  title={c.valeur === null ? c.precision ?? undefined : undefined}
+                >
+                  {unite}
+                </span>
                 <span className="ml-auto"><PastilleEcart m={c.metrique} e={c.ecart} sombre={actif} /></span>
               </div>
             </Link>

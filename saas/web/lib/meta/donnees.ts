@@ -9,6 +9,7 @@ import {
   decaler,
   lireToutesLesPages,
   periodeDe,
+  resultatsDe,
   type Commandes,
   type ContenuPage,
   type LigneMeta,
@@ -108,11 +109,12 @@ function iso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Les colonnes d'identité (`campaign_id`, `adset_id`) viennent du `000` du
-// ticket 02 : sur une base qui ne l'a pas joué, la requête refuse et la page
-// tombe sur son erreur, plutôt que d'afficher des « — » sans cause.
+// Les colonnes d'identité (`campaign_id`, `adset_id`), `results` et
+// `attribution_setting` viennent du `000` du ticket 02 : sur une base qui ne
+// l'a pas joué, la requête refuse et la page tombe sur son erreur, plutôt que
+// d'afficher des « — » sans cause.
 const COLONNES =
-  "date_start, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend, impressions, clicks";
+  "date_start, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend, impressions, clicks, results, attribution_setting";
 
 type LigneBase = {
   date_start: string;
@@ -125,6 +127,8 @@ type LigneBase = {
   spend: number | string | null;
   impressions: number | null;
   clicks: number | null;
+  results: unknown;
+  attribution_setting: string | null;
 };
 
 function versLigne(r: LigneBase): LigneMeta {
@@ -141,6 +145,10 @@ function versLigne(r: LigneBase): LigneMeta {
     depense: Number(r.spend) || 0,
     impressions: Number(r.impressions) || 0,
     clics: Number(r.clicks) || 0,
+    // NULL reste NULL (non lu), `[]` reste `[]` : la récolte les distingue
+    // (ticket 03), la vue Conversion aussi.
+    resultats: resultatsDe(r.results),
+    attribution: r.attribution_setting || null,
   };
 }
 

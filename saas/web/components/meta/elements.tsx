@@ -4,8 +4,8 @@ import { formaterEcart, tonEcart, type CleMetrique, type Vue } from "@/lib/meta/
 // se rendent côté serveur comme côté client.
 
 // Dessinées à la main (trait 1,75, 24 px), comme celles du prototype validé :
-// pas de dépendance d'icônes ajoutée pour huit glyphes.
-export type NomIcone = "oeil" | "clic" | "coche" | "fleche" | "calques" | "calendrier" | "chevron" | "loupe";
+// pas de dépendance d'icônes ajoutée pour une poignée de glyphes.
+export type NomIcone = "oeil" | "clic" | "cible" | "coche" | "fleche" | "calques" | "calendrier" | "chevron" | "loupe";
 
 export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className?: string }) {
   const t = { fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -13,6 +13,7 @@ export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
       {nom === "oeil" && <><path {...t} d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle {...t} cx="12" cy="12" r="3" /></>}
       {nom === "clic" && <><path {...t} d="m9 9 5 12 1.8-5.2L21 14 9 9Z" /><path {...t} d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6M6 12l-1.9 2" /></>}
+      {nom === "cible" && <><circle {...t} cx="12" cy="12" r="9" /><circle {...t} cx="12" cy="12" r="5" /><circle {...t} cx="12" cy="12" r="1" /></>}
       {nom === "coche" && <path {...t} d="M20 6 9 17l-5-5" />}
       {nom === "fleche" && <path {...t} d="M5 12h14M12 5l7 7-7 7" />}
       {nom === "calques" && <><path {...t} d="m12 2 10 5-10 5L2 7l10-5Z" /><path {...t} d="m2 17 10 5 10-5M2 12l10 5 10-5" /></>}
@@ -23,7 +24,7 @@ export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className
   );
 }
 
-export const ICONE_VUE: Record<Vue, NomIcone> = { notoriete: "oeil", trafic: "clic" };
+export const ICONE_VUE: Record<Vue, NomIcone> = { notoriete: "oeil", trafic: "clic", conversion: "cible" };
 
 /** L'ancre du Sélecteur de vue : quand ses cartes sortent de l'écran, le
  *  Bandeau se détache en pilule et la vue active s'y replie (user story 10).

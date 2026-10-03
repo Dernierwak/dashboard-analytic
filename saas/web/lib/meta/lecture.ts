@@ -34,7 +34,78 @@ export type LigneMeta = {
   impressions: number;
   /** « Clics (tous) » d'Ads Manager — le champ `clicks`, pas `link_clicks`. */
   clics: number;
+  /** La colonne « Résultats » d'Ads Manager (`resultatsDe`). `null` = `results`
+   *  n'a pas été lu pour cette ligne ; `[]` = Meta n'a rendu aucun type. */
+  resultats: Resultat[] | null;
+  /** Le réglage d'attribution que Meta a appliqué (« 1d_view_7d_click »…). */
+  attribution: string | null;
 };
+
+// ── Les résultats, tels que Meta les rend ────────────────────────────────────
+
+/** Un élément de `results`. `valeur: null` = l'indicateur est là SANS
+ *  `values` : Meta n'écrit jamais "0" (aucune des 5 751 lignes lues le
+ *  2026-10-03), il omet le nombre, et Ads Manager affiche « — ». */
+export type Resultat = { type: string; valeur: number | null };
+
+type ValeurBrute = { attribution_windows?: unknown; value?: unknown };
+
+/**
+ * `results` tel que la base le porte, recopié brut par la récolte (ticket 03) :
+ * `[{"indicator": "actions:omni_landing_page_view", "values":
+ * [{"attribution_windows": ["default"], "value": "45"}]}]`.
+ *
+ * Le nombre est celui de la fenêtre `default` — le réglage du compte, celui
+ * qu'Ads Manager affiche — ou la valeur unique quand Meta n'écrit aucune
+ * fenêtre (sous `1d_click`). Les `values` ne se SOMMENT jamais : deux fenêtres
+ * comptent les mêmes actions deux fois. Aucune ligne lue n'en porte plus
+ * d'une ; si ça arrive sans `default`, le nombre reste inconnu.
+ */
+export function resultatsDe(brut: unknown): Resultat[] | null {
+  if (!Array.isArray(brut)) return null;
+  return brut.flatMap((e): Resultat[] => {
+    const type = e && typeof e.indicator === "string" ? e.indicator : null;
+    if (!type) return [];
+    const valeurs: ValeurBrute[] = Array.isArray(e.values) ? e.values : [];
+    const choisie =
+      valeurs.find((v) => Array.isArray(v?.attribution_windows) && v.attribution_windows.includes("default")) ??
+      (valeurs.length === 1 ? valeurs[0] : undefined);
+    const n = Number(choisie?.value);
+    return [{ type, valeur: choisie && Number.isFinite(n) ? n : null }];
+  });
+}
+
+/** Le nom d'Ads Manager, en français, des types lus dans la base le
+ *  2026-10-03. Un type absent d'ici s'écrit tel que Meta le nomme : jamais
+ *  rangé sous un nom qui n'est pas le sien. */
+const NOMS_RESULTATS: Record<string, { des: string; un: string }> = {
+  "actions:omni_landing_page_view": { des: "vues de page de destination", un: "vue de page de destination" },
+  "actions:link_click": { des: "clics sur un lien", un: "clic sur un lien" },
+  "actions:click_to_call_native_call_placed": { des: "appels passés", un: "appel passé" },
+  total_profile_visits: { des: "visites du profil", un: "visite du profil" },
+};
+
+export function nomResultat(type: string): string {
+  return NOMS_RESULTATS[type]?.des ?? type;
+}
+
+function nomUnResultat(type: string): string {
+  return NOMS_RESULTATS[type]?.un ?? type;
+}
+
+/** « 1d_view_7d_click » → « 7 jours après un clic ou 1 jour après un
+ *  affichage ». Un réglage d'une autre forme s'écrit tel que Meta le rend. */
+export function nomAttribution(reglage: string): string {
+  const morceaux = reglage.match(/\d+d_(?:click|view)/g);
+  if (!morceaux || morceaux.join("_") !== reglage) return reglage;
+  const phrases = morceaux.map((m) => {
+    const [n, geste] = m.split("d_");
+    return { geste, texte: `${n} jour${n === "1" ? "" : "s"} après un ${geste === "click" ? "clic" : "affichage"}` };
+  });
+  // Le clic d'abord, comme Ads Manager le lit.
+  phrases.sort((a, b) => (a.geste === b.geste ? 0 : a.geste === "click" ? -1 : 1));
+  return phrases.map((p) => p.texte).join(" ou ");
+}
 
 // ── La lecture paginée ───────────────────────────────────────────────────────
 
@@ -78,7 +149,7 @@ function dateLisible(x: string | undefined): x is string {
 
 // ── Les commandes : ce que l'URL porte ───────────────────────────────────────
 
-export type Vue = "notoriete" | "trafic";
+export type Vue = "notoriete" | "trafic" | "conversion";
 export const VUE_PAR_DEFAUT: Vue = "notoriete";
 
 export type Commandes = {
@@ -320,11 +391,33 @@ export function campagnesDe(lignes: LigneMeta[], courante?: { debut: string; fin
 
 // ── Les métriques ────────────────────────────────────────────────────────────
 
-/** Ce qui s'additionne. Les ratios ne se stockent jamais : ils se dérivent de
- *  ces trois sommes, sur la sélection entière. */
-export type Totaux = { depense: number; impressions: number; clics: number };
+/** Pourquoi une sélection n'a pas de total de résultats :
+ *  · `non-lu` — une de ses lignes n'a pas `results` (récoltée avant lui) ;
+ *  · `types-melanges` — elle porte plusieurs types : ils ne s'additionnent pas ;
+ *  · `aucun-type` — Meta n'y rend aucun type (`[]`) ;
+ *  · `aucun-nombre` — un seul type, jamais accompagné d'un nombre. */
+export type RaisonSansResultat = "non-lu" | "types-melanges" | "aucun-type" | "aucun-nombre";
 
-export type CleMetrique = "impressions" | "cpm" | "clics" | "ctr" | "cpc";
+/** Le total des résultats d'une sélection, et ce qu'il compte. */
+export type TotalResultats =
+  | { mesure: true; type: string; valeur: number }
+  | { mesure: false; raison: RaisonSansResultat; types: string[] };
+
+/** Ce qui s'additionne. Les ratios ne se stockent jamais : ils se dérivent de
+ *  ces sommes, sur la sélection entière. */
+export type Totaux = {
+  depense: number;
+  impressions: number;
+  clics: number;
+  resultats: TotalResultats;
+  /** Les réglages d'attribution des lignes, distincts et triés. */
+  attributions: string[];
+};
+
+export type CleMetrique = "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "resultats" | "cout_resultat" | "taux_conversion";
+
+const METRIQUES_RESULTATS: CleMetrique[] = ["resultats", "cout_resultat", "taux_conversion"];
+export const estMetriqueResultat = (m: CleMetrique) => METRIQUES_RESULTATS.includes(m);
 
 type Format = "entier" | "argent" | "pourcent";
 
@@ -378,10 +471,31 @@ export const METRIQUES: Record<CleMetrique, DefMetrique> = {
     format: "argent",
     calcul: (t) => diviser(t.depense, t.clics),
   },
+  resultats: {
+    nom: "Résultats",
+    aide: "La colonne « Résultats » d'Ads Manager, recopiée : ce que Meta compte comme l'action visée par l'annonce.",
+    hausseBonne: true,
+    format: "entier",
+    calcul: (t) => (t.resultats.mesure ? t.resultats.valeur : null),
+  },
+  cout_resultat: {
+    nom: "Coût par résultat",
+    aide: "Dépense ÷ résultats, sur toute la période.",
+    hausseBonne: false,
+    format: "argent",
+    calcul: (t) => (t.resultats.mesure ? diviser(t.depense, t.resultats.valeur) : null),
+  },
+  taux_conversion: {
+    nom: "Taux de conversion",
+    aide: "Résultats ÷ tous les clics × 100 — les clics de la vue Trafic, pas seulement ceux sur le lien.",
+    hausseBonne: true,
+    format: "pourcent",
+    calcul: (t) => (t.resultats.mesure ? mul(diviser(t.resultats.valeur, t.clics), 100) : null),
+  },
 };
 
 /** Les vues et leurs métriques — spec, § « Les vues et leurs métriques ». La
- *  première est le chiffre principal. La vue Conversion vient au ticket 10. */
+ *  première est le chiffre principal. */
 export const VUES: Record<Vue, { titre: string; question: string; metriques: CleMetrique[] }> = {
   notoriete: {
     titre: "Notoriété",
@@ -393,29 +507,114 @@ export const VUES: Record<Vue, { titre: string; question: string; metriques: Cle
     question: "Combien de clics tes annonces ont reçus",
     metriques: ["clics", "ctr", "cpc"],
   },
+  conversion: {
+    titre: "Conversion",
+    question: "Ce que tes campagnes rapportent en actions",
+    metriques: ["resultats", "cout_resultat", "taux_conversion"],
+  },
 };
 
-export const ORDRE_VUES: Vue[] = ["notoriete", "trafic"];
+export const ORDRE_VUES: Vue[] = ["notoriete", "trafic", "conversion"];
 
 export function vueDe(x: string | undefined): Vue {
-  return x === "notoriete" || x === "trafic" ? x : VUE_PAR_DEFAUT;
+  return (ORDRE_VUES as (string | undefined)[]).includes(x) ? (x as Vue) : VUE_PAR_DEFAUT;
+}
+
+/** Les résultats d'un ensemble de lignes. Un type différent ne s'ajoute
+ *  jamais à un autre — même quand l'un d'eux n'a pas de nombre : Ads Manager
+ *  refuse lui aussi d'additionner deux résultats de nature différente. */
+function totalResultats(lignes: LigneMeta[]): TotalResultats {
+  const types = new Set<string>();
+  let nonLu = false;
+  for (const l of lignes) {
+    // Absent comme NULL : non lu. Une ligne construite ailleurs que par
+    // `donnees.ts` (les harnais d'avant ce ticket) n'a pas le champ.
+    if (l.resultats == null) nonLu = true;
+    else for (const r of l.resultats) types.add(r.type);
+  }
+  const liste = [...types].sort();
+  if (nonLu) return { mesure: false, raison: "non-lu", types: liste };
+  if (liste.length > 1) return { mesure: false, raison: "types-melanges", types: liste };
+  if (liste.length === 0) return { mesure: false, raison: "aucun-type", types: liste };
+
+  let valeur: number | null = null;
+  for (const l of lignes) for (const r of l.resultats ?? []) if (r.valeur !== null) valeur = (valeur ?? 0) + r.valeur;
+  if (valeur === null) return { mesure: false, raison: "aucun-nombre", types: liste };
+  return { mesure: true, type: liste[0], valeur };
 }
 
 /** La somme des lignes, ou `null` s'il n'y en a aucune : une sélection vide
  *  n'a pas « zéro impression », elle n'a rien de mesuré. */
 export function totaux(lignes: LigneMeta[]): Totaux | null {
   if (lignes.length === 0) return null;
-  const t = { depense: 0, impressions: 0, clics: 0 };
+  let depense = 0;
+  let impressions = 0;
+  let clics = 0;
+  const attributions = new Set<string>();
   for (const l of lignes) {
-    t.depense += l.depense;
-    t.impressions += l.impressions;
-    t.clics += l.clics;
+    depense += l.depense;
+    impressions += l.impressions;
+    clics += l.clics;
+    if (l.attribution) attributions.add(l.attribution);
   }
-  return t;
+  return { depense, impressions, clics, resultats: totalResultats(lignes), attributions: [...attributions].sort() };
 }
 
 export function valeurDe(m: CleMetrique, t: Totaux | null): number | null {
   return t === null ? null : METRIQUES[m].calcul(t);
+}
+
+/** Deux résultats ne se comparent que s'ils comptent la même chose : des
+ *  vues de page n'ont pas « monté » par rapport à des clics sur un lien. */
+export function memeResultat(a: Totaux | null, b: Totaux | null): boolean {
+  return !!a && !!b && a.resultats.mesure && b.resultats.mesure && a.resultats.type === b.resultats.type;
+}
+
+/** L'écart de `m` entre deux sélections, `null` dès qu'elles ne se comparent pas. */
+export function ecartEntre(m: CleMetrique, courant: Totaux | null, avant: Totaux | null): number | null {
+  if (estMetriqueResultat(m) && !memeResultat(courant, avant)) return null;
+  return ecart(valeurDe(m, courant), valeurDe(m, avant));
+}
+
+/** Ce qu'on écrit sous un chiffre de résultats : le type qu'il compte, ou
+ *  pourquoi il n'y en a pas. `null` hors de la vue Conversion. */
+export function precisionDe(m: CleMetrique, t: Totaux | null): string | null {
+  if (!estMetriqueResultat(m) || t === null) return null;
+  const r = t.resultats;
+  if (r.mesure) {
+    if (m === "taux_conversion") return `${nomResultat(r.type)} ÷ clics (tous)`;
+    if (m === "cout_resultat") return `par ${nomUnResultat(r.type)}`;
+    return nomResultat(r.type);
+  }
+  switch (r.raison) {
+    case "non-lu":
+      return "Les résultats d'une partie de ces jours n'ont pas été lus : le total serait incomplet.";
+    case "types-melanges":
+      return `Des résultats de types différents ne s'additionnent pas (${r.types.map(nomResultat).join(", ")}). Choisis une campagne pour lire les siens.`;
+    case "aucun-type":
+      return "Meta ne rend aucun résultat pour cette sélection.";
+    case "aucun-nombre":
+      return `Meta n'a compté aucun résultat (${nomResultat(r.types[0])}) sur cette période — Ads Manager écrit « — » lui aussi.`;
+  }
+}
+
+/** Le nom du type que compte le total, `null` quand il n'y a pas de total. */
+export function nomTypeDe(t: Totaux | null): string | null {
+  return t?.resultats.mesure ? nomResultat(t.resultats.type) : null;
+}
+
+/** Le réglage d'attribution, dit dans l'info-bulle. */
+export function aideDe(m: CleMetrique, t: Totaux | null): string {
+  const base = METRIQUES[m].aide;
+  if (!estMetriqueResultat(m) || !t || t.attributions.length !== 1) return base;
+  return `${base} Réglage d'attribution de Meta : ${nomAttribution(t.attributions[0])}.`;
+}
+
+/** Plusieurs réglages dans la sélection : écrit À L'ENDROIT DU CHIFFRE, pas
+ *  caché dans une bulle — deux fenêtres différentes comptent différemment. */
+export function attentionDe(m: CleMetrique, t: Totaux | null): string | null {
+  if (!estMetriqueResultat(m) || !t || t.attributions.length < 2) return null;
+  return `Réglages d'attribution mélangés : ${t.attributions.map(nomAttribution).join(" ; ")}.`;
 }
 
 /** L'écart relatif, en %. `null` quand l'un des deux manque ou que la base est
@@ -484,12 +683,19 @@ export type CarteVue = {
   valeur: number | null;
   avant: number | null;
   ecart: number | null;
+  /** Ce que compte le chiffre, ou pourquoi il n'y en a pas (`precisionDe`). */
+  precision: string | null;
 };
 
 export type MetriqueTendance = {
   cle: CleMetrique;
   nom: string;
+  /** Le ⓘ — avec le réglage d'attribution pour un résultat (`aideDe`). */
   aide: string;
+  /** Sous le chiffre : le type compté, ou pourquoi « — » (`precisionDe`). */
+  precision: string | null;
+  /** À côté du chiffre : des réglages d'attribution mélangés (`attentionDe`). */
+  attention: string | null;
   valeur: number | null;
   avant: number | null;
   ecart: number | null;
@@ -556,25 +762,46 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
 
   const cartes = ORDRE_VUES.map((v): CarteVue => {
     const m = VUES[v].metriques[0];
-    const valeur = valeurDe(m, tCourant);
-    const base = valeurDe(m, tAvant);
-    return { vue: v, metrique: m, valeur, avant: base, ecart: ecart(valeur, base) };
+    return {
+      vue: v,
+      metrique: m,
+      valeur: valeurDe(m, tCourant),
+      avant: estMetriqueResultat(m) && !memeResultat(tCourant, tAvant) ? null : valeurDe(m, tAvant),
+      ecart: ecartEntre(m, tCourant, tAvant),
+      precision: precisionDe(m, tCourant),
+    };
   });
 
   const joursCourant = parJour(courant);
   const joursAvant = parJour(avant);
-  const tendance = VUES[vue].metriques.map((m): MetriqueTendance => {
-    const valeur = valeurDe(m, tCourant);
-    const base = valeurDe(m, tAvant);
+  // Une courbe de résultats ne trace que ce que le total accepte d'écrire :
+  // sur une période aux types mélangés, chaque jour serait une somme d'un type
+  // différent sur le même axe ; sur une période lue en partie, elle montrerait
+  // une série que le total refuse. La période d'avant ne se trace que si elle
+  // compte la même chose.
+  const raison = tCourant && !tCourant.resultats.mesure ? tCourant.resultats.raison : null;
+  const tracable = raison !== "types-melanges" && raison !== "non-lu";
+  const comparable = memeResultat(tCourant, tAvant);
+  const vide = () => Array<number | null>(periode.jours).fill(null);
+  const tendance = VUES[vue].metriques.map((m, rang): MetriqueTendance => {
+    const resultat = estMetriqueResultat(m);
+    // Pourquoi « — » et les réglages mélangés ne s'écrivent qu'une fois, sous
+    // le chiffre principal : répétés sur les trois cartes, ils noyaient la vue
+    // (vu dans Chrome sur décembre 2025). Le type, lui, reste sur chacune.
+    const principal = rang === 0;
+    let precision = precisionDe(m, tCourant);
+    if (!principal && precision !== null && !tCourant?.resultats.mesure) precision = "Voir pourquoi sous « Résultats ».";
     return {
       cle: m,
       nom: METRIQUES[m].nom,
-      aide: METRIQUES[m].aide,
-      valeur,
-      avant: base,
-      ecart: ecart(valeur, base),
-      serie: serieDe(m, joursCourant, periode.debut, periode.jours),
-      serieAvant: serieDe(m, joursAvant, periode.avantDebut, periode.jours),
+      aide: aideDe(m, tCourant),
+      precision,
+      attention: principal ? attentionDe(m, tCourant) : null,
+      valeur: valeurDe(m, tCourant),
+      avant: resultat && !comparable ? null : valeurDe(m, tAvant),
+      ecart: ecartEntre(m, tCourant, tAvant),
+      serie: resultat && !tracable ? vide() : serieDe(m, joursCourant, periode.debut, periode.jours),
+      serieAvant: resultat && !comparable ? vide() : serieDe(m, joursAvant, periode.avantDebut, periode.jours),
     };
   });
 
@@ -703,6 +930,9 @@ export type ElementCompare = {
   sous: string;
   /** L'ID Meta de l'annonce, pour sa vignette ; `null` pour un groupe. */
   annonceId: string | null;
+  /** Dans la vue Conversion, le type que compte son chiffre — deux éléments
+   *  voisins ne comptent pas forcément la même chose. */
+  typeResultat: string | null;
   /** Les deux métriques sur la période ; `null` = « — », rangé en bas. */
   valeurs: [number | null, number | null];
   /** 0 à 3 quand l'élément est coché — sa couleur ; `null` sinon. */
@@ -763,6 +993,7 @@ export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, 
       nom: niveau === "groupes" ? recente.groupeNom : recente.annonceNom,
       sous: niveau === "groupes" ? recente.campagneNom : `${recente.campagneNom} › ${recente.groupeNom}`,
       annonceId: niveau === "annonces" ? recente.annonceId : null,
+      typeResultat: estMetriqueResultat(metriques[0]) ? nomTypeDe(t) : null,
       valeurs: [valeurDe(metriques[0], t), valeurDe(metriques[1], t)],
       place: null,
     };

@@ -208,7 +208,9 @@ test("les cartes de vue portent chacune leur chiffre principal et son écart, qu
   const cartes = contenuPage(lignes, { vue: "trafic" }, CTX).cartes;
   assert.deepEqual(
     cartes.map((c) => [c.vue, c.valeur, c.avant]),
-    [["notoriete", 1_500, 1_000], ["trafic", 12, 10]]
+    // Ces lignes n'ont pas de `results` : la carte Conversion dit « — »
+    // (ticket 10), jamais un zéro.
+    [["notoriete", 1_500, 1_000], ["trafic", 12, 10], ["conversion", null, null]]
   );
 });
 

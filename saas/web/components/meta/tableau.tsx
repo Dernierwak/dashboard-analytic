@@ -109,6 +109,7 @@ export function TableauDetaille({ tableau }: { tableau: Tableau }) {
       )}
       <p className="mt-2 text-[12.5px] text-muted">
         « — » : rien de mesuré, ce n&apos;est pas un zéro. Chaque ligne calcule ses ratios sur ses propres totaux — une campagne n&apos;est pas la moyenne de ses groupes.
+        {tableau.vue === "conversion" && " Des résultats de types différents ne s'additionnent pas : une ligne qui en mêle plusieurs écrit « — », et son survol dit lesquels."}
       </p>
     </section>
   );
@@ -159,10 +160,14 @@ function Ligne({
         )}
       </td>
       {t.metriques.map((m, i) => (
-        <td key={m} className="whitespace-nowrap px-4 py-3 text-right">
+        <td key={m} className="whitespace-nowrap px-4 py-3 text-right" title={i === 0 ? l.pourquoi ?? undefined : undefined}>
           <span className={`tabular-nums ${i === 0 ? "text-[15px] font-semibold text-ink" : "text-[14px] text-ink/75"}`}>
             {formaterValeur(m, l.valeurs[i])}
           </span>
+          {/* Le type voyage avec le nombre : une campagne et ses groupes
+              peuvent compter des choses différentes. */}
+          {i === 0 && l.typeResultat && <span className="block text-[11.5px] text-faint">{l.typeResultat}</span>}
+          {i === 0 && l.pourquoi && <span className="sr-only">{l.pourquoi}</span>}
         </td>
       ))}
       <td className="py-3 pl-2 pr-5 text-right">

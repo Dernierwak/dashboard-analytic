@@ -202,7 +202,12 @@ function Liste({
         {c.niveau === "annonces" && <Vignette url={e.annonceId ? vignettes[e.annonceId] : undefined} />}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] text-ink">{e.nom || "Sans nom"}</span>
-          <span className="block truncate text-[11.5px] text-faint">{e.sous}</span>
+          {/* Vue Conversion : le type que compte le chiffre, écrit à côté —
+              deux voisins de la liste ne comptent pas forcément la même chose. */}
+          <span className="block truncate text-[11.5px] text-faint">
+            {e.sous}
+            {e.typeResultat && <span className="text-muted"> · {e.typeResultat}</span>}
+          </span>
           <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-[#efeee9]">
             <span
               className="block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
@@ -220,7 +225,7 @@ function Liste({
     );
     const classes = `flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand`;
     const resultat = basculerCoche(c.places, e.cle);
-    const etiquette = `${coche ? "Décocher" : "Cocher"} ${e.nom || "sans nom"}, ${e.sous}`;
+    const etiquette = `${coche ? "Décocher" : "Cocher"} ${e.nom || "sans nom"}, ${e.sous}${e.typeResultat ? `, ${e.typeResultat}` : ""}`;
 
     // La cinquième case se REFUSE, visiblement : elle reste à sa place, son
     // cadre passe en rouge et une phrase dit quoi faire — aucune autre n'est
