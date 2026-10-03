@@ -29,7 +29,7 @@ def insert_schedule_data(supabase:Client, user_id, fetch_schedule):
 
 # CE QUI BORNE UN LOT, ET POURQUOI IL Y A DEUX BORNES.
 #
-# Une récolte de routine ne demande que 7 jours : elle tient dans un lot et ces
+# Une récolte de routine demande ~35 jours : elle tient dans un lot et ces
 # bornes ne se voient jamais. C'est le REJEU D'HISTORIQUE (`--meta-since`) qui
 # les rend nécessaires, et l'avertissement était écrit d'avance dans la note
 # PROFONDEUR D'HISTORIQUE de `fetch_all.py` : « upsert_meta_ads envoie TOUT en
@@ -76,57 +76,11 @@ def _lots_par_date(records: list[dict]) -> list[list[dict]]:
     return lots
 
 
-def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
-    """Upsert des données Meta Ads dans meta_ads_insights.
+def upsert_meta_ads(supabase: Client, user_id: str, records: list[dict]):
+    """Upsert des lignes de meta_ads_insights, déjà formées par
+    `saas.collecte.meta.fetch_meta_ads.lignes_meta_ads`.
     Conflict sur (user_id, date_start, ad_id) — une ligne par annonce par jour.
-
-    LA CLÉ EST `ad_id`, PAS `ad_name`, ET ÇA A COÛTÉ DE LA DÉPENSE RÉELLE.
-    `ad_name` est l'étiquette lisible que l'annonceur choisit : rien n'interdit
-    deux annonces « Video 1 » dans deux Groupes, et c'est le montage courant.
-    Tant que la déduplication portait sur le nom, la seconde annonce n'était
-    pas mal attribuée — elle n'entrait jamais en base. Mesuré sur le compte de
-    test au 19-20/08/2026 : ~17 € puis ~15 €, environ 40 % de la dépense Meta
-    de ces jours-là. `ad_id` est le numéro que Meta attribue à la création, il
-    n'est jamais dupliqué.
     """
-    if not rows:
-        return
-
-    seen = set()
-    records = []
-    sans_id = 0
-    for row in rows:
-        ad_id = row.get("ad_id")
-        # Une ligne sans ad_id ne peut pas être dédupliquée : elle n'entrerait
-        # en conflit avec rien (Postgres ne rapproche jamais deux NULL sous une
-        # contrainte UNIQUE) et se réinsèrerait à chaque récolte, doublant la
-        # dépense du jour. Meta renvoie toujours ad_id au niveau `ad` ; si ça
-        # change un jour, on veut le voir dans le journal, pas le découvrir
-        # dans un total qui enfle.
-        if not ad_id:
-            sans_id += 1
-            continue
-        key = (row.get("date_start"), ad_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        records.append({
-            "user_id": user_id,
-            "date_start": row.get("date_start"),
-            "ad_id": str(ad_id),
-            "campaign_name": row.get("campaign_name", ""),
-            "adset_name": row.get("adset_name", ""),
-            "ad_name": row.get("ad_name", ""),
-            "impressions": int(row.get("impressions") or 0),
-            "clicks": int(row.get("clicks") or 0),
-            "reach": int(row.get("reach") or 0) if row.get("reach") is not None else None,
-            "link_clicks": int(row.get("link_clicks") or 0) if row.get("link_clicks") is not None else None,
-            "spend": float(row.get("spend") or 0),
-        })
-
-    if sans_id:
-        print(f"meta_ads: {sans_id} ligne(s) sans ad_id, ignorées")
-
     if not records:
         return
 

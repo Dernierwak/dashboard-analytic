@@ -138,6 +138,76 @@ def fetch_campaign_budgets(token: str, ad_account_id: str) -> tuple[list[dict], 
     return rows, None
 
 
+# ── Les insights (/insights, niveau `ad`) → lignes de meta_ads_insights ──────
+
+def _link_clicks(actions) -> int:
+    # Le `else 0` fabrique un zéro quand Meta omet `link_click` : défaut connu,
+    # ticket `.scratch/corrections/issues/01`, pas corrigé ici.
+    lc = next((it for it in actions or [] if it.get("action_type") == "link_click"), None)
+    return int(lc.get("value", 0)) if lc else 0
+
+
+def lignes_meta_ads(user_id: str, reponse: list[dict]) -> tuple[list[dict], int]:
+    """Les lignes de /insights (niveau `ad`) → les lignes de meta_ads_insights.
+
+    Pure, sans réseau : c'est le seam de test de la récolte Meta (spec
+    `.scratch/meta-ads/spec.md`, « Testing Decisions »). Rend (lignes, nombre de lignes sans ad_id).
+
+    LA CLÉ EST `ad_id`, PAS `ad_name`, ET ÇA A COÛTÉ DE LA DÉPENSE RÉELLE.
+    `ad_name` est l'étiquette lisible que l'annonceur choisit : rien n'interdit
+    deux annonces « Video 1 » dans deux Groupes, et c'est le montage courant.
+    Tant que la déduplication portait sur le nom, la seconde annonce n'était
+    pas mal attribuée — elle n'entrait jamais en base. Mesuré sur le compte de
+    test au 19-20/08/2026 : ~17 € puis ~15 €, environ 40 % de la dépense Meta
+    de ces jours-là. `ad_id` est le numéro que Meta attribue à la création, il
+    n'est jamais dupliqué.
+    """
+    seen = set()
+    records = []
+    sans_id = 0
+    for row in reponse:
+        ad_id = row.get("ad_id")
+        # Une ligne sans ad_id ne peut pas être dédupliquée : elle n'entrerait
+        # en conflit avec rien (Postgres ne rapproche jamais deux NULL sous une
+        # contrainte UNIQUE) et se réinsèrerait à chaque récolte, doublant la
+        # dépense du jour. Meta renvoie toujours ad_id au niveau `ad` ; si ça
+        # change un jour, on veut le voir dans le journal, pas le découvrir
+        # dans un total qui enfle.
+        if not ad_id:
+            sans_id += 1
+            continue
+        key = (row.get("date_start"), ad_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id": user_id,
+            "date_start": row.get("date_start"),
+            "ad_id": str(ad_id),
+            # Les IDs sont recopiés, jamais reconstitués depuis un nom : une
+            # ligne sans ID reste sans ID (`.scratch/meta-ads/spec.md`,
+            # « L'identité par ID »).
+            "campaign_id": str(row["campaign_id"]) if row.get("campaign_id") else None,
+            "adset_id": str(row["adset_id"]) if row.get("adset_id") else None,
+            "campaign_name": row.get("campaign_name", ""),
+            "adset_name": row.get("adset_name", ""),
+            "ad_name": row.get("ad_name", ""),
+            "impressions": int(row.get("impressions") or 0),
+            "clicks": int(row.get("clicks") or 0),
+            "reach": int(row.get("reach") or 0) if row.get("reach") is not None else None,
+            "link_clicks": _link_clicks(row.get("actions")),
+            "spend": float(row.get("spend") or 0),
+            "attribution_setting": row.get("attribution_setting"),
+            # La colonne « Résultats » d'Ads Manager, TELLE QUE META LA REND :
+            # sa forme d'élément n'est documentée nulle part
+            # (`.scratch/meta-ads/recherche/colonne-resultats.md`), elle se lit dans la base avant d'être
+            # affichée. `.get` garde la distinction qui compte : champ absent
+            # → NULL, liste vide → liste vide. Ni l'un ni l'autre n'est un 0.
+            "results": row.get("results"),
+        })
+    return records, sans_id
+
+
 # ── Le journal des changements DÉCLARÉS (/activities) ────────────────────────
 #
 # Meta tient le journal de ce qui a été touché dans le compte publicitaire.
