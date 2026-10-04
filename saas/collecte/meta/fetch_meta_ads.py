@@ -208,6 +208,43 @@ def lignes_meta_ads(user_id: str, reponse: list[dict]) -> tuple[list[dict], int]
     return records, sans_id
 
 
+def lignes_config_meta(user_id: str, campagnes: list[dict]) -> tuple[list[dict], int]:
+    """Les campagnes DÉCLARÉES (/campaigns) → les lignes de meta_campaign_config.
+
+    Pure, sans réseau. Rend (lignes, nombre de campagnes sans id).
+
+    LA LIGNE SE RATTACHE PAR L'ID, LE NOM N'EST QU'UNE ÉTIQUETTE QUI SUIT.
+    Une campagne renommée dans Meta perdait sa ligne : la clé par nom en
+    créait une seconde au nouveau nom, et l'ancienne gardait le statut et les
+    dates d'une campagne qui n'existait plus sous ce nom (spec
+    `.scratch/meta-ads/spec.md`, « L'identité par ID » ; ticket 13).
+    """
+    def _jour(v):
+        return str(v)[:10] if v else None
+
+    lignes, vus, sans_id = [], set(), 0
+    for c in campagnes:
+        campaign_id = c.get("id")
+        # Meta rend toujours `id` sur /campaigns. Une ligne sans lui ne pourrait
+        # se rattacher que par le nom — c'est exactement ce que ce seam retire.
+        if not campaign_id:
+            sans_id += 1
+            continue
+        if campaign_id in vus:
+            continue
+        vus.add(campaign_id)
+        lignes.append({
+            "user_id": user_id,
+            "campaign_id": str(campaign_id),
+            "campaign_name": c.get("name") or "",
+            "effective_status": c.get("effective_status") or None,
+            "start_date": _jour(c.get("start_time")),
+            # stop_time absent = campagne sans date de fin programmée.
+            "end_date": _jour(c.get("stop_time")),
+        })
+    return lignes, sans_id
+
+
 # ── Le journal des changements DÉCLARÉS (/activities) ────────────────────────
 #
 # Meta tient le journal de ce qui a été touché dans le compte publicitaire.

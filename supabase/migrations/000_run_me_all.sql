@@ -245,12 +245,16 @@ ALTER TABLE public.meta_ads_insights
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS meta_budget_global numeric(12, 2) NOT NULL DEFAULT 0;
 
+-- Une base NEUVE naît avec la clé par ID. Une base existante garde la sienne
+-- (`IF NOT EXISTS`) jusqu'à l'étape B, jouée à la main :
+-- 997_la_cle_de_config_meta_passe_a_l_id.sql.
 CREATE TABLE IF NOT EXISTS public.meta_campaign_config (
     user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    campaign_id   text NOT NULL,
     campaign_name text NOT NULL,
     budget_max    numeric(12, 2) NOT NULL DEFAULT 0,
     updated_at    timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, campaign_name)
+    PRIMARY KEY (user_id, campaign_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_meta_campaign_config_user
@@ -282,10 +286,11 @@ ALTER TABLE public.meta_campaign_config
     ADD COLUMN IF NOT EXISTS effective_status text DEFAULT NULL;
 
 -- L'ID Meta de la campagne — étape A de la spec meta-ads, § « L'identité par
--- ID ». Nullable : les lignes en place n'en ont pas, et la clé reste
--- (user_id, campaign_name) TANT QUE l'étape B n'est pas jouée (ticket 13 de
--- la carte) — celle-ci refuse de tourner tant qu'une ligne n'a pas d'ID.
--- Une ligne sans ID n'est jamais rattachée par son nom à une autre.
+-- ID ». Sur une base d'avant le ticket 13, la colonne arrive nullable : les
+-- lignes en place n'en ont pas, et la clé reste (user_id, campaign_name) TANT
+-- QUE l'étape B (997_la_cle_de_config_meta_passe_a_l_id.sql) n'est pas jouée —
+-- celle-ci refuse de tourner tant qu'une ligne n'a pas d'ID. Une ligne sans ID
+-- n'est jamais rattachée par son nom à une autre.
 ALTER TABLE public.meta_campaign_config
     ADD COLUMN IF NOT EXISTS campaign_id text;
 

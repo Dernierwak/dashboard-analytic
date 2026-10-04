@@ -51,6 +51,7 @@ from saas.collecte.meta.fetch_meta_ads import (                                 
     fetch_campaign_budgets as meta_budgets,
     fetch_activities as meta_changes,
     hierarchie_depuis_insights,
+    lignes_config_meta,
     lignes_meta_ads,
 )
 from saas.collecte.automatisation.suivi import Suivi, CANAUX                                # noqa: E402
@@ -430,7 +431,7 @@ def _meta_campagnes(token, ad_account_id) -> tuple[list, str | None]:
     """
     params = {
         "access_token": token,
-        "fields": "name,effective_status,start_time,stop_time",
+        "fields": "id,name,effective_status,start_time,stop_time",
         "limit": _CAMPAGNES_PAR_PAGE,
     }
     try:
@@ -887,18 +888,9 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     note("statuts")
     campagnes, trou_statuts = _meta_campagnes(token, ad_account_id)
 
-    def _jour(v):
-        return str(v)[:10] if v else None
-
-    status_map = {
-        c["name"]: {
-            "status": c.get("effective_status", "UNKNOWN"),
-            "start_date": _jour(c.get("start_time")),
-            # stop_time absent = campagne sans date de fin programmee.
-            "end_date": _jour(c.get("stop_time")),
-        }
-        for c in campagnes if c.get("name")
-    }
+    lignes_config, sans_id_campagne = lignes_config_meta(uid, campagnes)
+    if sans_id_campagne:
+        print(f"    meta: {sans_id_campagne} campagne(s) sans id, ignorées")
     # LE COMPTE SE DIT À CHAQUE PASSAGE, MÊME QUAND TOUT VA BIEN. C'est le seul
     # repère qui sépare « ce compte a 200 campagnes » de « on s'est arrêté à
     # 200 » dans une run verte — le défaut d'origine tenait entièrement dans ce
@@ -909,9 +901,9 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         # campagnes non vues gardent le statut de la récolte précédente —
         # `upsert_campaign_statuses` ne touche que les lignes qu'on lui donne.
         print(f"    meta: liste des campagnes INCOMPLÈTE, "
-              f"{len(status_map)} campagne(s) vue(s) : {trou_statuts}")
+              f"{len(lignes_config)} campagne(s) vue(s) : {trou_statuts}")
     else:
-        print(f"    meta: {len(status_map)} campagne(s) déclarée(s)")
+        print(f"    meta: {len(lignes_config)} campagne(s) déclarée(s)")
     # LES STATUTS S'ÉCRIVENT SEULS, ILS N'ATTENDENT PLUS UNE DÉPENSE. Cette
     # écriture vivait sous le `if rows:` des insights, alors qu'elle vient
     # d'une autre requête et remplit une autre table. Un compte qui ne dépense
@@ -921,7 +913,10 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # sur une run verte qui venait d'imprimer le nombre de campagnes vues.
     # `upsert_campaign_statuses` rend la main sur une carte vide : rien à
     # garder ici.
-    upsert_campaign_statuses(sb, uid, status_map)
+    sautees = upsert_campaign_statuses(sb, uid, lignes_config)
+    if sautees:
+        print(f"    meta: {sautees} campagne(s) homonyme(s) sans statut ni ID — "
+              "attendent l'étape B (supabase/migrations/997_…)")
     # `effective_status` ne se pose plus sur la ligne d'insight : personne ne le
     # lisait. `upsert_meta_ads` ne l'envoie pas — le statut vit dans
     # `meta_campaign_config`, une table par CAMPAGNE, pas par date. Le poser ici

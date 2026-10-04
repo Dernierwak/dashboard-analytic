@@ -145,62 +145,50 @@ def update_meta_budget_global(supabase: Client, user_id: str, value: float) -> N
     supabase.table("profiles").update({"meta_budget_global": float(value or 0)}).eq("id", user_id).execute()
 
 
-def upsert_campaign_config(
-    supabase: Client,
-    user_id: str,
-    campaign_name: str,
-    *,
-    budget_max: float | None = None,
-    effective_status: str | None = None,
-) -> None:
-    """Upsert ligne meta_campaign_config. Met à jour seulement les champs fournis."""
-    payload: dict = {"user_id": user_id, "campaign_name": campaign_name}
-    if budget_max is not None:
-        payload["budget_max"] = float(budget_max or 0)
-    if effective_status is not None:
-        payload["effective_status"] = effective_status or None
-    supabase.table("meta_campaign_config").upsert(
-        payload, on_conflict="user_id,campaign_name"
-    ).execute()
-
-
 def upsert_campaign_statuses(
     supabase: Client,
     user_id: str,
-    status_map: dict[str, str],
-) -> None:
-    """Met à jour statut ET dates déclarées, pour toutes les campagnes d'un coup.
+    lignes: list[dict],
+) -> int:
+    """Écrit statut et dates déclarées des campagnes Meta, rattachés par l'ID.
 
-    status_map accepte DEUX formes, parce que deux appelants coexistent :
-      · {campaign_name: "ACTIVE"}                       (ancien, Streamlit)
-      · {campaign_name: {"status":…, "start_date":…, "end_date":…}}  (worker)
-    Une chaîne nue n'écrase donc jamais les dates par du vide — elle ne les
-    mentionne simplement pas.
+    `lignes` sort de `lignes_config_meta` (saas/collecte/meta/fetch_meta_ads.py).
+    Rend le nombre de campagnes NON écrites par le repli ci-dessous (0 hors
+    repli) : l'appelant le dit dans le journal, sans quoi ces campagnes
+    garderaient un statut périmé sans trace.
+
+    LA BASE PEUT ENCORE PORTER L'ANCIENNE CLÉ. L'étape B
+    (supabase/migrations/997_la_cle_de_config_meta_passe_a_l_id.sql) se joue à
+    la main, après le merge : tant qu'elle ne l'est pas, la clé primaire est
+    (user_id, campaign_name) et l'upsert sur l'ID est refusé en 42P10. On
+    retombe alors sur le nom, en écrivant l'ID au passage — c'est ce qui
+    remplit les ~200 lignes par compte que le report depuis les insights ne
+    peut pas atteindre (mesuré le 2026-10-04 : 16 sur 197, les autres n'ont
+    jamais dépensé).
     """
-    if not status_map:
-        return
-    records = []
-    for name, v in status_map.items():
-        if not name:
-            continue
-        if isinstance(v, dict):
-            records.append({
-                "user_id": user_id,
-                "campaign_name": name,
-                "effective_status": v.get("status") or None,
-                "start_date": v.get("start_date") or None,
-                "end_date": v.get("end_date") or None,
-            })
-        else:
-            records.append({
-                "user_id": user_id,
-                "campaign_name": name,
-                "effective_status": v or None,
-            })
-    if records:
+    if not lignes:
+        return 0
+    try:
         supabase.table("meta_campaign_config").upsert(
-            records, on_conflict="user_id,campaign_name"
+            lignes, on_conflict="user_id,campaign_id"
         ).execute()
+        return 0
+    except Exception as e:
+        if str(getattr(e, "code", "") or "") != "42P10":
+            raise
+        # Sous la clé par nom, deux campagnes homonymes viseraient la même
+        # ligne : en écrire une serait choisir au hasard laquelle porte l'ID.
+        # Elles attendent l'étape B, qui les rend distinctes.
+        par_nom: dict[str, int] = {}
+        for ligne in lignes:
+            par_nom[ligne["campaign_name"]] = par_nom.get(ligne["campaign_name"], 0) + 1
+        uniques = [ligne for ligne in lignes
+                   if ligne["campaign_name"] and par_nom[ligne["campaign_name"]] == 1]
+        if uniques:
+            supabase.table("meta_campaign_config").upsert(
+                uniques, on_conflict="user_id,campaign_name"
+            ).execute()
+        return len(lignes) - len(uniques)
 
 
 # ── Budget PLANIFIÉ (photos) — platform_budgets ───────────────────────────────
