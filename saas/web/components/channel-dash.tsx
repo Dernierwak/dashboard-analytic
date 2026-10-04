@@ -816,7 +816,10 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
   // tant que `google_ads_ad_insights` n'est pas alimentée — voir le commentaire
   // au-dessus du composant.
   const deroulables = d.campaigns.filter((c) => c.adsets.length > 0).length;
-  const groupWord = "groupe";
+  // Le mot du glossaire (`CONTEXT.md`), singulier ET pluriel écrits en entier :
+  // le pluriel par concaténation donnerait « groupe d'annoncess ».
+  const groupe = "groupe d'annonces";
+  const groupes = "groupes d'annonces";
 
   // L'ÉCART, quand une comparaison est posée. `null` sinon, et la table ne
   // change alors pas d'un pixel : ni colonne, ni tri, ni phrase de pied.
@@ -948,7 +951,7 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
                   ) : (
                     <span
                       className="w-[10px] shrink-0 text-center text-faint/50 text-[10px] leading-none"
-                      title={`Pas de détail par ${groupWord} pour cette campagne`}
+                      title={`Pas de détail par ${groupe} pour cette campagne`}
                     >
                       ·
                     </span>
@@ -1004,7 +1007,7 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
                   >
                     <span className="px-2 pl-7 font-semibold text-muted truncate" title={s.name}>
                       ▸ {s.name}
-                      <span className="text-faint font-normal text-[10px]"> · {groupWord}</span>
+                      <span className="text-faint font-normal text-[10px]"> · {groupe}</span>
                     </span>
                     <Nums
                       impressions={s.impressions}
@@ -1015,10 +1018,10 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
                       spend={s.spend}
                     />
                     {/* L'écart se lit au niveau de la CAMPAGNE : la référence
-                        n'est pas ventilée par {groupWord}. Une cellule vide se
+                        n'est pas ventilée par {groupe}. Une cellule vide se
                         lirait comme une panne — le point dit qu'il n'y a rien
                         à y mettre, et son titre dit pourquoi. */}
-                    {e && <EcartSansDetail mot={groupWord} />}
+                    {e && <EcartSansDetail mot={groupe} />}
                   </div>
                   {s.ads.length > 0 &&
                     s.ads[0].name !== "—" &&
@@ -1039,7 +1042,7 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
                           cpc={a.cpc}
                           spend={a.spend}
                         />
-                        {e && <EcartSansDetail mot={groupWord} />}
+                        {e && <EcartSansDetail mot={groupe} />}
                       </div>
                     ))}
                 </div>
@@ -1055,19 +1058,19 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
       <p className="text-[10.5px] text-faint px-5 py-2.5 border-t border-line leading-relaxed">
         {deroulables === 0 ? (
           <>
-            Aucune campagne ne se déplie : le détail par {groupWord} n&apos;a pas été récolté
+            Aucune campagne ne se déplie : le détail par {groupe} n&apos;a pas été récolté
             pour Google Ads. Les totaux ci-dessus, eux, sont complets — ils
             viennent du niveau campagne.
           </>
         ) : deroulables === d.campaigns.length ? (
           <>
-            Clique une campagne pour dérouler ses {groupWord}s et annonces — la liste scrolle
+            Clique une campagne pour dérouler ses {groupes} et leurs annonces — la liste scrolle
             à l&apos;intérieur du cadre.
           </>
         ) : (
           <>
             {deroulables} campagne{deroulables > 1 ? "s" : ""} sur {d.campaigns.length} se
-            déplie{deroulables > 1 ? "nt" : ""} en {groupWord}s et annonces (▶) ; pour les
+            déplie{deroulables > 1 ? "nt" : ""} en {groupes} et leurs annonces (▶) ; pour les
             autres, ce détail n&apos;a pas été récolté.
           </>
         )}
