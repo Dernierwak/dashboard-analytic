@@ -27,7 +27,9 @@ de la carte, rangés à part dans `../issues/`.
 05 + 08 + 11       → 12 lire une annonce
 03 (après le rejeu) → 13 clé de config par ID (David joue l'étape B)
 07 … 13            → 14 le prototype part, recette Chrome
-06                 → 15 le code Meta mort de channel-dash (trouvé en chemin, à trier)
+06                 → 15 le code Meta mort de channel-dash (résolu)
+15                 → 21 la table Google dit « groupe » (trouvé en revue, à trier)
+—                  → 22 un CTR sans impression s'écrit zéro (trouvé en revue, à trier)
 04                 → 16 le journal dit « groupe d'annonces » (trouvé en chemin, à trier)
 11                 → 17 le jour d'un changement dans le fuseau du compte (trouvé en chemin, à trier)
 05 + 12            → 19 la vignette de la Comparaison accepte une URL Meta (trouvé en revue, à trier)

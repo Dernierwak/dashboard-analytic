@@ -28,16 +28,8 @@ import {
 const lienAds = (path: string, d: ChannelDash, patch: Partial<DashParams>) =>
   lienDash(path, d.params, patch, "spend");
 
-// Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
+// Hero (impressions) + 3 KPIs perf + 2 KPIs coût — la hiérarchie du Streamlit.
 export function AdsKpis({ d }: { d: ChannelDash }) {
-  // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
-  // grand dans le hero, on montre le CPC — l'autre chiffre qu'on regarde.
-  const firstTile = {
-    label: "CPC moyen",
-    value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—",
-    delta: d.cpc > 0 ? d.cpcDelta : null,
-    invert: true,
-  };
   return (
     <div className="mb-8">
       {/* Hero */}
@@ -91,10 +83,12 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
           regardent, et ils restent sur la page. */}
       <details>
         <summary className="text-[11.5px] font-semibold text-muted cursor-pointer select-none mb-2.5 hover:text-ink">
-          Coûts unitaires et CPC — voir
+          Coûts unitaires — voir
         </summary>
-        <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
-          <Chiffre titre={firstTile.label} valeur={firstTile.value} delta={firstTile.delta} baisseEstBonne={firstTile.invert} />
+        {/* Deux tuiles, pas trois : la troisième case portait la Portée de
+            l'ancienne page Meta, et Google, qui ne la mesure pas, y recopiait
+            le CPC — affiché deux fois côte à côte (ticket meta-ads 15). */}
+        <div className="flex overflow-x-auto sm:grid sm:grid-cols-2 gap-3 pb-1 sm:pb-0">
           <Chiffre
             titre="CPM moyen"
             valeur={d.cpm > 0 ? d.cpm.toFixed(2) : "—"}
@@ -439,8 +433,8 @@ function bornes(debut: string, fin: string): string {
 }
 
 // Les moyennes des dashboards publicitaires (Google, et toute régie qui
-// suivra ; Meta a les siennes dans `lib/meta/`). Elles lisent la MÊME fenêtre que la courbe posée juste dessous :
-// c'est ce qui permet de les lire l'une après l'autre sans se demander de quoi
+// suivra ; Meta a les siennes dans `lib/meta/`). Elles lisent la MÊME fenêtre
+// que la courbe posée juste dessous : c'est ce qui permet de les lire l'une après l'autre sans se demander de quoi
 // on parle.
 //
 // Elles lisent `dailyComplet` et non `daily` : `daily` est plafonnée à 120
