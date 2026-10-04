@@ -69,8 +69,8 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
         />
         <Chiffre
           titre="CTR moyen"
-          valeur={`${d.ctr.toFixed(2)}`}
-          unite="%"
+          valeur={d.ctr !== null ? d.ctr.toFixed(2) : "—"}
+          unite={d.ctr !== null ? "%" : undefined}
           delta={d.ctrDelta}
           serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
           serieLabels={d.daily.map((p) => p.label)}
@@ -91,16 +91,16 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
         <div className="flex overflow-x-auto sm:grid sm:grid-cols-2 gap-3 pb-1 sm:pb-0">
           <Chiffre
             titre="CPM moyen"
-            valeur={d.cpm > 0 ? d.cpm.toFixed(2) : "—"}
-            unite={d.cpm > 0 ? "CHF" : undefined}
-            delta={d.cpm > 0 ? d.cpmDelta : null}
+            valeur={d.cpm !== null ? d.cpm.toFixed(2) : "—"}
+            unite={d.cpm !== null ? "CHF" : undefined}
+            delta={d.cpmDelta}
             baisseEstBonne
           />
           <Chiffre
             titre="CPC moyen"
-            valeur={d.cpc > 0 ? d.cpc.toFixed(2) : "—"}
-            unite={d.cpc > 0 ? "CHF" : undefined}
-            delta={d.cpc > 0 ? d.cpcDelta : null}
+            valeur={d.cpc !== null ? d.cpc.toFixed(2) : "—"}
+            unite={d.cpc !== null ? "CHF" : undefined}
+            delta={d.cpcDelta}
             baisseEstBonne
           />
         </div>
@@ -735,9 +735,9 @@ const METRIQUES_ECART: Record<string, MetriqueEcart> = {
 
 /** La valeur AFFICHÉE d'une ligne, pour la métrique qui pilote la page. */
 function valeurAds(
-  x: { spend: number; clicks: number; impressions: number; ctr: number; cpc: number },
+  x: { spend: number; clicks: number; impressions: number; ctr: number | null; cpc: number | null },
   cle: string
-): number {
+): number | null {
   return cle === "clicks" ? x.clicks
     : cle === "impressions" ? x.impressions
     : cle === "ctr" ? x.ctr
@@ -826,7 +826,18 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
   const e = ouvrirEcart(d.comparaison, "campagne", METRIQUES_ECART[d.metric] ?? METRIQUES_ECART.spend);
   const trie = e !== null && triParEcart(d.params);
   const valeur = (c: Campaign) => valeurAds(c, d.metric);
-  const campagnes = e && trie ? trierParEcart(d.campaigns, e, (c) => c.key, valeur) : d.campaigns;
+  // Une campagne sans taux (CTR sans impression, CPC sans clic) n'a pas
+  // d'écart à classer : elle part après les autres, dans l'ordre de la page.
+  const campagnes = e && trie
+    ? (() => {
+        const avec = d.campaigns.flatMap((c) => {
+          const v = valeur(c);
+          return v === null ? [] : [{ c, v }];
+        });
+        const tries = trierParEcart(avec, e, (x) => x.c.key, (x) => x.v).map((x) => x.c);
+        return [...tries, ...d.campaigns.filter((c) => valeur(c) === null)];
+      })()
+    : d.campaigns;
   // LA CLÉ N'EST PAS UN NOM. Côté Google elle vaut `campaign_id` : écrire
   // « 2 campagnes (17204418833, 21996755021) » dans le pied nommerait deux
   // nombres que personne ne peut relier à quoi que ce soit. `campOptions` est
@@ -875,20 +886,22 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
   const Nums = ({
     impressions, clicks, ctr, cpm, cpc, spend, strong = false,
   }: {
-    impressions: number; clicks: number; ctr: number;
-    cpm: number | null; cpc: number; spend: number; strong?: boolean;
+    impressions: number; clicks: number; ctr: number | null;
+    cpm: number | null; cpc: number | null; spend: number; strong?: boolean;
   }) => (
     <>
       <span className="text-right font-mono text-muted px-2">{fmtCHF(impressions)}</span>
       <span className={`text-right font-mono px-2 ${strong ? "text-ink" : "text-muted"}`}>
         {fmtCHF(clicks)}
       </span>
-      <span className="text-right font-mono text-muted px-2">{ctr.toFixed(2)} %</span>
       <span className="text-right font-mono text-muted px-2">
-        {cpm !== null && cpm > 0 ? cpm.toFixed(2) : "—"}
+        {ctr !== null ? `${ctr.toFixed(2)} %` : "—"}
       </span>
       <span className="text-right font-mono text-muted px-2">
-        {cpc > 0 ? cpc.toFixed(2) : "—"}
+        {cpm !== null ? cpm.toFixed(2) : "—"}
+      </span>
+      <span className="text-right font-mono text-muted px-2">
+        {cpc !== null ? cpc.toFixed(2) : "—"}
       </span>
       <span className={`text-right font-mono px-2 ${strong ? "text-ink font-medium" : "text-muted"}`}>
         {fmtCHF(spend)} CHF
@@ -938,6 +951,7 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
         <div className="divide-y divide-line">
           {campagnes.map((c) => {
             const deroulable = c.adsets.length > 0;
+            const v = valeur(c);
             // Le contenu de la ligne de tête est le même dans les deux cas ;
             // seul le conteneur change — `<summary>` quand il y a quelque chose
             // à ouvrir, une simple ligne sinon.
@@ -972,7 +986,9 @@ export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
                 />
                 {e && (
                   <span className="text-right px-2">
-                    <CelluleEcart e={e.ligne(c.key, valeur(c))} l={e} />
+                    {v !== null
+                      ? <CelluleEcart e={e.ligne(c.key, v)} l={e} />
+                      : <span className="font-mono text-faint">—</span>}
                   </span>
                 )}
               </>

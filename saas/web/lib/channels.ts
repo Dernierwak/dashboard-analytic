@@ -57,6 +57,19 @@ export function pct(cur: number, prev: number): number | null {
   return prev > 0 ? ((cur - prev) / prev) * 100 : null;
 }
 
+/** Un taux dont le dénominateur est nul n'existe pas : une campagne sans
+ *  impression n'a pas un CTR de 0 %, elle n'a pas de CTR (`CLAUDE.md` §7,
+ *  ticket meta-ads 22). */
+export function taux(num: number, den: number, echelle = 1): number | null {
+  return den > 0 ? (num / den) * echelle : null;
+}
+
+/** La variation d'un taux. Un taux absent d'un côté ou de l'autre ne se compare
+ *  pas — même règle que `pct` pour une référence nulle. */
+function pctTaux(cur: number | null, prev: number | null): number | null {
+  return cur === null || prev === null ? null : pct(cur, prev);
+}
+
 // ── COMPARER LA PÉRIODE AFFICHÉE À UNE AUTRE ─────────────────────────────────
 //
 // Le module vit sur les trois canaux et pose partout la même question : « et
@@ -363,8 +376,8 @@ export type AdRow = {
   spend: number;
   clicks: number;
   impressions: number;
-  ctr: number;
-  cpc: number;
+  ctr: number | null;
+  cpc: number | null;
 };
 
 export type AdsetRow = AdRow & { ads: AdRow[] };
@@ -376,9 +389,9 @@ export type Campaign = {
   spend: number;
   clicks: number;
   impressions: number;
-  ctr: number;
-  cpc: number;
-  cpm: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
   adsets: AdsetRow[]; // groupes d'annonces → annonces
 };
 
@@ -416,11 +429,11 @@ export type ChannelDash = {
   clicksDelta: number | null;
   impressions: number;
   imprDelta: number | null;
-  ctr: number;
+  ctr: number | null;
   ctrDelta: number | null;
-  cpc: number;
+  cpc: number | null;
   cpcDelta: number | null;
-  cpm: number;
+  cpm: number | null;
   cpmDelta: number | null;
   /** Série journalière du graphe — PLAFONNÉE à 120 points (voir `maxPts`). */
   daily: DayPoint[];
@@ -530,8 +543,8 @@ function buildDash(
     drill.set(r.campaign, sets);
   }
   const finish = (x: { spend: number; clicks: number; impressions: number }) => ({
-    ctr: x.impressions > 0 ? (x.clicks / x.impressions) * 100 : 0,
-    cpc: x.clicks > 0 ? x.spend / x.clicks : 0,
+    ctr: taux(x.clicks, x.impressions, 100),
+    cpc: taux(x.spend, x.clicks),
   });
 
   // Série journalière complète (jours vides inclus). `daily` sert le GRAPHE et
@@ -570,20 +583,17 @@ function buildDash(
         spend: c.spend,
         clicks: c.clicks,
         impressions: c.impressions,
-        ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0,
-        cpc: c.clicks > 0 ? c.spend / c.clicks : 0,
-        cpm: c.impressions > 0 ? (c.spend / c.impressions) * 1000 : 0,
+        ...finish(c),
+        cpm: taux(c.spend, c.impressions, 1000),
         adsets,
       };
     })
     .sort((a, b) => b.spend - a.spend);
 
-  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-  const cpc = clicks > 0 ? spend / clicks : 0;
-  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
-  const pCtr = pImpr > 0 ? (pClicks / pImpr) * 100 : 0;
-  const pCpc = pClicks > 0 ? pSpend / pClicks : 0;
-  const pCpm = pImpr > 0 ? (pSpend / pImpr) * 1000 : 0;
+  const { ctr, cpc } = finish({ spend, clicks, impressions });
+  const cpm = taux(spend, impressions, 1000);
+  const prec = finish({ spend: pSpend, clicks: pClicks, impressions: pImpr });
+  const pCpm = taux(pSpend, pImpr, 1000);
 
   const METRICS = ["spend", "clicks", "impressions", "ctr", "cpc"];
   const metric = METRICS.includes(sp?.m ?? "") ? (sp!.m as string) : "spend";
@@ -676,11 +686,11 @@ function buildDash(
     impressions,
     imprDelta: pct(impressions, pImpr),
     ctr,
-    ctrDelta: pct(ctr, pCtr),
+    ctrDelta: pctTaux(ctr, prec.ctr),
     cpc,
-    cpcDelta: pct(cpc, pCpc),
+    cpcDelta: pctTaux(cpc, prec.cpc),
     cpm,
-    cpmDelta: pct(cpm, pCpm),
+    cpmDelta: pctTaux(cpm, pCpm),
     daily,
     dailyComplet,
     campaigns,
