@@ -370,17 +370,16 @@ export type AdRow = {
 export type AdsetRow = AdRow & { ads: AdRow[] };
 
 export type Campaign = {
-  key: string;   // meta : campaign_name · google : campaign_id
+  key: string;   // campaign_id (seul Google lit encore cette couche ; Meta a `lib/meta/`)
   name: string;
   status: string | null;
   spend: number;
   clicks: number;
   impressions: number;
-  reach: number;
   ctr: number;
   cpc: number;
   cpm: number;
-  adsets: AdsetRow[]; // Meta : adsets → ads · Google : groupes d'annonces → annonces
+  adsets: AdsetRow[]; // groupes d'annonces → annonces
 };
 
 export type DayPoint = {
@@ -417,8 +416,6 @@ export type ChannelDash = {
   clicksDelta: number | null;
   impressions: number;
   imprDelta: number | null;
-  reach: number;      // 0 si non suivi (Google)
-  reachDelta: number | null;
   ctr: number;
   ctrDelta: number | null;
   cpc: number;
@@ -454,7 +451,6 @@ type RawAd = {
   spend: number;
   clicks: number;
   impressions: number;
-  reach: number;
 };
 
 type Cfg = Map<string, { name: string; status: string | null }>;
@@ -498,24 +494,24 @@ function buildDash(
     return true;
   };
 
-  let spend = 0, clicks = 0, impressions = 0, reach = 0;
-  let pSpend = 0, pClicks = 0, pImpr = 0, pReach = 0;
+  let spend = 0, clicks = 0, impressions = 0;
+  let pSpend = 0, pClicks = 0, pImpr = 0;
   const byDay = new Map<string, { spend: number; clicks: number; impressions: number }>();
-  const byCamp = new Map<string, { spend: number; clicks: number; impressions: number; reach: number }>();
+  const byCamp = new Map<string, { spend: number; clicks: number; impressions: number }>();
 
   for (const r of rows) {
     if (!keep(r.campaign)) continue;
     if (inWin(r.date, w.since, w.until)) {
-      spend += r.spend; clicks += r.clicks; impressions += r.impressions; reach += r.reach;
+      spend += r.spend; clicks += r.clicks; impressions += r.impressions;
       const dk = r.date.slice(0, 10);
       const dd = byDay.get(dk) ?? { spend: 0, clicks: 0, impressions: 0 };
       dd.spend += r.spend; dd.clicks += r.clicks; dd.impressions += r.impressions;
       byDay.set(dk, dd);
-      const c = byCamp.get(r.campaign) ?? { spend: 0, clicks: 0, impressions: 0, reach: 0 };
-      c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
+      const c = byCamp.get(r.campaign) ?? { spend: 0, clicks: 0, impressions: 0 };
+      c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
       byCamp.set(r.campaign, c);
     } else if (inWin(r.date, w.prevSince, w.prevUntil)) {
-      pSpend += r.spend; pClicks += r.clicks; pImpr += r.impressions; pReach += r.reach;
+      pSpend += r.spend; pClicks += r.clicks; pImpr += r.impressions;
     }
   }
 
@@ -574,7 +570,6 @@ function buildDash(
         spend: c.spend,
         clicks: c.clicks,
         impressions: c.impressions,
-        reach: c.reach,
         ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0,
         cpc: c.clicks > 0 ? c.spend / c.clicks : 0,
         cpm: c.impressions > 0 ? (c.spend / c.impressions) * 1000 : 0,
@@ -644,7 +639,7 @@ function buildDash(
     // ligne chargée tombe sur le refus « tes données ne remontent qu'au … ».
     (since, until) => {
       const campagne: VentilationCompare = { reference: {}, premiere: {} };
-      const vide = () => ({ spend: 0, clicks: 0, impressions: 0, reach: 0 });
+      const vide = () => ({ spend: 0, clicks: 0, impressions: 0 });
       for (const r of rows) {
         if (!keep(r.campaign)) continue;
         const j = r.date.slice(0, 10);
@@ -654,7 +649,7 @@ function buildDash(
           campagne.premiere[r.campaign] = j;
         if (!inWin(r.date, since, until)) continue;
         const c = campagne.reference[r.campaign] ?? vide();
-        c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions; c.reach += r.reach;
+        c.spend += r.spend; c.clicks += r.clicks; c.impressions += r.impressions;
         campagne.reference[r.campaign] = c;
       }
       return { campagne };
@@ -680,8 +675,6 @@ function buildDash(
     clicksDelta: pct(clicks, pClicks),
     impressions,
     imprDelta: pct(impressions, pImpr),
-    reach,
-    reachDelta: pct(reach, pReach),
     ctr,
     ctrDelta: pct(ctr, pCtr),
     cpc,
@@ -694,51 +687,6 @@ function buildDash(
     comparaison,
     muet,
   };
-}
-
-export async function getMetaDash(sp: DashParams | undefined): Promise<ChannelDash> {
-  const supabase = createClient();
-  const compte = await getCompteActif();
-  const uid = compte.uid;
-  const days = periodDays(sp);
-
-  const [rowsRes, cfgRes, muets] = await Promise.all([
-    supabase.from("meta_ads_insights")
-      .select("date_start, campaign_name, adset_name, ad_name, spend, clicks, impressions, reach")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
-    // doit pas faire tomber la lecture entière.
-    supabase.from("meta_campaign_config")
-      .select("*").eq("user_id", uid),
-    fetchCanauxMuets(supabase, uid),
-  ]);
-
-  const rows: RawAd[] = (rowsRes.data ?? []).map((r) => ({
-    date: String(r.date_start),
-    campaign: String(r.campaign_name ?? ""),
-    adset: String(r.adset_name ?? ""),
-    ad: String(r.ad_name ?? ""),
-    spend: Number(r.spend) || 0,
-    clicks: Number(r.clicks) || 0,
-    impressions: Number(r.impressions) || 0,
-    reach: Number(r.reach) || 0,
-  }));
-  const cfg: Cfg = new Map(
-    (cfgRes.data ?? []).map((c) => [
-      String(c.campaign_name),
-      {
-        name: String(c.campaign_name),
-        status: (c.effective_status as string | null) ?? null,
-      },
-    ])
-  );
-
-  // Meta : les lignes sont déjà au niveau annonce → mêmes lignes pour le drill.
-  return buildDash(rows, rows, days, sp, {
-    cfg,
-    email: compte.email,
-    muet: muetDu(muets, "meta"),
-  });
 }
 
 export async function getGoogleDash(sp: DashParams | undefined): Promise<ChannelDash> {
@@ -769,7 +717,6 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     spend: (Number(r.cost_micros) || 0) / 1_000_000,
     clicks: Number(r.clicks) || 0,
     impressions: Number(r.impressions) || 0,
-    reach: 0,
   }));
   // Drill google : groupes d'annonces → annonces (table dédiée)
   const drillRows: RawAd[] = (adsRes.data ?? []).map((r) => ({
@@ -780,7 +727,6 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     spend: (Number(r.cost_micros) || 0) / 1_000_000,
     clicks: Number(r.clicks) || 0,
     impressions: Number(r.impressions) || 0,
-    reach: 0,
   }));
   const cfg: Cfg = new Map(
     (cfgRes.data ?? []).map((c) => [

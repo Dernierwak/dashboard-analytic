@@ -29,7 +29,7 @@ def insert_schedule_data(supabase:Client, user_id, fetch_schedule):
 
 # CE QUI BORNE UN LOT, ET POURQUOI IL Y A DEUX BORNES.
 #
-# Une récolte de routine ne demande que 7 jours : elle tient dans un lot et ces
+# Une récolte de routine demande ~35 jours : elle tient dans un lot et ces
 # bornes ne se voient jamais. C'est le REJEU D'HISTORIQUE (`--meta-since`) qui
 # les rend nécessaires, et l'avertissement était écrit d'avance dans la note
 # PROFONDEUR D'HISTORIQUE de `fetch_all.py` : « upsert_meta_ads envoie TOUT en
@@ -76,57 +76,11 @@ def _lots_par_date(records: list[dict]) -> list[list[dict]]:
     return lots
 
 
-def upsert_meta_ads(supabase: Client, user_id: str, rows: list[dict]):
-    """Upsert des données Meta Ads dans meta_ads_insights.
+def upsert_meta_ads(supabase: Client, user_id: str, records: list[dict]):
+    """Upsert des lignes de meta_ads_insights, déjà formées par
+    `saas.collecte.meta.fetch_meta_ads.lignes_meta_ads`.
     Conflict sur (user_id, date_start, ad_id) — une ligne par annonce par jour.
-
-    LA CLÉ EST `ad_id`, PAS `ad_name`, ET ÇA A COÛTÉ DE LA DÉPENSE RÉELLE.
-    `ad_name` est l'étiquette lisible que l'annonceur choisit : rien n'interdit
-    deux annonces « Video 1 » dans deux Groupes, et c'est le montage courant.
-    Tant que la déduplication portait sur le nom, la seconde annonce n'était
-    pas mal attribuée — elle n'entrait jamais en base. Mesuré sur le compte de
-    test au 19-20/08/2026 : ~17 € puis ~15 €, environ 40 % de la dépense Meta
-    de ces jours-là. `ad_id` est le numéro que Meta attribue à la création, il
-    n'est jamais dupliqué.
     """
-    if not rows:
-        return
-
-    seen = set()
-    records = []
-    sans_id = 0
-    for row in rows:
-        ad_id = row.get("ad_id")
-        # Une ligne sans ad_id ne peut pas être dédupliquée : elle n'entrerait
-        # en conflit avec rien (Postgres ne rapproche jamais deux NULL sous une
-        # contrainte UNIQUE) et se réinsèrerait à chaque récolte, doublant la
-        # dépense du jour. Meta renvoie toujours ad_id au niveau `ad` ; si ça
-        # change un jour, on veut le voir dans le journal, pas le découvrir
-        # dans un total qui enfle.
-        if not ad_id:
-            sans_id += 1
-            continue
-        key = (row.get("date_start"), ad_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        records.append({
-            "user_id": user_id,
-            "date_start": row.get("date_start"),
-            "ad_id": str(ad_id),
-            "campaign_name": row.get("campaign_name", ""),
-            "adset_name": row.get("adset_name", ""),
-            "ad_name": row.get("ad_name", ""),
-            "impressions": int(row.get("impressions") or 0),
-            "clicks": int(row.get("clicks") or 0),
-            "reach": int(row.get("reach") or 0) if row.get("reach") is not None else None,
-            "link_clicks": int(row.get("link_clicks") or 0) if row.get("link_clicks") is not None else None,
-            "spend": float(row.get("spend") or 0),
-        })
-
-    if sans_id:
-        print(f"meta_ads: {sans_id} ligne(s) sans ad_id, ignorées")
-
     if not records:
         return
 
@@ -191,62 +145,50 @@ def update_meta_budget_global(supabase: Client, user_id: str, value: float) -> N
     supabase.table("profiles").update({"meta_budget_global": float(value or 0)}).eq("id", user_id).execute()
 
 
-def upsert_campaign_config(
-    supabase: Client,
-    user_id: str,
-    campaign_name: str,
-    *,
-    budget_max: float | None = None,
-    effective_status: str | None = None,
-) -> None:
-    """Upsert ligne meta_campaign_config. Met à jour seulement les champs fournis."""
-    payload: dict = {"user_id": user_id, "campaign_name": campaign_name}
-    if budget_max is not None:
-        payload["budget_max"] = float(budget_max or 0)
-    if effective_status is not None:
-        payload["effective_status"] = effective_status or None
-    supabase.table("meta_campaign_config").upsert(
-        payload, on_conflict="user_id,campaign_name"
-    ).execute()
-
-
 def upsert_campaign_statuses(
     supabase: Client,
     user_id: str,
-    status_map: dict[str, str],
-) -> None:
-    """Met à jour statut ET dates déclarées, pour toutes les campagnes d'un coup.
+    lignes: list[dict],
+) -> int:
+    """Écrit statut et dates déclarées des campagnes Meta, rattachés par l'ID.
 
-    status_map accepte DEUX formes, parce que deux appelants coexistent :
-      · {campaign_name: "ACTIVE"}                       (ancien, Streamlit)
-      · {campaign_name: {"status":…, "start_date":…, "end_date":…}}  (worker)
-    Une chaîne nue n'écrase donc jamais les dates par du vide — elle ne les
-    mentionne simplement pas.
+    `lignes` sort de `lignes_config_meta` (saas/collecte/meta/fetch_meta_ads.py).
+    Rend le nombre de campagnes NON écrites par le repli ci-dessous (0 hors
+    repli) : l'appelant le dit dans le journal, sans quoi ces campagnes
+    garderaient un statut périmé sans trace.
+
+    LA BASE PEUT ENCORE PORTER L'ANCIENNE CLÉ. L'étape B
+    (supabase/migrations/997_la_cle_de_config_meta_passe_a_l_id.sql) se joue à
+    la main, après le merge : tant qu'elle ne l'est pas, la clé primaire est
+    (user_id, campaign_name) et l'upsert sur l'ID est refusé en 42P10. On
+    retombe alors sur le nom, en écrivant l'ID au passage — c'est ce qui
+    remplit les ~200 lignes par compte que le report depuis les insights ne
+    peut pas atteindre (mesuré le 2026-10-04 : 16 sur 197, les autres n'ont
+    jamais dépensé).
     """
-    if not status_map:
-        return
-    records = []
-    for name, v in status_map.items():
-        if not name:
-            continue
-        if isinstance(v, dict):
-            records.append({
-                "user_id": user_id,
-                "campaign_name": name,
-                "effective_status": v.get("status") or None,
-                "start_date": v.get("start_date") or None,
-                "end_date": v.get("end_date") or None,
-            })
-        else:
-            records.append({
-                "user_id": user_id,
-                "campaign_name": name,
-                "effective_status": v or None,
-            })
-    if records:
+    if not lignes:
+        return 0
+    try:
         supabase.table("meta_campaign_config").upsert(
-            records, on_conflict="user_id,campaign_name"
+            lignes, on_conflict="user_id,campaign_id"
         ).execute()
+        return 0
+    except Exception as e:
+        if str(getattr(e, "code", "") or "") != "42P10":
+            raise
+        # Sous la clé par nom, deux campagnes homonymes viseraient la même
+        # ligne : en écrire une serait choisir au hasard laquelle porte l'ID.
+        # Elles attendent l'étape B, qui les rend distinctes.
+        par_nom: dict[str, int] = {}
+        for ligne in lignes:
+            par_nom[ligne["campaign_name"]] = par_nom.get(ligne["campaign_name"], 0) + 1
+        uniques = [ligne for ligne in lignes
+                   if ligne["campaign_name"] and par_nom[ligne["campaign_name"]] == 1]
+        if uniques:
+            supabase.table("meta_campaign_config").upsert(
+                uniques, on_conflict="user_id,campaign_name"
+            ).execute()
+        return len(lignes) - len(uniques)
 
 
 # ── Budget PLANIFIÉ (photos) — platform_budgets ───────────────────────────────
@@ -318,6 +260,21 @@ def upsert_platform_budgets(
 
 # ── Changements DÉCLARÉS par les plateformes — platform_changes ───────────────
 
+def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
+    """Sépare les changements rattachés à une campagne de ceux qui ne le sont pas.
+
+    Chaque passage relit tout le journal (180 jours chez Meta) et l'upsert
+    réécrit chaque colonne envoyée. Un ensemble dont la campagne ne se retrouve
+    plus ce jour-là (insights rejoués, compte reconnecté) remettrait donc à
+    NULL un rattachement déjà acquis. Le lot sans campagne n'envoie pas ces
+    colonnes : PostgREST ne met à jour que celles qu'il reçoit.
+    """
+    avec = [r for r in records if r.get("campaign_id")]
+    sans = [{k: v for k, v in r.items() if k not in ("campaign_id", "campaign_name")}
+            for r in records if not r.get("campaign_id")]
+    return [lot for lot in (avec, sans) if lot]
+
+
 def upsert_platform_changes(
     supabase: Client,
     user_id: str,
@@ -357,9 +314,10 @@ def upsert_platform_changes(
     if not records:
         return
     try:
-        supabase.table("platform_changes").upsert(
-            records, on_conflict="user_id,channel,change_id"
-        ).execute()
+        for lot in lots_sans_effacer_la_campagne(records):
+            supabase.table("platform_changes").upsert(
+                lot, on_conflict="user_id,channel,change_id"
+            ).execute()
     except Exception as e:
         if _table_absente(e, "platform_changes"):
             raise RuntimeError(

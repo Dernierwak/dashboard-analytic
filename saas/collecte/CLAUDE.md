@@ -54,9 +54,10 @@ usage :
   (`ga4/ga4.py`, constante `_RECOUVREMENT_JOURS_GA4` — les deux liens Google
   sont dans le commentaire juste au-dessus).
 
-Le recouvrement ne coûte rien en appels : il tient dans la tranche que la
-récolte demandait de toute façon, et les lignes réécrites REMPLACENT les
-anciennes par upsert — elles ne s'additionnent pas.
+Le recouvrement ne coûte aucune tranche de plus : il tient dans celle que la
+récolte demandait de toute façon (Meta, 28 jours : au plus une page de
+pagination de plus — décompte dans le pavé). Les lignes réécrites REMPLACENT
+les anciennes par upsert — elles ne s'additionnent pas.
 
 ## L'orchestration (`automatisation/`)
 

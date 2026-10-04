@@ -138,6 +138,113 @@ def fetch_campaign_budgets(token: str, ad_account_id: str) -> tuple[list[dict], 
     return rows, None
 
 
+# ── Les insights (/insights, niveau `ad`) → lignes de meta_ads_insights ──────
+
+def _link_clicks(actions) -> int:
+    # Le `else 0` fabrique un zéro quand Meta omet `link_click` : défaut connu,
+    # ticket `.scratch/corrections/issues/01`, pas corrigé ici.
+    lc = next((it for it in actions or [] if it.get("action_type") == "link_click"), None)
+    return int(lc.get("value", 0)) if lc else 0
+
+
+def lignes_meta_ads(user_id: str, reponse: list[dict]) -> tuple[list[dict], int]:
+    """Les lignes de /insights (niveau `ad`) → les lignes de meta_ads_insights.
+
+    Pure, sans réseau : c'est le seam de test de la récolte Meta (spec
+    `.scratch/meta-ads/spec.md`, « Testing Decisions »). Rend (lignes, nombre de lignes sans ad_id).
+
+    LA CLÉ EST `ad_id`, PAS `ad_name`, ET ÇA A COÛTÉ DE LA DÉPENSE RÉELLE.
+    `ad_name` est l'étiquette lisible que l'annonceur choisit : rien n'interdit
+    deux annonces « Video 1 » dans deux Groupes, et c'est le montage courant.
+    Tant que la déduplication portait sur le nom, la seconde annonce n'était
+    pas mal attribuée — elle n'entrait jamais en base. Mesuré sur le compte de
+    test au 19-20/08/2026 : ~17 € puis ~15 €, environ 40 % de la dépense Meta
+    de ces jours-là. `ad_id` est le numéro que Meta attribue à la création, il
+    n'est jamais dupliqué.
+    """
+    seen = set()
+    records = []
+    sans_id = 0
+    for row in reponse:
+        ad_id = row.get("ad_id")
+        # Une ligne sans ad_id ne peut pas être dédupliquée : elle n'entrerait
+        # en conflit avec rien (Postgres ne rapproche jamais deux NULL sous une
+        # contrainte UNIQUE) et se réinsèrerait à chaque récolte, doublant la
+        # dépense du jour. Meta renvoie toujours ad_id au niveau `ad` ; si ça
+        # change un jour, on veut le voir dans le journal, pas le découvrir
+        # dans un total qui enfle.
+        if not ad_id:
+            sans_id += 1
+            continue
+        key = (row.get("date_start"), ad_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id": user_id,
+            "date_start": row.get("date_start"),
+            "ad_id": str(ad_id),
+            # Les IDs sont recopiés, jamais reconstitués depuis un nom : une
+            # ligne sans ID reste sans ID (`.scratch/meta-ads/spec.md`,
+            # « L'identité par ID »).
+            "campaign_id": str(row["campaign_id"]) if row.get("campaign_id") else None,
+            "adset_id": str(row["adset_id"]) if row.get("adset_id") else None,
+            "campaign_name": row.get("campaign_name", ""),
+            "adset_name": row.get("adset_name", ""),
+            "ad_name": row.get("ad_name", ""),
+            "impressions": int(row.get("impressions") or 0),
+            "clicks": int(row.get("clicks") or 0),
+            "reach": int(row.get("reach") or 0) if row.get("reach") is not None else None,
+            "link_clicks": _link_clicks(row.get("actions")),
+            "spend": float(row.get("spend") or 0),
+            "attribution_setting": row.get("attribution_setting"),
+            # La colonne « Résultats » d'Ads Manager, TELLE QUE META LA REND :
+            # sa forme d'élément n'est documentée nulle part
+            # (`.scratch/meta-ads/recherche/colonne-resultats.md`), elle se lit dans la base avant d'être
+            # affichée. `.get` garde la distinction qui compte : champ absent
+            # → NULL, liste vide → liste vide. Ni l'un ni l'autre n'est un 0.
+            "results": row.get("results"),
+        })
+    return records, sans_id
+
+
+def lignes_config_meta(user_id: str, campagnes: list[dict]) -> tuple[list[dict], int]:
+    """Les campagnes DÉCLARÉES (/campaigns) → les lignes de meta_campaign_config.
+
+    Pure, sans réseau. Rend (lignes, nombre de campagnes sans id).
+
+    LA LIGNE SE RATTACHE PAR L'ID, LE NOM N'EST QU'UNE ÉTIQUETTE QUI SUIT.
+    Une campagne renommée dans Meta perdait sa ligne : la clé par nom en
+    créait une seconde au nouveau nom, et l'ancienne gardait le statut et les
+    dates d'une campagne qui n'existait plus sous ce nom (spec
+    `.scratch/meta-ads/spec.md`, « L'identité par ID » ; ticket 13).
+    """
+    def _jour(v):
+        return str(v)[:10] if v else None
+
+    lignes, vus, sans_id = [], set(), 0
+    for c in campagnes:
+        campaign_id = c.get("id")
+        # Meta rend toujours `id` sur /campaigns. Une ligne sans lui ne pourrait
+        # se rattacher que par le nom — c'est exactement ce que ce seam retire.
+        if not campaign_id:
+            sans_id += 1
+            continue
+        if campaign_id in vus:
+            continue
+        vus.add(campaign_id)
+        lignes.append({
+            "user_id": user_id,
+            "campaign_id": str(campaign_id),
+            "campaign_name": c.get("name") or "",
+            "effective_status": c.get("effective_status") or None,
+            "start_date": _jour(c.get("start_time")),
+            # stop_time absent = campagne sans date de fin programmée.
+            "end_date": _jour(c.get("stop_time")),
+        })
+    return lignes, sans_id
+
+
 # ── Le journal des changements DÉCLARÉS (/activities) ────────────────────────
 #
 # Meta tient le journal de ce qui a été touché dans le compte publicitaire.
@@ -152,12 +259,45 @@ _ACTIVITES = {
     "update_ad_set_run_status":   "statut",
     "update_ad_set_target_spec":  "audience",
     "update_ad_creative":         "creatif",
+    # Élargis par la carte meta-ads (décision `.scratch/meta-ads/issues/08`, construite
+    # au ticket 04) : ce sont les gestes courants
+    # d'Ads Manager, et `/activities` les documente
+    # (https://developers.facebook.com/docs/marketing-api/reference/ad-activity/).
+    # La revue de Meta (`ad_review_*`) n'est pas retenue : ce n'est pas un
+    # geste du client.
+    "update_ad_run_status":       "statut",
+    "update_ad_set_bidding":      "enchere",
+    "update_ad_set_bid_strategy": "enchere",
+    "update_ad_bid_info":         "enchere",
+    "create_campaign_group":      "creation",
+    "create_ad_set":              "creation",
+    "create_ad":                  "creation",
 }
 
-# Les événements portés par la campagne elle-même. Pour les autres, on laisse
-# `campaign_id` vide plutôt que d'y ranger l'identifiant d'un ad set : le
-# rattachement à la campagne se ferait sur une clé fausse, en silence.
-_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status"}
+# LES NOUVEAUX TYPES NE LISENT PAS `extra_data`. Sa forme n'est documentée nulle
+# part et aucun exemple réel n'a encore été lu pour eux : la phrase dit ce que
+# le type d'événement établit à lui seul, sans valeur avant/après. Une valeur ne
+# s'ajoute qu'une fois un `extra_data` réel recopié dans le ticket 04.
+_PHRASES_SANS_VALEUR = {
+    "update_ad_run_status":       'le statut de l\'annonce "{nom}" a été modifié',
+    "update_ad_set_bidding":      'l\'enchère de l\'ensemble "{nom}" a été modifiée',
+    "update_ad_set_bid_strategy": 'la stratégie d\'enchère de l\'ensemble "{nom}" a été modifiée',
+    "update_ad_bid_info":         'l\'enchère de l\'annonce "{nom}" a été modifiée',
+    "create_campaign_group":      'la campagne "{nom}" a été créée',
+    "create_ad_set":              'l\'ensemble "{nom}" a été créé',
+    "create_ad":                  'l\'annonce "{nom}" a été créée',
+}
+
+# Les événements portés par la campagne elle-même : leur `object_id` EST la
+# campagne. Pour les autres, `object_id` est un ensemble ou une annonce, et la
+# campagne se retrouve par l'ID dans la hiérarchie des insights
+# (`hierarchie_depuis_insights`) — jamais en rangeant l'ID d'un ensemble dans
+# `campaign_id`, ce qui rattacherait le changement sur une clé fausse.
+_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status",
+                    "create_campaign_group"}
+
+# Ensemble ou annonce → (campaign_id, campaign_name) : `hierarchie_depuis_insights`.
+Parents = dict[str, tuple[str, str | None]]
 
 _ETATS_META = {
     "PAUSED":   "a été mise en pause",
@@ -211,6 +351,8 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
     # changé » — un bruit qui chasse les lignes utiles du fil.
     if not nom:
         return None
+    if typ in _PHRASES_SANS_VALEUR:
+        return (categorie, _PHRASES_SANS_VALEUR[typ].format(nom=nom))
     extra = _extra(act.get("extra_data"))
     avant, apres = extra.get("old_value"), extra.get("new_value")
     est_campagne = typ in _NIVEAU_CAMPAGNE
@@ -258,11 +400,13 @@ def fetch_activities(
     ad_account_id: str,
     since: str,
     until: str | None = None,
+    parents: Parents | None = None,
 ) -> tuple[list[dict], str | None]:
     """Les changements DÉCLARÉS par Meta entre `since` et `until` (YYYY-MM-DD).
 
     Returns: (rows, error|None) — chaque row : change_id, occurred_at,
-    categorie, campaign_id, campaign_name, resume.
+    categorie, campaign_id, campaign_name, resume. `parents` rattache un
+    changement d'ensemble ou d'annonce à sa campagne (`lignes_activites`).
     Seuls les événements qu'on sait dire en français ressortent : le reste est
     écarté ici, pas filtré à l'affichage.
     """
@@ -306,6 +450,51 @@ def fetch_activities(
         print(f"    activités Meta : arrêt à {_ACTIVITES_PAGES_MAX} pages "
               f"({len(actes)} activités lues), la suite est ignorée.")
 
+    return lignes_activites(actes, parents or {}), None
+
+
+
+def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
+    """Les lignes de meta_ads_insights → {id d'ensemble ou d'annonce : (campaign_id, campaign_name)}.
+
+    Pure. Meta numérote ensembles et annonces dans un même espace d'IDs, d'où
+    un seul dictionnaire. Une ligne sans `campaign_id` (d'avant le rejeu du
+    ticket 03) ne rattache rien : on ne reconstitue jamais une campagne depuis
+    un nom. Le nom gardé est le plus récent, pour qu'une campagne renommée se
+    lise sous un seul nom (spec, user story 51).
+    """
+    noms: dict[str, str | None] = {}
+    for r in sorted(lignes, key=lambda r: str(r.get("date_start") or "")):
+        if r.get("campaign_id"):
+            noms[str(r["campaign_id"])] = r.get("campaign_name") or None
+    parents: Parents = {}
+    for r in lignes:
+        if not r.get("campaign_id"):
+            continue
+        cid = str(r["campaign_id"])
+        for oid in (r.get("adset_id"), r.get("ad_id")):
+            if oid:
+                parents[str(oid)] = (cid, noms[cid])
+    return parents
+
+
+def _campagne_de(act: dict, parents: Parents) -> tuple[str | None, str | None]:
+    oid = str(act.get("object_id") or "")
+    if not oid:
+        return None, None
+    if str(act.get("event_type") or "") in _NIVEAU_CAMPAGNE:
+        return oid, (act.get("object_name") or None)
+    return parents.get(oid, (None, None))
+
+
+def lignes_activites(actes: list[dict], parents: Parents) -> list[dict]:
+    """La réponse de /activities → les lignes de platform_changes.
+
+    Pure, sans réseau : c'est le seam de test du journal (harnais
+    `.scratch/meta-ads/harnais/04-le-journal/`). `parents` vient de
+    `hierarchie_depuis_insights` ; un ID absent laisse la campagne vide, et le
+    changement ne se lit alors que sans filtre campagne.
+    """
     rows: list[dict] = []
     vus: set[str] = set()
     for a in actes:
@@ -316,17 +505,17 @@ def fetch_activities(
         if not traduit:
             continue
         categorie, resume = traduit
-        est_campagne = str(a.get("event_type") or "") in _NIVEAU_CAMPAGNE
         cle = _cle_meta(quand, a.get("event_type"), a.get("object_id"))
         if cle in vus:
             continue
         vus.add(cle)
+        campaign_id, campaign_name = _campagne_de(a, parents)
         rows.append({
             "change_id":     cle,
             "occurred_at":   str(quand),
             "categorie":     categorie,
-            "campaign_id":   str(a.get("object_id")) if (est_campagne and a.get("object_id")) else None,
-            "campaign_name": (a.get("object_name") or None) if est_campagne else None,
+            "campaign_id":   campaign_id,
+            "campaign_name": campaign_name,
             "resume":        resume,
         })
-    return rows, None
+    return rows

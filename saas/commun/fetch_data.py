@@ -53,6 +53,25 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) ->
     return _all_pages(q)
 
 
+def fetch_meta_hierarchie(supabase: Client, user_id: str) -> list[dict]:
+    """Les IDs campagne › ensemble › annonce vus dans meta_ads_insights, tout
+    l'historique — de quoi rattacher un changement à sa campagne.
+
+    Tout l'historique, pas la fenêtre du journal : une annonce réactivée
+    aujourd'hui peut n'avoir rien dépensé depuis un an, et son changement
+    resterait sans campagne. Le tri sur (date_start, ad_id) rend l'ordre total,
+    sans quoi deux pages pourraient se chevaucher sur un même jour.
+    """
+    return _all_pages(
+        lambda: supabase.table("meta_ads_insights")
+        .select("date_start,campaign_id,campaign_name,adset_id,ad_id")
+        .eq("user_id", user_id)
+        .not_.is_("campaign_id", "null")
+        .order("date_start")
+        .order("ad_id")
+    )
+
+
 # ── Tab Coût — budgets ─────────────────────────────────────────────────────────
 
 def fetch_channel_budgets(supabase: Client, user_id: str) -> list[dict]:

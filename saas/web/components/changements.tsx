@@ -37,6 +37,7 @@ export const MOT_CATEGORIE: Record<string, string> = {
   statut: "statut",
   audience: "audience",
   creatif: "visuel",
+  creation: "création",
   autre: "réglage",
 };
 

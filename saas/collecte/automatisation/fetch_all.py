@@ -34,7 +34,7 @@ from supabase import create_client                                        # noqa
 from saas.commun.app_secrets import secret                                    # noqa: E402
 from saas.commun.fetch_data import (                                          # noqa: E402
     fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
-    fetch_google_ads_ad_insights_latest_date,
+    fetch_google_ads_ad_insights_latest_date, fetch_meta_hierarchie,
 )
 from saas.commun.insert_data import (                                         # noqa: E402
     upsert_meta_ads, upsert_campaign_statuses,
@@ -50,6 +50,9 @@ from saas.collecte.google.fetch_google_ads import (                             
 from saas.collecte.meta.fetch_meta_ads import (                                   # noqa: E402
     fetch_campaign_budgets as meta_budgets,
     fetch_activities as meta_changes,
+    hierarchie_depuis_insights,
+    lignes_config_meta,
+    lignes_meta_ads,
 )
 from saas.collecte.automatisation.suivi import Suivi, CANAUX                                # noqa: E402
 
@@ -158,11 +161,10 @@ _CHANGES_JOURS_META = 180
 #    qui ne dépense qu'à partir de 18 h n'a aucune ligne ce jour-là et n'en
 #    aura jamais, alors que la journée compte comme récoltée.
 #
-# ② LES CHIFFRES QUE LA RÉGIE RÉVISE APRÈS COUP. Les deux plateformes
-#    rattachent une conversion au jour du CLIC, pas au jour de la conversion.
-#    Un jour déjà en base continue donc de bouger pendant des jours après sa
-#    première lecture. Repartir à `latest + 1` le fige sur sa version la plus
-#    jeune, c'est-à-dire la plus fausse.
+# ② LES CHIFFRES QUE LA RÉGIE RÉVISE APRÈS COUP. Un jour déjà en base
+#    continue de bouger pendant des jours après sa première lecture — chaque
+#    régie pour ses raisons, dites plus bas. Repartir à `latest + 1` le fige
+#    sur sa version la plus jeune, c'est-à-dire la plus fausse.
 #
 # POURQUOI ON RÉÉCRIT AU LIEU DE COMPARER — c'est contre-intuitif, et
 # quelqu'un voudra le « corriger » un jour, alors autant l'écrire ici : on ne
@@ -177,28 +179,30 @@ _CHANGES_JOURS_META = 180
 # toute seule : une récolte ratée est rattrapée par la suivante sans que
 # personne ait à le savoir.
 #
-# Meta — 7 jours, le nombre que Meta documente lui-même. On n'envoie pas
-# `action_attribution_windows`, donc c'est `default` qui s'applique, et la
-# référence de /act_<id>/insights dit noir sur blanc que `default` « means
-# ["7d_click","1d_view"] » : une action peut être rattachée à un clic vieux de
-# sept jours ou à une impression de la veille.
-# Pour ce qu'on stocke AUJOURD'HUI (spend, impressions, clicks, reach,
-# link_clicks) deux jours suffiraient : la seule valeur qui sorte du tableau
-# `actions` est `link_click`, et seule la moitié `1d_view` de la fenêtre peut
-# le reculer d'un jour. On prend quand même les 7 que Meta annonce, parce que
-# le surcoût est nul (voir le décompte plus bas) et que le jour où une colonne
-# de conversions entrera dans meta_ads_insights, personne n'ira relire ce
-# commentaire pour élargir la fenêtre.
-# https://developers.facebook.com/docs/marketing-api/reference/ad-account/insights/
-_RECOUVREMENT_JOURS_META = 7
+# Meta — 28 jours, la borne que Meta documente : « Insights refresh every 15
+# minutes and do not change after 28 days of being reported ». En deçà, un jour
+# connu peut encore changer chez Meta ; au-delà, plus rien ne bouge, et le relire
+# ne sert à rien. 7 laissait 21 jours où Meta corrigeait sans que personne
+# relise — la soustraction de deux nombres de la doc, pas une hypothèse.
+# Les actions — donc `results`, la colonne « Résultats » — ont une raison
+# connue de bouger : depuis le 10 juin 2025 l'API suit le réglage
+# d'attribution de chaque ad set et rapporte en `action_report_time=mixed` :
+# une action sur Meta (un clic sur le lien) se
+# pose au jour de l'IMPRESSION, donc jusqu'à la fenêtre de l'ad set en arrière ;
+# une action hors Meta (un achat pixel) au jour de la CONVERSION. La doc ne dit
+# pas quelle part des corrections survient après le 7e jour : 28 se justifie
+# par la borne, pas par une mesure.
+# https://developers.facebook.com/docs/marketing-api/insights/best-practices/
+# Sources lues et citées : .scratch/meta-ads/recherche/champs-api-meta.md §3.
+_RECOUVREMENT_JOURS_META = 28
 
 # Google — 30 jours, et là aussi le chiffre vient de la doc, pas du doigt
 # mouillé. Deux raisons qui s'additionnent :
 #  · la fenêtre de conversion. « If you don't customize the click-through
 #    conversion window when you create a new conversion, the default window is
 #    30 days » — une conversion peut donc arriver trente jours après le clic et
-#    se poser sur le jour du CLIC. Et contrairement à Meta,
-#    `metrics.conversions` EST une colonne de google_ads_insights.
+#    se poser sur le jour du CLIC — et `metrics.conversions` est une colonne
+#    de google_ads_insights.
 #  · la fraîcheur. Clics, impressions et coût sont rafraîchis toutes les heures
 #    (« 1-hour data freshness SLO »), mais les conversions non-dernier-clic —
 #    c'est-à-dire l'attribution data-driven, devenue le défaut — ne sont
@@ -212,14 +216,15 @@ _RECOUVREMENT_JOURS_META = 7
 _RECOUVREMENT_JOURS_GOOGLE = 30
 
 # CE QUE ÇA COÛTE — compté, pas supposé. Les deux boucles découpent déjà la
-# plage en tranches de 90 jours (`_CHUNK`), et un recouvrement de 7 ou 30 jours
-# tient dans la tranche que la récolte demandait de toute façon : ZÉRO appel
+# plage en tranches de 90 jours (`_CHUNK`), et un recouvrement de 28 ou 30 jours
+# tient dans la tranche que la récolte demandait de toute façon : ZÉRO tranche
 # supplémentaire sur un passage de routine. Ce qui grossit, ce sont les lignes
 # rendues puis réécrites. Sur une récolte hebdomadaire :
-#  · Google, 10 campagnes actives — on passe de 7 à 37 jours, soit ~70 lignes
-#    au lieu de ~370, dans le même et unique searchStream ;
-#  · Meta, 20 pubs actives — de 7 à 14 jours, soit ~140 lignes au lieu de
-#    ~280, toujours une seule page (`limit=500`).
+#  · Google, 10 campagnes actives — on passe de 7 à 37 jours, soit ~370 lignes
+#    au lieu de ~70, dans le même et unique searchStream ;
+#  · Meta, 20 pubs actives — on passe de 7 à 35 jours, soit ~700 lignes au
+#    lieu de ~140 : DEUX pages de `limit=500` au lieu d'une, donc une requête
+#    de pagination de plus par passage.
 # Les quotas ne bronchent pas : en accès standard, Ads Insights autorise
 # « 600 + 400 * Number of Active ads » appels par heure, soit 8 600/h pour
 # 20 pubs — la récolte en fait moins de dix.
@@ -358,9 +363,16 @@ def _meta_chunk(token, ad_account_id, since_iso, until_iso) -> tuple[list, str |
         # étiquette que l'annonceur peut réutiliser à volonté. Sans lui, deux
         # annonces homonymes se confondent et la dépense de la seconde n'entre
         # jamais en base (voir `upsert_meta_ads` et la section ad_id de
-        # 000_run_me_all.sql).
-        "fields": "campaign_name,adset_name,ad_name,ad_id,impressions,clicks,"
-                  "reach,spend,actions,date_start",
+        # 000_run_me_all.sql). Même raison pour `campaign_id` et `adset_id` :
+        # une campagne renommée reste une campagne
+        # (`.scratch/meta-ads/spec.md`, « L'identité par ID »). `results` est
+        # la colonne « Résultats » d'Ads Manager, et `attribution_setting` dit
+        # selon quel réglage elle est comptée
+        # (`.scratch/meta-ads/recherche/colonne-resultats.md`). Champs de la
+        # même requête : zéro appel de plus.
+        "fields": "campaign_name,campaign_id,adset_name,adset_id,ad_name,ad_id,"
+                  "impressions,clicks,reach,spend,actions,results,"
+                  "attribution_setting,date_start",
         "time_increment": 1,
         "time_range": json.dumps({"since": since_iso, "until": until_iso}),
         "limit": 500,
@@ -419,7 +431,7 @@ def _meta_campagnes(token, ad_account_id) -> tuple[list, str | None]:
     """
     params = {
         "access_token": token,
-        "fields": "name,effective_status,start_time,stop_time",
+        "fields": "id,name,effective_status,start_time,stop_time",
         "limit": _CAMPAGNES_PAR_PAGE,
     }
     try:
@@ -502,6 +514,26 @@ def _journal_changements(sb, uid, canal: str, recolte) -> None:
             print(f"    changements {canal} ignorés : {_sans_jeton(str(err))}")
     except Exception as e:
         print(f"    changements {canal} KO : {_sans_jeton(str(e))}")
+
+
+def _hierarchie_meta(sb, uid) -> dict:
+    """Ensemble ou annonce → campagne, lu dans meta_ads_insights.
+
+    SEULE L'ABSENCE DES COLONNES (42703, 000 pas encore joué) rend un
+    dictionnaire vide : aucune ligne n'a jamais porté de campagne parente,
+    il n'y a rien à perdre. Tout autre échec LÈVE, et `_journal_changements`
+    saute le journal de ce passage : écrire avec une hiérarchie vide
+    réécrirait par upsert à NULL la campagne de chaque changement déjà
+    rattaché.
+    """
+    try:
+        return hierarchie_depuis_insights(fetch_meta_hierarchie(sb, uid))
+    except Exception as e:
+        if getattr(e, "code", None) == "42703":
+            print("    changements meta : colonnes campaign_id/adset_id absentes, "
+                  "rattachement à la campagne sauté — jouer le 000.")
+            return {}
+        raise
 
 
 def _rien(_etape: str) -> None:
@@ -744,13 +776,21 @@ class SchemaEnRetard(RuntimeError):
     baisse de dépense."""
 
 
-def _colonne_ad_id_presente(sb) -> bool:
-    """La colonne `ad_id` existe-t-elle dans meta_ads_insights ?
+# Les colonnes que `lignes_meta_ads` écrit en plus du socle historique :
+# `ad_id` (section ad_id du `000`), puis les quatre du ticket 02
+# (`.scratch/meta-ads/tickets/02-le-schema-meta-s-elargit.md`). Une seule
+# absente fait refuser l'upsert ENTIER par PostgREST (PGRST204), donc toute la
+# dépense Meta de la semaine.
+_COLONNES_META_ECRITES = "ad_id,campaign_id,adset_id,attribution_setting,results"
+
+
+def _colonnes_meta_presentes(sb) -> bool:
+    """Les colonnes que la récolte écrit existent-elles dans meta_ads_insights ?
 
     Un `select` d'une seule ligne suffit : PostgREST refuse la requête entière
-    avec le code Postgres `42703` (« undefined_column ») quand la colonne
-    n'existe pas, et rend `data: []` sans erreur quand la table est simplement
-    vide. Les deux cas ne se confondent donc pas.
+    avec le code Postgres `42703` (« undefined_column ») quand UNE des
+    colonnes demandées n'existe pas, et rend `data: []` sans erreur quand la
+    table est simplement vide. Les deux cas ne se confondent donc pas.
 
     SEUL 42703 rend False. Un `except Exception` large lirait une coupure
     réseau comme une colonne manquante : on sauterait la récolte Meta d'une
@@ -759,7 +799,7 @@ def _colonne_ad_id_presente(sb) -> bool:
     sans prétendre en connaître la cause.
     """
     try:
-        sb.table("meta_ads_insights").select("ad_id").limit(1).execute()
+        sb.table("meta_ads_insights").select(_COLONNES_META_ECRITES).limit(1).execute()
         return True
     except Exception as e:
         if getattr(e, "code", None) == "42703":
@@ -783,20 +823,26 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # n'aurait plus aucun relevé, et la page Coûts le lirait « rien de prévu ».
     _photo_budget(sb, uid, "meta", lambda: meta_budgets(token, ad_account_id), today)
     note("changements")
+    # La hiérarchie se lit en base, AVANT les insights de ce passage : un
+    # ensemble créé depuis le dernier passage reste sans campagne aujourd'hui,
+    # et la gagne au suivant — la fenêtre de 180 jours relit le même changement
+    # et l'upsert sur `change_id` réécrit sa campagne.
     _journal_changements(sb, uid, "meta", lambda: meta_changes(
         token, ad_account_id,
-        (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat()))
+        (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat(),
+        parents=_hierarchie_meta(sb, uid)))
     note("insights")
     # LE GARDE-FOU SE POSE AVANT LA PREMIÈRE REQUÊTE D'INSIGHTS, pas juste
-    # avant l'écriture : sans colonne `ad_id`, ces appels ne servent à rien et
+    # avant l'écriture : sans ses colonnes, ces appels ne servent à rien et
     # `upsert_meta_ads` upserterait sur une clé de conflit inexistante. Les
     # budgets et le journal des changements, eux, sont déjà passés — ils ne
     # touchent pas cette table et n'ont pas à être punis.
-    if not _colonne_ad_id_presente(sb):
+    if not _colonnes_meta_presentes(sb):
         _note_ecriture_sautee(uid)
         raise SchemaEnRetard(
-            "colonne ad_id absente de meta_ads_insights — écriture Meta Ads sautée. "
-            "Jouer supabase/migrations/000_run_me_all.sql (section ad_id), puis relancer. "
+            f"une colonne de meta_ads_insights manque ({_COLONNES_META_ECRITES}) — "
+            "écriture Meta Ads sautée. "
+            "Jouer supabase/migrations/000_run_me_all.sql, puis relancer. "
             "La run finit ROUGE exprès : sans ça, cette semaine de dépense manquerait "
             "en silence et le rapport la lirait comme une baisse.")
     if since_forcee:
@@ -808,7 +854,7 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         since = _depart_recolte(fetch_meta_ads_latest_date(sb, uid),
                                 today, _RECOUVREMENT_JOURS_META)
     # Le raccourci « meta: à jour » a disparu, et pas par distraction : avec un
-    # recouvrement il ne pouvait plus se déclencher (`latest - 7` est toujours
+    # recouvrement il ne pouvait plus se déclencher (`latest - 28` est toujours
     # antérieur à aujourd'hui), et surtout il n'a plus de sens. Il n'y a plus de
     # « à jour » — il y a une fenêtre qu'on relit à chaque passage.
     rows, trous, cur = [], [], since
@@ -826,7 +872,7 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         # trace ne distingue d'une base réparée. On préfère ne rien écrire et
         # redemander le même rejeu.
         # Sur une récolte de ROUTINE, au contraire, on écrit ce qu'on a : la
-        # fenêtre de recouvrement de sept jours redemandera les dates manquées
+        # fenêtre de recouvrement de 28 jours redemandera les dates manquées
         # au prochain passage, et refuser d'écrire perdrait aussi les tranches
         # réussies.
         if since_forcee:
@@ -842,18 +888,9 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     note("statuts")
     campagnes, trou_statuts = _meta_campagnes(token, ad_account_id)
 
-    def _jour(v):
-        return str(v)[:10] if v else None
-
-    status_map = {
-        c["name"]: {
-            "status": c.get("effective_status", "UNKNOWN"),
-            "start_date": _jour(c.get("start_time")),
-            # stop_time absent = campagne sans date de fin programmee.
-            "end_date": _jour(c.get("stop_time")),
-        }
-        for c in campagnes if c.get("name")
-    }
+    lignes_config, sans_id_campagne = lignes_config_meta(uid, campagnes)
+    if sans_id_campagne:
+        print(f"    meta: {sans_id_campagne} campagne(s) sans id, ignorées")
     # LE COMPTE SE DIT À CHAQUE PASSAGE, MÊME QUAND TOUT VA BIEN. C'est le seul
     # repère qui sépare « ce compte a 200 campagnes » de « on s'est arrêté à
     # 200 » dans une run verte — le défaut d'origine tenait entièrement dans ce
@@ -864,9 +901,9 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         # campagnes non vues gardent le statut de la récolte précédente —
         # `upsert_campaign_statuses` ne touche que les lignes qu'on lui donne.
         print(f"    meta: liste des campagnes INCOMPLÈTE, "
-              f"{len(status_map)} campagne(s) vue(s) : {trou_statuts}")
+              f"{len(lignes_config)} campagne(s) vue(s) : {trou_statuts}")
     else:
-        print(f"    meta: {len(status_map)} campagne(s) déclarée(s)")
+        print(f"    meta: {len(lignes_config)} campagne(s) déclarée(s)")
     # LES STATUTS S'ÉCRIVENT SEULS, ILS N'ATTENDENT PLUS UNE DÉPENSE. Cette
     # écriture vivait sous le `if rows:` des insights, alors qu'elle vient
     # d'une autre requête et remplit une autre table. Un compte qui ne dépense
@@ -876,16 +913,19 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # sur une run verte qui venait d'imprimer le nombre de campagnes vues.
     # `upsert_campaign_statuses` rend la main sur une carte vide : rien à
     # garder ici.
-    upsert_campaign_statuses(sb, uid, status_map)
+    sautees = upsert_campaign_statuses(sb, uid, lignes_config)
+    if sautees:
+        print(f"    meta: {sautees} campagne(s) homonyme(s) sans statut ni ID — "
+              "attendent l'étape B (supabase/migrations/997_…)")
     # `effective_status` ne se pose plus sur la ligne d'insight : personne ne le
     # lisait. `upsert_meta_ads` ne l'envoie pas — le statut vit dans
     # `meta_campaign_config`, une table par CAMPAGNE, pas par date. Le poser ici
     # ne faisait qu'une chose : fabriquer un « UNKNOWN » pour toute campagne
     # absente d'une liste tronquée.
-    for row in rows:
-        lc = next((it for it in row.get("actions", []) if it.get("action_type") == "link_click"), None)
-        row["link_clicks"] = int(lc.get("value", 0)) if lc else 0
-    if rows:
+    records, sans_id = lignes_meta_ads(uid, rows)
+    if sans_id:
+        print(f"    meta: {sans_id} ligne(s) sans ad_id, ignorées")
+    if records:
         # LA MIGRATION A DEUX MOITIÉS, ET LA SECONDE NE SE VOIT QU'ICI. Le
         # garde-fou plus haut prouve que la COLONNE existe ; il ne prouve pas
         # que la CONTRAINTE d'unicité a été déplacée sur `ad_id`. Une base où
@@ -895,7 +935,7 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         # qu'un canal en erreur : run verte, rapport publié, email parti sur
         # une semaine sans dépense Meta.
         try:
-            upsert_meta_ads(sb, uid, rows)
+            upsert_meta_ads(sb, uid, records)
         except Exception as e:
             if getattr(e, "code", None) == "42P10":
                 _note_ecriture_sautee(uid)
@@ -1401,11 +1441,13 @@ if __name__ == "__main__":
 
     if _ECRITURES_SAUTEES:
         print(f"!! ÉCHEC : écriture Meta Ads sautée pour {len(_ECRITURES_SAUTEES)} "
-              f"utilisateur(s) — colonne ad_id absente de meta_ads_insights. "
+              f"utilisateur(s) — colonne absente de meta_ads_insights "
+              f"({_COLONNES_META_ECRITES}). "
               f"Leur rapport a été publié SANS chiffre de dépense Meta, en "
               f"nommant le trou (ticket 20). Le reste de la récolte a bien "
               f"tourné. Jouer supabase/migrations/000_run_me_all.sql, puis "
-              f"relancer : le recouvrement de sept jours rattrapera la semaine.")
+              f"relancer : le recouvrement de {_RECOUVREMENT_JOURS_META} jours "
+              f"rattrapera la semaine.")
         _rouge = True
 
     if _rouge:
