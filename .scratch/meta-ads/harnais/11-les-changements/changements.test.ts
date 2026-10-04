@@ -211,3 +211,25 @@ test("ouvrir un jour ne touche que `jour` et retire `annonce`, le reste est gard
   const params = { vue: "trafic", campagne: "c1", annonce: "a1", comparer: ["a1", "a2"] };
   assert.equal(lienMeta(params, { jour: "2026-09-30", annonce: null }), "/meta?vue=trafic&campagne=c1&comparer=a1&comparer=a2&jour=2026-09-30");
 });
+
+test("le panneau range un jour dans l'ordre des instants, même quand une ligne n'a pas de fuseau", () => {
+  // Pendant la transition (avant le passage du worker), une ligne sans fuseau
+  // s'écrit en UTC : « 00:30 » (UTC) a eu lieu APRÈS « 01:00 » (Zurich), et
+  // un tri sur le texte de l'heure les inverserait.
+  const chs = [
+    ch({ change_id: "zurich", occurred_at: "2026-09-30T23:00:00+00:00", fuseau: "Europe/Zurich" }), // 01:00 le 1er
+    ch({ change_id: "utc", occurred_at: "2026-10-01T00:30:00+00:00", fuseau: null }), // 00:30 UTC le 1er
+  ];
+  const p = panneauDuJour(chs, "2026-10-01", null, CAMPAGNES);
+  assert.deepEqual(p.groupes[0].lignes.map((l) => l.id), ["zurich", "utc"]);
+});
+
+test("au retour à l'heure d'hiver, les deux 02:30 se rangent dans l'ordre où ils ont eu lieu", () => {
+  // 25 octobre 2026, Zurich : 02:30 UTC+2 (00:30Z) puis 02:30 UTC+1 (01:30Z).
+  const chs = [
+    ch({ change_id: "second", occurred_at: "2026-10-25T01:30:00+00:00", fuseau: "Europe/Zurich" }),
+    ch({ change_id: "premier", occurred_at: "2026-10-25T00:30:00+00:00", fuseau: "Europe/Zurich" }),
+  ];
+  const p = panneauDuJour(chs, "2026-10-25", null, CAMPAGNES);
+  assert.deepEqual(p.groupes[0].lignes.map((l) => [l.id, l.heure]), [["premier", "02:30"], ["second", "02:30"]]);
+});

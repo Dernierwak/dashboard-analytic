@@ -256,3 +256,16 @@ def test_l_upsert_ecrit_le_fuseau_et_ne_l_efface_jamais():
     envoyes = {r["change_id"]: r for lot in base.envois for r in lot}
     assert envoyes["a"]["fuseau"] == "Europe/Zurich"
     assert "fuseau" not in envoyes["b"]
+
+
+def test_un_lot_mixte_ne_met_jamais_le_fuseau_a_null():
+    # PostgREST prend l'union des clés d'un lot et écrit NULL là où une ligne
+    # n'a pas la clé : une ligne sans fuseau doit partir dans un lot à part.
+    from saas.commun.insert_data import lots_sans_effacer_la_campagne
+    lots = lots_sans_effacer_la_campagne([
+        {"change_id": "a", "campaign_id": "900", "fuseau": "Europe/Zurich", "resume": "x"},
+        {"change_id": "b", "campaign_id": "900", "resume": "y"},
+    ])
+    for lot in lots:
+        assert len({frozenset(r) for r in lot}) == 1, lot
+    assert sorted(r["change_id"] for lot in lots for r in lot) == ["a", "b"]

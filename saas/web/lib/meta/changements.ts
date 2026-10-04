@@ -44,6 +44,10 @@ export type ChangementMeta = {
   /** `null` = fuseau inconnu : `jour` et `heure` sont alors en UTC, et
    *  l'écran l'écrit. */
   fuseau: string | null;
+  /** L'instant, en ms : l'ordre du panneau. `heure` ne suffit pas — une
+   *  ligne sans fuseau est en UTC, et le retour à l'heure d'hiver écrit deux
+   *  fois « 02:30 ». */
+  instant: number;
   nature: string;
   campagneId: string | null;
   campagneNom: string | null;
@@ -80,6 +84,7 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
   return {
     id: String(r.change_id ?? `${r.occurred_at}|${phrase}`),
     ...jourEtHeureDans(d, r.fuseau),
+    instant: d.getTime(),
     nature: NATURES[String(r.categorie ?? "")] ?? NATURE_INCONNUE,
     campagneId,
     campagneNom: r.campaign_name?.trim() || null,
@@ -170,7 +175,7 @@ export function panneauDuJour(
         campagneId: id,
         nom: id === null ? null : connue?.nom ?? lignes.find((l) => l.campagneNom)?.campagneNom ?? id,
         couleur: connue?.couleur ?? GRIS_INCONNU,
-        lignes: [...lignes].sort((a, b) => a.heure.localeCompare(b.heure)),
+        lignes: [...lignes].sort((a, b) => a.instant - b.instant),
       };
     });
 

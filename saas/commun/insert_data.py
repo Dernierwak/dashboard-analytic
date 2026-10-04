@@ -261,7 +261,8 @@ def upsert_platform_budgets(
 # ── Changements DÉCLARÉS par les plateformes — platform_changes ───────────────
 
 def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
-    """Sépare les changements rattachés à une campagne de ceux qui ne le sont pas.
+    """Range les changements en lots qui n'écrasent rien : rattachés à une
+    campagne d'un côté, non rattachés de l'autre, et un lot par jeu de clés.
 
     Chaque passage relit tout le journal (180 jours chez Meta) et l'upsert
     réécrit chaque colonne envoyée. Un groupe d'annonces dont la campagne ne se retrouve
@@ -272,7 +273,13 @@ def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
     avec = [r for r in records if r.get("campaign_id")]
     sans = [{k: v for k, v in r.items() if k not in ("campaign_id", "campaign_name")}
             for r in records if not r.get("campaign_id")]
-    return [lot for lot in (avec, sans) if lot]
+    # Même raison pour `fuseau` (ticket 17 de `.scratch/meta-ads/`) : PostgREST
+    # écrit NULL pour une clé absente d'une ligne mais présente dans le lot.
+    # Chaque lot n'a donc qu'un seul jeu de clés.
+    lots: dict[frozenset, list[dict]] = {}
+    for r in avec + sans:
+        lots.setdefault(frozenset(r), []).append(r)
+    return list(lots.values())
 
 
 def upsert_platform_changes(

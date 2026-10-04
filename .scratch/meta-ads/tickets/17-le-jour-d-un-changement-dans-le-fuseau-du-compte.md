@@ -76,3 +76,20 @@ lignes.
 2. Un passage du worker — cron du Jour de travail, ou à la main dans GitHub
    Actions (`weekly-fetch.yml`, sans option) — remplit le fuseau des 180 jours
    relus. Avant, toutes les lignes s'affichent en UTC, avec la mention.
+
+**2026-10-04 — revue (normes et spec), corrigé.**
+- Un lot d'upsert qui mêlerait des lignes avec et sans `fuseau` l'aurait mis
+  à NULL (PostgREST écrit NULL pour une clé absente d'une ligne du lot) :
+  `lots_sans_effacer_la_campagne` fait désormais un lot par jeu de clés
+  (testé).
+- Le panneau triait par `heure` (texte) : faux le jour où une ligne sans
+  fuseau (UTC) côtoie une ligne locale, et au retour à l'heure d'hiver (deux
+  « 02:30 »). `ChangementMeta.instant` donne l'ordre (2 tests).
+- Le commentaire Google de `changements-api.ts` cite sa source
+  (`fetch_campaign_changes`).
+- Écarté : « `fin+1` suffirait » — non, à UTC−12 le dernier jour local finit
+  à `fin+1 12:00Z`. Gardé sans test : le fil du rapport lit
+  `occurred_at >= depuis` en UTC (fenêtre de 90 jours) ; au pire un geste
+  fait entre minuit et deux heures le 90ᵉ jour manque au bord de la fenêtre.
+Harnais : 21 + 29 tests, les huit harnais Meta à 198 verts ; `tsc` et build
+verts, 18 routes.

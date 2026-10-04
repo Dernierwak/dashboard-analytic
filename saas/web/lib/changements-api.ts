@@ -85,7 +85,9 @@ type LigneChangement = {
  * Le jour du changement dans le fuseau du compte — celui des insights, donc du
  * point de la courbe où l'effet apparaît. Les deux plateformes ne l'écrivent
  * pas pareil :
- *   · Google écrit l'heure du compte SANS décalage (« 2026-08-11 14:03:22 ») ;
+ *   · Google écrit l'heure du compte SANS décalage (« 2026-08-11 14:03:22 »,
+ *     `change_date_time` de `change_event`, voir `fetch_campaign_changes` dans
+ *     `saas/collecte/google/fetch_google_ads.py`) ;
  *     le `timestamptz` la lit dans le fuseau de la session — l'UTC, celui de
  *     Supabase — et la garde donc telle quelle, comme si c'était de l'UTC. La
  *     troncature rend donc le jour du compte, et reconvertir le fausserait.
