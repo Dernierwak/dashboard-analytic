@@ -14,7 +14,8 @@ import { ORANGE_REPERE } from "@/lib/palette";
 // est un TROU (spec, user story 28) : relier les deux bords dessinerait une
 // pente que personne n'a mesurée. Le tracé se coupe donc à chaque `null`, et un
 // point isolé entre deux trous reste visible sous forme de rond. Sans une seule
-// valeur, il n'y a ni axe ni graduation, seulement une phrase qui le dit.
+// valeur, il n'y a ni axe ni graduation, seulement une phrase qui le dit — et
+// les repères, alignés en frise.
 //
 // Même principe de fond que `line-chart.tsx`, et pour la même raison mesurée :
 // LE SVG PORTE LA GÉOMÉTRIE, LE HTML PORTE LES CARACTÈRES. Le SVG s'étire
@@ -79,6 +80,34 @@ function troncons(valeurs: (number | null)[]): { i: number; v: number }[][] {
   return out;
 }
 
+/** Le point orange d'un repère. Le bouton fait 24 px pour le doigt, le point
+ *  8 px pour l'œil. Il est partagé par la courbe et par la frise d'une fenêtre
+ *  vide, pour qu'un repère ait le même aspect et le même geste dans les deux. */
+function BoutonRepere({ actif, className = "", ...bouton }: React.ButtonHTMLAttributes<HTMLButtonElement> & { actif: boolean }) {
+  return (
+    <button
+      type="button"
+      {...bouton}
+      className={`group absolute z-[5] flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${className}`}
+    >
+      <span
+        className={`block h-2 w-2 rounded-full ring-2 ring-white transition-transform duration-150 motion-reduce:transition-none group-hover:scale-150 group-focus-visible:scale-150 ${actif ? "scale-150" : ""}`}
+        style={{ background: ORANGE_REPERE }}
+      />
+    </button>
+  );
+}
+
+/** La ligne d'un repère dans la bulle : le point, puis ce qu'il dit. */
+function PastilleRepere({ libelle, className }: { libelle: string; className: string }) {
+  return (
+    <p className={`flex items-center gap-1.5 text-[11.5px] text-white/80 ${className}`}>
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORANGE_REPERE }} />
+      {libelle}
+    </p>
+  );
+}
+
 export function Courbe({
   series,
   format,
@@ -109,6 +138,8 @@ export function Courbe({
   const principale = series.find((s) => !s.pointille) ?? series[0];
   const repereDates = n <= 1 ? [0] : n <= 3 ? Array.from({ length: n }, (_, i) => i) : [0, Math.floor((n - 1) / 2), n - 1];
 
+  // Sur la moitié droite, la bulle bascule à gauche pour ne pas sortir du cadre.
+  const bulleAGauche = (i: number) => xPct(i) > 55;
   const repereSurvole = survol === null ? undefined : reperes.find((r) => r.index === survol);
   // Sur un jour vide, le repère se pose sur l'axe : une mise en pause rend
   // justement les jours suivants vides, et c'est le changement qu'on cherche.
@@ -123,15 +154,67 @@ export function Courbe({
     setSurvol(i >= 0 && i < n ? i : null);
   };
 
+  const ligneDates = (marge: string) => (
+    <div className={`relative ${marge} h-5 mt-1`} aria-hidden>
+      {repereDates.map((i) => (
+        <span
+          key={i}
+          className={`absolute text-[11px] text-faint whitespace-nowrap ${i === 0 && n > 1 ? "" : i === n - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
+          style={{ left: `${xPct(i)}%` }}
+        >
+          {principale.etiquettes[i]}
+        </span>
+      ))}
+    </div>
+  );
+
   // Sans une seule valeur, l'échelle tomberait de 0 à 0 et l'axe écrirait
   // « 0,00 CHF » : un zéro lu là où rien n'est mesuré (ticket 18). Une phrase
   // à la hauteur du graphe, pour que le graphe voisin d'une grille ne saute pas.
+  //
+  // Les repères restent, en frise sans axe des valeurs (ticket 23) : une
+  // campagne en pause avant la fenêtre la rend entièrement vide, et le jour où
+  // elle a changé est justement ce qu'on vient chercher. Pas de ligne de base
+  // non plus — sans graduation, elle se lirait comme un zéro.
   if (toutes.length === 0) {
+    const frise = n > 0 && reperes.length > 0;
     return (
       <figure className="m-0 min-w-0" aria-label={titre}>
-        <p className="flex items-center justify-center rounded-xl bg-canvas px-4 text-center text-[12.5px] text-muted" style={{ height: hauteur }}>
-          Aucun chiffre à tracer sur cette période.
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-xl bg-canvas px-4" style={{ height: hauteur }}>
+          <p className="text-center text-[12.5px] text-muted">Aucun chiffre à tracer sur cette période.</p>
+          {/* Sous la phrase, pas au pied du cadre : en bas, là où la courbe
+              pose le zéro, la frise se lirait comme une valeur nulle. */}
+          {frise && (
+            <div className="mt-4 w-full">
+              <div className="relative h-6">
+                {reperes.map((r) => (
+                  <BoutonRepere
+                    key={r.index}
+                    actif={survol === r.index}
+                    aria-label={`${principale.etiquettes[r.index]} · ${r.libelle}`}
+                    onClick={() => onRepere?.(r.index)}
+                    onPointerEnter={() => setSurvol(r.index)}
+                    onPointerLeave={() => setSurvol(null)}
+                    onFocus={() => setSurvol(r.index)}
+                    onBlur={() => setSurvol(null)}
+                    className="top-0"
+                    style={{ left: `${xPct(r.index)}%` }}
+                  />
+                ))}
+                {repereSurvole && (
+                  <div
+                    className="pointer-events-none absolute bottom-full z-10 mb-1 min-w-[170px] rounded-xl bg-ink/95 px-3 py-2.5 text-white shadow-xl"
+                    style={{ left: `${xPct(repereSurvole.index)}%`, transform: bulleAGauche(repereSurvole.index) ? "translateX(-100%)" : undefined }}
+                  >
+                    <p className="text-[11px] text-white/60">{principale.etiquettes[repereSurvole.index]}</p>
+                    <PastilleRepere libelle={repereSurvole.libelle} className="mt-0.5" />
+                  </div>
+                )}
+              </div>
+              {ligneDates("")}
+            </div>
+          )}
+        </div>
       </figure>
     );
   }
@@ -205,9 +288,9 @@ export function Courbe({
           )}
 
           {reperes.map((r) => (
-            <button
+            <BoutonRepere
               key={r.index}
-              type="button"
+              actif={survol === r.index}
               aria-label={r.libelle}
               onClick={(e) => {
                 // Le conteneur ouvre déjà le jour survolé : sans ça, un clic
@@ -215,20 +298,15 @@ export function Courbe({
                 e.stopPropagation();
                 onRepere?.(r.index);
               }}
-              className="group absolute z-[5] flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              className="-translate-y-1/2"
               style={{ left: `${xPct(r.index)}%`, top: `${yRepere(r.index)}%` }}
-            >
-              <span
-                className={`block h-2 w-2 rounded-full ring-2 ring-white transition-transform duration-150 motion-reduce:transition-none group-hover:scale-150 group-focus-visible:scale-150 ${survol === r.index ? "scale-150" : ""}`}
-                style={{ background: ORANGE_REPERE }}
-              />
-            </button>
+            />
           ))}
 
           {survol !== null && (
             <div
               className="pointer-events-none absolute top-0 z-10 min-w-[170px] rounded-xl bg-ink/95 px-3 py-2.5 text-white shadow-xl"
-              style={{ left: `${xPct(survol)}%`, transform: xPct(survol) > 55 ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
+              style={{ left: `${xPct(survol)}%`, transform: bulleAGauche(survol) ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
             >
               {/* La période regardée d'abord, celle d'avant ensuite. */}
               {/* Une date ne s'écrit qu'une fois quand plusieurs séries la
@@ -247,28 +325,13 @@ export function Courbe({
                   </div>
                 );
               })}
-              {repereSurvole && (
-                <p className="mt-1.5 flex items-center gap-1.5 border-t border-white/10 pt-1.5 text-[11.5px] text-white/80">
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORANGE_REPERE }} />
-                  {repereSurvole.libelle}
-                </p>
-              )}
+              {repereSurvole && <PastilleRepere libelle={repereSurvole.libelle} className="mt-1.5 border-t border-white/10 pt-1.5" />}
             </div>
           )}
         </div>
       </div>
 
-      <div className="relative ml-16 h-5 mt-1" aria-hidden>
-        {repereDates.map((i) => (
-          <span
-            key={i}
-            className={`absolute text-[11px] text-faint whitespace-nowrap ${i === 0 && n > 1 ? "" : i === n - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
-            style={{ left: `${xPct(i)}%` }}
-          >
-            {principale.etiquettes[i]}
-          </span>
-        ))}
-      </div>
+      {ligneDates("ml-16")}
     </figure>
   );
 }
