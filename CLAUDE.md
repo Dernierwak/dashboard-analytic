@@ -173,8 +173,7 @@ tout son échafaudage. `git grep` doit être propre.
 
 - `saas/web` : `rm -rf .next tsconfig.tsbuildinfo`, puis `npx tsc --noEmit` et
   `npm run build` verts, **18 routes** (un écart signale une page de contrôle
-  oubliée) — **19** tant que vit `/meta/prototype-modules`, le prototype de la
-  carte `meta-ads`, qui part quand sa spec est écrite.
+  oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
 - **Le rapport se construit hors ligne** : `build_payload` prend un `Lecteur`
   (`saas/traitement/lecteur.py`), donc une propriété du payload **s'exécute au

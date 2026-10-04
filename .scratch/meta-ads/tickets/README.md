@@ -5,7 +5,7 @@ décident rien : chacun renvoie à la spec, et la spec renvoie aux tickets clos
 de la carte, rangés à part dans `../issues/`.
 
 - **La spec** : [`../spec.md`](../spec.md) — elle seule fait foi, pas le
-  prototype `/meta/prototype-modules`.
+  prototype `/meta/prototype-modules` (supprimé au ticket 14).
 - **Les tickets** : `01` à `14` dans ce dossier, numérotés dans l'ordre des
   dépendances. Mêmes conventions que partout (`docs/agents/issue-tracker.md`).
 - **La frontière** : un ticket se prend quand tous ceux de sa ligne `Blocked by`
