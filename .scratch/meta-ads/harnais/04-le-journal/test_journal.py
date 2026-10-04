@@ -36,16 +36,16 @@ def _une(acte, parents=None):
 
 # ── Chaque nouveau type connu rend sa phrase ─────────────────────────────────
 
-def test_une_enchere_d_ensemble_rend_sa_phrase():
+def test_une_enchere_de_groupe_d_annonces_rend_sa_phrase():
     ligne = _une(_acte("update_ad_set_bidding"))
     assert (ligne["categorie"], ligne["resume"]) == (
-        "enchere", 'l\'enchère de l\'ensemble "Acheteurs 30 j" a été modifiée')
+        "enchere", 'l\'enchère du groupe d\'annonces "Acheteurs 30 j" a été modifiée')
 
 
 def test_une_strategie_d_enchere_rend_sa_phrase():
     ligne = _une(_acte("update_ad_set_bid_strategy"))
     assert (ligne["categorie"], ligne["resume"]) == (
-        "enchere", 'la stratégie d\'enchère de l\'ensemble "Acheteurs 30 j" a été modifiée')
+        "enchere", 'la stratégie d\'enchère du groupe d\'annonces "Acheteurs 30 j" a été modifiée')
 
 
 def test_une_enchere_d_annonce_rend_sa_phrase():
@@ -63,7 +63,7 @@ def test_le_statut_d_une_annonce_rend_sa_phrase():
 def test_les_trois_creations_rendent_leur_phrase():
     attendu = {
         "create_campaign_group": 'la campagne "X" a été créée',
-        "create_ad_set": 'l\'ensemble "X" a été créé',
+        "create_ad_set": 'le groupe d\'annonces "X" a été créé',
         "create_ad": 'l\'annonce "X" a été créée',
     }
     for typ, phrase in attendu.items():
@@ -78,6 +78,40 @@ def test_un_extra_data_non_lu_ne_fabrique_aucune_valeur():
     for typ in ("update_ad_set_bidding", "update_ad_run_status"):
         resume = _une(_acte(typ, extra=extra))["resume"]
         assert "15" not in resume and "pause" not in resume, resume
+
+
+# ── Le groupe d'annonces se dit au masculin (CONTEXT.md, ticket 16) ──────────
+
+def test_le_budget_d_un_groupe_d_annonces_dit_du_groupe():
+    ligne = _une(_acte("update_ad_set_budget",
+                       extra='{"old_value": "4000", "new_value": "6000"}'))
+    assert ligne["resume"] == (
+        'le budget du groupe d\'annonces "Acheteurs 30 j" est passé de 40,00 à 60,00 CHF')
+
+
+def test_un_groupe_d_annonces_est_mis_en_pause_au_masculin():
+    ligne = _une(_acte("update_ad_set_run_status",
+                       extra='{"old_value": "ACTIVE", "new_value": "PAUSED"}'))
+    assert ligne["resume"] == 'le groupe d\'annonces "Acheteurs 30 j" a été mis en pause'
+
+
+def test_une_campagne_reste_mise_en_pause_au_feminin():
+    ligne = _une(_acte("update_campaign_run_status", object_id="900", object_name="Soldes",
+                       extra='{"old_value": "ACTIVE", "new_value": "PAUSED"}'))
+    assert ligne["resume"] == 'la campagne "Soldes" a été mise en pause'
+
+
+def test_le_ciblage_d_un_groupe_d_annonces_rend_sa_phrase():
+    ligne = _une(_acte("update_ad_set_target_spec"))
+    assert ligne["resume"] == 'le ciblage du groupe d\'annonces "Acheteurs 30 j" a été modifié'
+
+
+def test_aucune_phrase_de_groupe_d_annonces_ne_dit_ensemble():
+    extra = '{"old_value": "ACTIVE", "new_value": "ARCHIVED"}'
+    for typ in ("update_ad_set_budget", "update_ad_set_run_status", "update_ad_set_target_spec",
+                "update_ad_set_bidding", "update_ad_set_bid_strategy", "create_ad_set"):
+        resume = _une(_acte(typ, extra=extra))["resume"]
+        assert "ensemble" not in resume, (typ, resume)
 
 
 # ── Un type inconnu ne rend rien ─────────────────────────────────────────────
@@ -104,7 +138,7 @@ def test_un_budget_de_campagne_garde_sa_phrase_et_sa_campagne():
 PARENTS = {"111": ("900", "Soldes d'automne"), "222": ("900", "Soldes d'automne")}
 
 
-def test_un_changement_d_ensemble_porte_sa_campagne():
+def test_un_changement_de_groupe_d_annonces_porte_sa_campagne():
     ligne = _une(_acte("update_ad_set_budget", object_id="111"), PARENTS)
     assert (ligne["campaign_id"], ligne["campaign_name"]) == ("900", "Soldes d'automne")
 
@@ -124,7 +158,7 @@ def test_un_id_inconnu_laisse_la_campagne_absente():
     assert (ligne["campaign_id"], ligne["campaign_name"]) == (None, None)
 
 
-def test_le_nom_d_un_ensemble_ne_rattache_a_rien():
+def test_le_nom_d_un_groupe_d_annonces_ne_rattache_a_rien():
     # Le rattachement passe par l'ID, jamais par un nom qui se réutilise.
     parents = {"Acheteurs 30 j": ("900", "Soldes")}
     ligne = _une(_acte("update_ad_set_budget", object_id="333"), parents)
@@ -133,7 +167,7 @@ def test_le_nom_d_un_ensemble_ne_rattache_a_rien():
 
 # ── La hiérarchie se lit dans les lignes d'insights ──────────────────────────
 
-def test_la_hierarchie_rattache_ensembles_et_annonces():
+def test_la_hierarchie_rattache_groupes_d_annonces_et_annonces():
     lignes = [{"date_start": "2026-09-01", "campaign_id": "900", "campaign_name": "Soldes",
                "adset_id": "111", "ad_id": "222"}]
     assert hierarchie_depuis_insights(lignes) == {"111": ("900", "Soldes"),

@@ -39,8 +39,8 @@ export type ChangementMeta = {
   campagneId: string | null;
   campagneNom: string | null;
   /** Rédigée à la récolte, et elle NOMME l'élément touché (`_traduire_meta`
-   *  écarte tout changement sans nom d'objet) : « le budget de l'ensemble
-   *  "Acheteurs" est passé de 40,00 à 60,00 CHF ». */
+   *  écarte tout changement sans nom d'objet) : « le budget du groupe
+   *  d'annonces "Acheteurs" est passé de 40,00 à 60,00 CHF ». */
   phrase: string;
 };
 

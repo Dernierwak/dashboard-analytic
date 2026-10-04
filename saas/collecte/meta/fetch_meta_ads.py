@@ -280,30 +280,32 @@ _ACTIVITES = {
 # s'ajoute qu'une fois un `extra_data` réel recopié dans le ticket 04.
 _PHRASES_SANS_VALEUR = {
     "update_ad_run_status":       'le statut de l\'annonce "{nom}" a été modifié',
-    "update_ad_set_bidding":      'l\'enchère de l\'ensemble "{nom}" a été modifiée',
-    "update_ad_set_bid_strategy": 'la stratégie d\'enchère de l\'ensemble "{nom}" a été modifiée',
+    "update_ad_set_bidding":      'l\'enchère du groupe d\'annonces "{nom}" a été modifiée',
+    "update_ad_set_bid_strategy": 'la stratégie d\'enchère du groupe d\'annonces "{nom}" a été modifiée',
     "update_ad_bid_info":         'l\'enchère de l\'annonce "{nom}" a été modifiée',
     "create_campaign_group":      'la campagne "{nom}" a été créée',
-    "create_ad_set":              'l\'ensemble "{nom}" a été créé',
+    "create_ad_set":              'le groupe d\'annonces "{nom}" a été créé',
     "create_ad":                  'l\'annonce "{nom}" a été créée',
 }
 
 # Les événements portés par la campagne elle-même : leur `object_id` EST la
-# campagne. Pour les autres, `object_id` est un ensemble ou une annonce, et la
+# campagne. Pour les autres, `object_id` est un groupe d'annonces ou une annonce, et la
 # campagne se retrouve par l'ID dans la hiérarchie des insights
-# (`hierarchie_depuis_insights`) — jamais en rangeant l'ID d'un ensemble dans
+# (`hierarchie_depuis_insights`) — jamais en rangeant l'ID d'un groupe d'annonces dans
 # `campaign_id`, ce qui rattacherait le changement sur une clé fausse.
 _NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status",
                     "create_campaign_group"}
 
-# Ensemble ou annonce → (campaign_id, campaign_name) : `hierarchie_depuis_insights`.
+# Groupe d'annonces ou annonce → (campaign_id, campaign_name) : `hierarchie_depuis_insights`.
 Parents = dict[str, tuple[str, str | None]]
 
+# (campagne, groupe d'annonces) : le participe s'accorde avec le sujet, et le
+# groupe d'annonces est masculin (CONTEXT.md, **Groupe d'annonces**).
 _ETATS_META = {
-    "PAUSED":   "a été mise en pause",
-    "ACTIVE":   "a été réactivée",
-    "ARCHIVED": "a été archivée",
-    "DELETED":  "a été supprimée",
+    "PAUSED":   ("a été mise en pause", "a été mis en pause"),
+    "ACTIVE":   ("a été réactivée",     "a été réactivé"),
+    "ARCHIVED": ("a été archivée",      "a été archivé"),
+    "DELETED":  ("a été supprimée",     "a été supprimé"),
 }
 
 
@@ -356,25 +358,29 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
     extra = _extra(act.get("extra_data"))
     avant, apres = extra.get("old_value"), extra.get("new_value")
     est_campagne = typ in _NIVEAU_CAMPAGNE
-    objet = f'la campagne "{nom}"' if est_campagne else f'l\'ensemble "{nom}"'
+    # « de » + « le groupe » se contracte en « du » : le complément s'écrit
+    # entier pour chaque niveau plutôt que d'accoler « de » à l'objet.
+    du_objet = f'de la campagne "{nom}"' if est_campagne else f'du groupe d\'annonces "{nom}"'
 
     if categorie == "budget":
         a, b = _centimes(avant), _centimes(apres)
         if a is not None and b is not None and a != b:
-            return ("budget", f"le budget de {objet} est passé de {_chf_fr(a)} à {_chf_fr(b)} CHF")
+            return ("budget", f"le budget {du_objet} est passé de {_chf_fr(a)} à {_chf_fr(b)} CHF")
         if b is not None:
-            return ("budget", f"le budget de {objet} a été réglé à {_chf_fr(b)} CHF")
-        return ("budget", f"le budget de {objet} a été modifié")
+            return ("budget", f"le budget {du_objet} a été réglé à {_chf_fr(b)} CHF")
+        return ("budget", f"le budget {du_objet} a été modifié")
 
     if categorie == "statut":
         etat = str(apres or "").upper()
         if etat in _ETATS_META:
-            quoi = "la campagne" if est_campagne else "l'ensemble"
-            return ("statut", f'{quoi} "{nom}" {_ETATS_META[etat]}')
+            feminin, masculin = _ETATS_META[etat]
+            if est_campagne:
+                return ("statut", f'la campagne "{nom}" {feminin}')
+            return ("statut", f'le groupe d\'annonces "{nom}" {masculin}')
         return None
 
     if categorie == "audience":
-        return ("audience", f"le ciblage de l'ensemble \"{nom}\" a été modifié")
+        return ("audience", f"le ciblage du groupe d'annonces \"{nom}\" a été modifié")
 
     if categorie == "creatif":
         return ("creatif", f"le visuel de l'annonce \"{nom}\" a été remplacé")
@@ -406,7 +412,7 @@ def fetch_activities(
 
     Returns: (rows, error|None) — chaque row : change_id, occurred_at,
     categorie, campaign_id, campaign_name, resume. `parents` rattache un
-    changement d'ensemble ou d'annonce à sa campagne (`lignes_activites`).
+    changement de groupe d'annonces ou d'annonce à sa campagne (`lignes_activites`).
     Seuls les événements qu'on sait dire en français ressortent : le reste est
     écarté ici, pas filtré à l'affichage.
     """
@@ -455,9 +461,9 @@ def fetch_activities(
 
 
 def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
-    """Les lignes de meta_ads_insights → {id d'ensemble ou d'annonce : (campaign_id, campaign_name)}.
+    """Les lignes de meta_ads_insights → {id de groupe d'annonces ou d'annonce : (campaign_id, campaign_name)}.
 
-    Pure. Meta numérote ensembles et annonces dans un même espace d'IDs, d'où
+    Pure. Meta numérote groupes d'annonces et annonces dans un même espace d'IDs, d'où
     un seul dictionnaire. Une ligne sans `campaign_id` (d'avant le rejeu du
     ticket 03) ne rattache rien : on ne reconstitue jamais une campagne depuis
     un nom. Le nom gardé est le plus récent, pour qu'une campagne renommée se

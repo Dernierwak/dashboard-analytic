@@ -264,7 +264,7 @@ def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
     """Sépare les changements rattachés à une campagne de ceux qui ne le sont pas.
 
     Chaque passage relit tout le journal (180 jours chez Meta) et l'upsert
-    réécrit chaque colonne envoyée. Un ensemble dont la campagne ne se retrouve
+    réécrit chaque colonne envoyée. Un groupe d'annonces dont la campagne ne se retrouve
     plus ce jour-là (insights rejoués, compte reconnecté) remettrait donc à
     NULL un rattachement déjà acquis. Le lot sans campagne n'envoie pas ces
     colonnes : PostgREST ne met à jour que celles qu'il reçoit.

@@ -36,7 +36,7 @@ function brut(p: Partial<LigneChangement>): LigneChangement {
     categorie: "budget",
     campaign_id: "c1",
     campaign_name: "Soldes",
-    resume: 'le budget de l\'ensemble "Acheteurs" est passé de 40,00 à 60,00 CHF',
+    resume: 'le budget du groupe d\'annonces "Acheteurs" est passé de 40,00 à 60,00 CHF',
     ...p,
   };
 }
