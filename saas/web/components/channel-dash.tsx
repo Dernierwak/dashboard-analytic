@@ -1,7 +1,7 @@
 // Blocs partagés des dashboards par canal (server components).
 // Même base que les onglets Streamlit : hero + 7 KPIs (coûts « baisse = bon »),
 // graphe journalier à métrique sélectionnable, campagnes avec statut et
-// drill-down adset/groupe → annonce.
+// drill-down groupe d'annonces → annonce.
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
@@ -29,18 +29,15 @@ const lienAds = (path: string, d: ChannelDash, patch: Partial<DashParams>) =>
   lienDash(path, d.params, patch, "spend");
 
 // Hero (impressions) + 3 KPIs perf + 3-4 KPIs coût — la hiérarchie du Streamlit.
-export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "meta" | "google" }) {
+export function AdsKpis({ d }: { d: ChannelDash }) {
   // Google n'a pas de portée. Plutôt que de répéter les impressions déjà en
   // grand dans le hero, on montre le CPC — l'autre chiffre qu'on regarde.
-  const firstTile =
-    channel === "google"
-      ? {
-          label: "CPC moyen",
-          value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—",
-          delta: d.cpc > 0 ? d.cpcDelta : null,
-          invert: true,
-        }
-      : { label: "Portée", value: d.reach > 0 ? fmtCHF(d.reach) : "—", delta: d.reach > 0 ? d.reachDelta : null, invert: false };
+  const firstTile = {
+    label: "CPC moyen",
+    value: d.cpc > 0 ? `${d.cpc.toFixed(2)} CHF` : "—",
+    delta: d.cpc > 0 ? d.cpcDelta : null,
+    invert: true,
+  };
   return (
     <div className="mb-8">
       {/* Hero */}
@@ -94,7 +91,7 @@ export function AdsKpis({ d, channel = "meta" }: { d: ChannelDash; channel?: "me
           regardent, et ils restent sur la page. */}
       <details>
         <summary className="text-[11.5px] font-semibold text-muted cursor-pointer select-none mb-2.5 hover:text-ink">
-          Coûts unitaires et {channel === "google" ? "CPC" : "portée"} — voir
+          Coûts unitaires et CPC — voir
         </summary>
         <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 pb-1 sm:pb-0">
           <Chiffre titre={firstTile.label} valeur={firstTile.value} delta={firstTile.delta} baisseEstBonne={firstTile.invert} />
@@ -388,8 +385,8 @@ export function Moyennes({
 }
 
 // Ce que la fenêtre d'un canal donne comme unité, et ce qu'il faut en écrire.
-// Une seule fonction pour les trois pages : c'est elle qui garantit que Meta,
-// Google et Instagram basculent au même moment et le disent avec les mêmes mots.
+// Une seule fonction pour les pages qui lisent ce module : c'est elle qui
+// garantit que Google et Instagram basculent au même moment et le disent avec les mêmes mots.
 function uniteDeLaFenetre<T extends { date: string }>(
   pts: T[],
   couverture: { debut: string; fin: string },
@@ -441,8 +438,8 @@ function bornes(debut: string, fin: string): string {
   return `${jourISO(debut)} → ${jourISO(fin)} ${fin.slice(0, 4)}`;
 }
 
-// Les moyennes des dashboards publicitaires (Meta, Google, et toute régie qui
-// suivra). Elles lisent la MÊME fenêtre que la courbe posée juste dessous :
+// Les moyennes des dashboards publicitaires (Google, et toute régie qui
+// suivra ; Meta a les siennes dans `lib/meta/`). Elles lisent la MÊME fenêtre que la courbe posée juste dessous :
 // c'est ce qui permet de les lire l'une après l'autre sans se demander de quoi
 // on parle.
 //
@@ -776,7 +773,7 @@ function StatusChip({ status }: { status: string | null }) {
   );
 }
 
-// Table campagnes en accordéon : chaque campagne se DÉROULE en adsets/groupes,
+// Table campagnes en accordéon : chaque campagne se DÉROULE en groupes d'annonces,
 // puis en annonces — chiffres alignés sur les mêmes colonnes à chaque niveau.
 // Hauteur bornée : la table scrolle à l'intérieur, l'en-tête reste collé.
 //
@@ -800,15 +797,7 @@ function StatusChip({ status }: { status: string | null }) {
 // d'interface. Sans détail, la ligne redevient une ligne, et le pied DIT
 // pourquoi — ce qui reste vrai tant que le worker n'a pas encore tourné une
 // première fois après ce correctif (aucune ligne en base pour l'instant).
-export function CampaignTable({
-  d,
-  channel,
-  path,
-}: {
-  d: ChannelDash;
-  channel: "meta" | "google";
-  path: string;
-}) {
+export function CampaignTable({ d, path }: { d: ChannelDash; path: string }) {
   // Le titre vit DANS le module : son sous-titre
   // dit le classement en cours, et le classement change avec l'URL. Écrit dans
   // les deux pages, il aurait fallu y recopier le test — deux copies d'une
@@ -829,12 +818,11 @@ export function CampaignTable({
       </>
     );
   }
-  const isMeta = channel === "meta";
   // Combien de campagnes ont réellement un détail à ouvrir. Zéro sur Google
   // tant que `google_ads_ad_insights` n'est pas alimentée — voir le commentaire
   // au-dessus du composant.
   const deroulables = d.campaigns.filter((c) => c.adsets.length > 0).length;
-  const groupWord = isMeta ? "adset" : "groupe";
+  const groupWord = "groupe";
 
   // L'ÉCART, quand une comparaison est posée. `null` sinon, et la table ne
   // change alors pas d'un pixel : ni colonne, ni tri, ni phrase de pied.
@@ -855,8 +843,9 @@ export function CampaignTable({
   // LA LARGEUR MINIMALE VIENT DES COLONNES, elle n'est plus écrite à côté.
   //
   // Le `min-w-[820px]` d'avant était SOUS la somme réelle des pistes (940 px sur
-  // Meta) : la grille débordait de son cadre au lieu de le faire défiler, et la
-  // dernière colonne se retrouvait coupée sans qu'aucune barre n'apparaisse —
+  // l'ancienne page Meta, qui portait une colonne Portée de plus) : la grille
+  // débordait de son cadre au lieu de le faire défiler, et la dernière colonne
+  // se retrouvait coupée sans qu'aucune barre n'apparaisse —
   // `scrollWidth` valait `clientWidth`. Personne ne l'avait vu parce qu'un écran
   // de bureau offre 976 px, juste assez pour 940. La colonne d'écart en ajoute
   // 124 et faisait franchir le seuil : mesuré à 1 280 × 900, l'en-tête
@@ -877,9 +866,9 @@ export function CampaignTable({
   // correctif — mais s'arrête là où grandir encore n'aide plus à LIRE le nom,
   // seulement à l'éloigner de ses chiffres.
   const NOM_MAX = 420;
-  const COLS = isMeta
-    ? [90, 90, 80, 70, 70, 70, 100] // impr. · portée · clics · CTR · CPM · CPC · dépensé
-    : [90, 80, 70, 70, 70, 100];    // idem sans la portée (Google ne la suit pas)
+  // Pas de colonne Portée : Google ne la suit pas, et un « — » permanent
+  // occuperait une colonne pour ne rien dire.
+  const COLS = [90, 80, 70, 70, 70, 100]; // impr. · clics · CTR · CPM · CPC · dépensé
   const cols = e ? [...COLS, 124] : COLS;
   const grid = `minmax(${NOM_MIN}px,${NOM_MAX}px) ${cols.map((c) => `${c}px`).join(" ")}`;
   // + 24 : le `px-3` que chaque rangée porte de part et d'autre de la grille.
@@ -887,18 +876,13 @@ export function CampaignTable({
   const largeurMin = NOM_MIN + cols.reduce((a, b) => a + b, 0) + 24;
 
   const Nums = ({
-    impressions, reach, clicks, ctr, cpm, cpc, spend, strong = false,
+    impressions, clicks, ctr, cpm, cpc, spend, strong = false,
   }: {
-    impressions: number; reach?: number; clicks: number; ctr: number;
+    impressions: number; clicks: number; ctr: number;
     cpm: number | null; cpc: number; spend: number; strong?: boolean;
   }) => (
     <>
       <span className="text-right font-mono text-muted px-2">{fmtCHF(impressions)}</span>
-      {isMeta && (
-        <span className="text-right font-mono text-muted px-2">
-          {reach && reach > 0 ? fmtCHF(reach) : "—"}
-        </span>
-      )}
       <span className={`text-right font-mono px-2 ${strong ? "text-ink" : "text-muted"}`}>
         {fmtCHF(clicks)}
       </span>
@@ -942,7 +926,6 @@ export function CampaignTable({
         >
           <span className="px-2">Campagne</span>
           <span className="text-right px-2">Impr.</span>
-          {isMeta && <span className="text-right px-2">Portée</span>}
           <span className="text-right px-2">Clics</span>
           <span className="text-right px-2">CTR</span>
           <span className="text-right px-2">CPM</span>
@@ -983,7 +966,6 @@ export function CampaignTable({
                 </span>
                 <Nums
                   impressions={c.impressions}
-                  reach={c.reach}
                   clicks={c.clicks}
                   ctr={c.ctr}
                   cpm={c.cpm}
@@ -1019,7 +1001,7 @@ export function CampaignTable({
                 {tete}
               </summary>
 
-              {/* Déroulé : adsets/groupes → annonces, colonnes alignées */}
+              {/* Déroulé : groupes d'annonces → annonces, colonnes alignées */}
               {c.adsets.map((s) => (
                 <div key={s.name} className="bg-black/[0.015]">
                   <div
@@ -1080,7 +1062,7 @@ export function CampaignTable({
         {deroulables === 0 ? (
           <>
             Aucune campagne ne se déplie : le détail par {groupWord} n&apos;a pas été récolté
-            {isMeta ? "" : " pour Google Ads"}. Les totaux ci-dessus, eux, sont complets — ils
+            pour Google Ads. Les totaux ci-dessus, eux, sont complets — ils
             viennent du niveau campagne.
           </>
         ) : deroulables === d.campaigns.length ? (
@@ -1104,7 +1086,7 @@ export function CampaignTable({
   );
 }
 
-/** La cellule d'écart d'une ligne de DÉTAIL (adset, groupe, annonce) : il n'y en
+/** La cellule d'écart d'une ligne de DÉTAIL (groupe, annonce) : il n'y en
  *  a pas. La référence est ventilée par campagne — descendre d'un cran
  *  demanderait de reparcourir la table du drill-down sur toute la fenêtre de
  *  référence, et la question posée à cette table est « quelle CAMPAGNE a bougé ».

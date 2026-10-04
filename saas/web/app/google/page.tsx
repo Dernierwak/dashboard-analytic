@@ -63,7 +63,7 @@ export default async function GooglePage({
       )}
 
       <div className="mt-5">
-        <AdsKpis d={d} channel="google" />
+        <AdsKpis d={d} />
       </div>
       {/* Même module, même place que sur Meta : deux pages canal qui posent la
           même question doivent la poser dans le même ordre. */}
@@ -75,7 +75,7 @@ export default async function GooglePage({
 
       {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
           sur Google le détail par groupe d'annonces n'est pas toujours là. */}
-      <CampaignTable d={d} channel="google" path="/google" />
+      <CampaignTable d={d} path="/google" />
     </main>
   );
 }
