@@ -168,24 +168,17 @@ function Carte({
         <PastilleEcart m={m.cle} e={m.ecart} />
       </div>
       <div className={`mt-auto min-w-0 ${grande ? "pt-6" : "pt-4"}`}>
-        {/* Rien à tracer — une période sans ligne, ou des résultats de types
-            mélangés que le total refuse d'additionner : une phrase, pas un
-            axe à zéro qui se lirait comme un zéro (ticket 18 pour `Courbe`). */}
-        {m.serie.every((v) => v === null) && m.serieAvant.every((v) => v === null) ? (
-          <p className="rounded-xl bg-canvas px-4 py-6 text-center text-[12.5px] text-muted">Aucun chiffre à tracer sur cette période.</p>
-        ) : (
-          <Courbe
-            titre={`${m.nom}, jour par jour, cette période et la période d'avant`}
-            format={format}
-            hauteur={grande ? (lignes >= 2 ? 300 : 220) : 120}
-            series={[
-              { nom: "Période d'avant", valeurs: m.serieAvant, etiquettes: datesAvant.map(dateBulle), pointille: true },
-              { nom: "Cette période", valeurs: m.serie, etiquettes: dates.map(dateBulle) },
-            ]}
-            reperes={reperes}
-            onRepere={onRepere}
-          />
-        )}
+        <Courbe
+          titre={`${m.nom}, jour par jour, cette période et la période d'avant`}
+          format={format}
+          hauteur={grande ? (lignes >= 2 ? 300 : 220) : 120}
+          series={[
+            { nom: "Période d'avant", valeurs: m.serieAvant, etiquettes: datesAvant.map(dateBulle), pointille: true },
+            { nom: "Cette période", valeurs: m.serie, etiquettes: dates.map(dateBulle) },
+          ]}
+          reperes={reperes}
+          onRepere={onRepere}
+        />
       </div>
     </div>
   );

@@ -13,7 +13,8 @@ import { ORANGE_REPERE } from "@/lib/palette";
 // valeur (une `polyline` des seuls points présents). Ici un jour sans donnée
 // est un TROU (spec, user story 28) : relier les deux bords dessinerait une
 // pente que personne n'a mesurée. Le tracé se coupe donc à chaque `null`, et un
-// point isolé entre deux trous reste visible sous forme de rond.
+// point isolé entre deux trous reste visible sous forme de rond. Sans une seule
+// valeur, il n'y a ni axe ni graduation, seulement une phrase qui le dit.
 //
 // Même principe de fond que `line-chart.tsx`, et pour la même raison mesurée :
 // LE SVG PORTE LA GÉOMÉTRIE, LE HTML PORTE LES CARACTÈRES. Le SVG s'étire
@@ -122,7 +123,18 @@ export function Courbe({
     setSurvol(i >= 0 && i < n ? i : null);
   };
 
-  if (n === 0) return null;
+  // Sans une seule valeur, l'échelle tomberait de 0 à 0 et l'axe écrirait
+  // « 0,00 CHF » : un zéro lu là où rien n'est mesuré (ticket 18). Une phrase
+  // à la hauteur du graphe, pour que le graphe voisin d'une grille ne saute pas.
+  if (toutes.length === 0) {
+    return (
+      <figure className="m-0 min-w-0" aria-label={titre}>
+        <p className="flex items-center justify-center rounded-xl bg-canvas px-4 text-center text-[12.5px] text-muted" style={{ height: hauteur }}>
+          Aucun chiffre à tracer sur cette période.
+        </p>
+      </figure>
+    );
+  }
 
   return (
     <figure className="m-0 min-w-0">
