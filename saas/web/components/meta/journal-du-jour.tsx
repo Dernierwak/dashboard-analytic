@@ -47,9 +47,13 @@ export function JournalDuJour({
               <li key={c.id} className="relative pl-5">
                 <span className="absolute -left-[4px] top-2 h-2 w-2 rounded-full bg-[#dddcd6] ring-4 ring-white" aria-hidden />
                 <span className="inline-block rounded-full bg-[#eef2ff] px-2 py-0.5 text-[11.5px] font-semibold text-brand">{c.nature}</span>
-                {/* « UTC » écrit : le fuseau du compte n'est pas récolté, et une
-                    heure sans fuseau se lirait comme l'heure locale. */}
-                <span className="ml-2 text-[12px] tabular-nums text-faint">{c.heure} UTC</span>
+                {/* L'heure est celle du compte. « UTC » ne s'écrit que pour une
+                    ligne dont le fuseau n'a pas été récolté : sans le mot, elle
+                    se lirait comme une heure locale. */}
+                <span className="ml-2 text-[12px] tabular-nums text-faint">
+                  {c.heure}
+                  {c.fuseau === null && " UTC"}
+                </span>
                 <p className="mt-1.5 text-[15px] font-medium text-ink first-letter:uppercase">{c.phrase}</p>
               </li>
             ))}

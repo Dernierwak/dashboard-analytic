@@ -49,6 +49,7 @@ from saas.collecte.google.fetch_google_ads import (                             
 )
 from saas.collecte.meta.fetch_meta_ads import (                                   # noqa: E402
     fetch_campaign_budgets as meta_budgets,
+    compte_et_fuseau,
     fetch_activities as meta_changes,
     hierarchie_depuis_insights,
     lignes_config_meta,
@@ -811,11 +812,11 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     # `note` marque une étape FRANCHIE, pas un pourcentage : la séquence est
     # écrite ici, mais le nombre d'appels de chacune ne l'est pas.
     note("comptes")
-    r = requests.get(f"{_GRAPH}/me/adaccounts", params={"fields": "id", "access_token": token}, timeout=30)
-    accts = r.json().get("data", [])
-    if not accts:
+    r = requests.get(f"{_GRAPH}/me/adaccounts",
+                     params={"fields": "id,timezone_name", "access_token": token}, timeout=30)
+    ad_account_id, fuseau = compte_et_fuseau(r.json().get("data", []))
+    if not ad_account_id:
         return "meta: aucun compte pub"
-    ad_account_id = accts[0]["id"]
     today = date.today()
     note("budgets")
     # Avant tout test de fraîcheur : la photo du budget doit être prise même
@@ -830,7 +831,7 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
     _journal_changements(sb, uid, "meta", lambda: meta_changes(
         token, ad_account_id,
         (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat(),
-        parents=_hierarchie_meta(sb, uid)))
+        parents=_hierarchie_meta(sb, uid), fuseau=fuseau))
     note("insights")
     # LE GARDE-FOU SE POSE AVANT LA PREMIÈRE REQUÊTE D'INSIGHTS, pas juste
     # avant l'écriture : sans ses colonnes, ces appels ne servent à rien et

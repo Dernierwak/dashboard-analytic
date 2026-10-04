@@ -310,6 +310,9 @@ def upsert_platform_changes(
             "campaign_id":   str(r["campaign_id"]) if r.get("campaign_id") else None,
             "campaign_name": r.get("campaign_name") or None,
             "resume":        resume,
+            # Seulement s'il est connu : un NULL envoyé effacerait le fuseau
+            # déjà écrit (même raison que `lots_sans_effacer_la_campagne`).
+            **({"fuseau": r["fuseau"]} if r.get("fuseau") else {}),
         })
     if not records:
         return

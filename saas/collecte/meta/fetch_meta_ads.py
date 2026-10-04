@@ -407,12 +407,14 @@ def fetch_activities(
     since: str,
     until: str | None = None,
     parents: Parents | None = None,
+    fuseau: str | None = None,
 ) -> tuple[list[dict], str | None]:
     """Les changements DÉCLARÉS par Meta entre `since` et `until` (YYYY-MM-DD).
 
     Returns: (rows, error|None) — chaque row : change_id, occurred_at,
-    categorie, campaign_id, campaign_name, resume. `parents` rattache un
-    changement de groupe d'annonces ou d'annonce à sa campagne (`lignes_activites`).
+    categorie, campaign_id, campaign_name, resume, et fuseau quand il est
+    connu. `parents` rattache un changement de groupe d'annonces ou d'annonce
+    à sa campagne, `fuseau` est celui du compte (`lignes_activites`).
     Seuls les événements qu'on sait dire en français ressortent : le reste est
     écarté ici, pas filtré à l'affichage.
     """
@@ -456,7 +458,20 @@ def fetch_activities(
         print(f"    activités Meta : arrêt à {_ACTIVITES_PAGES_MAX} pages "
               f"({len(actes)} activités lues), la suite est ignorée.")
 
-    return lignes_activites(actes, parents or {}), None
+    return lignes_activites(actes, parents or {}, fuseau), None
+
+
+def compte_et_fuseau(comptes: list[dict]) -> tuple[str | None, str | None]:
+    """`/me/adaccounts?fields=id,timezone_name` → (le compte lu, son fuseau).
+
+    Le fuseau voyage avec chaque changement (ticket 17 de `.scratch/meta-ads/`) :
+    Meta écrit `event_time` en UTC, alors que les jours des insights sont ceux
+    du compte. Un fuseau absent rend None — jamais un fuseau supposé.
+    """
+    if not comptes:
+        return None, None
+    compte = comptes[0]
+    return compte.get("id"), (str(compte.get("timezone_name") or "").strip() or None)
 
 
 
@@ -493,13 +508,18 @@ def _campagne_de(act: dict, parents: Parents) -> tuple[str | None, str | None]:
     return parents.get(oid, (None, None))
 
 
-def lignes_activites(actes: list[dict], parents: Parents) -> list[dict]:
+def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = None) -> list[dict]:
     """La réponse de /activities → les lignes de platform_changes.
 
     Pure, sans réseau : c'est le seam de test du journal (harnais
     `.scratch/meta-ads/harnais/04-le-journal/`). `parents` vient de
     `hierarchie_depuis_insights` ; un ID absent laisse la campagne vide, et le
     changement ne se lit alors que sans filtre campagne.
+
+    `occurred_at` reste l'instant UTC écrit par Meta ; `fuseau` dit dans quel
+    fuseau l'écran découpe son jour. Inconnu, il n'est PAS envoyé : chaque
+    passage relit 180 jours, et un `None` effacerait par upsert le fuseau
+    déjà écrit.
     """
     rows: list[dict] = []
     vus: set[str] = set()
@@ -523,5 +543,6 @@ def lignes_activites(actes: list[dict], parents: Parents) -> list[dict]:
             "campaign_id":   campaign_id,
             "campaign_name": campaign_name,
             "resume":        resume,
+            **({"fuseau": fuseau} if fuseau else {}),
         })
     return rows

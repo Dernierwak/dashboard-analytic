@@ -37,6 +37,7 @@ function brut(p: Partial<LigneChangement>): LigneChangement {
     campaign_id: "c1",
     campaign_name: "Soldes",
     resume: 'le budget du groupe d\'annonces "Acheteurs" est passé de 40,00 à 60,00 CHF',
+    fuseau: null,
     ...p,
   };
 }
@@ -59,11 +60,44 @@ function ligne(p: Partial<LigneMeta> & { date: string }): LigneMeta {
 
 // ── Une ligne de base → un changement ────────────────────────────────────────
 
-test("le jour et l'heure se lisent en UTC, pas dans le fuseau de la machine", () => {
-  // 00:30 à Zurich le 1er octobre = 22:30 UTC le 30 septembre.
-  const c = ch({ occurred_at: "2026-10-01T00:30:00+02:00" });
+test("00:30 à Zurich se pose sur le jour même, à l'heure de Zurich (ticket 17)", () => {
+  // Meta écrit l'instant en UTC : 22:30 UTC le 30 septembre = 00:30 le 1er
+  // octobre à Zurich (heure d'été, UTC+2).
+  const c = ch({ occurred_at: "2026-09-30T22:30:00+00:00", fuseau: "Europe/Zurich" });
+  assert.equal(c.jour, "2026-10-01");
+  assert.equal(c.heure, "00:30");
+  assert.equal(c.fuseau, "Europe/Zurich");
+});
+
+test("un fuseau à l'ouest de UTC recule le jour", () => {
+  const c = ch({ occurred_at: "2026-10-01T02:00:00+00:00", fuseau: "America/New_York" });
+  assert.equal(c.jour, "2026-09-30");
+  assert.equal(c.heure, "22:00");
+});
+
+test("l'heure d'hiver se lit aussi : Zurich est à UTC+1 en décembre", () => {
+  const c = ch({ occurred_at: "2026-12-01T23:30:00+00:00", fuseau: "Europe/Zurich" });
+  assert.equal(c.jour, "2026-12-02");
+  assert.equal(c.heure, "00:30");
+});
+
+test("sans fuseau récolté, le jour et l'heure restent en UTC, et le changement le dit", () => {
+  const c = ch({ occurred_at: "2026-10-01T00:30:00+02:00", fuseau: null });
   assert.equal(c.jour, "2026-09-30");
   assert.equal(c.heure, "22:30");
+  assert.equal(c.fuseau, null);
+});
+
+test("un fuseau illisible se traite comme un fuseau absent, sans faire tomber la page", () => {
+  const c = ch({ occurred_at: "2026-09-30T22:30:00+00:00", fuseau: "Mars/Olympus" });
+  assert.equal(c.jour, "2026-09-30");
+  assert.equal(c.fuseau, null);
+});
+
+test("minuit pile se lit 00:00, pas 24:00", () => {
+  const c = ch({ occurred_at: "2026-09-30T22:00:00+00:00", fuseau: "Europe/Zurich" });
+  assert.equal(c.jour, "2026-10-01");
+  assert.equal(c.heure, "00:00");
 });
 
 test("une ligne sans phrase ou sans date ne devient pas un changement", () => {

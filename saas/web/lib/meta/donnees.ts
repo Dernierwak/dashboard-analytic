@@ -119,12 +119,16 @@ async function lireJournal(
     const lignes = await lireToutesLesPages<LigneChangement>((de, a) =>
       supabase
         .from("platform_changes")
-        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
+        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau")
         .eq("user_id", uid)
         .eq("channel", "meta")
-        // Jours UTC, comme `changementDe` les découpe.
-        .gte("occurred_at", `${debut}T00:00:00Z`)
-        .lt("occurred_at", `${decaler(fin, 1)}T00:00:00Z`)
+        // Un jour de plus de chaque côté : `changementDe` découpe le jour dans
+        // le fuseau du compte, et aucun fuseau n'est à plus d'un jour de l'UTC
+        // (UTC−12 à UTC+14). Ce qui déborde ne pose aucun point —
+        // `joursMarques` ne marque que `dates`, le panneau qu'un jour de la
+        // période.
+        .gte("occurred_at", `${decaler(debut, -1)}T00:00:00Z`)
+        .lt("occurred_at", `${decaler(fin, 2)}T00:00:00Z`)
         // Un ordre TOTAL, sinon deux pages se recouvrent sur un même instant.
         .order("occurred_at", { ascending: true })
         .order("change_id", { ascending: true })

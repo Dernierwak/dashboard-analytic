@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
+import { jourEtHeureDans } from "@/lib/fuseau";
 
 // LES CHANGEMENTS DÉCLARÉS PAR LES PLATEFORMES.
 //
@@ -77,7 +78,27 @@ type LigneChangement = {
   campaign_id: string | number | null;
   campaign_name: string | null;
   resume: string | null;
+  fuseau: string | null;
 };
+
+/**
+ * Le jour du changement dans le fuseau du compte — celui des insights, donc du
+ * point de la courbe où l'effet apparaît. Les deux plateformes ne l'écrivent
+ * pas pareil :
+ *   · Google écrit l'heure du compte SANS décalage (« 2026-08-11 14:03:22 ») ;
+ *     le `timestamptz` la lit dans le fuseau de la session — l'UTC, celui de
+ *     Supabase — et la garde donc telle quelle, comme si c'était de l'UTC. La
+ *     troncature rend donc le jour du compte, et reconvertir le fausserait.
+ *   · Meta écrit l'instant en UTC (« …T22:30:00+0000 ») : la troncature
+ *     poserait un geste fait à 00:30 à Zurich la veille. Le jour se découpe
+ *     dans le `fuseau` récolté avec la ligne (ticket 17 de `.scratch/meta-ads/`) ;
+ *     une ligne d'avant, sans fuseau, retombe sur l'UTC.
+ */
+function jourDuCompte(canal: "meta" | "google", occurredAt: string, fuseau: string | null): string {
+  const d = new Date(occurredAt);
+  if (canal === "google" || isNaN(d.getTime())) return occurredAt.slice(0, 10);
+  return jourEtHeureDans(d, fuseau).jour;
+}
 
 /**
  * Les changements déclarés, du plus récent au plus ancien.
@@ -99,7 +120,7 @@ export async function getChangementsApi(depuis: string): Promise<ChangementApi[]
     lignes = await fetchAllRows<LigneChangement>(() =>
       supabase
         .from("platform_changes")
-        .select("channel, change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
+        .select("channel, change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau")
         .eq("user_id", uid)
         .gte("occurred_at", depuis)
         .order("occurred_at", { ascending: false })
@@ -125,11 +146,7 @@ export async function getChangementsApi(depuis: string): Promise<ChangementApi[]
       // identifiants séparément, rien ne garantit qu'ils ne se croisent pas.
       cle: `${canal}:${l.change_id}`,
       canal,
-      // `occurred_at` est stocké tel que la plateforme l'a écrit, dans le
-      // fuseau du compte publicitaire. On tronque au jour sans reconvertir :
-      // décaler vers UTC déplacerait une modification de fin de soirée au
-      // lendemain, et le fil la poserait sur le mauvais point de la courbe.
-      date: String(l.occurred_at).slice(0, 10),
+      date: jourDuCompte(canal, l.occurred_at, l.fuseau),
       campagne,
       categorie,
       phrase: l.resume.trim(),

@@ -1119,6 +1119,15 @@ ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_ch
     CHECK (categorie IN
         ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre'));
 
+-- `fuseau` (meta-ads, ticket 17) : le `timezone_name` du compte publicitaire,
+-- récolté avec chaque changement. Meta écrit `event_time` en UTC, alors que
+-- les jours des insights sont ceux du compte : sans lui, l'écran poserait la
+-- veille un geste fait à Zurich entre minuit et deux heures. NULL = pas encore
+-- récolté (lignes d'avant, Google) — l'écran découpe alors en UTC et le dit.
+-- Ajout seul, rien n'est réécrit ; le prochain passage du worker remplit les
+-- 180 jours qu'il relit.
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS fuseau text;
+
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);
 

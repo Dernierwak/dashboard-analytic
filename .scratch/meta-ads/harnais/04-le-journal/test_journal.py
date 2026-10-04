@@ -202,3 +202,57 @@ def test_un_changement_sans_campagne_n_envoie_pas_la_colonne():
     ])
     assert lots == [[{"change_id": "a", "campaign_id": "900", "campaign_name": "Soldes", "resume": "x"}],
                     [{"change_id": "b", "resume": "y"}]]
+
+
+# ── Le fuseau du compte voyage avec chaque changement (ticket 17) ────────────
+#
+# Meta écrit `event_time` en UTC ; les jours des insights sont ceux du compte.
+# Sans le fuseau, l'écran ne peut que découper en UTC et poser la veille un
+# geste fait entre minuit et deux heures à Zurich.
+
+def test_chaque_changement_porte_le_fuseau_du_compte():
+    lignes = lignes_activites([_acte("update_ad_set_budget")], {}, "Europe/Zurich")
+    assert [l["fuseau"] for l in lignes] == ["Europe/Zurich"]
+
+
+def test_un_fuseau_inconnu_n_envoie_pas_la_colonne():
+    # Un `fuseau: None` réécrirait à NULL, par upsert, le fuseau déjà acquis
+    # des 180 jours relus à chaque passage.
+    lignes = lignes_activites([_acte("update_ad_set_budget")], {}, None)
+    assert "fuseau" not in lignes[0]
+
+
+def test_l_horodatage_reste_tel_que_meta_l_ecrit():
+    # La conversion se fait à l'affichage : l'instant stocké reste juste.
+    ligne = lignes_activites([_acte("update_ad_set_budget")], {}, "Europe/Zurich")[0]
+    assert ligne["occurred_at"] == QUAND
+
+
+def test_le_fuseau_se_lit_avec_le_compte():
+    from saas.collecte.meta.fetch_meta_ads import compte_et_fuseau
+    assert compte_et_fuseau([{"id": "act_1", "timezone_name": "Europe/Zurich"}]) == ("act_1", "Europe/Zurich")
+    assert compte_et_fuseau([{"id": "act_1"}]) == ("act_1", None)
+    assert compte_et_fuseau([{"id": "act_1", "timezone_name": "  "}]) == ("act_1", None)
+    assert compte_et_fuseau([]) == (None, None)
+
+
+def test_l_upsert_ecrit_le_fuseau_et_ne_l_efface_jamais():
+    from saas.commun.insert_data import upsert_platform_changes
+
+    class Table:
+        def __init__(self, envois): self.envois = envois
+        def upsert(self, lot, on_conflict): self.envois.append(lot); return self
+        def execute(self): return None
+
+    class Base:
+        def __init__(self): self.envois = []
+        def table(self, _nom): return Table(self.envois)
+
+    base = Base()
+    upsert_platform_changes(base, "u", "meta", [
+        {"change_id": "a", "occurred_at": QUAND, "resume": "x", "campaign_id": "900", "fuseau": "Europe/Zurich"},
+        {"change_id": "b", "occurred_at": QUAND, "resume": "y"},
+    ])
+    envoyes = {r["change_id"]: r for lot in base.envois for r in lot}
+    assert envoyes["a"]["fuseau"] == "Europe/Zurich"
+    assert "fuseau" not in envoyes["b"]

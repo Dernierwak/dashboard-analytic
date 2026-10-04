@@ -16,7 +16,11 @@
 //
 // Pas de directive, comme `lecture.ts` (`CLAUDE.md` §8) ; l'import de
 // `./lecture` est un type seulement.
+//
+// LE JOUR EST CELUI DU COMPTE, pas celui de l'UTC (ticket 17) : c'est celui des
+// insights, donc celui du point de la courbe où l'effet apparaît.
 
+import { jourEtHeureDans } from "../fuseau";
 import type { Campagne, Periode } from "./lecture";
 
 /** Une ligne de `platform_changes`, telle que PostgREST la rend. */
@@ -27,14 +31,19 @@ export type LigneChangement = {
   campaign_id: string | number | null;
   campaign_name: string | null;
   resume: string | null;
+  /** Le `timezone_name` du compte, récolté avec le changement. */
+  fuseau: string | null;
 };
 
 export type ChangementMeta = {
   id: string;
-  /** YYYY-MM-DD, en UTC. */
+  /** YYYY-MM-DD, dans le fuseau du compte. */
   jour: string;
-  /** « 14:02 », en UTC. */
+  /** « 14:02 », dans le fuseau du compte. */
   heure: string;
+  /** `null` = fuseau inconnu : `jour` et `heure` sont alors en UTC, et
+   *  l'écran l'écrit. */
+  fuseau: string | null;
   nature: string;
   campagneId: string | null;
   campagneNom: string | null;
@@ -55,17 +64,12 @@ const NATURES: Record<string, string> = {
 };
 const NATURE_INCONNUE = "Réglage";
 
-const deux = (n: number) => String(n).padStart(2, "0");
-
 /**
  * Une ligne de base → un changement, ou `null` quand elle n'a ni date lisible
  * ni phrase.
  *
- * EN UTC, et c'est un choix par défaut, pas une vérité : `occurred_at` est un
- * `timestamptz`, PostgreSQL l'a ramené à l'instant UTC et le fuseau du compte
- * publicitaire n'est récolté nulle part. Un geste fait entre minuit et deux
- * heures à Zurich se pose donc sur la veille ; l'heure affichée le dit
- * (« UTC »), pour qu'on ne la lise pas comme une heure locale.
+ * Découpé dans le fuseau du compte. Une ligne récoltée avant le ticket 17, ou
+ * un fuseau illisible, retombe sur l'UTC — `fuseau: null` le signale.
  */
 export function changementDe(r: LigneChangement): ChangementMeta | null {
   const phrase = r.resume?.trim();
@@ -75,8 +79,7 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
   const campagneId = r.campaign_id === null || r.campaign_id === "" ? null : String(r.campaign_id);
   return {
     id: String(r.change_id ?? `${r.occurred_at}|${phrase}`),
-    jour: d.toISOString().slice(0, 10),
-    heure: `${deux(d.getUTCHours())}:${deux(d.getUTCMinutes())}`,
+    ...jourEtHeureDans(d, r.fuseau),
     nature: NATURES[String(r.categorie ?? "")] ?? NATURE_INCONNUE,
     campagneId,
     campagneNom: r.campaign_name?.trim() || null,
