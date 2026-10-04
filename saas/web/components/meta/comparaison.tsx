@@ -36,7 +36,10 @@ import { lienMeta, type Params } from "@/lib/meta/liens";
 // Grammaire : la liste porte le chiffre (la valeur de la métrique 1, en gras)
 // avant la barre ; les graphes viennent après.
 //
-// La cible « Lire » d'une annonce n'est PAS ici : ticket 12.
+// La ligne coche ; la LECTURE a sa propre cible, « Lire », posée à côté et
+// visible au repos (ticket 06 de la carte : « je vois où je peux appuyer »).
+// Deux liens frères, jamais l'un dans l'autre : un lien imbriqué est du HTML
+// invalide, et le clic irait au mauvais.
 
 export function Comparaison({
   comparaison: c,
@@ -179,6 +182,9 @@ function Liste({
         <span className="text-right sm:w-[84px]">{METRIQUES[m1].nom}</span>
         <span className="text-right sm:w-[76px]">{METRIQUES[m2].nom}</span>
       </span>
+      {/* La colonne de « Lire » : 52 px, moins l'écart de l'en-tête (12) qui
+          remplace celui de la ligne (4) — les valeurs restent alignées. */}
+      {c.niveau === "annonces" && <span className="w-[44px] shrink-0" />}
     </div>
   );
 
@@ -230,10 +236,9 @@ function Liste({
     // La cinquième case se REFUSE, visiblement : elle reste à sa place, son
     // cadre passe en rouge et une phrase dit quoi faire — aucune autre n'est
     // décochée pour elle (user story 33).
-    if (resultat === "refus") {
-      return (
+    const cocher =
+      resultat === "refus" ? (
         <button
-          key={e.cle}
           type="button"
           onClick={() => refuser(e.cle)}
           aria-label={etiquette}
@@ -242,19 +247,36 @@ function Liste({
         >
           {contenu}
         </button>
+      ) : (
+        <Link
+          href={lienMeta(params, { comparer: placesVersUrl(resultat) })}
+          scroll={false}
+          onClick={() => refuser(null)}
+          aria-label={etiquette}
+          className={`${classes} ${coche ? "bg-[#f6f7ff]" : "hover:bg-canvas"}`}
+        >
+          {contenu}
+        </Link>
       );
-    }
+    if (c.niveau === "groupes") return <div key={e.cle}>{cocher}</div>;
     return (
-      <Link
-        key={e.cle}
-        href={lienMeta(params, { comparer: placesVersUrl(resultat) })}
-        scroll={false}
-        onClick={() => refuser(null)}
-        aria-label={etiquette}
-        className={`${classes} ${coche ? "bg-[#f6f7ff]" : "hover:bg-canvas"}`}
-      >
-        {contenu}
-      </Link>
+      <div key={e.cle} className="flex min-w-0 items-center gap-1">
+        <div className="min-w-0 flex-1">{cocher}</div>
+        {/* Une annonce sans ID ne se lit pas : le panneau s'ouvre par l'ID,
+            jamais par le nom. La place reste, pour l'alignement. */}
+        {e.annonceId ? (
+          <Link
+            href={lienMeta(params, { annonce: e.annonceId, jour: null })}
+            scroll={false}
+            aria-label={`Lire l'annonce ${e.nom || "sans nom"}`}
+            className="flex h-8 w-[52px] shrink-0 items-center justify-center rounded-lg border border-[#dfe3fb] text-[12.5px] font-medium text-brand transition-colors hover:bg-[#eef2ff] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            Lire
+          </Link>
+        ) : (
+          <span className="w-[52px] shrink-0" title="Annonce sans identifiant Meta : son contenu ne se retrouve pas" />
+        )}
+      </div>
     );
   };
 

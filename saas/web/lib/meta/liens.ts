@@ -2,8 +2,8 @@
 //
 // L'état de la page vit dans l'URL (spec, § « L'état de la page vit dans
 // l'URL ») : vue, campagne (par ID), période, le niveau, les deux métriques
-// et les places cochées de la Comparaison, le jour ouvert (`jour`) — et
-// demain l'annonce lue. Un lien ÉNUMÈRE CE QU'IL CHANGE, JAMAIS CE QU'IL GARDE (`CLAUDE.md` §8) :
+// et les places cochées de la Comparaison, le jour ouvert (`jour`) et
+// l'annonce lue (`annonce`). Un lien ÉNUMÈRE CE QU'IL CHANGE, JAMAIS CE QU'IL GARDE (`CLAUDE.md` §8) :
 // il repart de tous les paramètres présents, y compris ceux qu'il ne connaît
 // pas, et n'en touche que le patch. C'est ce qui laisse les tickets suivants
 // ajouter leurs paramètres sans repasser sur chaque lien.

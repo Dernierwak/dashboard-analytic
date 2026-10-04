@@ -30,6 +30,7 @@ de la carte, rangés à part dans `../issues/`.
 06                 → 15 le code Meta mort de channel-dash (trouvé en chemin, à trier)
 04                 → 16 le journal dit « groupe d'annonces » (trouvé en chemin, à trier)
 11                 → 17 le jour d'un changement dans le fuseau du compte (trouvé en chemin, à trier)
+05 + 12            → 19 la vignette de la Comparaison accepte une URL Meta (trouvé en revue, à trier)
 ```
 
 Après 02, trois tickets peuvent avancer de front : **03**, **05** et **06**.

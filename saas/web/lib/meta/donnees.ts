@@ -3,8 +3,17 @@ import { getCompteActif } from "@/lib/account";
 import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
+import {
+  annonceDe,
+  annonceOuverteDe,
+  type AnnonceOuverte,
+  type ContenuAnnonce,
+  type LigneAsset,
+  type LigneCrea,
+} from "@/lib/meta/annonce";
 import { changementDe, type ChangementMeta, type LigneChangement } from "@/lib/meta/changements";
 import {
+  cleCampagne,
   contenuPage,
   decaler,
   lireToutesLesPages,
@@ -42,7 +51,58 @@ export type DonneesMeta = ContenuPage & {
    *  le journal n'a pas pu être lu : la page le dit, au lieu de montrer une
    *  courbe sans point qu'on lirait « rien n'a changé ». */
   journal: ChangementMeta[] | null;
+  /** L'annonce lue dans le Panneau latéral (ticket 12) ; `null` = aucune, ou
+   *  une annonce inconnue de la sélection, qui ne s'ouvre pas. */
+  annonce: AnnonceLue | null;
 };
+
+export type AnnonceLue = {
+  ouverte: AnnonceOuverte;
+  /** `absente` = la récolte des créas n'a pas (encore) lu cette annonce ;
+   *  `illisible` = la lecture a échoué. Le panneau dit lequel, au lieu de
+   *  montrer une annonce vide qu'on lirait « elle n'a pas de texte ». */
+  contenu: ContenuAnnonce | "absente" | "illisible";
+  /** Quand la récolte a lu la créa (`recolte_le`) : le contenu est celui de
+   *  ce jour-là, pas forcément celui que Meta diffuse maintenant. */
+  lueLe: string | null;
+};
+
+/**
+ * Le contenu d'une annonce : sa créa et ses assets, lus seulement quand le
+ * panneau s'ouvre. Rien n'y est paginé : une créa est une ligne, et ses
+ * assets sont plafonnés par Meta à quelques dizaines (10 images, 10 vidéos,
+ * 5 textes, 5 titres ; un carrousel de 2 à 5 cartes — sources citées au
+ * `000`, § 0bis), loin des 1 000 lignes où PostgREST tronque.
+ */
+async function lireAnnonce(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  ouverte: AnnonceOuverte
+): Promise<AnnonceLue> {
+  const [crea, assets] = await Promise.all([
+    supabase
+      .from("meta_ads_creatives")
+      .select("montage, titre, texte, description, lien_url, call_to_action, image_url, video_id, vignette_url, recolte_le")
+      .eq("user_id", uid)
+      .eq("ad_id", ouverte.id)
+      .maybeSingle(),
+    supabase
+      .from("meta_ads_creative_assets")
+      .select("provenance, asset_kind, rang, texte, image_url, video_id, vignette_url, lien_url")
+      .eq("user_id", uid)
+      .eq("ad_id", ouverte.id)
+      .order("rang", { ascending: true }),
+  ]);
+  if (crea.error || assets.error) return { ouverte, contenu: "illisible", lueLe: null };
+  if (!crea.data) return { ouverte, contenu: "absente", lueLe: null };
+  const ligne = crea.data as LigneCrea & { recolte_le: string | null };
+  const origine = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  return {
+    ouverte,
+    contenu: annonceDe(ligne, (assets.data ?? []) as LigneAsset[], origine),
+    lueLe: ligne.recolte_le,
+  };
+}
 
 /**
  * Le journal des changements Meta de la période, paginé (`CLAUDE.md` §8 : un
@@ -173,7 +233,8 @@ function phraseLecture(l: { etat: string; run_id: string } | null): string {
   return `Chiffres Meta au ${enFrancais(d)}${annee}, ${hh}:${mm} UTC`;
 }
 
-export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
+/** `annonce` : l'ID lu dans l'URL, à ouvrir dans le Panneau latéral. */
+export async function getDonneesMeta(c: Commandes, annonce?: string): Promise<DonneesMeta> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
@@ -211,6 +272,11 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
   const contenu = contenuPage(lignes, c, ctx);
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const annonces = contenu.comparaison.elements.flatMap((e) => (e.annonceId ? [e.annonceId] : []));
+  const ouverte = annonceOuverteDe(annonce, lignes, {
+    debut: p.debut,
+    fin: p.fin,
+    campagne: (l) => !c.campagne || cleCampagne(l) === c.campagne,
+  });
   return {
     ...contenu,
     lecture: phraseLecture(ligneProgres),
@@ -218,5 +284,6 @@ export async function getDonneesMeta(c: Commandes): Promise<DonneesMeta> {
     vignettes: await lireVignettes(supabase, uid, annonces),
     tableau: tableauDe(lignes, c, ctx),
     journal,
+    annonce: ouverte && (await lireAnnonce(supabase, uid, ouverte)),
   };
 }
