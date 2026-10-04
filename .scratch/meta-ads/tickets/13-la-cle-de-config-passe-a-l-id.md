@@ -18,7 +18,7 @@ départ : ticket 07 de la carte.
 - [x] Le nom réel de la contrainte est lu sur la base avant d'écrire le SQL final
 - [x] Vérifié sur un PostgreSQL jetable : refus quand une ligne n'a pas d'ID,
       passage quand toutes en ont
-- [ ] `tsc --noEmit`, `npm run build` et `py_compile` verts
+- [x] `tsc --noEmit`, `npm run build` et `py_compile` verts
 - [ ] David a joué le SQL ; le contrôle est recopié ici
 
 ## Comment
@@ -79,9 +79,12 @@ Ce qui a changé :
 - Revue en deux axes. Retenus : repli rendu visible au journal, renommages,
   tickets 19 (la frise lit par nom) et 20 (retrait du repli).
 
-**Pas vérifié** : le build `saas/web` n'est pas concerné (aucun fichier web
-touché) ; voir le commit pour `tsc`/`build`. Rien n'a tourné sur la vraie base
-en écriture.
+- `tsc --noEmit` et `npm run build` verts, **19 routes** (prototype compris),
+  sur une copie exacte du commit (`git archive`) — la worktree portait en même
+  temps le travail non commité du ticket 12.
+
+**Pas vérifié** : rien n'a tourné en écriture sur la vraie base, ni le worker
+sur ce code.
 
 **Pour David, dans l'ordre** :
 1. Merger dans `main` (le code marche avant ET après la `997`).
