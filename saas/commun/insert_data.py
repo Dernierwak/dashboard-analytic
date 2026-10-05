@@ -1,5 +1,5 @@
 from supabase import Client
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 
 def insert_instagram_org(supabase: Client, results):
@@ -335,6 +335,44 @@ def upsert_platform_changes(
                 "supabase/migrations/platform_changes.sql"
             ) from e
         raise
+
+
+# ── Les créas Meta — meta_ads_creatives et meta_ads_creative_assets ──────────
+
+# Les ad_id voyagent dans l'URL du filtre `in.(…)` : un lot borné la garde
+# courte, comme `_HASHES_PAR_APPEL` côté Meta.
+_ANNONCES_PAR_EFFACEMENT = 100
+
+
+def remplacer_creas(
+    supabase: Client, user_id: str, creas: list[dict], assets: list[dict],
+) -> None:
+    """Écrit les créas relues, et REMPLACE les assets de chaque annonce relue.
+
+    La clé des assets est `(annonce, provenance, nature, rang)` : un upsert ne
+    retire rien. Une annonce passée de 5 textes à 3, ou du carrousel à
+    `asset_feed`, garderait ses anciennes lignes, et le Panneau montrerait des
+    textes que Meta ne diffuse plus (ticket 05, commentaire du 2026-10-03).
+    On efface donc les assets de `(user_id, ad_id)` pour CHAQUE annonce relue
+    — y compris celles qui n'en ont plus aucun — puis on insère. Le DELETE
+    est borné aux annonces de ce passage : une annonce que Meta n'a pas
+    rendue garde ses lignes.
+
+    `creas` et `assets` : la sortie de `lignes_creas`.
+    """
+    if not creas:
+        return
+    maintenant = datetime.now(timezone.utc).isoformat()
+    supabase.table("meta_ads_creatives").upsert(
+        [{**c, "recolte_le": maintenant} for c in creas], on_conflict="user_id,ad_id"
+    ).execute()
+    ad_ids = [c["ad_id"] for c in creas]
+    for i in range(0, len(ad_ids), _ANNONCES_PAR_EFFACEMENT):
+        (supabase.table("meta_ads_creative_assets").delete()
+         .eq("user_id", user_id).in_("ad_id", ad_ids[i:i + _ANNONCES_PAR_EFFACEMENT])
+         .execute())
+    if assets:
+        supabase.table("meta_ads_creative_assets").insert(assets).execute()
 
 
 # ── Google Ads — helpers ──────────────────────────────────────────────────────

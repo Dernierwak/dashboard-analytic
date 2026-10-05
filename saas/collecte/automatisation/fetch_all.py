@@ -35,8 +35,10 @@ from saas.commun.app_secrets import secret                                    # 
 from saas.commun.fetch_data import (                                          # noqa: E402
     fetch_meta_ads_latest_date, fetch_google_ads_latest_date,
     fetch_google_ads_ad_insights_latest_date, fetch_meta_hierarchie,
+    fetch_images_creas_stockees,
 )
 from saas.commun.insert_data import (                                         # noqa: E402
+    remplacer_creas,
     upsert_meta_ads, upsert_campaign_statuses,
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     insert_instagram_org, upsert_platform_budgets, upsert_platform_changes,
@@ -49,11 +51,17 @@ from saas.collecte.google.fetch_google_ads import (                             
 )
 from saas.collecte.meta.fetch_meta_ads import (                                   # noqa: E402
     fetch_campaign_budgets as meta_budgets,
+    BUCKET_CREAS,
     compte_et_fuseau,
     fetch_activities as meta_changes,
+    fetch_annonces_creas,
+    fetch_urls_images,
+    hashes_des_creas,
     hierarchie_depuis_insights,
     lignes_config_meta,
+    lignes_creas,
     lignes_meta_ads,
+    televerser_image,
 )
 from saas.collecte.automatisation.suivi import Suivi, CANAUX                                # noqa: E402
 
@@ -517,6 +525,40 @@ def _journal_changements(sb, uid, canal: str, recolte) -> None:
         print(f"    changements {canal} KO : {_sans_jeton(str(e))}")
 
 
+def _creas_meta(sb, uid, token, ad_account_id) -> None:
+    """Le contenu de chaque annonce et ses visuels. Best-effort, JAMAIS
+    bloquant — même raison que `_photo_budget` : le Panneau se passe d'un
+    texte, pas le rapport d'une semaine d'insights.
+
+    Une image n'est téléchargée et envoyée que si son hash n'est pas déjà dans
+    le bucket : c'est le poste cher de la récolte (`.scratch/meta-ads/map.md`,
+    « Les quotas de l'API Meta »), et une image ne change pas sous son hash.
+    """
+    try:
+        annonces, err = fetch_annonces_creas(token, ad_account_id)
+        if err:
+            print(f"    créas meta : liste incomplète, {len(annonces)} annonce(s) "
+                  f"relue(s) : {_sans_jeton(err)}")
+        stockees = fetch_images_creas_stockees(sb, uid, BUCKET_CREAS)
+        manquants = sorted(hashes_des_creas(annonces) - set(stockees))
+        urls = fetch_urls_images(token, ad_account_id, manquants)
+        for image_hash, url in urls.items():
+            public = televerser_image(sb, uid, image_hash, url)
+            if public:
+                stockees[image_hash] = public
+        creas, assets, sans_id = lignes_creas(uid, annonces, stockees)
+        remplacer_creas(sb, uid, creas, assets)
+        sans_visuel = sum(1 for h in manquants if h not in stockees)
+        # Le décompte se dit à chaque passage : un visuel absent de l'écran se
+        # lit ici comme « pas encore téléversé », pas comme un oubli.
+        print(f"    créas meta : {len(creas)} annonce(s), {len(assets)} asset(s), "
+              f"{len(manquants) - sans_visuel} image(s) téléversée(s), "
+              f"{sans_visuel} restée(s) sans visuel"
+              + (f", {sans_id} annonce(s) sans id ignorée(s)" if sans_id else ""))
+    except Exception as e:
+        print(f"    créas meta KO : {_sans_jeton(str(e))}")
+
+
 def _hierarchie_meta(sb, uid) -> dict:
     """Ensemble ou annonce → campagne, lu dans meta_ads_insights.
 
@@ -832,6 +874,10 @@ def _fetch_meta(sb, uid, token, note=_rien, since_forcee: date | None = None) ->
         token, ad_account_id,
         (today - timedelta(days=_CHANGES_JOURS_META)).isoformat(), today.isoformat(),
         parents=_hierarchie_meta(sb, uid), fuseau=fuseau))
+    note("créas")
+    # Avant le garde-fou des insights, comme les budgets : les créas ne
+    # touchent pas meta_ads_insights et n'ont pas à attendre ses colonnes.
+    _creas_meta(sb, uid, token, ad_account_id)
     note("insights")
     # LE GARDE-FOU SE POSE AVANT LA PREMIÈRE REQUÊTE D'INSIGHTS, pas juste
     # avant l'écriture : sans ses colonnes, ces appels ne servent à rien et

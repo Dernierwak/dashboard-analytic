@@ -72,6 +72,27 @@ def fetch_meta_hierarchie(supabase: Client, user_id: str) -> list[dict]:
     )
 
 
+def fetch_images_creas_stockees(supabase: Client, user_id: str, bucket: str) -> dict[str, str]:
+    """`image_hash` → URL publique, pour chaque visuel d'annonce déjà en stockage.
+
+    Lu dans le BUCKET et pas dans les tables : c'est le fichier qui doit
+    exister, pas une ligne qui dit qu'il existe. Paginé comme `_all_pages` —
+    la liste de Storage s'arrête aussi en silence à sa limite.
+    """
+    dossier = supabase.storage.from_(bucket)
+    stockees: dict[str, str] = {}
+    page, debut = 1000, 0
+    while True:
+        lot = dossier.list(user_id, {"limit": page, "offset": debut}) or []
+        for fichier in lot:
+            nom = fichier.get("name")
+            if nom:
+                stockees[nom] = dossier.get_public_url(f"{user_id}/{nom}")
+        if len(lot) < page:
+            return stockees
+        debut += page
+
+
 # ── Tab Coût — budgets ─────────────────────────────────────────────────────────
 
 def fetch_channel_budgets(supabase: Client, user_id: str) -> list[dict]:

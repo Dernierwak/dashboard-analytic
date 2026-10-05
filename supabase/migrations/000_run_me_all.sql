@@ -425,7 +425,7 @@ CREATE TABLE IF NOT EXISTS public.meta_ads_creatives (
     -- C'est elle qui évite de téléverser deux fois la même image.
     image_hash     text,
     -- L'URL de l'image dans Supabase Storage, pas celle de Meta : les URL de
-    -- Meta expirent. Bucket public ou privé : décision ouverte au ticket 05.
+    -- Meta expirent. Bucket public `ad-creatives`, créé plus bas.
     image_url      text,
     video_id       text,
     vignette_url   text,
@@ -518,6 +518,19 @@ CREATE POLICY "meta_ads_creative_assets_update_own" ON public.meta_ads_creative_
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "meta_ads_creative_assets_delete_own" ON public.meta_ads_creative_assets
     FOR DELETE USING (auth.uid() = user_id);
+
+-- ── Le bucket des visuels d'annonces ────────────────────────────────────────
+-- PUBLIC, comme `post-images` d'Instagram : décision de David au ticket 05
+-- (2026-10-05). Ces visuels sont déjà diffusés publiquement par Meta ; le prix
+-- accepté est qu'une annonce en pause ou jamais diffusée devient lisible par
+-- qui connaît son URL (`<user_id>/<image_hash>`, pas devinable). Aucune
+-- politique d'écriture : seule la récolte écrit, avec la clé de service, qui
+-- passe outre la RLS de storage.objects.
+-- DO NOTHING et pas DO UPDATE : rejouer ce fichier ne repasse jamais en public
+-- un bucket qu'on aurait rendu privé à la main.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('ad-creatives', 'ad-creatives', true)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================================
