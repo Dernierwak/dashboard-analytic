@@ -1,25 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveOnboarding, saveSiteClient } from "@/app/actions";
+import { saveOnboarding } from "@/app/actions";
 
-// Onboarding express — 5 questions au clic, puis une adresse, 30 secondes.
-// Le profil calibre la mission, les repères des conseils et le persona IA.
+// Onboarding express — 5 questions au clic, 30 secondes. La dernière réponse
+// enregistre le profil : aucun bouton « Terminer » à chercher.
 //
-// POURQUOI LE SITE ARRIVE EN DERNIER
-// C'est la seule question qui réclame un clavier. Placée en tête, elle
-// remplacerait « une réponse en un clic » par « un champ vide et un clavier qui
-// monte » au moment précis où personne n'est encore engagé — le pire endroit du
-// parcours pour demander un effort. Placée en fin, elle profite des cinq clics
-// déjà donnés, et le prix d'un refus y est nul : la barre est à 6/6, l'écran
-// suivant est le rapport, et « Je n'ai pas de site » termine aussi bien que
-// « Terminer ». Elle gagne en plus le contexte des réponses précédentes —
-// après avoir dit « e-commerce » et « plus de ventes », donner son domaine est
-// la suite évidente, pas une question de plus.
-//
-// ELLE NE BLOQUE JAMAIS. Le bouton qui passe reste actif même quand le champ
-// contient une adresse refusée : une saisie invalide ne doit pas pouvoir
-// retenir quelqu'un dans un parcours dont ce champ n'est même pas l'objet.
+// Le site du client, qui fermait le parcours, est parti le 2026-10-05
+// (`.scratch/meta-ads/tickets/34-…`) : il ne servait qu'aux conseils, et Pulse
+// n'en donne plus.
 const STEPS: { key: string; question: string; options: { value: string; label: string; sub?: string }[] }[] = [
   {
     key: "objectif",
@@ -71,90 +60,49 @@ const STEPS: { key: string; question: string; options: { value: string; label: s
   },
 ];
 
-// Le site occupe une étape de plus que les questions au clic.
-const TOTAL = STEPS.length + 1;
-
-// DEUX ERREURS QUI NE SE RESSEMBLENT PAS.
-//
-// `champ: true`  — l'adresse est refusée. Elle se dit SUR le champ (bordure
-//                  rouge, `aria-invalid`), parce que c'est le champ qu'il faut
-//                  corriger.
-// `champ: false` — l'enregistrement du PROFIL a échoué. Le champ n'y est pour
-//                  rien : le colorer accuserait la seule chose que la personne
-//                  ne doit pas toucher. Elle se dit dans un encadré à part, qui
-//                  porte en plus la seule information qui compte à cet
-//                  instant — les réponses sont toujours là, il suffit de
-//                  recliquer.
-type Souci = { texte: string; champ: boolean };
-
 export function OnboardingCard() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [site, setSite] = useState("");
-  const [erreur, setErreur] = useState<Souci | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const surLeSite = step === STEPS.length;
   const current = STEPS[step];
+  const derniere = step === STEPS.length - 1;
 
-  const pick = (value: string) => {
-    setAnswers({ ...answers, [current.key]: value });
-    setStep(step + 1); // rien n'est écrit avant la dernière étape
-  };
-
-  // Termine le parcours. `adresse` vide = on n'appelle même pas l'action du
-  // site : le profil part seul, et rien ne peut échouer sur un champ facultatif.
-  //
-  // RIEN N'EST JAMAIS PERDU ICI. Les six réponses vivent dans l'état de ce
+  // RIEN N'EST JAMAIS PERDU ICI. Les réponses vivent dans l'état de ce
   // composant, et un échec ne le démonte pas : il pose une phrase et rend la
-  // main. Recliquer « Terminer » rejoue exactement le même envoi — les deux
-  // actions sont des `update`, les rejouer ne crée rien en double.
-  const terminer = (adresse: string) => {
+  // main. Recliquer rejoue exactement le même envoi — `saveOnboarding` est un
+  // `update`, le rejouer ne crée rien en double.
+  const terminer = (reponses: Record<string, string>) => {
     setErreur(null);
     startTransition(async () => {
       try {
-        if (adresse.trim()) {
-          // Le site D'ABORD : s'il est refusé, le profil n'est pas encore écrit,
-          // la personne reste sur l'étape et peut corriger — ou passer.
-          const r = await saveSiteClient(adresse);
-          if (!r.ok) {
-            setErreur({
-              texte: r.message ?? "Cette adresse n'a pas été acceptée.",
-              // Une session expirée n'est pas un défaut de l'adresse : elle ne
-              // colore pas le champ, sinon on envoie corriger ce qui est juste.
-              champ: r.message !== "Ta session a expiré — reconnecte-toi.",
-            });
-            return;
-          }
-        }
         // `saveOnboarding` révalide « / » : quand elle passe, la carte
         // disparaît, on est arrivé. Quand elle refuse, elle le DIT — sans ce
         // retour lu, un refus (lecture seule, session expirée) laissait la
         // personne croire son profil enregistré.
-        const p = await saveOnboarding(answers as {
+        const p = await saveOnboarding(reponses as {
           objectif: string;
           business_type: string;
           budget_range: string;
           time_budget: string;
           frustration: string;
         });
-        if (!p.ok) {
-          setErreur({
-            texte: p.message ?? "Tes réponses n'ont pas pu être enregistrées.",
-            champ: false,
-          });
-        }
+        if (!p.ok) setErreur(p.message ?? "Tes réponses n'ont pas pu être enregistrées.");
       } catch {
         // Une action serveur peut encore rejeter sans passer par `ok`
         // (réseau coupé, déploiement en cours). Même traitement : une phrase,
         // et la carte reste debout avec ses réponses.
-        setErreur({
-          texte:
-            "L'enregistrement n'est pas passé — vérifie ta connexion. Rien n'est perdu.",
-          champ: false,
-        });
+        setErreur("L'enregistrement n'est pas passé — vérifie ta connexion. Rien n'est perdu.");
       }
     });
+  };
+
+  const pick = (value: string) => {
+    const suivantes = { ...answers, [current.key]: value };
+    setAnswers(suivantes);
+    if (derniere) terminer(suivantes); // rien n'est écrit avant la dernière réponse
+    else setStep(step + 1);
   };
 
   return (
@@ -164,113 +112,51 @@ export function OnboardingCard() {
           Bienvenue — 30 secondes pour calibrer tes conseils
         </span>
         <span className="font-mono text-[11px] text-faint shrink-0">
-          {step + 1} / {TOTAL}
+          {step + 1} / {STEPS.length}
         </span>
       </div>
       {/* Progression */}
       <div className="flex gap-1.5 mb-5">
-        {Array.from({ length: TOTAL }, (_, i) => (
+        {STEPS.map((s, i) => (
           <div
-            key={i}
+            key={s.key}
             className={`h-1 flex-1 rounded-full ${i <= step ? "bg-brand" : "bg-black/[0.06]"}`}
           />
         ))}
       </div>
 
-      {surLeSite ? (
-        <>
-          <h2 className="font-serif text-[22px] text-ink leading-tight mb-2">
-            Ton site, si tu en as un ?
-          </h2>
-          <p className="text-[13px] text-muted leading-relaxed mb-4">
-            Le domaine suffit. Il nous dit <span className="font-semibold text-ink">ce que tu
-            vends et où ta pub atterrit</span> — c&apos;est ce qui sépare un conseil qui parle
-            de tes produits d&apos;un conseil qui parle de chiffres. Pas de site, ou pas
-            envie maintenant ? On continue sans, tu pourras l&apos;ajouter plus tard.
-          </p>
-          <input
-            type="url"
-            inputMode="url"
-            autoComplete="url"
-            autoCapitalize="none"
-            spellCheck={false}
+      <h2 className="font-serif text-[22px] text-ink leading-tight mb-4">{current.question}</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {current.options.map((o) => (
+          <button
+            key={o.value}
             disabled={pending}
-            value={site}
-            onChange={(e) => {
-              setSite(e.target.value);
-              if (erreur) setErreur(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !pending) terminer(site);
-            }}
-            placeholder="boutique-du-velo.ch"
-            aria-label="Adresse de ton site"
-            aria-invalid={Boolean(erreur?.champ)}
-            className={`w-full text-[14px] text-ink rounded-xl border px-4 py-3 outline-none transition-colors placeholder:text-faint disabled:opacity-50 ${
-              erreur?.champ ? "border-red-400 focus:border-red-500" : "border-line focus:border-brand"
-            }`}
-          />
-          {erreur?.champ && (
-            <p role="alert" className="mt-2 text-[12px] text-red-600 leading-relaxed">
-              {erreur.texte}
-            </p>
-          )}
-          {/* L'échec du PROFIL — encadré à part, et il commence par ce qui
-              rassure : les réponses n'ont pas bougé. Sans cette phrase, la
-              seule conclusion raisonnable est « j'ai tout perdu ». */}
-          {erreur && !erreur.champ && (
-            <div
-              role="alert"
-              className="mt-3 rounded-xl border border-neg/25 bg-neg/[0.04] px-4 py-3"
-            >
-              <div className="text-[10px] uppercase tracking-widest text-neg font-bold mb-1">
-                Rien n&apos;a été enregistré
-              </div>
-              <p className="text-[12.5px] text-ink leading-relaxed">
-                {erreur.texte}{" "}
-                <span className="font-semibold">
-                  Tes {STEPS.length} réponses sont toujours là
-                </span>{" "}
-                — reclique sur Terminer, il n&apos;y a rien à retaper.
-              </p>
-            </div>
-          )}
-          <div className="flex items-center gap-3 flex-wrap mt-4">
-            <button
-              disabled={pending}
-              onClick={() => terminer(site)}
-              className="text-[12.5px] font-semibold text-white bg-brand rounded-full px-5 py-2.5 hover:bg-brand/90 disabled:opacity-40"
-            >
-              Terminer
-            </button>
-            {/* Toujours actif, même sur une adresse refusée : un champ
-                facultatif n'a pas le droit de retenir qui que ce soit. */}
-            <button
-              disabled={pending}
-              onClick={() => terminer("")}
-              className="text-[12px] text-faint hover:text-muted px-2 py-2 disabled:opacity-40"
-            >
-              Je n&apos;ai pas de site
-            </button>
+            onClick={() => pick(o.value)}
+            className="text-left border border-line rounded-xl px-4 py-3 hover:border-brand hover:bg-brand/[0.03] transition-colors disabled:opacity-50"
+          >
+            <div className="text-[13.5px] font-semibold text-ink">{o.label}</div>
+            {o.sub && <div className="text-[11.5px] text-faint mt-0.5">{o.sub}</div>}
+          </button>
+        ))}
+      </div>
+      {/* Il commence par ce qui rassure : les réponses n'ont pas bougé. Sans
+          cette phrase, la seule conclusion raisonnable est « j'ai tout perdu ». */}
+      {erreur && (
+        <div
+          role="alert"
+          className="mt-3 rounded-xl border border-neg/25 bg-neg/[0.04] px-4 py-3"
+        >
+          <div className="text-[10px] uppercase tracking-widest text-neg font-bold mb-1">
+            Rien n&apos;a été enregistré
           </div>
-        </>
-      ) : (
-        <>
-          <h2 className="font-serif text-[22px] text-ink leading-tight mb-4">{current.question}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {current.options.map((o) => (
-              <button
-                key={o.value}
-                disabled={pending}
-                onClick={() => pick(o.value)}
-                className="text-left border border-line rounded-xl px-4 py-3 hover:border-brand hover:bg-brand/[0.03] transition-colors disabled:opacity-50"
-              >
-                <div className="text-[13.5px] font-semibold text-ink">{o.label}</div>
-                {o.sub && <div className="text-[11.5px] text-faint mt-0.5">{o.sub}</div>}
-              </button>
-            ))}
-          </div>
-        </>
+          <p className="text-[12.5px] text-ink leading-relaxed">
+            {erreur}{" "}
+            <span className="font-semibold">
+              Tes {STEPS.length} réponses sont toujours là
+            </span>{" "}
+            — reclique sur ta dernière réponse, il n&apos;y a rien à refaire.
+          </p>
+        </div>
       )}
       {step > 0 && (
         <button

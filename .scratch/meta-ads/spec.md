@@ -409,7 +409,7 @@ d'en supposer un (`CLAUDE.md` §9), et le dit.
   type d'action qui compte comme conversion** (`BACKLOG.md`).
 - **Le filtre par statut** du Bandeau actuel : le prototype validé ne le porte pas.
 - **Le thème et le label**, sous aucune forme.
-- **Les réparations du `/meta` actuel** (`.scratch/corrections/` 01 à 03) : elles
+- **Les réparations du `/meta` actuel** (tickets `30` à `32`, anciennement `.scratch/corrections/` 01 à 03) : elles
   meurent avec la page remplacée, mais leurs pièges — `link_click` absent compté
   zéro, portée additionnée, troncature à 1 000 lignes — sont des cas de test de la
   nouvelle.

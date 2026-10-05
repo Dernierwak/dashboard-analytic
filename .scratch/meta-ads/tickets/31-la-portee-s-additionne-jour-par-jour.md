@@ -1,9 +1,10 @@
 # La portée s'additionne jour par jour, et compte deux fois la même personne
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Venu de : la carte `.scratch/meta-ads/` — rangé ici le 2026-10-01 : c'est une réparation, pas une décision.
+Rangé dans `meta-ads/tickets/` le 2026-10-05 (depuis `.scratch/corrections/`, supprimé).
 
 ## Question
 
@@ -43,3 +44,11 @@ fréquence ne s'affichent plus** sur le dashboard Meta, tant que la récolte ne
 les donne pas au bon niveau (David : « on a meilleur temps de ne pas la
 prendre »). Le correctif de `/meta` est donc de les **retirer**, pas de les
 afficher à « — ». Le pourquoi et les voies pour plus tard sont au `BACKLOG.md`.
+
+## Answer
+
+Sans objet depuis la page `/meta` neuve (PR #5, mergée le 2026-10-04) : elle
+ne lit plus la portée du tout — `COLONNES` de `saas/web/lib/meta/donnees.ts`
+ne contient pas `reach`, et `git grep reach` ne trouve rien sous `lib/meta/`
+ni `app/meta/`. La somme fautive de `lib/channels.ts` est partie avec
+l'ancienne page. Conforme au choix du ticket 07 (portée et fréquence retirées).

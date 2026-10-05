@@ -140,10 +140,14 @@ def fetch_campaign_budgets(token: str, ad_account_id: str) -> tuple[list[dict], 
 
 # ── Les insights (/insights, niveau `ad`) → lignes de meta_ads_insights ──────
 
-def _link_clicks(actions) -> int:
-    # Le `else 0` fabrique un zéro quand Meta omet `link_click` : défaut connu,
-    # ticket `.scratch/corrections/issues/01`, pas corrigé ici.
-    lc = next((it for it in actions or [] if it.get("action_type") == "link_click"), None)
+def _link_clicks(actions) -> int | None:
+    # Deux absences à ne pas confondre (`.scratch/meta-ads/tickets/30-…`) :
+    # Meta omet de `actions` les types d'action à zéro — `actions` présent sans
+    # `link_click` est donc un vrai 0 ; `actions` absent de la réponse, on ne
+    # sait pas, et la colonne nullable reçoit NULL plutôt qu'un 0 inventé.
+    if actions is None:
+        return None
+    lc = next((it for it in actions if it.get("action_type") == "link_click"), None)
     return int(lc.get("value", 0)) if lc else 0
 
 

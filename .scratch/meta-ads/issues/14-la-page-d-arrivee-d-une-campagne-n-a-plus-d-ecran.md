@@ -91,7 +91,7 @@ Elle emporte désormais `landing_url` avec le thème ; la relire avant.
 situation : il n'est relu que pour être réaffiché sur `/comptes`, et sa seule
 raison d'être écrite était les conseils. Pas tranché ici — il a encore un
 écran et ce n'est pas la question posée. Rangé en
-[`.scratch/corrections/issues/06-le-site-du-client-ne-sert-plus-a-rien.md`](../../corrections/issues/06-le-site-du-client-ne-sert-plus-a-rien.md).
+[`tickets/34-le-site-du-client-ne-sert-plus-a-rien.md`](../tickets/34-le-site-du-client-ne-sert-plus-a-rien.md).
 
 **2026-10-03 — le code de ce ticket est perdu, la décision non.** Le dossier
 de travail a été supprimé avant le commit. Tickets, réponse, `BACKLOG.md` et

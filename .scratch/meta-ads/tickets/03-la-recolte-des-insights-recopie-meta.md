@@ -42,7 +42,7 @@ Ce qui a changé :
   que Meta les rend (absent → `None`, liste vide → `[]`), dédoublonne sur
   `(date_start, ad_id)` et compte les lignes sans `ad_id`. Le calcul de
   `link_clicks` y a déménagé depuis `fetch_all`, **sans changement** : son
-  `else 0` est le défaut déjà ouvert en `.scratch/corrections/issues/01`.
+  `else 0` est le défaut déjà ouvert en ticket `30` (résolu).
 - `saas/commun/insert_data.py` : `upsert_meta_ads` ne fait plus qu'écrire des
   lignes déjà formées (la revue a relevé que la lecture du JSON Meta n'avait
   rien à faire dans `commun/`, qui « lit et écrit, point »).

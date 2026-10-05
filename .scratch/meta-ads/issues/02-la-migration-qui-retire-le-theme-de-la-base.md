@@ -72,7 +72,7 @@ la colonne n'a jamais existé, les deux listes vivent dans `profiles` (créées
 par `meta_campaign_config.sql` et `google_ads.sql`), et c'est là que la `998`
 les supprime. Le commentaire de `conversion_categories.sql` renvoyait vers
 deux fichiers supprimés : réécrit. `docs/mesures-impossibles.md` décrit encore
-le thème comme vivant : rangé en `.scratch/corrections/issues/05-…`.
+le thème comme vivant : rangé en `.scratch/corrections/issues/05-…`, aujourd'hui `tickets/33` (résolu).
 
 **Ce qui bloque la résolution — deux points que le dépôt ne prouve pas :**
 1. La `998` dit « AUCUNE ARCHIVE, décision de David le 2026-09-30 : “Rien, on

@@ -1,9 +1,10 @@
 # Un `link_click` absent devient zéro en production
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Venu de : la carte `.scratch/meta-ads/` — rangé ici le 2026-10-01 : c'est une réparation, pas une décision.
+Rangé dans `meta-ads/tickets/` le 2026-10-05 (depuis `.scratch/corrections/`, supprimé).
 
 ## Question
 
@@ -44,3 +45,22 @@ les conversions arrivent par ce même chemin de code. Le corriger avant d'ajoute
 franchement — **ça ne se voit qu'après un passage du worker** (cron du Jour de
 travail à 07:00 UTC, ou lancement à la main depuis l'onglet GitHub Actions,
 `weekly-fetch.yml`, en `report_only` + `force`). Rien ne se vérifie en cliquant.
+
+## Answer
+
+Corrigé le 2026-10-05 dans `_link_clicks` (`saas/collecte/meta/fetch_meta_ads.py`,
+où le calcul a déménagé au ticket 03) : `actions` absent → `None` (la colonne
+est nullable), `actions` présent sans `link_click` → `0`, sinon la valeur.
+`fetch_all.py` demande bien `actions` à Meta.
+
+Côté web, **aucun lecteur** de `link_clicks` (`git grep` : seule une mention
+dans un commentaire de `lib/meta/lecture.ts`, qui lit `clicks`) — le `NULL` ne
+peut donc pas devenir « 0 » à l'écran.
+
+Vérifié : `python3.12 -m py_compile` vert ; la fonction appelée sur les quatre
+cas (`None`, `[]`, `actions` sans `link_click`, `link_click` = 7) rend
+`None`, `0`, `0`, `7`. **Visible en base seulement après un passage du
+worker** — le cron du Jour de travail, ou l'onglet GitHub Actions
+(`weekly-fetch.yml`, récolte complète : `report_only` ne relit pas Meta). Les
+lignes déjà écrites gardent leur `0` jusqu'à leur ré-écriture par la fenêtre
+de recouvrement.

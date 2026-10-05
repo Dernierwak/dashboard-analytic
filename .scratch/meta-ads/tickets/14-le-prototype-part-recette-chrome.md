@@ -17,7 +17,7 @@ vrai ».
       panneau d'une annonce ; un lien partagé qui rouvre le même état
 - [ ] Les chiffres d'un jour de plus de 28 jours sont comparés à Ads Manager, et
       l'écart (ou son absence) est écrit ici
-- [ ] Les tickets `.scratch/corrections/` 01, 02 et 03, qui réparaient la page
+- [x] Les tickets `.scratch/corrections/` 01, 02 et 03, qui réparaient la page
       remplacée, sont fermés en renvoyant ici
 - [x] `CLAUDE.md` §9 ne parle plus de 19 routes ni du prototype
 
@@ -65,3 +65,9 @@ déploiement Vercel de production vert. Le reste est bloqué, sans contournement
   05 (récolte des créas) n'est pas construit — et le 05 attend la décision
   de David : bucket public ou privé.
 - **997** (ticket 13) : à jouer par David après le passage du worker.
+
+**2026-10-05 — `.scratch/corrections/` tranché par David** : supprimé, ses
+tickets ouverts rangés ici en `30` à `34` et fermés (« on fait et on close »).
+01 → `30` (corrigé dans la récolte), 02 → `31` et 03 → `32` (réglés par la page
+neuve ; `32` corrige en plus `/google` et `/instagram`). Leur fermeture ne
+dépend plus de la recette Chrome, qui reste à faire pour les autres cases.

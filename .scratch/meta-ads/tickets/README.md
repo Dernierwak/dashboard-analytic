@@ -38,6 +38,7 @@ de la carte, rangés à part dans `../issues/`.
 04                 → 16 le journal dit « groupe d'annonces » (trouvé en chemin, à trier)
 11                 → 17 le jour d'un changement dans le fuseau du compte (trouvé en chemin, à trier)
 05 + 12            → 19 la vignette de la Comparaison accepte une URL Meta (trouvé en revue, à trier)
+—                  → 30 à 34 les réparations de l'ex-`.scratch/corrections/` (résolus)
 ```
 
 Après 02, trois tickets peuvent avancer de front : **03**, **05** et **06**.

@@ -23,7 +23,7 @@ dashboard lui-même s'arrête à la spec.
 
 **Cette carte ne porte que des décisions** (et les deux exécutions ci-dessus).
 Une réparation trouvée en chemin — un bug du `/meta` actuel, un test à
-reprendre — part dans `.scratch/corrections/`, pas ici. Quatre tickets y ont
+reprendre — part dans `.scratch/corrections/`, pas ici (supprimé le 2026-10-05 : ses tickets ouverts sont `tickets/30` à `34`). Quatre tickets y ont
 été rangés le 2026-10-01 : `link_click` absent compté zéro, portée additionnée
 jour par jour, `/meta` tronqué à 1 000 lignes, harnais 18/20/47 à reprendre.
 

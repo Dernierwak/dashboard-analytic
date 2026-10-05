@@ -13,76 +13,20 @@ document se disait vérifié. Un numéro de ligne se périme à chaque commit sa
 prévenir personne ; un nom de fonction, de CTE ou de composant se périme
 bruyamment, parce qu'un `git grep` le trouve ou ne le trouve pas.
 
-## Une conversion ou un revenu sur un thème purement organique
+## Une conversion ou un revenu sur une publication organique
 
-Le pont entre Google Analytics et un thème passe par `utm_campaign`. Un post
-Instagram n'a pas de campagne : il ne franchit jamais le pont. Ce n'est pas un
-réglage manquant, c'est une mesure qui n'existe pas.
+Le seul pont entre Google Analytics et ce que Pulse récolte d'une plateforme
+est `utm_campaign`. Une publication Instagram n'a pas de campagne : elle ne
+franchit jamais le pont. Ce n'est pas un réglage manquant, c'est une mesure qui
+n'existe pas — aucun écran ne prête un revenu ou une conversion à une
+publication.
 
-Le pont est construit trois fois, et les trois fois il ne part que des campagnes :
-
-- **En base**, dans `theme_regroupement.sql` : la CTE `campagnes` ne lit que
-  `meta_ads_insights` et `google_ads_insights`, et la CTE `noms` en dérive les
-  seuls noms auxquels du revenu peut se rattacher. Un thème qui n'a que des posts
-  n'a aucun nom, donc rien à rattacher.
-- **Dans le rapport**, `build_report.py` : `_theme_series` n'accepte un événement
-  Google Analytics que si `name2label[utm_campaign]` rend ce thème, et l'anneau
-  des thèmes construit son `name_lbl` à partir de `meta_cfg` et `goog_cfg` — deux
-  tables de configuration de **campagnes**.
-- **À l'écran**, `theme-card.tsx` : les cases « Revenu » et « ROAS » ne sont
-  poussées que sous `som.spend > 0`. Un thème sans dépense n'en affiche aucune.
-
-### La garde qui existait, et qui est aujourd'hui du code mort
-
-`build_report.py` porte encore `_theme_ga4`, qui ventilait les conversions et le
-revenu Google Analytics campagne par campagne et posait `paid_conversions` et
-`paid_revenue` à `None` quand rien ne se rattachait. **Cette fonction n'est plus
-appelée nulle part** (`git grep _theme_ga4` ne rend que sa définition et un
-commentaire de `conversions-themes.tsx`) : elle est restée sur place au retrait
-des recommandations du 2026-09-21. C'est elle que la version précédente de ce
-document citait comme preuve — citer du code mort comme garde vivante est
-exactement le défaut que ce document existe pour empêcher.
-
-**L'interdit tient quand même**, et pour les trois raisons ci-dessus, qui sont
-toutes vivantes. Mais il tient par des chemins différents de celui qui était
-écrit ici.
-
-### Le zéro que la vue produit, et que personne n'affiche encore
-
-À vérifier ce point, un fait neuf est sorti. Dans `theme_regroupement`, un thème
-purement organique, **sur un compte où Google Analytics attribue par ailleurs du
-revenu payant** (`ga4_present`), sort avec `revenue = 0.00` : `revenu_generique`
-n'a pas de ligne pour lui, et le `coalesce(t.revenue_generique, 0)` du `SELECT`
-final le transforme en zéro. Ce zéro traverse `matrice.py` intact et arrive dans
-`summary.revenue` du payload.
-
-Aujourd'hui **rien ne l'affiche** — `theme-card.tsx` ferme la porte sur
-`spend > 0`, l'anneau sur `s > 0`. Mais ce zéro dit « ce thème n'a rien
-rapporté » là où la vérité est « aucun pont n'existe pour le savoir », et la
-carte `parcours-themes` a décidé que la page Thèmes lirait la vue **en direct**,
-toutes colonnes comprises. Écrit plutôt que corrigé à la va-vite : le thème
-est le ticket [18](../.scratch/parcours-themes/issues/18-le-zero-organique-de-la-vue.md).
-
-## Le revenu d'un thème dont les UTM ne portent pas le nom de la campagne
-
-Le rattachement se fait par correspondance de noms. Ce que le code en fait a
-changé le 2026-09-13, et la règle actuelle a deux étages — les confondre est le
-plus court chemin vers un chiffre fabriqué.
-
-**Au compte, on se tait.** Quand Google Analytics n'attribue **aucune** campagne
-payante à ce compte, `theme_regroupement` rend `revenue` à `NULL`, jamais `0` :
-la CTE `ga4_present` commande le `CASE` du `SELECT` final, et aucun ROAS n'est
-publié. **Un zéro mesuré et un zéro faute de données ne sont pas la même
-chose**, et ils ne s'affichent pas pareil.
-
-**Au thème, on publie et on écrit la limite.** Sur un compte qui attribue bien du
-revenu, une campagne dont Google Analytics ignore le nom verse sa dépense au
-dénominateur du ROAS sans jamais pouvoir verser son revenu au numérateur. Se
-taire aurait vidé six thèmes sur dix de leur seul chiffre de rentabilité ; on
-publie donc le ROAS, et la **part muette** l'accompagne — `spend_muette` et
-`campagnes_muettes` dans la vue (CTE `noms_ga4_connus`, sans filtre `medium`),
-`part_muette` calculée une seule fois dans `build_report.py`. Le ROAS n'est pas
-faux, il est **incomplet**, et ça se lit à côté du chiffre.
+Jusqu'au 2026-09-30, cette limite se prouvait par le thème, qui regroupait
+campagnes et publications et laissait une porte à un revenu organique. Le thème
+est parti (`998_supprimer_le_theme.sql`, carte `.scratch/meta-ads/`), et avec lui
+la part muette d'un ROAS par thème : il ne reste qu'un revenu payant **au
+compte**, `_revenu_semaine` (`build_report.py`), qui ne lit que le trafic payant
+de `ga4_insights`.
 
 ## Plus de 30 jours de changements côté Google Ads
 
@@ -168,14 +112,6 @@ Aujourd'hui `build_report.py` ne passe plus par lui pour ça : `_revenu_semaine`
 lit `lecteur.ga4_insights()` jour par jour et rend le revenu payant d'une
 semaine. C'est ce qui alimente la courbe ROAS de la boussole.
 
-**Par thème, la ventilation hebdomadaire n'est toujours pas calculée** — la carte
-de thème reçoit un revenu unique, sur tout l'historique, qui vient de la vue. Ce
-n'est pas une mesure absente : `ga4_insights` a la date et le nom de campagne,
-et `name2label` sait faire le reste. C'est une agrégation à écrire, et personne
-ne l'a demandée. Leçon à garder : une limite qui nomme le symptôme
-(`by_campaign` n'a pas de dates) au lieu de la source (la table en a) se périme
-sans qu'on s'en aperçoive.
-
 **Séparer le ROAS Meta du ROAS Google.** Le rapport calcule aujourd'hui un ROAS
 payant unique : `_f_roas` (`build_report.py`) divise le revenu de
 `_revenu_semaine` — tout le trafic payant, les deux régies confondues — par la
@@ -200,9 +136,6 @@ s'affiche pas.** Si un conseil revient un jour, c'est ce paragraphe qu'il
 faudra rouvrir — le raisonnement reste valable, il n'a simplement plus d'objet.
 
 **Et la décision d'attribution elle-même reste entière — sans ticket pour la
-porter.** Le ticket `construction/18`, que ce document désignait, a été
-**résolu** le 2026-09-13, mais sur une autre question : il a tranché qu'on
-publie le ROAS d'un thème en écrivant la part muette à côté. Quelle régie a
-généré un franc de revenu attribué à un nom d'UTM n'a été tranché nulle part.
-Rien ne change à la façon dont la dépense est comptée ailleurs — page Coûts,
-`build_matrix`, ROAS affiché d'un thème.
+porter.** Quelle régie a généré un franc de revenu attribué à un nom d'UTM n'a
+été tranché nulle part. Rien ne change à la façon dont la dépense est comptée
+ailleurs — page Coûts, `build_matrix`.

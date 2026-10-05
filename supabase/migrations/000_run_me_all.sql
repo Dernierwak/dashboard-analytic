@@ -39,7 +39,6 @@
 --          AVANT la section 15 elle aussi, même raison.
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
---   18)    profiles.site_url — le site du client
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   26)    email_envois — ce qu'est devenu l'email hebdo (ticket 50). APRÈS la
 --          section 15, et sans jamais y entrer : RLS activée, aucune policy,
@@ -58,6 +57,11 @@
 --   « on n'en a plus du tout besoin ». L'adresse vers laquelle une annonce
 --   envoie se lit dans sa créa Meta (`object_story_spec.link_data.link`), pas
 --   dans une déclaration. Même sort : la `998` détruit la colonne.
+--
+--   La section 18 installait `profiles.site_url`, le site du client. Il ne
+--   servait qu'aux conseils ; David, le 2026-10-05 : « on fait et on close »
+--   (`.scratch/meta-ads/tickets/34-…`). `996_supprimer_le_site_du_client.sql`
+--   détruit la colonne, joué une fois, à la main.
 --
 -- ────────────────────────────────────────────────────────────────────────────
 -- CE QU'IL SUPPOSE DÉJÀ LÀ
@@ -1543,46 +1547,6 @@ ALTER TABLE public.google_campaign_config
 
 
 -- ============================================================================
--- 18) LE SITE DU CLIENT — profiles.site_url. Voir site_client.sql.
---
---     C'EST LA COLONNE PAR LAQUELLE ON A DÉCOUVERT QUE CE FICHIER MENTAIT :
---     « Enregistrement impossible — rejoue le SQL site_client.sql ».
---
---     Pulse connaît les chiffres d'un compte sans savoir ce que ce compte VEND.
---     L'onboarding demande le secteur (« e-commerce », « commerce local ») :
---     c'est une case, pas une entreprise. Le domaine, lui, dit tout d'un coup —
---     la gamme, le prix, la langue, le pays, le ton.
---
---     FACULTATIF PAR CONSTRUCTION : nullable, aucun défaut, aucun NOT NULL.
---     Beaucoup de clients n'ont qu'une page Instagram, d'autres ne veulent pas
---     donner leur adresse à la première minute. Un onboarding qui se referme
---     sur ce champ ne perd pas un champ, il perd le client entier.
---
---     Même précaution SSRF qu'en section 17 : on la stocke, le serveur ne la
---     visite jamais.
--- ============================================================================
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS site_url text;
-
-DO $$
-BEGIN
-    ALTER TABLE public.profiles
-        ADD CONSTRAINT profiles_site_url_ck
-        CHECK (
-            site_url IS NULL
-            OR (site_url ~* '^https?://[^[:space:]]+\.[^[:space:]]+$'
-                AND length(site_url) <= 2048)
-        );
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-COMMENT ON COLUMN public.profiles.site_url IS
-    'Site ou page d''accueil du client, facultatif. Stocké, jamais visité par le serveur (SSRF).';
-
-
--- ============================================================================
 -- 21) instagram_posts_par_user.sql — VOLONTAIREMENT ABSENT DE CE FICHIER.
 --
 --     C'est la seule migration du dossier qui EFFACE des lignes. Elle corrige
@@ -1714,7 +1678,6 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'profiles',                 'budget_range'),         -- §7
     ('c', 'profiles',                 'time_budget'),          -- §7
     ('c', 'profiles',                 'frustration'),          -- §7
-    ('c', 'profiles',                 'site_url'),             -- §18
     ('c', 'profiles',                 'ga4_event_catalog'),    -- §14bis
     ('c', 'connected_accounts',       'provider'),             -- §4
     ('c', 'connected_accounts',       'google_refresh_token'), -- §4

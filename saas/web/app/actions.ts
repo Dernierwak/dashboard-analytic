@@ -94,13 +94,13 @@ export async function saveBudget(channel: string, amount: number, monthIso?: str
   return { ok: true };
 }
 
-// MÊME FILET QUE `saveSiteClient`, ET C'EST ICI QU'IL COMPTE LE PLUS.
+// UN FILET, ET C'EST ICI QU'IL COMPTE LE PLUS.
 //
 // Cette action est appelée depuis le TOUT PREMIER écran du produit, à la fin
-// d'un parcours de six étapes. `getCompteActif` suppose un utilisateur
+// d'un parcours de cinq étapes. `getCompteActif` suppose un utilisateur
 // (`user!.id`) : si la session a expiré pendant les trente secondes de
 // l'onboarding, elle jetait — la frontière d'erreur démontait la carte, l'écran
-// devenait blanc, et les six réponses déjà données partaient avec, sans un mot.
+// devenait blanc, et les cinq réponses déjà données partaient avec, sans un mot.
 // Une action qui jette ne peut rien dire ; une action qui REND un refus laisse
 // la carte debout, ses réponses dedans, et la personne réessaie.
 //
@@ -322,100 +322,6 @@ export async function saveCategoryForEvent(eventName: string, category: string |
   }
   revalidatePath("/conversions");
   return { ok: true };
-}
-
-// ── Une adresse saisie par l'utilisateur ────────────────────────────────────
-//
-// Le seul contrat d'URL de l'application. Il a servi aussi à la page d'arrivée
-// d'une campagne, retirée le 2026-10-03 : l'adresse vers laquelle une annonce
-// envoie se lit dans sa créa Meta, elle ne se déclare pas.
-function urlPropre(brut: string): { ok: true; url: string } | { ok: false; message: string } {
-  const t = (brut ?? "").trim();
-  if (!t) return { ok: true, url: "" }; // vide = on efface l'adresse
-  if (t.length > 2048) return { ok: false, message: "Cette adresse est trop longue." };
-  // « boutique.ch/velos » sans schéma est ce que les gens tapent : on complète
-  // en https plutôt que de leur renvoyer une erreur de syntaxe.
-  const complet = /^[a-z][a-z0-9+.-]*:\/\//i.test(t) ? t : `https://${t}`;
-  let u: URL;
-  try {
-    u = new URL(complet);
-  } catch {
-    return { ok: false, message: "Cette adresse n'a pas l'air d'une URL." };
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:")
-    return { ok: false, message: "Seules les adresses http:// et https:// sont acceptées." };
-  if (u.username || u.password)
-    return { ok: false, message: "Retire l'identifiant et le mot de passe de l'adresse." };
-  // Un hôte sans point n'est pas un domaine public : c'est « localhost », un
-  // nom de machine interne, ou une faute de frappe. Aucun des trois n'est le
-  // site d'un client.
-  if (!u.hostname.includes(".") || u.hostname.endsWith("."))
-    return { ok: false, message: "Il manque le nom de domaine (ex. boutique.ch)." };
-  return { ok: true, url: u.toString() };
-}
-
-// ── Le site du client ───────────────────────────────────────────────────────
-//
-// Où le client HABITE. L'onboarding demande déjà le secteur, mais « commerce
-// local » est une case, pas une entreprise : le domaine, lui, porte la gamme, le prix, la langue, le pays et le ton d'un seul
-// coup. C'est ce qui sépare un conseil générique d'un conseil qui parle de ce
-// que la personne vend.
-//
-// FACULTATIF, ET ÇA SE VOIT DANS LA SIGNATURE. Une adresse vide est un succès
-// (`urlPropre` renvoie ok sur le vide), pas une erreur : elle efface le site.
-// L'appelant doit pouvoir terminer son parcours SANS jamais appeler cette
-// action — un onboarding qui se referme sur un champ facultatif ne perd pas un
-// champ, il perd le client.
-//
-// ON LE STOCKE, ON NE LE VISITE PAS. Aucun `fetch` serveur ne part vers cette
-// adresse, ni ici ni ailleurs : un champ libre que le serveur irait chercher
-// tout seul est une SSRF offerte — il suffirait d'y coller une adresse
-// interne (169.254.169.254, un service du réseau privé) pour lui faire lire ce
-// qu'il est le seul à pouvoir atteindre. Le jour où une reco devra vraiment
-// lire cette page, ce sera par un chemin explicite avec sa propre liste d'hôtes
-// autorisés — pas en réutilisant ce champ en silence.
-//
-// LA VALIDATION EST CELLE DE `urlPropre` ci-dessus, pas une copie : un seul
-// contrat d'URL dans l'application, sinon les deux divergent au premier
-// correctif.
-export async function saveSiteClient(
-  url: string
-): Promise<{ ok: boolean; message?: string; valeur?: string | null }> {
-  // L'adresse est jugée AVANT le compte, à l'inverse des autres actions : c'est
-  // un test pur, sans base ni réseau, et une saisie malformée n'a aucune raison
-  // de coûter un aller-retour. L'écriture, elle, reste derrière l'autorisation.
-  const v = urlPropre(url);
-  if (!v.ok) return { ok: false, message: v.message };
-  const site_url = v.url || null; // vide = le client retire son site
-
-  // Une session peut expirer pendant les trente secondes de l'onboarding.
-  // `getCompteActif` suppose un utilisateur : sans ce filet, elle jette et la
-  // personne reçoit une page cassée au lieu d'une phrase.
-  let compte;
-  try {
-    compte = await getCompteActif();
-  } catch {
-    return { ok: false, message: "Ta session a expiré — reconnecte-toi." };
-  }
-  if (!compte.peutEditer)
-    return { ok: false, message: "Tu es en lecture seule sur ce compte." };
-
-  const r = await supabaseUpdateSite(compte.uid, site_url);
-  if (r) return { ok: false, message: r };
-
-  revalidatePath("/");
-  revalidatePath("/comptes");
-  return { ok: true, valeur: site_url };
-}
-
-// Séparée pour que l'action reste lisible : renvoie un message d'erreur, ou
-// null si l'écriture est passée.
-async function supabaseUpdateSite(uid: string, site_url: string | null): Promise<string | null> {
-  const supabase = createClient();
-  const r = await supabase.from("profiles").update({ site_url }).eq("id", uid);
-  return r.error
-    ? "Enregistrement impossible — rejoue le SQL site_client.sql."
-    : null;
 }
 
 // ── LE SUIVI DE LA RÉCOLTE ──────────────────────────────────────────────────

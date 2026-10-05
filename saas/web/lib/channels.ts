@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { aveuglesSur, fetchCanauxMuets, type CanalMuetLive, type CanalPub } from "@/lib/canaux-muets";
 import { getCompteActif } from "@/lib/account";
+import { lireToutesLesPages } from "@/lib/meta/lecture";
 import {
   addDays,
   fenetreSurMesure,
@@ -664,9 +665,9 @@ function buildDash(
     //
     // Une seule passe sur les lignes DÉJÀ CHARGÉES : aucune requête de plus, la
     // seconde fenêtre ne coûte donc pas un aller-retour de base mais un parcours
-    // en mémoire. Le plafond reste celui du `.limit(12000)` du chargement, et il
-    // n'est pas contourné en silence — une référence antérieure à la plus vieille
-    // ligne chargée tombe sur le refus « tes données ne remontent qu'au … ».
+    // en mémoire. Le chargement est paginé, il rend tout l'historique : une
+    // référence antérieure à la plus vieille ligne tombe sur le refus « tes
+    // données ne remontent qu'au … ».
     (since, until) => {
       const campagne: VentilationCompare = { reference: {}, premiere: {} };
       const vide = () => ({ spend: 0, clicks: 0, impressions: 0 });
@@ -725,13 +726,22 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [rowsRes, adsRes, cfgRes, muets] = await Promise.all([
-    supabase.from("google_ads_insights")
-      .select("date_start, campaign_id, cost_micros, clicks, impressions")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
-    supabase.from("google_ads_ad_insights")
-      .select("date_start, campaign_id, ad_group_name, ad_name, cost_micros, clicks, impressions")
-      .eq("user_id", uid).order("date_start", { ascending: false }).limit(12000),
+  // Paginé : un `.limit(12000)` ne rendait que 1 000 lignes, PostgREST
+  // tronquant en silence (`CLAUDE.md` §8) — « Tout » s'arrêtait à ~50 jours
+  // sans le dire. L'`id` rend l'ordre total, sinon deux pages se recouvrent
+  // sur une même date. Une erreur se lit comme avant ce correctif — aucune
+  // ligne — et non comme une page qui tombe.
+  const [rowsData, adsData, cfgRes, muets] = await Promise.all([
+    lireToutesLesPages<Record<string, unknown>>((de, a) =>
+      supabase.from("google_ads_insights")
+        .select("date_start, campaign_id, cost_micros, clicks, impressions")
+        .eq("user_id", uid).order("date_start", { ascending: false }).order("id").range(de, a)
+    ).catch(() => []),
+    lireToutesLesPages<Record<string, unknown>>((de, a) =>
+      supabase.from("google_ads_ad_insights")
+        .select("date_start, campaign_id, ad_group_name, ad_name, cost_micros, clicks, impressions")
+        .eq("user_id", uid).order("date_start", { ascending: false }).order("id").range(de, a)
+    ).catch(() => []),
     // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
     // doit pas faire tomber la lecture entière.
     supabase.from("google_campaign_config")
@@ -739,7 +749,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     fetchCanauxMuets(supabase, uid),
   ]);
 
-  const rows: RawAd[] = (rowsRes.data ?? []).map((r) => ({
+  const rows: RawAd[] = rowsData.map((r) => ({
     date: String(r.date_start),
     campaign: String(r.campaign_id),
     adset: "",
@@ -749,7 +759,7 @@ export async function getGoogleDash(sp: DashParams | undefined): Promise<Channel
     impressions: Number(r.impressions) || 0,
   }));
   // Drill google : groupes d'annonces → annonces (table dédiée)
-  const drillRows: RawAd[] = (adsRes.data ?? []).map((r) => ({
+  const drillRows: RawAd[] = adsData.map((r) => ({
     date: String(r.date_start),
     campaign: String(r.campaign_id),
     adset: String(r.ad_group_name ?? ""),
@@ -899,19 +909,22 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const uid = compte.uid;
   const days = periodDays(sp);
 
-  const [postsRes, followsRes] = await Promise.all([
+  const [postsData, followsRes] = await Promise.all([
     // "*" : tolérant au schéma — une colonne absente d'une base en retard ne
     // doit pas faire tomber la lecture entière.
-    supabase.from("instagram_organic_posts")
-      .select("*")
-      // Pas de plafond : « Tout l'historique » doit dire la vérité. À 600 posts
-      // on en cachait plus de la moitié sans le signaler nulle part.
-      .eq("user_id", uid).order("date", { ascending: false }).limit(5000),
+    // Pas de plafond : « Tout l'historique » doit dire la vérité. Le
+    // `.limit(5000)` d'avant en rendait 1 000 (PostgREST, `CLAUDE.md` §8) :
+    // d'où la pagination, avec l'`id` pour un ordre total.
+    lireToutesLesPages<Record<string, unknown>>((de, a) =>
+      supabase.from("instagram_organic_posts")
+        .select("*")
+        .eq("user_id", uid).order("date", { ascending: false }).order("id").range(de, a)
+    ).catch(() => []),
     supabase.from("followers_history")
       .select("fetched_at, followers")
       .eq("user_id", uid).order("fetched_at", { ascending: false }).limit(90),
   ]);
-  const all: InstaPost[] = (postsRes.data ?? []).map((p) => {
+  const all: InstaPost[] = postsData.map((p) => {
     const reach = Number(p.reach) || 0;
     const likes = Number(p.likes) || 0;
     const comments = Number(p.comments) || 0;
