@@ -77,20 +77,21 @@ def fetch_images_creas_stockees(supabase: Client, user_id: str, bucket: str) -> 
 
     Lu dans le BUCKET et pas dans les tables : c'est le fichier qui doit
     exister, pas une ligne qui dit qu'il existe. Paginé comme `_all_pages` —
-    la liste de Storage s'arrête aussi en silence à sa limite.
+    la liste de Storage s'arrête aussi en silence à sa limite (100 fichiers
+    sans `limit` : `storage3.constants.DEFAULT_SEARCH_OPTIONS`, lu en 2.27.1).
     """
     dossier = supabase.storage.from_(bucket)
     stockees: dict[str, str] = {}
-    page, debut = 1000, 0
+    par_lot, debut = 1000, 0
     while True:
-        lot = dossier.list(user_id, {"limit": page, "offset": debut}) or []
+        lot = dossier.list(user_id, {"limit": par_lot, "offset": debut}) or []
         for fichier in lot:
             nom = fichier.get("name")
             if nom:
                 stockees[nom] = dossier.get_public_url(f"{user_id}/{nom}")
-        if len(lot) < page:
+        if len(lot) < par_lot:
             return stockees
-        debut += page
+        debut += par_lot
 
 
 # ── Tab Coût — budgets ─────────────────────────────────────────────────────────

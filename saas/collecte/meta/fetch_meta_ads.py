@@ -559,7 +559,7 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
 # `call_to_action` n'est pas dans la liste de la recherche : c'est lui qui porte
 # le bouton et, quand `link` manque, l'adresse (`value.link`).
 _CHAMPS_CREA = (
-    "id,name,object_type,title,body,image_hash,video_id,link_url,"
+    "id,name,object_type,object_story_id,title,body,image_hash,video_id,link_url,"
     "call_to_action_type,"
     "object_story_spec{"
     "link_data{message,name,description,link,image_hash,call_to_action,"
@@ -599,13 +599,27 @@ def _montage(crea: dict) -> str:
 
     `asset_feed_spec` passe devant : une créa dynamique porte aussi un
     `object_story_spec`, réduit à la page qui publie, sans texte.
+
+    `publication` : la créa pointe une publication existante (`object_story_id`,
+    « ID of a Facebook Page post to use in an ad », recherche § 4 a) — le
+    post boosté. Son texte vit dans le post, pas dans la créa ; la ranger en
+    `flat` ferait lire des champs vides comme une créa vide. On ne teste pas
+    `effective_object_story_id` : Meta le rend pour toute créa diffusée.
     """
     if crea.get("asset_feed_spec"):
         return "asset_feed"
     histoire = crea.get("object_story_spec") or {}
     if any(histoire.get(k) for k in ("link_data", "photo_data", "video_data")):
         return "object_story"
+    if crea.get("object_story_id"):
+        return "publication"
     return "flat"
+
+
+def _contenu_de(crea: dict, montage: str) -> dict:
+    if montage == "object_story":
+        return _contenu_object_story(crea["object_story_spec"])
+    return _contenu_flat(crea)
 
 
 def _contenu_object_story(histoire: dict) -> dict:
@@ -696,9 +710,24 @@ def _asset_ecrit(user_id: str, ad_id: str, brut: dict, stockees: dict[str, str])
              "asset_kind": brut["asset_kind"], "rang": brut["rang"]}
     for col in _COLONNES_ASSET:
         ligne[col] = _ou_null(brut.get(col))
-    ligne["image_url"] = stockees.get(ligne["image_hash"] or "")
-    ligne["vignette_url"] = stockees.get(brut.get("vignette_hash") or "")
+    ligne["image_url"] = _url_stockee(stockees, ligne["image_hash"])
+    ligne["vignette_url"] = _url_stockee(stockees, brut.get("vignette_hash"))
     return ligne
+
+
+def _url_stockee(stockees: dict[str, str], image_hash: str | None) -> str | None:
+    return stockees.get(image_hash) if image_hash else None
+
+
+def _annonces_lisibles(annonces: list[dict]):
+    """(ad_id, créa) de chaque annonce qui a les deux, une fois chacune."""
+    vues: set[str] = set()
+    for annonce in annonces:
+        ad_id, crea = annonce.get("id"), annonce.get("creative")
+        if not ad_id or not isinstance(crea, dict) or str(ad_id) in vues:
+            continue
+        vues.add(str(ad_id))
+        yield str(ad_id), crea
 
 
 def lignes_creas(
@@ -719,21 +748,10 @@ def lignes_creas(
     """
     creas: list[dict] = []
     assets: list[dict] = []
-    vues: set[str] = set()
-    sans_id = 0
-    for annonce in annonces:
-        ad_id = annonce.get("id")
-        if not ad_id:
-            sans_id += 1
-            continue
-        ad_id = str(ad_id)
-        crea = annonce.get("creative")
-        if not isinstance(crea, dict) or ad_id in vues:
-            continue
-        vues.add(ad_id)
+    sans_id = sum(1 for a in annonces if not a.get("id"))
+    for ad_id, crea in _annonces_lisibles(annonces):
         montage = _montage(crea)
-        contenu = (_contenu_object_story(crea["object_story_spec"])
-                   if montage == "object_story" else _contenu_flat(crea))
+        contenu = _contenu_de(crea, montage)
         image_hash = _ou_null(contenu.get("image_hash"))
         creas.append({
             "user_id": user_id,
@@ -748,9 +766,9 @@ def lignes_creas(
             "lien_url": _ou_null(contenu.get("lien_url")),
             "call_to_action": _ou_null(contenu.get("call_to_action")),
             "image_hash": image_hash,
-            "image_url": stockees.get(image_hash or ""),
+            "image_url": _url_stockee(stockees, image_hash),
             "video_id": _ou_null(contenu.get("video_id")),
-            "vignette_url": stockees.get(contenu.get("vignette_hash") or ""),
+            "vignette_url": _url_stockee(stockees, contenu.get("vignette_hash")),
         })
         assets += [_asset_ecrit(user_id, ad_id, b, stockees) for b in _bruts_de(crea, montage)]
     return creas, assets, sans_id
@@ -760,13 +778,9 @@ def hashes_des_creas(annonces: list[dict]) -> set[str]:
     """Tous les `image_hash` qu'une page de créas référence — visuels ET
     vignettes de vidéo. Pure : c'est la liste de ce qui doit être en stockage."""
     hashes: set[str] = set()
-    for annonce in annonces:
-        crea = annonce.get("creative")
-        if not isinstance(crea, dict):
-            continue
+    for _, crea in _annonces_lisibles(annonces):
         montage = _montage(crea)
-        contenu = (_contenu_object_story(crea["object_story_spec"])
-                   if montage == "object_story" else _contenu_flat(crea))
+        contenu = _contenu_de(crea, montage)
         candidats = [contenu.get("image_hash"), contenu.get("vignette_hash")]
         for brut in _bruts_de(crea, montage):
             candidats += [brut.get("image_hash"), brut.get("vignette_hash")]
@@ -823,10 +837,19 @@ def fetch_urls_images(token: str, ad_account_id: str, hashes: list[str]) -> dict
     for i in range(0, len(hashes), _HASHES_PAR_APPEL):
         lot = hashes[i:i + _HASHES_PAR_APPEL]
         try:
+            # `limit` = la taille du lot : sans lui, la page par défaut du
+            # Graph API peut rendre moins d'images que de hashes demandés, et
+            # le reste attendrait un passage de plus sans le dire.
             rep = requests.get(f"{_GRAPH}/{ad_account_id}/adimages", params={
                 "access_token": token, "hashes": json.dumps(lot), "fields": "hash,url",
+                "limit": len(lot),
             }, timeout=60).json()
-        except Exception:
+        except Exception as e:
+            print(f"    créas meta : lot d'images non lu ({type(e).__name__})")
+            continue
+        if isinstance(rep, dict) and rep.get("error"):
+            print(f"    créas meta : lot d'images refusé — "
+                  f"{rep['error'].get('message', 'erreur Meta')}")
             continue
         for image in (rep.get("data") or []) if isinstance(rep, dict) else []:
             if image.get("hash") and image.get("url"):
@@ -834,10 +857,7 @@ def fetch_urls_images(token: str, ad_account_id: str, hashes: list[str]) -> dict
     return urls
 
 
-# Public, comme `post-images` d'Instagram : décision de David au ticket 05
-# (2026-10-05). Ces visuels sont déjà diffusés publiquement par Meta ; le prix
-# accepté est qu'une annonce en pause ou jamais diffusée devient lisible par
-# qui connaît son URL (`<user_id>/<image_hash>`, pas devinable).
+# Public, et pourquoi : `000_run_me_all.sql`, section 0bis, qui le crée.
 BUCKET_CREAS = "ad-creatives"
 
 

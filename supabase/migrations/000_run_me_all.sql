@@ -399,8 +399,9 @@ CREATE TABLE IF NOT EXISTS public.meta_ads_creatives (
     ad_id          text NOT NULL,
     creative_id    text,
     creative_name  text,
-    -- Lequel des trois montages a répondu : 'flat' | 'object_story' |
-    -- 'asset_feed'. Sans lui, un champ vide et un montage absent se confondent :
+    -- Lequel des montages a répondu : 'flat' | 'object_story' |
+    -- 'asset_feed' | 'publication' (un post existant boosté, `object_story_id`,
+    -- dont le texte vit dans le post — ticket 05). Sans lui, un champ vide et un montage absent se confondent :
     -- une créa bâtie sur object_story_spec ne rend PAS title/body/image_url au
     -- niveau racine (« readable fields are the same as those specified when
     -- you created the object » —

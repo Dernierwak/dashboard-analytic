@@ -128,6 +128,13 @@ def test_le_carrousel_rend_chaque_carte_et_sa_description():
     assert {a["provenance"] for a in assets} == {"child_attachment"}
 
 
+def test_une_publication_existante_n_est_pas_un_montage_flat():
+    # Un post boosté : la créa pointe la publication, sans spec ni texte.
+    crea, assets = _seule({"object_story_id": "123_456", "effective_object_story_id": "123_456"})
+    assert crea["montage"] == "publication"
+    assert crea["titre"] is None and crea["texte"] is None and assets == []
+
+
 # ── Rien ne se fabrique ──────────────────────────────────────────────────────
 
 def test_une_adresse_absente_reste_vide():
@@ -194,6 +201,10 @@ def test_les_hashes_couvrent_les_trois_montages_et_les_vignettes():
                                       "videos": [{"thumbnail_hash": "f"}]}}, "4"),
     ]
     assert hashes_des_creas(annonces) == {"a", "b", "c", "d", "e", "f"}
+
+
+def test_une_annonce_sans_id_ne_fait_televerser_aucune_image():
+    assert hashes_des_creas([{"creative": {"image_hash": "a"}}]) == set()
 
 
 # ── L'écriture remplace les assets de l'annonce relue ────────────────────────
