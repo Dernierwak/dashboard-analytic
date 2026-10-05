@@ -14,6 +14,7 @@ import {
   getInstaDash,
   moyenneMesuree,
   trierDecroissant,
+  valeurDe,
   type DashParams,
   type InstaPost,
 } from "@/lib/channels";
@@ -46,6 +47,7 @@ const INSTA_METRICS: { key: string; label: string; unit: string }[] = [
 
 // Une publication sans portée relevée n'a pas d'engagement (ticket meta-ads 25).
 const fmtEng = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)} %`);
+const fmtCompte = (v: number | null) => (v === null ? "—" : fmtCHF(v));
 
 // Évolution de tes posts — un bar par post, métrique au choix (comme Meta/Google).
 function PostsMetricChart({
@@ -60,14 +62,7 @@ function PostsMetricChart({
   const pts = [...posts].reverse(); // plus ancien → plus récent
   if (pts.length < 2) return null;
   const meta = INSTA_METRICS.find((m) => m.key === metric) ?? INSTA_METRICS[0];
-  const val = (p: InstaPost): number | null =>
-    metric === "views" ? p.views
-    : metric === "likes" ? p.likes
-    : metric === "comments" ? p.comments
-    : metric === "saved" ? p.saved
-    : metric === "eng" ? p.eng
-    : p.reach;
-  const vals = pts.map(val);
+  const vals = pts.map((p) => valeurDe(p, metric));
   const mesures = vals.filter((v): v is number => v !== null);
   const max = Math.max(...mesures, 0.001);
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
@@ -120,7 +115,7 @@ function PostsMetricChart({
         items={pts.map((p) => ({
           label: fmtDate(p.date).slice(0, 6),
           name: p.caption || "(sans légende)",
-          value: val(p),
+          value: valeurDe(p, metric),
         }))}
         color="#7b4fff"
         fmt={fmtV}
@@ -165,14 +160,7 @@ const SORTS: { key: string; label: string }[] = [
 
 function sortPosts(posts: InstaPost[], sort: string): InstaPost[] {
   if (sort === "date") return posts; // déjà du plus récent au plus ancien
-  const val = (p: InstaPost): number | null =>
-    sort === "views" ? p.views
-    : sort === "likes" ? p.likes
-    : sort === "comments" ? p.comments
-    : sort === "saved" ? p.saved
-    : sort === "eng" ? p.eng
-    : p.reach;
-  return trierDecroissant(posts, val);
+  return trierDecroissant(posts, (p) => valeurDe(p, sort));
 }
 
 function PostsTable({
@@ -413,13 +401,7 @@ export default async function InstagramPage({
                     <span className="font-mono text-ink font-semibold">
                       {d.topMetric === "eng"
                         ? `${fmtEng(p.eng)} eng.`
-                        : `${fmtCHF(
-                            d.topMetric === "views" ? p.views
-                            : d.topMetric === "likes" ? p.likes
-                            : d.topMetric === "comments" ? p.comments
-                            : d.topMetric === "saved" ? p.saved
-                            : p.reach
-                          )} ${metricLabel(d.topMetric)}`}
+                        : `${fmtCompte(valeurDe(p, d.topMetric))} ${metricLabel(d.topMetric)}`}
                     </span>
                     <span className="font-mono text-muted">
                       {d.topMetric === "reach"

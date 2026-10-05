@@ -805,6 +805,29 @@ export type InstaPost = {
   eng: number | null;
 };
 
+// La lecture « clé → valeur » vivait en quatre ternaires recopiés (ticket 27) :
+// passer `eng` à `number | null` (ticket 25) a dû les retoucher tous les trois
+// pareil, et le quatrième aurait pu rester en retard sans que rien ne lève.
+const LECTURES_INSTA = {
+  reach: (p: InstaPost) => p.reach,
+  views: (p: InstaPost) => p.views,
+  likes: (p: InstaPost) => p.likes,
+  comments: (p: InstaPost) => p.comments,
+  saved: (p: InstaPost) => p.saved,
+  eng: (p: InstaPost) => p.eng,
+} satisfies Record<string, (p: InstaPost) => number | null>;
+
+/** La valeur d'une publication pour une clé de métrique venue de l'URL. Une clé
+ *  inconnue lit la portée, la métrique par défaut de la page — comme avant,
+ *  mais écrit ici une seule fois au lieu d'être le `: p.reach` final de chaque
+ *  copie. */
+export function valeurDe(p: InstaPost, cle: string): number | null {
+  // `hasOwn` et pas un simple index : `?tri=constructor` lirait sinon
+  // `Object.prototype.constructor` et trierait des objets au lieu de nombres.
+  const cleConnue = Object.hasOwn(LECTURES_INSTA, cle) ? (cle as keyof typeof LECTURES_INSTA) : "reach";
+  return LECTURES_INSTA[cleConnue](p);
+}
+
 export type FollowerPoint = { date: string; followers: number };
 
 export type InstaDash = {
@@ -926,13 +949,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
     ? String(sp!.m)
     : "reach";
-  const _mval = (p: InstaPost): number | null =>
-    topMetric === "views" ? p.views
-    : topMetric === "likes" ? p.likes
-    : topMetric === "comments" ? p.comments
-    : topMetric === "saved" ? p.saved
-    : topMetric === "eng" ? p.eng
-    : p.reach;
 
   // LA PÉRIODE PILOTE AUSSI LE TOP 3. Une seule réserve : sous 2 posts
   // dans la fenêtre, aucune moyenne ne veut rien dire, alors on retombe sur
@@ -941,7 +957,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const scope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
 
   // Top 3 posts de la période filtrée (fallback historique, même signal).
-  const topPosts = trierDecroissant(pool, _mval).slice(0, 3);
+  const topPosts = trierDecroissant(pool, (p) => valeurDe(p, topMetric)).slice(0, 3);
 
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
