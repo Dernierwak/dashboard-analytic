@@ -58,8 +58,10 @@ export type MetriqueEcart = {
   /** Le nom de la métrique comparée, tel qu'il s'écrit dans une phrase. */
   titre: string;
   /** La valeur de la métrique, dérivée des grandeurs BRUTES d'une fenêtre. Les
-   *  taux se calculent ici, sur les totaux — jamais en moyennant des taux. */
-  valeur: (brut: Record<string, number>) => number;
+   *  taux se calculent ici, sur les totaux — jamais en moyennant des taux.
+   *  `null` = un taux sans dénominateur (CTR sans impression) : il n'existait
+   *  pas, ce n'est pas un zéro (ticket meta-ads 24). */
+  valeur: (brut: Record<string, number>) => number | null;
   /**
    * `true` quand le nombre affiché est un TOTAL de fenêtre : deux fenêtres de
    * longueurs différentes ne se comparent alors qu'au jour, exactement comme
@@ -79,7 +81,8 @@ export type MetriqueEcart = {
 export type EcartLigne =
   | { genre: "compare"; pourcent: number | null; absolu: number; reference: number }
   | { genre: "naissance"; premiere: string }
-  | { genre: "silence" };
+  | { genre: "silence" }
+  | { genre: "sansTaux" };
 
 export type LectureEcart = {
   /** « 28 jul → 3 aoû 2026 » — la fenêtre de référence, écrite. */
@@ -94,7 +97,7 @@ export type LectureEcart = {
   /** Ce que la référence portait et que la table n'a plus. Ces lignes ne sont
    *  PAS ajoutées à la table — elle liste la période affichée — mais les taire
    *  ferait disparaître de l'écran la moitié la plus intéressante d'une baisse. */
-  disparues: (affichees: string[]) => { cle: string; valeur: number }[];
+  disparues: (affichees: string[]) => { cle: string; valeur: number | null }[];
 };
 
 const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
@@ -124,8 +127,10 @@ export function ouvrirEcart(
   const jr = c.reference.jours;
   const parJour = c.inegales && m.ramenerAuJour;
   const finRef = c.reference.fin;
-  const valRef = (brut: Record<string, number>) =>
-    parJour ? m.valeur(brut) / jr : m.valeur(brut);
+  const valRef = (brut: Record<string, number>): number | null => {
+    const x = m.valeur(brut);
+    return x !== null && parJour ? x / jr : x;
+  };
 
   return {
     reference: c.reference.label,
@@ -143,6 +148,10 @@ export function ouvrirEcart(
         return { genre: "silence" };
       }
       const r = valRef(brut);
+      // La ligne a porté des lignes sur la référence, mais pas le dénominateur
+      // du taux : comparer le CTR d'aujourd'hui à 0 fabriquerait un écart
+      // contre un taux qui n'existait pas.
+      if (r === null) return { genre: "sansTaux" };
       const cur = parJour ? courant / jc : courant;
       return { genre: "compare", pourcent: pct(cur, r), absolu: cur - r, reference: r };
     },
@@ -151,7 +160,12 @@ export function ouvrirEcart(
       return Object.entries(v.reference)
         .filter(([cle]) => !vues.has(cle))
         .map(([cle, brut]) => ({ cle, valeur: valRef(brut) }))
-        .sort((a, b) => b.valeur - a.valeur);
+        // Sans taux sur la référence, elles ferment la liste.
+        .sort((a, b) =>
+          a.valeur === null || b.valeur === null
+            ? (a.valeur === null ? 1 : 0) - (b.valeur === null ? 1 : 0)
+            : b.valeur - a.valeur
+        );
     },
   };
 }
@@ -255,6 +269,16 @@ export function CelluleEcart({ e, l }: { e: EcartLigne; l: LectureEcart }) {
       </span>
     );
 
+  if (e.genre === "sansTaux")
+    return (
+      <span
+        className="text-[10px] text-faint whitespace-nowrap"
+        title={`Cette ligne n'avait pas de ${l.m.titre} sur ${l.reference} — sans impression il n'y a pas de CTR, sans clic pas de CPC. Un taux qui n'existait pas ne se compare pas : le poser à zéro inventerait un écart.`}
+      >
+        pas de {l.m.titre} sur la réf.
+      </span>
+    );
+
   if (e.pourcent === null)
     return (
       <span
@@ -301,7 +325,7 @@ export function CelluleEcart({ e, l }: { e: EcartLigne; l: LectureEcart }) {
  */
 export function phraseEcart(
   l: LectureEcart,
-  disparues: { cle: string; valeur: number }[],
+  disparues: { cle: string; valeur: number | null }[],
   trie: boolean,
   /** Le nom de ce qu'une ligne DÉSIGNE — « thème », « campagne ». Il ne sert
    *  qu'à compter ; le SUJET des phrases reste « la ligne », féminin dans les
@@ -320,6 +344,11 @@ export function phraseEcart(
   p.push(
     `Une ligne sans écart n'en a pas : « 1re donnée » dit qu'elle est née après la référence, « rien sur la réf. » qu'elle existait déjà mais n'a rien porté — une absence de mesure n'est pas une baisse de 100 %.`
   );
+  // Seul un taux peut manquer sur une ligne qui a porté de la donnée.
+  if (!l.m.ramenerAuJour)
+    p.push(
+      `« pas de ${l.m.titre} sur la réf. » dit que la ligne a porté de la donnée sans que le taux existe — un taux absent ne se compare pas à zéro.`
+    );
   if (disparues.length) {
     const n = disparues.length;
     const noms = disparues.slice(0, 3).map((d) => d.cle).join(", ");

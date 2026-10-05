@@ -130,8 +130,10 @@ export type FenetreCompare = {
 };
 
 /** Une valeur brute par fenêtre. Les sommes ne sont PAS ramenées au jour ici :
- *  seul l'affichage sait ce qui s'additionne et ce qui est déjà un taux. */
-export type MetriqueCompare = { cle: string; courant: number; reference: number };
+ *  seul l'affichage sait ce qui s'additionne et ce qui est déjà un taux.
+ *  `null` = un taux sans dénominateur dans cette fenêtre (voir `taux`) : il
+ *  n'existait pas, il ne se compare donc pas à zéro (ticket meta-ads 24). */
+export type MetriqueCompare = { cle: string; courant: number | null; reference: number | null };
 
 /**
  * Un jour de la frise : les grandeurs qui S'ADDITIONNENT, brutes. Les taux
@@ -357,7 +359,7 @@ function batirComparaison(
     metriques: cur.metriques.map((m, i) => ({
       cle: m.cle,
       courant: m.courant,
-      reference: rf.metriques[i]?.courant ?? 0,
+      reference: rf.metriques[i]?.courant ?? null,
     })),
     friseCourant: fc.pts,
     friseReference: fr.pts,
@@ -618,8 +620,8 @@ function buildDash(
           { cle: "spend", courant: s, reference: 0 },
           { cle: "clicks", courant: c, reference: 0 },
           { cle: "impressions", courant: i, reference: 0 },
-          { cle: "ctr", courant: i > 0 ? (c / i) * 100 : 0, reference: 0 },
-          { cle: "cpc", courant: c > 0 ? s / c : 0, reference: 0 },
+          { cle: "ctr", courant: taux(c, i, 100), reference: null },
+          { cle: "cpc", courant: taux(s, c), reference: null },
         ],
       };
     },
@@ -959,8 +961,8 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
           // par 40 personnes et à un reel vu par 12 000.
           {
             cle: "eng",
-            courant: portee > 0 ? (som((p) => p.likes + p.comments + p.saved) / portee) * 100 : 0,
-            reference: 0,
+            courant: taux(som((p) => p.likes + p.comments + p.saved), portee, 100),
+            reference: null,
           },
         ],
       };

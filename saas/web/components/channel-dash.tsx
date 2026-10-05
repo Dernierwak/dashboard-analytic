@@ -5,8 +5,9 @@
 import { fmtCHF } from "@/lib/report";
 import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
-import type {
-  Campaign, ChannelDash, DashParams, DayPoint, InstaDash, InstaPost,
+import {
+  taux,
+  type Campaign, type ChannelDash, type DashParams, type DayPoint, type InstaDash, type InstaPost,
 } from "@/lib/channels";
 import { lienDash } from "@/lib/liens";
 import { Pente, Triangle, sensPente } from "@/components/pente";
@@ -72,7 +73,7 @@ export function AdsKpis({ d }: { d: ChannelDash }) {
           valeur={d.ctr !== null ? d.ctr.toFixed(2) : "—"}
           unite={d.ctr !== null ? "%" : undefined}
           delta={d.ctrDelta}
-          serie={d.daily.map((p) => (p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0))}
+          serie={d.daily.map((p) => taux(p.clicks, p.impressions, 100))}
           serieLabels={d.daily.map((p) => p.label)}
           grand
         />
@@ -613,38 +614,45 @@ const METRICS: { key: string; label: string; unit: string }[] = [
 export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
   const pts = d.daily;
   if (pts.length === 0) return null;
-  const val = (p: (typeof pts)[0]): number => {
-    switch (d.metric) {
-      case "clicks": return p.clicks;
-      case "impressions": return p.impressions;
-      case "ctr": return p.impressions > 0 ? (p.clicks / p.impressions) * 100 : 0;
-      case "cpc": return p.clicks > 0 ? p.spend / p.clicks : 0;
-      default: return p.spend;
-    }
-  };
+  // La même dérivation que l'écart des tables : `null` = un jour sans le
+  // dénominateur du taux (CTR sans impression), que la courbe saute au lieu de
+  // dessiner une chute à zéro.
+  const m = METRIQUES_ECART[d.metric] ?? METRIQUES_ECART.spend;
+  const mesure = (b: Omit<DayPoint, "date" | "label">) => m.valeur(b);
+  const somme = (xs: DayPoint[]) =>
+    xs.reduce(
+      (a, p) => ({ spend: a.spend + p.spend, clicks: a.clicks + p.clicks, impressions: a.impressions + p.impressions }),
+      { spend: 0, clicks: 0, impressions: 0 }
+    );
   const meta = METRICS.find((m) => m.key === d.metric) ?? METRICS[0];
-  const vals = pts.map(val);
-  const max = Math.max(...vals, 0.001);
+  const vals = pts.map(mesure);
+  const mesures = vals.filter((v): v is number => v !== null);
+  const max = mesures.length ? Math.max(...mesures) : null;
   const fmtV = (v: number) => (v >= 100 ? fmtCHF(v) : v.toFixed(2));
 
   // Le CUMUL de la métrique choisie, en clair, avant la courbe. Ce module
   // n'avait aucun chiffre : il ouvrait sur un surtitre et une rangée de
   // boutons, puis un graphe. Un graphe dit la forme, jamais la valeur.
-  // Une moyenne pour ce qui est un taux, un total pour ce qui s'additionne.
-  const taux = d.metric === "ctr" || d.metric === "cpc";
-  const valeur = taux
-    ? vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.filter((v) => v > 0).length)
-    : vals.reduce((a, b) => a + b, 0);
+  // Un taux se dérive des TOTAUX de la période, jamais d'une moyenne de taux
+  // journaliers (même règle que `PointFrise`) ; ce qui s'additionne se totalise.
+  const estTaux = !m.ramenerAuJour;
+  const valeur = mesure(somme(pts));
 
-  // La pente : 2e moitié de la période contre la 1re. Trois mots au lieu de
-  // dix secondes de lecture de courbe.
-  const moy = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-  const mi = Math.floor(vals.length / 2);
-  const av = moy(vals.slice(0, mi));
-  const ap = moy(vals.slice(mi));
-  const ec = av > 0 ? ((ap - av) / av) * 100 : null;
+  // La pente : 2e moitié de la période contre la 1re, par jour pour ce qui
+  // s'additionne, sur les totaux de chaque moitié pour un taux. Trois mots au
+  // lieu de dix secondes de lecture de courbe.
+  const valeurDeMoitie = (xs: DayPoint[]): number | null => {
+    if (!xs.length) return null;
+    const v = mesure(somme(xs));
+    if (v === null || estTaux) return v;
+    return v / xs.length;
+  };
+  const mi = Math.floor(pts.length / 2);
+  const av = valeurDeMoitie(pts.slice(0, mi));
+  const ap = valeurDeMoitie(pts.slice(mi));
+  const ec = av !== null && ap !== null && av > 0 ? ((ap - av) / av) * 100 : null;
   // « Mieux » dépend de la métrique : un CPC qui baisse est une bonne nouvelle.
-  const baisseEstBonne = d.metric === "cpc";
+  const baisseEstBonne = m.baisseEstBonne ?? false;
   const s = sensPente(ec, baisseEstBonne, 8);
 
   return (
@@ -655,33 +663,53 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
 
       <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
         <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {fmtV(valeur)}
-          <span className="text-[15px] text-faint"> {meta.unit}</span>
+          {valeur !== null ? fmtV(valeur) : "—"}
+          {valeur !== null && <span className="text-[15px] text-faint"> {meta.unit}</span>}
         </span>
-        <span className="text-[11px] text-faint">{taux ? "en moyenne" : "au total"}</span>
-        <span
-          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}
-          style={{ background: s.fond }}
-          title="Seconde moitié de la période comparée à la première"
-        >
-          {s.plat ? (
-            "≈ stable"
-          ) : (
-            <>
-              <Triangle sens={s.monte ? "haut" : "bas"} /> {ec! > 0 ? "+" : ""}
-              {Math.round(ec!)} % sur la période
-            </>
-          )}
-        </span>
+        <span className="text-[11px] text-faint">{estTaux ? "en moyenne" : "au total"}</span>
+        {/* Une moitié sans valeur (aucune impression, aucune dépense) ne donne
+            pas de pente : « ≈ stable » affirmerait une stabilité jamais mesurée. */}
+        {ec === null ? (
+          <span
+            className="text-[11px] text-faint"
+            title={`La première moitié de la période n'a pas de ${meta.label} mesurable, ou vaut zéro : une variation en pourcentage demanderait de diviser par zéro.`}
+          >
+            pente non calculable
+          </span>
+        ) : (
+          <span
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}
+            style={{ background: s.fond }}
+            title="Seconde moitié de la période comparée à la première"
+          >
+            {s.plat ? (
+              "≈ stable"
+            ) : (
+              <>
+                <Triangle sens={s.monte ? "haut" : "bas"} /> {ec > 0 ? "+" : ""}
+                {Math.round(ec)} % sur la période
+              </>
+            )}
+          </span>
+        )}
       </div>
 
-      <LineChart
-        labels={pts.map((p) => p.label)}
-        series={[{ name: meta.label, color: "#1a56ff", values: vals }]}
-        fmt={fmtV}
-        unit={` ${meta.unit}`}
-        ariaLabel={`${meta.label} par jour`}
-      />
+      {/* Sans un seul jour mesuré, la courbe n'aurait que son axe — gradué sur
+          une échelle inventée. On dit pourquoi elle manque. */}
+      {mesures.length ? (
+        <LineChart
+          labels={pts.map((p) => p.label)}
+          series={[{ name: meta.label, color: "#1a56ff", values: vals }]}
+          fmt={fmtV}
+          unit={` ${meta.unit}`}
+          ariaLabel={`${meta.label} par jour`}
+        />
+      ) : (
+        <p className="text-[12px] text-muted py-6">
+          Aucun jour de la période n&apos;a de {meta.label} : il faut{" "}
+          {d.metric === "cpc" ? "au moins un clic" : "au moins une impression"} pour le calculer.
+        </p>
+      )}
 
       {/* Le sélecteur passe SOUS le graphe : il pilote ce module, il ne le
           quitte pas. Au-dessus, c'était la télécommande avant l'écran — le
@@ -700,9 +728,11 @@ export function MetricChart({ d, path }: { d: ChannelDash; path: string }) {
             {m.label}
           </a>
         ))}
-        <span className="ml-auto shrink-0 text-[10.5px] text-faint pl-3">
-          max {fmtV(max)} {meta.unit} / jour
-        </span>
+        {max !== null && (
+          <span className="ml-auto shrink-0 text-[10.5px] text-faint pl-3">
+            max {fmtV(max)} {meta.unit} / jour
+          </span>
+        )}
       </div>
     </div>
   );
@@ -724,11 +754,11 @@ const METRIQUES_ECART: Record<string, MetriqueEcart> = {
   clicks: { titre: "Clics", valeur: (b) => b.clicks, ramenerAuJour: true, fmt: fmtCHF },
   impressions: { titre: "Impressions", valeur: (b) => b.impressions, ramenerAuJour: true, fmt: fmtCHF },
   ctr: {
-    titre: "CTR", valeur: (b) => (b.impressions > 0 ? (b.clicks / b.impressions) * 100 : 0),
+    titre: "CTR", valeur: (b) => taux(b.clicks, b.impressions, 100),
     ramenerAuJour: false, fmt: (v) => v.toFixed(2), unite: "%",
   },
   cpc: {
-    titre: "CPC", valeur: (b) => (b.clicks > 0 ? b.spend / b.clicks : 0),
+    titre: "CPC", valeur: (b) => taux(b.spend, b.clicks),
     ramenerAuJour: false, fmt: (v) => v.toFixed(2), unite: "CHF", baisseEstBonne: true,
   },
 };

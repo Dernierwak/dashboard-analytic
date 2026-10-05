@@ -484,7 +484,8 @@ export function LineChart({
               {series
                 .map(
                   (s2) =>
-                    `${s2.name} ${s2.values[i] === null ? "—" : fmt(s2.values[i] as number)}${unit}`
+                    // Pas d'unité derrière « — » : « — % » ferait lire une valeur.
+                    `${s2.name} ${s2.values[i] === null ? "—" : `${fmt(s2.values[i] as number)}${unit}`}`
                 )
                 .join(" · ")}
             </span>

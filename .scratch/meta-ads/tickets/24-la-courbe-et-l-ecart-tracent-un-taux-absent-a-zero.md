@@ -1,7 +1,7 @@
 # 24: La courbe, la tuile et l'écart tracent un taux absent à zéro
 
 Type: task
-Status: needs-triage
+Status: resolved
 Blocked by: —
 
 **Trouvé en chemin** du ticket 22 (pas demandé, donc un ticket — `CLAUDE.md` §4.4).
@@ -24,5 +24,48 @@ le dénominateur est nul :
 Le module d'écart (`components/ecart.tsx`) et `MetriqueCompare` sont partagés
 avec Instagram : leur faire accepter `null` touche les trois canaux.
 
-- [ ] Chacun de ces quatre endroits écrit « — » ou saute le point, jamais 0
-- [ ] `tsc` et build verts, 18 routes
+- [x] Chacun de ces quatre endroits écrit « — » ou saute le point, jamais 0
+- [x] `tsc` et build verts, 18 routes
+
+## Réponse
+
+Les quatre endroits passent par `taux()` (`lib/channels.ts`) et rendent `null`
+au lieu de 0 :
+
+- **Courbe** (`MetricChart`) : elle dérive maintenant de `METRIQUES_ECART`, la
+  même source que l'écart. Un jour sans impression est sauté.
+  - Le chiffre d'en-tête d'un taux est le taux des **totaux** de la période, et
+    non plus une moyenne de taux journaliers (règle déjà écrite dans
+    `ecart.tsx`). **Le chiffre affiché change donc.**
+  - La pente se calcule sur les totaux de chaque moitié. Quand elle ne se
+    calcule pas, on lit « pente non calculable » avec sa raison, au lieu de
+    « ≈ stable ». Cela vaut aussi pour une dépense nulle en première moitié.
+  - Une période sans aucun jour mesuré affiche une phrase au lieu d'un axe
+    gradué sur une échelle inventée. Le « max … / jour » disparaît alors.
+- **Tuile « CTR moyen »** : sa mini-série porte des `null`, que `Chiffre` gère
+  déjà (ticket 48).
+- **Écart des tables** : `MetriqueEcart.valeur` peut rendre `null`. Une
+  référence sans dénominateur donne le nouveau genre `sansTaux`, écrit « pas de
+  CTR sur la réf. » ; la cellule et la phrase de pied disent pourquoi. Ces
+  lignes ferment le tri, comme les naissances.
+- **Comparaison** : `MetriqueCompare.courant` et `.reference` sont
+  `number | null`. Le CTR, le CPC et l'engagement Instagram passent par
+  `taux()`. Aucun écran ne lit `metriques` aujourd'hui : c'est le type qui est
+  corrigé.
+
+À côté : la bulle de `LineChart` n'écrit plus « — % ».
+
+Vérifié :
+
+- `tsc` et `npm run build` sont verts, avec 18 routes.
+- Un harnais hors arbre (sucrase + `renderToStaticMarkup`) a passé 8 contrôles :
+  référence sans impression → `sansTaux` ; tri des disparues ; CTR des totaux
+  6/200 = 3.00 ; CPC 20/6 = 3.33 ; pente non calculable ; période vide → « — »
+  sans axe ni « — % ».
+
+Rien ne dépend du worker : la correction se voit au prochain déploiement Vercel.
+
+Trouvé en chemin :
+
+- 25 : l'engagement d'une publication sans portée vaut 0.
+- 26 : la courbe enjambe un jour sans mesure.
