@@ -170,7 +170,7 @@ function PostsTable({
   params,
 }: {
   posts: InstaPost[];
-  histReach: number;
+  histReach: number | null;
   sort: string;
   params: DashParams;
 }) {
@@ -207,7 +207,7 @@ function PostsTable({
         </thead>
         <tbody className="divide-y divide-line">
           {posts.map((p, i) => {
-            const above = histReach > 0 && p.reach >= histReach;
+            const above = histReach !== null && p.reach >= histReach;
             return (
               <tr key={i}>
                 <td className="px-5 py-3">
@@ -347,7 +347,7 @@ export default async function InstagramPage({
           </div>
           <div className="font-mono text-xl font-medium text-ink">{fmtEng(d.avgEng)}</div>
           <div className="text-[11px] text-faint mt-1">
-            portée moyenne {fmtCHF(d.histReach)} / post
+            portée moyenne {fmtCompte(d.histReach)} / post
           </div>
         </div>
       </div>
@@ -432,8 +432,11 @@ export default async function InstagramPage({
       {d.posts.length === 0 ? (
         <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center mb-4">
           <p className="text-[13px] text-muted">
-            Aucun post sur la période — ton compte porte d&apos;habitude à{" "}
-            {fmtCHF(d.histReach)} par post.
+            Aucun post sur la période
+            {d.histReach !== null && (
+              <> — ton compte porte d&apos;habitude à {fmtCHF(d.histReach)} par post</>
+            )}
+            .
           </p>
         </div>
       ) : (
@@ -459,7 +462,10 @@ export default async function InstagramPage({
           « nouveau » sur cent lignes n'est pas une comparaison, c'est du bruit
           présenté comme une mesure. */}
       <p className="text-[11.5px] text-faint leading-relaxed">
-        Portée en vert = au-dessus de ton post moyen ({fmtCHF(d.histReach)}). Engagement =
+        {d.histReach !== null
+          ? `Portée en vert = au-dessus de ton post moyen (${fmtCHF(d.histReach)}). `
+          : "Aucune publication n'a de portée relevée : pas de post moyen, rien n'est en vert. "}
+        Engagement =
         (j&apos;aime + commentaires + enregistrements) / portée.
         {cmpPosts && (
           <>

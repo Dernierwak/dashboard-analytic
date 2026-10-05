@@ -828,6 +828,17 @@ export function valeurDe(p: InstaPost, cle: string): number | null {
   return LECTURES_INSTA[cleConnue](p);
 }
 
+/** La portée d'une publication, `null` quand elle n'est pas relevée. Un 0 ne se
+ *  distingue pas d'une absence : la récolte (`saas/collecte/meta/fetch_instagram.py`)
+ *  écrit 0 pour une métrique que l'API n'a pas rendue (`val or 0` dans
+ *  `_fetch_post_metrics`, `.get("reach", 0)` dans `fetch_headless`), et la
+ *  lecture ci-dessous (`Number(p.reach) || 0`) fait de même d'un `null` en base.
+ *  `eng` lit déjà ce 0 comme une portée absente (ticket 25) ; la moyenne doit
+ *  lire le même (ticket 28). */
+export function porteeRelevee(p: InstaPost): number | null {
+  return p.reach > 0 ? p.reach : null;
+}
+
 export type FollowerPoint = { date: string; followers: number };
 
 export type InstaDash = {
@@ -849,7 +860,8 @@ export type InstaDash = {
   followersDelta: number | null;
   growth30: number | null;
   avgEng: number | null;
-  histReach: number;
+  /** `null` quand aucune publication n'a de portée relevée — voir `porteeRelevee`. */
+  histReach: number | null;
   // `avgLikes` / `avgComments` / `avgSaved` / `avgViews` vivaient ici pour le
   // module « Tes moyennes par post · tout l'historique », supprimé de la page :
   // il doublait « Tes moyennes ». Le calcul part avec lui — un chiffre qu'on
@@ -869,7 +881,8 @@ export type InstaDash = {
   posts: InstaPost[];
   allPosts: InstaPost[];
   postsEng: number | null;
-  postsReach: number | null;
+  // `postsReach` vivait ici sans qu'aucun écran ne le lise : retiré avec le
+  // ticket 28 plutôt que corrigé, pour la raison écrite plus haut sur `avgLikes`.
   comparaison: Comparaison;
 };
 
@@ -959,8 +972,6 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   // Top 3 posts de la période filtrée (fallback historique, même signal).
   const topPosts = trierDecroissant(pool, (p) => valeurDe(p, topMetric)).slice(0, 3);
 
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-
   // La couverture d'Instagram, ce sont les dates de PUBLICATION : avant la
   // première, le compte n'a rien produit qu'on puisse comparer. `all` est trié
   // du plus récent au plus ancien.
@@ -1036,14 +1047,13 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     followersDelta,
     growth30,
     avgEng: moyenneMesuree(all.map((p) => p.eng)),
-    histReach: mean(all.map((p) => p.reach)),
+    histReach: moyenneMesuree(all.map(porteeRelevee)),
     followersSeries,
     topPosts,
     topMetric,
     posts,
     allPosts: all,
     postsEng: moyenneMesuree(posts.map((p) => p.eng)),
-    postsReach: posts.length ? mean(posts.map((p) => p.reach)) : null,
     comparaison,
   };
 }
