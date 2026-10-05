@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { plagesMesurees } from "@/lib/plages-mesurees";
 
 // Courbe réutilisable — un seul rendu pour tous les graphes de l'app.
 //
@@ -311,23 +312,26 @@ export function LineChart({
           )}
 
           {series.map((s, si) => {
-            const pts = s.values
-              .map((v, i) => (v === null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
-              .filter(Boolean) as string[];
-            if (pts.length < 2) return null;
-            const first = s.values.findIndex((v) => v !== null);
-            const last = s.values.length - 1 - [...s.values].reverse().findIndex((v) => v !== null);
+            // Un trait par plage mesurée (`lib/plages-mesurees.ts`) : un jour
+            // `null` coupe la courbe au lieu d'être enjambé. Un jour isolé n'a
+            // pas de trait — son rond HTML suffit.
+            const plages = plagesMesurees(s.values).filter((p) => p.length >= 2);
+            if (plages.length === 0) return null;
+            const pt = (i: number) => `${x(i).toFixed(1)},${y(s.values[i] as number).toFixed(1)}`;
+            const sol = (PAD_T + plotH).toFixed(1);
             return (
               <g key={s.name}>
                 {/* Le dégradé descend jusqu'au bas du cadre dans tous les cas
                     — y compris un axe tronqué (`socle="bas"`) : toutes les
                     courbes de l'app portent la même grammaire (TASK-033). */}
                 <path
-                  d={`M${x(first).toFixed(1)},${(PAD_T + plotH).toFixed(1)} L${pts.join(" L")} L${x(last).toFixed(1)},${(PAD_T + plotH).toFixed(1)} Z`}
+                  d={plages
+                    .map((p) => `M${x(p[0]).toFixed(1)},${sol} L${p.map(pt).join(" L")} L${x(p[p.length - 1]).toFixed(1)},${sol} Z`)
+                    .join(" ")}
                   fill={`url(#lc-${uid}-${si})`}
                 />
-                <polyline
-                  points={pts.join(" ")}
+                <path
+                  d={plages.map((p) => `M${p.map(pt).join(" L")}`).join(" ")}
                   fill="none"
                   stroke={s.color}
                   strokeWidth="2.5"
@@ -651,12 +655,11 @@ export function Sparkline({
   const n = values.length;
   const x = (i: number) => (i * W) / (n - 1);
   const y = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
-  const pts = values
-    .map((v, i) => (v === null ? null : { x: x(i), y: y(v) }))
-    .filter((p): p is { x: number; y: number } => p !== null);
-  if (pts.length < 2) return null;
+  // Un trait par plage mesurée, comme `LineChart` : un jour `null` coupe la
+  // mini-série au lieu d'être enjambé (ticket 26).
+  const plages = plagesMesurees(values).filter((p) => p.length >= 2);
   const uid = `${n}-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
-  const chemin = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L");
+  const pt = (i: number) => `${x(i).toFixed(1)},${y(values[i] as number).toFixed(1)}`;
 
   // Voir la note plus haut pour le détail du calcul et son recouvrement
   // documenté au-delà de n = 91.
@@ -718,11 +721,13 @@ export function Sparkline({
           </linearGradient>
         </defs>
         <path
-          d={`M${pts[0].x.toFixed(1)},${H} L${chemin} L${pts[pts.length - 1].x.toFixed(1)},${H} Z`}
+          d={plages
+            .map((p) => `M${x(p[0]).toFixed(1)},${H} L${p.map(pt).join(" L")} L${x(p[p.length - 1]).toFixed(1)},${H} Z`)
+            .join(" ")}
           fill={`url(#spk-${uid})`}
         />
-        <polyline
-          points={pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}
+        <path
+          d={plages.map((p) => `M${p.map(pt).join(" L")}`).join(" ")}
           fill="none"
           stroke={color}
           strokeWidth="2"
