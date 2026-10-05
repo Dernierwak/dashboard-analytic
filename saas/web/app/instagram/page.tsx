@@ -15,6 +15,7 @@ import {
   moyenneMesuree,
   trierDecroissant,
   valeurDe,
+  porteeRelevee,
   type DashParams,
   type InstaPost,
 } from "@/lib/channels";
@@ -233,7 +234,7 @@ function PostsTable({
                 <td className="px-2 py-3 text-muted">{p.type}</td>
                 <td className="px-2 py-3 text-right font-mono">
                   <span className={above ? "text-pos font-semibold" : "text-ink"}>
-                    {fmtCHF(p.reach)}
+                    {fmtCompte(porteeRelevee(p))}
                   </span>
                 </td>
                 <td className="px-2 py-3 text-right font-mono text-muted">
@@ -406,7 +407,7 @@ export default async function InstagramPage({
                     <span className="font-mono text-muted">
                       {d.topMetric === "reach"
                         ? `${fmtEng(p.eng)} eng.`
-                        : `${fmtCHF(p.reach)} portée`}
+                        : `${fmtCompte(porteeRelevee(p))} portée`}
                     </span>
                   </div>
                 </div>

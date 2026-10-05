@@ -68,8 +68,6 @@ qualité des agents qui le construisent.**
 3. **Une fois une tâche réalisée et vérifiée**, son ticket passe à
    `Status: resolved` avec la réponse écrite dedans. Jamais avant la
    vérification.
-4. **Ce qui n'était pas demandé et que je découvre** devient un ticket, pas un
-   détour silencieux.
 
 Le dépôt est **public** : les tickets restent en markdown local, jamais en
 GitHub Issues. Voir `docs/agents/issue-tracker.md` pour les conventions, et

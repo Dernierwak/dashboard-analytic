@@ -805,11 +805,22 @@ export type InstaPost = {
   eng: number | null;
 };
 
+/** La portée d'une publication, `null` quand elle n'est pas relevée. Un 0 ne se
+ *  distingue pas d'une absence : la récolte (`saas/collecte/meta/fetch_instagram.py`)
+ *  écrit 0 pour une métrique que l'API n'a pas rendue (`val or 0` dans
+ *  `_fetch_post_metrics`, `.get("reach", 0)` dans `fetch_headless`), et la
+ *  lecture ci-dessous (`Number(p.reach) || 0`) fait de même d'un `null` en base.
+ *  `eng` lit déjà ce 0 comme une portée absente (ticket 25) ; la moyenne, le
+ *  tri et l'affichage lisent le même (tickets 28 et 29). */
+export function porteeRelevee(p: InstaPost): number | null {
+  return p.reach > 0 ? p.reach : null;
+}
+
 // La lecture « clé → valeur » vivait en quatre ternaires recopiés (ticket 27) :
 // passer `eng` à `number | null` (ticket 25) a dû les retoucher tous les trois
 // pareil, et le quatrième aurait pu rester en retard sans que rien ne lève.
 const LECTURES_INSTA = {
-  reach: (p: InstaPost) => p.reach,
+  reach: porteeRelevee,
   views: (p: InstaPost) => p.views,
   likes: (p: InstaPost) => p.likes,
   comments: (p: InstaPost) => p.comments,
@@ -826,17 +837,6 @@ export function valeurDe(p: InstaPost, cle: string): number | null {
   // `Object.prototype.constructor` et trierait des objets au lieu de nombres.
   const cleConnue = Object.hasOwn(LECTURES_INSTA, cle) ? (cle as keyof typeof LECTURES_INSTA) : "reach";
   return LECTURES_INSTA[cleConnue](p);
-}
-
-/** La portée d'une publication, `null` quand elle n'est pas relevée. Un 0 ne se
- *  distingue pas d'une absence : la récolte (`saas/collecte/meta/fetch_instagram.py`)
- *  écrit 0 pour une métrique que l'API n'a pas rendue (`val or 0` dans
- *  `_fetch_post_metrics`, `.get("reach", 0)` dans `fetch_headless`), et la
- *  lecture ci-dessous (`Number(p.reach) || 0`) fait de même d'un `null` en base.
- *  `eng` lit déjà ce 0 comme une portée absente (ticket 25) ; la moyenne doit
- *  lire le même (ticket 28). */
-export function porteeRelevee(p: InstaPost): number | null {
-  return p.reach > 0 ? p.reach : null;
 }
 
 export type FollowerPoint = { date: string; followers: number };
