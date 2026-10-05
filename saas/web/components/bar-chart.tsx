@@ -18,7 +18,9 @@ import type { CSSProperties } from "react";
 // TOUS LES CARACTÈRES — axe et info-bulle sont posés par-dessus en HTML
 // absolu, positionnés en pourcentages de la même boîte que le SVG.
 
-export type Barre = { label: string; name: string; value: number };
+/** `value: null` = rien de mesuré pour ce post (un engagement sans portée) :
+ *  sa colonne reste vide, elle ne se pose pas à zéro (ticket meta-ads 25). */
+export type Barre = { label: string; name: string; value: number | null };
 
 function ancrage(pct: number): string {
   if (pct < 15) return "translate-x-0";
@@ -53,7 +55,10 @@ export function BarChart({
   const PAD_T = 10;
   const plotH = H - PAD_T - PAD_B;
 
-  const max = Math.max(...items.map((it) => it.value), 0.001);
+  const max = Math.max(...items.map((it) => it.value ?? 0), 0.001);
+  // Sans aucune valeur mesurée, le haut de l'échelle vaudrait le plancher
+  // 0.001 et s'écrirait « 0.0 % » : un zéro que rien n'a mesuré.
+  const mesure = items.some((it) => it.value !== null);
 
   const colW = (W - PAD_L - PAD_R) / n;
   const barW = Math.max(colW * 0.6, 1.5);
@@ -101,7 +106,7 @@ export function BarChart({
           />
 
           {/* Une barre par post — jamais de ligne qui les relierait. */}
-          {items.map((it, i) => (
+          {items.map((it, i) => it.value === null ? null : (
             <rect
               key={`${it.label}-${i}`}
               x={xCenter(i) - barW / 2}
@@ -118,13 +123,13 @@ export function BarChart({
         {/* ── Couche HTML : tout ce qui se lit ─────────────────────────── */}
 
         {/* Le haut de l'échelle. */}
-        <span
+        {mesure && <span
           className="absolute left-0 text-[9.5px] text-faint pointer-events-none"
           style={{ top: `${(PAD_T / H) * 100}%` }}
         >
           {fmt(max)}
           {unit}
-        </span>
+        </span>}
 
         {/* L'axe des dates — une étiquette sur `step` colonnes, comme
             `LineChart`, pour rester lisible même à 31 posts. */}
@@ -156,8 +161,7 @@ export function BarChart({
             >
               <span className="block truncate">{it.name}</span>
               <span className="block font-normal text-white/70">
-                {it.label} — {fmt(it.value)}
-                {unit}
+                {it.label} — {it.value === null ? "—" : `${fmt(it.value)}${unit}`}
               </span>
             </span>
           </div>

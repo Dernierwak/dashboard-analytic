@@ -12,6 +12,8 @@
 // demande de décider d'abord où elle se calcule, une seule fois.
 import {
   getInstaDash,
+  moyenneMesuree,
+  trierDecroissant,
   type DashParams,
   type InstaPost,
 } from "@/lib/channels";
@@ -42,6 +44,9 @@ const INSTA_METRICS: { key: string; label: string; unit: string }[] = [
   { key: "eng", label: "Engagement", unit: "%" },
 ];
 
+// Une publication sans portée relevée n'a pas d'engagement (ticket meta-ads 25).
+const fmtEng = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)} %`);
+
 // Évolution de tes posts — un bar par post, métrique au choix (comme Meta/Google).
 function PostsMetricChart({
   posts,
@@ -55,7 +60,7 @@ function PostsMetricChart({
   const pts = [...posts].reverse(); // plus ancien → plus récent
   if (pts.length < 2) return null;
   const meta = INSTA_METRICS.find((m) => m.key === metric) ?? INSTA_METRICS[0];
-  const val = (p: InstaPost): number =>
+  const val = (p: InstaPost): number | null =>
     metric === "views" ? p.views
     : metric === "likes" ? p.likes
     : metric === "comments" ? p.comments
@@ -63,7 +68,8 @@ function PostsMetricChart({
     : metric === "eng" ? p.eng
     : p.reach;
   const vals = pts.map(val);
-  const max = Math.max(...vals, 0.001);
+  const mesures = vals.filter((v): v is number => v !== null);
+  const max = Math.max(...mesures, 0.001);
   const fmtV = (v: number) => (metric === "eng" ? v.toFixed(1) : fmtCHF(v));
 
   // Ce module ouvrait sur un surtitre et une rangée de boutons, puis un graphe :
@@ -72,15 +78,14 @@ function PostsMetricChart({
   // et surtout deux fois la MÊME question posée différemment de Meta et Google.
   // Il suit maintenant exactement la forme de `MetricChart`.
   const taux = metric === "eng";
-  const valeur = taux
-    ? vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.filter((v) => v > 0).length)
-    : vals.reduce((a, b) => a + b, 0);
+  // Un engagement absent sort de la moyenne ; un 0 % mesuré (portée relevée,
+  // aucune réaction) y reste — l'ancien filtre `v > 0` les jetait tous deux.
+  const valeur = taux ? moyenneMesuree(vals) : mesures.reduce((a, b) => a + b, 0);
 
-  const moy = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
   const mi = Math.floor(vals.length / 2);
-  const av = moy(vals.slice(0, mi));
-  const ap = moy(vals.slice(mi));
-  const ec = av > 0 ? ((ap - av) / av) * 100 : null;
+  const av = moyenneMesuree(vals.slice(0, mi));
+  const ap = moyenneMesuree(vals.slice(mi));
+  const ec = av !== null && ap !== null && av > 0 ? ((ap - av) / av) * 100 : null;
   const sp = sensPente(ec, false, 8);
 
   return (
@@ -91,8 +96,8 @@ function PostsMetricChart({
 
       <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
         <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {fmtV(valeur)}
-          <span className="text-[15px] text-faint"> {meta.unit}</span>
+          {valeur === null ? "—" : fmtV(valeur)}
+          {valeur !== null && <span className="text-[15px] text-faint"> {meta.unit}</span>}
         </span>
         <span className="text-[11px] text-faint">{taux ? "en moyenne" : "au total"}</span>
         <span
@@ -140,7 +145,7 @@ function PostsMetricChart({
           </a>
         ))}
         <span className="ml-auto shrink-0 text-[10.5px] text-faint pl-3">
-          max {fmtV(max)}{meta.unit} · {pts.length} posts
+          {mesures.length > 0 && <>max {fmtV(max)}{meta.unit} · </>}{pts.length} posts
         </span>
       </div>
     </div>
@@ -160,14 +165,14 @@ const SORTS: { key: string; label: string }[] = [
 
 function sortPosts(posts: InstaPost[], sort: string): InstaPost[] {
   if (sort === "date") return posts; // déjà du plus récent au plus ancien
-  const val = (p: InstaPost): number =>
+  const val = (p: InstaPost): number | null =>
     sort === "views" ? p.views
     : sort === "likes" ? p.likes
     : sort === "comments" ? p.comments
     : sort === "saved" ? p.saved
     : sort === "eng" ? p.eng
     : p.reach;
-  return [...posts].sort((a, b) => val(b) - val(a));
+  return trierDecroissant(posts, val);
 }
 
 function PostsTable({
@@ -249,7 +254,7 @@ function PostsTable({
                 <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.likes)}</td>
                 <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.comments)}</td>
                 <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.saved)}</td>
-                <td className="px-5 py-3 text-right font-mono text-ink">{p.eng.toFixed(1)} %</td>
+                <td className="px-5 py-3 text-right font-mono text-ink">{fmtEng(p.eng)}</td>
               </tr>
             );
           })}
@@ -290,7 +295,9 @@ export default async function InstagramPage({
   const sortedAll = sortPosts(d.allPosts, sort);
 
   const engDiff =
-    d.postsEng !== null && d.avgEng > 0 ? ((d.postsEng - d.avgEng) / d.avgEng) * 100 : null;
+    d.postsEng !== null && d.avgEng !== null && d.avgEng > 0
+      ? ((d.postsEng - d.avgEng) / d.avgEng) * 100
+      : null;
 
   // La table des POSTS ne peut pas porter d'écart — voir son pied. On garde la
   // comparaison sous la main pour l'écrire, plutôt que de laisser un silence.
@@ -350,7 +357,7 @@ export default async function InstagramPage({
           <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
             Engagement du compte
           </div>
-          <div className="font-mono text-xl font-medium text-ink">{d.avgEng.toFixed(1)} %</div>
+          <div className="font-mono text-xl font-medium text-ink">{fmtEng(d.avgEng)}</div>
           <div className="text-[11px] text-faint mt-1">
             portée moyenne {fmtCHF(d.histReach)} / post
           </div>
@@ -405,7 +412,7 @@ export default async function InstagramPage({
                   <div className="flex items-baseline justify-between text-[12px]">
                     <span className="font-mono text-ink font-semibold">
                       {d.topMetric === "eng"
-                        ? `${p.eng.toFixed(1)} % eng.`
+                        ? `${fmtEng(p.eng)} eng.`
                         : `${fmtCHF(
                             d.topMetric === "views" ? p.views
                             : d.topMetric === "likes" ? p.likes
@@ -416,7 +423,7 @@ export default async function InstagramPage({
                     </span>
                     <span className="font-mono text-muted">
                       {d.topMetric === "reach"
-                        ? `${p.eng.toFixed(1)} % eng.`
+                        ? `${fmtEng(p.eng)} eng.`
                         : `${fmtCHF(p.reach)} portée`}
                     </span>
                   </div>
@@ -436,8 +443,8 @@ export default async function InstagramPage({
         <p className={`text-[12px] font-semibold mb-3 ${engDiff > 0 ? "text-pos" : "text-warn"}`}>
           <Triangle sens={engDiff > 0 ? "haut" : "bas"} /> Tes posts de la période engagent{" "}
           {engDiff > 0 ? "+" : ""}
-          {engDiff.toFixed(0)} % vs ton habitude ({d.postsEng!.toFixed(1)} % contre{" "}
-          {d.avgEng.toFixed(1)} %).
+          {engDiff.toFixed(0)} % vs ton habitude ({fmtEng(d.postsEng)} contre{" "}
+          {fmtEng(d.avgEng)}).
         </p>
       )}
       {d.posts.length === 0 ? (

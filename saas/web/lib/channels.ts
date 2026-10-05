@@ -64,6 +64,24 @@ export function taux(num: number, den: number, echelle = 1): number | null {
   return den > 0 ? (num / den) * echelle : null;
 }
 
+/** Trie du plus grand au plus petit, et range les valeurs absentes EN FIN : un
+ *  taux sans dénominateur n'est ni le meilleur ni le pire, il n'a pas de rang
+ *  (ticket meta-ads 25). */
+export function trierDecroissant<T>(xs: T[], val: (x: T) => number | null): T[] {
+  return [...xs].sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (va === null || vb === null) return va === vb ? 0 : va === null ? 1 : -1;
+    return vb - va;
+  });
+}
+
+/** La moyenne des seules valeurs mesurées. Aucune → `null`, jamais 0 : compter
+ *  un taux absent comme un zéro tirerait la moyenne vers le bas. */
+export function moyenneMesuree(xs: (number | null)[]): number | null {
+  const m = xs.filter((x): x is number => x !== null);
+  return m.length ? m.reduce((a, b) => a + b, 0) / m.length : null;
+}
+
 /** La variation d'un taux. Un taux absent d'un côté ou de l'autre ne se compare
  *  pas — même règle que `pct` pour une référence nulle. */
 function pctTaux(cur: number | null, prev: number | null): number | null {
@@ -783,7 +801,8 @@ export type InstaPost = {
   likes: number;
   comments: number;
   saved: number;
-  eng: number;       // %
+  /** % — `null` quand la portée n'est pas relevée : voir `taux`. */
+  eng: number | null;
 };
 
 export type FollowerPoint = { date: string; followers: number };
@@ -806,7 +825,7 @@ export type InstaDash = {
   followers: number;
   followersDelta: number | null;
   growth30: number | null;
-  avgEng: number;
+  avgEng: number | null;
   histReach: number;
   // `avgLikes` / `avgComments` / `avgSaved` / `avgViews` vivaient ici pour le
   // module « Tes moyennes par post · tout l'historique », supprimé de la page :
@@ -870,7 +889,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
       reach,
       views: Number(p.views) || 0,
       likes, comments, saved,
-      eng: reach > 0 ? ((likes + comments + saved) / reach) * 100 : 0,
+      eng: taux(likes + comments + saved, reach, 100),
     };
   });
   const follows = followsRes.data ?? [];
@@ -907,7 +926,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const topMetric = (_METRICS as readonly string[]).includes(String(sp?.m ?? ""))
     ? String(sp!.m)
     : "reach";
-  const _mval = (p: InstaPost): number =>
+  const _mval = (p: InstaPost): number | null =>
     topMetric === "views" ? p.views
     : topMetric === "likes" ? p.likes
     : topMetric === "comments" ? p.comments
@@ -922,7 +941,7 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
   const scope: "periode" | "historique" = posts.length >= 2 ? "periode" : "historique";
 
   // Top 3 posts de la période filtrée (fallback historique, même signal).
-  const topPosts = [...pool].sort((a, b) => _mval(b) - _mval(a)).slice(0, 3);
+  const topPosts = trierDecroissant(pool, _mval).slice(0, 3);
 
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
@@ -1000,14 +1019,14 @@ export async function getInstaDash(sp: DashParams | undefined): Promise<InstaDas
     followers,
     followersDelta,
     growth30,
-    avgEng: mean(all.map((p) => p.eng)),
+    avgEng: moyenneMesuree(all.map((p) => p.eng)),
     histReach: mean(all.map((p) => p.reach)),
     followersSeries,
     topPosts,
     topMetric,
     posts,
     allPosts: all,
-    postsEng: posts.length ? mean(posts.map((p) => p.eng)) : null,
+    postsEng: moyenneMesuree(posts.map((p) => p.eng)),
     postsReach: posts.length ? mean(posts.map((p) => p.reach)) : null,
     comparaison,
   };
