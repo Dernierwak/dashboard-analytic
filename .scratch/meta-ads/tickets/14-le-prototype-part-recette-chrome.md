@@ -52,3 +52,16 @@ Ce qui reste, et pourquoi ce n'est pas fait :
   le checkout principal, tout `.scratch/corrections/` est supprimé sans être
   commité ; à trancher par David avant de les fermer ici.
 - Les bloqueurs 07 à 13 sont tous `ready-for-human`, pas `resolved`.
+
+**2026-10-04, soir — PR #5 mergée dans `main`** (commit de merge `a6a45f9`),
+déploiement Vercel de production vert. Le reste est bloqué, sans contournement :
+- **Passage du worker** sur `main` pour `11043e9a…` : à lancer par David
+  (onglet GitHub Actions, `weekly-fetch.yml`, `user_id` seul). Le lancement
+  depuis la session a été refusé par les permissions.
+- **Recette Chrome** : `/meta` redirige vers `/login`. Se connecter au site
+  de production avec le vrai mot de passe de David n'est pas permis à un
+  agent : David se connecte dans Chrome, puis la recette reprend.
+- **Lire une annonce** (ticket 12) n'aura rien à montrer tant que le ticket
+  05 (récolte des créas) n'est pas construit — et le 05 attend la décision
+  de David : bucket public ou privé.
+- **997** (ticket 13) : à jouer par David après le passage du worker.
