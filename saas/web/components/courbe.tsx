@@ -82,19 +82,25 @@ function troncons(valeurs: (number | null)[]): { i: number; v: number }[][] {
 
 /** Le point orange d'un repère. Le bouton fait 24 px pour le doigt, le point
  *  8 px pour l'œil. Il est partagé par la courbe et par la frise d'une fenêtre
- *  vide, pour qu'un repère ait le même aspect et le même geste dans les deux. */
-function BoutonRepere({ actif, className = "", ...bouton }: React.ButtonHTMLAttributes<HTMLButtonElement> & { actif: boolean }) {
-  return (
-    <button
-      type="button"
-      {...bouton}
-      className={`group absolute z-[5] flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${className}`}
-    >
-      <span
-        className={`block h-2 w-2 rounded-full ring-2 ring-white transition-transform duration-150 motion-reduce:transition-none group-hover:scale-150 group-focus-visible:scale-150 ${actif ? "scale-150" : ""}`}
-        style={{ background: ORANGE_REPERE }}
-      />
+ *  vide, pour qu'un repère ait le même aspect et le même geste dans les deux.
+ *  Sans `onClick`, il n'ouvre rien : il reste un point qui se lit, pas un
+ *  bouton qui prend le focus pour ne rien faire. */
+function BoutonRepere({ actif, className = "", onClick, ...attributs }: React.HTMLAttributes<HTMLElement> & { actif: boolean }) {
+  const classes = `group absolute z-[5] flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${className}`;
+  const point = (
+    <span
+      className={`block h-2 w-2 rounded-full ring-2 ring-white transition-transform duration-150 motion-reduce:transition-none group-hover:scale-150 group-focus-visible:scale-150 ${actif ? "scale-150" : ""}`}
+      style={{ background: ORANGE_REPERE }}
+    />
+  );
+  return onClick ? (
+    <button type="button" {...attributs} onClick={onClick} className={classes}>
+      {point}
     </button>
+  ) : (
+    <span role="img" {...attributs} className={classes}>
+      {point}
+    </span>
   );
 }
 
@@ -148,6 +154,16 @@ export function Courbe({
     return yPct(v === null || v === undefined ? 0 : v);
   };
 
+  // Les deux rendus d'un repère disent la même chose au lecteur d'écran — le
+  // jour, puis ce qui a changé — et ouvrent leur bulle au focus clavier : un
+  // libellé seul (« 2 changements ») ne dit pas de quel jour il s'agit.
+  const accesRepere = (r: Repere) => ({
+    actif: survol === r.index,
+    "aria-label": `${principale.etiquettes[r.index]} · ${r.libelle}`,
+    onFocus: () => setSurvol(r.index),
+    onBlur: () => setSurvol(null),
+  });
+
   const bouge = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const i = Math.round(((e.clientX - r.left) / r.width) * (n - 1));
@@ -159,7 +175,7 @@ export function Courbe({
       {repereDates.map((i) => (
         <span
           key={i}
-          className={`absolute text-[11px] text-faint whitespace-nowrap ${i === 0 && n > 1 ? "" : i === n - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
+          className={`absolute text-[11px] text-faint whitespace-nowrap ${n <= 1 ? "-translate-x-1/2" : i === 0 ? "" : i === n - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
           style={{ left: `${xPct(i)}%` }}
         >
           {principale.etiquettes[i]}
@@ -190,13 +206,10 @@ export function Courbe({
                 {reperes.map((r) => (
                   <BoutonRepere
                     key={r.index}
-                    actif={survol === r.index}
-                    aria-label={`${principale.etiquettes[r.index]} · ${r.libelle}`}
-                    onClick={() => onRepere?.(r.index)}
+                    {...accesRepere(r)}
+                    onClick={onRepere && (() => onRepere(r.index))}
                     onPointerEnter={() => setSurvol(r.index)}
                     onPointerLeave={() => setSurvol(null)}
-                    onFocus={() => setSurvol(r.index)}
-                    onBlur={() => setSurvol(null)}
                     className="top-0"
                     style={{ left: `${xPct(r.index)}%` }}
                   />
@@ -290,14 +303,16 @@ export function Courbe({
           {reperes.map((r) => (
             <BoutonRepere
               key={r.index}
-              actif={survol === r.index}
-              aria-label={r.libelle}
-              onClick={(e) => {
-                // Le conteneur ouvre déjà le jour survolé : sans ça, un clic
-                // sur le point l'ouvrirait deux fois.
-                e.stopPropagation();
-                onRepere?.(r.index);
-              }}
+              {...accesRepere(r)}
+              onClick={
+                onRepere &&
+                ((e) => {
+                  // Le conteneur ouvre déjà le jour survolé : sans ça, un clic
+                  // sur le point l'ouvrirait deux fois.
+                  e.stopPropagation();
+                  onRepere(r.index);
+                })
+              }
               className="-translate-y-1/2"
               style={{ left: `${xPct(r.index)}%`, top: `${yRepere(r.index)}%` }}
             />
