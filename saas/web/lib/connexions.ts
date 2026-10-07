@@ -22,6 +22,15 @@ export type EtatCanal = {
   detail: string | null;
   /** Ce qu'il reste à faire, quand ce n'est pas connecté. */
   manque: string | null;
+  /** Le jeton est mort : la récolte de ce canal est arrêtée jusqu'à la
+   *  reconnexion. Posé par le worker (`saas/collecte/{meta,google}/auth/`). */
+  aReconnecter: AReconnecter | null;
+};
+
+export type AReconnecter = {
+  /** ISO — le premier passage qui a trouvé le jeton mort. */
+  depuis: string;
+  raison: string | null;
 };
 
 export type Connexions = {
@@ -31,7 +40,41 @@ export type Connexions = {
   idGoogle: number | null;
   /** Tout est branché → on peut lancer la première récolte. */
   pret: boolean;
+  /** Par plateforme : le jeton Meta sert Meta + Instagram, le Google sert
+   *  Google Ads + Analytics. */
+  reconnecterMeta: AReconnecter | null;
+  reconnecterGoogle: AReconnecter | null;
 };
+
+type LigneReconnexion = {
+  id: number;
+  a_reconnecter_depuis: string | null;
+  a_reconnecter_raison: string | null;
+};
+
+// LUES À PART, ET UN ÉCHEC NE COÛTE RIEN. Ces deux colonnes arrivent avec la
+// section 4bis de `000_run_me_all.sql`. Demandées dans le même `select` que
+// les jetons, une base où la migration n'est pas encore jouée ferait échouer
+// TOUTE la lecture — et la page Comptes, seul endroit d'où l'on répare une
+// connexion, afficherait les quatre canaux « à brancher ». Ici, une colonne
+// absente veut dire « aucune reconnexion connue », rien de plus.
+async function lireReconnexions(uid: string): Promise<Map<number, AReconnecter>> {
+  const out = new Map<number, AReconnecter>();
+  try {
+    const r = await createClient()
+      .from("connected_accounts")
+      .select("id, a_reconnecter_depuis, a_reconnecter_raison")
+      .eq("user_id", uid);
+    for (const l of (r.data as unknown as LigneReconnexion[]) ?? []) {
+      if (l.a_reconnecter_depuis) {
+        out.set(l.id, { depuis: l.a_reconnecter_depuis, raison: l.a_reconnecter_raison });
+      }
+    }
+  } catch {
+    // voir le commentaire au-dessus
+  }
+  return out;
+}
 
 type Ligne = {
   id: number;
@@ -64,6 +107,12 @@ export async function getConnexions(uid: string): Promise<Connexions> {
   const google =
     lignes.find((l) => l.provider === "google" || l.google_refresh_token) ?? null;
 
+  const reconnexions = await lireReconnexions(uid);
+  const reconnecterMeta = meta?.meta_token ? reconnexions.get(meta.id) ?? null : null;
+  const reconnecterGoogle = google?.google_refresh_token
+    ? reconnexions.get(google.id) ?? null
+    : null;
+
   const canaux: EtatCanal[] = [
     {
       cle: "meta",
@@ -72,6 +121,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
       connecte: Boolean(meta?.meta_token),
       detail: meta?.account_name ?? null,
       manque: meta?.meta_token ? null : "Autoriser Pulse sur ton compte Facebook.",
+      aReconnecter: reconnecterMeta,
     },
     {
       cle: "instagram",
@@ -84,6 +134,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           ? null
           : "Choisir la Page Facebook liée à ton compte Instagram."
         : "Connecte Meta d'abord — Instagram passe par la même autorisation.",
+      aReconnecter: meta?.instagram_business_id ? reconnecterMeta : null,
     },
     {
       cle: "google_ads",
@@ -96,6 +147,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           ? null
           : "Choisir le compte Google Ads à suivre."
         : "Autoriser Pulse sur ton compte Google.",
+      aReconnecter: google?.google_customer_id ? reconnecterGoogle : null,
     },
     {
       cle: "ga4",
@@ -109,6 +161,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           ? null
           : "Choisir la propriété Analytics de ton site."
         : "Connecte Google d'abord — Analytics passe par la même autorisation.",
+      aReconnecter: google?.ga4_property_id ? reconnecterGoogle : null,
     },
   ];
 
@@ -116,6 +169,9 @@ export async function getConnexions(uid: string): Promise<Connexions> {
     canaux,
     idMeta: meta?.id ?? null,
     idGoogle: google?.id ?? null,
-    pret: canaux.every((c) => c.connecte),
+    // Un canal à reconnecter n'est pas prêt : il ne récolte plus rien.
+    pret: canaux.every((c) => c.connecte && !c.aReconnecter),
+    reconnecterMeta,
+    reconnecterGoogle,
   };
 }

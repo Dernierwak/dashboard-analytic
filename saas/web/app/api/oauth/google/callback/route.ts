@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { redirectUri, reglagesGoogle, retourComptes, verifierEtat } from "@/lib/oauth";
+import { lancerWorkflow } from "@/lib/github-workflow";
+import { leverReconnexion } from "@/lib/reconnexion";
 
 export const dynamic = "force-dynamic";
 
@@ -63,14 +65,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(retourComptes({ erreur: "pas_de_refresh" }));
   }
 
+  // Une RECONNEXION : la ligne existe et une source y était déjà choisie. Le
+  // choix du compte Ads ou de la propriété ne se repose pas, donc rien d'autre
+  // ne relancerait la récolte — c'est ici qu'elle repart.
+  let reconnexion = false;
   try {
     const existante = await supabase
       .from("connected_accounts")
-      .select("id")
+      .select("id, google_customer_id, ga4_property_id")
       .eq("user_id", user.id)
       .eq("provider", "google")
       .limit(1);
 
+    const ligne = existante.data?.[0];
+    reconnexion = Boolean(ligne?.google_customer_id || ligne?.ga4_property_id);
     if (existante.data?.[0]?.id) {
       await supabase
         .from("connected_accounts")
@@ -86,6 +94,16 @@ export async function GET(req: NextRequest) {
     }
   } catch {
     return NextResponse.redirect(retourComptes({ erreur: "sauvegarde_google" }));
+  }
+
+  if (reconnexion) {
+    await leverReconnexion(supabase, user.id, "google");
+    // La récolte repart de la dernière date en base moins le recouvrement
+    // (`saas/collecte/automatisation/fetch_all.py`, `_depart_recolte`) : les
+    // jours de la panne reviennent. Un dispatch raté n'annule pas la
+    // reconnexion — le Jour de travail rattrapera, comme pour un branchement
+    // (`app/comptes/actions.ts`, `amorcerRecolte`).
+    await lancerWorkflow({ user_id: user.id }, "");
   }
 
   return NextResponse.redirect(retourComptes({ google: "comptes" }));
