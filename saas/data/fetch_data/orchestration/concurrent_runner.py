@@ -75,7 +75,8 @@ def client_service():
     # Le `.env` racine nomme la clé SUPABASE_SERVICE_ROLE_KEY (nom Supabase) ;
     # GitHub Actions la passe en SUPABASE_SERVICE_KEY. Sans le troisième nom,
     # l'essai lancé en local ne trouvait pas la clé pourtant présente.
-    key = (os.getenv("SUPABASE_SERVICE_KEY") or secret("supabase.service_role")
+    key = (os.getenv("SUPABASE_SERVICE_KEY") or secret("supabase.secret_key")
+           or secret("supabase.service_role")
            or secret("supabase.service_role_key"))
     if not url or not key:
         raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY manquants (env ou secrets.toml).")
