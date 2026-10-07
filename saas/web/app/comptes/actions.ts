@@ -6,6 +6,7 @@ import { getCompteActif } from "@/lib/account";
 import { JETON_META, effacerJetonTransit, lireJetonTransit } from "@/lib/oauth";
 import { instagramDeLaPage } from "@/lib/oauth-api";
 import { lancerWorkflow } from "@/lib/github-workflow";
+import { leverReconnexion } from "@/lib/reconnexion";
 
 export type Reponse = { ok: boolean; message?: string };
 
@@ -118,6 +119,7 @@ export async function connecterMeta(pageId: string, pageNom: string): Promise<Re
   }
 
   effacerJetonTransit(JETON_META);
+  await leverReconnexion(supabase, garde.uid, "meta");
   revalidatePath("/comptes");
 
   // La Page est rattachée : il y a de quoi récolter, on y va.

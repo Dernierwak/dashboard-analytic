@@ -29,6 +29,7 @@
 --   3bis)  google_ads_ad_insights — le détail par annonce
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
+--   4bis)  connected_accounts.a_reconnecter_* — le jeton mort, la reconnexion demandée
 --   6)     weekly_reports — le rapport hebdo précalculé
 --   7)     Onboarding express (secteur, budget, temps, frustration)
 --   12)    Partage d'accès : dashboard_members + a_acces() / peut_editer()
@@ -775,6 +776,33 @@ ALTER TABLE public.profiles
     DROP COLUMN IF EXISTS google_refresh_token,
     DROP COLUMN IF EXISTS google_customer_id,
     DROP COLUMN IF EXISTS ga4_property_id;
+
+-- ============================================================================
+-- 4bis) UNE CONNEXION « À RECONNECTER » — le jeton est mort, la récolte s'arrête.
+--
+-- Meta et Google exigent un clic humain pour refaire une autorisation : le
+-- worker ne peut que CONSTATER qu'un jeton est mort (`saas/collecte/meta/auth/
+-- jeton.py`, `saas/collecte/google/auth/jeton.py`) et le DEMANDER. Ces deux
+-- colonnes portent la demande jusqu'à la page Comptes, et la plateforme n'est
+-- plus récoltée tant qu'elles sont remplies (`.scratch/recolte/tickets/03`).
+--
+--   a_reconnecter_depuis — le PREMIER passage qui a trouvé le jeton mort. Le
+--                          worker ne l'écrase pas (coalesce) : c'est elle qui
+--                          mesure la panne, et au-delà de 30 jours les
+--                          changements Google d'avant sont perdus (change_event).
+--   a_reconnecter_raison — ce que la plateforme a dit, montré au client.
+--
+-- Remises à NULL par la reconnexion (`saas/web/app/comptes/actions.ts`,
+-- `saas/web/app/api/oauth/google/callback/route.ts`).
+--
+-- CLOISONNEMENT : rien à ajouter. `connected_accounts` n'a que des politiques
+-- « chacun ses lignes » et AUCUNE de partage — la section 15.2 le vérifie à
+-- chaque passage. Ces colonnes en héritent : un invité ne les lit pas.
+-- Ajouts seulement, rien de détruit, rejouable.
+-- ============================================================================
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS a_reconnecter_depuis timestamptz,
+    ADD COLUMN IF NOT EXISTS a_reconnecter_raison text;
 
 -- ============================================================================
 -- 6) weekly_reports — rapport hebdo précalculé (payload JSON)
@@ -1683,6 +1711,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'google_refresh_token'), -- §4
     ('c', 'connected_accounts',       'google_customer_id'),   -- §4
     ('c', 'connected_accounts',       'ga4_property_id'),      -- §4
+    ('c', 'connected_accounts',       'a_reconnecter_depuis'), -- §4bis
+    ('c', 'connected_accounts',       'a_reconnecter_raison'), -- §4bis
     ('c', 'ga4_insights',             'campaign'),             -- §2
     ('c', 'meta_campaign_config',     'effective_status'),     -- §0
     ('c', 'meta_campaign_config',     'campaign_id'),          -- §0
