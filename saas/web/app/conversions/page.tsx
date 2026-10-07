@@ -60,7 +60,7 @@ export default async function ConversionsPage() {
   //   · un événement CATÉGORISÉ (`ga4_event_categories`) — un humain ou l'IA
   //     a déjà dit « ça compte », quel que soit ce que GA4 en pense ;
   //   · un événement marqué « key event » PAR GA4 LUI-MÊME (`cle === true`,
-  //     `properties.keyEvents` — voir `collecte/ga4/fetch_ga4.py`), même pas
+  //     `properties.keyEvents` — voir `ingestion/ga4/fetch_ga4.py`), même pas
   //     encore catégorisé : c'est le seul signal externe et vérifiable qu'un
   //     événement EST une conversion pour ce compte GA4.
   // Un `page_view` ni catégorisé ni marqué clé n'entre dans aucune des deux
@@ -141,7 +141,7 @@ export default async function ConversionsPage() {
             Le tableau des catégories n&apos;existe pas encore dans ta base —{" "}
             <span className="font-semibold">aucune conversion ne peut être catégorisée</span>.
             Joue{" "}
-            <code className="font-mono text-[11.5px]">supabase/migrations/000_run_me_all.sql</code>{" "}
+            <code className="font-mono text-[11.5px]">saas/data/supabase/migrations/000_run_me_all.sql</code>{" "}
             dans Supabase → SQL editor, puis recharge cette page. Ce fichier est rejouable sans
             risque.
           </p>
@@ -166,7 +166,7 @@ export default async function ConversionsPage() {
           <p className="text-[12.5px] text-neg leading-relaxed mb-3 max-w-[70ch]">
             Le tableau des catégories n&apos;existe pas encore dans ta base —{" "}
             <span className="font-semibold">aucune catégorie ne peut être créée</span>. Joue{" "}
-            <code className="font-mono text-[11.5px]">supabase/migrations/000_run_me_all.sql</code>{" "}
+            <code className="font-mono text-[11.5px]">saas/data/supabase/migrations/000_run_me_all.sql</code>{" "}
             dans Supabase → SQL editor, puis recharge cette page. Ce fichier est rejouable sans
             risque.
           </p>

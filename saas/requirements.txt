@@ -1,4 +1,0 @@
-# Dépendances du service SaaS (collecte + traitement + email). Indépendant du Streamlit.
-pandas>=2.0
-requests>=2.31
-supabase>=2.0        # pour la collecte (lecture multi-users) — Phase 1

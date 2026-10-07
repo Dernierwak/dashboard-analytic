@@ -37,11 +37,9 @@ ailleurs. Ne pas les réintroduire par la bande — ce qui est parti est au
 | Où | Quoi |
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
-| `saas/collecte/` | La récolte brute, rien d'autre — un dossier par plateforme (`meta/`, `google/`), puis par canal, puis un fichier par API en lecture seule ; `ecriture/` pour tout ce qui écrit, `socle/` pour HTTP et dates. Trois points d'entrée : `mise_a_jour.py` (le cron, GitHub Actions `weekly-fetch.yml`), `recolte_complete.py`, `essai.py` (local, rien en base). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
-| `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` a récolté — `build_report.py`, `lecteur.py` (le seam hors ligne), `matrice.py` (la matrice full-history). Son `CLAUDE.md` détaille la logique. |
-| `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/` et `traitement/`, pas propre à un seul domaine. |
-| `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
-| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. Les fichiers `99x_*.sql` en sont l'exception : ils DÉTRUISENT ou basculent, ne s'installent pas, et se jouent une fois à la main. |
+| `saas/data/fetch_data/` | Va chercher les données chez Meta et Google — `cockpit/` expose les trois commandes, `orchestration/` organise leur exécution, `sources/` appelle les plateformes et `shared/` porte HTTP, dates et état des jetons. |
+| `saas/data/supabase/` | Tout Supabase au même endroit : `source_data/` enregistre les données sources, `fetch_state/` pilote la reprise, `processed_data/` construit les résultats, `migrations/000_run_me_all.sql` porte le schéma et `config.toml` configure la CLI. |
+| `saas/config/` | Configuration du worker — `secrets.py` est le seul lecteur de credentials. |
 
 Python : **`python3.12`**, jamais `python3`.
 
@@ -125,7 +123,7 @@ incomplète.
 
 **Aucun secret dans la conversation.** Ni jeton, ni clé, ni mot de passe, ni un
 fragment. Ils vont dans `.env.local` (ignoré par git, `saas/web/`), dans les
-secrets GitHub Actions (`saas/collecte/`, voir `.github/workflows/weekly-fetch.yml`)
+secrets GitHub Actions (`saas/data/fetch_data/`, voir `.github/workflows/weekly-fetch.yml`)
 ou dans l'interface Vercel, par David lui-même. Un message d'erreur nomme la
 **variable**, jamais sa valeur.
 
@@ -174,7 +172,7 @@ tout son échafaudage. `git grep` doit être propre.
   oubliée).
 - Python : `python3.12 -m py_compile` sur ce qui a été touché.
 - **Le rapport se construit hors ligne** : `build_payload` prend un `Lecteur`
-  (`saas/traitement/lecteur.py`), donc une propriété du payload **s'exécute au
+  (`saas/data/supabase/processed_data/weekly_report/reader.py`), donc une propriété du payload **s'exécute au
   lieu de se lire dans le texte**. Les harnais qui l'exploitaient ont quitté
   l'arbre le 2026-10-01 (David : une base propre) ; ils restent dans
   l'historique (`git log --diff-filter=D -- .scratch/construction`). Toucher au

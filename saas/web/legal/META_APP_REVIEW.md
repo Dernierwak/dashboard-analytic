@@ -22,10 +22,10 @@ Les cinq permissions demandées sont déclarées dans
 
 | Appel | Où |
 |---|---|
-| `/act_<id>/insights` (`level=ad`, `time_increment=1`) — dépense, impressions, clics, portée, actions, par jour et par annonce | `saas/collecte/meta/ads/insights.py` l. 34-40 |
-| `/<ad_account_id>/campaigns` | `saas/collecte/meta/ads/campagnes.py` l. 35, `meta/ads/budgets.py` l. 73 |
+| `/act_<id>/insights` (`level=ad`, `time_increment=1`) — dépense, impressions, clics, portée, actions, par jour et par annonce | `saas/data/fetch_data/sources/meta/ads/insights.py` l. 34-40 |
+| `/<ad_account_id>/campaigns` | `saas/data/fetch_data/sources/meta/ads/campaigns.py` l. 35, `meta/ads/budgets.py` l. 73 |
 | `/<campaign_id>/adsets` | `meta/ads/budgets.py` l. 40 |
-| `/<ad_account_id>/activities` — l'historique des changements, pour légender une variation | `meta/ads/activites.py` l. 184 |
+| `/<ad_account_id>/activities` — l'historique des changements, pour légender une variation | `meta/ads/activities.py` l. 184 |
 
 **Justification, prête à coller :**
 
@@ -95,10 +95,10 @@ repli**, quand `me/accounts` revient vide.
 **Ce que Pulse appelle** :
 `?fields=instagram_business_account{id,username}` sur la Page choisie
 (`oauth-api.ts` l. 79) ; `/<ig_id>/media?fields=id,timestamp`
-(`saas/collecte/meta/organique/instagram/posts.py` l. 22 et 39) ;
+(`saas/data/fetch_data/sources/meta/instagram/posts.py` l. 22 et 39) ;
 `/<post_id>?fields=caption,media_type,media_url,thumbnail_url,timestamp`
-(`instagram/metriques.py` l. 11) ; `/<ig_id>?fields=followers_count,media_count`
-(`instagram/compte.py` l. 15-16).
+(`instagram/metrics.py` l. 11) ; `/<ig_id>?fields=followers_count,media_count`
+(`instagram/account.py` l. 15-16).
 
 > Pulse reads the user's own Instagram Business account: the list of their
 > posts, each post's caption, type, image and date, and the account's follower
@@ -108,7 +108,7 @@ repli**, quand `me/accounts` revient vide.
 ### `instagram_manage_insights`
 
 **Ce que Pulse appelle** : `/<post_id>/insights`
-(`instagram/metriques.py` l. 25-30 et 40) — `reach`, `saved`, `comments`, `views`, `likes`
+(`instagram/metrics.py` l. 25-30 et 40) — `reach`, `saved`, `comments`, `views`, `likes`
 pour une image, `reach`, `saved`, `comments`, `views` pour une vidéo ou un Reel,
 plus `follows`.
 

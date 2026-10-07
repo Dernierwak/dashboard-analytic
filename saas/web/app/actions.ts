@@ -388,7 +388,7 @@ export async function checkFetchProgress(): Promise<{
   indisponible: boolean;
 }> {
   // L'ordre de lecture, le même que celui du journal du worker (`CANAUX` dans
-  // saas/collecte/automatisation/suivi.py). Il vit ici et pas dans un export : un fichier
+  // saas/data/fetch_data/orchestration/supabase/fetch_state/state.py). Il vit ici et pas dans un export : un fichier
   // « use server » ne peut exporter que des fonctions asynchrones.
   const ordre = ["meta", "instagram", "google", "ga4", "rapport"];
   const supabase = createClient();

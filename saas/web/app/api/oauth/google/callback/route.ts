@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
   if (reconnexion) {
     await leverReconnexion(supabase, user.id, "google");
     // La récolte repart de la dernière date en base moins le recouvrement
-    // (`saas/collecte/automatisation/fetch_all.py`, `_depart_recolte`) : les
+    // (`saas/data/fetch_data/orchestration/fetch_all.py`, `_depart_recolte`) : les
     // jours de la panne reviennent. Un dispatch raté n'annule pas la
     // reconnexion — le Jour de travail rattrapera, comme pour un branchement
     // (`app/comptes/actions.ts`, `amorcerRecolte`).

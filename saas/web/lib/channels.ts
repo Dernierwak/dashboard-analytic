@@ -816,7 +816,7 @@ export type InstaPost = {
 };
 
 /** La portée d'une publication, `null` quand elle n'est pas relevée. Un 0 ne se
- *  distingue pas d'une absence : la récolte (`saas/collecte/meta/fetch_instagram.py`)
+ *  distingue pas d'une absence : la récolte (`saas/data/fetch_data/sources/meta/fetch_instagram.py`)
  *  écrit 0 pour une métrique que l'API n'a pas rendue (`val or 0` dans
  *  `_fetch_post_metrics`, `.get("reach", 0)` dans `fetch_headless`), et la
  *  lecture ci-dessous (`Number(p.reach) || 0`) fait de même d'un `null` en base.

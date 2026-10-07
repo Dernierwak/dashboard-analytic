@@ -294,7 +294,7 @@ export async function getWeeklyData(): Promise<WeeklyData> {
       .limit(1),
     // `fetch_schedule` ENTRE DANS CETTE LECTURE, et c'est sans risque ici : la
     // colonne est celle que `_due_today` lit pour décider qui est récolté
-    // (`saas/collecte/automatisation/fetch_all.py`). Une base qui ne l'aurait
+    // (`saas/data/fetch_data/orchestration/fetch_all.py`). Une base qui ne l'aurait
     // pas ne publierait aucun rapport — il n'y aurait donc rien à dater. Le
     // repli ci-dessous (`retry`) ne la redemande pas : dans ce cas on retombe
     // sur le défaut du worker lui-même, lundi, et pas sur une invention.

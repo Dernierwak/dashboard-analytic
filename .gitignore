@@ -17,6 +17,14 @@ __pycache__/
 .venv/
 venv/
 
+# Next.js / Node
+node_modules/
+.next/
+out/
+next-env.d.ts
+.env*.local
+*.tsbuildinfo
+
 # OS
 .DS_Store
 
@@ -24,6 +32,6 @@ venv/
 .vscode/
 .idea/
 
-# L'essai de la récolte (`saas/collecte/essai.py`) écrit ici des DONNÉES CLIENT
+# L'essai du fetch (`saas/data/fetch_data/cockpit/check_data_collection.py`) écrit ici des DONNÉES CLIENT
 # lues chez Meta et Google. Le dépôt est public : elles ne le quittent jamais.
 .essais/

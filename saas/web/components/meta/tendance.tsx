@@ -31,7 +31,7 @@ import { ORANGE_REPERE } from "@/lib/palette";
 
 /** Ce que le journal ne couvre pas. Dit ICI, et nulle part ailleurs (décision
  *  du ticket 08 de la carte) : la liste suit `_ACTIVITES` de
- *  `saas/collecte/meta/fetch_meta_ads.py`, et doit changer avec elle. */
+ *  `saas/data/fetch_data/sources/meta/fetch_meta_ads.py`, et doit changer avec elle. */
 const NE_COUVRE_PAS =
   "Les points viennent du journal que Meta tient de ton compte, et Pulse n'en garde que les budgets, les statuts, " +
   "le ciblage, les visuels, les enchères et les créations de campagnes, de groupes d'annonces et d'annonces. " +

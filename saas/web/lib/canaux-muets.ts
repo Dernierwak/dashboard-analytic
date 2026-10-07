@@ -11,7 +11,7 @@ import type { createClient } from "@/lib/supabase/server";
 // ticket 20 ne s'y appliquait. Ce module fait traverser le signal une seconde
 // fois, vers ces trois-là.
 //
-// C'EST LE JUMEAU DE `fetch_canaux_muets` (`saas/commun/fetch_data.py`), et il
+// C'EST LE JUMEAU DE `fetch_canaux_muets` (`saas/data/storage/reader.py`), et il
 // doit le rester : même table, même filtre sur le dernier passage, même
 // restriction aux canaux payants. Deux lectures du même fait qui divergeraient
 // produiraient deux vérités sur un seul écran — exactement le défaut que le

@@ -1,5 +1,5 @@
 // Le point de la semaine — données réelles, lues dans `weekly_reports`, publié
-// en headless par `saas/traitement/build_report.py` (cron du Jour de travail).
+// en headless par `saas/data/supabase/processed_data/weekly_report/builder.py` (cron du Jour de travail).
 //
 // CETTE PAGE NE CONSEILLE RIEN, ELLE CONSTATE. Les conseils, le suivi des
 // actions, le carnet et le module « À faire » ont été retirés du produit : ce

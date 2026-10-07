@@ -93,8 +93,8 @@ la propriété GA4.
 > session source, session medium, session campaign name, and event name. We
 > never request user identifiers, no client ID, no location, no device."
 
-> **Vrai, et vérifié** : `saas/collecte/google/analytics/insights.py` l. 27-33 et
-> `google/analytics/evenements.py` l. 58-65, et la table `ga4_insights` n'a pas
+> **Vrai, et vérifié** : `saas/data/fetch_data/sources/google/analytics/insights.py` l. 27-33 et
+> `google/analytics/events.py` l. 58-65, et la table `ga4_insights` n'a pas
 > d'autre colonne (migration l. 546).
 
 ### [2:20–2:45] Ce qu'on en fait, et ce qu'on n'en fait pas

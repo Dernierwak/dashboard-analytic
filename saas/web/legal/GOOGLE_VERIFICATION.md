@@ -42,7 +42,7 @@ Un seul consentement couvre les deux — le même `refresh_token` sert aux deux 
 d'écriture n'existe dans le dépôt :
 
 ```bash
-git grep -nE ":mutate|mutateOperations|MutateGoogleAds" -- 'saas/collecte/**' || echo "aucun appel d'écriture"
+git grep -nE ":mutate|mutateOperations|MutateGoogleAds" -- 'saas/data/fetch_data/**' || echo "aucun appel d'écriture"
 ```
 
 ### Ce qu'on ne demande PAS, et qu'il faut savoir dire
@@ -54,10 +54,10 @@ git grep -nE ":mutate|mutateOperations|MutateGoogleAds" -- 'saas/collecte/**' ||
   l'exception des 7 jours (voir §4).
 - **Aucune dimension d'utilisateur final dans GA4.** Les seules dimensions
   demandées sont `date`, `sessionSource`, `sessionMedium`, `sessionCampaignName`
-  et `eventName` (`saas/collecte/google/analytics/insights.py` l. 27-33 et
-  `google/analytics/evenements.py` l. 58-65), et la
+  et `eventName` (`saas/data/fetch_data/sources/google/analytics/insights.py` l. 27-33 et
+  `google/analytics/events.py` l. 58-65), et la
   table qui les reçoit n'a pas d'autre colonne (`ga4_insights`,
-  `supabase/migrations/000_run_me_all.sql` l. 546). **Aucun `userId`, aucun
+  `saas/data/supabase/migrations/000_run_me_all.sql` l. 546). **Aucun `userId`, aucun
   `clientId`, aucune donnée de géolocalisation ni d'appareil n'est demandé ni
   stocké.** Pulse ne voit jamais un visiteur, seulement des totaux.
 
@@ -70,14 +70,14 @@ courte et doit être exacte — un sous-traitant oublié ici est un motif de ref
 
 | Qui | Ce qui y transite | Preuve dans le dépôt |
 |---|---|---|
-| **Supabase** (PostgreSQL) | Toute la donnée récoltée, et les jetons OAuth (`connected_accounts`) | `saas/commun/insert_data.py` |
+| **Supabase** (PostgreSQL) | Toute la donnée récoltée, et les jetons OAuth (`connected_accounts`) | `saas/data/supabase/source_data/` |
 | **Vercel** | L'hébergement de l'application qui affiche la donnée | `saas/web/`, déployé depuis `main` |
 | **GitHub Actions** | La récolte hebdomadaire s'y exécute — donc les jetons y transitent en variables de secret | `.github/workflows/weekly-fetch.yml` |
 | **Google Gemini API** | Des extraits de la donnée récoltée, pour rédiger le texte du rapport | `gemini-2.5-flash`, 5 sites d'appel — voir §3 |
 
 Chaque ligne de donnée est cloisonnée par utilisateur : toutes les tables portent
 un `user_id` et une politique RLS `auth.uid() = user_id`
-(`supabase/migrations/000_run_me_all.sql`). Une personne invitée sur un compte
+(`saas/data/supabase/migrations/000_run_me_all.sql`). Une personne invitée sur un compte
 voit les chiffres et **jamais les jetons** — règle dure du projet, `CLAUDE.md` §7.
 
 ---

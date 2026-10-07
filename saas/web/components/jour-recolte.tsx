@@ -5,7 +5,7 @@ import { ChoixJour } from "@/components/choix-jour";
 import { JOURS, delai, enFrancais, prochainPassage } from "@/lib/jour-de-travail";
 
 // LE JOUR DE LA RÉCOLTE — `profiles.fetch_schedule`, lu par le worker
-// (`saas/collecte/automatisation/fetch_all.py`, `_due_today`) qui compare au jour courant en
+// (`saas/data/fetch_data/orchestration/fetch_all.py`, `_due_today`) qui compare au jour courant en
 // anglais et retombe sur lundi quand rien n'est réglé.
 //
 // Le module suit la grammaire (docs/03-grammaire-des-modules.md) :

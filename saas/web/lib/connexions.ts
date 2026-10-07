@@ -23,7 +23,7 @@ export type EtatCanal = {
   /** Ce qu'il reste à faire, quand ce n'est pas connecté. */
   manque: string | null;
   /** Le jeton est mort : la récolte de ce canal est arrêtée jusqu'à la
-   *  reconnexion. Posé par le worker (`saas/collecte/{meta,google}/auth/`). */
+   *  reconnexion. Posé par le worker (`saas/data/fetch_data/{meta,google}/auth/`). */
   aReconnecter: AReconnecter | null;
 };
 
