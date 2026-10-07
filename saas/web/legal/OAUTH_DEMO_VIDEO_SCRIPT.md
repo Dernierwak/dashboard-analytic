@@ -57,7 +57,7 @@ script est **écrit contre le code**, pas contre une idée du produit : chaque
 > alone."
 
 **À l'écran** : `/comptes`, ses quatre cartes de connexion — Meta, Instagram,
-**Google Ads**, **Google Analytics** (`lib/connexions.ts` l. 67-113). Les deux
+**Google Ads**, **Google Analytics** (`lib/connexions.ts` l. 116-166). Les deux
 cartes Google portent déjà, en français, ce que chacune apporte.
 
 ### [0:45–1:20] L'écran de consentement — le moment clé, sans coupure
@@ -93,8 +93,9 @@ la propriété GA4.
 > session source, session medium, session campaign name, and event name. We
 > never request user identifiers, no client ID, no location, no device."
 
-> **Vrai, et vérifié** : `saas/collecte/ga4/fetch_ga4.py` l. 87-95 et 367-375,
-> et la table `ga4_insights` n'a pas d'autre colonne (migration l. 341).
+> **Vrai, et vérifié** : `saas/collecte/google/analytics/insights.py` l. 27-33 et
+> `google/analytics/evenements.py` l. 58-65, et la table `ga4_insights` n'a pas
+> d'autre colonne (migration l. 546).
 
 ### [2:20–2:45] Ce qu'on en fait, et ce qu'on n'en fait pas
 
@@ -125,7 +126,7 @@ la propriété GA4.
 > Thank you."
 
 > **Ne pas dire « the refresh token is revoked »** : `deconnecter()`
-> (`app/comptes/actions.ts` l. 129-147) met les colonnes de jeton à `NULL` dans
+> (`app/comptes/actions.ts` l. 181-199) met les colonnes de jeton à `NULL` dans
 > `connected_accounts`. **Aucun appel de révocation n'existe dans le dépôt** —
 > `git grep -n revoke` ne renvoie que ce fichier. Le jeton reste donc valide
 > chez Google tant que l'utilisateur ne le révoque pas de son côté ; ce qui

@@ -31,7 +31,7 @@ Screen) et en **Live** chez Meta (App Review).
 Tous les fichiers contiennent des `<PLACEHOLDERS>` à remplacer :
 
 `<APP_NAME>` **est déjà rempli** — c'est **Pulse**, le nom que porte l'app
-partout (`app/layout.tsx` l. 13, `app/login/page.tsx` l. 67). Il doit rester
+partout (`app/layout.tsx` l. 13, `app/login/page.tsx` l. 68). Il doit rester
 identique à l'« App name » de l'écran de consentement Google : si tu le changes
 là-bas, change-le ici le même jour.
 

@@ -49,14 +49,15 @@ git grep -nE ":mutate|mutateOperations|MutateGoogleAds" -- 'saas/collecte/**' ||
 
 - **Aucun scope d'identité** — ni `openid`, ni `userinfo.email`, ni
   `userinfo.profile`. La connexion à Pulse se fait par email + mot de passe chez
-  Supabase (`saas/web/app/login/page.tsx` l. 25), pas par « Se connecter avec
+  Supabase (`saas/web/app/login/page.tsx` l. 26), pas par « Se connecter avec
   Google ». C'est ce qui fait que Pulse ne peut pas se réfugier derrière
   l'exception des 7 jours (voir §4).
 - **Aucune dimension d'utilisateur final dans GA4.** Les seules dimensions
   demandées sont `date`, `sessionSource`, `sessionMedium`, `sessionCampaignName`
-  et `eventName` (`saas/collecte/ga4/fetch_ga4.py` l. 87-95 et 367-375), et la
+  et `eventName` (`saas/collecte/google/analytics/insights.py` l. 27-33 et
+  `google/analytics/evenements.py` l. 58-65), et la
   table qui les reçoit n'a pas d'autre colonne (`ga4_insights`,
-  `supabase/migrations/000_run_me_all.sql` l. 341). **Aucun `userId`, aucun
+  `supabase/migrations/000_run_me_all.sql` l. 546). **Aucun `userId`, aucun
   `clientId`, aucune donnée de géolocalisation ni d'appareil n'est demandé ni
   stocké.** Pulse ne voit jamais un visiteur, seulement des totaux.
 
@@ -167,7 +168,7 @@ tourne encore. Si elle tourne, on valide chez de vraies entreprises **pendant**
 la vérification au lieu de l'attendre.
 
 En attendant, le contournement existe déjà et ne demande aucun code : le bouton
-**« Reconnecter »** de `/comptes` (`saas/web/app/comptes/page.tsx` l. 353 et 373).
+**« Reconnecter »** de `/comptes` (`saas/web/app/comptes/page.tsx` l. 436 et 456).
 Un clic avant chaque Jour de travail. Une semaine oubliée est une semaine de
 données perdue.
 
