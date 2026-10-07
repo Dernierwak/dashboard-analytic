@@ -14,16 +14,18 @@ ne conseille pas, et plus aucun appel à un modèle de langage n'y subsiste.
 
 ## ⚡ Fetch automatique (le « ça marche sans moi ») — FAIT
 
-`saas/collecte/automatisation/fetch_all.py` récolte **Meta Ads + Google Ads +
-GA4 + Instagram** pour tous les comptes, **sans personne connecté**. Réutilise
-la logique de fetch par canal de `saas/collecte/meta/`, `saas/collecte/google/`,
-`saas/collecte/ga4/` et les utilitaires transverses de `saas/commun/`
+`saas/collecte/mise_a_jour.py` récolte **Meta Ads + Google Ads + GA4 +
+Instagram** pour tous les comptes, **sans personne connecté**. Réutilise la
+logique de fetch par canal de `saas/collecte/meta/` (`ads/`, `organique/instagram/`),
+`saas/collecte/google/` (`ads/`, `analytics/`) et les utilitaires transverses de `saas/commun/`
 (`app_secrets.py` pour les credentials, sans dépendance à une interface).
 
-**Tester en local** (⚠ écrit dans la vraie base) :
+**Vérifier sans rien écrire** : `python3.12 saas/collecte/essai.py --user <uuid> -n 5`
+(un JSON local, aucune écriture). **Lancer pour de vrai** (⚠ écrit dans la vraie
+base et envoie l'email) :
 ```bash
 # .env local (ou variables d'environnement) suffit pour Supabase + Google ; --force ignore le jour planifié
-python saas/collecte/automatisation/fetch_all.py --force
+python3.12 saas/collecte/mise_a_jour.py --force
 ```
 
 **Activer l'automatisation (GitHub Actions)** — `.github/workflows/weekly-fetch.yml`
@@ -54,13 +56,15 @@ Meta Ads + Instagram n'ont besoin d'aucun secret app (token utilisateur en base)
 ```
 saas/
 ├── collecte/            récolte brute, rien d'autre — voir collecte/CLAUDE.md
-│   ├── meta/             fetch_meta_ads.py, fetch_instagram.py
-│   ├── google/           fetch_google_ads.py
-│   ├── ga4/              fetch_ga4.py + ga4.py (orchestration fetch + contexte du rapport)
-│   ├── commun/           fetch_token.py (OAuth Google, collecte-only)
-│   └── automatisation/   fetch_all.py (cron) + suivi.py
+│   ├── socle/            http.py (timeout, réessais 429), fenetre.py (tranches, reprise)
+│   ├── meta/             graph.py, ads/ (un fichier par API), organique/instagram/
+│   ├── ecriture/         meta.py, google.py, plateformes.py (tout ce qui écrit)
+│   ├── google/           acces.py, auth/oauth.py, ads/ et analytics/ (GA4) — un fichier par API
+│   ├── plan.py           quels canaux tournent, dans quel fil
+│   ├── mise_a_jour.py    class MiseAJour (le cron) · recolte_complete.py · essai.py
+│   └── automatisation/   passage.py, fils.py, alarmes.py, suivi.py (ce que les classes partagent)
 ├── traitement/           assemble et publie le rapport depuis collecte/ — voir traitement/CLAUDE.md
-│   build_report.py, lecteur.py (le seam hors ligne), matrice.py (full-history)
+│   build_report.py, lecteur.py (le seam hors ligne), matrice.py (full-history), ga4_contexte.py
 ├── commun/               lecture/écriture Supabase + secrets, utilisé par les 2 domaines ci-dessus — voir commun/CLAUDE.md
 │   app_secrets.py, fetch_data.py, insert_data.py
 ├── emailing/             render.py (email « L'essentiel ») + send.py (envoi) — voir emailing/CLAUDE.md
@@ -72,7 +76,7 @@ saas/
 `run_weekly.py`, la démo bout-en-bout qui servait à ça, est partie avec les
 recommandations : elle n'était câblée à aucun cron et son `run()` levait
 `NotImplementedError`. Le seul chemin d'envoi est désormais
-`traitement/build_report.py::publish_weekly_report`, atteint par `fetch_all.py`.
+`traitement/build_report.py::publish_weekly_report`, atteint par `saas/collecte/automatisation/passage.py`.
 
 Sans `RESEND_API_KEY`, `send.py` passe en **mode `dry`** : rien ne part, et la
 ligne est quand même rangée dans `email_envois` en disant que rien n'est parti.

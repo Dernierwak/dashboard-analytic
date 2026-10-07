@@ -11,6 +11,7 @@ Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 | `build_report.py` | Le payload entier, et sa publication (`publish_weekly_report`). |
 | `lecteur.py` | **Le seam.** Toute lecture et toute écriture passent par lui, donc `build_payload` tourne sans base, sans secret et sans réseau dès qu'on lui donne un faux lecteur. |
 | `matrice.py` | La matrice full-history — tout l'historique croisé par format, campagne et créneau. |
+| `ga4_contexte.py` | `build_ga4_context` — le contexte GA4 du rapport, lu dans les données GA4 stockées. Il vivait dans la récolte (`collecte/ga4/ga4.py`) jusqu'au ticket 06 de `.scratch/recolte/`. |
 
 ## CE DOSSIER NE CONSEILLE RIEN
 
@@ -67,11 +68,11 @@ python3.12 saas/traitement/build_report.py --all
 ```
 
 `publish_weekly_report(sb, user_id, email_to=None)` (fin de fichier) est la
-fonction appelée par `saas/collecte/automatisation/fetch_all.py` en fin de
-récolte — imports locaux dans `fetch_all.py` pour éviter un cycle.
+fonction appelée par `saas/collecte/automatisation/passage.py` en fin de
+récolte — imports locaux dans `passage.py` pour éviter un cycle.
 
-`SEUIL_ESCALADE` est lue par `fetch_all.py` **par import local**, depuis
-`_note_canaux_qui_durent`. Aucun appelant ne se voit dans ce fichier : une
+`SEUIL_ESCALADE` est lue par `saas/collecte/automatisation/alarmes.py` **par
+import local**, depuis `note_canaux_qui_durent`. Aucun appelant ne se voit dans ce fichier : une
 analyse de code mort la déclarera inatteignable, et elle ne l'est pas.
 
 ## Le seam, et comment on le rejoue

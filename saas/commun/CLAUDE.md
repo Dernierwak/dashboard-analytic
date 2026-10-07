@@ -16,8 +16,11 @@ Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 - **`fetch_data.py`** — toutes les lectures Supabase partagées : dernières
   dates par table (pour le recouvrement de `collecte/`) et données pour
   construire le rapport (`traitement/`).
-- **`insert_data.py`** — toutes les écritures Supabase partagées : upserts par
-  plateforme et écriture du rapport publié (`upsert_weekly_report`).
+- **`insert_data.py`** — les écritures Supabase qui ne sont pas de la récolte :
+  le rapport publié (`upsert_weekly_report`), l'email. Les écritures de la
+  récolte vivent dans `saas/collecte/ecriture/`, à côté des fichiers d'API
+  qu'elles servent (Meta depuis le ticket 05 de `.scratch/recolte/`, Google
+  au ticket 06).
 
 **Il reste ici des fonctions que plus personne n'appelle** — héritage de
 l'ancien Streamlit, antérieur au retrait des recommandations. Elles n'ont pas

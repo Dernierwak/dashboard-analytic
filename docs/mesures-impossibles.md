@@ -32,14 +32,14 @@ de `ga4_insights`.
 
 `change_event` est plafonné à 30 jours par Google, et une fenêtre plus large fait
 rejeter la requête **entière** au lieu de la tronquer. `fetch_campaign_changes`
-(`saas/collecte/google/fetch_google_ads.py`) ramène donc `since` à 30 jours en
+(`saas/collecte/google/ads/changements.py`) ramène donc `since` à 30 jours en
 arrière quoi qu'on lui demande.
 
 ## Quelle page d'arrivée perd les gens
 
 Google Analytics est récolté par date × source/medium × campagne, **sans aucune
-dimension de page** : ni `fetch_ga4_insights` ni `fetch_ga4_events`
-(`saas/collecte/ga4/fetch_ga4.py`) ne demandent `landingPage` ou `pagePath`. On
+dimension de page** : ni `insights.tranche` ni `evenements.tranche`
+(`saas/collecte/google/analytics/insights.py`, `evenements.py`) ne demandent `landingPage` ou `pagePath`. On
 peut donc constater qu'un écart existe entre les clics payés et les sessions
 arrivées ; on **ne peut pas dire sur quelle page** il se creuse.
 
@@ -106,7 +106,7 @@ porte `date`, `source`, `medium` **et** `campaign` (le `CREATE TABLE` de
 `000_run_me_all.sql` §2, puis l'`ALTER TABLE` « GA4 v2 » qui ajoute `campaign` et
 refait la contrainte unique en `ga4_insights_uq2`), et `fetch_ga4_insights` fait
 `select("*")` : la date est là, à chaque ligne. Ce qui l'écrasait, c'était
-`build_ga4_context` (`saas/collecte/ga4/ga4.py`), qui agrège sur la fenêtre.
+`build_ga4_context` (`saas/traitement/ga4_contexte.py`), qui agrège sur la fenêtre.
 
 Aujourd'hui `build_report.py` ne passe plus par lui pour ça : `_revenu_semaine`
 lit `lecteur.ga4_insights()` jour par jour et rend le revenu payant d'une

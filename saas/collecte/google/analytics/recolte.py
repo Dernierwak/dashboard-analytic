@@ -1,26 +1,18 @@
-"""GA4 — orchestration du fetch + helper de contexte pour le moteur de recos.
+"""La récolte GA4 d'une propriété : catalogue, insights, événements, et l'écriture.
 
-Réutilise le refresh_token Google déjà stocké (profiles.google_refresh_token).
+Les appels vivent dans `insights.py`, `evenements.py` et `catalogue.py` ; les
+écritures dans `collecte/ecriture/google.py`.
 """
-
 from datetime import date, timedelta
 
-from saas.collecte.commun.fetch_token import get_access_token_from_refresh
-from saas.collecte.ga4.fetch_ga4 import (
-    fetch_ga4_insights,
-    fetch_ga4_events,
-    fetch_ga4_event_catalog,
+from saas.collecte.ecriture.google import (
+    upsert_ga4_event_catalog, upsert_ga4_events, upsert_ga4_insights,
 )
-from saas.commun.fetch_data import (
-    fetch_ga4_latest_date,
-    fetch_ga4_insights as db_fetch_ga4,
-    fetch_ga4_events as db_fetch_ga4_events,
-)
-from saas.commun.insert_data import (
-    upsert_ga4_insights,
-    upsert_ga4_events,
-    upsert_ga4_event_catalog,
-)
+from saas.collecte.google.analytics import catalogue as catalogue_api
+from saas.collecte.google.analytics import evenements, insights
+from saas.collecte.google.auth.oauth import get_access_token_from_refresh
+from saas.collecte.socle.fenetre import depart_recolte, tranches
+from saas.commun.fetch_data import fetch_ga4_latest_date
 
 # Fenêtre du catalogue : ce que la propriété a émis sur les 90 derniers jours.
 # Ni la fenêtre incrémentale de la récolte (qui peut ne couvrir qu'un jour, et
@@ -31,8 +23,8 @@ _CATALOGUE_JOURS = 90
 # ── LE RECOUVREMENT GA4 — 12 jours, et le chiffre est DOCUMENTÉ ───────────────
 #
 # La reprise partait de « dernière date en base + 1 jour ». C'est le défaut
-# corrigé pour Meta et Google dans `saas/collecte/automatisation/fetch_all.py` (voir le pavé
-# « LE RECOUVREMENT » qui y explique les deux trous : la journée à moitié
+# corrigé pour Meta et Google — voir le pavé « LE RECOUVREMENT » de
+# `saas/collecte/socle/fenetre.py`, qui y explique les deux trous : la journée à moitié
 # écoulée gravée pour toujours, et les chiffres que la plateforme révise après
 # coup). GA4 avait le même, en pire : la boucle va jusqu'à aujourd'hui, donc
 # `latest` devenait aujourd'hui, et le passage suivant repartait de demain.
@@ -43,7 +35,7 @@ _CATALOGUE_JOURS = 90
 #  · « Attribution credit for key events can change for up to 12 days after the
 #    key event is recorded », au fur et à mesure que la modélisation s'affine.
 #    Et c'est exactement ce qu'on stocke : `conversions` (les événements clés)
-#    et `totalRevenue` sont deux des trois métriques de `fetch_ga4_insights`.
+#    et `totalRevenue` sont deux des trois métriques de `insights.py`.
 # https://support.google.com/analytics/answer/11198161
 # https://support.google.com/analytics/answer/12233314
 #
@@ -61,7 +53,7 @@ _CATALOGUE_JOURS = 90
 _RECOUVREMENT_JOURS_GA4 = 12
 
 
-def run_ga4_fetch(
+def recolter(
     supabase,
     user_id: str,
     refresh_token: str,
@@ -101,7 +93,7 @@ def run_ga4_fetch(
     # toujours pas échouer la récolte — mais il DIT ce qui lui est arrivé.
     catalogue_note = None
     try:
-        catalogue, cat_err = fetch_ga4_event_catalog(
+        catalogue, cat_err = catalogue_api.fetch_ga4_event_catalog(
             access_token, property_id,
             today - timedelta(days=_CATALOGUE_JOURS), today,
         )
@@ -112,7 +104,7 @@ def run_ga4_fetch(
                               f"sur {_CATALOGUE_JOURS} jours")
         else:
             # Le retour porte la raison quand l'écriture n'a pas eu lieu ; None
-            # quand elle a réussi. Voir `scripts/insert_data.py`.
+            # quand elle a réussi. Voir `collecte/ecriture/google.py`.
             echec = upsert_ga4_event_catalog(supabase, user_id, catalogue, today.isoformat())
             catalogue_note = echec or f"catalogue : {len(catalogue)} événements"
     except Exception as e:
@@ -128,13 +120,10 @@ def run_ga4_fetch(
         return f"{msg} · {catalogue_note}" if catalogue_note else msg
 
     # LE MÊME DÉPART QUE META ET GOOGLE, ET LA MÊME FONCTION — pas une seconde
-    # copie de la règle. L'import est LOCAL parce qu'il serait circulaire au
-    # niveau du module : `saas/collecte/automatisation/fetch_all.py` importe `run_ga4_fetch` d'ici.
-    # À l'exécution, l'appelant est déjà chargé, donc l'import ne coûte rien.
-    from saas.collecte.automatisation.fetch_all import _depart_recolte
+    # copie de la règle (`socle/fenetre.py`).
 
     latest = fetch_ga4_latest_date(supabase, user_id) if not force_full else None
-    since = _depart_recolte(latest, today, _RECOUVREMENT_JOURS_GA4)
+    since = depart_recolte(latest, today, _RECOUVREMENT_JOURS_GA4)
     if since_date:
         since = since_date  # choix explicite du pop-up « Mes données »
     # Ce garde-fou ne peut plus se déclencher sur une reprise (`latest - 12` est
@@ -145,38 +134,46 @@ def run_ga4_fetch(
                 "message": _avec_catalogue("Départ demandé après aujourd'hui : rien à récolter")}
 
     # Chunking par 90 jours (cohérent Meta/Google Ads)
-    CHUNK = 90
-    chunks = []
-    cur = since
-    while cur <= today:
-        end = min(cur + timedelta(days=CHUNK - 1), today)
-        chunks.append((cur, end))
-        cur = end + timedelta(days=1)
+    chunks = tranches(since, today)
 
     rows = []
     event_rows = []
-    last_error = None
+    # Les tranches refusées, gardées TOUTES. Un seul `last_error` ne parlait que
+    # quand AUCUNE tranche n'avait rendu de lignes : dès qu'une passait, les
+    # autres disparaissaient sans un mot sur une run verte. Les événements,
+    # eux, n'étaient jamais signalés.
+    trous: list[str] = []
+    trous_ev: list[str] = []
     for i, (c_since, c_until) in enumerate(chunks):
         _p(int(10 + (i / max(len(chunks), 1)) * 75),
            f"Chargement {c_since:%b %Y} → {c_until:%b %Y}… ({len(rows)} lignes)")
-        chunk_rows, err = fetch_ga4_insights(access_token, property_id, c_since, c_until)
+        chunk_rows, err = insights.tranche(access_token, property_id, c_since, c_until)
         if err:
-            last_error = err
+            trous.append(f"{c_since.isoformat()}→{c_until.isoformat()} : {err}")
             continue
         rows += chunk_rows
-        # Détail par événement (best-effort : ne bloque pas le fetch principal)
-        chunk_events, _ev_err = fetch_ga4_events(
+        # Détail par événement : ne bloque pas le fetch principal, mais se dit.
+        chunk_events, ev_err = evenements.tranche(
             access_token, property_id, c_since, c_until)
-        if not _ev_err:
+        if ev_err:
+            trous_ev.append(f"{c_since.isoformat()}→{c_until.isoformat()} : {ev_err}")
+        else:
             event_rows += chunk_events
+
+    def _avec_trous(msg: str) -> str:
+        for quoi, liste in (("insights", trous), ("événements", trous_ev)):
+            if liste:
+                msg += f" · {len(liste)} tranche(s) {quoi} REFUSÉE(S) : {liste[0]}"
+        return msg
 
     if not rows:
         # Avec le recouvrement, la fenêtre couvre toujours au moins 12 jours
         # DÉJÀ connus : zéro ligne ne veut donc plus dire « rien de neuf », ça
         # veut dire que la propriété ne rend rien du tout sur cette fenêtre.
-        msg = (f"aucune ligne sur {since:%d/%m}→{today:%d/%m} — la propriété ne rend rien"
-               + (f". Erreur : {last_error}" if last_error else ""))
-        return {"success": last_error is None, "rows": 0, "message": _avec_catalogue(msg)}
+        msg = (f"aucune ligne sur {since:%d/%m}→{today:%d/%m}"
+               + ("" if trous else " — la propriété ne rend rien"))
+        return {"success": not trous, "rows": 0,
+                "message": _avec_catalogue(_avec_trous(msg))}
 
     _p(92, "Sauvegarde Supabase…")
     try:
@@ -193,107 +190,6 @@ def run_ga4_fetch(
         ev_note = f" · événements NON écrits : {e}"
 
     return {"success": True, "rows": len(rows),
-            "message": _avec_catalogue(
+            "message": _avec_catalogue(_avec_trous(
                 f"{len(rows)} lignes GA4 depuis le {since:%d/%m} "
-                f"(+ {len(event_rows)} lignes d'événements){ev_note}")}
-
-
-def build_ga4_context(
-    supabase,
-    user_id: str,
-    since: "date",
-    until: "date",
-) -> dict | None:
-    """Construit le dict ga4 pour build_recos() depuis les données stockées.
-
-    Retourne None si GA4 n'est pas connecté (aucune donnée) → le moteur garde
-    ses recos pub prudentes + affiche le nudge "Connecte Google Analytics".
-
-    Sinon : {connected, paid_conversions, paid_revenue, paid_sessions,
-             total_conversions, total_revenue,
-             funnel: {view_item, add_to_cart, begin_checkout, purchase, ...},
-             by_campaign: {campagne: {conversions, revenue, sessions}} (payant),
-             events_by_campaign: {campagne: {event_name: {count, value}}},
-             events_sans_campagne: {event_name: {count, value}}}
-    sur la fenêtre [since, until]. 'paid_*' = medium contenant cpc/ppc/paid.
-    """
-    rows = db_fetch_ga4(supabase, user_id)
-    if not rows:
-        return None
-
-    since_s, until_s = since.isoformat(), until.isoformat()
-    ctx = {
-        "connected": True,
-        "paid_conversions": 0.0, "paid_revenue": 0.0, "paid_sessions": 0,
-        "total_conversions": 0.0, "total_revenue": 0.0, "total_sessions": 0,
-        "funnel": {}, "by_campaign": {},
-        "events_by_campaign": {}, "events_sans_campagne": {},
-    }
-    in_window = False
-    for r in rows:
-        d = str(r.get("date", ""))
-        if not (since_s <= d <= until_s):
-            continue
-        in_window = True
-        conv = float(r.get("conversions") or 0)
-        rev = float(r.get("revenue") or 0)
-        ctx["total_conversions"] += conv
-        ctx["total_revenue"] += rev
-        # Sessions tous canaux — c'est le « trafic » lu dans le rapport hebdo.
-        ctx["total_sessions"] += int(r.get("sessions") or 0)
-        if any(k in str(r.get("medium", "")).lower() for k in ("cpc", "ppc", "paid")):
-            ctx["paid_conversions"] += conv
-            ctx["paid_revenue"] += rev
-            ctx["paid_sessions"] += int(r.get("sessions") or 0)
-            # Attribution par campagne (utm_campaign) — le lien direct campagne → CA
-            camp = (r.get("campaign") or "").strip()
-            if camp:
-                c = ctx["by_campaign"].setdefault(camp, {"conversions": 0.0, "revenue": 0.0, "sessions": 0})
-                c["conversions"] += conv
-                c["revenue"] += rev
-                c["sessions"] += int(r.get("sessions") or 0)
-
-    # ── Les événements, sur trois plans ──────────────────────────────────────
-    #
-    # `funnel`              — tous canaux confondus. C'est ce que lit
-    #                         `_rule_funnel` (« des paniers, zéro achat »), un
-    #                         conseil sur le SITE : il n'a pas à être découpé
-    #                         par campagne.
-    # `events_by_campaign`  — par campagne UTM. Il ne franchit pas l'organique.
-    # `events_sans_campagne`— ce qui n'a AUCUNE campagne. Ces événements ont eu
-    #                         lieu ; ils ne sont attribuables à personne. On les
-    #                         garde pour pouvoir DIRE combien on ne rattache
-    #                         pas, plutôt que de les faire disparaître.
-    #
-    # POURQUOI PAS DE FILTRE `medium` ICI, alors que `by_campaign` en a un.
-    # Le revenu de `by_campaign` se calcule dans la branche « trafic payant »,
-    # historiquement, parce qu'il servait à juger la pub. Un événement, lui, se
-    # rattache par le NOM DE CAMPAGNE et par rien d'autre : si `utm_campaign`
-    # porte le nom d'une campagne qu'on connaît, c'est elle — que l'annonceur
-    # ait écrit `utm_medium=cpc`, `paid_social` ou `social`. Filtrer sur le
-    # medium jetterait en silence les campagnes mal taguées, c'est-à-dire
-    # exactement celles dont on veut parler.
-    for e in db_fetch_ga4_events(supabase, user_id):
-        d = str(e.get("date", ""))
-        if not (since_s <= d <= until_s):
-            continue
-        name = e.get("event_name", "")
-        if not name:
-            continue
-        cnt = int(e.get("event_count") or 0)
-        val = float(e.get("event_value") or 0)
-        ctx["funnel"][name] = ctx["funnel"].get(name, 0) + cnt
-        camp = (e.get("campaign") or "").strip()
-        cible = (ctx["events_by_campaign"].setdefault(camp, {}) if camp
-                 else ctx["events_sans_campagne"])
-        slot = cible.setdefault(name, {"count": 0, "value": 0.0})
-        slot["count"] += cnt
-        slot["value"] += val
-
-    # Connecté mais aucune donnée sur la fenêtre → on reste prudent (pas de preuve)
-    if not in_window:
-        ctx["paid_conversions"] = None
-        ctx["paid_revenue"] = None
-        ctx["paid_sessions"] = None
-        ctx["total_sessions"] = None
-    return ctx
+                f"(+ {len(event_rows)} lignes d'événements){ev_note}"))}

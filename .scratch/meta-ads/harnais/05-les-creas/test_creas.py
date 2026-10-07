@@ -5,7 +5,7 @@ Lancer depuis la racine du dépôt :
 
     python3.12 -m pytest .scratch/meta-ads/harnais/05-les-creas -q
 
-Les annonces ci-dessous ont la forme que `fetch_annonces_creas` demande à Meta
+Les annonces ci-dessous ont la forme que `meta/ads/creas.py` demande à Meta
 (`/act_<id>/ads?fields=id,creative{…}`), d'après les pages de référence citées
 dans `.scratch/meta-ads/recherche/champs-api-meta.md` § 4. Aucun appel réel n'a
 encore été lu : le premier passage du worker confirme ou corrige ces formes.
@@ -15,11 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
-from saas.collecte.meta.fetch_meta_ads import (  # noqa: E402
+from saas.collecte.meta.ads.creas import (  # noqa: E402
     hashes_des_creas,
     lignes_creas,
 )
-from saas.commun.insert_data import remplacer_creas  # noqa: E402
+from saas.collecte.ecriture.meta import remplacer_creas  # noqa: E402
 
 UID = "u-1"
 STOCK = "https://x.supabase.co/storage/v1/object/public/ad-creatives/u-1/"

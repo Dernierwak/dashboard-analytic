@@ -15,9 +15,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
-from saas.collecte.automatisation import fetch_all  # noqa: E402
-from saas.collecte.meta.fetch_meta_ads import lignes_config_meta  # noqa: E402
-from saas.commun.insert_data import upsert_campaign_statuses  # noqa: E402
+from saas.collecte.meta.ads import campagnes as campagnes_api  # noqa: E402
+from saas.collecte.meta.ads.campagnes import lignes_config_meta  # noqa: E402
+from saas.collecte.meta.graph import AccesMeta  # noqa: E402
+from saas.collecte.socle import http  # noqa: E402
+from saas.collecte.ecriture.meta import upsert_campaign_statuses  # noqa: E402
 
 
 def _campagne(**k):
@@ -68,13 +70,13 @@ def test_la_liste_des_campagnes_demande_l_id(monkeypatch):
         def json(self):
             return {"data": [_campagne()]}
 
-    def faux_get(url, params=None, timeout=None):
+    def faux_get(url, params=None, timeout=None, headers=None):
         appels.append(params)
         return _Rep()
 
-    monkeypatch.setattr(fetch_all.requests, "get", faux_get)
-    campagnes, err = fetch_all._meta_campagnes("JETON", "act_42")
-    assert err is None
+    monkeypatch.setattr(http, "get", faux_get)
+    campagnes, trous = campagnes_api.recuperer(AccesMeta(jeton="JETON", compte="act_42"))
+    assert trous == []
     assert len(appels) == 1
     assert "id" in appels[0]["fields"].split(",")
 

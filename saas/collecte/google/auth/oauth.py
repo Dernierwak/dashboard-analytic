@@ -1,4 +1,4 @@
-"""OAuth Google Ads — flow web app.
+"""OAuth Google — le refresh token qui sert Google Ads ET GA4.
 
 Étapes :
 1. get_oauth_url(state)   → URL d'autorisation Google
@@ -8,7 +8,7 @@
 """
 
 from urllib.parse import urlencode
-import requests
+from saas.collecte.socle import http
 
 from saas.commun.app_secrets import secret
 
@@ -63,7 +63,7 @@ def exchange_code(code: str) -> dict:
         "grant_type":    "authorization_code",
     }
     try:
-        r = requests.post(url, data=data, timeout=15)
+        r = http.post(url, data=data, timeout=15)
         return r.json()
     except Exception as e:
         return {"error": str(e)}
@@ -81,7 +81,7 @@ def get_access_token_from_refresh(refresh_token: str) -> str | None:
         "grant_type":    "refresh_token",
     }
     try:
-        r = requests.post(url, data=data, timeout=15)
+        r = http.post(url, data=data, timeout=15)
         resp = r.json()
         return resp.get("access_token")
     except Exception:

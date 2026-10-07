@@ -39,6 +39,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Protocol
 
+from saas.traitement.ga4_contexte import build_ga4_context
 from saas.commun.fetch_data import (
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_google_ads, fetch_google_campaign_config,
@@ -125,9 +126,6 @@ class LecteurSupabase:
     # ── GA4 ──────────────────────────────────────────────────────────────────
 
     def ga4_contexte(self, since: date, until: date) -> dict | None:
-        # Import local : `saas.collecte.ga4.ga4` tire la récolte entière, et ce
-        # module est chargé par le web comme par le worker.
-        from saas.collecte.ga4.ga4 import build_ga4_context
         return build_ga4_context(self.sb, self.user_id, since, until)
 
     def ga4_insights(self) -> list[dict]:

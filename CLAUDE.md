@@ -37,7 +37,7 @@ ailleurs. Ne pas les réintroduire par la bande — ce qui est parti est au
 | Où | Quoi |
 |---|---|
 | `saas/web/` | Le produit. Next.js 14 App Router, TypeScript, Tailwind. Déployé sur Vercel depuis `main`. Son `CLAUDE.md` détaille les pages et l'UX. |
-| `saas/collecte/` | La récolte brute, rien d'autre — un sous-dossier par canal (`meta/`, `google/`, `ga4/`), `commun/` pour l'OAuth Google partagé Ads/GA4, `automatisation/` pour l'orchestration (`fetch_all.py`, lancé par GitHub Actions `weekly-fetch.yml`). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
+| `saas/collecte/` | La récolte brute, rien d'autre — un dossier par plateforme (`meta/`, `google/`), puis par canal, puis un fichier par API en lecture seule ; `ecriture/` pour tout ce qui écrit, `socle/` pour HTTP et dates. Trois points d'entrée : `mise_a_jour.py` (le cron, GitHub Actions `weekly-fetch.yml`), `recolte_complete.py`, `essai.py` (local, rien en base). Son `CLAUDE.md` détaille les plateformes et ce qu'on récupère. |
 | `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` a récolté — `build_report.py`, `lecteur.py` (le seam hors ligne), `matrice.py` (la matrice full-history). Son `CLAUDE.md` détaille la logique. |
 | `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/` et `traitement/`, pas propre à un seul domaine. |
 | `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |

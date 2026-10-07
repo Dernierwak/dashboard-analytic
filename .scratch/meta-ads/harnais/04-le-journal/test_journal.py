@@ -5,7 +5,7 @@ Lancer depuis la racine du dépôt :
 
     python3.12 -m pytest .scratch/meta-ads/harnais/04-le-journal -q
 
-Les activités ci-dessous ont la forme que `fetch_activities` demande à Meta
+Les activités ci-dessous ont la forme que `meta/ads/activites.py` demande à Meta
 (`event_type, event_time, object_id, object_name, extra_data`). Aucun
 `extra_data` réel n'a encore été lu pour les nouveaux types : les tests
 vérifient donc que leurs phrases n'en tirent aucune valeur.
@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
-from saas.collecte.meta.fetch_meta_ads import (  # noqa: E402
+from saas.collecte.meta.ads.activites import (  # noqa: E402
     hierarchie_depuis_insights,
     lignes_activites,
 )
@@ -195,7 +195,7 @@ def test_une_campagne_renommee_prend_son_nom_le_plus_recent():
 # ── Un passage qui ne retrouve plus la campagne ne l'efface pas ──────────────
 
 def test_un_changement_sans_campagne_n_envoie_pas_la_colonne():
-    from saas.commun.insert_data import lots_sans_effacer_la_campagne
+    from saas.collecte.ecriture.plateformes import lots_sans_effacer_la_campagne
     lots = lots_sans_effacer_la_campagne([
         {"change_id": "a", "campaign_id": "900", "campaign_name": "Soldes", "resume": "x"},
         {"change_id": "b", "campaign_id": None, "campaign_name": None, "resume": "y"},
@@ -229,7 +229,7 @@ def test_l_horodatage_reste_tel_que_meta_l_ecrit():
 
 
 def test_le_fuseau_se_lit_avec_le_compte():
-    from saas.collecte.meta.fetch_meta_ads import compte_et_fuseau
+    from saas.collecte.meta.ads.comptes import compte_et_fuseau
     assert compte_et_fuseau([{"id": "act_1", "timezone_name": "Europe/Zurich"}]) == ("act_1", "Europe/Zurich")
     assert compte_et_fuseau([{"id": "act_1"}]) == ("act_1", None)
     assert compte_et_fuseau([{"id": "act_1", "timezone_name": "  "}]) == ("act_1", None)
@@ -237,7 +237,7 @@ def test_le_fuseau_se_lit_avec_le_compte():
 
 
 def test_l_upsert_ecrit_le_fuseau_et_ne_l_efface_jamais():
-    from saas.commun.insert_data import upsert_platform_changes
+    from saas.collecte.ecriture.plateformes import upsert_platform_changes
 
     class Table:
         def __init__(self, envois): self.envois = envois
@@ -261,7 +261,7 @@ def test_l_upsert_ecrit_le_fuseau_et_ne_l_efface_jamais():
 def test_un_lot_mixte_ne_met_jamais_le_fuseau_a_null():
     # PostgREST prend l'union des clés d'un lot et écrit NULL là où une ligne
     # n'a pas la clé : une ligne sans fuseau doit partir dans un lot à part.
-    from saas.commun.insert_data import lots_sans_effacer_la_campagne
+    from saas.collecte.ecriture.plateformes import lots_sans_effacer_la_campagne
     lots = lots_sans_effacer_la_campagne([
         {"change_id": "a", "campaign_id": "900", "fuseau": "Europe/Zurich", "resume": "x"},
         {"change_id": "b", "campaign_id": "900", "resume": "y"},

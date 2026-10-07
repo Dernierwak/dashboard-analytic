@@ -3,7 +3,7 @@
 TROISIÈME FICHIER DE CE DOSSIER, et il garde la règle des deux autres :
 `render.py` met en forme, `send.py` envoie, celui-ci relit. **Aucun des trois
 ne touche Supabase** — ranger le fait est le travail de `saas/commun/`, le
-composer celui de l'orchestrateur (`saas/collecte/automatisation/fetch_all.py`).
+composer celui de l'orchestrateur (`saas/collecte/automatisation/passage.py`).
 
 POURQUOI RELIRE L'API PLUTÔT QU'UN WEBHOOK. Un webhook demanderait une route
 publique, un secret de signature et une vérification — de l'outillage
@@ -51,7 +51,7 @@ INCONNU = "inconnu"
 # « sans que le reste bouge » ; ce module-ci, lui, ne parle qu'à Resend. Le jour
 # où `EMAIL_PROVIDER` change, redemander à Resend un identifiant qui n'est pas
 # le sien rendrait un 404 par semaine, et personne ne saurait pourquoi. C'est
-# `a_relever` (fetch_all.py) qui s'en sert pour ne pas appeler dans le vide.
+# `a_relever` (`releve.py`) qui s'en sert pour ne pas appeler dans le vide.
 FOURNISSEURS_RELISIBLES = ("resend",)
 
 # Les noms d'événements de Resend, sans leur préfixe `email.` — c'est sous
@@ -99,7 +99,7 @@ def etat_ouverture(evenement: str | None) -> str:
 def phrase_ouverture(evenement: str | None) -> str:
     """La ligne que David lit dans le journal du run. Factuelle, avec sa réserve.
 
-    ELLE N'EST APPELÉE QUE QUAND ON A DEMANDÉ — `_relever_ouverture` sort avant
+    ELLE N'EST APPELÉE QUE QUAND ON A DEMANDÉ — `relever_ouverture` (`passage.py`) sort avant
     sinon. Ses phrases peuvent donc parler de ce que le fournisseur a répondu ;
     aucune ne doit laisser croire que l'appel a échoué quand il a abouti.
     """

@@ -23,3 +23,7 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# L'essai de la récolte (`saas/collecte/essai.py`) écrit ici des DONNÉES CLIENT
+# lues chez Meta et Google. Le dépôt est public : elles ne le quittent jamais.
+.essais/

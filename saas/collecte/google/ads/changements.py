@@ -1,410 +1,12 @@
-"""Fetch Google Ads via Google Ads API REST.
-
-Doc API : https://developers.google.com/google-ads/api/rest/
-
-Endpoint principal : POST /v17/customers/{customerId}/googleAds:searchStream
-Body : { "query": "<GAQL query>" }
-Headers requis :
-  - Authorization: Bearer <access_token>
-  - developer-token: <DEVELOPER_TOKEN>
-  - login-customer-id: <MCC ID> (optionnel, si manager account)
-
-Note : tous les montants sont en MICROS (1 CHF = 1_000_000 micros).
-"""
+"""`change_event` — le journal des changements DÉCLARÉS par Google Ads → platform_changes."""
+from __future__ import annotations
 
 from datetime import date, timedelta
-import requests
 
-from saas.commun.app_secrets import secret
-
-
-# ⚠ Google retire les versions API tous les ~12 mois. Adapter si 404 sur l'endpoint.
-#
-# v21 a sunsetté le 5 août 2026 — confirmé en conditions réelles le 24 août
-# 2026 (compte de test, jeton valide) : `googleAds:searchStream` en v21 rend
-# un 404 HTML de Google (pas une erreur JSON de l'API), sur CHAQUE appel —
-# insights, statuts, budgets ET `change_event`. C'est la cause de « quasi
-# aucune donnée Google Ads historique » : `fetch_campaign_insights` rentre
-# dans le `except Exception` (le corps HTML n'est pas du JSON), rend
-# `([], "Erreur API: ...")`, et `_fetch_google` avale l'erreur en `google: 0
-# lignes` — silencieux, comme prévu pour ne jamais faire tomber la récolte,
-# mais qui laissait `google_ads_insights` figé au 11 août pour toujours.
-# v22 à v25 répondent tous 200 avec de vraies lignes (testé en direct sur le
-# même compte) ; v25, sortie le 22 juillet 2026, est la plus récente et
-# sunsettera en août 2027 — c'est elle qui repousse le plus loin la prochaine
-# panne du même genre.
-# Versions supportées actuellement : v23, v24, v25 (août 2026)
-# Doc : https://developers.google.com/google-ads/api/docs/sunset-dates
-_API_VERSION = "v25"
-_BASE = f"https://googleads.googleapis.com/{_API_VERSION}"
-
-
-def _headers(access_token: str, login_customer_id: str | None = None) -> dict:
-    h = {
-        "Authorization":   f"Bearer {access_token}",
-        "developer-token": secret("google_ads.developer_token"),
-        "Content-Type":    "application/json",
-    }
-    # Si on passe par un MCC (manager account), spécifier l'ID parent
-    try:
-        mcc = login_customer_id or secret("google_ads.login_customer_id")
-        if mcc:
-            h["login-customer-id"] = str(mcc).replace("-", "")
-    except Exception:
-        pass
-    return h
-
-
-def list_accessible_customers(access_token: str) -> tuple[list[str], str | None]:
-    """Liste les customer_ids accessibles avec ce token.
-    Returns: (customer_ids: list[str], error_message: str | None)
-    """
-    # Pré-validation
-    if not access_token or not access_token.strip():
-        return [], "access_token vide ou None"
-    headers = _headers(access_token)
-    auth = headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or len(auth) < 20:
-        return [], f"Header Authorization mal formé (longueur={len(auth)})"
-    dev_token = headers.get("developer-token", "")
-    if not dev_token:
-        return [], "developer-token absent — vérifie [google_ads].developer_token dans secrets.toml"
-
-    url = f"{_BASE}/customers:listAccessibleCustomers"
-    try:
-        resp = requests.get(url, headers=headers, timeout=15)
-    except Exception as e:
-        return [], f"Erreur réseau : {e}"
-
-    # Status HTTP non-OK : on log l'erreur
-    if resp.status_code != 200:
-        try:
-            err = resp.json()
-            msg = err.get("error", {}).get("message", str(err))
-        except Exception:
-            msg = resp.text[:500]
-        # Indicateurs visuels pour debug
-        token_preview = f"{access_token[:8]}…{access_token[-4:]}" if len(access_token) > 12 else "(trop court)"
-        dev_preview = f"{dev_token[:6]}…" if len(dev_token) > 6 else dev_token
-        return [], (
-            f"HTTP {resp.status_code} : {msg}\n"
-            f"DEBUG : access_token={token_preview} (len={len(access_token)}), "
-            f"developer-token={dev_preview} (len={len(dev_token)})"
-        )
-
-    try:
-        data = resp.json()
-    except Exception as e:
-        return [], f"Réponse non-JSON : {e}"
-
-    # Format attendu : {"resourceNames": ["customers/1234567890", ...]}
-    names = data.get("resourceNames", [])
-    return [n.split("/")[-1] for n in names], None
-
-
-def list_managed_accounts(access_token: str, manager_customer_id: str) -> list[dict]:
-    """Liste les comptes gérés par un MCC. Retourne [{id, name, currency_code}, ...]."""
-    query = """
-        SELECT
-          customer_client.client_customer,
-          customer_client.descriptive_name,
-          customer_client.currency_code,
-          customer_client.manager
-        FROM customer_client
-        WHERE customer_client.level <= 1
-    """
-    url = f"{_BASE}/customers/{manager_customer_id}/googleAds:searchStream"
-    try:
-        r = requests.post(url, headers=_headers(access_token, manager_customer_id),
-                          json={"query": query}, timeout=20)
-        data = r.json()
-    except Exception:
-        return []
-    out = []
-    # searchStream renvoie une liste de batches
-    batches = data if isinstance(data, list) else [data]
-    for batch in batches:
-        for row in batch.get("results", []):
-            cc = row.get("customerClient", {})
-            cid = (cc.get("clientCustomer") or "").split("/")[-1]
-            if cid and not cc.get("manager"):  # exclure sous-MCC
-                out.append({
-                    "id": cid,
-                    "name": cc.get("descriptiveName", ""),
-                    "currency_code": cc.get("currencyCode", ""),
-                })
-    return out
-
-
-def fetch_campaign_insights(
-    access_token: str,
-    customer_id: str,
-    since: "date",
-    until: "date",
-    login_customer_id: str | None = None,
-) -> tuple[list[dict], str | None]:
-    """Fetch les insights par campagne × jour.
-    Returns: (rows, error_message_or_None)
-    Chaque row contient : campaign_id, campaign_name, date_start (str), impressions, clicks,
-    cost_micros, conversions, ctr, avg_cpc_micros, status (effective_status).
-    """
-    query = f"""
-        SELECT
-          campaign.id,
-          campaign.name,
-          campaign.status,
-          segments.date,
-          metrics.impressions,
-          metrics.clicks,
-          metrics.cost_micros,
-          metrics.conversions,
-          metrics.ctr,
-          metrics.average_cpc
-        FROM campaign
-        WHERE segments.date BETWEEN '{since.isoformat()}' AND '{until.isoformat()}'
-        ORDER BY segments.date DESC
-    """
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
-    try:
-        r = requests.post(url, headers=_headers(access_token, login_customer_id),
-                          json={"query": query}, timeout=60)
-        data = r.json()
-    except Exception as e:
-        return [], f"Erreur API: {e}"
-
-    # Vérifier erreur API
-    if isinstance(data, dict) and "error" in data:
-        err = data["error"]
-        return [], err.get("message", str(err))
-
-    rows = []
-    batches = data if isinstance(data, list) else [data]
-    for batch in batches:
-        if isinstance(batch, dict) and "error" in batch:
-            return [], batch["error"].get("message", str(batch["error"]))
-        for row in batch.get("results", []):
-            camp = row.get("campaign", {})
-            seg = row.get("segments", {})
-            m = row.get("metrics", {})
-            rows.append({
-                "campaign_id":    str(camp.get("id", "")),
-                "campaign_name":  camp.get("name", ""),
-                "effective_status": camp.get("status", ""),
-                "date_start":     seg.get("date", ""),
-                "impressions":    int(m.get("impressions", 0) or 0),
-                "clicks":         int(m.get("clicks", 0) or 0),
-                "cost_micros":    int(m.get("costMicros", 0) or 0),
-                "conversions":    float(m.get("conversions", 0) or 0),
-                "ctr":            float(m.get("ctr", 0) or 0),
-                "avg_cpc_micros": int(m.get("averageCpc", 0) or 0),
-            })
-    return rows, None
-
-
-def fetch_ad_insights(
-    access_token: str,
-    customer_id: str,
-    since: "date",
-    until: "date",
-    login_customer_id: str | None = None,
-) -> tuple[list[dict], str | None]:
-    """Fetch les insights par ANNONCE × jour (drill-down Campagne → Groupe → Annonce).
-
-    Mirror du level='ad' de Meta. Ne remplace PAS fetch_campaign_insights :
-    certaines campagnes (Performance Max notamment) n'exposent pas leurs
-    métriques au niveau annonce → les totaux restent portés par le niveau campagne.
-    Returns: (rows, error_message_or_None)
-    """
-    query = f"""
-        SELECT
-          campaign.id,
-          campaign.name,
-          ad_group.id,
-          ad_group.name,
-          ad_group_ad.ad.id,
-          ad_group_ad.ad.name,
-          segments.date,
-          metrics.impressions,
-          metrics.clicks,
-          metrics.cost_micros,
-          metrics.conversions
-        FROM ad_group_ad
-        WHERE segments.date BETWEEN '{since.isoformat()}' AND '{until.isoformat()}'
-          AND metrics.impressions > 0
-        ORDER BY segments.date DESC
-    """
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
-    try:
-        r = requests.post(url, headers=_headers(access_token, login_customer_id),
-                          json={"query": query}, timeout=60)
-        data = r.json()
-    except Exception as e:
-        return [], f"Erreur API: {e}"
-
-    if isinstance(data, dict) and "error" in data:
-        return [], data["error"].get("message", str(data["error"]))
-
-    rows = []
-    batches = data if isinstance(data, list) else [data]
-    for batch in batches:
-        if isinstance(batch, dict) and "error" in batch:
-            return [], batch["error"].get("message", str(batch["error"]))
-        for row in batch.get("results", []):
-            camp = row.get("campaign", {})
-            ag = row.get("adGroup", {})
-            ad = (row.get("adGroupAd", {}) or {}).get("ad", {})
-            seg = row.get("segments", {})
-            m = row.get("metrics", {})
-            ad_id = str(ad.get("id", ""))
-            rows.append({
-                "campaign_id":   str(camp.get("id", "")),
-                "campaign_name": camp.get("name", ""),
-                "ad_group_id":   str(ag.get("id", "")),
-                "ad_group_name": ag.get("name", ""),
-                "ad_id":         ad_id,
-                # ad.name est souvent vide (selon le type d'annonce) → fallback lisible
-                "ad_name":       ad.get("name") or f"Annonce {ad_id}",
-                "date_start":    seg.get("date", ""),
-                "impressions":   int(m.get("impressions", 0) or 0),
-                "clicks":        int(m.get("clicks", 0) or 0),
-                "cost_micros":   int(m.get("costMicros", 0) or 0),
-                "conversions":   float(m.get("conversions", 0) or 0),
-            })
-    return rows, None
-
-
-def _fin_declaree(brut) -> str | None:
-    """Google Ads ecrit 2037-12-30 pour « pas de date de fin ».
-
-    On ne stocke jamais cette date : elle se lirait « campagne programmee
-    jusqu'en 2037 » et tracerait une barre de onze ans. NULL veut dire ici
-    « declaree sans fin », ce qui est la verite.
-    """
-    if not brut:
-        return None
-    d = str(brut)[:10]
-    return None if d >= "2037-01-01" else d
-
-
-def _micros(v) -> float | None:
-    """Google renvoie ses int64 en CHAÎNES dans le JSON REST (proto3).
-
-    `int(v)` sur "5000000" marche, sur 5000000 aussi — mais un float() direct
-    sur une chaîne vide ou None lèverait. On rend None quand le champ est
-    absent, ce qui n'est pas la même chose qu'un budget à zéro.
-    """
-    if v in (None, "", 0, "0"):
-        return None
-    try:
-        return float(v) / 1_000_000.0
-    except (TypeError, ValueError):
-        return None
-
-
-def fetch_campaign_budgets(
-    access_token: str,
-    customer_id: str,
-    login_customer_id: str | None = None,
-) -> tuple[list[dict], str | None]:
-    """Le budget PLANIFIÉ de chaque campagne, à l'instant du relevé.
-
-    Aucun historique n'est demandable : l'API ne donne que la valeur COURANTE du
-    budget. Chaque appel est donc une photo, et c'est ce que
-    `platform_budgets.captured_on` enregistre.
-
-    `amount_micros` porte le budget JOURNALIER, `total_amount_micros` le budget
-    de TOUTE la durée (rare — seules les campagnes à période fixe en ont un).
-    Les deux sont exclusifs à l'écriture : quand un total existe, c'est lui qui
-    fait foi et le journalier n'est pas repris, sinon le prorata compterait la
-    promesse deux fois.
-
-    Returns: (rows, error|None) — chaque row : campaign_id, campaign_name,
-    status, start_date, end_date, daily_budget, total_budget.
-    """
-    query = """
-        SELECT campaign.id, campaign.name, campaign.status,
-               campaign.start_date, campaign.end_date,
-               campaign_budget.amount_micros, campaign_budget.total_amount_micros,
-               campaign_budget.period
-        FROM campaign
-    """
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
-    try:
-        r = requests.post(url, headers=_headers(access_token, login_customer_id),
-                          json={"query": query}, timeout=30)
-        data = r.json()
-    except Exception as e:
-        return [], f"Erreur API: {e}"
-
-    if isinstance(data, dict) and "error" in data:
-        return [], data["error"].get("message", str(data["error"]))
-
-    rows: list[dict] = []
-    batches = data if isinstance(data, list) else [data]
-    for batch in batches:
-        if isinstance(batch, dict) and "error" in batch:
-            return [], batch["error"].get("message", str(batch["error"]))
-        for row in batch.get("results", []):
-            camp = row.get("campaign", {}) or {}
-            bud = row.get("campaignBudget", row.get("campaign_budget", {})) or {}
-            cid = str(camp.get("id", ""))
-            if not cid:
-                continue
-            journalier = _micros(bud.get("amountMicros", bud.get("amount_micros")))
-            total = _micros(bud.get("totalAmountMicros", bud.get("total_amount_micros")))
-            rows.append({
-                "campaign_id":   cid,
-                "campaign_name": camp.get("name", ""),
-                "status":        camp.get("status", ""),
-                "start_date":    camp.get("startDate") or camp.get("start_date") or None,
-                "end_date":      _fin_declaree(camp.get("endDate") or camp.get("end_date")),
-                "daily_budget":  None if total else journalier,
-                "total_budget":  total,
-            })
-    return rows, None
-
-
-def fetch_campaign_statuses(
-    access_token: str,
-    customer_id: str,
-    login_customer_id: str | None = None,
-) -> tuple[dict[str, tuple[str, str, str | None, str | None]], str | None]:
-    """Fetch statut ET dates declarees de chaque campagne (sans insights).
-
-    Returns: ({campaign_id: (name, status, start_date, end_date)}, error|None)
-    `end_date` None = declaree sans date de fin (sentinelle 2037 normalisee).
-    """
-    query = """
-        SELECT campaign.id, campaign.name, campaign.status,
-               campaign.start_date, campaign.end_date
-        FROM campaign
-    """
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
-    try:
-        r = requests.post(url, headers=_headers(access_token, login_customer_id),
-                          json={"query": query}, timeout=20)
-        data = r.json()
-    except Exception as e:
-        return {}, f"Erreur API: {e}"
-
-    if isinstance(data, dict) and "error" in data:
-        return {}, data["error"].get("message", "inconnue")
-
-    out = {}
-    batches = data if isinstance(data, list) else [data]
-    for batch in batches:
-        for row in batch.get("results", []):
-            camp = row.get("campaign", {})
-            cid = str(camp.get("id", ""))
-            if cid:
-                out[cid] = (
-                    camp.get("name", ""),
-                    camp.get("status", ""),
-                    camp.get("startDate") or camp.get("start_date") or None,
-                    _fin_declaree(camp.get("endDate") or camp.get("end_date")),
-                )
-    return out, None
-
+from saas.collecte.google.acces import AccesGoogle
+from saas.collecte.google.ads.gaql import BASE, entetes, micros
+from saas.collecte.socle import http
+from saas.collecte.socle.fenetre import Fenetre
 
 # ── Le journal des changements DÉCLARÉS (change_event) ────────────────────────
 #
@@ -761,16 +363,16 @@ def _traduire_google(
     if any(c.startswith("biddingstrategy") for c in champs):
         return ("enchere", f"la stratégie d'enchères{de_la_campagne} a été changée")
     if "cpcbidmicros" in champs:
-        a = _micros(_ressource(old, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
-        b = _micros(_ressource(new, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
+        a = micros(_ressource(old, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
+        b = micros(_ressource(new, "adGroupCriterion", "ad_group_criterion").get("cpcBidMicros"))
         mot = _texte_motcle()
         quoi = f'l\'enchère au clic du mot-clé "{mot}"' if mot else f"l'enchère au clic{de_la_campagne}"
         if a is not None and b is not None:
             return ("enchere", f"{quoi} est passée de {_chf(a)} à {_chf(b)} CHF")
         return ("enchere", f"{quoi} a été changée")
     if "targetcpa" in champs or "targetcpamicros" in champs:
-        a = _micros((_ressource(old, "campaign", "campaign").get("targetCpa") or {}).get("targetCpaMicros"))
-        b = _micros((_ressource(new, "campaign", "campaign").get("targetCpa") or {}).get("targetCpaMicros"))
+        a = micros((_ressource(old, "campaign", "campaign").get("targetCpa") or {}).get("targetCpaMicros"))
+        b = micros((_ressource(new, "campaign", "campaign").get("targetCpa") or {}).get("targetCpaMicros"))
         if a is not None and b is not None:
             return ("enchere", f"le coût par acquisition visé{de_la_campagne} est passé de {_chf(a)} à {_chf(b)} CHF")
         return ("enchere", f"le coût par acquisition visé{de_la_campagne} a été changé")
@@ -787,8 +389,8 @@ def _traduire_google(
 
     # ── Le budget ────────────────────────────────────────────────────────────
     if typ == "CAMPAIGN_BUDGET":
-        a = _micros(_ressource(old, "campaignBudget", "campaign_budget").get("amountMicros"))
-        b = _micros(_ressource(new, "campaignBudget", "campaign_budget").get("amountMicros"))
+        a = micros(_ressource(old, "campaignBudget", "campaign_budget").get("amountMicros"))
+        b = micros(_ressource(new, "campaignBudget", "campaign_budget").get("amountMicros"))
         sujet = f"le budget quotidien{de_la_campagne}" if de_la_campagne else "le budget quotidien"
         if a is not None and b is not None and a != b:
             return ("budget", f"{sujet} est passé de {_chf(a)} à {_chf(b)} CHF")
@@ -931,7 +533,7 @@ def _textes_mots_cles(
     noms = [n for n in dict.fromkeys(noms_ressources) if n]
     if not noms:
         return out
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
+    url = f"{BASE}/customers/{customer_id}/googleAds:searchStream"
     # Par paquets : une clause IN de plusieurs milliers d'entrées fait rejeter
     # la requête, et on perdrait alors TOUS les textes d'un coup.
     for i in range(0, len(noms), 400):
@@ -943,7 +545,7 @@ def _textes_mots_cles(
             WHERE ad_group_criterion.resource_name IN ({liste})
         """
         try:
-            r = requests.post(url, headers=_headers(access_token, login_customer_id),
+            r = http.post(url, headers=entetes(access_token, login_customer_id),
                               json={"query": query}, timeout=45)
             data = r.json()
         except Exception:
@@ -1000,9 +602,9 @@ def fetch_campaign_changes(
         ORDER BY change_event.change_date_time DESC
         LIMIT 10000
     """
-    url = f"{_BASE}/customers/{customer_id}/googleAds:searchStream"
+    url = f"{BASE}/customers/{customer_id}/googleAds:searchStream"
     try:
-        r = requests.post(url, headers=_headers(access_token, login_customer_id),
+        r = http.post(url, headers=entetes(access_token, login_customer_id),
                           json={"query": query}, timeout=60)
         data = r.json()
     except Exception as e:
@@ -1077,3 +679,15 @@ def fetch_campaign_changes(
                 "resume":        resume,
             })
     return rows, None
+
+
+def recuperer(acces: AccesGoogle, fenetre: Fenetre, limite: int | None = None,
+              noms_campagnes: dict[str, str] | None = None) -> tuple[list[dict], list[str]]:
+    """(lignes traduites, trous) depuis `fenetre.debut`, ramené à 30 jours.
+
+    `fenetre.fin` est ignorée : la borne haute est toujours demain (voir la
+    note en tête). `noms_campagnes` : `statuts.fetch_campaign_statuses`.
+    """
+    lignes, err = fetch_campaign_changes(acces.jeton, acces.client, fenetre.debut,
+                                         acces.login, noms_campagnes)
+    return (lignes[:limite] if limite is not None else lignes), ([err] if err else [])

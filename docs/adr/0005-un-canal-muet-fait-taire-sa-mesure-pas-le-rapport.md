@@ -68,7 +68,7 @@ porte. Un canal muet **est** une donnée.
 
 ## Ce que ça ne règle pas
 
-Le trou se rattrape tout seul : `_depart_recolte` déduit le point de reprise des
+Le trou se rattrape tout seul : `depart_recolte` (`saas/collecte/socle/fenetre.py`) déduit le point de reprise des
 lignes réellement écrites, moins le recouvrement (7 jours côté Meta, 30 côté
 Google), donc le prochain passage réussi **réécrit la semaine trouée**. La
 semaine suivante ne ment donc pas — à condition qu'un passage réussisse.

@@ -58,7 +58,7 @@ Pour ajouter un fournisseur (Postmark ou autre) : un cas de plus dans
 `etat_email(message_id)` redemande à Resend son `last_event` ; `etat_ouverture`
 et `phrase_ouverture` le traduisent. **Pas de Supabase ici non plus** : ranger
 le fait est le travail de `saas/commun/` (`email_envois`), le composer celui de
-`fetch_all.py`, qui relève au passage suivant du worker — par l'API, pas par
+`saas/collecte/automatisation/passage.py`, qui relève au passage suivant du worker (règles pures : `releve.py`) — par l'API, pas par
 webhook (ticket 50, `docs/adr/0007-…`).
 
 **Ce vocabulaire n'a aucune valeur « pas ouvert », et c'est le point.** Une
@@ -74,11 +74,20 @@ que l'email est **arrivé et regardé** : elle ne se range surtout pas avec les
 rebonds. `FOURNISSEURS_RELISIBLES` dit ce qu'on sait interroger — aujourd'hui
 Resend seul. Voir `docs/mesures-impossibles.md`.
 
+## `releve.py` — quand relever, et comment le dire
+
+`a_relever(envoi, maintenant)` et `mot_du_releve(envoi, evenement)` : les règles
+PURES du relevé (ticket 50) — un silence n'est pas une réponse définitive, on ne
+relit pas un email parti il y a une heure. Pas de Supabase non plus : lire la
+ligne d'envoi et ranger le fait, c'est `relever_ouverture` dans
+`saas/collecte/automatisation/passage.py`. Ces fonctions vivaient dans
+`fetch_all.py` jusqu'au ticket 07 de `.scratch/recolte/`.
+
 ## Qui appelle ce dossier
 
 `saas/traitement/build_report.py` (`publish_weekly_report`) est le **seul
 chemin d'envoi**, et il l'est désormais sans concurrent : c'est lui que le cron
-atteint, via `fetch_all.py`, et lui qui range l'envoi dans `email_envois`.
+atteint, via `saas/collecte/automatisation/passage.py`, et lui qui range l'envoi dans `email_envois`.
 `run_weekly.py`, qui appelait aussi `send_email` sans qu'aucun workflow ne
 l'atteigne, est parti avec les recommandations (voir `saas/README.md`, section « Ce qui
 reste à câbler »).

@@ -247,7 +247,7 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   le thème ? La campagne est le candidat évident et le mauvais — quarante cartes
   n'est pas un rapport, c'est un export.
 - **Trier les campagnes par leur objectif déclaré.** `fetch_campaign_budgets`
-  demande déjà `objective` à l'API Meta (`saas/collecte/meta/fetch_meta_ads.py:94`)
+  demande déjà `objective` à l'API Meta (`saas/collecte/meta/ads/budgets.py`, `recuperer`)
   et **ne l'écrit nulle part** : `meta_campaign_config` n'a pas la colonne. On jette
   donc, depuis le début, l'information qui dirait quelles métriques ont un sens pour
   quelle campagne. Écarté maintenant pour ne pas compliquer (la bascule reste libre,
@@ -321,3 +321,14 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   était au mauvais niveau, deux annonces d'une campagne pouvant envoyer vers
   deux pages. Google la répartit entre `final_urls` et les extensions : à
   regarder le jour où Google entre dans le socle.
+
+## Relevé en chartant la carte « récolte » (2026-10-07, `.scratch/recolte/map.md`)
+
+- **La page Facebook organique.** Rien ne la récolte aujourd'hui : Pulse lit
+  Meta Ads et Instagram, pas la page Facebook. Les permissions demandées à Meta
+  (`saas/web/app/api/oauth/meta/start/route.ts`) n'y suffisent pas — il
+  faudrait vraisemblablement `pages_read_engagement` et `read_insights` (à
+  vérifier dans la doc Meta), donc une nouvelle revue d'app. Sa place est
+  prévue : `saas/collecte/meta/organique/facebook/`.
+- **Les données d'un compte déconnecté** : gardées, masquées ou supprimées ?
+  Rien ne le décide.

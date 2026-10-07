@@ -46,13 +46,13 @@ NOMS_CANAUX = {"meta": "Meta Ads", "google": "Google Ads",
 
 # À PARTIR DE COMBIEN DE RAPPORTS MUETS L'ESCALADE SORT DU CYCLE HEBDOMADAIRE.
 # Deux, et pas un : une panne d'une SEULE semaine se rattrape toute seule au
-# prochain passage réussi — `_depart_recolte` déduit le point de reprise des
+# prochain passage réussi — `depart_recolte` (`saas/collecte/socle/fenetre.py`) déduit le point de reprise des
 # lignes réellement écrites, moins le recouvrement (28 jours côté Meta, 30 côté
 # Google), donc la semaine trouée est réécrite (ADR 0005). Sonner à la première
 # transférerait simplement le papier peint du client à David.
 #
-# LU PAR IMPORT LOCAL DEPUIS `saas/collecte/automatisation/fetch_all.py`
-# (`_note_canaux_qui_durent`) : aucun appelant ne se voit dans ce fichier.
+# LU PAR IMPORT LOCAL DEPUIS `saas/collecte/automatisation/alarmes.py`
+# (`note_canaux_qui_durent`) : aucun appelant ne se voit dans ce fichier.
 SEUIL_ESCALADE = 2
 
 
@@ -176,7 +176,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # chiffres pendant que la semaine en cours se tait.
     #
     # La date se DÉDUIT des lignes écrites, elle ne se stocke pas : c'est le
-    # même raisonnement que `_depart_recolte` côté récolte — une date lue dans
+    # même raisonnement que `depart_recolte` (`saas/collecte/socle/fenetre.py`) côté récolte — une date lue dans
     # les lignes réellement présentes ne peut pas mentir sur ce qui a été fait.
     def _derniere_date(df, col="date_start"):
         if df is None or getattr(df, "empty", True) or col not in df.columns:
