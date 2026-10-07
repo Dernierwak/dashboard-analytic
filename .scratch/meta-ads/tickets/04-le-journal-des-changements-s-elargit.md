@@ -87,3 +87,5 @@ refusée, contrôle 50 ✓ (le seul ✗ vient du stub sans RLS, identique avant)
 de `meta_ads_insights` à chaque passage (une ligne par annonce et par jour,
 paginée par 1 000) pour en tirer un petit dictionnaire. Acceptable aujourd'hui ;
 à surveiller sur un gros compte.
+
+**2026-10-07 — `000` rejoué par Claude** (`supabase db query --linked`), 50 contrôles verts, bucket `ad-creatives` créé ; rien de détruit (`reco_news` et les colonnes de `profiles` étaient déjà parties). Reste : le passage du worker, puis la vérification en base.

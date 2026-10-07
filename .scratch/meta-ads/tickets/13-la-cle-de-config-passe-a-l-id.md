@@ -96,3 +96,5 @@ sur ce code.
    Meta, à rattacher (poser leur `campaign_id`) ou supprimer à la main.
 4. Recopier ici la ligne du CONTRÔLE (attendu : `PRIMARY KEY (user_id,
    campaign_id)`, `sans_id` = 0).
+
+**2026-10-07 — `000` rejoué par Claude** (`supabase db query --linked`), 50 contrôles verts, bucket `ad-creatives` créé ; rien de détruit (`reco_news` et les colonnes de `profiles` étaient déjà parties). Reste : le passage du worker, puis la vérification en base.

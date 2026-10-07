@@ -1776,8 +1776,8 @@ ORDER BY (etat = '✓'), famille, objet;
 --   B) Les tables qu'un invité NE voit PAS. Attendu : connected_accounts
 --      (volontaire), email_envois (volontaire aussi — mesure d'exploitation,
 --      section 26 : RLS activée sans aucune policy, service_role seul),
---      dashboard_members (règle propre dm_select), et les tables de l'ancien
---      Streamlit (ai_recommendations, ai_feedback, free_data, paid_data).
+--      dashboard_members (règle propre dm_select). Les tables de l'ancien
+--      Streamlit sont parties (`995_supprimer_les_tables_ia.sql`).
 --      Toute AUTRE ligne est un module que l'invité verra vide :
 --      SELECT c.relname
 --      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

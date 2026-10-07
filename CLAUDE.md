@@ -41,7 +41,7 @@ ailleurs. Ne pas les réintroduire par la bande — ce qui est parti est au
 | `saas/traitement/` | Assemble et publie le rapport hebdo à partir de ce que `collecte/` a récolté — `build_report.py`, `lecteur.py` (le seam hors ligne), `matrice.py` (la matrice full-history). Son `CLAUDE.md` détaille la logique. |
 | `saas/commun/` | Lecture/écriture Supabase et secrets — `app_secrets.py`, `fetch_data.py`, `insert_data.py`. Utilisé par `collecte/` et `traitement/`, pas propre à un seul domaine. |
 | `saas/emailing/` | L'email hebdo — `render.py`, `send.py`. Son `CLAUDE.md` détaille le flux d'envoi. |
-| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. `999_supprimer_les_recommandations.sql` en est l'exception : il DÉTRUIT, il ne s'installe pas, et il se joue une fois à la main. |
+| `supabase/migrations/` | Le schéma. `000_run_me_all.sql` est le fichier unique à jouer, rejouable sans risque. Les fichiers `99x_*.sql` en sont l'exception : ils DÉTRUISENT ou basculent, ne s'installent pas, et se jouent une fois à la main. |
 
 Python : **`python3.12`**, jamais `python3`.
 

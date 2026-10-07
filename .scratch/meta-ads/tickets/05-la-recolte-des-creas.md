@@ -107,3 +107,5 @@ aucun PostgreSQL. Aucun n'était disponible sur la machine.
   tard n'aurait alors pas les créas de ses vieilles annonces ;
 - une vidéo sans aucun hash de vignette (créa `flat` avec `video_id`) n'a
   pas de vignette. `thumbnail_url` expire et n'est pas stockée.
+
+**2026-10-07 — `000` rejoué par Claude** (`supabase db query --linked`), 50 contrôles verts, bucket `ad-creatives` créé ; rien de détruit (`reco_news` et les colonnes de `profiles` étaient déjà parties). Reste : le passage du worker, puis la vérification en base.
