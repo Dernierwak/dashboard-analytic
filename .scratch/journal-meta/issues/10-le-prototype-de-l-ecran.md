@@ -119,7 +119,12 @@ le dépôt est public. Il reste l'artifact privé ci-dessus (version 7).
 
 ## Answer
 
-L'écran validé par David (version 8 du prototype) :
+**Re-corrigé : les points sur l'axe reviennent** (version 11). David avait cru
+que le point de l'axe regroupait toute la période ; expliqué (un jour sans
+valeur, le point se pose sur l'axe), il le juge « complètement juste ».
+Le point 3 ci-dessous l'emporte sur les corrections précédentes.
+
+L'écran validé par David (version 11 du prototype) :
 
 1. **Filtre « Groupe d'annonces »** à côté de « Campagne » ; il filtre toute la
    page (courbes, Comparaison, journal).
@@ -128,9 +133,8 @@ L'écran validé par David (version 8 du prototype) :
    visuel et texte de chaque annonce). Ils ouvrent le panneau latéral et
    restent accrochés à son bord ; un second clic sur l'onglet actif referme.
 3. **La Tendance garde ses points orange** (un par jour, tous les changements
-   du jour, filtrés). **Sur aucun graphique, un point n'est posé sur l'axe** :
-   un jour où la courbe n'a pas de valeur ne porte pas de point ; ses
-   changements se lisent dans l'onglet.
+   du jour, filtrés). Un jour où la courbe n'a pas de valeur (rien dépensé)
+   pose son point **sur l'axe**, sur la Tendance comme sur la Comparaison.
 4. **La Comparaison** : sur chaque ligne, des points **creux** aux jours de
    changement ; survol = une bulle avec le nom ; clic sur la ligne (ou un
    point) = elle est mise en avant, les autres s'effacent, ses points

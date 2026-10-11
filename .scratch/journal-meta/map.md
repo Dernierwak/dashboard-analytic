@@ -74,19 +74,21 @@ le ticket 10.
 - [Repartir d'une base saine](issues/09-repartir-d-une-base-saine.md) : les
   anciennes notes sont parties avec `1b05a92` ; le code reste.
 - [Le prototype de l'écran](issues/10-le-prototype-de-l-ecran.md) : validé en
-  version 8 — filtre groupe d'annonces, onglets « Changements » et « Aperçus »
-  à droite, aucun point sur l'axe, ligne mise en avant sur la Comparaison,
-  panneau statut › « Actuel » › avant / après.
+  version 11 — filtre groupe d'annonces, onglets « Changements » et
+  « Aperçus » à droite, ligne mise en avant sur la Comparaison, une carte par
+  changement : statut › « Actuel » › avant / après.
+- [Le schéma de `platform_changes`](issues/11-le-schema-de-platform-changes.md) :
+  l'élément touché (`object_id`, `object_name`, `niveau`, `adset_id`) et
+  `extra_data` tel que Meta l'envoie ; tout se lit à l'affichage ; catégories
+  `objectif` et `calendrier`.
 
 ## Pas encore spécifié
 
-- **Les catégories de `platform_changes`.** L'objectif et le calendrier n'ont
-  pas de catégorie dans la contrainte CHECK : à ranger au ticket 11, sans
-  supprimer de ligne.
 - **La vérification du budget** une fois qu'un vrai changement existera sur un
   compte.
-- **Les lignes de plus de 180 jours**, que la récolte ne relit plus : elles
-  gardent leur ancienne phrase, sauf si le brut est gardé (ticket 11).
+- **Les lignes déjà en base** avant le ticket 12 n'ont pas d'`extra_data` : le
+  passage du worker relit 180 jours et les complète ; au-delà, elles gardent
+  leur phrase seule.
 
 ## Hors périmètre
 
