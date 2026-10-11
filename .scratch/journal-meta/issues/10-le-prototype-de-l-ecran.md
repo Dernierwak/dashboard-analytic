@@ -41,4 +41,18 @@ restent un raccourci vers un jour.
 **Version 2 publiée** (même lien) : onglets « Changements » et « Aperçus » à
 droite ; le résumé en variante 1 / 2 dans la barre du bas ; un seul exemple
 fictif (âge 50-65+ → 55-65+, 27 août, groupe allemand), marqué comme tel.
-En attente du retour de David.
+**2026-10-11 — retour de David sur la version 2.**
+- Les heures ne se suivaient pas dans l'ordre (lignes dans l'ordre d'arrivée).
+- Le résumé s'appelle **« Actuel : »** et ne montre **que ce qui a changé**,
+  avec sa nouvelle valeur (« Âge : 55 - 65+ ») ; le dépliant montre **avant et
+  après de toutes les rubriques**, même celles qui n'ont pas bougé.
+- Le calendrier « Début : … → … » ne se comprenait pas d'un coup d'œil.
+- Campagne et groupe d'annonces **dépliables**, plus d'espace, une vraie
+  séparation entre groupes ; le trait de gauche pourrait finir par un « – »
+  coloré.
+
+**Version 3 publiée** (même lien) : tri par heure partout ; « Actuel » + un
+tableau rubrique | avant | après, ligne changée surlignée ; calendrier en
+« Début de diffusion » / « Fin de diffusion » ; trois présentations à
+comparer : 1 tiroirs fermés, 2 cartes, 3 trait de la couleur de la campagne
+terminé par « – ». En attente du retour de David.
