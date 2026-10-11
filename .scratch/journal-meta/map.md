@@ -74,9 +74,9 @@ le ticket 10.
 - [Repartir d'une base saine](issues/09-repartir-d-une-base-saine.md) : les
   anciennes notes sont parties avec `1b05a92` ; le code reste.
 - [Le prototype de l'écran](issues/10-le-prototype-de-l-ecran.md) : validé en
-  version 7 — filtre groupe d'annonces, onglets « Changements » et « Aperçus »
-  à droite, plus de points sur la Tendance, ligne mise en avant sur la
-  Comparaison, panneau statut › « Actuel » › avant / après.
+  version 8 — filtre groupe d'annonces, onglets « Changements » et « Aperçus »
+  à droite, aucun point sur l'axe, ligne mise en avant sur la Comparaison,
+  panneau statut › « Actuel » › avant / après.
 
 ## Pas encore spécifié
 

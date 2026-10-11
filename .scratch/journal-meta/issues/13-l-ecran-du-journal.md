@@ -7,8 +7,8 @@ Blocked by: 11, 12
 ## Question
 
 Construire sur `/meta` l'écran validé au ticket 10 (voir sa réponse, points 1
-à 5) : le filtre « Groupe d'annonces », les onglets du bord droit, la Tendance
-sans points, la mise en avant d'une ligne sur la Comparaison (et la
+à 5) : le filtre « Groupe d'annonces », les onglets du bord droit, aucun point
+posé sur l'axe, la mise en avant d'une ligne sur la Comparaison (et la
 correction des zones de clic superposées dans `components/courbe.tsx`), le
 panneau rangé campagne › groupe d'annonces › annonce avec statut, « Actuel »
 et avant / après.

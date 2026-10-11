@@ -106,12 +106,20 @@ de la Tendance sont inutiles : l'onglet « Changements » montre tout. Deux
 usages seulement — voir ce qui a changé à une date sur l'élément qui a mieux
 marché (la Comparaison), et tout voir (l'onglet). Version 7 publiée sans eux.
 
+**Corrigé le même jour : malentendu.** David parlait des points posés **sur
+l'axe des dates** (un jour où la courbe n'a pas de valeur, p. ex. annonces
+créées le 26 août, diffusées dès le 27 : le point tombait sur l'axe ; sur la
+Tendance il regroupait tout le jour, sur la Comparaison plusieurs s'y
+empilaient). Version 8 : retour à la version 6, points de la Tendance
+rétablis, et **aucun point sur l'axe** — seuls les points posés sur une ligne
+s'affichent. Les changements d'un jour sans valeur restent dans l'onglet.
+
 Le prototype n'entre pas dans le dépôt : il porte les vrais noms du compte et
 le dépôt est public. Il reste l'artifact privé ci-dessus (version 7).
 
 ## Answer
 
-L'écran validé par David (version 7 du prototype) :
+L'écran validé par David (version 8 du prototype) :
 
 1. **Filtre « Groupe d'annonces »** à côté de « Campagne » ; il filtre toute la
    page (courbes, Comparaison, journal).
@@ -119,7 +127,10 @@ L'écran validé par David (version 7 du prototype) :
    changements de la période, filtrés comme la page) et « Aperçus » (dernier
    visuel et texte de chaque annonce). Ils ouvrent le panneau latéral et
    restent accrochés à son bord ; un second clic sur l'onglet actif referme.
-3. **La Tendance ne porte plus de points.**
+3. **La Tendance garde ses points orange** (un par jour, tous les changements
+   du jour, filtrés). **Sur aucun graphique, un point n'est posé sur l'axe** :
+   un jour où la courbe n'a pas de valeur ne porte pas de point ; ses
+   changements se lisent dans l'onglet.
 4. **La Comparaison** : sur chaque ligne, des points **creux** aux jours de
    changement ; survol = une bulle avec le nom ; clic sur la ligne (ou un
    point) = elle est mise en avant, les autres s'effacent, ses points

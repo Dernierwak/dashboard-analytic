@@ -1,7 +1,7 @@
 # 11: Le schéma de `platform_changes`
 
 Type: grilling
-Status: open
+Status: claimed
 
 ## Question
 
