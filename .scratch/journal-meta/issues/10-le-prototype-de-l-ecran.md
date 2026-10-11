@@ -24,3 +24,21 @@ Proposé par Claude : filtre « Groupe d'annonces » à côté de « Campagne »
 filtre toute la page ; bouton « Changements · N » qui ouvre le même panneau
 avec tous les changements de la période, filtrés comme la page ; les points
 restent un raccourci vers un jour.
+
+## Comments
+
+**2026-10-11 — retour de David sur la version 1.**
+- **Rangement : A** (par élément, le trait qui montre où l'on est : groupe
+  d'annonces ou annonce). Le fil horaire (B) est écarté.
+- **Plus de bouton dans la barre de filtres, ni d'onglet à gauche** : un
+  **onglet sur le bord droit**, plus soigné, avec le nombre de changements,
+  qui ouvre le panneau et reste visible accroché à lui. D'autres onglets s'y
+  ajouteront — par exemple les **aperçus des annonces** (visuel, texte).
+- **Au-dessus de chaque changement, seulement ce qui a changé**, le détail
+  complet en dessous. Deux écritures du résumé à essayer : ancien → nouveau,
+  ou seulement la nouvelle valeur.
+
+**Version 2 publiée** (même lien) : onglets « Changements » et « Aperçus » à
+droite ; le résumé en variante 1 / 2 dans la barre du bas ; un seul exemple
+fictif (âge 50-65+ → 55-65+, 27 août, groupe allemand), marqué comme tel.
+En attente du retour de David.

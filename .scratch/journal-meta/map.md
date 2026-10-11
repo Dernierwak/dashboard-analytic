@@ -64,6 +64,8 @@ le ticket 10.
   et par jour, qui montre le chemin avec ses heures.
 - [Les modifications sans différence](issues/06-les-modifications-sans-difference.md) :
   aucun filtre — Meta ne donne aucun champ qui dise « rien n'a changé ».
+  Rouvert en partie : le résumé de ce qui a changé compare avant et après,
+  texte contre texte (à confirmer, voir le prototype).
 - [Le budget sans exemple réel](issues/07-le-budget-sans-exemple-reel.md) : aucun
   changement de budget sur le compte depuis le 2026-01-11 ; montant lu selon la
   forme documentée, sinon « budget modifié », et dit non testé.
@@ -92,5 +94,6 @@ le ticket 10.
   part.
 - **Traduire les valeurs de Meta** dans la langue de l'application : refusé
   (ticket 04).
-- **Calculer l'écart entre avant et après** (ciblage, créa) : refusé par David
-  comme une pièce fragile de plus (ticket 06).
+- **Comparer des montants ou des nombres** entre avant et après : écarté comme
+  une pièce fragile de plus (ticket 06). Seule la comparaison texte contre
+  texte est en essai.
