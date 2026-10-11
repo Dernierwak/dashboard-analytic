@@ -9,10 +9,10 @@ tours de questions.
 
 Sur `/meta`, en production : chaque changement Meta dit **quel élément**
 (campagne, groupe d'annonces ou annonce, avec son nom), **ce qui a été fait**,
-et **de quoi à quoi** quand Meta le donne. Les changements se lisent depuis la
-grande courbe, depuis chaque ligne des graphiques de la Comparaison, et depuis
-un accès à tous les changements de la période, filtrés comme la page — filtre
-par groupe d'annonces compris.
+et **de quoi à quoi** quand Meta le donne. Les changements se lisent depuis
+chaque ligne des graphiques de la Comparaison, et depuis un onglet qui montre
+tous les changements de la période, filtrés comme la page — filtre par groupe
+d'annonces compris.
 
 ## Notes
 
@@ -73,12 +73,13 @@ le ticket 10.
   point par ligne, de la couleur de la ligne ; le clic n'ouvre que cet élément.
 - [Repartir d'une base saine](issues/09-repartir-d-une-base-saine.md) : les
   anciennes notes sont parties avec `1b05a92` ; le code reste.
+- [Le prototype de l'écran](issues/10-le-prototype-de-l-ecran.md) : validé en
+  version 7 — filtre groupe d'annonces, onglets « Changements » et « Aperçus »
+  à droite, plus de points sur la Tendance, ligne mise en avant sur la
+  Comparaison, panneau statut › « Actuel » › avant / après.
 
 ## Pas encore spécifié
 
-- **La construction de l'écran** (panneau, bouton ou onglet, filtre groupe
-  d'annonces, points de la Comparaison) : se découpe en tickets une fois le
-  prototype (ticket 10) validé.
 - **Les catégories de `platform_changes`.** L'objectif et le calendrier n'ont
   pas de catégorie dans la contrainte CHECK : à ranger au ticket 11, sans
   supprimer de ligne.

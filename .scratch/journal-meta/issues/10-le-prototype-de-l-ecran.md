@@ -1,7 +1,7 @@
 # 10: Le prototype de l'écran
 
 Type: prototype
-Status: claimed
+Status: resolved
 
 ## Question
 
@@ -99,4 +99,40 @@ modifications (« Actuel »), puis le petit avant / après.
 
 **Version 6 publiée** : légende simple (les autres s'estompent quand une
 ligne est choisie), bulle avec le nom au survol, désélection au clic à côté,
-statut en tête de chaque élément. En attente du retour de David.
+statut en tête de chaque élément.
+
+**2026-10-11 — retour de David sur la version 6, validée.** Les points orange
+de la Tendance sont inutiles : l'onglet « Changements » montre tout. Deux
+usages seulement — voir ce qui a changé à une date sur l'élément qui a mieux
+marché (la Comparaison), et tout voir (l'onglet). Version 7 publiée sans eux.
+
+Le prototype n'entre pas dans le dépôt : il porte les vrais noms du compte et
+le dépôt est public. Il reste l'artifact privé ci-dessus (version 7).
+
+## Answer
+
+L'écran validé par David (version 7 du prototype) :
+
+1. **Filtre « Groupe d'annonces »** à côté de « Campagne » ; il filtre toute la
+   page (courbes, Comparaison, journal).
+2. **Onglets sur le bord droit** : « Changements » avec son nombre (tous les
+   changements de la période, filtrés comme la page) et « Aperçus » (dernier
+   visuel et texte de chaque annonce). Ils ouvrent le panneau latéral et
+   restent accrochés à son bord ; un second clic sur l'onglet actif referme.
+3. **La Tendance ne porte plus de points.**
+4. **La Comparaison** : sur chaque ligne, des points **creux** aux jours de
+   changement ; survol = une bulle avec le nom ; clic sur la ligne (ou un
+   point) = elle est mise en avant, les autres s'effacent, ses points
+   deviennent pleins, plus gros, avec un halo qui pulse, et eux seuls ouvrent
+   le panneau sur ce jour et cet élément. Un clic à côté, ou de nouveau sur
+   elle, ou sur une autre ligne, relâche. Aucune étiquette en plus.
+   **Bug du code actuel à corriger** : deux éléments changés le même jour
+   posent deux zones de clic superposées dans `components/courbe.tsx`.
+5. **Le panneau** : campagne › groupe d'annonces › annonce, chacun dépliable
+   (flèche grande et simple), tout ouvert ; traits de la couleur de la
+   campagne terminés par « – » ; tri par heure. Sous chaque nom : **le statut
+   d'abord** (chaîne et heures, une ligne par élément et par jour), puis
+   chaque modification avec **« Actuel : »** — seulement les rubriques qui ont
+   changé, nouvelle valeur — puis un petit lien **« avant / après »** qui
+   ouvre un tableau rubrique | avant | après en petit, fond léger sur les
+   seules lignes changées.
