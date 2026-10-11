@@ -55,4 +55,17 @@ fictif (âge 50-65+ → 55-65+, 27 août, groupe allemand), marqué comme tel.
 tableau rubrique | avant | après, ligne changée surlignée ; calendrier en
 « Début de diffusion » / « Fin de diffusion » ; trois présentations à
 comparer : 1 tiroirs fermés, 2 cartes, 3 trait de la couleur de la campagne
-terminé par « – ». En attente du retour de David.
+terminé par « – ».
+
+**2026-10-11 — retour de David sur la version 3.** Le tableau avant/après au
+fond léger est retenu (« on voit rapidement la différence »). Les dépliants
+sont trop discrets. Sur la Comparaison, on vise mal la bonne annonce. Cause
+trouvée : deux éléments changés le même jour posent deux zones de clic
+exactement superposées — la dernière dessinée gagne. À corriger dans le vrai
+`components/courbe.tsx`, quelle que soit la variante retenue.
+
+**Version 4 publiée** : dépliants agrandis (pastille ronde, survol), « Voir
+avant / après » en bouton ; trois façons de viser, dans la barre du bas :
+A un clic sur le jour, puis une liste « quel élément ? » ; B les points
+empilés dans une rangée au-dessus du graphique ; C l'élément choisi d'abord
+dans la légende, sa ligne mise en avant. En attente du retour de David.
