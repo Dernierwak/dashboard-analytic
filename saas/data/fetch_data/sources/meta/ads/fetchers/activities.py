@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from typing import NamedTuple
 
 from saas.data.fetch_data.sources.meta.ads.fetchers.budgets import centimes
 from saas.data.fetch_data.sources.meta.graph_client import GRAPH, AccesMeta, pages
@@ -13,6 +14,11 @@ from saas.data.fetch_data.shared.date_ranges import Fenetre
 # C'est le pendant de `change_event` chez Google, et il comble le même angle
 # mort : changer une audience ou remplacer un visuel ne bouge pas forcément la
 # dépense du jour, donc rien ne le trahissait dans nos courbes.
+#
+# Chaque ligne garde l'élément touché et `extra_data` TEL QUE META L'ENVOIE
+# (`.scratch/journal-meta/issues/11`) : l'écran y lit avant → après, et une
+# phrase se réécrit sans redemander à Meta. La phrase `resume` reste écrite
+# ici parce que le fil du rapport la lit.
 
 _ACTIVITES = {
     "update_campaign_budget":     "budget",
@@ -34,53 +40,72 @@ _ACTIVITES = {
     "create_campaign_group":      "creation",
     "create_ad_set":              "creation",
     "create_ad":                  "creation",
+    # Vus sur un vrai compte et faits par le client
+    # (`.scratch/journal-meta/issues/02`) : l'objectif d'un groupe, le ciblage
+    # posé sur une annonce, les dates de diffusion.
+    "update_ad_set_optimization_goal": "objectif",
+    "update_ad_targets_spec":          "audience",
+    "update_ad_set_duration":          "calendrier",
 }
 
-# LES NOUVEAUX TYPES NE LISENT PAS `extra_data`. Sa forme n'est documentée nulle
-# part et aucun exemple réel n'a encore été lu pour eux : la phrase dit ce que
-# le type d'événement établit à lui seul, sans valeur avant/après. Une valeur ne
-# s'ajoute qu'une fois un `extra_data` réel recopié dans le ticket 04.
-_PHRASES_SANS_VALEUR = {
-    "update_ad_run_status":       'le statut de l\'annonce "{nom}" a été modifié',
-    "update_ad_set_bidding":      'l\'enchère du groupe d\'annonces "{nom}" a été modifiée',
-    "update_ad_set_bid_strategy": 'la stratégie d\'enchère du groupe d\'annonces "{nom}" a été modifiée',
-    "update_ad_bid_info":         'l\'enchère de l\'annonce "{nom}" a été modifiée',
-    "create_campaign_group":      'la campagne "{nom}" a été créée',
-    "create_ad_set":              'le groupe d\'annonces "{nom}" a été créé',
-    "create_ad":                  'l\'annonce "{nom}" a été créée',
+# Le niveau se lit dans le PRÉFIXE de `event_type`, jamais dans `object_type` :
+# Meta y écrit « CAMPAIGN » pour un groupe d'annonces, son vocabulaire interne
+# appelant « campaign » le groupe et « campaign group » la campagne
+# (`.scratch/journal-meta/recherche/activities.md`, O2). L'ordre compte :
+# `update_ad_set_` avant `update_ad_`.
+_NIVEAUX = (
+    ("create_campaign_group", "campagne"),
+    ("update_campaign_",      "campagne"),
+    ("create_ad_set",         "groupe"),
+    ("update_ad_set_",        "groupe"),
+    ("create_ad",             "annonce"),
+    ("update_ad_",            "annonce"),
+)
+
+# Le complément s'écrit entier pour chaque niveau : « de » + « le groupe » se
+# contracte en « du », et le participe s'accorde avec l'élément.
+_DE_L_ELEMENT = {
+    "campagne": "de la campagne",
+    "groupe":   "du groupe d'annonces",
+    "annonce":  "de l'annonce",
+}
+_CREATIONS = {
+    "campagne": "la campagne {nom} a été créée",
+    "groupe":   "le groupe d'annonces {nom} a été créé",
+    "annonce":  "l'annonce {nom} a été créée",
 }
 
-# Les événements portés par la campagne elle-même : leur `object_id` EST la
-# campagne. Pour les autres, `object_id` est un groupe d'annonces ou une annonce, et la
-# campagne se retrouve par l'ID dans la hiérarchie des insights
-# (`hierarchie_depuis_insights`) — jamais en rangeant l'ID d'un groupe d'annonces dans
-# `campaign_id`, ce qui rattacherait le changement sur une clé fausse.
-_NIVEAU_CAMPAGNE = {"update_campaign_budget", "update_campaign_run_status",
-                    "create_campaign_group"}
-
-# Groupe d'annonces ou annonce → (campaign_id, campaign_name) : `hierarchie_depuis_insights`.
-Parents = dict[str, tuple[str, str | None]]
-
-# (campagne, groupe d'annonces) : le participe s'accorde avec le sujet, et le
-# groupe d'annonces est masculin (CONTEXT.md, **Groupe d'annonces**).
-_ETATS_META = {
-    "PAUSED":   ("a été mise en pause", "a été mis en pause"),
-    "ACTIVE":   ("a été réactivée",     "a été réactivé"),
-    "ARCHIVED": ("a été archivée",      "a été archivé"),
-    "DELETED":  ("a été supprimée",     "a été supprimé"),
+# Ce que le type d'événement établit à lui seul. Avant → après, quand Meta le
+# donne, se lit dans `extra_data` à l'affichage.
+_GESTES = {
+    "audience":   "le ciblage {de} a été modifié",
+    "creatif":    "la créa {de} a été modifiée",
+    "calendrier": "le calendrier {de} a été modifié",
+    "enchere":    "l'enchère {de} a été modifiée",
 }
+_STRATEGIE = "la stratégie d'enchère {de} a été modifiée"
 
 
-def _chf_fr(v: float) -> str:
+class Parent(NamedTuple):
+    campaign_id: str
+    campaign_name: str | None
+    adset_id: str | None
+
+
+# Groupe d'annonces ou annonce → sa campagne et son groupe : `hierarchie_depuis_insights`.
+Parents = dict[str, Parent]
+
+
+def _montant_fr(v: float) -> str:
     return f"{v:,.2f}".replace(",", " ").replace(".", ",")
 
 
 def _extra(brut) -> dict:
     """`extra_data` arrive en CHAÎNE JSON, pas en objet — un json.loads de plus.
 
-    Hypothèse sur sa forme : Meta ne la documente pas, on observe
-    {"old_value": …, "new_value": …}. Quand elle n'est pas là ou pas lisible, on
-    écrit la phrase sans les valeurs plutôt que d'inventer des chiffres.
+    Sa forme n'est documentée nulle part ; celles vues sur un vrai compte sont
+    dans `.scratch/journal-meta/issues/02`. Illisible, elle rend {} et la
+    phrase dit « modifié » plutôt que d'inventer une valeur.
     """
     if isinstance(brut, dict):
         return brut
@@ -91,6 +116,21 @@ def _extra(brut) -> dict:
         return d if isinstance(d, dict) else {}
     except Exception:
         return {}
+
+
+def _extra_tel_quel(brut):
+    """`extra_data` pour la colonne jsonb : ce que Meta envoie, sans rien
+    retirer. Une chaîne qui n'est pas du JSON se garde comme chaîne — c'est
+    encore ce que Meta a envoyé. Absent : None, et la colonne n'est pas envoyée.
+    """
+    if brut in (None, ""):
+        return None
+    if isinstance(brut, str):
+        try:
+            return json.loads(brut)
+        except Exception:
+            return brut
+    return brut
 
 
 def _cle_meta(quand: str, *parts) -> str:
@@ -104,50 +144,97 @@ def _cle_meta(quand: str, *parts) -> str:
     return hashlib.sha1(brut.encode("utf-8")).hexdigest()[:24]
 
 
+def niveau_de(event_type: str) -> str | None:
+    """`campagne`, `groupe` ou `annonce` — None pour un type sans préfixe connu."""
+    for prefixe, niveau in _NIVEAUX:
+        if event_type.startswith(prefixe):
+            return niveau
+    return None
+
+
+def _nom(act: dict) -> str:
+    """« "Acheteurs" », ou l'ID quand Meta omet le nom : un changement réel ne
+    se jette pas pour un nom manquant."""
+    nom = (act.get("object_name") or "").strip()
+    if nom:
+        return f'"{nom}"'
+    return str(act.get("object_id") or "").strip() or "sans nom"
+
+
+def _montant(extra: dict, cote: str) -> tuple[float, str] | None:
+    """Le montant d'un côté (`old_value` / `new_value`) d'un `composite_data`.
+
+    NON TESTÉ sur un vrai changement de budget (`.scratch/journal-meta/issues/07`) :
+    forme vue sur `create_ad_set` et dans les exemples publics
+    (`.scratch/journal-meta/recherche/activities.md`) —
+    `{"old_value": {"type": "payment_amount", "currency": "USD", "old_value": 1000},
+    "new_value": {…, "new_value": 2000}}`, en centimes. Toute autre forme rend
+    None, et la phrase dit « modifié ».
+    """
+    v = extra.get(cote)
+    if not isinstance(v, dict) or v.get("type") != "payment_amount":
+        return None
+    montant = centimes(v.get(cote))
+    if montant is None:
+        return None
+    return montant, str(v.get("currency") or "").strip()
+
+
+def _phrase_budget(extra: dict, de: str) -> str:
+    avant, apres = _montant(extra, "old_value"), _montant(extra, "new_value")
+    if apres is None:
+        return f"le budget {de} a été modifié"
+    # La devise n'est écrite que si Meta la donne : aucune n'est supposée.
+    devise = f" {apres[1]}" if apres[1] else ""
+    if avant is None:
+        return f"le budget {de} a été réglé à {_montant_fr(apres[0])}{devise}"
+    return f"le budget {de} est passé de {_montant_fr(avant[0])} à {_montant_fr(apres[0])}{devise}"
+
+
+def _texte(v) -> str | None:
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+def _phrase_de_a(extra: dict, rubrique: str, de: str) -> str:
+    """« le statut … est passé de « Actif » à « En attente d'examen » ».
+
+    Les valeurs sont recopiées comme Meta les envoie, dans la langue du jeton
+    (`.scratch/journal-meta/issues/04`) : aucune décision ne se prend sur un
+    libellé, donc un statut en français n'est plus jeté.
+    """
+    avant, apres = _texte(extra.get("old_value")), _texte(extra.get("new_value"))
+    if avant and apres:
+        return f"{rubrique} {de} est passé de « {avant} » à « {apres} »"
+    if apres:
+        return f"{rubrique} {de} a été réglé sur « {apres} »"
+    return f"{rubrique} {de} a été modifié"
+
+
 def _traduire_meta(act: dict) -> tuple[str, str] | None:
-    """(categorie, resume) — ou None quand on ne sait pas nommer le fait."""
+    """(categorie, resume) — None seulement pour un type que Pulse ne récolte pas.
+
+    Un type retenu n'est jamais jeté : au pire la phrase dit « modifié ».
+    """
     typ = str(act.get("event_type") or "")
     categorie = _ACTIVITES.get(typ)
-    if not categorie:
+    niveau = niveau_de(typ)
+    if not categorie or not niveau:
         return None
-    nom = (act.get("object_name") or "").strip()
-    # Sans le nom de l'objet touché, la phrase se réduirait à « une campagne a
-    # changé » — un bruit qui chasse les lignes utiles du fil.
-    if not nom:
-        return None
-    if typ in _PHRASES_SANS_VALEUR:
-        return (categorie, _PHRASES_SANS_VALEUR[typ].format(nom=nom))
+    nom = _nom(act)
+    de = f"{_DE_L_ELEMENT[niveau]} {nom}"
     extra = _extra(act.get("extra_data"))
-    avant, apres = extra.get("old_value"), extra.get("new_value")
-    est_campagne = typ in _NIVEAU_CAMPAGNE
-    # « de » + « le groupe » se contracte en « du » : le complément s'écrit
-    # entier pour chaque niveau plutôt que d'accoler « de » à l'objet.
-    du_objet = f'de la campagne "{nom}"' if est_campagne else f'du groupe d\'annonces "{nom}"'
 
+    if categorie == "creation":
+        return ("creation", _CREATIONS[niveau].format(nom=nom))
     if categorie == "budget":
-        a, b = centimes(avant), centimes(apres)
-        if a is not None and b is not None and a != b:
-            return ("budget", f"le budget {du_objet} est passé de {_chf_fr(a)} à {_chf_fr(b)} CHF")
-        if b is not None:
-            return ("budget", f"le budget {du_objet} a été réglé à {_chf_fr(b)} CHF")
-        return ("budget", f"le budget {du_objet} a été modifié")
-
+        return ("budget", _phrase_budget(extra, de))
     if categorie == "statut":
-        etat = str(apres or "").upper()
-        if etat in _ETATS_META:
-            feminin, masculin = _ETATS_META[etat]
-            if est_campagne:
-                return ("statut", f'la campagne "{nom}" {feminin}')
-            return ("statut", f'le groupe d\'annonces "{nom}" {masculin}')
-        return None
-
-    if categorie == "audience":
-        return ("audience", f"le ciblage du groupe d'annonces \"{nom}\" a été modifié")
-
-    if categorie == "creatif":
-        return ("creatif", f"le visuel de l'annonce \"{nom}\" a été remplacé")
-
-    return None
+        return ("statut", _phrase_de_a(extra, "le statut", de))
+    if categorie == "objectif":
+        return ("objectif", _phrase_de_a(extra, "l'objectif", de))
+    if typ == "update_ad_set_bid_strategy":
+        return ("enchere", _STRATEGIE.format(de=de))
+    return (categorie, _GESTES[categorie].format(de=de))
 
 
 # Le worker demande six mois d'activités à chaque passage hebdomadaire, à 500
@@ -187,13 +274,17 @@ def recuperer(acces: AccesMeta, fenetre: Fenetre,
 
 
 def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
-    """Les lignes de meta_ads_insights → {id de groupe d'annonces ou d'annonce : (campaign_id, campaign_name)}.
+    """Les lignes de meta_ads_insights → {id de groupe d'annonces ou d'annonce : Parent}.
 
     Pure. Meta numérote groupes d'annonces et annonces dans un même espace d'IDs, d'où
     un seul dictionnaire. Une ligne sans `campaign_id` (d'avant le rejeu du
     ticket 03) ne rattache rien : on ne reconstitue jamais une campagne depuis
     un nom. Le nom gardé est le plus récent, pour qu'une campagne renommée se
     lise sous un seul nom (spec, user story 51).
+
+    Le groupe d'une annonce sert au filtre « Groupe d'annonces » : seul
+    `create_ad` le porte dans son `extra_data`, les autres gestes sur une
+    annonce le retrouvent ici.
     """
     noms: dict[str, str | None] = {}
     for r in sorted(lignes, key=lambda r: str(r.get("date_start") or "")):
@@ -204,33 +295,56 @@ def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
         if not r.get("campaign_id"):
             continue
         cid = str(r["campaign_id"])
+        adset = str(r["adset_id"]) if r.get("adset_id") else None
         for oid in (r.get("adset_id"), r.get("ad_id")):
             if oid:
-                parents[str(oid)] = (cid, noms[cid])
+                parents[str(oid)] = Parent(cid, noms[cid], adset)
     return parents
 
 
-def _campagne_de(act: dict, parents: Parents) -> tuple[str | None, str | None]:
+def _groupe_dans_extra(extra: dict) -> str | None:
+    """Le `campaign_id` d'un geste sur une annonce est l'ID de son GROUPE
+    (vérifié contre `meta_ads_insights`, `.scratch/journal-meta/issues/02`).
+    Vu sous la forme `{"campaign_id": {"new": <ID>}}` sur `create_ad`."""
+    v = extra.get("campaign_id")
+    if isinstance(v, dict):
+        v = v.get("new")
+    return str(v) if v not in (None, "") else None
+
+
+def _element(act: dict, niveau: str, parents: Parents) -> dict:
+    """L'élément touché, rangé sous sa campagne et son groupe.
+
+    Seules les valeurs connues sont rendues : chaque passage relit 180 jours,
+    et une clé à None effacerait par upsert ce qu'un passage précédent a écrit.
+    """
     oid = str(act.get("object_id") or "")
-    if not oid:
-        return None, None
-    if str(act.get("event_type") or "") in _NIVEAU_CAMPAGNE:
-        return oid, (act.get("object_name") or None)
-    return parents.get(oid, (None, None))
+    nom = (act.get("object_name") or "").strip()
+    element = {"niveau": niveau, "object_id": oid or None, "object_name": nom or None}
+    if niveau == "campagne":
+        element.update(campaign_id=oid or None, campaign_name=nom or None)
+        return {k: v for k, v in element.items() if v}
+    adset = oid if niveau == "groupe" else _groupe_dans_extra(_extra(act.get("extra_data")))
+    parent = parents.get(oid) or (parents.get(adset) if adset else None)
+    if parent:
+        adset = adset or parent.adset_id
+        element.update(campaign_id=parent.campaign_id, campaign_name=parent.campaign_name)
+    element["adset_id"] = adset or None
+    return {k: v for k, v in element.items() if v}
 
 
 def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = None) -> list[dict]:
     """La réponse de /activities → les lignes de platform_changes.
 
     Pure, sans réseau : c'est le seam de test du journal (harnais
-    `.scratch/meta-ads/harnais/04-le-journal/`). `parents` vient de
+    `.scratch/journal-meta/harnais/12/`). `parents` vient de
     `hierarchie_depuis_insights` ; un ID absent laisse la campagne vide, et le
     changement ne se lit alors que sans filtre campagne.
 
     `occurred_at` reste l'instant UTC écrit par Meta ; `fuseau` dit dans quel
     fuseau l'écran découpe son jour. Inconnu, il n'est PAS envoyé : chaque
     passage relit 180 jours, et un `None` effacerait par upsert le fuseau
-    déjà écrit.
+    déjà écrit. Même règle pour l'élément et `extra_data`.
     """
     rows: list[dict] = []
     vus: set[str] = set()
@@ -246,15 +360,14 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
         if cle in vus:
             continue
         vus.add(cle)
-        campaign_id, campaign_name = _campagne_de(a, parents)
+        extra = _extra_tel_quel(a.get("extra_data"))
         rows.append({
-            "change_id":     cle,
-            "occurred_at":   str(quand),
-            "categorie":     categorie,
-            "campaign_id":   campaign_id,
-            "campaign_name": campaign_name,
-            "resume":        resume,
+            "change_id":   cle,
+            "occurred_at": str(quand),
+            "categorie":   categorie,
+            "resume":      resume,
+            **_element(a, niveau_de(str(a.get("event_type") or "")), parents),
+            **({"extra_data": extra} if extra is not None else {}),
             **({"fuseau": fuseau} if fuseau else {}),
         })
     return rows
-

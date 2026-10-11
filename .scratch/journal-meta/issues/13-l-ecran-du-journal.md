@@ -25,3 +25,15 @@ Fichiers : `saas/web/lib/meta/changements.ts`, `components/meta/panneau.tsx`,
 18 routes) et un harnais pour la logique pure (lecture de `extra_data`,
 regroupement du statut, « Actuel »). Se voit sur `/meta` après le passage du
 worker du ticket 12.
+
+## Comments
+
+**2026-10-11 — ce que le ticket 12 laisse en base.** Colonnes `niveau`
+(`campagne`/`groupe`/`annonce`), `object_id`, `object_name`, `adset_id`
+(l'objet lui-même pour un groupe) et `extra_data` (jsonb, ou chaîne si Meta
+n'envoie pas du JSON) ; toutes NULL sur les lignes Google et celles d'avant le
+passage. Deux catégories nouvelles, `objectif` et `calendrier`, que
+`NATURES` (`lib/meta/changements.ts`), `MOT_CATEGORIE`
+(`components/changements.tsx`) et `CategorieChangement`
+(`lib/changements-api.ts`) ne connaissent pas encore : elles s'y lisent
+aujourd'hui « Réglage ».

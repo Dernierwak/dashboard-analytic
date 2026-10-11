@@ -133,6 +133,13 @@ def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
     return list(lots.values())
 
 
+# L'élément touché et `extra_data` tel que Meta l'envoie
+# (`.scratch/journal-meta/issues/11`), puis `fuseau` (meta-ads, ticket 17).
+# Google ne les envoie pas encore : ses lignes les laissent NULL.
+_COLONNES_SI_CONNUES = ("niveau", "object_id", "object_name", "adset_id",
+                        "extra_data", "fuseau")
+
+
 def upsert_platform_changes(
     supabase: Client,
     user_id: str,
@@ -168,9 +175,9 @@ def upsert_platform_changes(
             "campaign_id":   str(r["campaign_id"]) if r.get("campaign_id") else None,
             "campaign_name": r.get("campaign_name") or None,
             "resume":        resume,
-            # Seulement s'il est connu : un NULL envoyé effacerait le fuseau
-            # déjà écrit (même raison que `lots_sans_effacer_la_campagne`).
-            **({"fuseau": r["fuseau"]} if r.get("fuseau") else {}),
+            # Seulement s'ils sont connus : un NULL envoyé effacerait la valeur
+            # déjà écrite (même raison que `lots_sans_effacer_la_campagne`).
+            **{k: r[k] for k in _COLONNES_SI_CONNUES if r.get(k) is not None},
         })
     if not records:
         return

@@ -81,11 +81,18 @@ le ticket 10.
   l'élément touché (`object_id`, `object_name`, `niveau`, `adset_id`) et
   `extra_data` tel que Meta l'envoie ; tout se lit à l'affichage ; catégories
   `objectif` et `calendrier`.
+- [La récolte garde l'élément et ce que Meta envoie](issues/12-la-recolte-ecrit-les-phrases-precises.md) :
+  construite et éprouvée hors ligne (harnais 24/24) ; le groupe d'une annonce
+  vient aussi de la hiérarchie des insights ; attend le `000` et un passage du
+  worker pour se voir en base.
 
 ## Pas encore spécifié
 
 - **La vérification du budget** une fois qu'un vrai changement existera sur un
   compte.
+- **Le premier passage après le ticket 12** : vérifier en base que `niveau`,
+  `adset_id` et `extra_data` sont remplis — et l'avis de David sur les
+  nouvelles phrases du fil (« est passé de « Actif » à « … » »).
 - **Les lignes déjà en base** avant le ticket 12 n'ont pas d'`extra_data` : le
   passage du worker relit 180 jours et les complète ; au-delà, elles gardent
   leur phrase seule.

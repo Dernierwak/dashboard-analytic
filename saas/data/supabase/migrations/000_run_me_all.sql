@@ -1159,7 +1159,12 @@ CREATE TABLE IF NOT EXISTS public.platform_changes (
 ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_categorie_check;
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
     CHECK (categorie IN
-        ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation', 'autre'));
+        ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation',
+         'objectif', 'calendrier', 'autre'));
+-- `objectif` et `calendrier` (journal-meta, ticket 11) : l'objectif
+-- d'optimisation d'un groupe et ses dates de diffusion, que la récolte garde
+-- depuis le ticket 12. Même remplacement que pour « creation » : la liste ne
+-- fait qu'ajouter, aucune ligne n'est touchée.
 
 -- `fuseau` (meta-ads, ticket 17) : le `timezone_name` du compte publicitaire,
 -- récolté avec chaque changement. Meta écrit `event_time` en UTC, alors que
@@ -1169,6 +1174,28 @@ ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_ch
 -- Ajout seul, rien n'est réécrit ; le prochain passage du worker remplit les
 -- 180 jours qu'il relit.
 ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS fuseau text;
+
+-- L'élément touché et ce que Meta en dit (journal-meta, ticket 11). Le journal
+-- disait « le ciblage du groupe X a été modifié » sans dire quoi, et ne savait
+-- pas ranger un changement sous son groupe d'annonces.
+--   `niveau`      : 'campagne', 'groupe' ou 'annonce', lu dans le préfixe de
+--                   `event_type` (`object_type` de Meta ment sur le niveau).
+--   `object_id`, `object_name` : l'élément lui-même.
+--   `adset_id`    : son groupe d'annonces (lui-même pour un groupe) — le
+--                   filtre « Groupe d'annonces » de `/meta`.
+--   `extra_data`  : la copie EXACTE de ce que Meta envoie. L'écran y lit
+--                   avant → après ; aucune colonne extraite qui pourrait
+--                   s'écarter de la source.
+-- NULL = pas encore récolté (lignes d'avant, Google). Ajout seul ; le prochain
+-- passage du worker remplit les 180 jours qu'il relit.
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS niveau      text;
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS object_id   text;
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS object_name text;
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS adset_id    text;
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS extra_data  jsonb;
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_niveau_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_niveau_check
+    CHECK (niveau IS NULL OR niveau IN ('campagne', 'groupe', 'annonce'));
 
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);
