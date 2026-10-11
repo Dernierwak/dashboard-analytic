@@ -87,5 +87,16 @@ en 12 px. Comparaison : points creux (anneaux) tant que rien n'est choisi —
 un clic les met en avant, n'ouvre rien ; survol d'une ligne = elle
 s'épaissit, les autres pâlissent ; ligne choisie = épaisse, les autres
 effacées, ses points pleins, plus gros, avec un halo qui pulse, seuls à ouvrir
-le panneau ; une pastille « ● nom · mise en avant ✕ » au-dessus. En attente
-du retour de David.
+le panneau ; une pastille « ● nom · mise en avant ✕ » au-dessus.
+
+**2026-10-11 — retour de David sur la version 5.** La sélection et le halo
+qui pulse sont retenus (« beaucoup plus clair »). À retirer : la légende
+cliquable et la pastille « mise en avant » (« ça rajoute trop »). À ajouter :
+au survol, juste le nom ; un clic à côté relâche la ligne, un nouveau clic
+sur elle aussi ; un clic sur une autre ligne relâche, il ne bascule pas. Dans
+le panneau, sous le nom de l'élément : **le statut d'abord**, puis les
+modifications (« Actuel »), puis le petit avant / après.
+
+**Version 6 publiée** : légende simple (les autres s'estompent quand une
+ligne est choisie), bulle avec le nom au survol, désélection au clic à côté,
+statut en tête de chaque élément. En attente du retour de David.
