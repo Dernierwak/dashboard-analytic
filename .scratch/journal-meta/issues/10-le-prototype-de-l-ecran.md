@@ -68,4 +68,24 @@ exactement superposées — la dernière dessinée gagne. À corriger dans le vr
 avant / après » en bouton ; trois façons de viser, dans la barre du bas :
 A un clic sur le jour, puis une liste « quel élément ? » ; B les points
 empilés dans une rangée au-dessus du graphique ; C l'élément choisi d'abord
-dans la légende, sa ligne mise en avant. En attente du retour de David.
+dans la légende, sa ligne mise en avant.
+
+**2026-10-11 — retour de David sur la version 4.**
+- **Panneau** : revenir aux traits (on doit voir que l'annonce est sous son
+  groupe, le groupe sous sa campagne) ; seulement une flèche de dépliant plus
+  grande et plus simple. Les présentations 1 et 2 sont écartées.
+- **Avant / après en tout petit** sous le résumé « Actuel » ; fond coloré léger
+  sur les seules lignes qui ont changé (toutes si tout a changé).
+- **Comparaison** : A (liste au clic) écarté, double clic pénible ; B (rangée
+  au-dessus) écarté. Retenu, l'esprit de C : les points se voient toujours ;
+  un clic sur la **ligne** la met en avant ; ses points ne se cliquent
+  qu'ensuite. Cela doit se comprendre **sans rien lire**.
+
+**Version 5 publiée** : traits de la couleur de la campagne terminés par
+« – », tout ouvert, flèche agrandie ; « avant / après » en petit lien, tableau
+en 12 px. Comparaison : points creux (anneaux) tant que rien n'est choisi —
+un clic les met en avant, n'ouvre rien ; survol d'une ligne = elle
+s'épaissit, les autres pâlissent ; ligne choisie = épaisse, les autres
+effacées, ses points pleins, plus gros, avec un halo qui pulse, seuls à ouvrir
+le panneau ; une pastille « ● nom · mise en avant ✕ » au-dessus. En attente
+du retour de David.
