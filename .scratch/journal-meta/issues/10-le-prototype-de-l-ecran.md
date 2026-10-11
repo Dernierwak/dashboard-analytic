@@ -146,4 +146,7 @@ L'écran validé par David (version 8 du prototype) :
    chaque modification avec **« Actuel : »** — seulement les rubriques qui ont
    changé, nouvelle valeur — puis un petit lien **« avant / après »** qui
    ouvre un tableau rubrique | avant | après en petit, fond léger sur les
-   seules lignes changées.
+   seules lignes changées. **Un filet sépare chaque changement du suivant**
+   (version 9, capture de David). Le panneau ne déborde jamais à droite :
+   `min-width: 0` sur les enfants de grille (`CLAUDE.md` §8), et les longs
+   textes de Meta (ciblage, codes) se coupent.
