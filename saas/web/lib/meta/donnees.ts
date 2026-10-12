@@ -13,8 +13,8 @@ import {
 } from "@/lib/meta/annonce";
 import { changementDe, type ChangementMeta, type LigneChangement } from "@/lib/meta/changements";
 import {
-  cleCampagne,
   contenuPage,
+  dansSelection,
   decaler,
   lireToutesLesPages,
   periodeDe,
@@ -54,7 +54,18 @@ export type DonneesMeta = ContenuPage & {
   /** L'annonce lue dans le Panneau latéral (ticket 12) ; `null` = aucune, ou
    *  une annonce inconnue de la sélection, qui ne s'ouvre pas. */
   annonce: AnnonceLue | null;
+  /** Le nom le plus récent de chaque groupe d'annonces et de chaque annonce,
+   *  par ID : le panneau des changements range sous le nom du Bandeau, pas
+   *  sous celui que Meta a écrit le jour du changement. */
+  noms: Record<string, string>;
+  /** L'onglet « Aperçus », lu seulement quand il est ouvert : `null` = fermé,
+   *  ou ouvert et la lecture a échoué — le panneau le dit. */
+  apercus: Record<string, Apercu> | null;
 };
+
+/** Ce que la récolte des créas a lu d'une annonce : son dernier visuel et son
+ *  dernier texte connus. */
+export type Apercu = { titre: string | null; texte: string | null; image: string | null };
 
 export type AnnonceLue = {
   ouverte: AnnonceOuverte;
@@ -119,7 +130,10 @@ async function lireJournal(
     const lignes = await lireToutesLesPages<LigneChangement>((de, a) =>
       supabase
         .from("platform_changes")
-        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau")
+        // `niveau` à `extra_data` viennent du `000` du ticket 12 de
+        // `.scratch/journal-meta/` : sur une base qui ne l'a pas joué, la
+        // requête refuse et la page dit que le journal n'a pas pu être lu.
+        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau, niveau, object_id, object_name, adset_id, extra_data")
         .eq("user_id", uid)
         .eq("channel", "meta")
         // Un jour de plus de chaque côté : `changementDe` découpe le jour dans
@@ -138,6 +152,44 @@ async function lireJournal(
   } catch {
     return null;
   }
+}
+
+/**
+ * Le dernier visuel et le dernier texte de chaque annonce de la sélection.
+ * Par paquets, comme les vignettes ; une annonce que la récolte des créas n'a
+ * pas lue n'a pas d'entrée, et l'onglet le dit au lieu d'un aperçu vide.
+ */
+async function lireApercus(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  ids: string[]
+): Promise<Record<string, Apercu> | null> {
+  const out: Record<string, Apercu> = {};
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("meta_ads_creatives")
+      .select("ad_id, titre, texte, vignette_url, image_url")
+      .eq("user_id", uid)
+      .in("ad_id", ids.slice(i, i + 200));
+    if (error) return null;
+    for (const r of (data ?? []) as { ad_id: string; titre: string | null; texte: string | null; vignette_url: string | null; image_url: string | null }[]) {
+      out[r.ad_id] = { titre: r.titre?.trim() || null, texte: r.texte?.trim() || null, image: r.vignette_url ?? r.image_url };
+    }
+  }
+  return out;
+}
+
+/** Le nom le plus récent de chaque groupe et de chaque annonce, par ID. */
+function nomsDe(lignes: LigneMeta[]): Record<string, string> {
+  const out: Record<string, { nom: string; date: string }> = {};
+  const garder = (id: string | null, nom: string, date: string) => {
+    if (id && nom && (!out[id] || date >= out[id].date)) out[id] = { nom, date };
+  };
+  for (const l of lignes) {
+    garder(l.groupeId, l.groupeNom, l.date);
+    garder(l.annonceId, l.annonceNom, l.date);
+  }
+  return Object.fromEntries(Object.entries(out).map(([id, x]) => [id, x.nom]));
 }
 
 /**
@@ -237,8 +289,9 @@ function phraseLecture(l: { etat: string; run_id: string } | null): string {
   return `Chiffres Meta au ${enFrancais(d)}${annee}, ${hh}:${mm} UTC`;
 }
 
-/** `annonce` : l'ID lu dans l'URL, à ouvrir dans le Panneau latéral. */
-export async function getDonneesMeta(c: Commandes, annonce?: string): Promise<DonneesMeta> {
+/** Ce que le Panneau latéral demande de lire en plus : l'annonce ouverte
+ *  (son ID, lu dans l'URL), ou l'onglet « Aperçus ». */
+export async function getDonneesMeta(c: Commandes, ouvrir: { annonce?: string; apercus?: boolean } = {}): Promise<DonneesMeta> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
@@ -276,11 +329,14 @@ export async function getDonneesMeta(c: Commandes, annonce?: string): Promise<Do
   const contenu = contenuPage(lignes, c, ctx);
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const annonces = contenu.comparaison.elements.flatMap((e) => (e.annonceId ? [e.annonceId] : []));
-  const ouverte = annonceOuverteDe(annonce, lignes, {
+  const ouverte = annonceOuverteDe(ouvrir.annonce, lignes, {
     debut: p.debut,
     fin: p.fin,
-    campagne: (l) => !c.campagne || cleCampagne(l) === c.campagne,
+    retenue: (l) => dansSelection(l, c),
   });
+  const apercus = ouvrir.apercus
+    ? await lireApercus(supabase, uid, contenu.annonces.flatMap((a) => (a.id ? [a.id] : [])))
+    : null;
   return {
     ...contenu,
     lecture: phraseLecture(ligneProgres),
@@ -289,5 +345,7 @@ export async function getDonneesMeta(c: Commandes, annonce?: string): Promise<Do
     tableau: tableauDe(lignes, c, ctx),
     journal,
     annonce: ouverte && (await lireAnnonce(supabase, uid, ouverte)),
+    noms: nomsDe(lignes),
+    apercus,
   };
 }

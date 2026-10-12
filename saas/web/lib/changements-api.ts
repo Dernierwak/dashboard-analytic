@@ -28,6 +28,8 @@ export type CategorieChangement =
   | "audience"
   | "creatif"
   | "creation"
+  | "objectif"
+  | "calendrier"
   | "autre";
 
 export type ChangementApi = {
@@ -43,7 +45,7 @@ export type ChangementApi = {
 };
 
 const CATEGORIES: CategorieChangement[] = [
-  "budget", "motcle", "enchere", "statut", "audience", "creatif", "creation", "autre",
+  "budget", "motcle", "enchere", "statut", "audience", "creatif", "creation", "objectif", "calendrier", "autre",
 ];
 
 // PostgREST plafonne chaque requête à 1000 lignes, et un compte actif produit

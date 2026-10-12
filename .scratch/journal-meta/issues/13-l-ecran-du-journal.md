@@ -37,3 +37,17 @@ passage. Deux catégories nouvelles, `objectif` et `calendrier`, que
 (`components/changements.tsx`) et `CategorieChangement`
 (`lib/changements-api.ts`) ne connaissent pas encore : elles s'y lisent
 aujourd'hui « Réglage ».
+
+**2026-10-12 — quatre points que le code avait tranchés seul, soumis à David.**
+- Survol d'une ligne de la Comparaison : **une bulle avec le nom seul** (comme
+  le prototype) ; la bulle des valeurs du jour reste hors d'une ligne.
+  Changé dans `components/courbe.tsx`.
+- « Actuel » d'une rubrique qui disparaît : **« retiré »** convient.
+- Un groupe d'annonces choisi : les boutons « Groupes d'annonces | Annonces »
+  de la Comparaison **disparaissent**, on compare ses annonces. Gardé.
+- L'onglet « Changements » surligné sur un jour ouvert depuis un point :
+  **un clic ferme le panneau** (il n'ouvre plus la période). Changé dans
+  `components/meta/onglets.tsx`.
+
+Vérifié : harnais 28/28, `tsc` et `build` verts, 18 routes. Pas encore vu dans
+Chrome ; non commité.
