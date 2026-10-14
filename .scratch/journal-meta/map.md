@@ -106,7 +106,9 @@ Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
   **fait** le 2026-10-14 : 1,7–2,1 s → 12–25 ms, le journal s'ouvre sans
   repasser par le serveur ; à fusionner sur `main`.
 - [Le budget vu sur un vrai changement](issues/18-le-budget-sur-un-vrai-changement.md) —
-  attend un vrai changement de budget sur un compte.
+  **fait** le 2026-10-14 : forme confirmée sur deux vrais changements du
+  2026-02-12, rien à corriger ; accepté par David sur la foi des harnais (hors
+  de la fenêtre de 180 jours, donc ni en base ni à l'écran).
 
 - [Le jour où une annonce commence à diffuser](issues/19-le-debut-de-la-distribution.md) —
   à trancher par David.

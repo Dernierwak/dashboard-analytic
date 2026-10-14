@@ -1,7 +1,7 @@
 # 18: Le budget vu sur un vrai changement
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 16 ; pour l'écran, un changement de budget dans la fenêtre de 180 jours
 Spec : [14](14-spec-le-journal-meta.md), histoires 15, 42 ; ticket [07](07-le-budget-sans-exemple-reel.md).
 
@@ -20,10 +20,10 @@ valeur ne se fabrique pour le simuler.
 
 ## Acceptance criteria
 
-- [ ] Un vrai changement de budget est en base. Son `extra_data` est
+- [x] Un vrai changement de budget est en base. Son `extra_data` est
       comparé à ce que Meta renvoie pour la même activité (forme décrite,
       noms et IDs remplacés : le dépôt est public).
-- [ ] Sur `/meta`, la carte affiche l'avant et l'après avec la devise donnée
+- [x] Sur `/meta`, la carte affiche l'avant et l'après avec la devise donnée
       par Meta, ou « budget modifié » quand les montants manquent. Aucune
       devise n'est supposée.
 - [x] Si la forme réelle diffère de la forme documentée, la récolte ou la
@@ -81,3 +81,16 @@ Pour les fermer, deux possibilités :
   cron n'a lieu que le samedi) ;
 - ou que David décide d'élargir la fenêtre, ce qui touche le coût de
   chaque passage.
+
+## Réponse
+
+La lecture du budget est confirmée sur deux vrais `update_ad_set_budget` du
+2026-02-12 (350 → 750 CHF). Meta envoie la forme documentée et la phrase dit
+l'avant, l'après et la devise de Meta. Aucune correction n'a été nécessaire,
+et « non testé » est retiré partout.
+
+Les critères 1 et 2 sont acceptés par David le 2026-10-14 sur la foi des
+harnais (« les harnais me suffisent »), et non sur une ligne en base ni sur
+un écran. L'`extra_data` a été comparé à la réponse directe de Meta, pas à
+une ligne de `platform_changes`. La carte de `/meta` n'a pas été vue : ces
+changements sont hors de la fenêtre de 180 jours.
