@@ -73,22 +73,25 @@ def resumer(lignes: list[dict]) -> None:
 
 
 def comparer(avant_json: str, apres_json: str) -> None:
-    avant = {l["change_id"]: l for l in json.load(open(avant_json))["lignes"]}
-    apres = {l["change_id"]: l for l in json.load(open(apres_json))["lignes"]}
+    # La clé d'unicité de la table : deux comptes peuvent porter le même change_id.
+    avant = {(l["user_id"], l["change_id"]): l for l in json.load(open(avant_json))["lignes"]}
+    apres = {(l["user_id"], l["change_id"]): l for l in json.load(open(apres_json))["lignes"]}
     disparues = set(avant) - set(apres)
     print("lignes disparues :", len(disparues))
     print("lignes nouvelles :", len(set(apres) - set(avant)))
-    perdus = Counter()
+    perdus, exemples = Counter(), []
     resume_change = 0
-    for cid, l in avant.items():
-        if cid not in apres:
+    for cle, l in avant.items():
+        if cle not in apres:
             continue
         for col in DETAILS:
-            if l.get(col) is not None and apres[cid].get(col) is None:
+            if l.get(col) is not None and apres[cle].get(col) is None:
                 perdus[col] += 1
-        if l.get("resume") != apres[cid].get("resume"):
+                exemples.append((col, (l.get("occurred_at") or "")[:10]))
+        if l.get("resume") != apres[cle].get("resume"):
             resume_change += 1
     print("détails perdus (valeur avant, NULL après) :", dict(perdus) or "aucun")
+    print("  exemples (colonne, date) :", exemples[:10])
     print("resume réécrit :", resume_change)
     print("── après ──")
     resumer(list(apres.values()))

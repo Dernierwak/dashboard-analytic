@@ -60,3 +60,21 @@ le lance. Le ticket dit lequel des deux a tourné.
     `adset_id` ni campagne : leurs parents sont absents des insights.
 - **Chrome** : `/meta` en production renvoie vers `/login`, faute de session
   dans le navigateur piloté. Pas encore vérifié.
+
+## Avancement — 2026-10-14, après le passage sur `main`
+
+- **Le passage** : lancement à la main par David, `workflow_dispatch` sur
+  `main`, run `38502344781`, de 02:41 à 04:01 UTC, `success`. Deux comptes
+  traités, 173 lignes Meta chacun.
+- **Meta a limité les appels** : 295 avertissements « User request limit
+  reached ». Tous portent sur la liste des groupes d'annonces par campagne
+  (« ad sets … incomplets »), aucun sur `/activities`.
+- **Photo « après », comparée à celle d'avant** (clé `(user_id,
+  change_id)`) : 0 ligne disparue, 0 nouvelle, **aucun détail perdu**, aucun
+  `resume` réécrit. L'état est identique à celui d'avant, ce qui est attendu
+  puisque le code est le même que celui du passage du 13. Les 18 lignes sans
+  `niveau` et les 15 annonces `creatif` sans `adset_id` restent telles quelles.
+- **Le rapport hebdo** : les deux `weekly_reports` de la semaine du
+  2026-10-12 ont été republiés pendant le passage (03:12 et 04:01 UTC). Le
+  journal du run dit « rapport publié » pour les deux comptes.
+- **Chrome** : toujours renvoyé vers `/login`, pas encore vérifié.
