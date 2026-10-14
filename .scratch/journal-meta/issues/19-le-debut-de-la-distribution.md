@@ -58,7 +58,7 @@ existe aussi. Non retenu — personne ne l'a demandé.
   « Diffusion », mot « diffusion » dans le fil, catégorie connue de
   `changements-api.ts`, et la phrase « ce que le journal ne couvre pas » de la
   Tendance.
-- Harnais `harnais/19/` : `verifier.py` 13/13 (récolte, sur la forme réelle
+- Harnais `harnais/19/` : `verifier.py` 15/15 (récolte, sur la forme réelle
   dans les deux langues) et `diffusion.test.ts` 3/3 (lecture à l'écran).
   Harnais 12, 13 et 18 toujours verts. `tsc` et `build` verts, 18 routes.
 

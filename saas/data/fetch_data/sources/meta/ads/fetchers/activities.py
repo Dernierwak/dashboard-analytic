@@ -49,7 +49,7 @@ _ACTIVITES = {
     # Le seul fait de Meta retenu (`.scratch/journal-meta/issues/19`, voulu par
     # David) : le jour où une annonce commence à diffuser explique le jour où
     # sa dépense démarre. Écrit par l'acteur « Meta », une fois par annonce
-    # — 19 sur 88 activités du 26 au 28 août 2026. La revue reste écartée.
+    # — 19 sur 88 activités lues du 26 au 29 août 2026. La revue reste écartée.
     "first_delivery_event":            "diffusion",
 }
 
@@ -314,7 +314,9 @@ def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
 def _groupe_dans_extra(extra: dict) -> str | None:
     """Le `campaign_id` d'un geste sur une annonce est l'ID de son GROUPE
     (vérifié contre `meta_ads_insights`, `.scratch/journal-meta/issues/02`).
-    Vu sous la forme `{"campaign_id": {"new": <ID>}}` sur `create_ad`."""
+    Vu sous la forme `{"campaign_id": {"new": <ID>}}` sur `create_ad`, et en
+    nombre nu `{"campaign_id": <ID>}` sur `first_delivery_event`
+    (`.scratch/journal-meta/issues/19`)."""
     v = extra.get("campaign_id")
     if isinstance(v, dict):
         v = v.get("new")

@@ -1,6 +1,6 @@
 """Harnais du ticket 19 : le début de la distribution d'une annonce.
 
-`extra_data` recopié de la réponse de `/activities` du 26 au 28 août 2026, sur
+`extra_data` recopié de la réponse de `/activities` du 26 au 29 août 2026, sur
 les deux connexions (lecture seule, 2026-10-14) : seuls les IDs et les noms
 sont remplacés, le dépôt est public. Meta écrit `new_value` dans la langue du
 jeton — « Début de la distribution » sur une connexion, « Auslieferung
@@ -70,11 +70,21 @@ for libelle in ("Début de la distribution", "Auslieferung gestartet"):
 verifie("annonce inconnue des insights : le groupe vient d'extra_data",
         l.get("adset_id") == "210" and "campaign_id" not in l, str(l))
 
-# Une seule fois par annonce : la même annonce à deux instants donne deux
-# lignes, la même activité relue ne se double pas.
+# Le cas courant : l'annonce vient de démarrer, les insights ne la connaissent
+# pas encore, mais son groupe y est — la campagne vient du groupe.
+[l] = lignes_activites([acte(reel("Début de la distribution"), oid="310")], parents, "Europe/Zurich")
+verifie("annonce neuve d'un groupe connu : campagne lue par le groupe",
+        l.get("adset_id") == GROUPE and l.get("campaign_id") == CAMPAGNE, str(l))
+
+# La même activité relue ne se double pas ; la même annonce à deux instants
+# donne deux lignes — rien n'est fusionné à la récolte.
 deux = [acte(reel("Début de la distribution")), acte(reel("Début de la distribution"))]
 verifie("la même activité relue ne se double pas",
         len(lignes_activites(deux, parents, "Europe/Zurich")) == 1)
+instants = [acte(reel("Début de la distribution")),
+            acte(reel("Début de la distribution"), t="2026-08-28T03:13:15+0000")]
+verifie("la même annonce à deux instants donne deux lignes",
+        len(lignes_activites(instants, parents, "Europe/Zurich")) == 2)
 
 # La revue de Meta reste écartée : seul le début de la distribution entre.
 revue = {"event_type": "ad_review_approved", "event_time": "2026-08-27T09:00:50+0000",
