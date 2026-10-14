@@ -218,6 +218,13 @@ function CarteChangement({ carte }: { carte: Carte }) {
       <div className="mt-2 min-w-0 text-[14px] text-ink [overflow-wrap:anywhere]">
         {carte.sorte === "statut" ? <Etapes chaine={carte} /> : <Contenu lecture={carte.lecture} phrase={carte.phrase} />}
       </div>
+      {/* Les déclinaisons que Meta lance avec l'annonce (`rangerDeclinaisons`) :
+          comptées ici plutôt qu'en cartes à elles, et jamais tues. */}
+      {carte.sorte === "lecture" && carte.declinaisons > 0 && (
+        <p className="mt-1.5 text-[12px] text-faint">
+          + {carte.declinaisons > 1 ? `${carte.declinaisons} déclinaisons lancées` : "1 déclinaison lancée"} par Meta
+        </p>
+      )}
     </article>
   );
 }

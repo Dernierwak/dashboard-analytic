@@ -11,7 +11,7 @@ import {
   type LigneAsset,
   type LigneCrea,
 } from "@/lib/meta/annonce";
-import { changementDe, type ChangementMeta, type LigneChangement } from "@/lib/meta/changements";
+import { changementDe, rangerDeclinaisons, type ChangementMeta, type LigneChangement } from "@/lib/meta/changements";
 import {
   contenuPage,
   dansSelection,
@@ -150,10 +150,39 @@ async function lireJournal(
         .order("change_id", { ascending: true })
         .range(de, a)
     );
-    return lignes.flatMap((r) => changementDe(r) ?? []);
+    const changements = lignes.flatMap((r) => changementDe(r) ?? []);
+    const connues = await annoncesConnues(supabase, uid, changements);
+    return connues ? rangerDeclinaisons(changements, connues) : changements;
   } catch {
     return null;
   }
+}
+
+/**
+ * Parmi les annonces dont la distribution démarre, celles que la liste des
+ * annonces du compte connaît (`meta_ads_creatives`) : les autres sont des
+ * déclinaisons de Meta (`rangerDeclinaisons`). `null` si la lecture échoue —
+ * alors rien ne se range, chaque diffusion garde sa carte plutôt que d'être
+ * prise à tort pour une déclinaison.
+ */
+async function annoncesConnues(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  changements: ChangementMeta[]
+): Promise<Set<string> | null> {
+  const ids = [...new Set(changements.flatMap((c) => (c.diffusion && c.objetId ? [c.objetId] : [])))];
+  const connues = new Set<string>();
+  // Par paquets, comme les vignettes : la longueur d'URL de PostgREST.
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("meta_ads_creatives")
+      .select("ad_id")
+      .eq("user_id", uid)
+      .in("ad_id", ids.slice(i, i + 200));
+    if (error) return null;
+    for (const r of (data ?? []) as { ad_id: string }[]) connues.add(r.ad_id);
+  }
+  return connues;
 }
 
 /**
