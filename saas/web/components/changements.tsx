@@ -1,5 +1,6 @@
 import type { ChangementPlateforme } from "@/lib/report";
 import type { ChangementApi } from "@/lib/changements-api";
+import type { CategorieChangement } from "@/lib/categorie-changement";
 import { CANAL, dateCourte, phraseChangement } from "@/components/etat-action";
 
 // CE QUI A BOUGÉ SUR TES PLATEFORMES — une chronologie de FAITS, rien d'autre.
@@ -30,7 +31,7 @@ import { CANAL, dateCourte, phraseChangement } from "@/components/etat-action";
 // de deux côtés ; exiger que les catégories concordent ferait apparaître les
 // deux lignes, ce qui est précisément le doublon qu'on veut éviter.
 
-export const MOT_CATEGORIE: Record<string, string> = {
+export const MOT_CATEGORIE: Record<CategorieChangement, string> = {
   budget: "budget",
   motcle: "mot-clé",
   enchere: "enchère",

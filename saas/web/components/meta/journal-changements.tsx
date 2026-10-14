@@ -1,6 +1,7 @@
 import { PanneauLateral } from "@/components/meta/panneau";
 import { enFrancais } from "@/lib/jour-de-travail";
 import type { Acteur, Carte, NoeudAnnonce, NoeudCampagne, NoeudGroupe, Panneau } from "@/lib/meta/changements";
+import { pluriel } from "@/lib/meta/lecture";
 import { actuel, type Lecture, type Rubrique } from "@/lib/meta/rubriques";
 
 // ── LES CHANGEMENTS, DANS LE PANNEAU LATÉRAL ─────────────────────────────────
@@ -24,10 +25,12 @@ import { actuel, type Lecture, type Rubrique } from "@/lib/meta/rubriques";
 // légende de la Tendance, et nulle part ailleurs. Un panneau vide dit
 // seulement que Meta n'a rien déclaré.
 //
-// Sans directive : rendu côté serveur, glissé dans le panneau client. Les
-// dépliants sont des `<details>` : ils s'ouvrent sans JavaScript.
-
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+// Sans directive, mais composant CLIENT : son seul importeur,
+// `journal-ouvert.tsx`, est `"use client"`, parce que le panneau se calcule
+// dans le navigateur depuis le journal déjà lu (ticket 17 : l'ouvrir ne relit
+// rien). Ce module suit donc dans le bundle client ; il n'exporte aucune
+// constante (`CLAUDE.md` §8). Les dépliants sont des `<details>` : ils
+// s'ouvrent sans état React.
 
 /** La colonne « Modifié par » d'Ads Manager, sans le nom (ticket 20) : elle
  *  sépare « quelqu'un a touché l'annonce » de « Meta a fait sa revue ». Rien
@@ -115,7 +118,8 @@ function Tete({ de, children, compte }: { de: Depliant; children: React.ReactNod
   );
 }
 
-function Niveau({ children }: { children: string }) {
+/** « GROUPE » ou « ANNONCE » devant le nom : le type d'élément du dépliant. */
+function Etiquette({ children }: { children: string }) {
   return (
     <span className="shrink-0 rounded-md border border-ink/15 px-1.5 text-[10.5px] font-medium uppercase tracking-wide text-faint">{children}</span>
   );
@@ -144,8 +148,8 @@ function BlocCampagne({ c }: { c: NoeudCampagne }) {
         </span>
       </Tete>
       <div className="mt-3.5 min-w-0 space-y-4">
-        {c.cartes.map((x) => (
-          <CarteChangement key={x.id} x={x} />
+        {c.cartes.map((carte) => (
+          <CarteChangement key={carte.id} carte={carte} />
         ))}
         {c.groupes.map((g, i) => (
           <div key={g.id ?? "inconnu"} className={i > 0 ? "border-t border-line pt-4" : ""}>
@@ -161,12 +165,12 @@ function BlocGroupe({ g, couleur }: { g: NoeudGroupe; couleur: string }) {
   return (
     <details open className={`${DEPLIANT.groupe.racine} min-w-0`}>
       <Tete de="groupe" compte={pluriel(g.total, "changement")}>
-        <Niveau>Groupe</Niveau>
+        <Etiquette>Groupe</Etiquette>
         <span className="min-w-0 truncate text-[15.5px] font-semibold text-ink">{g.nom ?? "Groupe d'annonces non retrouvé"}</span>
       </Tete>
       <Corps couleur={couleur}>
-        {g.cartes.map((x) => (
-          <CarteChangement key={x.id} x={x} />
+        {g.cartes.map((carte) => (
+          <CarteChangement key={carte.id} carte={carte} />
         ))}
         {g.annonces.map((a) => (
           <BlocAnnonce key={a.id} a={a} couleur={couleur} />
@@ -180,12 +184,12 @@ function BlocAnnonce({ a, couleur }: { a: NoeudAnnonce; couleur: string }) {
   return (
     <details open className={`${DEPLIANT.annonce.racine} min-w-0`}>
       <Tete de="annonce" compte={String(a.cartes.length)}>
-        <Niveau>Annonce</Niveau>
+        <Etiquette>Annonce</Etiquette>
         <span className="min-w-0 truncate text-[14.5px] font-semibold text-ink">{a.nom}</span>
       </Tete>
       <Corps couleur={couleur} pale>
-        {a.cartes.map((x) => (
-          <CarteChangement key={x.id} x={x} />
+        {a.cartes.map((carte) => (
+          <CarteChangement key={carte.id} carte={carte} />
         ))}
       </Corps>
     </details>
@@ -194,25 +198,25 @@ function BlocAnnonce({ a, couleur }: { a: NoeudAnnonce; couleur: string }) {
 
 // ── La carte d'un changement ─────────────────────────────────────────────────
 
-function CarteChangement({ x }: { x: Carte }) {
+function CarteChangement({ carte }: { carte: Carte }) {
   return (
     <article className="min-w-0 rounded-xl border border-line bg-canvas px-3.5 py-3">
       <header className="flex min-w-0 items-baseline justify-between gap-3 border-b border-line pb-2">
-        <h4 className="min-w-0 text-[14.5px] font-semibold text-ink">{x.nature}</h4>
+        <h4 className="min-w-0 text-[14.5px] font-semibold text-ink">{carte.nature}</h4>
         {/* L'heure est celle du compte. « UTC » ne s'écrit que pour une ligne
             dont le fuseau n'a pas été récolté : sans le mot, elle se lirait
             comme une heure locale. */}
         <span className="shrink-0 text-[12.5px] text-faint">
           {/* Une chaîne de statut le dit à chaque étape (`Etapes`). */}
-          {x.sorte === "lecture" && x.acteur && `${PAR[x.acteur]} · `}
+          {carte.sorte === "lecture" && carte.acteur && `${PAR[carte.acteur]} · `}
           <span className="font-mono tabular-nums">
-            {x.heure}
-            {x.fuseau === null && " UTC"}
+            {carte.heure}
+            {carte.fuseau === null && " UTC"}
           </span>
         </span>
       </header>
       <div className="mt-2 min-w-0 text-[14px] text-ink [overflow-wrap:anywhere]">
-        {x.sorte === "statut" ? <Etapes x={x} /> : <Contenu lecture={x.lecture} phrase={x.phrase} />}
+        {carte.sorte === "statut" ? <Etapes chaine={carte} /> : <Contenu lecture={carte.lecture} phrase={carte.phrase} />}
       </div>
     </article>
   );
@@ -221,10 +225,10 @@ function CarteChangement({ x }: { x: Carte }) {
 /** « Actif → En attente de traitement 16:10 → En attente d'examen 16:25 →
  *  Actif 16:27 » (ticket 05) : les libellés de Meta, chacun à son heure et,
  *  depuis le ticket 20, avec qui l'a fait. */
-function Etapes({ x }: { x: Extract<Carte, { sorte: "statut" }> }) {
+function Etapes({ chaine }: { chaine: Extract<Carte, { sorte: "statut" }> }) {
   return (
     <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-[13.5px]">
-      {x.etapes.map((e, i) => (
+      {chaine.etapes.map((e, i) => (
         <span key={i} className="inline-flex min-w-0 items-baseline gap-1.5">
           {i > 0 && <span className="text-faint" aria-label="puis">→</span>}
           <span>{e.libelle}</span>

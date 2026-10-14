@@ -365,31 +365,71 @@ export type Campagne = {
   couleur: string;
 };
 
+/** À date égale, quelle ligne nomme l'élément : la première lue ou la
+ *  dernière. Les deux règles coexistent et changer l'une renommerait un
+ *  élément à l'écran : le Bandeau (campagnes, groupes) garde la première, la
+ *  liste des annonces et les noms du panneau des changements la dernière. Les
+ *  lignes arrivent triées par date puis par `id` (`donnees.ts`). */
+type Egalite = "premiere" | "derniere";
+
+/**
+ * La ligne la plus récente de chaque clé — celle dont on lit le nom, Meta
+ * gardant le dernier nom donné. Clés dans l'ordre de leur première
+ * apparition ; une clé `null` n'entre pas.
+ */
+export function lignesRecentesPar(
+  lignes: LigneMeta[],
+  cle: (l: LigneMeta) => string | null,
+  egalite: Egalite
+): Map<string, LigneMeta> {
+  const recentes = new Map<string, LigneMeta>();
+  for (const l of lignes) {
+    const k = cle(l);
+    if (k === null) continue;
+    const vue = recentes.get(k);
+    if (!vue || l.date > vue.date || (egalite === "derniere" && l.date === vue.date)) recentes.set(k, l);
+  }
+  return recentes;
+}
+
+/** Le nom le plus récent de chaque groupe et de chaque annonce, par ID : le
+ *  panneau des changements range sous le nom du Bandeau, pas sous celui que
+ *  Meta a écrit le jour du changement. Un nom vide ne remplace rien. */
+export function nomsDe(lignes: LigneMeta[]): Record<string, string> {
+  const noms: Record<string, string> = {};
+  for (const [id, l] of lignesRecentesPar(lignes.filter((l) => l.groupeNom), (l) => l.groupeId, "derniere")) {
+    noms[id] = l.groupeNom;
+  }
+  for (const [id, l] of lignesRecentesPar(lignes.filter((l) => l.annonceNom), (l) => l.annonceId, "derniere")) {
+    noms[id] = l.annonceNom;
+  }
+  return noms;
+}
+
 /** Les campagnes présentes, la plus dépensière sur `courante` d'abord, chacune
  *  sous le nom porté par sa ligne la plus récente. Sans `courante`, la
  *  dépense est celle de toutes les lignes reçues. */
 export function campagnesDe(lignes: LigneMeta[], courante?: { debut: string; fin: string }): Campagne[] {
   const compte = (l: LigneMeta) => !courante || (l.date >= courante.debut && l.date <= courante.fin);
-  const parCle = new Map<string, Omit<Campagne, "couleur"> & { dateNom: string }>();
+  const depenses = new Map<string, number | null>();
   for (const l of lignes) {
     const cle = cleCampagne(l);
-    let c = parCle.get(cle);
-    if (!c) {
-      c = { cle, nom: l.campagneNom, sansId: l.campagneId === null, depense: null, dateNom: l.date };
-      parCle.set(cle, c);
-    }
-    if (compte(l)) c.depense = (c.depense ?? 0) + l.depense;
-    if (l.date > c.dateNom) {
-      c.nom = l.campagneNom;
-      c.dateNom = l.date;
-    }
+    const avant = depenses.get(cle) ?? null;
+    depenses.set(cle, compte(l) ? (avant ?? 0) + l.depense : avant);
   }
+  const recentes = lignesRecentesPar(lignes, cleCampagne, "premiere");
   const couleurs = new Map(
-    [...parCle.keys()].sort().map((cle, i) => [cle, PALETTE_CAMPAGNES[i] ?? PASTILLE_NEUTRE])
+    [...recentes.keys()].sort().map((cle, i) => [cle, PALETTE_CAMPAGNES[i] ?? PASTILLE_NEUTRE])
   );
-  return [...parCle.values()]
-    .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"))
-    .map(({ dateNom: _, ...c }) => ({ ...c, couleur: couleurs.get(c.cle)! }));
+  return [...recentes]
+    .map(([cle, l]) => ({
+      cle,
+      nom: l.campagneNom,
+      sansId: l.campagneId === null,
+      depense: depenses.get(cle) ?? null,
+      couleur: couleurs.get(cle)!,
+    }))
+    .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"));
 }
 
 /** La ligne est-elle dans la sélection du Bandeau — campagne et groupe
@@ -417,34 +457,32 @@ export type GroupeAnnonces = {
  *  dépensier sur `courante` d'abord, chacun sous son nom le plus récent. */
 export function groupesDe(lignes: LigneMeta[], courante: { debut: string; fin: string }, campagnes: Campagne[]): GroupeAnnonces[] {
   const couleurs = new Map(campagnes.map((c) => [c.cle, c.couleur]));
-  const parCle = new Map<string, GroupeAnnonces & { dateNom: string }>();
+  const cle = (l: LigneMeta) => cleElement(l, "groupes");
+  const recentes = lignesRecentesPar(lignes, cle, "premiere");
+  const parCle = new Map<string, GroupeAnnonces>();
   for (const l of lignes) {
-    const cle = cleElement(l, "groupes");
-    let g = parCle.get(cle);
+    let g = parCle.get(cle(l));
     if (!g) {
+      // La pastille suit la campagne de la PREMIÈRE ligne du groupe, les noms
+      // la ligne la plus récente.
       const campagneCle = cleCampagne(l);
+      const recente = recentes.get(cle(l))!;
       g = {
-        cle,
-        nom: l.groupeNom,
+        cle: cle(l),
+        nom: recente.groupeNom,
         campagneCle,
-        campagneNom: l.campagneNom,
+        campagneNom: recente.campagneNom,
         couleur: couleurs.get(campagneCle) ?? PASTILLE_NEUTRE,
         depense: null,
         sansId: l.groupeId === null,
-        dateNom: l.date,
       };
-      parCle.set(cle, g);
+      parCle.set(g.cle, g);
     }
     if (l.date >= courante.debut && l.date <= courante.fin) g.depense = (g.depense ?? 0) + l.depense;
-    if (l.date > g.dateNom) {
-      g.nom = l.groupeNom;
-      g.campagneNom = l.campagneNom;
-      g.dateNom = l.date;
-    }
   }
-  return [...parCle.values()]
-    .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"))
-    .map(({ dateNom: _, ...g }) => g);
+  return [...parCle.values()].sort(
+    (a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr")
+  );
 }
 
 // ── Les métriques ────────────────────────────────────────────────────────────
@@ -698,6 +736,13 @@ export function nombre(v: number, decimales = 0): string {
   return `${v < 0 ? "−" : ""}${groupe}${frac ? `,${frac}` : ""}`;
 }
 
+/** « 1 annonce », « 3 changements » : le pluriel régulier seulement — un mot
+ *  irrégulier (« groupe d'annonces ») s'écrit en entier. Ici, sans directive,
+ *  pour que les composants serveur et client le partagent (`CLAUDE.md` §8). */
+export function pluriel(n: number, mot: string): string {
+  return `${n} ${mot}${n > 1 ? "s" : ""}`;
+}
+
 /** La devise des pages publicitaires de Pulse (`channel-dash.tsx`, `couts`). */
 export const DEVISE = "CHF";
 
@@ -898,18 +943,16 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
 }
 
 function annoncesDe(courant: LigneMeta[]): AnnonceSelection[] {
-  const parCle = new Map<string, { a: AnnonceSelection; depense: number; date: string }>();
-  for (const l of courant) {
-    const cle = cleElement(l, "annonces");
-    const x = parCle.get(cle) ?? { a: { cle, id: l.annonceId, nom: l.annonceNom, sous: "" }, depense: 0, date: "" };
-    x.depense += l.depense;
-    if (l.date >= x.date) {
-      x.a = { ...x.a, nom: l.annonceNom, sous: `${l.campagneNom} › ${l.groupeNom}` };
-      x.date = l.date;
-    }
-    parCle.set(cle, x);
-  }
-  return [...parCle.values()].sort((a, b) => b.depense - a.depense || a.a.nom.localeCompare(b.a.nom, "fr")).map((x) => x.a);
+  const cle = (l: LigneMeta) => cleElement(l, "annonces");
+  const depenses = new Map<string, number>();
+  for (const l of courant) depenses.set(cle(l), (depenses.get(cle(l)) ?? 0) + l.depense);
+  return [...lignesRecentesPar(courant, cle, "derniere")]
+    .map(([k, l]) => ({
+      a: { cle: k, id: l.annonceId, nom: l.annonceNom, sous: `${l.campagneNom} › ${l.groupeNom}` },
+      depense: depenses.get(k)!,
+    }))
+    .sort((a, b) => b.depense - a.depense || a.a.nom.localeCompare(b.a.nom, "fr"))
+    .map((x) => x.a);
 }
 
 // ── La Comparaison ───────────────────────────────────────────────────────────

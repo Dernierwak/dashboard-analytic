@@ -20,6 +20,9 @@ from saas.data.fetch_data.shared.date_ranges import Fenetre
 # phrase se réécrit sans redemander à Meta. La phrase `resume` reste écrite
 # ici parce que le fil du rapport la lit.
 
+# Une catégorie ajoutée ici s'ajoute aussi au CHECK `platform_changes_categorie_check`
+# de `saas/data/supabase/migrations/000_run_me_all.sql` et à `CategorieChangement`
+# de `saas/web/lib/changements-api.ts` : sinon Supabase refuse tout le lot Meta.
 _ACTIVITES = {
     "update_campaign_budget":     "budget",
     "update_ad_set_budget":       "budget",
@@ -108,37 +111,30 @@ def _montant_fr(v: float) -> str:
     return f"{v:,.2f}".replace(",", " ").replace(".", ",")
 
 
-def _extra(brut) -> dict:
-    """`extra_data` arrive en CHAÎNE JSON, pas en objet — un json.loads de plus.
-
-    Sa forme n'est documentée nulle part ; celles vues sur un vrai compte sont
-    dans `.scratch/journal-meta/issues/02`. Illisible, elle rend {} et la
-    phrase dit « modifié » plutôt que d'inventer une valeur.
-    """
-    if isinstance(brut, dict):
-        return brut
-    if not brut:
-        return {}
-    try:
-        d = json.loads(brut)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
 def _extra_tel_quel(brut):
     """`extra_data` pour la colonne jsonb : ce que Meta envoie, sans rien
-    retirer. Une chaîne qui n'est pas du JSON se garde comme chaîne — c'est
-    encore ce que Meta a envoyé. Absent : None, et la colonne n'est pas envoyée.
+    retirer. Il arrive en CHAÎNE JSON, pas en objet — un json.loads de plus.
+    Une chaîne qui n'est pas du JSON se garde comme chaîne — c'est encore ce
+    que Meta a envoyé. Absent : None, et la colonne n'est pas envoyée.
     """
     if brut in (None, ""):
         return None
     if isinstance(brut, str):
         try:
             return json.loads(brut)
-        except Exception:
+        except json.JSONDecodeError:
             return brut
     return brut
+
+
+def _champs(extra) -> dict:
+    """Les champs que la phrase et l'élément lisent dans `extra_data`.
+
+    Sa forme n'est documentée nulle part ; celles vues sur un vrai compte sont
+    dans `.scratch/journal-meta/issues/02`. Tout ce qui n'est pas un objet rend
+    {} et la phrase dit « modifié » plutôt que d'inventer une valeur.
+    """
+    return extra if isinstance(extra, dict) else {}
 
 
 def _cle_meta(quand: str, *parts) -> str:
@@ -217,10 +213,11 @@ def _phrase_de_a(extra: dict, rubrique: str, de: str) -> str:
     return f"{rubrique} {de} a été modifié"
 
 
-def _traduire_meta(act: dict) -> tuple[str, str] | None:
+def _traduire_meta(act: dict, extra: dict) -> tuple[str, str] | None:
     """(categorie, resume) — None seulement pour un type que Pulse ne récolte pas.
 
     Un type retenu n'est jamais jeté : au pire la phrase dit « modifié ».
+    `extra` : les champs de `extra_data`, déjà lus par `_champs`.
     """
     typ = str(act.get("event_type") or "")
     categorie = _ACTIVITES.get(typ)
@@ -229,7 +226,6 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
         return None
     nom = _nom(act)
     de = f"{_DE_L_ELEMENT[niveau]} {nom}"
-    extra = _extra(act.get("extra_data"))
 
     if categorie == "creation":
         return ("creation", _CREATIONS[niveau].format(nom=nom))
@@ -342,19 +338,20 @@ def _acteur(act: dict) -> dict:
     return {"acteur": "meta" if str(aid) == _ACTEUR_META else "personne"}
 
 
-def _element(act: dict, niveau: str, parents: Parents) -> dict:
+def _element(act: dict, parents: Parents, extra: dict) -> dict:
     """L'élément touché, rangé sous sa campagne et son groupe.
 
     Seules les valeurs connues sont rendues : chaque passage relit 180 jours,
     et une clé à None effacerait par upsert ce qu'un passage précédent a écrit.
     """
+    niveau = niveau_de(str(act.get("event_type") or ""))
     oid = str(act.get("object_id") or "")
     nom = (act.get("object_name") or "").strip()
     element = {"niveau": niveau, "object_id": oid or None, "object_name": nom or None}
     if niveau == "campagne":
         element.update(campaign_id=oid or None, campaign_name=nom or None)
         return {k: v for k, v in element.items() if v}
-    adset = oid if niveau == "groupe" else _groupe_dans_extra(_extra(act.get("extra_data")))
+    adset = oid if niveau == "groupe" else _groupe_dans_extra(extra)
     parent = parents.get(oid) or (parents.get(adset) if adset else None)
     if parent:
         adset = adset or parent.adset_id
@@ -382,7 +379,9 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
         quand = a.get("event_time")
         if not quand:
             continue
-        traduit = _traduire_meta(a)
+        extra = _extra_tel_quel(a.get("extra_data"))
+        champs = _champs(extra)
+        traduit = _traduire_meta(a, champs)
         if not traduit:
             continue
         categorie, resume = traduit
@@ -390,13 +389,12 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
         if cle in vus:
             continue
         vus.add(cle)
-        extra = _extra_tel_quel(a.get("extra_data"))
         rows.append({
             "change_id":   cle,
             "occurred_at": str(quand),
             "categorie":   categorie,
             "resume":      resume,
-            **_element(a, niveau_de(str(a.get("event_type") or "")), parents),
+            **_element(a, parents, champs),
             **_acteur(a),
             **({"extra_data": extra} if extra is not None else {}),
             **({"fuseau": fuseau} if fuseau else {}),

@@ -3,7 +3,11 @@
 Lecture seule. La photo contient des données client : elle s'écrit HORS du
 dépôt (public), dans le chemin donné.
 
-    python3.12 -I photo.py prendre  <.env avec la clé service> <photo.json>
+Les credentials passent par `saas/config/secrets.py`, seul lecteur
+autorisé : `SUPABASE_URL` et `SUPABASE_SECRET_KEY` dans l'environnement, ou
+dans le `.env` à la racine du dépôt.
+
+    python3.12 -I photo.py prendre  <photo.json>
     python3.12 -I photo.py comparer <avant.json> <apres.json>
 """
 from __future__ import annotations
@@ -13,6 +17,11 @@ import sys
 import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from saas.config.secrets import secret  # noqa: E402
 
 COLONNES = ("user_id,channel,change_id,occurred_at,categorie,campaign_id,resume,"
             "niveau,object_id,object_name,adset_id,extra_data,fuseau")
@@ -21,22 +30,22 @@ TRANCHE = 1000
 DETAILS = ("niveau", "object_id", "object_name", "adset_id", "extra_data", "fuseau", "campaign_id")
 
 
-def _env(chemin: str) -> dict:
-    env = {}
-    for ligne in open(chemin, encoding="utf-8"):
-        if "=" in ligne and not ligne.lstrip().startswith("#"):
-            k, v = ligne.strip().split("=", 1)
-            env[k] = v.strip().strip('"')
-    return env
+def _requis(chemin: str) -> str:
+    """Le secret, ou un arrêt qui nomme la variable — jamais sa valeur."""
+    valeur = secret(chemin)
+    if not valeur:
+        sys.exit(f"{chemin.replace('.', '_').upper()} manquant "
+                 "(environnement ou .env à la racine du dépôt)")
+    return valeur
 
 
-def prendre(chemin_env: str, sortie: str) -> None:
-    env = _env(chemin_env)
+def prendre(sortie: str) -> None:
+    base = _requis("supabase.url")
     # La clé secrète du nouveau format ; l'ancienne clé JWT service_role répond 401.
-    cle = env["SUPABASE_SECRET_KEY"]
+    cle = _requis("supabase.secret_key")
     lignes, debut = [], 0
     while True:
-        url = (f"{env['SUPABASE_URL']}/rest/v1/platform_changes?select={COLONNES}"
+        url = (f"{base}/rest/v1/platform_changes?select={COLONNES}"
                f"&channel=eq.meta&order=change_id")
         req = urllib.request.Request(url, headers={
             "apikey": cle,
