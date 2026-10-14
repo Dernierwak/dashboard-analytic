@@ -46,14 +46,22 @@ _ACTIVITES = {
     "update_ad_set_optimization_goal": "objectif",
     "update_ad_targets_spec":          "audience",
     "update_ad_set_duration":          "calendrier",
+    # Le seul fait de Meta retenu (`.scratch/journal-meta/issues/19`, voulu par
+    # David) : le jour où une annonce commence à diffuser explique le jour où
+    # sa dépense démarre. Écrit par l'acteur « Meta », une fois par annonce
+    # — 19 sur 88 activités du 26 au 28 août 2026. La revue reste écartée.
+    "first_delivery_event":            "diffusion",
 }
 
 # Le niveau se lit dans le PRÉFIXE de `event_type`, jamais dans `object_type` :
 # Meta y écrit « CAMPAIGN » pour un groupe d'annonces, son vocabulaire interne
 # appelant « campaign » le groupe et « campaign group » la campagne
 # (`.scratch/journal-meta/recherche/activities.md`, O2). L'ordre compte :
-# `update_ad_set_` avant `update_ad_`.
+# `update_ad_set_` avant `update_ad_`. `first_delivery_event` n'a pas de
+# préfixe : vu sur des annonces seulement (`object_type` ADGROUP, l'annonce
+# dans ce même vocabulaire — `.scratch/journal-meta/issues/19`).
 _NIVEAUX = (
+    ("first_delivery_event",  "annonce"),
     ("create_campaign_group", "campagne"),
     ("update_campaign_",      "campagne"),
     ("create_ad_set",         "groupe"),
@@ -225,6 +233,8 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
 
     if categorie == "creation":
         return ("creation", _CREATIONS[niveau].format(nom=nom))
+    if categorie == "diffusion":
+        return ("diffusion", f"l'annonce {nom} a commencé à diffuser")
     if categorie == "budget":
         return ("budget", _phrase_budget(extra, de))
     if categorie == "statut":

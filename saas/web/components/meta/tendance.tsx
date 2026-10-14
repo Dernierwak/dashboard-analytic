@@ -37,8 +37,8 @@ import { ORANGE_REPERE } from "@/lib/palette";
 const NE_COUVRE_PAS =
   "Les points viennent du journal que Meta tient de ton compte, et Pulse n'en garde que les budgets, les statuts, " +
   "le ciblage, les visuels et textes, les enchères, les objectifs, les dates de diffusion et les créations de " +
-  "campagnes, de groupes d'annonces et d'annonces. " +
-  "Tout autre geste n'a pas de point, pas plus que ce que Meta fait de lui-même, comme la revue des annonces. " +
+  "campagnes, de groupes d'annonces et d'annonces, ainsi que le jour où une annonce commence à diffuser. " +
+  "Tout autre geste n'a pas de point, pas plus que le reste de ce que Meta fait de lui-même, comme la revue des annonces. " +
   "Un jour sans point n'est donc pas un jour où rien n'a changé.";
 
 const libelle = (n: number) => `${n} changement${n > 1 ? "s" : ""} · clique pour ${n > 1 ? "les" : "le"} voir`;

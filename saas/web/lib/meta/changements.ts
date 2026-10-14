@@ -86,6 +86,7 @@ const NATURES: Record<string, string> = {
   creation: "Création",
   objectif: "Objectif",
   calendrier: "Calendrier",
+  diffusion: "Diffusion",
 };
 const NATURE_INCONNUE = "Réglage";
 const NIVEAUX: NiveauChangement[] = ["campagne", "groupe", "annonce"];

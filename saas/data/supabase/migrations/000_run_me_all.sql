@@ -1160,11 +1160,14 @@ ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_c
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
     CHECK (categorie IN
         ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation',
-         'objectif', 'calendrier', 'autre'));
+         'objectif', 'calendrier', 'diffusion', 'autre'));
 -- `objectif` et `calendrier` (journal-meta, ticket 11) : l'objectif
 -- d'optimisation d'un groupe et ses dates de diffusion, que la récolte garde
 -- depuis le ticket 12. Même remplacement que pour « creation » : la liste ne
 -- fait qu'ajouter, aucune ligne n'est touchée.
+-- `diffusion` (journal-meta, ticket 19) : le jour où Meta commence à
+-- distribuer une annonce (`first_delivery_event`). Même remplacement, et la
+-- même raison de l'appliquer AVANT le passage du worker qui la récolte.
 
 -- `fuseau` (meta-ads, ticket 17) : le `timezone_name` du compte publicitaire,
 -- récolté avec chaque changement. Meta écrit `event_time` en UTC, alors que
