@@ -70,7 +70,7 @@ d'annonces » compris.
 39. En tant que lecteur du rapport hebdo, je veux que la phrase de chaque changement reste écrite en base, pour que le fil du rapport continue de la lire.
 40. En tant que David, je veux qu'aucun changement réel ne soit jeté sans rien dire par la récolte, pour pouvoir faire confiance au journal.
 41. En tant que David, je veux qu'un passage du worker n'efface pas un détail écrit par un passage précédent quand Meta ne le renvoie plus.
-42. En tant que David, je veux que la vérification du budget soit dite « non testée » tant qu'aucun vrai changement de budget n'a été vu sur un compte.
+42. En tant que David, je veux que la lecture du budget soit éprouvée sur un vrai changement de budget avant d'être dite sûre (fait au ticket 18, sur deux changements du 2026-02-12).
 43. En tant que David, je veux voir le journal en production, ce qui suppose que la branche rejoigne `main` (Vercel et le cron de 07:00).
 
 ## Implementation Decisions
@@ -99,8 +99,8 @@ reprenne ou la prolonge sans rouvrir ses décisions.
   fonde sur le code chiffré (`run_status`) ou le type d'événement ; les
   libellés sont recopiés dans la langue de Meta.
 - **Budget.** Montants lus dans `composite_data` (centimes, devise donnée par
-  Meta), sinon « budget modifié ». Non testé sur un vrai changement : aucun
-  n'existe sur le compte depuis le 2026-01-11.
+  Meta), sinon « budget modifié ». Forme confirmée sur deux vrais
+  changements du 2026-02-12 (ticket 18).
 - **Écriture.** Les colonnes « si connues » ne partent à l'upsert que
   remplies, pour ne rien effacer d'un passage précédent (même règle que
   `fuseau`).

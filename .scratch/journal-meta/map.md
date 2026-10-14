@@ -66,9 +66,9 @@ le ticket 10.
   aucun filtre — Meta ne donne aucun champ qui dise « rien n'a changé ».
   Rouvert en partie : le résumé de ce qui a changé compare avant et après,
   texte contre texte (à confirmer, voir le prototype).
-- [Le budget sans exemple réel](issues/07-le-budget-sans-exemple-reel.md) : aucun
-  changement de budget sur le compte depuis le 2026-01-11 ; montant lu selon la
-  forme documentée, sinon « budget modifié », et dit non testé.
+- [Le budget sans exemple réel](issues/07-le-budget-sans-exemple-reel.md) : montant
+  lu selon la forme documentée, sinon « budget modifié ». Forme confirmée sur
+  deux vrais changements du 2026-02-12 ([ticket 18](issues/18-le-budget-sur-un-vrai-changement.md)).
 - [Les points de la Comparaison](issues/08-les-points-de-la-comparaison.md) : un
   point par ligne, de la couleur de la ligne ; le clic n'ouvre que cet élément.
 - [Repartir d'une base saine](issues/09-repartir-d-une-base-saine.md) : les

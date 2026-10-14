@@ -164,12 +164,11 @@ def _nom(act: dict) -> str:
 def _montant(extra: dict, cote: str) -> tuple[float, str] | None:
     """Le montant d'un côté (`old_value` / `new_value`) d'un `composite_data`.
 
-    NON TESTÉ sur un vrai changement de budget (`.scratch/journal-meta/issues/07`) :
-    forme vue sur `create_ad_set` et dans les exemples publics
-    (`.scratch/journal-meta/recherche/activities.md`) —
-    `{"old_value": {"type": "payment_amount", "currency": "USD", "old_value": 1000},
-    "new_value": {…, "new_value": 2000}}`, en centimes. Toute autre forme rend
-    None, et la phrase dit « modifié ».
+    Forme vue sur deux vrais `update_ad_set_budget` du 2026-02-12
+    (`.scratch/journal-meta/issues/18`, harnais `harnais/18/`) —
+    `{"old_value": {"type": "payment_amount", "currency": "CHF", "old_value": 35000},
+    "new_value": {…, "new_value": 75000}}`, en centimes : 350 → 750 CHF dans Ads
+    Manager. Toute autre forme rend None, et la phrase dit « modifié ».
     """
     v = extra.get(cote)
     if not isinstance(v, dict) or v.get("type") != "payment_amount":

@@ -129,7 +129,7 @@ verifie("création d'annonce : groupe lu dans extra_data.campaign_id, campagne p
         r["creation_annonce"]["adset_id"] == GROUPE_NEUF and r["creation_annonce"]["campaign_id"] == CAMPAGNE,
         str({k: r["creation_annonce"].get(k) for k in ("adset_id", "campaign_id")}))
 verifie("calendrier", r["calendrier"]["categorie"] == "calendrier", r["calendrier"]["resume"])
-verifie("budget composite_data (NON TESTÉ sur un vrai compte)",
+verifie("budget composite_data (forme réelle : harnais 18)",
         r["budget"]["resume"] == 'le budget du groupe d\'annonces "Groupe B" est passé de 10,00 à 20,00 USD',
         r["budget"]["resume"])
 verifie("budget illisible : « modifié », sans extra_data",
