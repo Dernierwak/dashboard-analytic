@@ -173,15 +173,21 @@ function deLElement(c: ChangementMeta, e: ElementOuvert): boolean {
   return e.niveau === "groupes" ? c.groupeId === e.cle : c.niveau === "annonce" && c.objetId === e.cle;
 }
 
+/** Sous un filtre de groupe, un changement posé sur SA campagne reste
+ *  visible : une pause ou un budget de campagne touche le groupe, et la règle
+ *  du journal est qu'un changement réel ne disparaît jamais sans rien dire
+ *  (David, 2026-10-14, revue du chantier). La campagne du groupe est
+ *  `p.campagne` : le Bandeau la pose avec le groupe. */
 function visible(c: ChangementMeta, p: Portee): boolean {
   if (p.campagne !== null && c.campagneId !== p.campagne) return false;
-  if (p.groupe !== null && c.groupeId !== p.groupe) return false;
+  const surSaCampagne = c.niveau === "campagne" && p.campagne !== null;
+  if (p.groupe !== null && c.groupeId !== p.groupe && !surSaCampagne) return false;
   return !p.element || deLElement(c, p.element);
 }
 
 /** Ce que le filtre écarte FAUTE D'ID, et qu'il faut donc compter à part. Un
- *  changement de campagne sous un filtre de groupe n'en est pas : il n'est
- *  pas sur le groupe, on le sait. */
+ *  changement d'une autre campagne sous un filtre de groupe n'en est pas : il
+ *  n'est pas sur le groupe, on le sait. */
 function nonRattache(c: ChangementMeta, p: Portee): boolean {
   if (p.element || visible(c, p)) return false;
   if (p.campagne !== null && c.campagneId === null) return true;

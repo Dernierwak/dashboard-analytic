@@ -109,8 +109,15 @@ test("la Tendance : un point par jour, compté statut regroupé, filtré par le 
   assert.deepEqual(joursMarques(journal, { campagne: "c1", groupe: "g2" }, DATES), [{ index: 0, nombre: 1 }]);
 });
 
-test("sous un filtre de groupe, un changement de campagne ne se montre pas et ne se compte pas comme perdu", () => {
+test("sous un filtre de groupe, un changement de SA campagne se montre", () => {
   const journal = [ch({ niveau: "campagne", object_id: "c1", adset_id: null }), ch({})];
+  const p = panneauDe(journal, { debut: "2026-09-30", fin: "2026-09-30" }, { campagne: "c1", groupe: "g1" }, { campagnes: CAMPAGNES, noms: NOMS });
+  assert.equal(p.total, 2);
+  assert.equal(p.nonRattaches, 0);
+});
+
+test("sous un filtre de groupe, un changement d'une AUTRE campagne ne se montre pas et ne se compte pas comme perdu", () => {
+  const journal = [ch({ niveau: "campagne", object_id: "c2", campaign_id: "c2", adset_id: null }), ch({})];
   const p = panneauDe(journal, { debut: "2026-09-30", fin: "2026-09-30" }, { campagne: "c1", groupe: "g1" }, { campagnes: CAMPAGNES, noms: NOMS });
   assert.equal(p.total, 1);
   assert.equal(p.nonRattaches, 0);
