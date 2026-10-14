@@ -48,7 +48,8 @@ export function JournalChangements({
 }) {
   const { total, jours, nonRattaches } = panneau;
   return (
-    <PanneauLateral titre={titre} sousTitre={sousTitre} fermeture={fermeture}>
+    // Le journal est toujours tenu par le navigateur (`journal-ouvert.tsx`).
+    <PanneauLateral titre={titre} sousTitre={sousTitre} fermeture={fermeture} surPlace>
       {total === 0 && <p className="mt-2 text-[14px] text-muted">{vide}</p>}
 
       <div className="mt-1 space-y-8">
