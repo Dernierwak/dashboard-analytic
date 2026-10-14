@@ -88,6 +88,10 @@ le ticket 10.
 - [L'écran du journal](issues/13-l-ecran-du-journal.md) : construit sur
   `journal-meta/carte`, vu avec les vraies données et validé par David le
   2026-10-14 ; reste à rejoindre `main`.
+- [La spec du journal Meta](issues/14-spec-le-journal-meta.md) : la
+  fonctionnalité entière en une page — histoires, décisions, les trois
+  coutures de test (récolte, lecture d'`extra_data`, mise en page du
+  journal) et ce qui reste à faire.
 
 ## Pas encore spécifié
 
