@@ -134,7 +134,8 @@ def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
 
 
 # L'élément touché et `extra_data` tel que Meta l'envoie
-# (`.scratch/journal-meta/issues/11`), puis `fuseau` (meta-ads, ticket 17).
+# (`.scratch/journal-meta/issues/11`), `fuseau` (meta-ads, ticket 17), puis
+# `acteur` — une personne ou Meta (`.scratch/journal-meta/issues/20`).
 # Google ne les envoie pas encore : ses lignes les laissent NULL.
 _COLONNES_SI_CONNUES = ("niveau", "object_id", "object_name", "adset_id",
                         "extra_data", "fuseau", "acteur")

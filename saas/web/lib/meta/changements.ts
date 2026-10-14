@@ -21,13 +21,15 @@
 // LE JOUR EST CELUI DU COMPTE, pas celui de l'UTC : c'est celui des insights,
 // donc celui du point de la courbe où l'effet apparaît.
 
+import type { CategorieChangement } from "../categorie-changement";
 import { jourEtHeureDans } from "../fuseau";
 import type { Campagne, Niveau as NiveauCompare, Periode } from "./lecture";
 import type { Onglet } from "./liens";
 import { lireExtra, type Lecture } from "./rubriques";
 
-/** Une ligne de `platform_changes`, telle que PostgREST la rend. Les cinq
- *  dernières colonnes viennent du ticket 12 : NULL sur les lignes d'avant. */
+/** Une ligne de `platform_changes`, telle que PostgREST la rend. Les six
+ *  dernières colonnes — `niveau` à `extra_data` (schéma du ticket 11), puis
+ *  `acteur` (ticket 20) — sont NULL sur les lignes récoltées avant elles. */
 export type LigneChangement = {
   change_id: string | null;
   occurred_at: string | null;
@@ -83,8 +85,11 @@ export type ChangementMeta = {
   acteur: Acteur;
 };
 
-/** Les catégories de `platform_changes`, dites comme Ads Manager les dit. */
-const NATURES: Record<string, string> = {
+/** Les catégories de `platform_changes`, dites comme Ads Manager les dit.
+ *  Partielle exprès : `motcle` n'existe que chez Google, et `autre` se dit
+ *  `NATURE_INCONNUE`. Toute autre catégorie ajoutée doit y entrer — `tsc`
+ *  le rappelle. */
+const NATURES: Record<Exclude<CategorieChangement, "motcle" | "autre">, string> = {
   budget: "Budget",
   statut: "Statut",
   audience: "Ciblage",
@@ -99,7 +104,9 @@ const NATURE_INCONNUE = "Réglage";
 const NIVEAUX: NiveauChangement[] = ["campagne", "groupe", "annonce"];
 const ACTEURS: Acteur[] = ["personne", "meta"];
 
-const id = (x: string | number | null): string | null => (x === null || x === "" ? null : String(x));
+/** L'ID Meta d'un élément (campagne, groupe, annonce) : PostgREST le rend en
+ *  texte ou en nombre, et une chaîne vide veut dire « pas retrouvé ». */
+const idMeta = (x: string | number | null): string | null => (x === null || x === "" ? null : String(x));
 
 /**
  * Une ligne de base → un changement, ou `null` quand elle n'a ni date lisible
@@ -118,13 +125,13 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
     id: String(r.change_id ?? `${r.occurred_at}|${phrase}`),
     ...jourEtHeureDans(d, r.fuseau),
     instant: d.getTime(),
-    nature: NATURES[String(categorie ?? "")] ?? NATURE_INCONNUE,
+    nature: (NATURES as Record<string, string | undefined>)[String(categorie ?? "")] ?? NATURE_INCONNUE,
     niveau: (NIVEAUX as (string | null)[]).includes(r.niveau) ? (r.niveau as NiveauChangement) : null,
-    objetId: id(r.object_id),
+    objetId: idMeta(r.object_id),
     objetNom: r.object_name?.trim() || null,
-    campagneId: id(r.campaign_id),
+    campagneId: idMeta(r.campaign_id),
     campagneNom: r.campaign_name?.trim() || null,
-    groupeId: id(r.adset_id),
+    groupeId: idMeta(r.adset_id),
     phrase,
     lecture: lireExtra(categorie, r.extra_data),
     acteur: (ACTEURS as (string | null)[]).includes(r.acteur) ? (r.acteur as Acteur) : null,
@@ -166,15 +173,21 @@ function deLElement(c: ChangementMeta, e: ElementOuvert): boolean {
   return e.niveau === "groupes" ? c.groupeId === e.cle : c.niveau === "annonce" && c.objetId === e.cle;
 }
 
+/** Sous un filtre de groupe, un changement posé sur SA campagne reste
+ *  visible : une pause ou un budget de campagne touche le groupe, et la règle
+ *  du journal est qu'un changement réel ne disparaît jamais sans rien dire
+ *  (David, 2026-10-14, revue du chantier). La campagne du groupe est
+ *  `p.campagne` : le Bandeau la pose avec le groupe. */
 function visible(c: ChangementMeta, p: Portee): boolean {
   if (p.campagne !== null && c.campagneId !== p.campagne) return false;
-  if (p.groupe !== null && c.groupeId !== p.groupe) return false;
+  const surSaCampagne = c.niveau === "campagne" && p.campagne !== null;
+  if (p.groupe !== null && c.groupeId !== p.groupe && !surSaCampagne) return false;
   return !p.element || deLElement(c, p.element);
 }
 
 /** Ce que le filtre écarte FAUTE D'ID, et qu'il faut donc compter à part. Un
- *  changement de campagne sous un filtre de groupe n'en est pas : il n'est
- *  pas sur le groupe, on le sait. */
+ *  changement d'une autre campagne sous un filtre de groupe n'en est pas : il
+ *  n'est pas sur le groupe, on le sait. */
 function nonRattache(c: ChangementMeta, p: Portee): boolean {
   if (p.element || visible(c, p)) return false;
   if (p.campagne !== null && c.campagneId === null) return true;

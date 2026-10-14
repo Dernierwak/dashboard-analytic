@@ -17,6 +17,7 @@ import {
   dansSelection,
   decaler,
   lireToutesLesPages,
+  nomsDe,
   periodeDe,
   resultatsDe,
   type Commandes,
@@ -130,7 +131,7 @@ async function lireJournal(
     const lignes = await lireToutesLesPages<LigneChangement>((de, a) =>
       supabase
         .from("platform_changes")
-        // `niveau` à `extra_data` viennent du `000` du ticket 12 de
+        // `niveau` à `extra_data` viennent du `000` du ticket 11 de
         // `.scratch/journal-meta/`, `acteur` de celui du ticket 20 : sur une
         // base qui ne les a pas joués, la requête refuse et la page dit que
         // le journal n'a pas pu être lu.
@@ -178,19 +179,6 @@ async function lireApercus(
     }
   }
   return out;
-}
-
-/** Le nom le plus récent de chaque groupe et de chaque annonce, par ID. */
-function nomsDe(lignes: LigneMeta[]): Record<string, string> {
-  const out: Record<string, { nom: string; date: string }> = {};
-  const garder = (id: string | null, nom: string, date: string) => {
-    if (id && nom && (!out[id] || date >= out[id].date)) out[id] = { nom, date };
-  };
-  for (const l of lignes) {
-    garder(l.groupeId, l.groupeNom, l.date);
-    garder(l.annonceId, l.annonceNom, l.date);
-  }
-  return Object.fromEntries(Object.entries(out).map(([id, x]) => [id, x.nom]));
 }
 
 /**

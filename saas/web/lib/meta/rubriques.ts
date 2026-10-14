@@ -18,6 +18,7 @@
 // Pas de directive : lu par le serveur et par le harnais
 // `.scratch/journal-meta/harnais/13/`.
 
+import type { CategorieChangement } from "../categorie-changement";
 import { nombre } from "./lecture";
 
 export type Rubrique = {
@@ -152,10 +153,20 @@ function lireCreation(e: Objet): Lecture {
   const devise = v && texte(v.currency);
   if (centimes === null || !devise) return { forme: "creation", detail: null };
   const libelle = texte(v!.additional_value);
+  // ÷ 100 et deux décimales : la même hypothèse que `centimes()` de
+  // `saas/data/fetch_data/sources/meta/ads/fetchers/budgets.py` — « la devise
+  // du compte a deux décimales ». Vérifiée au ticket 18 sur un vrai
+  // changement de budget, même `composite_data` (35000 → 350 CHF dans Ads
+  // Manager) ; une devise sans sous-unité (JPY, KRW) serait divisée à tort, et
+  // Meta n'envoie pas le facteur.
   return { forme: "creation", detail: `${libelle ? `${libelle} : ` : ""}${nombre(centimes / 100, 2)} ${devise}` };
 }
 
-const LECTEURS: Record<string, (e: Objet) => Lecture> = {
+/** Partielle exprès : `budget` rend la phrase de la récolte, qui a déjà lu les
+ *  montants (ticket 18) ; `motcle` n'existe que chez Google ; `autre` n'a pas
+ *  de forme connue. Une catégorie ajoutée doit choisir : un lecteur ici, ou
+ *  l'exclusion ci-dessous — `tsc` le rappelle. */
+const LECTEURS: Record<Exclude<CategorieChangement, "budget" | "motcle" | "autre">, (e: Objet) => Lecture> = {
   statut: lireStatut,
   audience: lireCiblage,
   creatif: lireCrea,
@@ -174,7 +185,7 @@ const LECTEURS: Record<string, (e: Objet) => Lecture> = {
  * absence ou une forme inattendue rendent la phrase seule.
  */
 export function lireExtra(categorie: string | null, extra: unknown): Lecture {
-  const lire = categorie ? LECTEURS[categorie] : undefined;
+  const lire = categorie ? (LECTEURS as Record<string, ((e: Objet) => Lecture) | undefined>)[categorie] : undefined;
   if (!lire || !estObjet(extra)) return PHRASE;
   try {
     return lire(extra);

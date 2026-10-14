@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import { jourEtHeureDans } from "@/lib/fuseau";
+import { CATEGORIES_CHANGEMENT, type CategorieChangement } from "@/lib/categorie-changement";
 
 // LES CHANGEMENTS DÉCLARÉS PAR LES PLATEFORMES.
 //
@@ -20,19 +21,6 @@ import { jourEtHeureDans } from "@/lib/fuseau";
 // garde la version de la plateforme — elle nomme ce qui a changé, la nôtre ne
 // fait que constater une conséquence.
 
-export type CategorieChangement =
-  | "budget"
-  | "motcle"
-  | "enchere"
-  | "statut"
-  | "audience"
-  | "creatif"
-  | "creation"
-  | "objectif"
-  | "calendrier"
-  | "diffusion"
-  | "autre";
-
 export type ChangementApi = {
   /** Clé stable, pour dédupliquer avec les changements déduits. */
   cle: string;
@@ -44,10 +32,6 @@ export type ChangementApi = {
   /** Déjà rédigé, prêt à poser dans le fil : « le CPC cible est passé de 0,40 à 0,55 CHF ». */
   phrase: string;
 };
-
-const CATEGORIES: CategorieChangement[] = [
-  "budget", "motcle", "enchere", "statut", "audience", "creatif", "creation", "objectif", "calendrier", "diffusion", "autre",
-];
 
 // PostgREST plafonne chaque requête à 1000 lignes, et un compte actif produit
 // facilement plus de 1000 changements sur trente jours (Google journalise
@@ -142,7 +126,7 @@ export async function getChangementsApi(depuis: string): Promise<ChangementApi[]
     const campagne = l.campaign_name?.trim() || null;
 
     const brute = String(l.categorie ?? "");
-    const categorie = (CATEGORIES as string[]).includes(brute)
+    const categorie = (CATEGORIES_CHANGEMENT as readonly string[]).includes(brute)
       ? (brute as CategorieChangement)
       : "autre";
 

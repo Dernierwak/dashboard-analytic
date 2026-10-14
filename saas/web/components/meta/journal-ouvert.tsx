@@ -1,10 +1,10 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { JournalChangements } from "@/components/meta/journal-du-jour";
+import { JournalChangements } from "@/components/meta/journal-changements";
 import { enFrancais } from "@/lib/jour-de-travail";
 import { panneauDe, panneauDemandeDe, type ChangementMeta, type Portee } from "@/lib/meta/changements";
-import { bornes, type Campagne, type Niveau, type Periode } from "@/lib/meta/lecture";
+import { bornes, pluriel, type Campagne, type Niveau, type Periode } from "@/lib/meta/lecture";
 
 // ── LE JOURNAL OUVERT, TENU PAR LE NAVIGATEUR ────────────────────────────────
 //
@@ -18,7 +18,7 @@ import { bornes, type Campagne, type Niveau, type Periode } from "@/lib/meta/lec
 // La règle de ce qui s'ouvre est celle de la page et des onglets
 // (`panneauDemandeDe`).
 
-const changements = (n: number) => (n === 0 ? "Aucun changement" : `${n} changement${n > 1 ? "s" : ""}`);
+const changements = (n: number) => (n === 0 ? "Aucun changement" : pluriel(n, "changement"));
 
 export function JournalOuvert({
   journal,

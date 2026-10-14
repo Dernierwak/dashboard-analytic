@@ -64,7 +64,10 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
     : choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
 
   // Le journal suit les filtres du Bandeau, par l'ID (`lib/meta/changements.ts`).
-  const portee: Portee = { campagne: choisie?.cle ?? null, groupe: groupe?.cle ?? null };
+  // Un lien qui ne porte que le groupe : sa campagne vient du Bandeau, pour
+  // que les changements posés sur elle restent visibles.
+  const campagneDuGroupe = groupe ? meta.groupes.find((g) => g.cle === groupe.cle)?.campagneCle ?? null : null;
+  const portee: Portee = { campagne: choisie?.cle ?? campagneDuGroupe, groupe: groupe?.cle ?? null };
   const { journal, comparaison, dates, periode } = meta;
   const marques = journal && joursMarques(journal, portee, dates);
   const marquesComparaison =

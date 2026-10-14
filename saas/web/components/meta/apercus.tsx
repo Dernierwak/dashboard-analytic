@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Icone } from "@/components/meta/elements";
 import { PanneauLateral } from "@/components/meta/panneau";
 import type { Apercu } from "@/lib/meta/donnees";
-import type { AnnonceSelection } from "@/lib/meta/lecture";
+import { pluriel, type AnnonceSelection } from "@/lib/meta/lecture";
 import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 
 // ── L'ONGLET « APERÇUS » ─────────────────────────────────────────────────────
@@ -14,8 +14,6 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 //
 // Une annonce que la récolte n'a pas lue le dit : jamais un aperçu vide qu'on
 // lirait « elle n'a pas de texte ». Sans directive : rendu côté serveur.
-
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
 export function ApercusAnnonces({
   annonces,
