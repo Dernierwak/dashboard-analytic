@@ -51,3 +51,14 @@ aujourd'hui « Réglage ».
 
 Vérifié : harnais 28/28, `tsc` et `build` verts, 18 routes. Pas encore vu dans
 Chrome ; non commité.
+
+**2026-10-14 — premier regard sur `/meta` avec les vraies données.** Le `000`
+appliqué (David avait d'abord collé la version de la copie principale, sans les
+colonnes : le passage du 12 avait écrit « changements meta KO … adset_id »),
+puis un passage `force` sur `journal-meta/carte` sans KO. Vu en local : la
+Tendance porte un point le 30 sept. (18 changements), l'onglet « Changements »
+compte 18, le panneau d'un jour se range campagne › groupe et montre statut
+(« En attente de traitement → Actif »), ciblage « Actuel » et le bouton
+« avant / après » ; la bulle d'une ligne de la Comparaison dit le nom seul.
+Le panneau met plusieurs secondes à s'ouvrir en `next dev`. Reste : l'avis de
+David sur l'écran.
