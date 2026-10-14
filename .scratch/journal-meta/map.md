@@ -93,15 +93,19 @@ le ticket 10.
   coutures de test (récolte, lecture d'`extra_data`, mise en page du
   journal) et ce qui reste à faire.
 
-## Pas encore spécifié
+## À construire
 
-- **La vérification du budget** une fois qu'un vrai changement existera sur un
-  compte.
-- **La mise en production** : `journal-meta/carte` rejoint `main` ; jusque-là
-  ni Vercel ni le cron de 07:00 n'ont le nouveau code.
-- **Les lignes déjà en base** avant le ticket 12 n'ont pas d'`extra_data` : le
-  passage du worker relit 180 jours et les complète ; au-delà, elles gardent
-  leur phrase seule.
+Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
+
+- [Le journal Meta rejoint `main`](issues/15-le-journal-rejoint-main.md) —
+  le `000` joué par David, `tsc`/`build` verts, PR en brouillon ; David
+  fusionne. Aucun bloqueur.
+- [Les 180 derniers jours portent leur détail en production](issues/16-les-180-jours-en-production.md) —
+  un passage du worker, vérifié en base et dans Chrome. Bloqué par 15.
+- [Le panneau qui met deux secondes à s'ouvrir](issues/17-le-panneau-en-deux-secondes.md) —
+  mesuré en production, corrigé si confirmé. Bloqué par 16.
+- [Le budget vu sur un vrai changement](issues/18-le-budget-sur-un-vrai-changement.md) —
+  attend un vrai changement de budget sur un compte. Bloqué par 16.
 
 ## Hors périmètre
 
