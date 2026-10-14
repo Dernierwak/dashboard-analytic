@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { Courbe } from "@/components/courbe";
 import { Icone } from "@/components/meta/elements";
+import { valeurElement } from "@/lib/meta/changements";
 import {
   MAX_COMPARES,
   METRIQUES,
@@ -20,7 +22,7 @@ import {
   type Niveau,
   type Vue,
 } from "@/lib/meta/lecture";
-import { lienMeta, type Params } from "@/lib/meta/liens";
+import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 
 // ── MODULE 4 · LA COMPARAISON ────────────────────────────────────────────────
 //
@@ -40,6 +42,14 @@ import { lienMeta, type Params } from "@/lib/meta/liens";
 // visible au repos (ticket 06 de la carte : « je vois où je peux appuyer »).
 // Deux liens frères, jamais l'un dans l'autre : un lien imbriqué est du HTML
 // invalide, et le clic irait au mauvais.
+//
+// LES POINTS DES LIGNES (ticket 13 de `.scratch/journal-meta/`, écran validé au
+// ticket 10, point 4). Chaque ligne porte, de sa couleur, les jours où Meta
+// déclare un changement sur cet élément — sur un groupe, ses annonces
+// comprises (ticket 08). Un clic sur une ligne la met en avant ; seuls ses
+// points ouvrent alors le panneau, sur ce jour et cet élément. Un clic à côté,
+// de nouveau sur elle ou sur une autre ligne la relâche : il ne bascule pas.
+// Le choix n'est pas dans l'URL — il ne se partage pas, il sert à viser.
 
 export function Comparaison({
   comparaison: c,
@@ -48,6 +58,7 @@ export function Comparaison({
   params,
   sujet,
   vignettes,
+  marques,
 }: {
   comparaison: DonneesComparaison;
   vue: Vue;
@@ -57,6 +68,9 @@ export function Comparaison({
   /** L'image de chaque annonce, par son ID — quand la récolte des créas
    *  (ticket 05) l'a écrite. */
   vignettes: Record<string, string>;
+  /** Les jours marqués de chaque élément coché, par sa clé ; `null` = le
+   *  journal n'a pas pu être lu (la Tendance le dit). */
+  marques: Record<string, number[]> | null;
 }) {
   const [refus, setRefus] = useState<string | null>(null);
   const noms = NOMS_NIVEAUX[c.niveau];
@@ -82,7 +96,7 @@ export function Comparaison({
               <Liste c={c} params={params} vignettes={vignettes} refus={refus} refuser={setRefus} />
             </div>
             <div className="p-5">
-              <DeuxGraphes c={c} dates={dates} niveau={noms.un.toLowerCase()} />
+              <DeuxGraphes c={c} dates={dates} niveau={noms.un.toLowerCase()} params={params} marques={marques} />
             </div>
           </>
         )}
@@ -107,21 +121,25 @@ function Reglages({ c, vue, params }: { c: DonneesComparaison; vue: Vue; params:
   const metriques = VUES[vue].metriques;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <nav className="grid min-w-0 max-w-full grid-cols-2 rounded-full bg-[#efeee9] p-1" aria-label="Niveau comparé">
-        {niveaux.map((n) => (
-          <Link
-            key={n}
-            href={lienMeta(params, c.niveau === n ? {} : { niveau: n, comparer: null })}
-            scroll={false}
-            aria-current={c.niveau === n ? "true" : undefined}
-            className={`flex h-8 items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] sm:px-4 font-medium transition-colors motion-reduce:transition-none ${
-              c.niveau === n ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"
-            }`}
-          >
-            {NOMS_NIVEAUX[n].des}
-          </Link>
-        ))}
-      </nav>
+      {/* Sous un groupe d'annonces choisi, on ne compare que ses annonces :
+          le choix du niveau n'aurait plus qu'une ligne à montrer. */}
+      {!c.niveauImpose && (
+        <nav className="grid min-w-0 max-w-full grid-cols-2 rounded-full bg-[#efeee9] p-1" aria-label="Niveau comparé">
+          {niveaux.map((n) => (
+            <Link
+              key={n}
+              href={lienMeta(params, c.niveau === n ? {} : { niveau: n, comparer: null })}
+              scroll={false}
+              aria-current={c.niveau === n ? "true" : undefined}
+              className={`flex h-8 items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] sm:px-4 font-medium transition-colors motion-reduce:transition-none ${
+                c.niveau === n ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"
+              }`}
+            >
+              {NOMS_NIVEAUX[n].des}
+            </Link>
+          ))}
+        </nav>
+      )}
       {([0, 1] as const).map((rang) => (
         <div key={rang} className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={`Métrique ${rang + 1}`}>
           <Pastille n={(rang + 1) as 1 | 2} />
@@ -266,7 +284,7 @@ function Liste({
             jamais par le nom. La place reste, pour l'alignement. */}
         {e.annonceId ? (
           <Link
-            href={lienMeta(params, { annonce: e.annonceId, jour: null })}
+            href={lienMeta(params, { ...SANS_PANNEAU, annonce: e.annonceId })}
             scroll={false}
             aria-label={`Lire l'annonce ${e.nom || "sans nom"}`}
             className="flex h-8 w-[52px] shrink-0 items-center justify-center rounded-lg border border-[#dfe3fb] text-[12.5px] font-medium text-brand transition-colors hover:bg-[#eef2ff] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
@@ -324,19 +342,73 @@ function Vignette({ url }: { url?: string }) {
   return <img src={url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" loading="lazy" />;
 }
 
-function DeuxGraphes({ c, dates, niveau }: { c: DonneesComparaison; dates: string[]; niveau: string }) {
+/** La ligne mise en avant, par sa clé. Tout clic qui ne tombe pas sur une
+ *  ligne, un de ses points ou le panneau qu'ils ouvrent (`data-garde-choix`)
+ *  la relâche. */
+function useLigneChoisie(cles: string[]): [string | null, (cle: string) => void] {
+  const [choisie, setChoisie] = useState<string | null>(null);
+  useEffect(() => {
+    if (choisie === null) return;
+    const clic = (e: MouseEvent) => {
+      if (!(e.target as Element | null)?.closest?.("[data-garde-choix]")) setChoisie(null);
+    };
+    const touche = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector("[role=dialog]") && setChoisie(null);
+    document.addEventListener("click", clic);
+    document.addEventListener("keydown", touche);
+    return () => {
+      document.removeEventListener("click", clic);
+      document.removeEventListener("keydown", touche);
+    };
+  }, [choisie]);
+  // Une ligne décochée, ou partie avec un filtre, n'est plus choisie.
+  const valide = choisie !== null && cles.includes(choisie) ? choisie : null;
+  return [valide, (cle) => setChoisie((x) => (x === null ? cle : null))];
+}
+
+function DeuxGraphes({
+  c,
+  dates,
+  niveau,
+  params,
+  marques,
+}: {
+  c: DonneesComparaison;
+  dates: string[];
+  niveau: string;
+  params: Params;
+  marques: Record<string, number[]> | null;
+}) {
+  const router = useRouter();
+  const [enCours, demarrer] = useTransition();
+  const [choisie, basculer] = useLigneChoisie(c.coches.map((s) => s.cle));
   if (c.coches.length === 0) {
     return <p className="py-16 text-center text-[14px] text-muted">Coche un élément dans la liste pour suivre son évolution.</p>;
   }
   const etiquettes = dates.map(dateBulle);
+  const indexChoisi = choisie === null ? null : c.coches.findIndex((s) => s.cle === choisie);
+  const ouvrir = (si: number, i: number) =>
+    demarrer(() =>
+      router.push(
+        lienMeta(params, {
+          ...SANS_PANNEAU,
+          jour: dates[i],
+          element: valeurElement({ niveau: c.niveau, cle: c.coches[si].cle }),
+        }),
+        { scroll: false }
+      )
+    );
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" aria-busy={enCours}>
       {/* La légende : le nom à côté de la couleur, toujours (deux teintes sont
           sous 3:1 de contraste), et le rang de la liste — deux annonces
-          homonymes s'y distinguent autrement que par la teinte. */}
+          homonymes s'y distinguent autrement que par la teinte. Une ligne
+          choisie : les autres s'y estompent comme sur les graphes. */}
       <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1.5" aria-label="Éléments comparés">
         {c.coches.map((s) => (
-          <li key={s.cle} className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted">
+          <li
+            key={s.cle}
+            className={`flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted transition-opacity motion-reduce:transition-none ${choisie !== null && choisie !== s.cle ? "opacity-35" : ""}`}
+          >
             <span className="h-[2px] w-4 shrink-0 rounded-full" style={{ background: s.couleur }} />
             <span className="shrink-0 tabular-nums text-faint">{c.elements.findIndex((e) => e.cle === s.cle) + 1}</span>
             <span className="truncate">{s.nom || "Sans nom"}</span>
@@ -357,7 +429,16 @@ function DeuxGraphes({ c, dates, niveau }: { c: DonneesComparaison; dates: strin
                 titre={`${METRIQUES[m].nom} jour par jour, par ${niveau} comparé`}
                 format={(v) => formaterValeur(m, v)}
                 hauteur={240}
-                series={c.coches.map((s) => ({ nom: s.nom || "Sans nom", valeurs: s.series[k], etiquettes, couleur: s.couleur }))}
+                series={c.coches.map((s) => ({
+                  nom: s.nom || "Sans nom",
+                  valeurs: s.series[k],
+                  etiquettes,
+                  couleur: s.couleur,
+                  marques: marques?.[s.cle],
+                }))}
+                choisie={indexChoisi}
+                onSerie={(si) => basculer(c.coches[si].cle)}
+                onMarque={ouvrir}
               />
             </div>
           );

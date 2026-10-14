@@ -33,6 +33,15 @@ import { ORANGE_REPERE } from "@/lib/palette";
 // principale (la page Meta y met les jours où le compte a changé), en
 // `ORANGE_REPERE` (`lib/palette.ts`, qui dit pourquoi cet orange). Un repère se clique sur toute la hauteur du jour, pas seulement sur ses
 // 8 px, et c'est un vrai bouton pour qui navigue au clavier.
+//
+// LES POINTS D'UNE SÉRIE (la Comparaison, ticket 13 de `.scratch/journal-meta/`).
+// Une série peut porter ses propres jours marqués, de sa couleur, posés sur SA
+// ligne. Ils ne se cliquent pas tous à la fois : deux éléments changés le même
+// jour posaient deux zones de clic superposées, et la dernière dessinée
+// gagnait — on visait mal (ticket 10). D'abord on CHOISIT une ligne (clic sur
+// elle ou sur un de ses points creux) ; elle passe devant, les autres
+// s'effacent, et seuls ses points, pleins et pulsants, ouvrent quelque chose.
+// L'état du choix appartient à l'appelant : il vaut pour ses deux graphes.
 
 export type SerieCourbe = {
   nom: string;
@@ -43,6 +52,10 @@ export type SerieCourbe = {
   /** L'identité d'une série parmi plusieurs (la Comparaison) : une teinte
    *  validée par l'appelant. Absente, la série est le bleu maison. */
   couleur?: string;
+  /** Les jours (index) qui portent un point sur la ligne. Un jour sans valeur
+   *  le pose sur l'axe : le changement existe, la courbe n'a simplement pas de
+   *  chiffre ce jour-là. */
+  marques?: number[];
 };
 
 const BLEU = "#1a56ff";
@@ -114,6 +127,33 @@ function PastilleRepere({ libelle, className }: { libelle: string; className: st
   );
 }
 
+/** Un point d'une série. Au repos, un anneau : « il s'est passé quelque
+ *  chose ». Sur la ligne choisie, plein, plus gros, avec un halo : « clique-
+ *  moi ». Sur une ligne effacée, un petit anneau gris. */
+function PointSerie({
+  etat,
+  couleur,
+  className = "",
+  ...attributs
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { etat: "repos" | "choisi" | "efface"; couleur: string }) {
+  return (
+    <button
+      type="button"
+      {...attributs}
+      className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${
+        etat === "choisi" ? "z-[7] h-7 w-7" : "z-[6] h-5 w-5"
+      } ${className}`}
+    >
+      {etat === "choisi" && <span className="halo-pulse absolute h-3.5 w-3.5 rounded-full" style={{ background: couleur }} aria-hidden />}
+      <span
+        aria-hidden
+        className={`relative block rounded-full ${etat === "choisi" ? "h-3.5 w-3.5 ring-[2.5px] ring-white" : etat === "repos" ? "h-2.5 w-2.5 border-2 bg-white" : "h-2 w-2 border-[1.5px] bg-white opacity-70"}`}
+        style={etat === "choisi" ? { background: couleur } : { borderColor: etat === "repos" ? couleur : GRIS }}
+      />
+    </button>
+  );
+}
+
 export function Courbe({
   series,
   format,
@@ -121,6 +161,9 @@ export function Courbe({
   titre,
   reperes = [],
   onRepere,
+  choisie = null,
+  onSerie,
+  onMarque,
 }: {
   series: SerieCourbe[];
   format: (v: number) => string;
@@ -129,8 +172,20 @@ export function Courbe({
   titre: string;
   reperes?: Repere[];
   onRepere?: (index: number) => void;
+  /** La série mise en avant (son index), `null` = aucune. */
+  choisie?: number | null;
+  /** Un clic sur une ligne ou sur un point d'une ligne non choisie. */
+  onSerie?: (serie: number) => void;
+  /** Un clic sur un point de la ligne choisie : le jour `index`. */
+  onMarque?: (serie: number, index: number) => void;
 }) {
   const [survol, setSurvol] = useState<number | null>(null);
+  const [survolSerie, setSurvolSerie] = useState<number | null>(null);
+  // La ligne qui passe devant : la choisie, sinon celle qu'on survole.
+  const accent = choisie ?? survolSerie;
+  const opacite = (si: number) => (accent === null || accent === si ? 1 : choisie !== null ? 0.18 : 0.35);
+  // La ligne en avant se dessine en dernier, par-dessus les autres.
+  const ordre = series.map((_, si) => si).sort((a, b) => Number(a === accent) - Number(b === accent));
   const n = Math.max(0, ...series.map((s) => s.valeurs.length));
   const toutes = series.flatMap((s) => s.valeurs.filter((v): v is number => v !== null));
   const { haut, pas } = graduation(Math.max(0, ...toutes));
@@ -258,24 +313,50 @@ export function Courbe({
             ))}
             {/* Clés par INDEX de série, pas par nom : deux annonces homonymes
                 sont deux séries (user story 35). */}
-            {series.map((s, si) =>
-              troncons(s.valeurs).map((tr, k) =>
+            {ordre.map((si) =>
+              troncons(series[si].valeurs).map((tr, k) =>
                 tr.length > 1 ? (
                   <polyline
                     key={`${si}-${k}`}
                     points={tr.map((p) => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}
                     fill="none"
-                    stroke={teinte(s)}
-                    strokeWidth={s.pointille ? 1.5 : 2}
-                    strokeDasharray={s.pointille ? "4 4" : undefined}
+                    stroke={teinte(series[si])}
+                    strokeWidth={series[si].pointille ? 1.5 : accent === si ? 3.5 : 2}
+                    strokeOpacity={opacite(si)}
+                    strokeDasharray={series[si].pointille ? "4 4" : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
-                    className="courbe-apparait"
+                    pointerEvents="none"
+                    className="courbe-apparait transition-[stroke-opacity] duration-200 motion-reduce:transition-none"
                   />
                 ) : null
               )
             )}
+            {/* La zone de clic d'une ligne : un trait invisible de 16 px, pour
+                qu'on n'ait pas à viser les 2 px du tracé. */}
+            {onSerie &&
+              ordre.map((si) =>
+                troncons(series[si].valeurs).map((tr, k) =>
+                  tr.length > 1 ? (
+                    <polyline
+                      key={`zone-${si}-${k}`}
+                      data-garde-choix
+                      points={tr.map((p) => `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={16}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="stroke"
+                      className="cursor-pointer"
+                      onClick={() => onSerie(si)}
+                      onPointerEnter={() => setSurvolSerie(si)}
+                      onPointerLeave={() => setSurvolSerie(null)}
+                    />
+                  ) : null
+                )
+              )}
             {survol !== null && (
               <line x1={x(survol)} x2={x(survol)} y1={0} y2={hauteur} stroke="#0e0f12" strokeOpacity={0.14} strokeWidth={1} vectorEffect="non-scaling-stroke" />
             )}
@@ -293,12 +374,35 @@ export function Courbe({
                       <span
                         key={`${si}-${p.i}`}
                         className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white"
-                        style={{ left: `${xPct(p.i)}%`, top: `${yPct(p.v)}%`, background: teinte(s) }}
+                        style={{ left: `${xPct(p.i)}%`, top: `${yPct(p.v)}%`, background: teinte(s), opacity: opacite(si) }}
                       />
                     ))
                 : []
             )
           )}
+
+          {ordre.flatMap((si) => {
+            const s = series[si];
+            const etat = choisie === null ? "repos" : choisie === si ? "choisi" : "efface";
+            return (s.marques ?? []).map((i) => {
+              const v = s.valeurs[i];
+              return (
+                <PointSerie
+                  key={`marque-${si}-${i}`}
+                  etat={etat}
+                  couleur={teinte(s)}
+                  data-garde-choix
+                  aria-label={`${s.nom}, ${s.etiquettes[i]} : ${etat === "choisi" ? "voir ce qui a changé" : "a changé. Mettre la ligne en avant"}`}
+                  onClick={() => (etat === "choisi" ? onMarque?.(si, i) : onSerie?.(si))}
+                  onPointerEnter={() => setSurvolSerie(si)}
+                  onPointerLeave={() => setSurvolSerie(null)}
+                  onFocus={() => setSurvol(i)}
+                  onBlur={() => setSurvol(null)}
+                  style={{ left: `${xPct(i)}%`, top: `${yPct(v === null || v === undefined ? 0 : v)}%` }}
+                />
+              );
+            });
+          })}
 
           {reperes.map((r) => (
             <BoutonRepere
@@ -323,6 +427,16 @@ export function Courbe({
               className="pointer-events-none absolute top-0 z-10 min-w-[170px] rounded-xl bg-ink/95 px-3 py-2.5 text-white shadow-xl"
               style={{ left: `${xPct(survol)}%`, transform: bulleAGauche(survol) ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
             >
+              {/* Sur une ligne ou un de ses points, la bulle ne dit que son nom :
+                  on vise une ligne, pas un jour (ticket 13 de
+                  `.scratch/journal-meta/`, David : « bulle avec le nom seul »). */}
+              {survolSerie !== null ? (
+                <p className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+                  <span className="h-[2px] w-3 shrink-0 rounded-full" style={{ background: teinte(series[survolSerie]) }} />
+                  <span className="truncate">{series[survolSerie].nom}</span>
+                </p>
+              ) : (
+              <>
               {/* La période regardée d'abord, celle d'avant ensuite. */}
               {/* Une date ne s'écrit qu'une fois quand plusieurs séries la
                   partagent (la Comparaison) — quatre fois la même se lirait mal. */}
@@ -330,7 +444,7 @@ export function Courbe({
                 const v = s.valeurs[survol];
                 const date = s.etiquettes[survol];
                 return (
-                  <div key={k} className="py-0.5">
+                  <div key={k} className={`py-0.5 ${accent !== null && series.indexOf(s) !== accent ? "opacity-50" : ""}`}>
                     {(k === 0 || triees[k - 1].etiquettes[survol] !== date) && <p className="text-[11px] text-white/60">{date}</p>}
                     <p className="flex min-w-0 items-center gap-2">
                       <span className={`w-3 shrink-0 ${s.pointille ? "border-t border-dashed" : "h-[2px] rounded-full"}`} style={s.pointille ? { borderColor: GRIS } : { background: teinte(s) }} />
@@ -341,6 +455,8 @@ export function Courbe({
                 );
               })}
               {repereSurvole && <PastilleRepere libelle={repereSurvole.libelle} className="mt-1.5 border-t border-white/10 pt-1.5" />}
+              </>
+              )}
             </div>
           )}
         </div>

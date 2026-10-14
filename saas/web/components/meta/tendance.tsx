@@ -6,7 +6,7 @@ import { Courbe, type Repere } from "@/components/courbe";
 import { PastilleEcart } from "@/components/meta/elements";
 import type { MarqueJour } from "@/lib/meta/changements";
 import { dateBulle, formaterValeur, type MetriqueTendance } from "@/lib/meta/lecture";
-import { lienMeta, type Params } from "@/lib/meta/liens";
+import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 import { ORANGE_REPERE } from "@/lib/palette";
 
 // ── MODULE 3 · LA TENDANCE ───────────────────────────────────────────────────
@@ -19,8 +19,10 @@ import { ORANGE_REPERE } from "@/lib/palette";
 //
 // Les jours où Meta déclare un changement portent un point sur la courbe
 // PRINCIPALE seulement (ticket 11) — sur les trois, il se lirait trois fois.
-// Un clic ouvre le jour dans le Panneau latéral : il n'écrit que `jour` dans
-// l'URL et retire `annonce` (un seul panneau, user story 44).
+// Un clic ouvre le jour dans le Panneau latéral : il écrit `jour` dans l'URL
+// et retire tout autre panneau (`SANS_PANNEAU` ; un seul panneau, user story
+// 44). Un jour sans valeur pose son point sur l'axe (ticket 10 de
+// `.scratch/journal-meta/`, point 3).
 //
 // Grammaire, carte par carte : le nom (rang 1), LE chiffre (rang 3, le plus
 // gros, avant toute forme), la période d'avant et l'écart (rang 5), la courbe
@@ -31,10 +33,11 @@ import { ORANGE_REPERE } from "@/lib/palette";
 
 /** Ce que le journal ne couvre pas. Dit ICI, et nulle part ailleurs (décision
  *  du ticket 08 de la carte) : la liste suit `_ACTIVITES` de
- *  `saas/collecte/meta/fetch_meta_ads.py`, et doit changer avec elle. */
+ *  `saas/data/fetch_data/sources/meta/ads/fetchers/activities.py`, et doit changer avec elle. */
 const NE_COUVRE_PAS =
   "Les points viennent du journal que Meta tient de ton compte, et Pulse n'en garde que les budgets, les statuts, " +
-  "le ciblage, les visuels, les enchères et les créations de campagnes, de groupes d'annonces et d'annonces. " +
+  "le ciblage, les visuels et textes, les enchères, les objectifs, les dates de diffusion et les créations de " +
+  "campagnes, de groupes d'annonces et d'annonces. " +
   "Tout autre geste n'a pas de point, pas plus que ce que Meta fait de lui-même, comme la revue des annonces. " +
   "Un jour sans point n'est donc pas un jour où rien n'a changé.";
 
@@ -61,7 +64,7 @@ export function Tendance({
   const [enCours, demarrer] = useTransition();
   const [aide, setAide] = useState(false);
   const ouvrirJour = (i: number) =>
-    demarrer(() => router.push(lienMeta(params, { jour: dates[i], annonce: null }), { scroll: false }));
+    demarrer(() => router.push(lienMeta(params, { ...SANS_PANNEAU, jour: dates[i] }), { scroll: false }));
   const reperes: Repere[] = (marques ?? []).map((m) => ({ index: m.index, libelle: libelle(m.nombre) }));
 
   const [principale, ...autres] = metriques;

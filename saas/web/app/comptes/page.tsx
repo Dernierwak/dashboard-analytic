@@ -8,7 +8,8 @@
 
 import Link from "next/link";
 import { getCompteActif } from "@/lib/account";
-import { getConnexions, type EtatCanal } from "@/lib/connexions";
+import { getConnexions, type AReconnecter, type EtatCanal } from "@/lib/connexions";
+import { dateFr, dateNue } from "@/lib/jour-de-travail";
 import { createClient } from "@/lib/supabase/server";
 import { JETON_META, lireJetonTransit } from "@/lib/oauth";
 import {
@@ -73,12 +74,79 @@ const ERREURS: Record<string, string> = {
   reseau_google: "Google est injoignable pour le moment. Réessaie dans un instant.",
 };
 
-function Pastille({ ok }: { ok: boolean }) {
+function Pastille({ ok, alerte = false }: { ok: boolean; alerte?: boolean }) {
+  const teinte = alerte ? "bg-warn" : ok ? "bg-pos" : "bg-black/[0.15]";
+  return <span className={`h-2 w-2 rounded-full shrink-0 ${teinte}`} aria-hidden />;
+}
+
+// La fenêtre de `change_event` : « The date range must be within the past 30
+// days » (https://developers.google.com/google-ads/api/docs/change-event, et
+// `CLAUDE.md` §8). Les dépenses et les clics se rattrapent à la reconnexion —
+// la récolte repart de la dernière date en base — mais pas les changements
+// déclarés par Google au-delà de cette fenêtre.
+const FENETRE_CHANGEMENTS_GOOGLE_JOURS = 30;
+const JOUR_MS = 86_400_000;
+
+/** « 7 octobre », ou rien si la date ne se lit pas — jamais « NaN octobre ». */
+function depuisLe(r: AReconnecter): string | null {
+  const d = dateNue(r.depuis);
+  return d ? dateFr(d) : null;
+}
+
+/** La période de changements Google perdue pour de bon, quand la panne dure
+ *  plus que la fenêtre de `change_event`. `null` tant que rien n'est perdu. */
+function changementsGooglePerdus(r: AReconnecter, maintenant: Date): string | null {
+  const debut = dateNue(r.depuis);
+  if (!debut) return null;
+  const limite = new Date(maintenant.getTime() - FENETRE_CHANGEMENTS_GOOGLE_JOURS * JOUR_MS);
+  if (debut >= limite) return null;
+  return `du ${dateFr(debut)} au ${dateFr(limite)}`;
+}
+
+/** Le jeton est mort : la récolte de la plateforme est arrêtée, et seul le
+ *  client peut la relancer — Meta et Google exigent son clic. */
+function Reconnexion({
+  nom,
+  sert,
+  r,
+  href,
+  perdu,
+}: {
+  nom: string;
+  sert: string;
+  r: AReconnecter;
+  href: string;
+  perdu: string | null;
+}) {
+  const depuis = depuisLe(r);
   return (
-    <span
-      className={`h-2 w-2 rounded-full shrink-0 ${ok ? "bg-pos" : "bg-black/[0.15]"}`}
-      aria-hidden
-    />
+    <div className="mb-5 rounded-xl border border-warn/30 bg-warn/[0.06] px-4 py-3">
+      <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1">
+        {nom} — à reconnecter
+      </div>
+      <p className="text-[12.5px] text-ink leading-relaxed">
+        <span className="font-semibold">
+          Pulse ne récolte plus {sert}
+          {depuis ? ` depuis le ${depuis}` : ""}.
+        </span>{" "}
+        {r.raison ? `${nom} a répondu : « ${r.raison} ». ` : ""}
+        Reconnecte-toi : la récolte repart aussitôt et reprend là où elle s&apos;était
+        arrêtée.
+      </p>
+      {perdu && (
+        <p className="text-[12px] text-muted leading-relaxed mt-1.5">
+          Google ne garde que {FENETRE_CHANGEMENTS_GOOGLE_JOURS} jours d&apos;historique de
+          ses changements de campagne : ceux {perdu} ne pourront pas être récupérés. Tes
+          dépenses et tes clics, eux, reviendront.
+        </p>
+      )}
+      <a
+        href={href}
+        className="inline-block mt-2.5 text-[12.5px] font-semibold rounded-full px-4 py-2 text-white bg-brand hover:bg-brand/90 transition-colors"
+      >
+        Reconnecter {nom}
+      </a>
+    </div>
   );
 }
 
@@ -86,12 +154,14 @@ function LigneCanal({ c }: { c: EtatCanal }) {
   return (
     <div className="flex items-start gap-3 px-4 py-3.5 border-b border-line last:border-b-0">
       <span className="mt-1.5">
-        <Pastille ok={c.connecte} />
+        <Pastille ok={c.connecte} alerte={Boolean(c.aReconnecter)} />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-[13.5px] font-semibold text-ink">{c.nom}</span>
-          {c.connecte ? (
+          {c.aReconnecter ? (
+            <span className="text-[11.5px] text-warn font-semibold">à reconnecter</span>
+          ) : c.connecte ? (
             <span className="text-[11.5px] text-pos font-semibold">connecté</span>
           ) : (
             <span className="text-[11.5px] text-faint">à brancher</span>
@@ -101,7 +171,11 @@ function LigneCanal({ c }: { c: EtatCanal }) {
           )}
         </div>
         <p className="text-[12px] text-muted leading-relaxed mt-0.5">
-          {c.connecte ? c.apporte : (c.manque ?? c.apporte)}
+          {c.aReconnecter
+            ? `Récolte arrêtée${depuisLe(c.aReconnecter) ? ` depuis le ${depuisLe(c.aReconnecter)}` : ""} — la connexion a expiré.`
+            : c.connecte
+              ? c.apporte
+              : (c.manque ?? c.apporte)}
         </p>
       </div>
     </div>
@@ -162,9 +236,14 @@ export default async function ComptesPage({
   // On les déduit de l'état réel, pas seulement du paramètre d'URL : quelqu'un
   // qui a fermé l'onglet au milieu doit retrouver son étape en revenant ici.
 
+  // UN JETON EN TRANSIT, C'EST UNE AUTORISATION QUI VIENT D'ÊTRE DONNÉE — que
+  // Meta soit déjà « connecté » ou non. La condition `!connecte` qui était là
+  // rendait la RECONNEXION impossible : le client repassait par Facebook, le
+  // nouveau jeton attendait dans son cookie, et aucun choix de Page ne
+  // s'affichait pour l'écrire en base. L'ancien jeton, mort, restait.
+  // Le cookie est effacé dès que `connecterMeta` a écrit.
   const jetonMeta = lireJetonTransit(JETON_META);
-  const choixPages: Resultat | null =
-    jetonMeta && !cx.canaux[0].connecte ? await pagesFacebook(jetonMeta) : null;
+  const choixPages: Resultat | null = jetonMeta ? await pagesFacebook(jetonMeta) : null;
 
   let choixAds: Resultat | null = null;
   let choixGa4: Resultat | null = null;
@@ -199,7 +278,9 @@ export default async function ComptesPage({
     }
   }
 
-  const restants = cx.canaux.filter((c) => !c.connecte).length;
+  // Un canal à reconnecter compte parmi les restants : il ne récolte plus.
+  const restants = cx.canaux.filter((c) => !c.connecte || c.aReconnecter).length;
+  const maintenant = new Date();
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
@@ -235,6 +316,27 @@ export default async function ComptesPage({
           </div>
           <p className="text-[12.5px] text-ink leading-relaxed">{erreur}</p>
         </div>
+      )}
+
+      {/* ── Une connexion morte passe avant tout : rien ne se récolte ─────── */}
+
+      {cx.reconnecterMeta && (
+        <Reconnexion
+          nom="Meta"
+          sert="tes campagnes Meta ni tes publications Instagram"
+          r={cx.reconnecterMeta}
+          href="/api/oauth/meta/start"
+          perdu={null}
+        />
+      )}
+      {cx.reconnecterGoogle && (
+        <Reconnexion
+          nom="Google"
+          sert="tes campagnes Google Ads ni ton Analytics"
+          r={cx.reconnecterGoogle}
+          href="/api/oauth/google/start"
+          perdu={changementsGooglePerdus(cx.reconnecterGoogle, maintenant)}
+        />
       )}
 
       {/* ── Étape en cours, s'il y en a une ───────────────────────────────── */}

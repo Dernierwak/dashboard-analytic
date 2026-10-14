@@ -92,6 +92,16 @@ body { background: theme(colors.canvas); color: theme(colors.ink); }
 }
 .panneau-entre { animation: panneau-entre 280ms cubic-bezier(.2,.8,.2,1) both; }
 .voile-entre { animation: courbe-apparait 200ms ease-out both; }
+/* Le halo des points de la ligne choisie, sur la Comparaison
+   (`components/courbe.tsx`) : seuls ces points s'ouvrent, et le prototype
+   validé (ticket 10 de `.scratch/journal-meta/`) le dit par ce battement —
+   « beaucoup plus clair ». Sans animation, le point plein et plus gros reste. */
+@keyframes halo-pulse {
+  from { transform: scale(1); opacity: 0.55; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+.halo-pulse { animation: halo-pulse 1.6s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .courbe-apparait, .panneau-entre, .voile-entre { animation: none; }
+  .courbe-apparait, .panneau-entre, .voile-entre, .halo-pulse { animation: none; }
+  .halo-pulse { opacity: 0; }
 }

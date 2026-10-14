@@ -20,6 +20,7 @@
 import {
   campagnesDe,
   cleCampagne,
+  dansSelection,
   DEVISE,
   ecartEntre,
   estMetriqueResultat,
@@ -115,7 +116,7 @@ export function tableauDe(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contexte
 
   const racine = new Map<string, Noeud>();
   for (const l of lues) {
-    if (c.campagne && cleCampagne(l) !== c.campagne) continue;
+    if (!dansSelection(l, c)) continue;
     const campagne = noeudSous(racine, "", l.campagneId, l.campagneNom, l);
     const groupe = noeudSous(campagne.enfants, `${campagne.cle}›`, l.groupeId, l.groupeNom, l);
     const annonce = noeudSous(groupe.enfants, `${groupe.cle}›`, l.annonceId, l.annonceNom, l);

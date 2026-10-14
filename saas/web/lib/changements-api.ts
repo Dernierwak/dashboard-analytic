@@ -6,7 +6,7 @@ import { jourEtHeureDans } from "@/lib/fuseau";
 //
 // Le fil sait déjà DÉDUIRE cinq faits de la dépense quotidienne (lancée,
 // arrêtée, reprise, programmée, dépense changée) — voir `changements` dans
-// `saas/traitement/build_report.py`. C'est robuste mais aveugle : mettre un
+// `saas/data/supabase/processed_data/weekly_report/builder.py`. C'est robuste mais aveugle : mettre un
 // mot-clé en pause, remonter un CPC cible ou changer une audience ne fait pas
 // forcément bouger la dépense du jour, et n'apparaît donc nulle part.
 //
@@ -28,6 +28,8 @@ export type CategorieChangement =
   | "audience"
   | "creatif"
   | "creation"
+  | "objectif"
+  | "calendrier"
   | "autre";
 
 export type ChangementApi = {
@@ -43,7 +45,7 @@ export type ChangementApi = {
 };
 
 const CATEGORIES: CategorieChangement[] = [
-  "budget", "motcle", "enchere", "statut", "audience", "creatif", "creation", "autre",
+  "budget", "motcle", "enchere", "statut", "audience", "creatif", "creation", "objectif", "calendrier", "autre",
 ];
 
 // PostgREST plafonne chaque requête à 1000 lignes, et un compte actif produit
@@ -87,7 +89,7 @@ type LigneChangement = {
  * pas pareil :
  *   · Google écrit l'heure du compte SANS décalage (« 2026-08-11 14:03:22 »,
  *     `change_date_time` de `change_event`, voir `fetch_campaign_changes` dans
- *     `saas/collecte/google/fetch_google_ads.py`) ;
+ *     `saas/data/fetch_data/sources/google/fetch_google_ads.py`) ;
  *     le `timestamptz` la lit dans le fuseau de la session — l'UTC, celui de
  *     Supabase — et la garde donc telle quelle, comme si c'était de l'UTC. La
  *     troncature rend donc le jour du compte, et reconvertir le fausserait.

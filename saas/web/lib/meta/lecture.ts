@@ -156,6 +156,9 @@ export type Commandes = {
   vue?: string;
   /** L'ID Meta de la campagne, ou la clé d'une campagne sans ID. */
   campagne?: string;
+  /** Le groupe d'annonces, même clé que la Comparaison (`cleElement`) : il
+   *  filtre toute la page, comme la campagne (ticket 13 de `.scratch/journal-meta/`). */
+  groupe?: string;
   from?: string;
   to?: string;
   /** La Comparaison : son niveau, ses deux métriques et ses places cochées
@@ -387,6 +390,61 @@ export function campagnesDe(lignes: LigneMeta[], courante?: { debut: string; fin
   return [...parCle.values()]
     .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"))
     .map(({ dateNom: _, ...c }) => ({ ...c, couleur: couleurs.get(c.cle)! }));
+}
+
+/** La ligne est-elle dans la sélection du Bandeau — campagne et groupe
+ *  d'annonces ? Le même tri pour les courbes, la Comparaison, le Tableau et
+ *  l'annonce lue : un filtre qui n'en toucherait qu'une partie ferait lire
+ *  deux sélections sur la même page. */
+export function dansSelection(l: LigneMeta, c: Pick<Commandes, "campagne" | "groupe">): boolean {
+  return (!c.campagne || cleCampagne(l) === c.campagne) && (!c.groupe || cleElement(l, "groupes") === c.groupe);
+}
+
+export type GroupeAnnonces = {
+  cle: string;
+  nom: string;
+  /** Sa campagne : choisir le groupe la choisit aussi. */
+  campagneCle: string;
+  campagneNom: string;
+  /** La pastille de sa campagne : le groupe se lit sous elle. */
+  couleur: string;
+  /** La dépense de la période ; `null` = aucune ligne sur la période. */
+  depense: number | null;
+  sansId: boolean;
+};
+
+/** Les groupes d'annonces présents, rangés comme les campagnes : le plus
+ *  dépensier sur `courante` d'abord, chacun sous son nom le plus récent. */
+export function groupesDe(lignes: LigneMeta[], courante: { debut: string; fin: string }, campagnes: Campagne[]): GroupeAnnonces[] {
+  const couleurs = new Map(campagnes.map((c) => [c.cle, c.couleur]));
+  const parCle = new Map<string, GroupeAnnonces & { dateNom: string }>();
+  for (const l of lignes) {
+    const cle = cleElement(l, "groupes");
+    let g = parCle.get(cle);
+    if (!g) {
+      const campagneCle = cleCampagne(l);
+      g = {
+        cle,
+        nom: l.groupeNom,
+        campagneCle,
+        campagneNom: l.campagneNom,
+        couleur: couleurs.get(campagneCle) ?? PASTILLE_NEUTRE,
+        depense: null,
+        sansId: l.groupeId === null,
+        dateNom: l.date,
+      };
+      parCle.set(cle, g);
+    }
+    if (l.date >= courante.debut && l.date <= courante.fin) g.depense = (g.depense ?? 0) + l.depense;
+    if (l.date > g.dateNom) {
+      g.nom = l.groupeNom;
+      g.campagneNom = l.campagneNom;
+      g.dateNom = l.date;
+    }
+  }
+  return [...parCle.values()]
+    .sort((a, b) => (b.depense ?? -1) - (a.depense ?? -1) || a.nom.localeCompare(b.nom, "fr"))
+    .map(({ dateNom: _, ...g }) => g);
 }
 
 // ── Les métriques ────────────────────────────────────────────────────────────
@@ -676,6 +734,11 @@ export function tonEcart(m: CleMetrique, e: number | null): "pos" | "neg" | null
  *  lue ne porte : la page le dit au lieu de montrer « toutes ». Pas de dépense
  *  ici : celle d'une campagne sans ligne n'est pas zéro, elle n'est pas lue. */
 export type CampagneChoisie = { cle: string; nom: string; connue: boolean };
+/** Même forme, même règle pour le groupe d'annonces demandé par l'URL. */
+export type GroupeChoisi = CampagneChoisie;
+
+/** Une annonce de la sélection, pour l'onglet « Aperçus ». */
+export type AnnonceSelection = { cle: string; id: string | null; nom: string; sous: string };
 
 export type CarteVue = {
   vue: Vue;
@@ -718,6 +781,11 @@ export type ContenuPage = {
   raccourcis: Raccourci[];
   /** `null` = toutes les campagnes. */
   campagneChoisie: CampagneChoisie | null;
+  groupes: GroupeAnnonces[];
+  /** `null` = tous les groupes d'annonces. */
+  groupeChoisi: GroupeChoisi | null;
+  /** Les annonces de la sélection sur la période, la plus dépensière d'abord. */
+  annonces: AnnonceSelection[];
   cartes: CarteVue[];
   tendance: MetriqueTendance[];
   comparaison: Comparaison;
@@ -753,7 +821,13 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
     const trouvee = campagnes.find((x) => x.cle === c.campagne);
     campagneChoisie = { cle: c.campagne, nom: trouvee?.nom ?? c.campagne, connue: !!trouvee };
   }
-  const filtrees = campagneChoisie ? lues.filter((l) => cleCampagne(l) === campagneChoisie!.cle) : lues;
+  const groupes = groupesDe(lues, periode, campagnes);
+  let groupeChoisi: ContenuPage["groupeChoisi"] = null;
+  if (c.groupe) {
+    const trouve = groupes.find((x) => x.cle === c.groupe);
+    groupeChoisi = { cle: c.groupe, nom: trouve?.nom ?? c.groupe, connue: !!trouve };
+  }
+  const filtrees = lues.filter((l) => dansSelection(l, c));
 
   const courant = filtrees.filter((l) => dansPeriode(l, periode.debut, periode.fin));
   const avant = filtrees.filter((l) => dansPeriode(l, periode.avantDebut, periode.avantFin));
@@ -814,10 +888,28 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
     campagnes,
     raccourcis: raccourcisDe(periode, ctx),
     campagneChoisie,
+    groupes,
+    groupeChoisi,
+    annonces: annoncesDe(courant),
     cartes,
     tendance,
     comparaison: comparaisonDe(courant, periode, vue, c),
   };
+}
+
+function annoncesDe(courant: LigneMeta[]): AnnonceSelection[] {
+  const parCle = new Map<string, { a: AnnonceSelection; depense: number; date: string }>();
+  for (const l of courant) {
+    const cle = cleElement(l, "annonces");
+    const x = parCle.get(cle) ?? { a: { cle, id: l.annonceId, nom: l.annonceNom, sous: "" }, depense: 0, date: "" };
+    x.depense += l.depense;
+    if (l.date >= x.date) {
+      x.a = { ...x.a, nom: l.annonceNom, sous: `${l.campagneNom} › ${l.groupeNom}` };
+      x.date = l.date;
+    }
+    parCle.set(cle, x);
+  }
+  return [...parCle.values()].sort((a, b) => b.depense - a.depense || a.a.nom.localeCompare(b.a.nom, "fr")).map((x) => x.a);
 }
 
 // ── La Comparaison ───────────────────────────────────────────────────────────
@@ -949,6 +1041,9 @@ export type SerieCompare = {
 
 export type Comparaison = {
   niveau: Niveau;
+  /** Un groupe d'annonces choisi au Bandeau : la Comparaison ne compare que
+   *  ses annonces, et le choix du niveau disparaît. */
+  niveauImpose: boolean;
   metriques: [CleMetrique, CleMetrique];
   /** Classés par la métrique 1. */
   elements: ElementCompare[];
@@ -972,7 +1067,8 @@ function classer(a: ElementCompare, b: ElementCompare, m: CleMetrique): number {
 }
 
 export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, c: Commandes): Comparaison {
-  const niveau = niveauDe(c.niveau);
+  const niveauImpose = !!c.groupe;
+  const niveau = niveauImpose ? "annonces" : niveauDe(c.niveau);
   const metriques = metriquesDe(vue, c.m1, c.m2);
 
   const groupes = new Map<string, { lignes: LigneMeta[]; recente: LigneMeta }>();
@@ -1028,7 +1124,7 @@ export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, 
     });
   });
 
-  return { niveau, metriques, elements, places, coches };
+  return { niveau, niveauImpose, metriques, elements, places, coches };
 }
 
 // ── Les dates, pour l'écran ──────────────────────────────────────────────────

@@ -238,8 +238,8 @@ export type AnnonceOuverte = {
 
 /**
  * L'annonce demandée par l'URL (`annonce`, par ID), si elle a des chiffres
- * dans la sélection : la période, et la campagne du Bandeau quand il y en a
- * une. Une annonce inconnue ne s'ouvre pas (spec, § « L'état de la page vit
+ * dans la sélection : la période, et la campagne et le groupe d'annonces du
+ * Bandeau quand il y en a. Une annonce inconnue ne s'ouvre pas (spec, § « L'état de la page vit
  * dans l'URL ») — comme un jour hors de la période : changer de filtre ou de
  * période la referme sans qu'aucun lien ait à le savoir.
  *
@@ -248,13 +248,13 @@ export type AnnonceOuverte = {
 export function annonceOuverteDe(
   x: string | undefined,
   lignes: LigneMeta[],
-  selection: { debut: string; fin: string; campagne: (l: LigneMeta) => boolean }
+  selection: { debut: string; fin: string; retenue: (l: LigneMeta) => boolean }
 ): AnnonceOuverte | null {
   const id = propre(x);
   if (!id) return null;
   let recente: LigneMeta | null = null;
   for (const l of lignes) {
-    if (l.annonceId !== id || l.date < selection.debut || l.date > selection.fin || !selection.campagne(l)) continue;
+    if (l.annonceId !== id || l.date < selection.debut || l.date > selection.fin || !selection.retenue(l)) continue;
     if (!recente || l.date > recente.date) recente = l;
   }
   return recente && { id, nom: recente.annonceNom, sous: `${recente.campagneNom} › ${recente.groupeNom}` };

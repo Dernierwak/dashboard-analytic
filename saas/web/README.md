@@ -21,7 +21,7 @@ Puis ouvre http://localhost:3000 — et réduis la fenêtre pour voir le rendu m
 - ✅ Fondation Next.js + thème Tailwind (tes tokens)
 - ✅ **Auth Supabase** (@supabase/ssr), middleware de protection des routes
 - ✅ Rapport hebdo en **vraies données** : KPIs 7 jours pleins (ancrés dernière donnée), deltas vs 7 j précédents, dépense par canal
-- ✅ **Conseils réels** via `weekly_reports` — payload publié en headless par `saas/traitement/build_report.py` (cron GitHub Actions), plus de pont
+- ✅ **Conseils réels** via `weekly_reports` — payload publié en headless par `saas/data/supabase/processed_data/weekly_report/publisher.py` (cron GitHub Actions), plus de pont
 - ✅ **Réactions** ✓ Fait / ● Utile / ✕ Pas pour moi → `reco_feedback`
 - ✅ Pages Coûts (`app/couts`), Labels (`app/labels`), Comptes (`app/comptes`), Équipe (`app/equipe`), Meta (`app/meta`), Google (`app/google`), Instagram (`app/instagram`), Conversions (`app/conversions`)
 - ✅ OAuth Meta + Google (`app/api/oauth/`), Stripe non branché (voir `BACKLOG.md`)
@@ -48,5 +48,5 @@ En local : mets-les dans `saas/web/.env.local` (gitignoré). Jamais la clé serv
    (celle qui contient `saas/web`, tant que ce n'est pas fusionné dans `main`)
 
 Chaque `git push` sur la branche redéploie automatiquement. La migration
-`supabase/migrations/000_run_me_all.sql` doit être passée pour que les conseils
+`saas/data/supabase/migrations/000_run_me_all.sql` doit être passée pour que les conseils
 et les réactions fonctionnent (table `weekly_reports` + `reco_feedback`).

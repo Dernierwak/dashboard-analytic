@@ -6,10 +6,12 @@ import { useCallback, useEffect, useRef, useTransition } from "react";
 // ── LE PANNEAU LATÉRAL ───────────────────────────────────────────────────────
 //
 // Spec, § « L'état de la page vit dans l'URL » ; user stories 44 à 46. UN SEUL
-// panneau à droite, pour deux usages : le jour d'un changement (ticket 11) et
-// l'annonce à lire (ticket 12). Il n'a PAS d'état à lui : il existe tant que
-// l'URL porte `jour` (ou `annonce`), et la page le rend ou non. Ouvrir l'un
-// retire l'autre dans le lien — il ne peut donc jamais y en avoir deux.
+// panneau à droite, pour quatre usages : les changements d'un jour (`jour`,
+// et `element` depuis un point de la Comparaison), tous ceux de la période
+// (`panneau=changements`), les aperçus des annonces (`panneau=apercus`) et
+// l'annonce à lire (`annonce`). Il n'a PAS d'état à lui : il existe tant que
+// l'URL porte l'un d'eux, et la page le rend ou non. Ouvrir l'un retire les
+// autres dans le lien — il ne peut donc jamais y en avoir deux.
 //
 // FERMER REMPLACE, OUVRIR EMPILE. Ouvrir est un `push` : « retour » referme.
 // Fermer est un `replace` : un `push` ferait rouvrir le panneau au « retour »
@@ -26,8 +28,8 @@ export function PanneauLateral({
   children,
 }: {
   titre: string;
-  sousTitre?: string;
-  /** Le lien de la page sans le panneau (`lienMeta(params, { jour: null })`). */
+  sousTitre?: React.ReactNode;
+  /** Le lien de la page sans le panneau (`lienMeta(params, SANS_PANNEAU)`). */
   fermeture: string;
   children: React.ReactNode;
 }) {
@@ -51,7 +53,9 @@ export function PanneauLateral({
   useEffect(() => bouton.current?.focus({ preventScroll: true }), [titre]);
 
   return (
-    <div className="fixed inset-0 z-50" aria-busy={enCours}>
+    // `data-garde-choix` : un clic dans le panneau ne relâche pas la ligne
+    // choisie de la Comparaison qui l'a ouvert.
+    <div className="fixed inset-0 z-50" aria-busy={enCours} data-garde-choix>
       <div onClick={fermer} className="voile-entre absolute inset-0 bg-ink/25 backdrop-blur-[2px]" aria-hidden />
       <aside
         role="dialog"
@@ -62,7 +66,7 @@ export function PanneauLateral({
         <header className="flex items-start justify-between gap-4 px-6 pb-4 pt-6">
           <div className="min-w-0">
             <h2 id="titre-panneau" className="text-[20px] font-semibold leading-tight text-ink first-letter:uppercase">{titre}</h2>
-            {sousTitre && <p className="mt-1 text-[13px] text-muted">{sousTitre}</p>}
+            {sousTitre && <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-muted">{sousTitre}</p>}
           </div>
           <button
             ref={bouton}

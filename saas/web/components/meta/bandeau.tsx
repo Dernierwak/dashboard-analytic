@@ -18,6 +18,8 @@ import {
   VUES,
   type Campagne,
   type CampagneChoisie,
+  type GroupeAnnonces,
+  type GroupeChoisi,
   type Periode,
   type Raccourci,
   type Vue,
@@ -27,8 +29,9 @@ import { lienMeta, type Params } from "@/lib/meta/liens";
 // ── MODULE 1 · LE BANDEAU DE COMMANDES ───────────────────────────────────────
 //
 // Spec, § « Solution », module 1 ; user stories 1, 6 à 11. Il porte le titre,
-// la date à laquelle Pulse a lu Meta, le choix de la campagne (menu avec
-// recherche, pastille et dépense de la période) et la période (raccourcis et
+// la date à laquelle Pulse a lu Meta, le choix de la campagne et du groupe
+// d'annonces (menus avec recherche, pastille et dépense de la période — le
+// groupe vient du ticket 13 de `.scratch/journal-meta/`) et la période (raccourcis et
 // calendrier sur deux mois, toujours comparée à la période d'avant de même
 // durée). Direction visuelle : celle du prototype validé (ticket 05).
 //
@@ -54,6 +57,8 @@ export function BandeauMeta({
   vue,
   campagnes,
   campagneChoisie,
+  groupes,
+  groupeChoisi,
   periode,
   raccourcis,
   hier,
@@ -63,6 +68,8 @@ export function BandeauMeta({
   vue: Vue;
   campagnes: Campagne[];
   campagneChoisie: CampagneChoisie | null;
+  groupes: GroupeAnnonces[];
+  groupeChoisi: GroupeChoisi | null;
   periode: Periode;
   raccourcis: Raccourci[];
   /** La borne haute des dates choisissables : le jour en cours est exclu. */
@@ -119,13 +126,31 @@ export function BandeauMeta({
             bord droit du groupe. Calé sur le bouton de la campagne, son menu
             déborderait à gauche d'un téléphone. */}
         <div className={`relative flex min-w-0 items-center gap-2 ${enCours ? "opacity-70" : ""}`}>
-          <ChoixCampagne
-            campagnes={campagnes}
+          <ChoixElement
+            mots={MOTS_CAMPAGNE}
+            options={campagnes.map((c) => ({ ...c, note: c.sansId ? "Avant l'identifiant Meta, regroupée par son nom" : undefined }))}
             choisie={campagneChoisie}
             periode={periode}
             compact={detache}
-            choisir={(cle) => aller({ campagne: cle })}
+            // Le groupe vit dans sa campagne : changer de campagne le retire.
+            choisir={(cle) => aller({ campagne: cle, groupe: null })}
           />
+          {/* Dans la pilule, le groupe ne se montre que choisi : trois menus
+              ne tiennent pas dans un téléphone, et « Tous » n'y dit rien. */}
+          {(!detache || groupeChoisi) && (
+            <ChoixElement
+              mots={MOTS_GROUPE}
+              options={groupes
+                .filter((g) => !campagneChoisie || g.campagneCle === campagneChoisie.cle)
+                .map((g) => ({ ...g, note: g.campagneNom }))}
+              choisie={groupeChoisi}
+              periode={periode}
+              compact={detache}
+              // Choisir un groupe choisit aussi sa campagne : la page entière
+              // se lit sous lui, Bandeau compris.
+              choisir={(cle) => aller({ groupe: cle, campagne: cle === null ? campagneChoisie?.cle ?? null : groupes.find((g) => g.cle === cle)?.campagneCle ?? null })}
+            />
+          )}
           <ChoixPeriode
             periode={periode}
             raccourcis={raccourcis}
@@ -142,6 +167,7 @@ export function BandeauMeta({
         {periode.rognee && " Le jour en cours n'est jamais compté : la période s'arrête hier."}
         {periode.arreteeAuDernierJourLu && " La dernière récolte a échoué : la période s'arrête au dernier jour lu."}
         {campagneChoisie && !campagneChoisie.connue && " La campagne demandée n'a aucune ligne sur ces dates : les chiffres sont vides, pas nuls."}
+        {groupeChoisi && !groupeChoisi.connue && " Le groupe d'annonces demandé n'a aucune ligne sur ces dates : les chiffres sont vides, pas nuls."}
       </p>
     </header>
   );
@@ -273,27 +299,53 @@ function BoutonMenu({
   );
 }
 
-const nomCampagne = (c: { nom: string }) => c.nom || "Campagne sans nom";
-
 function Pastille({ couleur, className = "h-2.5 w-2.5" }: { couleur: string; className?: string }) {
   return <span aria-hidden className={`shrink-0 rounded-full ${className}`} style={{ background: couleur }} />;
 }
 
-// ── Le menu des campagnes (user stories 6, 7) ────────────────────────────────
+// ── Les menus de la campagne et du groupe (user stories 6, 7) ────────────────
 
-function ChoixCampagne({
-  campagnes,
+/** Une entrée de menu : une campagne, ou un groupe d'annonces sous la pastille
+ *  de sa campagne. `note` s'écrit dessous. */
+type OptionMenu = { cle: string; nom: string; couleur: string; depense: number | null; note?: string };
+
+type Mots = { tous: string; tousCourt: string; chercher: string; colonne: string; inconnu: string; sansNom: string; liste: string };
+
+const MOTS_CAMPAGNE: Mots = {
+  tous: "Toutes les campagnes",
+  tousCourt: "Toutes",
+  chercher: "Chercher une campagne",
+  colonne: "Campagne",
+  inconnu: "Campagne sans donnée sur ces dates",
+  sansNom: "Campagne sans nom",
+  liste: "Campagnes",
+};
+const MOTS_GROUPE: Mots = {
+  tous: "Tous les groupes d'annonces",
+  tousCourt: "Tous",
+  chercher: "Chercher un groupe d'annonces",
+  colonne: "Groupe d'annonces",
+  inconnu: "Groupe sans donnée sur ces dates",
+  sansNom: "Groupe sans nom",
+  liste: "Groupes d'annonces",
+};
+
+function ChoixElement({
+  mots,
+  options: elements,
   choisie,
   periode,
   compact,
   choisir,
 }: {
-  campagnes: Campagne[];
-  choisie: CampagneChoisie | null;
+  mots: Mots;
+  options: OptionMenu[];
+  choisie: CampagneChoisie | GroupeChoisi | null;
   periode: Periode;
   compact: boolean;
   choisir: (cle: string | null) => void;
 }) {
+  const nomDe = (c: { nom: string }) => c.nom || mots.sansNom;
   const id = useId();
   const [ouvert, setOuvert] = useState(false);
   const [q, setQ] = useState("");
@@ -307,11 +359,11 @@ function ChoixCampagne({
 
   const recherche = q.trim().toLocaleLowerCase("fr");
   // « Toutes les campagnes » en tête, tant qu'aucune recherche ne l'écarte.
-  const options: (Campagne | null)[] = [
+  const options: (OptionMenu | null)[] = [
     ...(recherche === "" ? [null] : []),
-    ...campagnes.filter((c) => nomCampagne(c).toLocaleLowerCase("fr").includes(recherche)),
+    ...elements.filter((c) => nomDe(c).toLocaleLowerCase("fr").includes(recherche)),
   ];
-  const courante = choisie ? campagnes.find((c) => c.cle === choisie.cle) ?? null : null;
+  const courante = choisie ? elements.find((c) => c.cle === choisie.cle) ?? null : null;
 
   const ouvrir = () => {
     setQ("");
@@ -321,7 +373,7 @@ function ChoixCampagne({
   useEffect(() => {
     if (ouvert) champ.current?.focus();
   }, [ouvert]);
-  const valider = (c: Campagne | null) => {
+  const valider = (c: OptionMenu | null) => {
     setOuvert(false);
     bouton.current?.focus();
     if ((c?.cle ?? null) !== (choisie?.cle ?? null)) choisir(c?.cle ?? null);
@@ -339,17 +391,11 @@ function ChoixCampagne({
     }
   };
 
-  const libelle = choisie
-    ? choisie.connue
-      ? nomCampagne(choisie)
-      : "Campagne sans donnée sur ces dates"
-    : compact
-      ? "Toutes"
-      : "Toutes les campagnes";
+  const libelle = choisie ? (choisie.connue ? nomDe(choisie) : mots.inconnu) : compact ? mots.tousCourt : mots.tous;
 
   return (
     <>
-      <BoutonMenu ouvert={ouvert} basculer={ouvrir} controle={`${id}-menu`} bouton={bouton} etiquette={`Campagne : ${libelle}`}>
+      <BoutonMenu ouvert={ouvert} basculer={ouvrir} controle={`${id}-menu`} bouton={bouton} etiquette={`${mots.colonne} : ${libelle}`}>
         {courante ? <Pastille couleur={courante.couleur} className="h-2 w-2" /> : <Icone nom="calques" className="h-4 w-4 shrink-0 text-muted" />}
         <span className={`min-w-0 truncate ${compact ? "max-w-[7rem] sm:max-w-[12rem]" : "max-w-[14rem]"}`}>{libelle}</span>
       </BoutonMenu>
@@ -357,7 +403,7 @@ function ChoixCampagne({
         <div id={`${id}-menu`}>
           <label className="flex h-10 items-center gap-2 rounded-xl bg-canvas px-3 text-muted">
             <Icone nom="loupe" className="h-4 w-4 shrink-0" />
-            <span className="sr-only">Chercher une campagne</span>
+            <span className="sr-only">{mots.chercher}</span>
             <input
               ref={champ}
               value={q}
@@ -370,15 +416,15 @@ function ChoixCampagne({
               aria-expanded={ouvert}
               aria-controls={`${id}-liste`}
               aria-activedescendant={options.length ? `${id}-o${actif}` : undefined}
-              placeholder="Chercher une campagne"
+              placeholder={mots.chercher}
               className="min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-faint"
             />
           </label>
           <p className="flex justify-between px-3 pb-1 pt-2.5 text-[11.5px] text-faint">
-            <span>Campagne</span>
+            <span>{mots.colonne}</span>
             <span>Dépense du {bornes(periode.debut, periode.fin)}</span>
           </p>
-          <ul id={`${id}-liste`} role="listbox" aria-label="Campagnes">
+          <ul id={`${id}-liste`} role="listbox" aria-label={mots.liste}>
             {options.map((c, i) => {
               const choisi = (c?.cle ?? null) === (choisie?.cle ?? null);
               return (
@@ -395,8 +441,8 @@ function ChoixCampagne({
                 >
                   {c ? <Pastille couleur={c.couleur} /> : <Icone nom="calques" className="h-4 w-4 shrink-0 text-muted" />}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ink">{c ? nomCampagne(c) : "Toutes les campagnes"}</span>
-                    {c?.sansId && <span className="block text-[12px] font-normal text-faint">Avant l&apos;identifiant Meta, regroupée par son nom</span>}
+                    <span className="block truncate text-ink">{c ? nomDe(c) : mots.tous}</span>
+                    {c?.note && <span className="block truncate text-[12px] font-normal text-faint">{c.note}</span>}
                   </span>
                   {c && (
                     <span className="shrink-0 text-[12.5px] font-normal tabular-nums text-muted" title={c.depense === null ? "Aucune ligne sur la période : rien de dépensé n'a été lu." : undefined}>
@@ -407,7 +453,7 @@ function ChoixCampagne({
                 </li>
               );
             })}
-            {options.length === 0 && <li className="px-3 py-3 text-[13.5px] text-muted">Aucune campagne ne porte « {q.trim()} » sur cette période.</li>}
+            {options.length === 0 && <li className="px-3 py-3 text-[13.5px] text-muted">Aucun nom ne porte « {q.trim()} » sur cette période.</li>}
           </ul>
         </div>
       </Menu>
