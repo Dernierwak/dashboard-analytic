@@ -1,7 +1,7 @@
 # 13: L'écran du journal
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 11, 12
 
 ## Question
@@ -25,6 +25,27 @@ Fichiers : `saas/web/lib/meta/changements.ts`, `components/meta/panneau.tsx`,
 18 routes) et un harnais pour la logique pure (lecture de `extra_data`,
 regroupement du statut, « Actuel »). Se voit sur `/meta` après le passage du
 worker du ticket 12.
+
+## Answer
+
+**Construit et validé par David le 2026-10-14** (« ok met resolved »), après
+l'avoir vu sur `/meta` avec les vraies données : le panneau s'ouvre depuis un
+point en environ deux secondes en local.
+
+L'écran de la version 11 du prototype est sur `journal-meta/carte`
+(`5f3299e`) : filtre « Groupe d'annonces », onglets « Changements » et
+« Aperçus », points de la Tendance (sur l'axe un jour sans valeur), ligne mise
+en avant sur la Comparaison (zones de clic superposées corrigées dans
+`components/courbe.tsx`), panneau campagne › groupe › annonce avec statut,
+« Actuel » et avant / après lus dans `extra_data` par
+`lib/meta/rubriques.ts` (une forme inconnue rend la phrase seule).
+
+Vérifié : harnais `.scratch/journal-meta/harnais/13/` 28/28, `tsc` et
+`build` verts, 18 routes ; en base, `niveau`…`extra_data` existent et le
+passage `force` du 2026-10-13 n'a écrit aucun « changements meta KO ».
+
+**Pas encore en production** : la branche doit rejoindre `main` (Vercel) — et
+le cron de 07:00, qui tourne sur `main`, ne récolte `extra_data` qu'après.
 
 ## Comments
 

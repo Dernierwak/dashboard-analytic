@@ -85,14 +85,16 @@ le ticket 10.
   construite et éprouvée hors ligne (harnais 24/24) ; le groupe d'une annonce
   vient aussi de la hiérarchie des insights ; attend le `000` et un passage du
   worker pour se voir en base.
+- [L'écran du journal](issues/13-l-ecran-du-journal.md) : construit sur
+  `journal-meta/carte`, vu avec les vraies données et validé par David le
+  2026-10-14 ; reste à rejoindre `main`.
 
 ## Pas encore spécifié
 
 - **La vérification du budget** une fois qu'un vrai changement existera sur un
   compte.
-- **Le premier passage après le ticket 12** : vérifier en base que `niveau`,
-  `adset_id` et `extra_data` sont remplis — et l'avis de David sur les
-  nouvelles phrases du fil (« est passé de « Actif » à « … » »).
+- **La mise en production** : `journal-meta/carte` rejoint `main` ; jusque-là
+  ni Vercel ni le cron de 07:00 n'ont le nouveau code.
 - **Les lignes déjà en base** avant le ticket 12 n'ont pas d'`extra_data` : le
   passage du worker relit 180 jours et les complète ; au-delà, elles gardent
   leur phrase seule.
