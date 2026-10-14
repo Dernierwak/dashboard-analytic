@@ -203,9 +203,8 @@ function CarteChangement({ x }: { x: Carte }) {
             dont le fuseau n'a pas été récolté : sans le mot, elle se lirait
             comme une heure locale. */}
         <span className="shrink-0 text-[12.5px] text-faint">
-          {/* Une chaîne de statut le dit à chaque étape : Meta et une
-              personne s'y relaient. */}
-          {x.sorte !== "statut" && x.acteur && `${PAR[x.acteur]} · `}
+          {/* Une chaîne de statut le dit à chaque étape (`Etapes`). */}
+          {x.sorte === "lecture" && x.acteur && `${PAR[x.acteur]} · `}
           <span className="font-mono tabular-nums">
             {x.heure}
             {x.fuseau === null && " UTC"}

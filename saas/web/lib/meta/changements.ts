@@ -257,13 +257,13 @@ export function panneauDemandeDe(lire: Lire, periode: Periode): PanneauDemande {
 /** L'état de départ n'a ni heure ni acteur : il précède la chaîne. */
 export type Etape = { libelle: string; heure: string | null; acteur: Acteur };
 
-/** `acteur` est celui du premier changement : une chaîne de statut le dit à
- *  chaque étape, Meta et une personne s'y relayant (ticket 20). */
-type Commun = { id: string; instant: number; heure: string; fuseau: string | null; nature: string; acteur: Acteur };
-/** Une petite carte du panneau : un statut enchaîné, ou une modification. */
+type Commun = { id: string; instant: number; heure: string; fuseau: string | null; nature: string };
+/** Une petite carte du panneau : un statut enchaîné, ou une modification.
+ *  L'acteur d'un statut est sur chaque étape, pas sur la carte : Meta et une
+ *  personne s'y relaient (ticket 20). */
 export type Carte =
   | (Commun & { sorte: "statut"; etapes: Etape[] })
-  | (Commun & { sorte: "lecture"; lecture: Lecture; phrase: string });
+  | (Commun & { sorte: "lecture"; lecture: Lecture; phrase: string; acteur: Acteur });
 
 export type NoeudAnnonce = { id: string; nom: string; cartes: Carte[] };
 export type NoeudGroupe = {
@@ -303,15 +303,10 @@ const GRIS_INCONNU = "#c3c2bb";
  *  chaîne : l'état de départ, puis chaque état d'arrivée à son heure. */
 function carteDe(lignes: ChangementMeta[]): Carte {
   const [premier] = lignes;
-  const commun: Commun = {
-    id: premier.id,
-    instant: premier.instant,
-    heure: premier.heure,
-    fuseau: premier.fuseau,
-    nature: premier.nature,
-    acteur: premier.acteur,
-  };
-  if (premier.lecture.forme !== "statut") return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase };
+  const commun: Commun = { id: premier.id, instant: premier.instant, heure: premier.heure, fuseau: premier.fuseau, nature: premier.nature };
+  if (premier.lecture.forme !== "statut") {
+    return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase, acteur: premier.acteur };
+  }
   const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null, acteur: null }];
   for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure, acteur: l.acteur });
   return { ...commun, sorte: "statut", etapes };

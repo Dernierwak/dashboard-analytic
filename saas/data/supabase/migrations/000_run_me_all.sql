@@ -1204,10 +1204,12 @@ ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_niveau_check
 -- colonne « Modifié par » d'Ads Manager — 'personne' ou 'meta', lu dans
 -- l'`actor_id` de Meta (« 0 » pour Meta, sur un vrai compte). Jamais le nom :
 -- c'est celui d'un tiers, et l'écran n'en a pas besoin pour lire le
--- changement. NULL = pas encore récolté (lignes d'avant, Google). Ajout seul.
--- À APPLIQUER AVANT le passage du worker qui l'envoie : une colonne inconnue
--- fait refuser tout le lot de changements Meta du compte, et la page `/meta`
--- qui la lit dirait que le journal n'a pas pu être lu.
+-- changement. NULL = pas encore récolté (lignes d'avant, Google). Ajout seul ;
+-- le DROP ne vise que la contrainte qu'il recrée, pour rejouer le fichier,
+-- comme pour `niveau` — aucune ligne touchée.
+-- À APPLIQUER AVANT LA FUSION SUR `main` : Vercel déploie `/meta`, qui la lit
+-- (sans elle, la page dit que le journal n'a pas pu être lu), et le worker
+-- qui l'envoie se ferait refuser tout le lot de changements Meta du compte.
 ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS acteur text;
 ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_acteur_check;
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_acteur_check
