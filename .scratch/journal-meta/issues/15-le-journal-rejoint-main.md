@@ -19,17 +19,17 @@ ouvre la PR en brouillon, sans fusionner lui-même.
 
 ## Acceptance criteria
 
-- [ ] David confirme que le `000` a été joué sur Supabase. Vérifié en base :
+- [x] David confirme que le `000` a été joué sur Supabase. Vérifié en base :
       `platform_changes` porte `niveau`, `object_id`, `object_name`,
       `adset_id` et `extra_data`, et la CHECK de `categorie` accepte
       `objectif` et `calendrier`.
-- [ ] La branche est à jour avec `main` et fusionne sans conflit.
-- [ ] `saas/web` : sur un `.next` vidé, `npx tsc --noEmit` et
+- [x] La branche est à jour avec `main` et fusionne sans conflit.
+- [x] `saas/web` : sur un `.next` vidé, `npx tsc --noEmit` et
       `npm run build` sont verts, avec 18 routes.
-- [ ] `python3.12 -m py_compile` passe sur le Python touché par la branche.
-- [ ] `git grep` ne trouve aucune page de contrôle (`controle-`) ni
+- [x] `python3.12 -m py_compile` passe sur le Python touché par la branche.
+- [x] `git grep` ne trouve aucune page de contrôle (`controle-`) ni
       échafaudage oublié.
-- [ ] Une PR en brouillon `journal-meta/carte` → `main` est ouverte. Sa
+- [x] Une PR en brouillon `journal-meta/carte` → `main` est ouverte. Sa
       description renvoie à la spec et rappelle que rien ne se voit en base
       avant un passage du worker (ticket 16).
 - [ ] David a fusionné, et le déploiement Vercel de `main` est vert.
@@ -39,8 +39,9 @@ ouvre la PR en brouillon, sans fusionner lui-même.
 - **Colonnes en base : vues.** Avec la clé anonyme, PostgREST répond 200 à
   `select=niveau,object_id,object_name,adset_id,extra_data` sur
   `platform_changes` (et 400 à une colonne inexistante, témoin). La CHECK de
-  `categorie` ne se lit pas avec cette clé : **reste à confirmer par David**
-  (`objectif` et `calendrier` acceptés).
+  `categorie` ne se lit pas avec cette clé : David a rejoué le `000` en
+  entier le 2026-10-14, ce qui la pose (`DROP CONSTRAINT IF EXISTS` puis
+  `ADD`).
 - **Branche à jour** : `main` est un ancêtre de `journal-meta/carte` (22
   commits d'avance, dont la réorganisation du pipeline `1b05a92`) — la
   fusion est une avance rapide, sans conflit.
@@ -50,5 +51,5 @@ ouvre la PR en brouillon, sans fusionner lui-même.
   `saas/data`.
 - **`git grep controle-`** : seule la règle de `CLAUDE.md`, aucune page
   oubliée.
-- **PR en brouillon** ouverte (lien dans la conversation). Reste : la
-  confirmation de la CHECK, la fusion par David, Vercel vert.
+- **PR #6 en brouillon** ouverte ; la prévisualisation Vercel est verte.
+  Reste : la fusion par David, puis Vercel vert sur `main`.
