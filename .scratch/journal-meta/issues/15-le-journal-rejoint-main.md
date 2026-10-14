@@ -1,7 +1,7 @@
 # 15: Le journal Meta rejoint `main`
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: None (can start immediately)
 Spec : [14](14-spec-le-journal-meta.md), histoire 43.
 
@@ -32,7 +32,7 @@ ouvre la PR en brouillon, sans fusionner lui-même.
 - [x] Une PR en brouillon `journal-meta/carte` → `main` est ouverte. Sa
       description renvoie à la spec et rappelle que rien ne se voit en base
       avant un passage du worker (ticket 16).
-- [ ] David a fusionné, et le déploiement Vercel de `main` est vert.
+- [x] David a fusionné, et le déploiement Vercel de `main` est vert.
 
 ## Avancement — 2026-10-14
 
@@ -51,5 +51,11 @@ ouvre la PR en brouillon, sans fusionner lui-même.
   `saas/data`.
 - **`git grep controle-`** : seule la règle de `CLAUDE.md`, aucune page
   oubliée.
-- **PR #6 en brouillon** ouverte ; la prévisualisation Vercel est verte.
-  Reste : la fusion par David, puis Vercel vert sur `main`.
+- **PR #6** fusionnée par David le 2026-10-14 (`9cf14a3`) ; le statut
+  Vercel de ce commit est « Deployment has completed ».
+
+## Réponse
+
+Le journal Meta est sur `main` et déployé par Vercel. Rien n'est encore
+visible en base : les lignes ne portent leur détail qu'après un passage du
+worker (ticket 16).

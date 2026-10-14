@@ -98,8 +98,7 @@ le ticket 10.
 Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
 
 - [Le journal Meta rejoint `main`](issues/15-le-journal-rejoint-main.md) —
-  le `000` joué par David, `tsc`/`build` verts, PR en brouillon ; David
-  fusionne. Aucun bloqueur.
+  **fait** le 2026-10-14 : PR #6 fusionnée, Vercel vert.
 - [Les 180 derniers jours portent leur détail en production](issues/16-les-180-jours-en-production.md) —
   un passage du worker, vérifié en base et dans Chrome. Bloqué par 15.
 - [Le panneau qui met deux secondes à s'ouvrir](issues/17-le-panneau-en-deux-secondes.md) —
