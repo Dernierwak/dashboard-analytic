@@ -1,7 +1,7 @@
 # 16: Les 180 derniers jours portent leur détail en production
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 15
 Spec : [14](14-spec-le-journal-meta.md), histoires 38, 39, 41.
 
@@ -22,7 +22,7 @@ le lance. Le ticket dit lequel des deux a tourné.
 
 - [x] Un passage du worker a tourné sur `main`. Le ticket note lequel
       (cron ou lancement à la main) et sa date.
-- [ ] En base : les lignes Meta des 180 derniers jours portent `niveau`, et
+- [x] En base : les lignes Meta des 180 derniers jours portent `niveau`, et
       `extra_data` quand Meta l'envoie. Les annonces ont un `adset_id`, y
       compris les mises en pause.
 - [x] En base : les lignes plus anciennes gardent leur `resume`, et aucune
@@ -121,3 +121,36 @@ Le deuxième critère n'est pas rempli en entier. Le passage ne comble pas :
 - **15 annonces `creatif`** (2026-04-27 et 2026-05-29) sans `adset_id` ni
   campagne : leurs parents sont absents des insights. Toutes les annonces de
   statut, mises en pause comprises, ont leur `adset_id`.
+
+## Les 18 lignes héritées — effacées le 2026-10-14
+
+David : « oui supprime les ». Effacées une à une par leur clé
+(`user_id`, `channel`, `change_id`), avec en plus `niveau IS NULL` exigé côté
+base : 18 `DELETE`, une ligne chacun. Une copie des 18 lignes a été gardée hors
+du dépôt, qui est public. Elles ne reviendront pas : le code actuel ne produit plus
+leurs clés. Photo après effacement : 18 lignes disparues, aucune autre touchée,
+aucun détail perdu.
+
+## Réponse
+
+Passage du worker : **lancement à la main** par David sur `main`, le
+2026-10-14 (run `38502344781`, 02:41 → 04:01 UTC, `success`).
+
+En base, les **1 248** lignes Meta des 180 derniers jours portent toutes
+`niveau` et `extra_data`. Toutes les annonces de statut, mises en pause
+comprises, ont leur `adset_id`. Aucune ligne n'a perdu un détail. Les
+18 lignes de l'ancien code, sans `niveau`, ont été effacées avec l'accord de
+David. Les deux rapports de la semaine du 2026-10-12 ont été republiés.
+`/meta` en production est vérifié dans Chrome, critère par critère.
+
+Écrit tel quel, faute de mieux :
+- **15 annonces `creatif`** (2026-04-27 et 2026-05-29) n'ont pas
+  d'`adset_id`. Leur groupe est absent des insights, et le reconstituer
+  serait l'inventer. Elles quittent la fenêtre de 180 jours les 2026-10-24
+  et 2026-11-25 ;
+- la fermeture du panneau au tout premier chargement de `?jour=2026-09-30`
+  n'est pas reproduite ni expliquée ;
+- Meta a limité les appels pendant le passage (295 « User request limit
+  reached » sur la liste des groupes d'annonces par campagne, aucun sur
+  `/activities`). C'est à surveiller : à suivre au `BACKLOG.md` si ça
+  revient.
