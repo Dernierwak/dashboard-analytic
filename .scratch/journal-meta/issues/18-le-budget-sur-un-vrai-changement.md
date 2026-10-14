@@ -30,3 +30,16 @@ valeur ne se fabrique pour le simuler.
       lecture est corrigée, et le harnais du ticket couvre la forme réelle.
 - [ ] La mention « non testé » est retirée de la spec (ticket 14), de la
       carte et des commentaires du code.
+
+## Avancement — 2026-10-14
+
+Toujours en attente. David confirme qu'aucun budget Meta n'a été changé
+depuis le 2026-10-11 ; le dernier passage du worker (run `38502344781`,
+2026-10-14) n'a donc rien pu récolter de tel. Rien n'est construit ni retiré
+tant que l'événement n'existe pas.
+
+Pour reprendre : un budget changé dans Meta, puis un lancement à la main de
+`weekly-fetch.yml` (`force`, `user_id` du compte) — le cron ne fait son
+passage long que le samedi. Ensuite, chercher en base la ligne Meta
+`categorie = budget` et comparer son `extra_data` à la forme documentée
+(`_phrase_budget`, `saas/data/fetch_data/sources/meta/ads/fetchers/activities.py`).
