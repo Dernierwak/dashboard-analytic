@@ -163,6 +163,9 @@ const LECTEURS: Record<string, (e: Objet) => Lecture> = {
   enchere: lireValeur("Stratégie d'enchère", "bid_type"),
   calendrier: lireCalendrier,
   creation: lireCreation,
+  /** `{"campaign_id":<groupe>,"old_value":null,"new_value":"Début de la distribution","type":"delivery_event"}`
+   *  (ticket 19) : rien avant, le libellé de Meta après. */
+  diffusion: lireValeur("Diffusion", "delivery_event"),
 };
 
 /**

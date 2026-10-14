@@ -169,9 +169,9 @@ test("le panneau range campagne › groupe › annonce, le statut d'abord, par h
   assert.deepEqual(annonce.cartes.map((c) => c.sorte), ["statut", "lecture"], "le statut d'abord");
   const chaine = annonce.cartes[0] as Extract<Carte, { sorte: "statut" }>;
   assert.deepEqual(chaine.etapes, [
-    { libelle: "Actif", heure: null },
-    { libelle: "En attente d'examen", heure: "16:10" },
-    { libelle: "Actif", heure: "16:12" },
+    { libelle: "Actif", heure: null, acteur: null },
+    { libelle: "En attente d'examen", heure: "16:10", acteur: null },
+    { libelle: "Actif", heure: "16:12", acteur: null },
   ]);
 });
 

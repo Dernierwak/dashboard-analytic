@@ -1,12 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Courbe, type Repere } from "@/components/courbe";
 import { PastilleEcart } from "@/components/meta/elements";
 import type { MarqueJour } from "@/lib/meta/changements";
 import { dateBulle, formaterValeur, type MetriqueTendance } from "@/lib/meta/lecture";
 import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
+import { ouvrirSurPlace } from "@/lib/meta/sur-place";
 import { ORANGE_REPERE } from "@/lib/palette";
 
 // ── MODULE 3 · LA TENDANCE ───────────────────────────────────────────────────
@@ -37,8 +37,8 @@ import { ORANGE_REPERE } from "@/lib/palette";
 const NE_COUVRE_PAS =
   "Les points viennent du journal que Meta tient de ton compte, et Pulse n'en garde que les budgets, les statuts, " +
   "le ciblage, les visuels et textes, les enchères, les objectifs, les dates de diffusion et les créations de " +
-  "campagnes, de groupes d'annonces et d'annonces. " +
-  "Tout autre geste n'a pas de point, pas plus que ce que Meta fait de lui-même, comme la revue des annonces. " +
+  "campagnes, de groupes d'annonces et d'annonces, ainsi que le jour où une annonce commence à diffuser. " +
+  "Tout autre geste n'a pas de point, pas plus que le reste de ce que Meta fait de lui-même, comme la revue des annonces. " +
   "Un jour sans point n'est donc pas un jour où rien n'a changé.";
 
 const libelle = (n: number) => `${n} changement${n > 1 ? "s" : ""} · clique pour ${n > 1 ? "les" : "le"} voir`;
@@ -60,16 +60,13 @@ export function Tendance({
   marques: MarqueJour[] | null;
   params: Params;
 }) {
-  const router = useRouter();
-  const [enCours, demarrer] = useTransition();
   const [aide, setAide] = useState(false);
-  const ouvrirJour = (i: number) =>
-    demarrer(() => router.push(lienMeta(params, { ...SANS_PANNEAU, jour: dates[i] }), { scroll: false }));
+  const ouvrirJour = (i: number) => ouvrirSurPlace(lienMeta(params, { ...SANS_PANNEAU, jour: dates[i] }));
   const reperes: Repere[] = (marques ?? []).map((m) => ({ index: m.index, libelle: libelle(m.nombre) }));
 
   const [principale, ...autres] = metriques;
   return (
-    <section aria-labelledby="titre-tendance" aria-busy={enCours}>
+    <section aria-labelledby="titre-tendance">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
           <h2 id="titre-tendance" className="text-[22px] font-semibold tracking-tight text-ink">Tendance</h2>

@@ -40,6 +40,7 @@ export const MOT_CATEGORIE: Record<string, string> = {
   creation: "création",
   objectif: "objectif",
   calendrier: "calendrier",
+  diffusion: "diffusion",
   autre: "réglage",
 };
 

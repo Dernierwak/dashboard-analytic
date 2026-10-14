@@ -23,6 +23,7 @@
 
 import { jourEtHeureDans } from "../fuseau";
 import type { Campagne, Niveau as NiveauCompare, Periode } from "./lecture";
+import type { Onglet } from "./liens";
 import { lireExtra, type Lecture } from "./rubriques";
 
 /** Une ligne de `platform_changes`, telle que PostgREST la rend. Les cinq
@@ -42,9 +43,15 @@ export type LigneChangement = {
   adset_id: string | number | null;
   /** Tel que Meta l'envoie : un objet, ou une chaîne quand ce n'était pas du JSON. */
   extra_data: unknown;
+  /** Ticket 20 : NULL sur les lignes d'avant. */
+  acteur: string | null;
 };
 
 export type NiveauChangement = "campagne" | "groupe" | "annonce";
+
+/** Qui a fait le changement, comme la colonne « Modifié par » d'Ads Manager —
+ *  jamais un nom (ticket 20). `null` = pas encore récolté. */
+export type Acteur = "personne" | "meta" | null;
 
 export type ChangementMeta = {
   id: string;
@@ -73,6 +80,7 @@ export type ChangementMeta = {
    *  quand `extra_data` ne se lit pas. */
   phrase: string;
   lecture: Lecture;
+  acteur: Acteur;
 };
 
 /** Les catégories de `platform_changes`, dites comme Ads Manager les dit. */
@@ -85,9 +93,11 @@ const NATURES: Record<string, string> = {
   creation: "Création",
   objectif: "Objectif",
   calendrier: "Calendrier",
+  diffusion: "Diffusion",
 };
 const NATURE_INCONNUE = "Réglage";
 const NIVEAUX: NiveauChangement[] = ["campagne", "groupe", "annonce"];
+const ACTEURS: Acteur[] = ["personne", "meta"];
 
 const id = (x: string | number | null): string | null => (x === null || x === "" ? null : String(x));
 
@@ -117,6 +127,7 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
     groupeId: id(r.adset_id),
     phrase,
     lecture: lireExtra(categorie, r.extra_data),
+    acteur: (ACTEURS as (string | null)[]).includes(r.acteur) ? (r.acteur as Acteur) : null,
   };
 }
 
@@ -214,15 +225,45 @@ export function jourOuvertDe(x: string | undefined, periode: Periode): string | 
   return x >= periode.debut && x <= periode.fin ? x : null;
 }
 
+/** Ce que l'URL demande au Panneau latéral. UNE règle pour la page (ce
+ *  qu'elle lit), les onglets (lequel s'allume) et le journal (ce qu'il
+ *  montre) : le jour l'emporte sur l'onglet, même hors de la période — il
+ *  n'ouvre alors rien, et l'onglet ne s'ouvre pas non plus. */
+export type PanneauDemande = {
+  /** Un `jour` est dans l'URL, ouvrable ou non. */
+  jourDemande: boolean;
+  /** Le jour qui s'ouvre vraiment (`jourOuvertDe`). */
+  jour: string | null;
+  element: ElementOuvert | null;
+  onglet: Onglet | null;
+};
+
+type Lire = (cle: string) => string | undefined;
+
+/** La part de la demande qui ne dépend pas de la période : la page en a
+ *  besoin AVANT de lire ses données, pour ne pas lire ce qui ne s'ouvrira pas. */
+export function ongletDemandeDe(lire: Lire): Pick<PanneauDemande, "jourDemande" | "onglet"> {
+  const jourDemande = !!lire("jour");
+  const panneau = lire("panneau");
+  return { jourDemande, onglet: !jourDemande && (panneau === "changements" || panneau === "apercus") ? panneau : null };
+}
+
+export function panneauDemandeDe(lire: Lire, periode: Periode): PanneauDemande {
+  return { ...ongletDemandeDe(lire), jour: jourOuvertDe(lire("jour"), periode), element: elementOuvertDe(lire("element")) };
+}
+
 // ── Le panneau : campagne › groupe d'annonces › annonce ──────────────────────
 
-export type Etape = { libelle: string; heure: string | null };
+/** L'état de départ n'a ni heure ni acteur : il précède la chaîne. */
+export type Etape = { libelle: string; heure: string | null; acteur: Acteur };
 
 type Commun = { id: string; instant: number; heure: string; fuseau: string | null; nature: string };
-/** Une petite carte du panneau : un statut enchaîné, ou une modification. */
+/** Une petite carte du panneau : un statut enchaîné, ou une modification.
+ *  L'acteur d'un statut est sur chaque étape, pas sur la carte : Meta et une
+ *  personne s'y relaient (ticket 20). */
 export type Carte =
   | (Commun & { sorte: "statut"; etapes: Etape[] })
-  | (Commun & { sorte: "lecture"; lecture: Lecture; phrase: string });
+  | (Commun & { sorte: "lecture"; lecture: Lecture; phrase: string; acteur: Acteur });
 
 export type NoeudAnnonce = { id: string; nom: string; cartes: Carte[] };
 export type NoeudGroupe = {
@@ -263,9 +304,11 @@ const GRIS_INCONNU = "#c3c2bb";
 function carteDe(lignes: ChangementMeta[]): Carte {
   const [premier] = lignes;
   const commun: Commun = { id: premier.id, instant: premier.instant, heure: premier.heure, fuseau: premier.fuseau, nature: premier.nature };
-  if (premier.lecture.forme !== "statut") return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase };
-  const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null }];
-  for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure });
+  if (premier.lecture.forme !== "statut") {
+    return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase, acteur: premier.acteur };
+  }
+  const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null, acteur: null }];
+  for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure, acteur: l.acteur });
   return { ...commun, sorte: "statut", etapes };
 }
 

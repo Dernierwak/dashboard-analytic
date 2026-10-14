@@ -46,14 +46,22 @@ _ACTIVITES = {
     "update_ad_set_optimization_goal": "objectif",
     "update_ad_targets_spec":          "audience",
     "update_ad_set_duration":          "calendrier",
+    # Le seul fait de Meta retenu (`.scratch/journal-meta/issues/19`, voulu par
+    # David) : le jour où une annonce commence à diffuser explique le jour où
+    # sa dépense démarre. Écrit par l'acteur « Meta », une fois par annonce
+    # — 19 sur 88 activités lues du 26 au 29 août 2026. La revue reste écartée.
+    "first_delivery_event":            "diffusion",
 }
 
 # Le niveau se lit dans le PRÉFIXE de `event_type`, jamais dans `object_type` :
 # Meta y écrit « CAMPAIGN » pour un groupe d'annonces, son vocabulaire interne
 # appelant « campaign » le groupe et « campaign group » la campagne
 # (`.scratch/journal-meta/recherche/activities.md`, O2). L'ordre compte :
-# `update_ad_set_` avant `update_ad_`.
+# `update_ad_set_` avant `update_ad_`. `first_delivery_event` n'a pas de
+# préfixe : vu sur des annonces seulement (`object_type` ADGROUP, l'annonce
+# dans ce même vocabulaire — `.scratch/journal-meta/issues/19`).
 _NIVEAUX = (
+    ("first_delivery_event",  "annonce"),
     ("create_campaign_group", "campagne"),
     ("update_campaign_",      "campagne"),
     ("create_ad_set",         "groupe"),
@@ -164,12 +172,11 @@ def _nom(act: dict) -> str:
 def _montant(extra: dict, cote: str) -> tuple[float, str] | None:
     """Le montant d'un côté (`old_value` / `new_value`) d'un `composite_data`.
 
-    NON TESTÉ sur un vrai changement de budget (`.scratch/journal-meta/issues/07`) :
-    forme vue sur `create_ad_set` et dans les exemples publics
-    (`.scratch/journal-meta/recherche/activities.md`) —
-    `{"old_value": {"type": "payment_amount", "currency": "USD", "old_value": 1000},
-    "new_value": {…, "new_value": 2000}}`, en centimes. Toute autre forme rend
-    None, et la phrase dit « modifié ».
+    Forme vue sur deux vrais `update_ad_set_budget` du 2026-02-12
+    (`.scratch/journal-meta/issues/18`, harnais `harnais/18/`) —
+    `{"old_value": {"type": "payment_amount", "currency": "CHF", "old_value": 35000},
+    "new_value": {…, "new_value": 75000}}`, en centimes : 350 → 750 CHF dans Ads
+    Manager. Toute autre forme rend None, et la phrase dit « modifié ».
     """
     v = extra.get(cote)
     if not isinstance(v, dict) or v.get("type") != "payment_amount":
@@ -226,6 +233,8 @@ def _traduire_meta(act: dict) -> tuple[str, str] | None:
 
     if categorie == "creation":
         return ("creation", _CREATIONS[niveau].format(nom=nom))
+    if categorie == "diffusion":
+        return ("diffusion", f"l'annonce {nom} a commencé à diffuser")
     if categorie == "budget":
         return ("budget", _phrase_budget(extra, de))
     if categorie == "statut":
@@ -263,7 +272,10 @@ def recuperer(acces: AccesMeta, fenetre: Fenetre,
         return [], ["token ou ad_account_id manquant"]
     params = {
         "access_token": acces.jeton,
-        "fields": "event_type,event_time,object_id,object_name,extra_data",
+        # `actor_id` et jamais `actor_name` : « une personne » ou « Meta »
+        # suffit à l'écran, et le nom d'un tiers n'a pas à quitter Meta
+        # (`.scratch/journal-meta/issues/20`).
+        "fields": "event_type,event_time,object_id,object_name,extra_data,actor_id",
         "since": fenetre.debut.isoformat(),
         "until": fenetre.fin.isoformat(),
         "limit": 500,
@@ -305,11 +317,29 @@ def hierarchie_depuis_insights(lignes: list[dict]) -> Parents:
 def _groupe_dans_extra(extra: dict) -> str | None:
     """Le `campaign_id` d'un geste sur une annonce est l'ID de son GROUPE
     (vérifié contre `meta_ads_insights`, `.scratch/journal-meta/issues/02`).
-    Vu sous la forme `{"campaign_id": {"new": <ID>}}` sur `create_ad`."""
+    Vu sous la forme `{"campaign_id": {"new": <ID>}}` sur `create_ad`, et en
+    nombre nu `{"campaign_id": <ID>}` sur `first_delivery_event`
+    (`.scratch/journal-meta/issues/19`)."""
     v = extra.get("campaign_id")
     if isinstance(v, dict):
         v = v.get("new")
     return str(v) if v not in (None, "") else None
+
+
+# L'`actor_id` de Meta elle-même : « 0 » sur les 291 activités signées
+# « Meta » des 988 lues sur 180 jours, dans les deux langues de jeton, et sur
+# aucune des 4 personnes du compte (`.scratch/journal-meta/issues/20`). Non
+# documenté : c'est ce que Meta envoie, pas ce qu'elle promet.
+_ACTEUR_META = "0"
+
+
+def _acteur(act: dict) -> dict:
+    """`{"acteur": "meta" | "personne"}`, ou {} sans `actor_id` — même règle
+    que `_element` : un None effacerait par upsert ce qui est déjà écrit."""
+    aid = act.get("actor_id")
+    if aid in (None, ""):
+        return {}
+    return {"acteur": "meta" if str(aid) == _ACTEUR_META else "personne"}
 
 
 def _element(act: dict, niveau: str, parents: Parents) -> dict:
@@ -367,6 +397,7 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
             "categorie":   categorie,
             "resume":      resume,
             **_element(a, niveau_de(str(a.get("event_type") or "")), parents),
+            **_acteur(a),
             **({"extra_data": extra} if extra is not None else {}),
             **({"fuseau": fuseau} if fuseau else {}),
         })

@@ -1160,11 +1160,14 @@ ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_c
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_categorie_check
     CHECK (categorie IN
         ('budget', 'motcle', 'enchere', 'statut', 'audience', 'creatif', 'creation',
-         'objectif', 'calendrier', 'autre'));
+         'objectif', 'calendrier', 'diffusion', 'autre'));
 -- `objectif` et `calendrier` (journal-meta, ticket 11) : l'objectif
 -- d'optimisation d'un groupe et ses dates de diffusion, que la récolte garde
 -- depuis le ticket 12. Même remplacement que pour « creation » : la liste ne
 -- fait qu'ajouter, aucune ligne n'est touchée.
+-- `diffusion` (journal-meta, ticket 19) : le jour où Meta commence à
+-- distribuer une annonce (`first_delivery_event`). Même remplacement, et la
+-- même raison de l'appliquer AVANT le passage du worker qui la récolte.
 
 -- `fuseau` (meta-ads, ticket 17) : le `timezone_name` du compte publicitaire,
 -- récolté avec chaque changement. Meta écrit `event_time` en UTC, alors que
@@ -1196,6 +1199,21 @@ ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS extra_data  jsonb;
 ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_niveau_check;
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_niveau_check
     CHECK (niveau IS NULL OR niveau IN ('campagne', 'groupe', 'annonce'));
+
+-- `acteur` (journal-meta, ticket 20) : qui a fait le changement, comme la
+-- colonne « Modifié par » d'Ads Manager — 'personne' ou 'meta', lu dans
+-- l'`actor_id` de Meta (« 0 » pour Meta, sur un vrai compte). Jamais le nom :
+-- c'est celui d'un tiers, et l'écran n'en a pas besoin pour lire le
+-- changement. NULL = pas encore récolté (lignes d'avant, Google). Ajout seul ;
+-- le DROP ne vise que la contrainte qu'il recrée, pour rejouer le fichier,
+-- comme pour `niveau` — aucune ligne touchée.
+-- À APPLIQUER AVANT LA FUSION SUR `main` : Vercel déploie `/meta`, qui la lit
+-- (sans elle, la page dit que le journal n'a pas pu être lu), et le worker
+-- qui l'envoie se ferait refuser tout le lot de changements Meta du compte.
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS acteur text;
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_acteur_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_acteur_check
+    CHECK (acteur IS NULL OR acteur IN ('personne', 'meta'));
 
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);

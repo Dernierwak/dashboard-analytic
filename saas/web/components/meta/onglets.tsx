@@ -1,6 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
+import { useSearchParams } from "next/navigation";
+import { panneauDemandeDe } from "@/lib/meta/changements";
+import type { Periode } from "@/lib/meta/lecture";
+import { lienMeta, SANS_PANNEAU, type Onglet, type Params } from "@/lib/meta/liens";
 import { ORANGE_REPERE } from "@/lib/palette";
+import { fermerSurPlace, ouvrirSurPlace } from "@/lib/meta/sur-place";
 
 // ── LES ONGLETS DU BORD DROIT ────────────────────────────────────────────────
 //
@@ -11,29 +17,42 @@ import { ORANGE_REPERE } from "@/lib/palette";
 // texte de chaque annonce). Ils ouvrent le Panneau latéral et restent
 // accrochés à son bord ; un second clic sur l'onglet actif referme.
 //
-// Ce ne sont que des liens (l'état vit dans l'URL) : sans directive, rendus
-// côté serveur. Au téléphone, le panneau prend toute la largeur : les onglets
-// s'effacent tant qu'il est ouvert, la croix le referme.
-
-export type Onglet = "changements" | "apercus";
+// Ce sont des liens (l'état vit dans l'URL), mais ils LISENT l'URL dans le
+// navigateur : le journal s'ouvre sans repasser par le serveur
+// (`lib/meta/sur-place.ts`), et l'onglet doit s'allumer et se décaler quand
+// un jour s'ouvre depuis un point. Au téléphone, le panneau prend toute la
+// largeur : les onglets s'effacent tant qu'il est ouvert, la croix le referme.
 
 export function Onglets({
   params,
-  actif,
-  ouvert,
+  periode,
+  panneauServeur,
   changements,
   annonces,
 }: {
   params: Params;
-  /** L'onglet dont le panneau est ouvert — « Changements » l'est aussi pour
-   *  un jour ouvert depuis un point, puisque c'est le même journal. */
-  actif: Onglet | null;
-  /** Un panneau, quel qu'il soit, est ouvert : les onglets s'accrochent à son bord. */
-  ouvert: boolean;
-  /** `null` = le journal n'a pas pu être lu (la Tendance le dit). */
+  /** Pour reconnaître un jour qui s'ouvre vraiment (hors période, rien). */
+  periode: Periode;
+  /** Un panneau rendu par le serveur est ouvert (Aperçus, annonce lue) : en
+   *  sortir demande au serveur de relire la page sans lui. */
+  panneauServeur: boolean;
+  /** `null` = le journal n'a pas pu être lu (la Tendance le dit) : son
+   *  panneau d'erreur est rendu par le serveur. */
   changements: number | null;
   annonces: number;
 }) {
+  const url = useSearchParams();
+  const demande = panneauDemandeDe((cle) => url.get(cle) ?? undefined, periode);
+  const journalLu = changements !== null;
+  // Un journal illisible n'ouvre aucun jour : l'onglet ne doit pas s'allumer
+  // pour un panneau qui n'est pas là (relecture du ticket 17).
+  const jour = journalLu ? demande.jour : null;
+  // « Changements » l'est aussi pour un jour ouvert depuis un point : c'est
+  // le même journal.
+  const actif: Onglet | null = jour ? "changements" : demande.onglet;
+  const ouvert = !!(jour || demande.onglet || panneauServeur);
+  const journalSurPlace = journalLu && !panneauServeur;
+
   const onglets: { cle: Onglet; nom: string; nombre: number | null }[] = [
     { cle: "changements", nom: "Changements", nombre: changements },
     { cle: "apercus", nom: "Aperçus", nombre: annonces },
@@ -51,11 +70,20 @@ export function Onglets({
         // L'onglet actif referme, même sur un jour ouvert depuis un point :
         // il est surligné, un clic dessus ferme (David, ticket 13).
         const est = actif === o.cle;
+        const href = lienMeta(params, est ? SANS_PANNEAU : { ...SANS_PANNEAU, panneau: o.cle });
+        const surPlace = o.cle === "changements" && journalSurPlace;
         return (
           <Link
             key={o.cle}
-            href={lienMeta(params, est ? SANS_PANNEAU : { ...SANS_PANNEAU, panneau: o.cle })}
+            href={href}
             scroll={false}
+            onClick={(e) => {
+              // Un clic modifié (nouvel onglet, fenêtre, téléchargement) reste
+              // au navigateur, comme `Link` le fait lui-même.
+              if (!surPlace || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              (est ? fermerSurPlace : ouvrirSurPlace)(href);
+            }}
             aria-current={est ? "true" : undefined}
             aria-label={`${o.nom}${o.nombre === null ? "" : ` : ${o.nombre}`}${est ? ", fermer" : ""}`}
             className={`flex items-center gap-2.5 rounded-l-xl border border-r-0 px-2 py-4 text-[13px] font-semibold tracking-wide shadow-[-4px_4px_16px_rgba(14,15,18,0.08)] [writing-mode:vertical-rl] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand ${

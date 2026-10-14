@@ -66,9 +66,9 @@ le ticket 10.
   aucun filtre — Meta ne donne aucun champ qui dise « rien n'a changé ».
   Rouvert en partie : le résumé de ce qui a changé compare avant et après,
   texte contre texte (à confirmer, voir le prototype).
-- [Le budget sans exemple réel](issues/07-le-budget-sans-exemple-reel.md) : aucun
-  changement de budget sur le compte depuis le 2026-01-11 ; montant lu selon la
-  forme documentée, sinon « budget modifié », et dit non testé.
+- [Le budget sans exemple réel](issues/07-le-budget-sans-exemple-reel.md) : montant
+  lu selon la forme documentée, sinon « budget modifié ». Forme confirmée sur
+  deux vrais changements du 2026-02-12 ([ticket 18](issues/18-le-budget-sur-un-vrai-changement.md)).
 - [Les points de la Comparaison](issues/08-les-points-de-la-comparaison.md) : un
   point par ligne, de la couleur de la ligne ; le clic n'ouvre que cet élément.
 - [Repartir d'une base saine](issues/09-repartir-d-une-base-saine.md) : les
@@ -98,14 +98,25 @@ le ticket 10.
 Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
 
 - [Le journal Meta rejoint `main`](issues/15-le-journal-rejoint-main.md) —
-  le `000` joué par David, `tsc`/`build` verts, PR en brouillon ; David
-  fusionne. Aucun bloqueur.
+  **fait** le 2026-10-14 : PR #6 fusionnée, Vercel vert.
 - [Les 180 derniers jours portent leur détail en production](issues/16-les-180-jours-en-production.md) —
-  un passage du worker, vérifié en base et dans Chrome. Bloqué par 15.
+  **fait** le 2026-10-14 : passage lancé à la main sur `main`, vérifié en
+  base et dans Chrome ; 18 lignes de l'ancien code effacées avec l'accord de David.
 - [Le panneau qui met deux secondes à s'ouvrir](issues/17-le-panneau-en-deux-secondes.md) —
-  mesuré en production, corrigé si confirmé. Bloqué par 16.
+  **fait** le 2026-10-14 : 1,7–2,1 s → 12–25 ms, le journal s'ouvre sans
+  repasser par le serveur ; à fusionner sur `main`.
 - [Le budget vu sur un vrai changement](issues/18-le-budget-sur-un-vrai-changement.md) —
-  attend un vrai changement de budget sur un compte. Bloqué par 16.
+  **fait** le 2026-10-14 : forme confirmée sur deux vrais changements du
+  2026-02-12, rien à corriger ; accepté par David sur la foi des harnais (hors
+  de la fenêtre de 180 jours, donc ni en base ni à l'écran).
+
+- [Le jour où une annonce commence à diffuser](issues/19-le-debut-de-la-distribution.md) —
+  **fait** le 2026-10-14 : `first_delivery_event` vérifié sur un vrai
+  compte, montré sous la nouvelle catégorie `diffusion` (décision de David),
+  `000` appliqué ; accepté par David sur la foi des harnais, pas encore vu en
+  base (fusion et passage du worker reportés).
+- [Qui a fait le changement — une personne ou Meta](issues/20-qui-a-fait-le-changement.md) —
+  à trancher par David.
 
 ## Hors périmètre
 

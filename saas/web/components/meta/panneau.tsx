@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useTransition } from "react";
+import { fermerSurPlace } from "@/lib/meta/sur-place";
 
 // ── LE PANNEAU LATÉRAL ───────────────────────────────────────────────────────
 //
@@ -25,12 +26,17 @@ export function PanneauLateral({
   titre,
   sousTitre,
   fermeture,
+  surPlace = false,
   children,
 }: {
   titre: string;
   sousTitre?: React.ReactNode;
   /** Le lien de la page sans le panneau (`lienMeta(params, SANS_PANNEAU)`). */
   fermeture: string;
+  /** Le panneau est tenu par le navigateur (le journal, `journal-ouvert.tsx`) :
+   *  il se ferme en changeant l'URL seule. Un panneau rendu par le serveur
+   *  (Aperçus, annonce lue) doit, lui, être relu sans lui. */
+  surPlace?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -38,8 +44,8 @@ export function PanneauLateral({
   const bouton = useRef<HTMLButtonElement>(null);
 
   const fermer = useCallback(
-    () => demarrer(() => router.replace(fermeture, { scroll: false })),
-    [router, fermeture]
+    () => (surPlace ? fermerSurPlace(fermeture) : demarrer(() => router.replace(fermeture, { scroll: false }))),
+    [router, fermeture, surPlace]
   );
 
   useEffect(() => {

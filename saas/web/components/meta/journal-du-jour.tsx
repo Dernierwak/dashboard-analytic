@@ -1,6 +1,6 @@
 import { PanneauLateral } from "@/components/meta/panneau";
 import { enFrancais } from "@/lib/jour-de-travail";
-import type { Carte, NoeudAnnonce, NoeudCampagne, NoeudGroupe, Panneau } from "@/lib/meta/changements";
+import type { Acteur, Carte, NoeudAnnonce, NoeudCampagne, NoeudGroupe, Panneau } from "@/lib/meta/changements";
 import { actuel, type Lecture, type Rubrique } from "@/lib/meta/rubriques";
 
 // ── LES CHANGEMENTS, DANS LE PANNEAU LATÉRAL ─────────────────────────────────
@@ -29,6 +29,11 @@ import { actuel, type Lecture, type Rubrique } from "@/lib/meta/rubriques";
 
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
 
+/** La colonne « Modifié par » d'Ads Manager, sans le nom (ticket 20) : elle
+ *  sépare « quelqu'un a touché l'annonce » de « Meta a fait sa revue ». Rien
+ *  d'écrit pour une ligne récoltée avant : on ne sait pas. */
+const PAR: Record<NonNullable<Acteur>, string> = { personne: "par une personne", meta: "par Meta" };
+
 export function JournalChangements({
   panneau,
   titre,
@@ -48,7 +53,8 @@ export function JournalChangements({
 }) {
   const { total, jours, nonRattaches } = panneau;
   return (
-    <PanneauLateral titre={titre} sousTitre={sousTitre} fermeture={fermeture}>
+    // Le journal est toujours tenu par le navigateur (`journal-ouvert.tsx`).
+    <PanneauLateral titre={titre} sousTitre={sousTitre} fermeture={fermeture} surPlace>
       {total === 0 && <p className="mt-2 text-[14px] text-muted">{vide}</p>}
 
       <div className="mt-1 space-y-8">
@@ -196,9 +202,13 @@ function CarteChangement({ x }: { x: Carte }) {
         {/* L'heure est celle du compte. « UTC » ne s'écrit que pour une ligne
             dont le fuseau n'a pas été récolté : sans le mot, elle se lirait
             comme une heure locale. */}
-        <span className="shrink-0 font-mono text-[12.5px] tabular-nums text-faint">
-          {x.heure}
-          {x.fuseau === null && " UTC"}
+        <span className="shrink-0 text-[12.5px] text-faint">
+          {/* Une chaîne de statut le dit à chaque étape (`Etapes`). */}
+          {x.sorte === "lecture" && x.acteur && `${PAR[x.acteur]} · `}
+          <span className="font-mono tabular-nums">
+            {x.heure}
+            {x.fuseau === null && " UTC"}
+          </span>
         </span>
       </header>
       <div className="mt-2 min-w-0 text-[14px] text-ink [overflow-wrap:anywhere]">
@@ -209,7 +219,8 @@ function CarteChangement({ x }: { x: Carte }) {
 }
 
 /** « Actif → En attente de traitement 16:10 → En attente d'examen 16:25 →
- *  Actif 16:27 » (ticket 05) : les libellés de Meta, chacun à son heure. */
+ *  Actif 16:27 » (ticket 05) : les libellés de Meta, chacun à son heure et,
+ *  depuis le ticket 20, avec qui l'a fait. */
 function Etapes({ x }: { x: Extract<Carte, { sorte: "statut" }> }) {
   return (
     <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-[13.5px]">
@@ -218,6 +229,7 @@ function Etapes({ x }: { x: Extract<Carte, { sorte: "statut" }> }) {
           {i > 0 && <span className="text-faint" aria-label="puis">→</span>}
           <span>{e.libelle}</span>
           {e.heure && <span className="font-mono text-[11px] text-faint">{e.heure}</span>}
+          {e.acteur && <span className="text-[11px] text-faint">{PAR[e.acteur]}</span>}
         </span>
       ))}
     </p>

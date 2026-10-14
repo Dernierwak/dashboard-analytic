@@ -131,9 +131,10 @@ async function lireJournal(
       supabase
         .from("platform_changes")
         // `niveau` à `extra_data` viennent du `000` du ticket 12 de
-        // `.scratch/journal-meta/` : sur une base qui ne l'a pas joué, la
-        // requête refuse et la page dit que le journal n'a pas pu être lu.
-        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau, niveau, object_id, object_name, adset_id, extra_data")
+        // `.scratch/journal-meta/`, `acteur` de celui du ticket 20 : sur une
+        // base qui ne les a pas joués, la requête refuse et la page dit que
+        // le journal n'a pas pu être lu.
+        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume, fuseau, niveau, object_id, object_name, adset_id, extra_data, acteur")
         .eq("user_id", uid)
         .eq("channel", "meta")
         // Un jour de plus de chaque côté : `changementDe` découpe le jour dans

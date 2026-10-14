@@ -26,6 +26,20 @@ export type Params = Record<string, string | string[] | undefined>;
  *  avoir deux. */
 export const SANS_PANNEAU = { jour: null, element: null, panneau: null, annonce: null };
 
+/** Les onglets du bord droit (`components/meta/onglets.tsx`). */
+export type Onglet = "changements" | "apercus";
+
+/** Les paramètres d'un rendu serveur, SANS l'état du journal (`jour`,
+ *  `element`, `panneau=changements`). Le navigateur ouvre et ferme le journal
+ *  sans relire la page (`sur-place.ts`) : les paramètres que le serveur a vus
+ *  sont donc périmés sur ces clés-là, et un lien construit dessus rouvrirait
+ *  un jour déjà refermé (relecture du ticket 17). Seule l'URL du navigateur
+ *  dit si le journal est ouvert. */
+export function sansJournal(params: Params): Params {
+  const { jour: _jour, element: _element, ...reste } = params;
+  return reste.panneau === "changements" ? { ...reste, panneau: undefined } : reste;
+}
+
 /** `null` dans le patch retire le paramètre ; une liste l'écrit répété
  *  (`comparer`, les places cochées de la Comparaison). */
 export function lienMeta(params: Params, patch: Record<string, string | string[] | null>): string {

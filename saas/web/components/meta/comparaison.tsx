@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { Courbe } from "@/components/courbe";
 import { Icone } from "@/components/meta/elements";
 import { valeurElement } from "@/lib/meta/changements";
+import { ouvrirSurPlace } from "@/lib/meta/sur-place";
 import {
   MAX_COMPARES,
   METRIQUES,
@@ -378,8 +378,6 @@ function DeuxGraphes({
   params: Params;
   marques: Record<string, number[]> | null;
 }) {
-  const router = useRouter();
-  const [enCours, demarrer] = useTransition();
   const [choisie, basculer] = useLigneChoisie(c.coches.map((s) => s.cle));
   if (c.coches.length === 0) {
     return <p className="py-16 text-center text-[14px] text-muted">Coche un élément dans la liste pour suivre son évolution.</p>;
@@ -387,18 +385,15 @@ function DeuxGraphes({
   const etiquettes = dates.map(dateBulle);
   const indexChoisi = choisie === null ? null : c.coches.findIndex((s) => s.cle === choisie);
   const ouvrir = (si: number, i: number) =>
-    demarrer(() =>
-      router.push(
-        lienMeta(params, {
-          ...SANS_PANNEAU,
-          jour: dates[i],
-          element: valeurElement({ niveau: c.niveau, cle: c.coches[si].cle }),
-        }),
-        { scroll: false }
-      )
+    ouvrirSurPlace(
+      lienMeta(params, {
+        ...SANS_PANNEAU,
+        jour: dates[i],
+        element: valeurElement({ niveau: c.niveau, cle: c.coches[si].cle }),
+      })
     );
   return (
-    <div className="min-w-0" aria-busy={enCours}>
+    <div className="min-w-0">
       {/* La légende : le nom à côté de la couleur, toujours (deux teintes sont
           sous 3:1 de contraste), et le rang de la liste — deux annonces
           homonymes s'y distinguent autrement que par la teinte. Une ligne
