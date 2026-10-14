@@ -111,9 +111,10 @@ Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
   de la fenêtre de 180 jours, donc ni en base ni à l'écran).
 
 - [Le jour où une annonce commence à diffuser](issues/19-le-debut-de-la-distribution.md) —
-  **construit** le 2026-10-14 : `first_delivery_event` vérifié sur un vrai
-  compte, montré sous la nouvelle catégorie `diffusion` (décision de David) ;
-  attend le `000` en base, puis un passage du worker.
+  **fait** le 2026-10-14 : `first_delivery_event` vérifié sur un vrai
+  compte, montré sous la nouvelle catégorie `diffusion` (décision de David),
+  `000` appliqué ; accepté par David sur la foi des harnais, pas encore vu en
+  base (fusion et passage du worker reportés).
 - [Qui a fait le changement — une personne ou Meta](issues/20-qui-a-fait-le-changement.md) —
   à trancher par David.
 

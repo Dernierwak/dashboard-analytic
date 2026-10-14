@@ -1,8 +1,8 @@
 # 19: Le jour où une annonce commence à diffuser
 
 Type: task
-Status: open
-Blocked by: le `000` appliqué en base, puis un passage du worker
+Status: resolved
+Blocked by: None
 
 ## Le constat
 
@@ -69,11 +69,21 @@ existe aussi. Non retenu — personne ne l'a demandé.
       annonce, rangé sous son groupe et sa campagne.
 - [x] La carte du panneau dit « Diffusion » et la valeur de Meta, sans la
       traduire.
-- [ ] **Le `000` appliqué en base AVANT le passage du worker** — sinon la CHECK
+- [x] **Le `000` appliqué en base AVANT le passage du worker** — sinon la CHECK
       refuse tout le lot de changements Meta du compte, pas seulement ces
       lignes.
-- [ ] Après fusion sur `main` et un passage du worker lancé à la main
+- [ ] *(non vérifié — voir la résolution)* Après fusion sur `main` et un passage du worker lancé à la main
       (`weekly-fetch.yml` : `mode` = `mise_a_jour`, `force` coché, `user_id`
       du compte, comme au ticket 16 — la récolte relit 180 jours de
       changements), les lignes `diffusion` du 27 août sont en base et visibles
       sur `/meta`.
+
+## Résolution — 2026-10-14
+
+**Accepté par David sur la foi des harnais**, comme le ticket 18. Le `000` est
+appliqué en base par David. La récolte n'a pas encore tourné avec ce code :
+il n'est pas sur `main` (PR #7, fusion reportée) et un passage du worker prend
+environ deux heures. **Les lignes `diffusion` n'ont donc été vues ni en base ni
+sur `/meta`.** Rien ne se perd en attendant : la récolte relit 180 jours de
+changements, et le 27 août reste à portée jusqu'à fin février 2027. Le premier
+passage après la fusion les écrira ; un écart vu alors rouvre ce ticket.
