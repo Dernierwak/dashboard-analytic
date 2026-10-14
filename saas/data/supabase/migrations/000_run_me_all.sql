@@ -1200,6 +1200,19 @@ ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_n
 ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_niveau_check
     CHECK (niveau IS NULL OR niveau IN ('campagne', 'groupe', 'annonce'));
 
+-- `acteur` (journal-meta, ticket 20) : qui a fait le changement, comme la
+-- colonne « Modifié par » d'Ads Manager — 'personne' ou 'meta', lu dans
+-- l'`actor_id` de Meta (« 0 » pour Meta, sur un vrai compte). Jamais le nom :
+-- c'est celui d'un tiers, et l'écran n'en a pas besoin pour lire le
+-- changement. NULL = pas encore récolté (lignes d'avant, Google). Ajout seul.
+-- À APPLIQUER AVANT le passage du worker qui l'envoie : une colonne inconnue
+-- fait refuser tout le lot de changements Meta du compte, et la page `/meta`
+-- qui la lit dirait que le journal n'a pas pu être lu.
+ALTER TABLE public.platform_changes ADD COLUMN IF NOT EXISTS acteur text;
+ALTER TABLE public.platform_changes DROP CONSTRAINT IF EXISTS platform_changes_acteur_check;
+ALTER TABLE public.platform_changes ADD CONSTRAINT platform_changes_acteur_check
+    CHECK (acteur IS NULL OR acteur IN ('personne', 'meta'));
+
 CREATE INDEX IF NOT EXISTS idx_platform_changes_user_date
     ON public.platform_changes (user_id, occurred_at DESC);
 

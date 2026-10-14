@@ -272,7 +272,10 @@ def recuperer(acces: AccesMeta, fenetre: Fenetre,
         return [], ["token ou ad_account_id manquant"]
     params = {
         "access_token": acces.jeton,
-        "fields": "event_type,event_time,object_id,object_name,extra_data",
+        # `actor_id` et jamais `actor_name` : « une personne » ou « Meta »
+        # suffit à l'écran, et le nom d'un tiers n'a pas à quitter Meta
+        # (`.scratch/journal-meta/issues/20`).
+        "fields": "event_type,event_time,object_id,object_name,extra_data,actor_id",
         "since": fenetre.debut.isoformat(),
         "until": fenetre.fin.isoformat(),
         "limit": 500,
@@ -321,6 +324,22 @@ def _groupe_dans_extra(extra: dict) -> str | None:
     if isinstance(v, dict):
         v = v.get("new")
     return str(v) if v not in (None, "") else None
+
+
+# L'`actor_id` de Meta elle-même : « 0 » sur les 291 activités signées
+# « Meta » des 988 lues sur 180 jours, dans les deux langues de jeton, et sur
+# aucune des 4 personnes du compte (`.scratch/journal-meta/issues/20`). Non
+# documenté : c'est ce que Meta envoie, pas ce qu'elle promet.
+_ACTEUR_META = "0"
+
+
+def _acteur(act: dict) -> dict:
+    """`{"acteur": "meta" | "personne"}`, ou {} sans `actor_id` — même règle
+    que `_element` : un None effacerait par upsert ce qui est déjà écrit."""
+    aid = act.get("actor_id")
+    if aid in (None, ""):
+        return {}
+    return {"acteur": "meta" if str(aid) == _ACTEUR_META else "personne"}
 
 
 def _element(act: dict, niveau: str, parents: Parents) -> dict:
@@ -378,6 +397,7 @@ def lignes_activites(actes: list[dict], parents: Parents, fuseau: str | None = N
             "categorie":   categorie,
             "resume":      resume,
             **_element(a, niveau_de(str(a.get("event_type") or "")), parents),
+            **_acteur(a),
             **({"extra_data": extra} if extra is not None else {}),
             **({"fuseau": fuseau} if fuseau else {}),
         })

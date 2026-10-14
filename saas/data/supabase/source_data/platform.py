@@ -137,7 +137,7 @@ def lots_sans_effacer_la_campagne(records: list[dict]) -> list[list[dict]]:
 # (`.scratch/journal-meta/issues/11`), puis `fuseau` (meta-ads, ticket 17).
 # Google ne les envoie pas encore : ses lignes les laissent NULL.
 _COLONNES_SI_CONNUES = ("niveau", "object_id", "object_name", "adset_id",
-                        "extra_data", "fuseau")
+                        "extra_data", "fuseau", "acteur")
 
 
 def upsert_platform_changes(

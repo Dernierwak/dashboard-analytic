@@ -43,9 +43,15 @@ export type LigneChangement = {
   adset_id: string | number | null;
   /** Tel que Meta l'envoie : un objet, ou une chaîne quand ce n'était pas du JSON. */
   extra_data: unknown;
+  /** Ticket 20 : NULL sur les lignes d'avant. */
+  acteur: string | null;
 };
 
 export type NiveauChangement = "campagne" | "groupe" | "annonce";
+
+/** Qui a fait le changement, comme la colonne « Modifié par » d'Ads Manager —
+ *  jamais un nom (ticket 20). `null` = pas encore récolté. */
+export type Acteur = "personne" | "meta" | null;
 
 export type ChangementMeta = {
   id: string;
@@ -74,6 +80,7 @@ export type ChangementMeta = {
    *  quand `extra_data` ne se lit pas. */
   phrase: string;
   lecture: Lecture;
+  acteur: Acteur;
 };
 
 /** Les catégories de `platform_changes`, dites comme Ads Manager les dit. */
@@ -90,6 +97,7 @@ const NATURES: Record<string, string> = {
 };
 const NATURE_INCONNUE = "Réglage";
 const NIVEAUX: NiveauChangement[] = ["campagne", "groupe", "annonce"];
+const ACTEURS: Acteur[] = ["personne", "meta"];
 
 const id = (x: string | number | null): string | null => (x === null || x === "" ? null : String(x));
 
@@ -119,6 +127,7 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
     groupeId: id(r.adset_id),
     phrase,
     lecture: lireExtra(categorie, r.extra_data),
+    acteur: (ACTEURS as (string | null)[]).includes(r.acteur) ? (r.acteur as Acteur) : null,
   };
 }
 
@@ -245,9 +254,12 @@ export function panneauDemandeDe(lire: Lire, periode: Periode): PanneauDemande {
 
 // ── Le panneau : campagne › groupe d'annonces › annonce ──────────────────────
 
-export type Etape = { libelle: string; heure: string | null };
+/** L'état de départ n'a ni heure ni acteur : il précède la chaîne. */
+export type Etape = { libelle: string; heure: string | null; acteur: Acteur };
 
-type Commun = { id: string; instant: number; heure: string; fuseau: string | null; nature: string };
+/** `acteur` est celui du premier changement : une chaîne de statut le dit à
+ *  chaque étape, Meta et une personne s'y relayant (ticket 20). */
+type Commun = { id: string; instant: number; heure: string; fuseau: string | null; nature: string; acteur: Acteur };
 /** Une petite carte du panneau : un statut enchaîné, ou une modification. */
 export type Carte =
   | (Commun & { sorte: "statut"; etapes: Etape[] })
@@ -291,10 +303,17 @@ const GRIS_INCONNU = "#c3c2bb";
  *  chaîne : l'état de départ, puis chaque état d'arrivée à son heure. */
 function carteDe(lignes: ChangementMeta[]): Carte {
   const [premier] = lignes;
-  const commun: Commun = { id: premier.id, instant: premier.instant, heure: premier.heure, fuseau: premier.fuseau, nature: premier.nature };
+  const commun: Commun = {
+    id: premier.id,
+    instant: premier.instant,
+    heure: premier.heure,
+    fuseau: premier.fuseau,
+    nature: premier.nature,
+    acteur: premier.acteur,
+  };
   if (premier.lecture.forme !== "statut") return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase };
-  const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null }];
-  for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure });
+  const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null, acteur: null }];
+  for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure, acteur: l.acteur });
   return { ...commun, sorte: "statut", etapes };
 }
 
