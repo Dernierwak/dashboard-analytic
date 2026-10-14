@@ -20,20 +20,20 @@ le lance. Le ticket dit lequel des deux a tourné.
 
 ## Acceptance criteria
 
-- [ ] Un passage du worker a tourné sur `main`. Le ticket note lequel
+- [x] Un passage du worker a tourné sur `main`. Le ticket note lequel
       (cron ou lancement à la main) et sa date.
 - [ ] En base : les lignes Meta des 180 derniers jours portent `niveau`, et
       `extra_data` quand Meta l'envoie. Les annonces ont un `adset_id`, y
       compris les mises en pause.
-- [ ] En base : les lignes plus anciennes gardent leur `resume`, et aucune
+- [x] En base : les lignes plus anciennes gardent leur `resume`, et aucune
       ligne n'a perdu un détail écrit par un passage précédent.
-- [ ] Le rapport hebdo se publie toujours et lit `resume` sans changement.
-- [ ] Dans Chrome, sur `/meta` en production : le filtre « Groupe
+- [x] Le rapport hebdo se publie toujours et lit `resume` sans changement.
+- [x] Dans Chrome, sur `/meta` en production : le filtre « Groupe
       d'annonces », l'onglet « Changements » et son nombre, la mise en
       avant d'une ligne de la Comparaison (halo, points pleins), le panneau
       ouvert depuis un point, qui reste dans l'URL et ne déborde pas à
       droite.
-- [ ] Ce qui n'a pas pu être vérifié est écrit tel quel dans la réponse.
+- [x] Ce qui n'a pas pu être vérifié est écrit tel quel dans la réponse.
 
 ## Avancement — 2026-10-14, 02:40 UTC
 
@@ -78,3 +78,46 @@ le lance. Le ticket dit lequel des deux a tourné.
   2026-10-12 ont été republiés pendant le passage (03:12 et 04:01 UTC). Le
   journal du run dit « rapport publié » pour les deux comptes.
 - **Chrome** : toujours renvoyé vers `/login`, pas encore vérifié.
+
+## Avancement — 2026-10-14, Chrome sur `/meta` en production
+
+David connecté. Vérifié à l'écran sur la période 30 sept. → 6 oct. :
+
+- **Filtre « Groupe d'annonces »** : le menu liste 5 groupes, chacun avec sa
+  campagne et sa dépense de la période, avec une recherche.
+- **Onglet « Changements »** sur le bord droit, avec son nombre (18) ; la
+  Tendance marque le 30 sept. d'un point orange (« 18 changements · clique
+  pour les voir »).
+- **Panneau d'un jour** (`?jour=2026-09-30`) : 18 changements rangés
+  campagne › groupe, chacun avec son geste et l'avant → après
+  (« En attente de traitement → Actif »), le Ciblage en clair. Le panneau
+  tient après un rechargement complet. Un jour sans changement
+  (`?jour=2026-10-03`) le dit en une phrase.
+- **Mise en avant dans la Comparaison** : un clic sur une courbe l'épaissit,
+  estompe les autres (légende comprise) et rend plein, avec un halo, son
+  point de changement du 30 sept., sur les deux graphes.
+- **Panneau ouvert depuis ce point** : l'URL porte `jour` et
+  `element=annonce:…`, le panneau ne montre que les 2 changements de
+  l'annonce (Statut en trois étapes, Création), emboîtés
+  campagne › groupe › annonce.
+- **Débordement** : ni la page ni le panneau ne débordent à droite (bord du
+  panneau à 1 780 px pour 1 792 px de large, aucun défilement horizontal).
+
+Non élucidé : au tout premier essai, l'URL `?jour=2026-09-30` est revenue à
+`/meta` sans panneau. Ce n'est pas reproduit : après un rechargement complet
+et à chaque ouverture suivante, le panneau tient. Le plus probable est un
+second clic de ma part tombé sur le voile, qui ferme le panneau ; ce n'est pas
+prouvé.
+
+## Ce qui reste ouvert
+
+Le deuxième critère n'est pas rempli en entier. Le passage ne comble pas :
+
+- **18 lignes sans `niveau`** (2026-04-28 et 2026-07-01), sans `object_id`,
+  avec l'ancienne formulation du `resume`. Elles viennent probablement de
+  l'ancien code, et Meta ne les renvoie plus sous la même clé. Elles quittent
+  la fenêtre de 180 jours entre le 2026-10-25 et le 2026-12-28. Les effacer est
+  un `DELETE`, que David doit valider ;
+- **15 annonces `creatif`** (2026-04-27 et 2026-05-29) sans `adset_id` ni
+  campagne : leurs parents sont absents des insights. Toutes les annonces de
+  statut, mises en pause comprises, ont leur `adset_id`.
