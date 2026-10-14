@@ -83,6 +83,12 @@ export type ChangementMeta = {
   phrase: string;
   lecture: Lecture;
   acteur: Acteur;
+  /** Le début de la distribution d'une annonce : seul geste dont Meta envoie
+   *  aussi des déclinaisons (`rangerDeclinaisons`). */
+  diffusion: boolean;
+  /** Une déclinaison rangée sous la vraie annonce : la carte qu'elle rejoint
+   *  et l'annonce sous laquelle elle se lit. `null` partout ailleurs. */
+  declinaisonDe: { changeId: string; annonceId: string } | null;
 };
 
 /** Les catégories de `platform_changes`, dites comme Ads Manager les dit.
@@ -135,7 +141,39 @@ export function changementDe(r: LigneChangement): ChangementMeta | null {
     phrase,
     lecture: lireExtra(categorie, r.extra_data),
     acteur: (ACTEURS as (string | null)[]).includes(r.acteur) ? (r.acteur as Acteur) : null,
+    diffusion: categorie === "diffusion",
+    declinaisonDe: null,
   };
+}
+
+/**
+ * Au lancement d'une annonce, Meta envoie un « Début de la distribution » pour
+ * elle ET pour des déclinaisons qu'il crée lui-même (nommées
+ * « <annonce>_Group_1 »), invisibles dans Ads Manager. Vu le 2026-10-14 : le
+ * 14 mai, 8 lignes dans un groupe pour une seule annonce ; aucune des 92
+ * déclinaisons en base n'est dans `meta_ads_creatives` (la liste des annonces
+ * du compte), toutes les annonces des insights y sont.
+ *
+ * Une diffusion d'annonce absente de `connues` se range donc sous la vraie
+ * annonce — seulement quand il y en a EXACTEMENT une qui démarre le même jour
+ * dans le même groupe : Meta ne dit pas de quelle annonce vient une
+ * déclinaison, et deviner le lien serait l'inventer. Sinon elle garde sa
+ * carte. Décidé par l'ID, jamais par le nom (règle du journal : aucune logique
+ * sur un libellé). Rien n'est jeté : la carte compte ses déclinaisons.
+ */
+export function rangerDeclinaisons(changements: ChangementMeta[], connues: ReadonlySet<string>): ChangementMeta[] {
+  const cle = (c: ChangementMeta) => `${c.jour}|${c.groupeId}`;
+  const estDiffusion = (c: ChangementMeta) => c.diffusion && c.niveau === "annonce" && c.objetId !== null && c.groupeId !== null;
+  const vraies = new Map<string, ChangementMeta[]>();
+  for (const c of changements) {
+    if (estDiffusion(c) && connues.has(c.objetId!)) vraies.set(cle(c), [...(vraies.get(cle(c)) ?? []), c]);
+  }
+  return changements.map((c) => {
+    if (!estDiffusion(c) || connues.has(c.objetId!)) return c;
+    const candidates = vraies.get(cle(c)) ?? [];
+    if (candidates.length !== 1) return c;
+    return { ...c, declinaisonDe: { changeId: candidates[0].id, annonceId: candidates[0].objetId! } };
+  });
 }
 
 // ── La portée : ce que la page regarde ───────────────────────────────────────
@@ -199,6 +237,7 @@ function nonRattache(c: ChangementMeta, p: Portee): boolean {
 /** La clé qui réunit les pas d'un statut : l'élément et le jour. Un statut
  *  sans élément connu, ou que `extra_data` ne raconte pas, reste seul. */
 function cleCarte(c: ChangementMeta): string {
+  if (c.declinaisonDe) return c.declinaisonDe.changeId;
   return c.lecture.forme === "statut" && c.objetId ? `statut|${c.jour}|${c.niveau}|${c.objetId}` : c.id;
 }
 
@@ -276,7 +315,14 @@ type Commun = { id: string; instant: number; heure: string; fuseau: string | nul
  *  personne s'y relaient (ticket 20). */
 export type Carte =
   | (Commun & { sorte: "statut"; etapes: Etape[] })
-  | (Commun & { sorte: "lecture"; lecture: Lecture; phrase: string; acteur: Acteur });
+  | (Commun & {
+      sorte: "lecture";
+      lecture: Lecture;
+      phrase: string;
+      acteur: Acteur;
+      /** Les déclinaisons de Meta rangées sous ce début de distribution. */
+      declinaisons: number;
+    });
 
 export type NoeudAnnonce = { id: string; nom: string; cartes: Carte[] };
 export type NoeudGroupe = {
@@ -315,10 +361,13 @@ const GRIS_INCONNU = "#c3c2bb";
 /** Les changements d'une même carte → la carte. Les pas d'un statut font une
  *  chaîne : l'état de départ, puis chaque état d'arrivée à son heure. */
 function carteDe(lignes: ChangementMeta[]): Carte {
-  const [premier] = lignes;
+  // Une déclinaison peut partir quelques secondes avant sa vraie annonce :
+  // la carte prend l'heure et le contenu de la vraie.
+  const premier = lignes.find((l) => !l.declinaisonDe) ?? lignes[0];
   const commun: Commun = { id: premier.id, instant: premier.instant, heure: premier.heure, fuseau: premier.fuseau, nature: premier.nature };
   if (premier.lecture.forme !== "statut") {
-    return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase, acteur: premier.acteur };
+    const declinaisons = lignes.filter((l) => l.declinaisonDe).length;
+    return { ...commun, sorte: "lecture", lecture: premier.lecture, phrase: premier.phrase, acteur: premier.acteur, declinaisons };
   }
   const etapes: Etape[] = premier.lecture.avant === null ? [] : [{ libelle: premier.lecture.avant, heure: null, acteur: null }];
   for (const l of lignes) if (l.lecture.forme === "statut") etapes.push({ libelle: l.lecture.apres, heure: l.heure, acteur: l.acteur });
@@ -348,9 +397,10 @@ type Noms = Record<string, string>;
 
 function noeudGroupe(id: string | null, lignes: ChangementMeta[], noms: Noms): NoeudGroupe {
   const propres = lignes.filter((l) => l.niveau === "groupe");
-  const annonces = regrouper(lignes.filter((l) => l.niveau !== "groupe"), (l) => l.objetId ?? l.id).map(([aid, la]): NoeudAnnonce => ({
+  const annonces = regrouper(lignes.filter((l) => l.niveau !== "groupe"), (l) => l.declinaisonDe?.annonceId ?? l.objetId ?? l.id).map(([aid, la]): NoeudAnnonce => ({
     id: aid,
-    nom: noms[aid] ?? la.find((l) => l.objetNom)?.objetNom ?? aid,
+    // Le nom de la vraie annonce, jamais celui d'une déclinaison rangée sous elle.
+    nom: noms[aid] ?? (la.find((l) => !l.declinaisonDe && l.objetNom) ?? la.find((l) => l.objetNom))?.objetNom ?? aid,
     cartes: cartesDe(la),
   }));
   const cartes = cartesDe(propres);
