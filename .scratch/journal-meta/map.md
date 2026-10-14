@@ -103,9 +103,15 @@ Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
   **fait** le 2026-10-14 : passage lancé à la main sur `main`, vérifié en
   base et dans Chrome ; 18 lignes de l'ancien code effacées avec l'accord de David.
 - [Le panneau qui met deux secondes à s'ouvrir](issues/17-le-panneau-en-deux-secondes.md) —
-  mesuré en production, corrigé si confirmé. Bloqué par 16.
+  **fait** le 2026-10-14 : 1,7–2,1 s → 12–25 ms, le journal s'ouvre sans
+  repasser par le serveur ; à fusionner sur `main`.
 - [Le budget vu sur un vrai changement](issues/18-le-budget-sur-un-vrai-changement.md) —
-  attend un vrai changement de budget sur un compte. Bloqué par 16.
+  attend un vrai changement de budget sur un compte.
+
+- [Le jour où une annonce commence à diffuser](issues/19-le-debut-de-la-distribution.md) —
+  à trancher par David.
+- [Qui a fait le changement — une personne ou Meta](issues/20-qui-a-fait-le-changement.md) —
+  à trancher par David.
 
 ## Hors périmètre
 
