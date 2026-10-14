@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { jourOuvertDe } from "@/lib/meta/changements";
+import { panneauDemandeDe } from "@/lib/meta/changements";
 import type { Periode } from "@/lib/meta/lecture";
-import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
+import { lienMeta, SANS_PANNEAU, type Onglet, type Params } from "@/lib/meta/liens";
 import { ORANGE_REPERE } from "@/lib/palette";
 import { fermerSurPlace, ouvrirSurPlace } from "@/lib/meta/sur-place";
 
@@ -22,8 +22,6 @@ import { fermerSurPlace, ouvrirSurPlace } from "@/lib/meta/sur-place";
 // (`lib/meta/sur-place.ts`), et l'onglet doit s'allumer et se décaler quand
 // un jour s'ouvre depuis un point. Au téléphone, le panneau prend toute la
 // largeur : les onglets s'effacent tant qu'il est ouvert, la croix le referme.
-
-export type Onglet = "changements" | "apercus";
 
 export function Onglets({
   params,
@@ -44,15 +42,16 @@ export function Onglets({
   annonces: number;
 }) {
   const url = useSearchParams();
-  const jourDemande = url.get("jour") ?? undefined;
-  const jour = jourOuvertDe(jourDemande, periode);
-  const panneau = url.get("panneau");
-  const onglet: Onglet | null = !jourDemande && (panneau === "changements" || panneau === "apercus") ? panneau : null;
+  const demande = panneauDemandeDe((cle) => url.get(cle) ?? undefined, periode);
+  const journalLu = changements !== null;
+  // Un journal illisible n'ouvre aucun jour : l'onglet ne doit pas s'allumer
+  // pour un panneau qui n'est pas là (relecture du ticket 17).
+  const jour = journalLu ? demande.jour : null;
   // « Changements » l'est aussi pour un jour ouvert depuis un point : c'est
   // le même journal.
-  const actif: Onglet | null = jour ? "changements" : onglet;
-  const ouvert = !!(jour || onglet || panneauServeur);
-  const journalSurPlace = changements !== null && !panneauServeur;
+  const actif: Onglet | null = jour ? "changements" : demande.onglet;
+  const ouvert = !!(jour || demande.onglet || panneauServeur);
+  const journalSurPlace = journalLu && !panneauServeur;
 
   const onglets: { cle: Onglet; nom: string; nombre: number | null }[] = [
     { cle: "changements", nom: "Changements", nombre: changements },
@@ -79,8 +78,9 @@ export function Onglets({
             href={href}
             scroll={false}
             onClick={(e) => {
-              // Cmd/Ctrl-clic : un nouvel onglet, que le lien sait ouvrir seul.
-              if (!surPlace || e.metaKey || e.ctrlKey || e.shiftKey) return;
+              // Un clic modifié (nouvel onglet, fenêtre, téléchargement) reste
+              // au navigateur, comme `Link` le fait lui-même.
+              if (!surPlace || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
               e.preventDefault();
               (est ? fermerSurPlace : ouvrirSurPlace)(href);
             }}

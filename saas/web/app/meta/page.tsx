@@ -19,15 +19,15 @@ import { BandeauMeta } from "@/components/meta/bandeau";
 import { Comparaison } from "@/components/meta/comparaison";
 import { JournalOuvert } from "@/components/meta/journal-ouvert";
 import { LectureAnnonce } from "@/components/meta/lecture-annonce";
-import { Onglets, type Onglet } from "@/components/meta/onglets";
+import { Onglets } from "@/components/meta/onglets";
 import { PanneauLateral } from "@/components/meta/panneau";
 import { SelecteurVue } from "@/components/meta/selecteur-vue";
 import { TableauDetaille } from "@/components/meta/tableau";
 import { Tendance } from "@/components/meta/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { getDonneesMeta } from "@/lib/meta/donnees";
-import { joursMarques, marquesElement, panneauDe, type Portee } from "@/lib/meta/changements";
-import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
+import { joursMarques, marquesElement, ongletDemandeDe, panneauDe, type Portee } from "@/lib/meta/changements";
+import { lienMeta, SANS_PANNEAU, sansJournal, type Params } from "@/lib/meta/liens";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +39,10 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
   // Plusieurs panneaux à la fois n'arrivent que par une URL tapée à la main
   // (chaque lien retire les autres) : le jour l'emporte, puis l'onglet, et ce
   // qui ne s'ouvrira pas n'est pas lu pour rien.
-  const jourDemande = un(searchParams.jour);
-  const ongletDemande = un(searchParams.panneau);
-  const onglet: Onglet | null =
-    !jourDemande && (ongletDemande === "changements" || ongletDemande === "apercus") ? ongletDemande : null;
+  const { jourDemande, onglet } = ongletDemandeDe((cle) => un(searchParams[cle]));
+  // Les composants reçoivent les paramètres sans l'état du journal : c'est
+  // le navigateur qui le tient (`sansJournal`, `lib/meta/liens.ts`).
+  const params = sansJournal(searchParams);
   const meta = await getDonneesMeta(
     {
       vue: un(searchParams.vue),
@@ -79,7 +79,7 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
     noms: Object.fromEntries(comparaison.elements.map((e) => [e.cle, e.nom])),
     couleurs: Object.fromEntries(comparaison.coches.map((s) => [s.cle, s.couleur])),
   };
-  const fermeture = lienMeta(searchParams, SANS_PANNEAU);
+  const fermeture = lienMeta(params, SANS_PANNEAU);
 
   return (
     // Pas de `max-w-*` : le conteneur prend toute la largeur laissée par la
@@ -90,7 +90,7 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
           chaque période choisie en plein défilement. */}
       <BandeauMeta
         lecture={meta.lecture}
-        params={searchParams}
+        params={params}
         vue={meta.vue}
         campagnes={meta.campagnes}
         campagneChoisie={choisie}
@@ -110,20 +110,20 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
       )}
 
       <div className="mt-6 space-y-12">
-        <SelecteurVue cartes={meta.cartes} vue={meta.vue} params={searchParams} />
+        <SelecteurVue cartes={meta.cartes} vue={meta.vue} params={params} />
         <Tendance
           metriques={meta.tendance}
           dates={dates}
           datesAvant={meta.datesAvant}
           sujet={sujet}
           marques={marques}
-          params={searchParams}
+          params={params}
         />
         <Comparaison
           comparaison={comparaison}
           vue={meta.vue}
           dates={dates}
-          params={searchParams}
+          params={params}
           sujet={sujet}
           vignettes={meta.vignettes}
           marques={marquesComparaison}
@@ -132,7 +132,7 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
       </div>
 
       <Onglets
-        params={searchParams}
+        params={params}
         periode={periode}
         panneauServeur={onglet === "apercus" || !!meta.annonce}
         changements={periodeEntiere ? periodeEntiere.total : null}
@@ -160,7 +160,7 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
       )}
 
       {onglet === "apercus" && (
-        <ApercusAnnonces annonces={meta.annonces} apercus={meta.apercus} params={searchParams} fermeture={fermeture} />
+        <ApercusAnnonces annonces={meta.annonces} apercus={meta.apercus} params={params} fermeture={fermeture} />
       )}
 
       {/* Une annonce sans chiffres sur la période et la sélection choisies

@@ -3,13 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { JournalChangements } from "@/components/meta/journal-du-jour";
 import { enFrancais } from "@/lib/jour-de-travail";
-import {
-  elementOuvertDe,
-  jourOuvertDe,
-  panneauDe,
-  type ChangementMeta,
-  type Portee,
-} from "@/lib/meta/changements";
+import { panneauDe, panneauDemandeDe, type ChangementMeta, type Portee } from "@/lib/meta/changements";
 import { bornes, type Campagne, type Niveau, type Periode } from "@/lib/meta/lecture";
 
 // ── LE JOURNAL OUVERT, TENU PAR LE NAVIGATEUR ────────────────────────────────
@@ -21,8 +15,8 @@ import { bornes, type Campagne, type Niveau, type Periode } from "@/lib/meta/lec
 // l'URL — ce composant ne fait que la lire, au rendu serveur d'un lien
 // partagé comme après un `pushState`.
 //
-// Mêmes règles que la page : le jour l'emporte sur l'onglet, et un jour hors
-// de la période n'ouvre rien (le paramètre reste sans effet).
+// La règle de ce qui s'ouvre est celle de la page et des onglets
+// (`panneauDemandeDe`).
 
 const changements = (n: number) => (n === 0 ? "Aucun changement" : `${n} changement${n > 1 ? "s" : ""}`);
 
@@ -47,15 +41,12 @@ export function JournalOuvert({
   comparaison: { niveau: Niveau; noms: Record<string, string>; couleurs: Record<string, string> };
   fermeture: string;
 }) {
-  const params = useSearchParams();
-  const jourDemande = params.get("jour") ?? undefined;
-  const jour = jourOuvertDe(jourDemande, periode);
-  const element = elementOuvertDe(params.get("element") ?? undefined);
-  const periodeEntiere = !jourDemande && params.get("panneau") === "changements";
+  const url = useSearchParams();
+  const { jour, element, onglet } = panneauDemandeDe((cle) => url.get(cle) ?? undefined, periode);
 
   const panneau = jour
     ? panneauDe(journal, { debut: jour, fin: jour }, { ...portee, element }, contexte)
-    : periodeEntiere
+    : onglet === "changements"
       ? panneauDe(journal, { debut: periode.debut, fin: periode.fin }, portee, contexte)
       : null;
 

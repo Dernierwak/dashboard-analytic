@@ -13,6 +13,11 @@
 // reste la vérité : un lien partagé ou un rechargement rend le même panneau.
 // OUVRIR EMPILE, FERMER REMPLACE, comme le Panneau latéral (`panneau.tsx`).
 //
+// Ce chemin ne change QUE l'état du journal (`jour`, `element`,
+// `panneau=changements`). Les paramètres du dernier rendu serveur sont donc
+// périmés sur ces clés-là seulement, et la page les retire de ceux qu'elle
+// donne à ses liens (`sansJournal`, `liens.ts`).
+//
 // Sans directive : appelé seulement depuis des gestionnaires de clic, donc
 // jamais au rendu serveur.
 

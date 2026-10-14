@@ -23,6 +23,7 @@
 
 import { jourEtHeureDans } from "../fuseau";
 import type { Campagne, Niveau as NiveauCompare, Periode } from "./lecture";
+import type { Onglet } from "./liens";
 import { lireExtra, type Lecture } from "./rubriques";
 
 /** Une ligne de `platform_changes`, telle que PostgREST la rend. Les cinq
@@ -212,6 +213,33 @@ export function jourOuvertDe(x: string | undefined, periode: Periode): string | 
   // `Date` accepte le 30 février et le reporte au 2 mars : on refuse.
   if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== x) return null;
   return x >= periode.debut && x <= periode.fin ? x : null;
+}
+
+/** Ce que l'URL demande au Panneau latéral. UNE règle pour la page (ce
+ *  qu'elle lit), les onglets (lequel s'allume) et le journal (ce qu'il
+ *  montre) : le jour l'emporte sur l'onglet, même hors de la période — il
+ *  n'ouvre alors rien, et l'onglet ne s'ouvre pas non plus. */
+export type PanneauDemande = {
+  /** Un `jour` est dans l'URL, ouvrable ou non. */
+  jourDemande: boolean;
+  /** Le jour qui s'ouvre vraiment (`jourOuvertDe`). */
+  jour: string | null;
+  element: ElementOuvert | null;
+  onglet: Onglet | null;
+};
+
+type Lire = (cle: string) => string | undefined;
+
+/** La part de la demande qui ne dépend pas de la période : la page en a
+ *  besoin AVANT de lire ses données, pour ne pas lire ce qui ne s'ouvrira pas. */
+export function ongletDemandeDe(lire: Lire): Pick<PanneauDemande, "jourDemande" | "onglet"> {
+  const jourDemande = !!lire("jour");
+  const panneau = lire("panneau");
+  return { jourDemande, onglet: !jourDemande && (panneau === "changements" || panneau === "apercus") ? panneau : null };
+}
+
+export function panneauDemandeDe(lire: Lire, periode: Periode): PanneauDemande {
+  return { ...ongletDemandeDe(lire), jour: jourOuvertDe(lire("jour"), periode), element: elementOuvertDe(lire("element")) };
 }
 
 // ── Le panneau : campagne › groupe d'annonces › annonce ──────────────────────
