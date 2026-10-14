@@ -108,8 +108,8 @@ partagé.
 
 Écrit tel quel :
 - la mesure « après » est faite sur la preview de la branche, pas sur le
-  domaine de production. Elle se refait sur la production une fois la PR
-  fusionnée ;
+  domaine de production. La PR #7 est fusionnée depuis le 2026-10-14 :
+  la mesure sur la production reste à refaire ;
 - non traité : ouvrir un jour pendant que le panneau Aperçus ou l'annonce
   lue est ouvert (rendu serveur) afficherait deux panneaux. À la souris,
   c'est impossible, puisque le voile du panneau couvre les graphes ;

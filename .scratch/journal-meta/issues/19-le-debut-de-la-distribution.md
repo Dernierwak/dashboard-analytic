@@ -82,8 +82,8 @@ existe aussi. Non retenu — personne ne l'a demandé.
 
 **Accepté par David sur la foi des harnais**, comme le ticket 18. Le `000` est
 appliqué en base par David. La récolte n'a pas encore tourné avec ce code :
-il n'est pas sur `main` (PR #7, fusion reportée) et un passage du worker prend
-environ deux heures. **Les lignes `diffusion` n'ont donc été vues ni en base ni
+il n'était pas sur `main` à l'acceptation (PR #7, fusionnée depuis le
+2026-10-14) et un passage du worker prend environ deux heures. **Les lignes `diffusion` n'ont donc été vues ni en base ni
 sur `/meta`.** Rien ne se perd en attendant : la récolte relit 180 jours de
 changements, et le 27 août reste à portée jusqu'à fin février 2027. Le premier
 passage après la fusion les écrira ; un écart vu alors rouvre ce ticket.

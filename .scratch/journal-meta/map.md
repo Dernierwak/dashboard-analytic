@@ -35,7 +35,7 @@ prototype (privé).
 - Schéma : `saas/data/supabase/migrations/000_run_me_all.sql`, table
   `platform_changes`.
 - Écran : `saas/web/lib/meta/changements.ts`, `components/meta/panneau.tsx`,
-  `journal-du-jour.tsx`, `tendance.tsx`, `comparaison.tsx`, `bandeau.tsx`.
+  `journal-changements.tsx`, `tendance.tsx`, `comparaison.tsx`, `bandeau.tsx`.
 
 **Règles qui ne se négocient pas ici.** Rien de traduit dans l'application
 (ticket 04). Un changement réel n'est jamais jeté sans rien dire : au pire,
@@ -104,7 +104,8 @@ Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
   base et dans Chrome ; 18 lignes de l'ancien code effacées avec l'accord de David.
 - [Le panneau qui met deux secondes à s'ouvrir](issues/17-le-panneau-en-deux-secondes.md) —
   **fait** le 2026-10-14 : 1,7–2,1 s → 12–25 ms, le journal s'ouvre sans
-  repasser par le serveur ; à fusionner sur `main`.
+  repasser par le serveur ; sur `main` par la PR #7, mesure en production
+  à refaire.
 - [Le budget vu sur un vrai changement](issues/18-le-budget-sur-un-vrai-changement.md) —
   **fait** le 2026-10-14 : forme confirmée sur deux vrais changements du
   2026-02-12, rien à corriger ; accepté par David sur la foi des harnais (hors
@@ -113,10 +114,22 @@ Découpés depuis la spec (ticket 14) le 2026-10-14, validés par David.
 - [Le jour où une annonce commence à diffuser](issues/19-le-debut-de-la-distribution.md) —
   **fait** le 2026-10-14 : `first_delivery_event` vérifié sur un vrai
   compte, montré sous la nouvelle catégorie `diffusion` (décision de David),
-  `000` appliqué ; accepté par David sur la foi des harnais, pas encore vu en
-  base (fusion et passage du worker reportés).
+  `000` appliqué ; accepté par David sur la foi des harnais ; sur `main` par
+  la PR #7, pas encore vu en base (attend un passage du worker).
 - [Qui a fait le changement — une personne ou Meta](issues/20-qui-a-fait-le-changement.md) —
-  à trancher par David.
+  **fait** le 2026-10-14 : Meta reconnu à `actor_id` = `"0"`, aucun nom de
+  personne demandé ; construit avant d'être tranché, puis accepté par David ;
+  `000` appliqué, sur `main` par la PR #7, pas encore vu en base (attend un
+  passage du worker).
+
+## Reste à trancher
+
+- **Le filtre par groupe d'annonces cache les changements de la campagne.**
+  Sous ce filtre, une pause ou un budget posé au niveau de la campagne, qui
+  touche pourtant le groupe, sort du journal sans être compté nulle part
+  (`lib/meta/changements.ts`, filtre de portée). C'est voulu et commenté,
+  mais ça frôle « un changement réel n'est jamais jeté sans rien dire ».
+  Relevé par la revue du chantier le 2026-10-14 ; à trancher par David.
 
 ## Hors périmètre
 

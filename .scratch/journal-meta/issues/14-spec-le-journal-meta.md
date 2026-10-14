@@ -1,7 +1,7 @@
 # 14: Spec — le journal Meta qui dit ce qui a changé
 
 Type: spec
-Status: open
+Status: resolved
 Label: ready-for-agent
 Synthèse de la carte et des tickets 01 à 13, écrite le 2026-10-14.
 
@@ -82,11 +82,12 @@ reprenne ou la prolonge sans rouvrir ses décisions.
 - **Schéma de `platform_changes` — ajout seul.** Colonnes `niveau`
   (`campagne` / `groupe` / `annonce`, NULL permis, CHECK), `object_id`,
   `object_name`, `adset_id` (texte) et `extra_data` (jsonb, ou chaîne si Meta
-  n'envoie pas du JSON). Catégories `objectif` et `calendrier` ajoutées à la
-  CHECK de `categorie` (`DROP CONSTRAINT IF EXISTS` puis `ADD`, aucune ligne
+  n'envoie pas du JSON). Catégories `objectif`, `calendrier` puis `diffusion`
+  (ticket 19) ajoutées à la CHECK de `categorie` (`DROP CONSTRAINT IF EXISTS` puis `ADD`, aucune ligne
   touchée). Toutes NULL sur les lignes Google et celles d'avant. Pas de
   colonnes `avant` / `apres` extraites : tout se lit dans `extra_data`.
-  `resume` reste écrit (le rapport hebdo le lit).
+  `resume` reste écrit (le rapport hebdo le lit). Colonne `acteur`
+  (`personne` / `meta`, ticket 20), ajoutée de même.
 - **Récolte Meta.** Le niveau se lit dans le préfixe de `event_type` (pas
   dans `object_type`, peu fiable). `adset_id` vaut l'objet lui-même pour un
   groupe ; pour une annonce, `extra_data.campaign_id` (qui porte l'ID du
@@ -125,12 +126,15 @@ reprenne ou la prolonge sans rouvrir ses décisions.
   par élément et par jour, bulle « nom seul » au survol d'une ligne).
   Valeurs partagées dans un module sans directive `"use client"`.
 
-**Reste à faire** (pas encore spécifié en détail, voir la carte) :
-- **La mise en production** : `journal-meta/carte` rejoint `main` ; jusque-là
-  ni Vercel ni le cron de 07:00 n'ont le nouveau code.
-- **Les lignes d'avant le ticket 12** : un passage du worker relit 180 jours
-  et les complète ; au-delà, elles gardent leur phrase seule.
-- **La vérification du budget** dès qu'un vrai changement existera.
+**Ce qui restait à faire, fait** (le détail est dans les tickets) :
+- **La mise en production** : sur `main` par les PR #6 et #7 (tickets 15 et
+  17).
+- **Les lignes d'avant le ticket 12** : complétées par un passage du worker
+  sur 180 jours (ticket 16) ; au-delà, elles gardent leur phrase seule.
+- **La vérification du budget** : forme confirmée sur deux vrais
+  changements (ticket 18).
+- **Ajouts après la spec** : le début de la diffusion d'une annonce (ticket
+  19) et qui a fait le changement (ticket 20).
 
 ## Testing Decisions
 
@@ -184,5 +188,5 @@ reprenne ou la prolonge sans rouvrir ses décisions.
 - Le `000` doit être joué sur Supabase avant tout passage qui écrit les
   nouvelles colonnes ; sans lui, le premier `objectif` ou `calendrier` fait
   refuser tout le lot Meta (vu le 2026-10-14).
-- Le panneau met environ deux secondes à s'ouvrir en local : à revoir si la
-  production le confirme.
+- Le panneau mettait environ deux secondes à s'ouvrir : ramené à 12–25 ms
+  par le ticket 17.

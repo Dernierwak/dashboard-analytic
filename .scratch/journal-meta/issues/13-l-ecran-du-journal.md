@@ -20,7 +20,7 @@ qui rend des rubriques « nom, avant, après » ; une forme inconnue rend la
 phrase `resume` seule. Rien n'est traduit (ticket 04).
 
 Fichiers : `saas/web/lib/meta/changements.ts`, `components/meta/panneau.tsx`,
-`journal-du-jour.tsx`, `tendance.tsx`, `comparaison.tsx`, `bandeau.tsx`,
+`journal-changements.tsx`, `tendance.tsx`, `comparaison.tsx`, `bandeau.tsx`,
 `components/courbe.tsx`. Vérification : `CLAUDE.md` §9 (`tsc`, `build`,
 18 routes) et un harnais pour la logique pure (lecture de `extra_data`,
 regroupement du statut, « Actuel »). Se voit sur `/meta` après le passage du

@@ -1,7 +1,7 @@
 # 20: Qui a fait le changement — une personne ou Meta
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: None
 
 ## Le constat
@@ -71,7 +71,7 @@ de personne) : 988 activités.
 - Schéma : `acteur` dans le `000`. Aucune ligne touchée, rien de supprimé.
 - Écran : `lib/meta/changements.ts` (`Acteur`, sur le changement, la carte et
   chaque étape), `lib/meta/donnees.ts` (colonne lue),
-  `components/meta/journal-du-jour.tsx` (« par … »).
+  `components/meta/journal-changements.tsx` (« par … »).
 - Harnais `harnais/20/` : `verifier.py` 13/13 (récolte, requête sans
   `actor_name`) et `acteur.test.ts` 4/4 (lecture à l'écran, la chaîne du
   18 septembre). Les étapes attendues du harnais 13 portent désormais
@@ -84,11 +84,26 @@ de personne) : 988 activités.
 - [x] La récolte écrit `acteur` sans jamais demander ni garder le nom.
 - [x] Le panneau dit « par Meta » / « par une personne », et une ligne d'avant
       ne dit rien.
-- [ ] **Le `000` appliqué en base AVANT la fusion sur `main`.** L'ordre est
+- [x] **Le `000` appliqué en base AVANT la fusion sur `main`.** L'ordre est
       le `000`, puis le déploiement Vercel, puis le worker. `/meta` lit la
       colonne : sans elle, la page dit que le journal n'a pas pu être lu. Le
       worker l'envoie : sans elle, tout son lot de changements Meta est refusé.
-- [ ] Après fusion sur `main` et un passage du worker lancé à la main
+- [ ] *(non vérifié — voir la résolution)* Après fusion sur `main` et un passage du worker lancé à la main
       (`weekly-fetch.yml` : `mode` = `mise_a_jour`, `force` coché, `user_id`
       du compte), la carte du 18 septembre sur `/meta` dit « par une
       personne » à 16:05 et « par Meta » à 16:09.
+
+## Résolution — 2026-10-14
+
+**Construit avant d'être tranché, puis accepté par David.** Les décisions
+ci-dessus ont été prises à l'implémentation, dans le sens que le ticket
+recommandait, et fusionnées par la PR #7 avant que le `000` soit coché. La
+revue du chantier l'a relevé ; David confirme que le `000` est appliqué et que
+`/meta` se lit en production, et accepte le choix (Meta reconnu à
+`actor_id` = `"0"`, aucun nom de personne demandé).
+
+Reste non vérifié : aucun passage du worker n'a encore tourné avec ce code,
+donc la colonne `acteur` est vide en base et la carte du 18 septembre ne dit
+encore ni « par une personne » ni « par Meta ». Le premier passage lancé à la
+main (`weekly-fetch.yml`, `force` coché) l'écrira ; un écart vu alors rouvre
+ce ticket.
