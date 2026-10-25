@@ -27,10 +27,10 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 // ── MODULE 4 · LA COMPARAISON ────────────────────────────────────────────────
 //
 // Spec, § « Comparaison — la mécanique » ; user stories 29 à 33, 35, 36.
-// Mise en page C2 (spec, Notes, choix 1) : les réglages, la liste classée sur
-// trois colonnes dans une fenêtre qui défile (deux sur un écran moyen), puis
-// les deux graphes côte à côte en pleine largeur — le brief dit « un ou deux
-// line plots côte à côte ».
+// Mise en page : les réglages ; puis le Croisement à gauche et la liste, sur
+// une colonne qui défile, à droite (David, 2026-10-25, prototype validé) ;
+// puis les deux graphes côte à côte en pleine largeur — le brief dit « un ou
+// deux line plots côte à côte ».
 //
 // Tout ce qui change l'état est un LIEN (niveau, métriques, cases) : l'URL le
 // porte, un lien partagé rouvre la même comparaison. Seul le refus d'une
@@ -91,8 +91,13 @@ export function Comparaison({
           </p>
         ) : (
           <>
-            <div className="border-b border-line p-3">
-              <Liste c={c} params={params} vignettes={vignettes} refus={refus} refuser={setRefus} />
+            <div className="grid border-b border-line lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+              <div className="min-w-0 border-b border-line p-5 lg:border-b-0 lg:border-r">
+                <Croisement c={c} />
+              </div>
+              <div className="min-w-0 p-3">
+                <Liste c={c} params={params} vignettes={vignettes} refus={refus} refuser={setRefus} />
+              </div>
             </div>
             <div className="p-5">
               <DeuxGraphes c={c} dates={dates} niveau={noms.un.toLowerCase()} params={params} marques={marques} />
@@ -216,11 +221,9 @@ function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
 }
 
 // La liste : TOUS les éléments de la sélection, classés sur la métrique 1, avec
-// leur barre et la valeur des deux métriques sous le nom. Sur trois colonnes
-// (deux sur un écran moyen), dans une fenêtre qui défile : la page ne
-// s'allonge plus avec le nombre d'annonces (David, 2026-10-25). Elle se lit
-// ligne après ligne — n° 1, 2, 3 en haut — parce qu'une colonne entière ne
-// tient plus à l'écran.
+// leur barre et la valeur des deux métriques sous le nom. Sur une colonne, à
+// côté du Croisement, dans une fenêtre qui défile : la page ne s'allonge plus
+// avec le nombre d'annonces (David, 2026-10-25).
 function Liste({
   c,
   params,
@@ -259,7 +262,7 @@ function Liste({
         {c.niveau === "annonces" && <Vignette url={e.annonceId ? vignettes[e.annonceId] : undefined} />}
         <span className="min-w-0 flex-1">
           {/* Deux lignes, coupées n'importe où : sur un tiers de largeur, un
-              nom Meta souvent sans espace (« de_awarness_m01_… ») ne gardait
+              nom Meta souvent sans espace (« fr_notoriete_m01_… ») ne gardait
               qu'une dizaine de lettres. */}
           <span className="line-clamp-2 text-[13.5px] leading-snug text-ink [overflow-wrap:anywhere]" title={e.nom || undefined}>
             {e.nom || "Sans nom"}
@@ -276,8 +279,8 @@ function Liste({
               style={{ width: `${largeur}%`, background: couleur ?? "#b8b7b0" }}
             />
           </span>
-          {/* Les deux valeurs SOUS le nom : à droite, sur une colonne sur
-              trois, elles ne laissaient plus que quelques lettres au nom. */}
+          {/* Les deux valeurs SOUS le nom : à droite, elles ne laissaient
+              plus que quelques lettres au nom. */}
           <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12px]">
             <span className="whitespace-nowrap">
               <span className="text-faint">{METRIQUES[m1].nom} </span>
@@ -344,8 +347,8 @@ function Liste({
 
   return (
     <div>
-      <div className="max-h-[440px] overflow-y-auto overscroll-contain">
-        <div className="grid gap-x-3 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
+      <div className="max-h-[480px] overflow-y-auto overscroll-contain">
+        <div className="grid gap-y-1">
           {c.elements.map((e, i) => ligne(e, i + 1))}
         </div>
       </div>
@@ -363,6 +366,121 @@ function Liste({
         )}
       </p>
     </div>
+  );
+}
+
+// LE CROISEMENT (David, 2026-10-25, prototype validé : « deux métriques, assez
+// simple, pas trop d'infos »). La métrique 1 à l'horizontale, la 2 à la
+// verticale, la moyenne de la sélection au croisement des axes. Chaque axe est
+// orienté pour que MIEUX soit à droite et en haut — un coût plus bas compte
+// comme mieux — : le coin haut droit est « mieux sur les deux ». Une métrique
+// sans sens (la dépense) n'a pas de mieux : les coins n'y sont ni nommés ni
+// teintés, et son axe monte simplement avec elle.
+//
+// Chaque bulle est un élément coché, de sa couleur, avec son rang de la liste
+// d'à côté ; sa SURFACE suit sa dépense (rayon ∝ racine). Pas d'étiquette de
+// nom sur le graphe : la liste, à droite, porte le nom à côté de la couleur.
+// Les libellés vivent HORS de la zone des bulles, dans une bande au-dessus et
+// une au-dessous : posés dedans, une bulle au bord les recouvrait.
+const LARGEUR = 760;
+const DEMI_X = 370;
+const DEMI_Y = 180;
+const BANDE = 28;
+const HAUTEUR = 2 * (DEMI_Y + BANDE);
+/** De quoi loger la plus grosse bulle au bout d'un axe. */
+const MARGE = 30;
+
+function Croisement({ c }: { c: DonneesComparaison }) {
+  const [m1, m2] = c.metriques;
+  const [r1, r2] = c.reference;
+  const coches = c.elements.filter((e) => e.place !== null);
+  if (coches.length === 0) {
+    return <p className="py-16 text-center text-[14px] text-muted">Coche un élément dans la liste pour le placer.</p>;
+  }
+  const sansMoyenne = r1 === null ? m1 : r2 === null ? m2 : null;
+  if (r1 === null || r2 === null) {
+    return (
+      <p className="py-16 text-center text-[14px] text-muted">
+        La moyenne de « {METRIQUES[sansMoyenne!].nom} » ne se mesure pas sur cette sélection : rien à quoi comparer.
+      </p>
+    );
+  }
+  const places = coches.filter((e) => e.valeurs[0] !== null && e.valeurs[1] !== null);
+  const absents = coches.filter((e) => !places.includes(e));
+  const sens = (m: typeof m1) => (METRIQUES[m].hausseBonne === false ? -1 : 1);
+  const echelle = (k: 0 | 1, ref: number, demi: number) => {
+    const max = Math.max(0, ...places.map((e) => Math.abs(e.valeurs[k]! - ref)));
+    return max === 0 ? 0 : (demi - MARGE) / max;
+  };
+  const kx = echelle(0, r1, DEMI_X);
+  const ky = echelle(1, r2, DEMI_Y);
+  const maxDepense = Math.max(0, ...places.map((e) => e.depense));
+  const cx = LARGEUR / 2;
+  const cy = HAUTEUR / 2;
+  const avecSens = METRIQUES[m1].hausseBonne !== null && METRIQUES[m2].hausseBonne !== null;
+  const bout = (m: typeof m1) => `${METRIQUES[m].nom} ${METRIQUES[m].hausseBonne === false ? "plus bas" : "plus haut"}`;
+  const rang = (e: ElementCompare) => c.elements.indexOf(e) + 1;
+
+  return (
+    <figure className="mx-auto min-w-0 max-w-[760px]">
+      {/* Plafonné à sa largeur de dessin : au-delà, le SVG grandirait avec
+          l'écran, et son texte avec lui. */}
+      <svg
+        viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
+        className="block h-auto w-full"
+        role="img"
+        aria-label={`${METRIQUES[m1].nom} à l'horizontale, ${METRIQUES[m2].nom} à la verticale, par rapport à la moyenne de la sélection`}
+      >
+        {avecSens && (
+          <>
+            <rect x={cx} y={cy - DEMI_Y} width={DEMI_X} height={DEMI_Y} fill="#1a7a4a" fillOpacity={0.05} />
+            <rect x={cx - DEMI_X} y={cy} width={DEMI_X} height={DEMI_Y} fill="#c0392b" fillOpacity={0.05} />
+            <text x={cx + DEMI_X} y={cy - DEMI_Y - 10} textAnchor="end" fontSize={13.5} fontWeight={600} fill="#1a7a4a">
+              Mieux sur les deux
+            </text>
+            <text x={cx - DEMI_X} y={cy + DEMI_Y + 19} fontSize={13.5} fontWeight={600} fill="#c0392b">
+              Moins bien sur les deux
+            </text>
+          </>
+        )}
+        <line x1={cx - DEMI_X} y1={cy} x2={cx + DEMI_X} y2={cy} stroke="#0e0f12" strokeOpacity={0.2} />
+        <line x1={cx} y1={cy - DEMI_Y} x2={cx} y2={cy + DEMI_Y} stroke="#0e0f12" strokeOpacity={0.2} />
+        <text x={cx + DEMI_X} y={cy + DEMI_Y + 19} textAnchor="end" fontSize={13} fill="#8b8e98">
+          {bout(m1)} →
+        </text>
+        {/* À gauche de l'axe : à droite, il heurtait « Mieux sur les deux ». */}
+        <text x={cx - 8} y={cy - DEMI_Y - 10} textAnchor="end" fontSize={13} fill="#8b8e98">
+          ↑ {bout(m2)}
+        </text>
+        {places.map((e) => {
+          const x = cx + sens(m1) * (e.valeurs[0]! - r1) * kx;
+          const y = cy - sens(m2) * (e.valeurs[1]! - r2) * ky;
+          const r = 10 + 16 * Math.sqrt(maxDepense === 0 ? 0 : e.depense / maxDepense);
+          return (
+            <g key={e.cle}>
+              <title>
+                {`${e.nom || "Sans nom"} · ${METRIQUES[m1].nom} ${formaterValeur(m1, e.valeurs[0])} · ${METRIQUES[m2].nom} ${formaterValeur(m2, e.valeurs[1])} · dépense ${formaterValeur("depense", e.depense)}`}
+              </title>
+              <circle cx={x} cy={y} r={r} fill={PALETTE_COMPARES[e.place!]} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
+              <text x={x} y={y + 4} textAnchor="middle" fontSize={12.5} fontWeight={600} fill="#fff">
+                {rang(e)}
+              </text>
+            </g>
+          );
+        })}
+        <circle cx={cx} cy={cy} r={5} fill="#0e0f12" stroke="#fff" strokeWidth={2} />
+      </svg>
+      <figcaption className="mt-3 text-[12px] leading-relaxed text-faint">
+        Au croisement, la moyenne de la sélection :{" "}
+        <span className="font-medium text-ink">
+          {METRIQUES[m1].nom} {formaterValeur(m1, r1)} · {METRIQUES[m2].nom} {formaterValeur(m2, r2)}
+        </span>
+        . La taille d&apos;une bulle suit sa dépense.
+        {absents.length > 0 && (
+          <> Pas placé{absents.length > 1 ? "s" : ""}, faute de chiffre : n° {absents.map(rang).join(", ")}.</>
+        )}
+      </figcaption>
+    </figure>
   );
 }
 

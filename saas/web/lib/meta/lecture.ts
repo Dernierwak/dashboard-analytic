@@ -1267,6 +1267,8 @@ export type ElementCompare = {
   typeResultat: string | null;
   /** Les deux métriques sur la période ; `null` = « — », rangé en bas. */
   valeurs: [number | null, number | null];
+  /** Sa dépense sur la période : la taille de sa bulle sur le Croisement. */
+  depense: number;
   /** 0 à 3 quand l'élément est coché — sa couleur ; `null` sinon. */
   place: number | null;
 };
@@ -1285,6 +1287,8 @@ export type Comparaison = {
    *  ses annonces, et le choix du niveau disparaît. */
   niveauImpose: boolean;
   metriques: [CleMetrique, CleMetrique];
+  /** Le croisement des axes du Croisement, une valeur par métrique (`referenceDe`). */
+  reference: [number | null, number | null];
   /** Classés par la métrique 1. */
   elements: ElementCompare[];
   /** Les places telles qu'elles s'affichent — c'est d'elles que part un clic. */
@@ -1304,6 +1308,24 @@ function classer(a: ElementCompare, b: ElementCompare, m: CleMetrique): number {
     return METRIQUES[m].hausseBonne === false ? x - y : y - x;
   }
   return a.nom.localeCompare(b.nom, "fr") || (a.cle < b.cle ? -1 : 1);
+}
+
+/** Les métriques qui sont des volumes : elles s'additionnent d'un élément à
+ *  l'autre. Les autres sont des rapports (un coût, un taux). */
+const VOLUMES: CleMetrique[] = ["depense", "impressions", "clics", "resultats"];
+
+/**
+ * Le croisement des axes du Croisement : la moyenne de la sélection, à laquelle
+ * chaque élément se compare. Pour un RAPPORT, celui des totaux — un CTR moyen
+ * pondéré par les impressions, comme Ads Manager l'écrit sur sa ligne de total,
+ * et non la moyenne des CTR (une annonce à 3 impressions y pèserait autant
+ * qu'une à 30 000). Pour un VOLUME, le total divisé par le nombre d'éléments
+ * mesurés : comparé au total, chaque élément serait toujours en dessous.
+ */
+function referenceDe(m: CleMetrique, courant: LigneMeta[], elements: ElementCompare[], k: 0 | 1): number | null {
+  if (!VOLUMES.includes(m)) return valeurDe(m, totaux(courant));
+  const mesures = elements.map((e) => e.valeurs[k]).filter((v): v is number => v !== null);
+  return mesures.length === 0 ? null : mesures.reduce((s, v) => s + v, 0) / mesures.length;
 }
 
 export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, c: Commandes): Comparaison {
@@ -1331,6 +1353,7 @@ export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, 
       annonceId: niveau === "annonces" ? recente.annonceId : null,
       typeResultat: metriques.some(estMetriqueResultat) ? nomTypeDe(t) : null,
       valeurs: [valeurDe(metriques[0], t), valeurDe(metriques[1], t)],
+      depense: t?.depense ?? 0,
       place: null,
     };
   });
@@ -1364,7 +1387,11 @@ export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, 
     });
   });
 
-  return { niveau, niveauImpose, metriques, elements, places, coches };
+  const reference: [number | null, number | null] = [
+    referenceDe(metriques[0], courant, elements, 0),
+    referenceDe(metriques[1], courant, elements, 1),
+  ];
+  return { niveau, niveauImpose, metriques, reference, elements, places, coches };
 }
 
 // ── Les dates, pour l'écran ──────────────────────────────────────────────────
