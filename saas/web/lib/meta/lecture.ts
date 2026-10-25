@@ -149,8 +149,10 @@ function dateLisible(x: string | undefined): x is string {
 
 // ── Les commandes : ce que l'URL porte ───────────────────────────────────────
 
-export type Vue = "notoriete" | "trafic" | "conversion";
-export const VUE_PAR_DEFAUT: Vue = "notoriete";
+export type Vue = "couts" | "notoriete" | "trafic" | "conversion";
+/** Coûts d'abord (prototype validé par David, 2026-10-25) : ce qu'on a payé
+ *  est la première question d'un lundi matin. */
+export const VUE_PAR_DEFAUT: Vue = "couts";
 
 export type Commandes = {
   vue?: string;
@@ -510,7 +512,7 @@ export type Totaux = {
   attributions: string[];
 };
 
-export type CleMetrique = "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "resultats" | "cout_resultat" | "taux_conversion";
+export type CleMetrique = "depense" | "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "resultats" | "cout_resultat" | "taux_conversion";
 
 const METRIQUES_RESULTATS: CleMetrique[] = ["resultats", "cout_resultat", "taux_conversion"];
 export const estMetriqueResultat = (m: CleMetrique) => METRIQUES_RESULTATS.includes(m);
@@ -521,8 +523,10 @@ type DefMetrique = {
   nom: string;
   /** Ce que la métrique compte, dit au survol du ⓘ. */
   aide: string;
-  /** Une hausse est-elle une bonne nouvelle ? (un coût qui monte ne l'est pas) */
-  hausseBonne: boolean;
+  /** Une hausse est-elle une bonne nouvelle ? (un coût qui monte ne l'est
+   *  pas) `null` = ni l'un ni l'autre : dépenser plus est un choix, pas un
+   *  résultat — l'écart s'écrit sans couleur. */
+  hausseBonne: boolean | null;
   format: Format;
   /** `null` dès que le diviseur est nul : « — », jamais 0 ni l'infini. */
   calcul: (t: Totaux) => number | null;
@@ -532,6 +536,13 @@ const diviser = (a: number, b: number) => (b === 0 ? null : a / b);
 const mul = (v: number | null, k: number) => (v === null ? null : v * k);
 
 export const METRIQUES: Record<CleMetrique, DefMetrique> = {
+  depense: {
+    nom: "Dépense",
+    aide: "Ce que Meta t'a facturé sur la période, comme la colonne « Montant dépensé » d'Ads Manager.",
+    hausseBonne: null,
+    format: "argent",
+    calcul: (t) => t.depense,
+  },
   impressions: {
     nom: "Impressions",
     aide: "Le nombre de fois où tes annonces ont été affichées. Une même personne peut en compter plusieurs.",
@@ -593,6 +604,14 @@ export const METRIQUES: Record<CleMetrique, DefMetrique> = {
 /** Les vues et leurs métriques — spec, § « Les vues et leurs métriques ». La
  *  première est le chiffre principal. */
 export const VUES: Record<Vue, { titre: string; question: string; metriques: CleMetrique[] }> = {
+  // La Tendance de Coûts ne suit pas cette liste : la dépense, puis les deux
+  // cartes du budget (`cartesBudget`). Elle sert au Tableau et à la paire de
+  // départ de la Comparaison — le budget se lit par campagne, pas par annonce.
+  couts: {
+    titre: "Coûts",
+    question: "Combien tu as payé, et ce qui reste à dépenser",
+    metriques: ["depense", "cout_resultat"],
+  },
   notoriete: {
     titre: "Notoriété",
     question: "Combien de fois on t'a vu, et à quel prix",
@@ -610,7 +629,18 @@ export const VUES: Record<Vue, { titre: string; question: string; metriques: Cle
   },
 };
 
-export const ORDRE_VUES: Vue[] = ["notoriete", "trafic", "conversion"];
+export const ORDRE_VUES: Vue[] = ["couts", "notoriete", "trafic", "conversion"];
+
+/** Les métriques des menus de la Comparaison, rangées par famille. Chacune
+ *  y est une fois, dans la vue qui la porte : le CPM reste à la Notoriété, le
+ *  CPC au Trafic (David, 2026-10-25 : « je trouve que ça se répète »). */
+export const FAMILLES_METRIQUES: { titre: string; metriques: CleMetrique[] }[] = [
+  { titre: "Coûts", metriques: ["depense"] },
+  { titre: "Notoriété", metriques: ["impressions", "cpm"] },
+  { titre: "Trafic", metriques: ["clics", "ctr", "cpc"] },
+  { titre: "Conversion", metriques: ["resultats", "cout_resultat", "taux_conversion"] },
+];
+const TOUTES_METRIQUES = FAMILLES_METRIQUES.flatMap((f) => f.metriques);
 
 export function vueDe(x: string | undefined): Vue {
   return (ORDRE_VUES as (string | undefined)[]).includes(x) ? (x as Vue) : VUE_PAR_DEFAUT;
@@ -770,7 +800,9 @@ export function formaterEcart(e: number | null): string {
 /** Bonne ou mauvaise nouvelle — `null` quand il n'y a pas d'écart à juger. */
 export function tonEcart(m: CleMetrique, e: number | null): "pos" | "neg" | null {
   if (e === null || Math.round(e * 10) === 0) return null;
-  return e > 0 === METRIQUES[m].hausseBonne ? "pos" : "neg";
+  const bonne = METRIQUES[m].hausseBonne;
+  if (bonne === null) return null;
+  return e > 0 === bonne ? "pos" : "neg";
 }
 
 // ── Le contenu des modules ───────────────────────────────────────────────────
@@ -850,7 +882,9 @@ function serieDe(m: CleMetrique, jours: Map<string, LigneMeta[]>, debut: string,
   return Array.from({ length: n }, (_, i) => valeurDe(m, totaux(jours.get(decaler(debut, i)) ?? [])));
 }
 
-export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contexte): ContenuPage {
+/** `budgets` : lus pour la vue Coûts seulement (`donnees.ts`) ; `null` = non
+ *  lus, ou la lecture a échoué — les cartes du budget le disent. */
+export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contexte, budgets: BudgetsMeta | null = null): ContenuPage {
   const vue = vueDe(c.vue);
   const periode = periodeDe(c, ctx);
   const dansPeriode = (l: LigneMeta, de: string, a: string) =>
@@ -902,20 +936,22 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
   const tracable = raison !== "types-melanges" && raison !== "non-lu";
   const comparable = memeResultat(tCourant, tAvant);
   const vide = () => Array<number | null>(periode.jours).fill(null);
-  const tendance = VUES[vue].metriques.map((m, rang): MetriqueTendance => {
+  const cartesTendance = (metriques: CleMetrique[]) => metriques.map((m, rang): MetriqueTendance => {
     const resultat = estMetriqueResultat(m);
     // Pourquoi « — » et les réglages mélangés ne s'écrivent qu'une fois, sous
     // le chiffre principal : répétés sur les trois cartes, ils noyaient la vue
     // (vu dans Chrome sur décembre 2025). Le type, lui, reste sur chacune.
+    // Le renvoi ne vaut que si une carte « Résultats » est là pour le dire.
     const principal = rang === 0;
     let precision = precisionDe(m, tCourant);
-    if (!principal && precision !== null && !tCourant?.resultats.mesure) precision = "Voir pourquoi sous « Résultats ».";
+    const renvoi = metriques.includes("resultats") && m !== "resultats";
+    if (renvoi && precision !== null && !tCourant?.resultats.mesure) precision = "Voir pourquoi sous « Résultats ».";
     return {
       cle: m,
       nom: METRIQUES[m].nom,
       aide: aideDe(m, tCourant),
       precision,
-      attention: principal ? attentionDe(m, tCourant) : null,
+      attention: principal || !renvoi ? attentionDe(m, tCourant) : null,
       valeur: valeurDe(m, tCourant),
       avant: resultat && !comparable ? null : valeurDe(m, tAvant),
       ecart: ecartEntre(m, tCourant, tAvant),
@@ -937,9 +973,169 @@ export function contenuPage(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contex
     groupeChoisi,
     annonces: annoncesDe(courant),
     cartes,
-    tendance,
+    tendance:
+      vue === "couts"
+        ? [...cartesTendance(["depense"]), ...cartesBudget(budgets, filtrees, periode, c)]
+        : cartesTendance(VUES[vue].metriques),
     comparaison: comparaisonDe(courant, periode, vue, c),
   };
+}
+
+// ── Le budget, pour la vue Coûts ─────────────────────────────────────────────
+//
+// Prototype validé par David le 2026-10-25 : le budget qui reste et le rythme
+// qu'il faudrait pour le finir, en cartes de Tendance comme les autres. Tout
+// vient de Meta — le budget TOTAL déclaré sur la campagne (`platform_budgets`)
+// et la dépense jour par jour. Rien n'est prévu : le rythme nécessaire est un
+// calcul (reste ÷ jours restants), pas une estimation de ce qui sera dépensé.
+
+/** Un relevé du budget d'une campagne (`platform_budgets`). Le worker en écrit
+ *  un par campagne à chaque passage, une fois par semaine au Jour de travail :
+ *  un budget changé entre deux relevés compte à partir du second. */
+export type ReleveBudget = {
+  campagneId: string;
+  /** Le jour du relevé, pas le jour du budget. */
+  jour: string;
+  /** Le budget total déclaré ; `null` = budget quotidien, ou aucun. */
+  total: number | null;
+  debut: string | null;
+  /** `null` = déclarée sans fin. */
+  fin: string | null;
+  actif: boolean;
+};
+
+export type BudgetsMeta = {
+  releves: ReleveBudget[];
+  /** La dépense de chaque campagne relevée, de son début à la veille de la
+   *  période d'avant : les lignes de la page ne remontent pas plus loin. */
+  depenseAvant: Record<string, number>;
+};
+
+const AIDE_RESTE =
+  "Le budget total que tu as déclaré à Meta sur tes campagnes en cours, moins ce qu'elles ont déjà dépensé depuis leur début. " +
+  "Pulse relève les budgets une fois par semaine : un changement compte à partir du relevé qui le voit.";
+const AIDE_RYTHME =
+  "Ce qu'il faudrait dépenser chaque jour pour finir le budget restant de chaque campagne en cours à sa date de fin : " +
+  "budget restant ÷ jours restants. Un calcul, pas une prévision.";
+
+const joursApres = (jour: string, fin: string) => Math.round((versMs(fin) - versMs(jour)) / JOUR_MS);
+
+/** Les deux cartes du budget : ce qui reste, et le rythme qu'il faudrait pour
+ *  le finir — au soir de chaque jour, sur la période et sur celle d'avant.
+ *  `filtrees` : les lignes de la sélection, période d'avant comprise. */
+function cartesBudget(budgets: BudgetsMeta | null, filtrees: LigneMeta[], periode: Periode, c: Commandes): MetriqueTendance[] {
+  const vide = () => Array<number | null>(periode.jours).fill(null);
+  const carte = (nom: string, aide: string, precision: string | null, valeur: number | null, avant: number | null, serie = vide(), serieAvant = vide()): MetriqueTendance => ({
+    // Le format et le ton de la dépense : des francs, et un écart qui ne se
+    // colore pas — moins de budget restant n'est ni bon ni mauvais.
+    cle: "depense",
+    nom,
+    aide,
+    precision,
+    attention: null,
+    valeur,
+    avant,
+    ecart: ecart(valeur, avant),
+    serie,
+    serieAvant,
+  });
+  const NOM_RESTE = "Budget restant";
+  const NOM_RYTHME = "Rythme nécessaire, par jour";
+  // Le budget vit sur la campagne (la récolte y remonte celui des groupes) :
+  // la part d'un groupe d'annonces n'existe pas.
+  const sans = c.groupe
+    ? "Le budget se lit par campagne : choisis la campagne plutôt que le groupe d'annonces."
+    : !budgets
+      ? "Les budgets n'ont pas pu être lus."
+      : null;
+  if (sans) return [carte(NOM_RESTE, AIDE_RESTE, sans, null, null), carte(NOM_RYTHME, AIDE_RYTHME, sans, null, null)];
+
+  const parCampagne = new Map<string, ReleveBudget[]>();
+  for (const r of [...budgets!.releves].sort((a, b) => (a.jour < b.jour ? -1 : a.jour > b.jour ? 1 : 0))) {
+    if (c.campagne && r.campagneId !== c.campagne) continue;
+    const liste = parCampagne.get(r.campagneId);
+    if (liste) liste.push(r);
+    else parCampagne.set(r.campagneId, [r]);
+  }
+  const depenses = new Map<string, LigneMeta[]>();
+  for (const l of filtrees) {
+    if (!l.campagneId || !parCampagne.has(l.campagneId)) continue;
+    const liste = depenses.get(l.campagneId);
+    if (liste) liste.push(l);
+    else depenses.set(l.campagneId, [l]);
+  }
+  // Avant le tout premier relevé du compte, aucun budget n'est connu : un
+  // trou, pas « rien à dépenser ».
+  const premier = budgets!.releves.reduce<string | null>((m, r) => (m === null || r.jour < m ? r.jour : m), null);
+
+  type Etat = { reste: number; rythme: number | null; total: number; ids: string[]; fins: string[] };
+  const etatAu = (jour: string): Etat | null => {
+    if (premier === null || jour < premier) return null;
+    const e: Etat = { reste: 0, rythme: 0, total: 0, ids: [], fins: [] };
+    for (const [id, releves] of parCampagne) {
+      let r: ReleveBudget | undefined;
+      for (const x of releves) {
+        if (x.jour > jour) break;
+        r = x;
+      }
+      // En cours au soir de ce jour : active, avec un budget total, commencée,
+      // et pas finie — une campagne qui finit ce jour-là n'a plus rien à venir.
+      if (!r || !r.actif || r.total === null || !r.debut || r.debut > jour || (r.fin !== null && r.fin <= jour)) continue;
+      let depense = budgets!.depenseAvant[id] ?? 0;
+      for (const l of depenses.get(id) ?? []) if (l.date >= r.debut && l.date <= jour) depense += l.depense;
+      const reste = r.total - depense;
+      e.reste += reste;
+      e.total += r.total;
+      e.ids.push(id);
+      if (r.fin === null) e.rythme = null;
+      else {
+        e.fins.push(r.fin);
+        if (e.rythme !== null) e.rythme += reste / joursApres(jour, r.fin);
+      }
+    }
+    return e.ids.length ? e : null;
+  };
+
+  const serie = (debut: string) => Array.from({ length: periode.jours }, (_, i) => etatAu(decaler(debut, i)));
+  const ici = serie(periode.debut);
+  const avant = serie(periode.avantDebut);
+  const fin = etatAu(periode.fin);
+  const veille = etatAu(periode.avantFin);
+  if (!fin) {
+    const p = "Aucune campagne en cours n'a de budget total déclaré à Meta.";
+    return [
+      carte(NOM_RESTE, AIDE_RESTE, p, null, veille?.reste ?? null, ici.map((x) => x?.reste ?? null), avant.map((x) => x?.reste ?? null)),
+      carte(NOM_RYTHME, AIDE_RYTHME, p, null, veille?.rythme ?? null, ici.map((x) => x?.rythme ?? null), avant.map((x) => x?.rythme ?? null)),
+    ];
+  }
+
+  // Ce que ces campagnes ont vraiment dépensé par jour sur la période : à
+  // lire à côté du rythme nécessaire.
+  let payePeriode = 0;
+  for (const id of fin.ids) for (const l of depenses.get(id) ?? []) if (l.date >= periode.debut && l.date <= periode.fin) payePeriode += l.depense;
+  const quand = fin.fins.length === 1 && fin.rythme !== null ? `d'ici le ${dateCourte(fin.fins[0])}` : "à la date de fin de chaque campagne";
+  return [
+    carte(
+      NOM_RESTE,
+      AIDE_RESTE,
+      `sur ${formaterValeur("depense", fin.total)} déclarés · ${pluriel(fin.ids.length, "campagne")} en cours`,
+      fin.reste,
+      veille?.reste ?? null,
+      ici.map((x) => x?.reste ?? null),
+      avant.map((x) => x?.reste ?? null)
+    ),
+    carte(
+      NOM_RYTHME,
+      AIDE_RYTHME,
+      fin.rythme === null
+        ? "Une campagne en cours n'a pas de date de fin : le rythme ne se calcule pas."
+        : `pour finir le budget ${quand} · dépensé : ${formaterValeur("depense", payePeriode / periode.jours)} par jour sur la période`,
+      fin.rythme,
+      veille?.rythme ?? null,
+      ici.map((x) => x?.rythme ?? null),
+      avant.map((x) => x?.rythme ?? null)
+    ),
+  ];
 }
 
 function annoncesDe(courant: LigneMeta[]): AnnonceSelection[] {
@@ -1007,12 +1203,13 @@ export function cleElement(l: LigneMeta, niveau: Niveau): string {
   return l.annonceId ?? `${PREFIXE_SANS_ID}${cleCampagne(l)}›${l.groupeNom}›${l.annonceNom}`;
 }
 
-/** Les deux métriques, toujours distinctes et toujours de la vue. Une métrique
- *  d'une autre vue (un lien gardé en changeant de vue) est ignorée, pas
- *  remplacée en silence par une autre dans l'URL. */
+/** Les deux métriques, toujours distinctes. N'importe laquelle se choisit
+ *  (demande de David, 2026-10-25 : comparer le CTR au coût par résultat) ;
+ *  la vue ne donne que la paire de départ, et changer de vue y revient
+ *  (ses liens retirent `m1`/`m2`). Une clé inconnue est ignorée. */
 export function metriquesDe(vue: Vue, m1?: string, m2?: string): [CleMetrique, CleMetrique] {
   const de = VUES[vue].metriques;
-  const est = (x?: string): x is CleMetrique => !!x && (de as string[]).includes(x);
+  const est = (x?: string): x is CleMetrique => !!x && (TOUTES_METRIQUES as string[]).includes(x);
   const a = est(m1) ? m1 : de[0];
   const b = est(m2) && m2 !== a ? m2 : de.find((m) => m !== a)!;
   return [a, b];
@@ -1065,8 +1262,8 @@ export type ElementCompare = {
   sous: string;
   /** L'ID Meta de l'annonce, pour sa vignette ; `null` pour un groupe. */
   annonceId: string | null;
-  /** Dans la vue Conversion, le type que compte son chiffre — deux éléments
-   *  voisins ne comptent pas forcément la même chose. */
+  /** Dès qu'une des deux métriques est un résultat, le type que compte son
+   *  chiffre — deux éléments voisins ne comptent pas forcément la même chose. */
   typeResultat: string | null;
   /** Les deux métriques sur la période ; `null` = « — », rangé en bas. */
   valeurs: [number | null, number | null];
@@ -1104,7 +1301,7 @@ function classer(a: ElementCompare, b: ElementCompare, m: CleMetrique): number {
   if (x === null || y === null) {
     if (x !== y) return x === null ? 1 : -1;
   } else if (x !== y) {
-    return METRIQUES[m].hausseBonne ? y - x : x - y;
+    return METRIQUES[m].hausseBonne === false ? x - y : y - x;
   }
   return a.nom.localeCompare(b.nom, "fr") || (a.cle < b.cle ? -1 : 1);
 }
@@ -1132,7 +1329,7 @@ export function comparaisonDe(courant: LigneMeta[], periode: Periode, vue: Vue, 
       nom: niveau === "groupes" ? recente.groupeNom : recente.annonceNom,
       sous: niveau === "groupes" ? recente.campagneNom : `${recente.campagneNom} › ${recente.groupeNom}`,
       annonceId: niveau === "annonces" ? recente.annonceId : null,
-      typeResultat: estMetriqueResultat(metriques[0]) ? nomTypeDe(t) : null,
+      typeResultat: metriques.some(estMetriqueResultat) ? nomTypeDe(t) : null,
       valeurs: [valeurDe(metriques[0], t), valeurDe(metriques[1], t)],
       place: null,
     };

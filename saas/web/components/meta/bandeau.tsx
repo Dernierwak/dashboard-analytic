@@ -24,7 +24,7 @@ import {
   type Raccourci,
   type Vue,
 } from "@/lib/meta/lecture";
-import { lienMeta, type Params } from "@/lib/meta/liens";
+import { lienMeta, METRIQUES_DE_LA_VUE, type Params } from "@/lib/meta/liens";
 
 // ── MODULE 1 · LE BANDEAU DE COMMANDES ───────────────────────────────────────
 //
@@ -214,7 +214,7 @@ function SegmentVue({ vue, params, visible }: { vue: Vue; params: Params; visibl
         {ORDRE_VUES.map((v) => (
           <Link
             key={v}
-            href={lienMeta(params, { vue: v })}
+            href={lienMeta(params, { vue: v, ...METRIQUES_DE_LA_VUE })}
             scroll={false}
             tabIndex={visible ? undefined : -1}
             aria-current={v === vue ? "page" : undefined}

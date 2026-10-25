@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ICONE_VUE, ID_SELECTEUR_VUE, Icone, PastilleEcart } from "@/components/meta/elements";
 import { METRIQUES, VUES, formaterValeur, type CarteVue, type Vue } from "@/lib/meta/lecture";
-import { lienMeta, type Params } from "@/lib/meta/liens";
+import { lienMeta, METRIQUES_DE_LA_VUE, type Params } from "@/lib/meta/liens";
 
 // ── MODULE 2 · LE SÉLECTEUR DE VUE ───────────────────────────────────────────
 //
@@ -32,7 +32,7 @@ export function SelecteurVue({
       <p id="titre-vues" className="text-[13px] text-muted mb-3">
         Choisis ce que tu regardes : la vue change toute la page, sans écarter aucune campagne.
       </p>
-      <nav className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Vues">
+      <nav className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Vues">
         {cartes.map((c) => {
           const actif = c.vue === vue;
           // Un chiffre de résultats porte son type à la place du nom de la
@@ -42,7 +42,7 @@ export function SelecteurVue({
           return (
             <Link
               key={c.vue}
-              href={lienMeta(params, { vue: c.vue })}
+              href={lienMeta(params, { vue: c.vue, ...METRIQUES_DE_LA_VUE })}
               scroll={false}
               aria-current={actif ? "page" : undefined}
               className={`group min-w-0 rounded-2xl p-5 transition-all duration-200 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${

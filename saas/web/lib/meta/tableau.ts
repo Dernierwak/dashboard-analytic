@@ -126,7 +126,7 @@ export function tableauDe(lignesBrutes: LigneMeta[], c: Commandes, ctx: Contexte
 
   const couleurs = new Map(campagnes.map((x) => [x.cle, x.couleur]));
   const principale = metriques[0];
-  const sens = METRIQUES[principale].hausseBonne ? -1 : 1;
+  const sens = METRIQUES[principale].hausseBonne === false ? 1 : -1;
 
   const versLigne = (n: Noeud, niveau: NiveauTableau): LigneTableau => {
     const t = totaux(n.courant);

@@ -7,20 +7,20 @@ import { Icone } from "@/components/meta/elements";
 import { valeurElement } from "@/lib/meta/changements";
 import { ouvrirSurPlace } from "@/lib/meta/sur-place";
 import {
+  FAMILLES_METRIQUES,
   MAX_COMPARES,
   METRIQUES,
   NOMS_NIVEAUX,
   PALETTE_COMPARES,
-  VUES,
   basculerCoche,
   choixMetrique,
   dateBulle,
   formaterValeur,
   placesVersUrl,
+  pluriel,
   type Comparaison as DonneesComparaison,
   type ElementCompare,
   type Niveau,
-  type Vue,
 } from "@/lib/meta/lecture";
 import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 
@@ -28,8 +28,9 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 //
 // Spec, § « Comparaison — la mécanique » ; user stories 29 à 33, 35, 36.
 // Mise en page C2 (spec, Notes, choix 1) : les réglages, la liste classée sur
-// deux colonnes, puis les deux graphes côte à côte en pleine largeur — le
-// brief dit « un ou deux line plots côte à côte ».
+// trois colonnes dans une fenêtre qui défile (deux sur un écran moyen), puis
+// les deux graphes côte à côte en pleine largeur — le brief dit « un ou deux
+// line plots côte à côte ».
 //
 // Tout ce qui change l'état est un LIEN (niveau, métriques, cases) : l'URL le
 // porte, un lien partagé rouvre la même comparaison. Seul le refus d'une
@@ -38,7 +39,7 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 // Grammaire : la liste porte le chiffre (la valeur de la métrique 1, en gras)
 // avant la barre ; les graphes viennent après.
 //
-// La ligne coche ; la LECTURE a sa propre cible, « Lire », posée à côté et
+// La ligne coche ; la LECTURE a sa propre cible, « Aperçu », posée à côté et
 // visible au repos (ticket 06 de la carte : « je vois où je peux appuyer »).
 // Deux liens frères, jamais l'un dans l'autre : un lien imbriqué est du HTML
 // invalide, et le clic irait au mauvais.
@@ -53,7 +54,6 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 
 export function Comparaison({
   comparaison: c,
-  vue,
   dates,
   params,
   sujet,
@@ -61,7 +61,6 @@ export function Comparaison({
   marques,
 }: {
   comparaison: DonneesComparaison;
-  vue: Vue;
   dates: string[];
   params: Params;
   sujet: string;
@@ -84,7 +83,7 @@ export function Comparaison({
       </div>
       <div className="overflow-hidden rounded-2xl border border-line bg-white">
         <div className="border-b border-line p-5">
-          <Reglages c={c} vue={vue} params={params} />
+          <Reglages c={c} params={params} />
         </div>
         {c.elements.length === 0 ? (
           <p className="px-5 py-16 text-center text-[14px] text-muted">
@@ -116,9 +115,26 @@ function Pastille({ n }: { n: 1 | 2 }) {
 // Le niveau, puis DEUX métriques : la première classe la liste et trace le
 // premier graphe, la seconde trace le second. Changer de niveau repart du
 // pré-cochage : les cases d'un niveau ne désignent rien dans l'autre.
-function Reglages({ c, vue, params }: { c: DonneesComparaison; vue: Vue; params: Params }) {
+//
+// Chaque métrique se choisit dans un menu qui les offre TOUTES, rangées par
+// vue (David, 2026-10-25 : comparer le CTR au coût par résultat) ; la vue ne
+// donne que la paire de départ. Neuf pastilles par rangée ne tenaient plus.
+function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
   const niveaux: Niveau[] = ["groupes", "annonces"];
-  const metriques = VUES[vue].metriques;
+  const [ouvert, setOuvert] = useState<0 | 1 | null>(null);
+  useEffect(() => {
+    if (ouvert === null) return;
+    const clic = (e: MouseEvent) => {
+      if (!(e.target as Element | null)?.closest?.("[data-menu-metrique]")) setOuvert(null);
+    };
+    const touche = (e: KeyboardEvent) => e.key === "Escape" && setOuvert(null);
+    document.addEventListener("click", clic);
+    document.addEventListener("keydown", touche);
+    return () => {
+      document.removeEventListener("click", clic);
+      document.removeEventListener("keydown", touche);
+    };
+  }, [ouvert]);
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
       {/* Sous un groupe d'annonces choisi, on ne compare que ses annonces :
@@ -140,35 +156,71 @@ function Reglages({ c, vue, params }: { c: DonneesComparaison; vue: Vue; params:
           ))}
         </nav>
       )}
-      {([0, 1] as const).map((rang) => (
-        <div key={rang} className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={`Métrique ${rang + 1}`}>
-          <Pastille n={(rang + 1) as 1 | 2} />
-          {metriques.map((m) => {
-            const actif = c.metriques[rang] === m;
-            return (
-              <Link
-                key={m}
-                href={lienMeta(params, choixMetrique(c.metriques, rang, m))}
-                scroll={false}
-                aria-current={actif ? "true" : undefined}
-                title={actif ? undefined : m === c.metriques[1 - rang] ? "Échange les deux métriques" : undefined}
-                className={`flex h-8 items-center whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors motion-reduce:transition-none ${
-                  actif ? "border-ink bg-ink text-white" : "border-line bg-white text-muted hover:border-ink/20 hover:text-ink"
-                }`}
+      {([0, 1] as const).map((rang) => {
+        const actuelle = c.metriques[rang];
+        const id = `menu-metrique-${rang + 1}`;
+        return (
+          <div key={rang} className="relative flex min-w-0 items-center gap-2" data-menu-metrique>
+            <Pastille n={(rang + 1) as 1 | 2} />
+            <button
+              type="button"
+              onClick={() => setOuvert((x) => (x === rang ? null : rang))}
+              aria-expanded={ouvert === rang}
+              aria-controls={id}
+              aria-label={`Métrique ${rang + 1} : ${METRIQUES[actuelle].nom}`}
+              className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-ink bg-ink px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-ink/90 motion-reduce:transition-none"
+            >
+              {METRIQUES[actuelle].nom}
+              <Icone nom="chevron" className="h-3.5 w-3.5" />
+            </button>
+            {ouvert === rang && (
+              <div
+                id={id}
+                className="absolute left-0 top-full z-20 mt-2 max-h-[360px] w-[250px] overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-[0_18px_40px_-12px_rgba(14,15,18,0.25)]"
               >
-                {METRIQUES[m].nom}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+                {FAMILLES_METRIQUES.map((f) => (
+                  <div key={f.titre}>
+                    <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{f.titre}</p>
+                    {f.metriques.map((m) => {
+                      const actif = actuelle === m;
+                      const autre = m === c.metriques[1 - rang];
+                      return (
+                        <Link
+                          key={m}
+                          href={lienMeta(params, choixMetrique(c.metriques, rang, m))}
+                          scroll={false}
+                          onClick={() => setOuvert(null)}
+                          aria-current={actif ? "true" : undefined}
+                          className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-[13.5px] ${
+                            actif ? "bg-[#eef2ff] font-medium text-brand" : "text-ink hover:bg-canvas"
+                          }`}
+                        >
+                          {METRIQUES[m].nom}
+                          {actif ? (
+                            <Icone nom="coche" className="h-3.5 w-3.5" />
+                          ) : autre ? (
+                            <span className="text-[11px] text-faint">échange avec la {2 - rang}</span>
+                          ) : null}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // La liste : TOUS les éléments de la sélection, classés sur la métrique 1, avec
-// leur barre et la valeur des deux métriques. Sur deux colonnes, elle se lit
-// de haut en bas, colonne après colonne — pas en zigzag.
+// leur barre et la valeur des deux métriques sous le nom. Sur trois colonnes
+// (deux sur un écran moyen), dans une fenêtre qui défile : la page ne
+// s'allonge plus avec le nombre d'annonces (David, 2026-10-25). Elle se lit
+// ligne après ligne — n° 1, 2, 3 en haut — parce qu'une colonne entière ne
+// tient plus à l'écran.
 function Liste({
   c,
   params,
@@ -186,25 +238,6 @@ function Liste({
   // La barre se rapporte à la plus grande valeur MESURÉE ; un « — » n'en a pas.
   const max = Math.max(0, ...c.elements.map((e) => e.valeurs[0] ?? 0));
   const plein = c.places.filter((x) => x !== null).length >= MAX_COMPARES;
-  const moitie = Math.ceil(c.elements.length / 2);
-  const colonnes = [c.elements.slice(0, moitie), c.elements.slice(moitie)];
-  const nomNiveau = NOMS_NIVEAUX[c.niveau].un;
-
-  const entete = (
-    <div className="flex items-center gap-3 px-3 pb-2 text-[11.5px] text-faint" aria-hidden>
-      <span className="w-5 shrink-0" />
-      <span className="w-5 shrink-0">#</span>
-      {c.niveau === "annonces" && <span className="w-9 shrink-0" />}
-      <span className="min-w-0 flex-1">{nomNiveau}</span>
-      <span className="flex shrink-0 flex-col items-end sm:flex-row sm:gap-3">
-        <span className="text-right sm:w-[84px]">{METRIQUES[m1].nom}</span>
-        <span className="text-right sm:w-[76px]">{METRIQUES[m2].nom}</span>
-      </span>
-      {/* La colonne de « Lire » : 52 px, moins l'écart de l'en-tête (12) qui
-          remplace celui de la ligne (4) — les valeurs restent alignées. */}
-      {c.niveau === "annonces" && <span className="w-[44px] shrink-0" />}
-    </div>
-  );
 
   const ligne = (e: ElementCompare, rang: number) => {
     const coche = e.place !== null;
@@ -214,7 +247,7 @@ function Liste({
     const contenu = (
       <>
         <span
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none ${
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none ${
             coche ? "border-transparent text-white" : refusee ? "border-neg text-transparent" : plein ? "border-dashed border-[#cfcec8] text-transparent" : "border-[#cfcec8] text-transparent"
           }`}
           style={couleur ? { background: couleur } : undefined}
@@ -222,12 +255,17 @@ function Liste({
         >
           <Icone nom="coche" className="h-3.5 w-3.5" />
         </span>
-        <span className="w-5 shrink-0 text-[12px] tabular-nums text-faint">{rang}</span>
+        <span className="mt-0.5 w-5 shrink-0 text-[12px] tabular-nums text-faint">{rang}</span>
         {c.niveau === "annonces" && <Vignette url={e.annonceId ? vignettes[e.annonceId] : undefined} />}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13.5px] text-ink">{e.nom || "Sans nom"}</span>
-          {/* Vue Conversion : le type que compte le chiffre, écrit à côté —
-              deux voisins de la liste ne comptent pas forcément la même chose. */}
+          {/* Deux lignes, coupées n'importe où : sur un tiers de largeur, un
+              nom Meta souvent sans espace (« de_awarness_m01_… ») ne gardait
+              qu'une dizaine de lettres. */}
+          <span className="line-clamp-2 text-[13.5px] leading-snug text-ink [overflow-wrap:anywhere]" title={e.nom || undefined}>
+            {e.nom || "Sans nom"}
+          </span>
+          {/* Le type que compte un résultat, écrit à côté — deux voisins de
+              la liste ne comptent pas forcément la même chose. */}
           <span className="block truncate text-[11.5px] text-faint">
             {e.sous}
             {e.typeResultat && <span className="text-muted"> · {e.typeResultat}</span>}
@@ -238,16 +276,22 @@ function Liste({
               style={{ width: `${largeur}%`, background: couleur ?? "#b8b7b0" }}
             />
           </span>
-        </span>
-        {/* Au téléphone, les deux valeurs s'empilent : côte à côte, elles
-            laissaient quatre lettres au nom (vu à 390 px). */}
-        <span className="flex shrink-0 flex-col items-end sm:flex-row sm:items-center sm:gap-3">
-          <span className="text-right text-[14px] font-semibold tabular-nums text-ink sm:w-[84px]">{formaterValeur(m1, e.valeurs[0])}</span>
-          <span className="text-right text-[13px] tabular-nums text-muted sm:w-[76px]">{formaterValeur(m2, e.valeurs[1])}</span>
+          {/* Les deux valeurs SOUS le nom : à droite, sur une colonne sur
+              trois, elles ne laissaient plus que quelques lettres au nom. */}
+          <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12px]">
+            <span className="whitespace-nowrap">
+              <span className="text-faint">{METRIQUES[m1].nom} </span>
+              <span className="text-[13.5px] font-semibold tabular-nums text-ink">{formaterValeur(m1, e.valeurs[0])}</span>
+            </span>
+            <span className="whitespace-nowrap">
+              <span className="text-faint">{METRIQUES[m2].nom} </span>
+              <span className="tabular-nums text-muted">{formaterValeur(m2, e.valeurs[1])}</span>
+            </span>
+          </span>
         </span>
       </>
     );
-    const classes = `flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand`;
+    const classes = `flex w-full min-w-0 items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand`;
     const resultat = basculerCoche(c.places, e.cle);
     const etiquette = `${coche ? "Décocher" : "Cocher"} ${e.nom || "sans nom"}, ${e.sous}${e.typeResultat ? `, ${e.typeResultat}` : ""}`;
 
@@ -276,23 +320,23 @@ function Liste({
           {contenu}
         </Link>
       );
-    if (c.niveau === "groupes") return <div key={e.cle}>{cocher}</div>;
+    if (c.niveau === "groupes") return <div key={e.cle} className="min-w-0">{cocher}</div>;
     return (
-      <div key={e.cle} className="flex min-w-0 items-center gap-1">
+      <div key={e.cle} className="flex min-w-0 items-start gap-1">
         <div className="min-w-0 flex-1">{cocher}</div>
-        {/* Une annonce sans ID ne se lit pas : le panneau s'ouvre par l'ID,
+        {/* Une annonce sans ID ne s'ouvre pas : le panneau s'ouvre par l'ID,
             jamais par le nom. La place reste, pour l'alignement. */}
         {e.annonceId ? (
           <Link
             href={lienMeta(params, { ...SANS_PANNEAU, annonce: e.annonceId })}
             scroll={false}
-            aria-label={`Lire l'annonce ${e.nom || "sans nom"}`}
-            className="flex h-8 w-[52px] shrink-0 items-center justify-center rounded-lg border border-[#dfe3fb] text-[12.5px] font-medium text-brand transition-colors hover:bg-[#eef2ff] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            aria-label={`Aperçu de l'annonce ${e.nom || "sans nom"}`}
+            className="mt-2 flex h-8 w-[64px] shrink-0 items-center justify-center rounded-lg border border-[#dfe3fb] text-[12.5px] font-medium text-brand transition-colors hover:bg-[#eef2ff] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
           >
-            Lire
+            Aperçu
           </Link>
         ) : (
-          <span className="w-[52px] shrink-0" title="Annonce sans identifiant Meta : son contenu ne se retrouve pas" />
+          <span className="w-[64px] shrink-0" title="Annonce sans identifiant Meta : son contenu ne se retrouve pas" />
         )}
       </div>
     );
@@ -300,13 +344,10 @@ function Liste({
 
   return (
     <div>
-      <div className="grid gap-x-4 md:grid-cols-2">
-        {colonnes.map((col, i) => (
-          <div key={i} className="min-w-0">
-            <div className={i > 0 ? "hidden md:block" : ""}>{col.length > 0 && entete}</div>
-            {col.map((e, k) => ligne(e, i * moitie + k + 1))}
-          </div>
-        ))}
+      <div className="max-h-[440px] overflow-y-auto overscroll-contain">
+        <div className="grid gap-x-3 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
+          {c.elements.map((e, i) => ligne(e, i + 1))}
+        </div>
       </div>
       <p id="refus-comparaison" className="px-3 pt-2 text-[11.5px] text-faint" aria-live="polite">
         {refus ? (
@@ -315,8 +356,9 @@ function Liste({
           </span>
         ) : (
           <>
-            Coche jusqu&apos;à {MAX_COMPARES} éléments. Classés sur « {METRIQUES[m1].nom} »
-            {METRIQUES[m1].hausseBonne ? ", du plus haut au plus bas" : ", du moins cher au plus cher"} ; « — » en bas = rien de mesuré.
+            {pluriel(c.elements.length, c.niveau === "annonces" ? "annonce" : "groupe")}
+            {c.niveau === "groupes" && " d'annonces"} · coche jusqu&apos;à {MAX_COMPARES} éléments. Classés sur « {METRIQUES[m1].nom} »
+            {METRIQUES[m1].hausseBonne === false ? ", du moins cher au plus cher" : ", du plus haut au plus bas"} ; « — » en dernier = rien de mesuré.
           </>
         )}
       </p>

@@ -5,7 +5,7 @@ import { formaterEcart, tonEcart, type CleMetrique, type Vue } from "@/lib/meta/
 
 // Dessinées à la main (trait 1,75, 24 px), comme celles du prototype validé :
 // pas de dépendance d'icônes ajoutée pour une poignée de glyphes.
-export type NomIcone = "oeil" | "clic" | "cible" | "coche" | "fleche" | "calques" | "calendrier" | "chevron" | "loupe";
+export type NomIcone = "oeil" | "clic" | "cible" | "coche" | "fleche" | "calques" | "calendrier" | "chevron" | "loupe" | "piece";
 
 export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className?: string }) {
   const t = { fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -19,12 +19,13 @@ export function Icone({ nom, className = "h-4 w-4" }: { nom: NomIcone; className
       {nom === "calques" && <><path {...t} d="m12 2 10 5-10 5L2 7l10-5Z" /><path {...t} d="m2 17 10 5 10-5M2 12l10 5 10-5" /></>}
       {nom === "calendrier" && <><rect {...t} x="3" y="4" width="18" height="18" rx="2" /><path {...t} d="M16 2v4M8 2v4M3 10h18" /></>}
       {nom === "chevron" && <path {...t} d="m6 9 6 6 6-6" />}
+      {nom === "piece" && <><circle {...t} cx="12" cy="12" r="9" /><path {...t} d="M15 9.5c-.6-1-1.7-1.5-3-1.5-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2-1.4 0-2.5-.6-3.1-1.6M12 6v2M12 16v2" /></>}
       {nom === "loupe" && <><circle {...t} cx="11" cy="11" r="7" /><path {...t} d="m21 21-4.3-4.3" /></>}
     </svg>
   );
 }
 
-export const ICONE_VUE: Record<Vue, NomIcone> = { notoriete: "oeil", trafic: "clic", conversion: "cible" };
+export const ICONE_VUE: Record<Vue, NomIcone> = { couts: "piece", notoriete: "oeil", trafic: "clic", conversion: "cible" };
 
 /** L'ancre du Sélecteur de vue : quand ses cartes sortent de l'écran, le
  *  Bandeau se détache en pilule et la vue active s'y replie (user story 10).

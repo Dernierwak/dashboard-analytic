@@ -20,6 +20,8 @@ import {
   nomsDe,
   periodeDe,
   resultatsDe,
+  vueDe,
+  type BudgetsMeta,
   type Commandes,
   type ContenuPage,
   type LigneMeta,
@@ -307,6 +309,79 @@ function phraseLecture(l: { etat: string; run_id: string } | null): string {
   return `Chiffres Meta au ${enFrancais(d)}${annee}, ${hh}:${mm} UTC`;
 }
 
+/**
+ * Les budgets de la vue Coûts : les relevés des campagnes qui peuvent être en
+ * cours entre `debut` et `fin`, et ce que chacune a dépensé avant `debut` —
+ * les lignes de la page commencent là, le budget restant compte depuis le
+ * début de la campagne. `null` si une lecture échoue : la carte le dit, au
+ * lieu d'écrire un budget restant faux.
+ */
+async function lireBudgets(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<BudgetsMeta | null> {
+  try {
+    // Un relevé par semaine : le budget en vigueur au premier jour vient d'un
+    // relevé fait jusqu'à sept jours plus tôt. Un mois de marge couvre un
+    // passage du worker manqué.
+    const releves = await lireToutesLesPages<{
+      campaign_id: string;
+      captured_on: string;
+      total_budget: number | string | null;
+      start_date: string | null;
+      end_date: string | null;
+      status: string | null;
+    }>((de, a) =>
+      supabase
+        .from("platform_budgets")
+        .select("campaign_id, captured_on, total_budget, start_date, end_date, status")
+        .eq("user_id", uid)
+        .eq("channel", "meta")
+        .gte("captured_on", decaler(debut, -31))
+        .lte("captured_on", fin)
+        .lte("start_date", fin)
+        .or(`end_date.is.null,end_date.gte.${debut}`)
+        .order("captured_on", { ascending: true })
+        .order("campaign_id", { ascending: true })
+        .range(de, a)
+    );
+    const lus = releves.map((r) => ({
+      campagneId: r.campaign_id,
+      jour: r.captured_on,
+      total: r.total_budget === null ? null : Number(r.total_budget),
+      debut: r.start_date,
+      fin: r.end_date,
+      actif: r.status === "ACTIVE",
+    }));
+    const commencees = [...new Set(lus.filter((r) => r.total !== null && r.debut !== null && r.debut < debut).map((r) => r.campagneId))];
+    const depenseAvant: Record<string, number> = {};
+    // Par lots : la liste d'ID part dans l'URL.
+    for (let i = 0; i < commencees.length; i += 100) {
+      const lot = commencees.slice(i, i + 100);
+      const depuis = lus.filter((r) => lot.includes(r.campagneId) && r.debut).reduce((m, r) => (r.debut! < m ? r.debut! : m), debut);
+      const lignes = await lireToutesLesPages<{ campaign_id: string; spend: number | string | null }>((de, a) =>
+        supabase
+          .from("meta_ads_insights")
+          .select("campaign_id, spend")
+          .eq("user_id", uid)
+          .in("campaign_id", lot)
+          .gte("date_start", depuis)
+          .lt("date_start", debut)
+          .order("date_start", { ascending: true })
+          .order("id", { ascending: true })
+          .range(de, a)
+      );
+      for (const l of lignes) depenseAvant[l.campaign_id] = (depenseAvant[l.campaign_id] ?? 0) + (Number(l.spend) || 0);
+    }
+    return { releves: lus, depenseAvant };
+  } catch (e) {
+    console.error("[meta] budgets illisibles", e);
+    return null;
+  }
+}
+
 /** Ce que le Panneau latéral demande de lire en plus : l'annonce ouverte
  *  (son ID, lu dans l'URL), ou l'onglet « Aperçus ». */
 export async function getDonneesMeta(c: Commandes, ouvrir: { annonce?: string; apercus?: boolean } = {}): Promise<DonneesMeta> {
@@ -344,7 +419,8 @@ export async function getDonneesMeta(c: Commandes, ouvrir: { annonce?: string; a
   ]);
 
   const lignes = brutes.map(versLigne);
-  const contenu = contenuPage(lignes, c, ctx);
+  const budgets = vueDe(c.vue) === "couts" ? await lireBudgets(supabase, uid, p.avantDebut, p.fin) : null;
+  const contenu = contenuPage(lignes, c, ctx, budgets);
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const annonces = contenu.comparaison.elements.flatMap((e) => (e.annonceId ? [e.annonceId] : []));
   const ouverte = annonceOuverteDe(ouvrir.annonce, lignes, {

@@ -16,8 +16,8 @@
 export const CHEMIN_META = "/meta";
 
 /** Une valeur qui EST le défaut ne s'écrit pas : `/meta` et
- *  `/meta?vue=notoriete` sont la même page, la première se partage. */
-const DEFAUTS: Record<string, string> = { vue: "notoriete", niveau: "annonces" };
+ *  `/meta?vue=couts` sont la même page, la première se partage. */
+const DEFAUTS: Record<string, string> = { vue: "couts", niveau: "annonces" };
 
 export type Params = Record<string, string | string[] | undefined>;
 
@@ -25,6 +25,12 @@ export type Params = Record<string, string | string[] | undefined>;
  *  lien qui en ouvre un l'étend avec ce qu'il ouvre : il ne peut jamais y en
  *  avoir deux. */
 export const SANS_PANNEAU = { jour: null, element: null, panneau: null, annonce: null };
+
+/** Le patch d'un changement de vue : la Comparaison revient à la paire de
+ *  la nouvelle vue. Ses menus offrent toutes les métriques (`metriquesDe`) ;
+ *  gardées, celles de l'ancienne vue feraient d'un clic sur une vue un clic
+ *  qui ne change rien à la Comparaison. */
+export const METRIQUES_DE_LA_VUE = { m1: null, m2: null };
 
 /** Les onglets du bord droit (`components/meta/onglets.tsx`). */
 export type Onglet = "changements" | "apercus";
