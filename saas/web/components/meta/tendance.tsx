@@ -122,7 +122,7 @@ export function Tendance({
           onRepere={ouvrirJour}
         />
         {autres.map((m) => (
-          <Carte key={m.cle} m={m} dates={dates} datesAvant={datesAvant} />
+          <Carte key={m.nom} m={m} dates={dates} datesAvant={datesAvant} />
         ))}
       </div>
     </section>

@@ -124,7 +124,6 @@ export default async function MetaPage({ searchParams }: { searchParams: Params 
         />
         <Comparaison
           comparaison={comparaison}
-          vue={meta.vue}
           dates={dates}
           params={params}
           sujet={sujet}
