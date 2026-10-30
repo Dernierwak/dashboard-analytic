@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 02, 03, 04, 05, 06, 07
+Blocked by: 03, 04, 05, 07, 10, 11
 
 ## Question
 
@@ -16,5 +16,9 @@ pour la hiérarchie.
 - ce que le client voit avant le premier scroll ;
 - l'ordre des blocs et ce qui se tait quand un bloc n'a rien ;
 - la forme de chaque bloc (chiffres, courbe, frise, liste).
+
+Charpente de départ (ticket 01) : titre et totaux → module des canaux →
+campagnes et posts sur l'année → meilleur du compte (place à confirmer) ;
+changements selon le ticket 05.
 
 La spec de la page s'écrit à la clôture de ce ticket.

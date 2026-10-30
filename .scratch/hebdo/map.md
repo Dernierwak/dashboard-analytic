@@ -21,8 +21,12 @@ le design, la présentation et le choix des éléments sont le cœur du chantier
   4. **les changements effectués cette semaine** ;
   5. peut-être **nos meilleurs X** — « la meilleure campagne, ce qui a le mieux
      fonctionné ».
-- **La page est statique.** Pas de filtre, pas de bascule. Pour en savoir plus,
-  on va sur la page de la plateforme (Meta, Google, Instagram).
+- **La page est statique** au sens de David : la comparaison se voit **sans
+  régler de filtre**. Bouger, zoomer, défiler, voir l'année : permis (ticket
+  01). Pour en savoir plus, on va sur la page de la plateforme.
+- **Vocabulaire** : « module des canaux », que David appelle aussi « la
+  boussole » — la comparaison à la semaine type du compte, une carte par
+  canal. Rien à voir avec l'ancienne boussole à bascule et à zones.
 - **Pulse ne conseille rien** (`CLAUDE.md` §1) : la page dit ce qui a bougé,
   jamais quoi faire. « Meilleur » se mesure, il ne se recommande pas.
 - **Chaque plateforme se lit avec ses propres chiffres** (règle de l'ADR 0010,
@@ -46,24 +50,60 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
-| [Ce qu'on inventorie avant de décider](issues/01-ce-qu-on-inventorie-avant-de-decider.md) | task (AFK) | — |
-| [Les métriques de la semaine face à la précédente](issues/02-les-metriques-de-la-semaine-face-a-la-precedente.md) | grilling | — |
-| [Ce que veut dire « la moyenne du compte »](issues/03-ce-que-veut-dire-la-moyenne-du-compte.md) | grilling | — |
-| [La vue des campagnes et des posts](issues/04-la-vue-des-campagnes-et-des-posts.md) | grilling | — |
+| [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling | — |
+| [Le module des canaux](issues/02-les-metriques-de-la-semaine-face-a-la-precedente.md) | grilling | — |
+| [Ce que veut dire « la moyenne du compte »](issues/03-ce-que-veut-dire-la-moyenne-du-compte.md) | grilling ✓ | — |
+| [La vue des campagnes et des posts](issues/04-la-vue-des-campagnes-et-des-posts.md) | grilling ✓ | — |
 | [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling | — |
 | [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) | grilling | — |
-| [Le meilleur de la semaine](issues/07-le-meilleur-de-la-semaine.md) | grilling | Les métriques de la semaine… |
-| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 02 à 07 |
+| [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype | — |
+| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 03, 04, 05, 07, 10, 11 |
+| [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) | research ✓ | — |
+| [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype | — |
+| [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype | — |
 
 ## Decisions so far
 
 <!-- une ligne par ticket clos : [titre](lien) : l'essentiel de la réponse -->
+
+- [La structure de la page](issues/01-la-structure-de-la-page.md) : des blocs,
+  chacun lu par plateforme — titre et totaux (dépense, impressions ; portée
+  côte à côte sans total) → module des canaux → campagnes et posts sur l'année
+  → meilleur du compte ; changements en suspens. Le verdict, la boussole et le
+  bandeau « n'a pas répondu » partent ; une absence s'écrit « — ». La
+  boussole et le meilleur se jugent en maquette.
+- [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) :
+  tranché par le ticket 01 — verdict retiré, boussole fondue dans le module
+  des canaux.
+- [Le module des canaux](issues/02-les-metriques-de-la-semaine-face-a-la-precedente.md) :
+  une carte par canal, Meta seul pour l'instant (dépense, impressions, clics,
+  CTR, CPC), pas de ROAS ; la semaine se compare à la semaine type du
+  compte, plus à la précédente ; semaine calée sur le Jour de travail.
+- [Ce que veut dire « la moyenne du compte »](issues/03-ce-que-veut-dire-la-moyenne-du-compte.md) :
+  la « semaine type » — médiane des ratios (CTR, CPC, CPM) sur les 12
+  dernières semaines, 6 au minimum, écrite sur la carte ; trois états
+  colorés en tons légers ; les volumes en totaux sans comparaison ; ni pente
+  ni courbe sur l'hebdo.
+- [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) :
+  non pour Instagram (rien de programmé dans l'API) ; oui pour une Page
+  Facebook, au prix d'un nouveau scope, d'un re-consentement général et d'une
+  App Review. Avec les scopes actuels, « à venir » = les campagnes.
+- [La vue des campagnes et des posts](issues/04-la-vue-des-campagnes-et-des-posts.md) :
+  année en cours, zoom, défilement, cadrage Année · Mois · Semaine ; une
+  campagne = nom, début, fin, statut (filtre léger), dépense au survol,
+  reconnue par ID sous son nom actuel ; les posts plus grands, plateforme,
+  format et visuels directs, sans chiffre ; à-venir pour les campagnes seules ;
+  `permalink` et `media_product_type` à récolter. La forme se juge dans « La
+  frise, en maquette ».
 
 ## Not yet specified
 
 - **Ce que le traitement doit calculer de neuf.** Dépend de ce que les
   grillings retiennent : la spec finira par une liste « clé du payload → d'où
   elle vient », mais on ne peut pas l'écrire avant de savoir quoi montrer.
+  Elle dira aussi ce qui **sort** : `metrics_read/prev/series` et `kpis` ne
+  sont lus par personne ([l'inventaire du 2026-10-28](inventaire-2026-10-28.md)) ; ils
+  sortent, avec `canaux_muets` côté page.
 - **Les états de la page** : une source pas branchée, une source muette cette
   semaine, un compte de moins de deux semaines (rien à comparer), une semaine
   sans aucune campagne. Chaque bloc retenu en aura, ils se trancheront avec la
@@ -75,10 +115,19 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 
 ## Out of scope
 
+- **Google Ads et Instagram dans le module des canaux, pour l'instant** —
+  leurs pages ne sont pas finies ; ils entrent quand elles le seront.
+
 - **L'email hebdo** — David : « on va l'ouvrir dans une autre section ».
-- **Les filtres et les bascules** sur la page hebdo — elle est statique ; le
-  détail vit sur les pages plateforme.
+- **Un connecteur LLM** pour poser des questions à ses données — David : « on
+  verra dans une autre issue ». Un futur chantier, qui devra rouvrir
+  explicitement la règle « aucun appel à un modèle de langage » de `CLAUDE.md`.
 - **Le conseil** (« quoi faire cette semaine ») — retiré du produit le
   2026-09-21, ne revient pas par ce chantier.
 - **Le thème et le regroupement** — partis le 2026-09-30, ne reviennent pas.
 - **Les pages Meta / Google / Instagram** — elles ont leur propre chantier.
+- **Les posts Facebook programmés dans la frise** — lisibles par
+  `/{page-id}/scheduled_posts`, mais au prix de `pages_read_engagement`, d'un
+  re-consentement de tous les comptes, d'une App Review et d'une nouvelle
+  source à récolter ([la recherche](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md)).
+  À rouvrir comme chantier à part.

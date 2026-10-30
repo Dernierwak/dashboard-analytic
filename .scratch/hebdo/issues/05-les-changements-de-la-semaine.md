@@ -12,6 +12,11 @@ déjà « Ce qui a bougé sur les plateformes » : des faits déduits de la dép
 (`changementsApi`). **Lesquels gardent leur place sur la page hebdo, et
 comment ?**
 
+Du ticket 01 : David doute que ce bloc mérite sa place (« est-ce que c'est
+intéressant ? »), et ne sait pas s'il irait en bloc ou en colonne sur le
+côté. **Le garder ou non** est la première question de ce ticket. Une colonne
+latérale passe sous les autres blocs sur téléphone.
+
 À trancher :
 
 - seulement la semaine mesurée, ou plus large ?
