@@ -170,10 +170,11 @@ function changementsCanal(plateforme) {
   for (const c of C) (parCat[c.cat] ??= []).push(c);
   return `<div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">Changements · ${C.length}</h2>
       <span class="petit doux" style="text-decoration:underline" title="Mène au journal ${plateforme}, ouvert sur la même semaine">journal →</span></div>
-    ${C.length ? Object.entries(parCat).sort((a, b) => b[1].length - a[1].length).map(([cat, cs]) => `<details style="margin-top:10px;border-top:1px solid var(--trait);padding-top:8px">
-      <summary><strong>${CAT[cat] || cat}</strong> <span class="doux">· ${cs.length}</span></summary>
-      ${cs.map(c => `<div class="chg"><div class="doux petit">${cap(jourLong(c.quand.slice(0, 10)))} · ${esc(c.cid ? c.campagne : "hors campagne")}</div><div class="petit">${esc(c.resume)}</div></div>`).join("")}</details>`).join("")
-      : `<p class="doux petit">Aucun changement écrit par ${plateforme} cette semaine.</p>`}`;
+    <div style="position:relative;flex:1;min-height:120px;margin-top:8px"><div style="position:absolute;inset:0;overflow:auto;padding-right:6px">
+    ${C.length ? Object.entries(parCat).sort((a, b) => b[1].length - a[1].length).map(([cat, cs]) => `<div style="margin-top:10px;border-top:1px solid var(--trait);padding-top:8px">
+      <strong>${CAT[cat] || cat}</strong> <span class="doux">· ${cs.length}</span>
+      ${cs.map(c => `<div class="chg"><div class="doux petit">${cap(jourLong(c.quand.slice(0, 10)))} · ${esc(c.cid ? c.campagne : "hors campagne")}</div><div class="petit">${esc(c.resume)}</div></div>`).join("")}</div>`).join("")
+      : `<p class="doux petit">Aucun changement écrit par ${plateforme} cette semaine.</p>`}</div></div>`;
 }
 
 function carteCanalE(nom, cn, note) {
@@ -192,7 +193,7 @@ function carteCanalE(nom, cn, note) {
           <div>${moustacheE(r, l)}</div></div>`; }).join("")}
         <div class="doux petit" style="margin-top:8px">Comparé à ta semaine type — la médiane de tes ${n} dernières semaines. Le mieux est toujours à droite.</div>
       </div>
-      <div style="border-left:1px solid var(--trait);padding-left:24px">${changementsCanal(nom)}</div>
+      <div style="border-left:1px solid var(--trait);padding-left:24px;display:flex;flex-direction:column">${changementsCanal(nom)}</div>
     </div></div>`;
 }
 

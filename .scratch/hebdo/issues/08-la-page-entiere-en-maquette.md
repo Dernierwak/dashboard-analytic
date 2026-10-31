@@ -1,8 +1,8 @@
 # 08: La page entière, en maquette
 
 Type: prototype
-Status: open — prototype prêt, en attente de la réaction de David (2026-10-31)
-Blocked by: 10, 11 — jugés dans la même maquette
+Status: resolved
+Blocked by: —
 
 ## Question
 
@@ -182,4 +182,77 @@ David retient D2 (« une base qui est plutôt clean ») et demande :
   plus bas se lit vers la droite) ;
 - le panneau en onglets groupés par source.
 
-En attente : la suite, que David annonce une fois ces corrections faites.
+## Answer
+
+Validé par David le 2026-10-31, devant la version E : « on est bien, on
+peut valider et avancer ». Dernière correction demandée et faite : les
+changements ne se déplient plus, ils forment une liste qu'on fait défiler,
+à la hauteur du module.
+
+**La page, de haut en bas :**
+
+1. **Le titre** nomme la semaine (« Semaine du 21 au 27 octobre »), avec ses
+   dates et la mention que le jour en cours n'est jamais compté.
+2. **Les totaux, en bandeau** de trois colonnes séparées par un filet :
+   dépense, impressions, portée organique. Pour chacune, le grand chiffre,
+   puis la valeur de chaque canal en petit, avec sa pastille. **Ni barre ni
+   anneau.** La portée n'a pas de total ; aujourd'hui elle vaut « — » (voir
+   [La portée organique du compte](12-la-portee-organique-du-compte.md)).
+3. **Le module des canaux, en rail** : une carte par canal à 90 % de la
+   largeur, le canal suivant dépasse à droite, ‹ › ou glisser pour passer.
+   Dans une carte :
+   - **à gauche**, les volumes (dépense, impressions, clics) en totaux, puis
+     chaque ratio (CTR, CPC, CPM) avec son état et **sa moustache** : les
+     moustaches vont de la moins bonne à la meilleure des 12 semaines, les
+     12 semaines sont des points, la boîte marque « tes habitudes », la
+     semaine type est nommée au-dessus, la semaine regardée est un gros
+     point coloré selon son état. **Le mieux est toujours à droite** (un CPC
+     plus bas se lit vers la droite) ;
+   - **à droite, les changements du canal** de la semaine mesurée,
+     regroupés **par catégorie** (« Budget · 3 »), en liste qu'on fait
+     défiler à la hauteur de la carte ; chaque entrée donne le jour, la
+     campagne et le résumé ; un lien « journal → » ouvre le journal de la
+     plateforme sur la même semaine. **Le bloc séparé des changements
+     disparaît** : il remplace la forme du ticket 05 (en-tête par
+     plateforme, puis par jour), mais garde ce que 05 a tranché sur le
+     contenu (seulement ce que la plateforme a écrit, catégories retenues,
+     « 0 » seulement si le journal a couvert la semaine) ;
+   - le nom du canal mène à sa page.
+4. **« Ce qui a été fait »** : la frise de l'année à gauche, **la semaine
+   choisie à droite**, dans un panneau qui reste visible quand on défile.
+   - La frise : le rythme des posts en petits points sous les mois, puis
+     les campagnes groupées par plateforme, en barres arrondies avec
+     l'avancement et le premier visuel en tête ; la semaine choisie est une
+     bande ; zoom Année · Mois (Mois à l'ouverture : il ne garde que les
+     campagnes actives autour de la semaine choisie) ; les noms de zone
+     restent visibles quand on défile.
+   - **La frise sert de navigateur** : un clic choisit une semaine, ‹ ›
+     passe à la voisine, « revenir à la semaine mesurée ».
+   - Le panneau : des **onglets par source**, groupés en **Organique**
+     (Instagram, puis les suivantes) et **Campagnes** (Meta, Google Ads).
+     Les posts en grille de deux colonnes (visuel 4:5, format, jour, aucun
+     chiffre) ; les campagnes en cartes (visuel ou « pas de visuel », nom,
+     dates, « lancée / terminée cette semaine », dépense de la semaine au
+     survol).
+
+**Le style se reprend de l'hebdo actuel** (David) : ses jetons Tailwind
+(`border-line`, `rounded-xl`, `shadow-card`, `bg-brand`), ses mini-modules,
+et ses icônes de plateforme — la table `PLATEFORME` de
+`components/frise-semaine.tsx:78`, Instagram compris, avec une icône pour
+chaque autre plateforme de posts. Les couleurs de la maquette ne sont pas
+retenues (David : « pas fan, mais ce n'est pas le point »).
+`components/scroll-list.tsx` est le candidat pour la liste des
+changements.
+
+**Ce qui n'est pas tranché ici et reste dans la carte :**
+
+- Google entre-t-il au module des canaux ? Sa carte a été jugée sur les
+  vraies données, mais la règle « quand sa page sera finie » (ticket 02)
+  tient toujours.
+- Les états (source pas branchée, muette, historique trop court, semaine
+  sans post ni campagne) → [Les états de la page](13-les-etats-de-la-page.md).
+- Ce que le payload doit porter → [Ce que le traitement doit calculer](14-ce-que-le-traitement-doit-calculer.md).
+
+**Le prototype** (`.scratch/hebdo/prototype-08/`, état final au commit qui
+clôt ce ticket) reste dans l'arbre jusqu'à ce que la spec soit écrite, pour
+que la construction le voie ; il part ensuite, et l'historique le garde.

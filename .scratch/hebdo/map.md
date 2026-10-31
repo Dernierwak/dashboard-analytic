@@ -57,10 +57,14 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling ✓ | — |
 | [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) | grilling | — |
 | [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype — hors périmètre | — |
-| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype — maquette prête, attend David | 10, 11 (jugés dans la même maquette) |
+| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) | research ✓ | — |
-| [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype | — |
-| [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype | — |
+| [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype ✓ (par 08) | — |
+| [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype ✓ (par 08) | — |
+| [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research | — |
+| [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling | — |
+| [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | — |
+| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 12, 13, 14 |
 
 ## Decisions so far
 
@@ -102,26 +106,29 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   la frise montre ; en-tête « Meta · 7 changements » par plateforme, chaque
   mention liée à son journal ; puis par jour, une campagne dépliable par
   ligne marquée « — Meta » ; « 0 » sur une semaine récoltée, « — » sinon.
+  *Sa forme est remplacée par 08 : les changements entrent dans la carte de
+  leur canal, par catégorie ; le contenu tranché ici tient.*
+- [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) :
+  validée sur un vrai compte — totaux en bandeau (sans barre ni anneau) ;
+  canaux en rail, une carte par écran, avec moustache par ratio (le mieux à
+  droite) et les changements du canal par catégorie, en liste qu'on fait
+  défiler ; « Ce qui a été fait » : la frise de l'année choisit la semaine,
+  montrée à droite en onglets Organique · Campagnes. Style repris de
+  l'hebdo actuel, icônes de plateforme comprises.
+- [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md)
+  et [La frise, en maquette](issues/11-la-frise-en-maquette.md) : tranchés
+  par 08 — les posts sortent de la frise (seul leur rythme y reste) ; un
+  visuel de campagne n'existe que pour 3 campagnes Meta sur 10, et pour
+  aucune campagne Google.
 
 ## Not yet specified
 
-- **Ce que le traitement doit calculer de neuf.** Dépend de ce que les
-  grillings retiennent : la spec finira par une liste « clé du payload → d'où
-  elle vient », mais on ne peut pas l'écrire avant de savoir quoi montrer.
-  Elle dira aussi ce qui **sort** : `metrics_read/prev/series` et `kpis` ne
-  sont lus par personne ([l'inventaire du 2026-10-28](inventaire-2026-10-28.md)) ; ils
-  sortent, avec `canaux_muets` côté page.
-  Sortent aussi les `changements` déduits ; entre un **signal de couverture
-  du journal** de chaque plateforme, sans lequel « 0 changement » et une
-  récolte en panne se confondent ([le ticket 05](issues/05-les-changements-de-la-semaine.md)).
-- **Les états de la page** : une source pas branchée, une source muette cette
-  semaine, un compte de moins de deux semaines (rien à comparer), une semaine
-  sans aucune campagne. Chaque bloc retenu en aura, ils se trancheront avec la
-  maquette.
-- **Le passage vers la page plateforme** : depuis quel bloc, vers quoi, avec
-  quel contexte (la même semaine ?). Ça dépend des blocs.
-- **L'identité visuelle** de la page — typographie, densité, ce qui « fait
-  waouh » sans casser la lecture. À voir quand la maquette existera.
+- **Le contexte du passage vers une page plateforme** : le nom du canal mène
+  à sa page et « journal → » à son journal sur la même semaine ; reste à
+  dire si la page plateforme s'ouvre elle aussi sur cette semaine — cela
+  dépend du chantier des pages plateformes.
+- **Les couleurs** : celles de la maquette ne sont pas retenues ; elles se
+  reprennent du style de l'hebdo actuel à la construction.
 
 ## Out of scope
 

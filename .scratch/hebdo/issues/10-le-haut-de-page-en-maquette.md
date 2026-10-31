@@ -1,7 +1,7 @@
 # 10: La boussole et le haut de page, en maquette
 
 Type: prototype
-Status: open
+Status: resolved
 Blocked by: —
 
 ## Question
@@ -24,3 +24,11 @@ répartition. La moyenne peut être provisoire : sa définition est au ticket 03
 - la forme des totaux : dépense et impressions avec leur répartition, la
   portée organique côte à côte sans total ;
 - ce que montre une case quand la plateforme n'a pas répondu (« — », jamais 0).
+
+## Answer
+
+Tranché avec la page entière, dans [La page entière, en maquette](08-la-page-entiere-en-maquette.md) (2026-10-31) :
+les totaux en bandeau, sans barre ni anneau ; une carte par canal en rail, avec ses
+volumes, ses ratios et une moustache par ratio (le mieux à droite) ; une case
+sans réponse vaut « — ». La comparaison avec l'actuel `Verdict` / `KpiFocusCard`
+n'a pas été montrée : David a jugé la nouvelle forme seule.
