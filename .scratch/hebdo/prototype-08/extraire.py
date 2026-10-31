@@ -95,17 +95,7 @@ totaux = {
     "portee": {"Instagram": None, "Facebook": None, "TikTok": None},
 }
 
-# ── Le module des canaux : Meta, volumes + ratios face à la semaine type (ticket 03) ──
-par_sem = defaultdict(lambda: [0.0, 0, 0])
-for r in meta:
-    i = semaine_de(r["d"])
-    if 0 <= i <= 12 and r["d"] <= fin:
-        x = par_sem[i]
-        x[0] += float(r["spend"] or 0)
-        x[1] += r["impressions"] or 0
-        x[2] += r["clicks"] or 0
-
-
+# ── Le module des canaux : volumes + ratios face à la semaine type (ticket 03) ──
 def ratios(x):
     dep, imp, clk = x
     return {
@@ -115,23 +105,32 @@ def ratios(x):
     }
 
 
-sem0 = par_sem.get(0, [0.0, 0, 0])
-r0 = ratios(sem0)
-reference = {}
-for m in ("ctr", "cpc", "cpm"):
-    vals = [ratios(par_sem[i])[m] for i in range(1, 13) if i in par_sem]
-    vals = [v for v in vals if v is not None]
-    if len(vals) < 6:
-        reference[m] = {"n": len(vals), "med": None}
-        continue
-    q = statistics.quantiles(vals, n=4)
-    reference[m] = {"n": len(vals), "med": statistics.median(vals), "q1": q[0], "q3": q[2],
-                    "semaines": vals}
-canal_meta = {
-    "repond": meta_couvre,
-    "depense": round(sem0[0], 2), "impressions": sem0[1], "clics": sem0[2],
-    "ratios": r0, "reference": reference,
-}
+def canal(rows, champ_dep, diviseur, couvre):
+    par_sem = defaultdict(lambda: [0.0, 0, 0])
+    for r in rows:
+        i = semaine_de(r["d"])
+        if 0 <= i <= 12 and r["d"] <= fin:
+            x = par_sem[i]
+            x[0] += float(r[champ_dep] or 0) / diviseur
+            x[1] += r["impressions"] or 0
+            x[2] += r["clicks"] or 0
+    sem0 = par_sem.get(0, [0.0, 0, 0])
+    reference = {}
+    for m in ("ctr", "cpc", "cpm"):
+        vals = [ratios(par_sem[i])[m] for i in range(1, 13) if i in par_sem]
+        vals = [v for v in vals if v is not None]
+        if len(vals) < 6:
+            reference[m] = {"n": len(vals), "med": None}
+            continue
+        q = statistics.quantiles(vals, n=4)
+        reference[m] = {"n": len(vals), "med": statistics.median(vals), "q1": q[0], "q3": q[2],
+                        "semaines": vals}
+    return {"repond": couvre, "depense": round(sem0[0], 2), "impressions": sem0[1], "clics": sem0[2],
+            "ratios": ratios(sem0), "reference": reference}
+
+
+canal_meta = canal(meta, "spend", 1, meta_couvre)
+canal_google = canal(google, "cost_micros", 1e6, google_couvre)
 
 # ── Les changements : ce que Meta a écrit, semaine mesurée, catégories retenues (ticket 05) ──
 GARDEES = {"budget", "enchere", "audience", "creatif", "objectif", "motcle", "diffusion", "calendrier", "autre"}
@@ -160,13 +159,15 @@ def campagnes(rows, conf, plateforme, champ_dep, diviseur):
     acc = {}
     for r in rows:
         c = acc.setdefault(r["campaign_id"], {"nom": r["campaign_name"], "jours": [], "dep": 0.0,
-                                              "ads": defaultdict(float)})
+                                              "ads": defaultdict(float), "sem": defaultdict(float)})
         c["nom"] = r["campaign_name"]  # trié par date : le nom actuel gagne
         dep = float(r[champ_dep] or 0) / diviseur
         if dep > 0:
             c["jours"].append(r["d"])
         if r["d"].year == annee:
             c["dep"] += dep
+            if r["d"] <= fin:  # au-delà, la semaine n'est pas finie
+                c["sem"][semaine_de(r["d"])] += dep
             if r.get("ad_id"):
                 c["ads"][r["ad_id"]] += dep
     out = []
@@ -191,7 +192,7 @@ def campagnes(rows, conf, plateforme, champ_dep, diviseur):
         out.append({"id": cid, "plateforme": plateforme, "nom": cf.get("campaign_name") or c["nom"],
                     "debut": d0, "fin": d1, "fin_declaree": bool(cf.get("end_date")),
                     "statut": cf.get("effective_status"), "depense": round(c["dep"], 2),
-                    "visuels": visuels})
+                    "visuels": visuels, "sem": {i: round(v, 2) for i, v in c["sem"].items()}})
     return out
 
 
@@ -204,14 +205,14 @@ liste = campagnes(meta, conf_meta, "Meta", "spend", 1) + campagnes(google, conf_
 
 posts = [
     {"plateforme": "Instagram", "type": p["type"], "date": p["date"][:10], "media": p["media_url"],
-     "legende": (p["caption"] or "")[:80]}
+     "legende": (p["caption"] or "")[:160]}
     for p in get(f"instagram_organic_posts?user_id=eq.{uid}&date=gte.{annee}-01-01&select=type,date,media_url,caption&order=date")
 ]
 
 donnees = {
     "aujourdhui": aujourd_hui.isoformat(), "jour_travail": JOURS[jour_travail],
     "semaine": {"debut": debut.isoformat(), "fin": fin.isoformat(), "numero": fin.isocalendar()[1]},
-    "totaux": totaux, "meta": canal_meta, "changements": changements,
+    "totaux": totaux, "meta": canal_meta, "google": canal_google, "changements": changements,
     "campagnes": liste, "posts": posts,
 }
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "donnees.local.js")
@@ -224,7 +225,7 @@ for p in posts:
     hotes[(p["media"] or "").split("/")[2] if p["media"] else None] += 1
 print(f"semaine {debut} → {fin} (Jour de travail : {JOURS[jour_travail]}, planning brut « {sched} »)")
 print(f"Meta couvre : {meta_couvre} · Google couvre : {google_couvre}")
-print(f"référence : { {m: (v['n'], v['med'] is not None) for m, v in reference.items()} }")
+print(f"référence : { {m: (v['n'], v['med'] is not None) for m, v in canal_meta['reference'].items()} }")
 print(f"{len(changements)} changements retenus sur {len(ch)} · {len(liste)} campagnes · {len(posts)} posts")
 print(f"campagnes avec visuels : {sum(1 for c in liste if c['visuels'])} · statuts : {sorted({str(c['statut']) for c in liste})}")
 print(f"hôtes des visuels de posts : {dict(hotes)}")

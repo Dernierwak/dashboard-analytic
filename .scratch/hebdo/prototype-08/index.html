@@ -58,6 +58,41 @@
   .post { position: absolute; border-radius: 4px; object-fit: cover; background: var(--neutre); border: 1px solid #fff; box-shadow: 0 0 0 1px var(--trait); }
   .post-type { position: absolute; font-size: 9px; color: #fff; background: rgba(0,0,0,.55); border-radius: 3px; padding: 0 3px; pointer-events: none; }
 
+  /* ── Variante D ── */
+  .d-hero { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 16px; }
+  .d-stat .gros { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
+  .d-rep { display: flex; height: 10px; border-radius: 99px; overflow: hidden; gap: 2px; margin: 10px 0 8px; }
+  .d-leg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+  .d-leg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+  .d-rail { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 10px; scrollbar-width: thin; }
+  .d-rail > * { scroll-snap-align: start; flex: 0 0 min(560px, 88%); }
+  .d-rond { width: 30px; height: 30px; border-radius: 99px; border: 1px solid var(--trait); background: var(--carte); cursor: pointer; }
+  .d-nav { display: flex; align-items: center; gap: 8px; }
+  .d-semaine { font-weight: 600; min-width: 230px; text-align: center; }
+  .d-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .d-post { border-radius: 12px; overflow: hidden; background: var(--carte); border: 1px solid var(--trait); transition: transform .15s, box-shadow .15s; }
+  .d-post:hover, .d-camp:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+  .d-post .img { position: relative; aspect-ratio: 4/5; background: var(--neutre); }
+  .d-post img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .d-badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; border-radius: 99px; padding: 2px 8px; backdrop-filter: blur(4px); }
+  .d-leg-post { padding: 10px 12px; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .d-camp { position: relative; border-radius: 12px; overflow: hidden; background: var(--carte); border: 1px solid var(--trait); transition: transform .15s, box-shadow .15s; }
+  .d-camp .vis { aspect-ratio: 16/9; display: grid; gap: 2px; background: var(--neutre); }
+  .d-camp .vis img { width: 100%; height: 100%; object-fit: cover; display: block; min-height: 0; }
+  .d-camp .sans { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--doux); }
+  .d-camp .corps { padding: 10px 12px; }
+  .d-camp .nom { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-prog { height: 4px; border-radius: 99px; background: var(--neutre); margin: 8px 0 4px; overflow: hidden; }
+  .d-dep { position: absolute; inset: auto 8px 8px auto; background: var(--encre); color: #fff; font-size: 12px; border-radius: 99px; padding: 2px 9px; opacity: 0; transition: opacity .15s; }
+  .d-camp:hover .d-dep { opacity: 1; }
+  .d-tag { display: inline-block; font-size: 11px; border-radius: 99px; padding: 1px 8px; margin-right: 4px; }
+  .d-frise { position: relative; overflow: auto; max-height: 420px; border-radius: 10px; background: var(--carte); border: 1px solid var(--trait); cursor: pointer; }
+  .d-barre { position: absolute; height: 20px; border-radius: 99px; display: flex; align-items: center; font-size: 12px; white-space: nowrap; overflow: visible; }
+  .d-barre .fait { position: absolute; inset: 0 auto 0 0; border-radius: 99px; }
+  .d-barre .lib { position: sticky; left: 4px; z-index: 1; display: flex; align-items: center; gap: 5px; padding: 0 8px 0 3px; }
+  .d-barre img { width: 16px; height: 16px; border-radius: 99px; object-fit: cover; }
+  .d-pt { position: absolute; width: 8px; height: 8px; border-radius: 2px; background: #c13584; opacity: .75; }
+
   /* ── Le commutateur, hors design ── */
   #commutateur { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 99;
                  background: #111; color: #fff; border-radius: 99px; padding: 6px 8px; display: flex; gap: 8px; align-items: center;
@@ -365,15 +400,221 @@ function VarianteC() {
   </main>`;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// D — L'assemblage demandé par David (2026-10-31) : totaux en avant avec
+// les changements à droite ; les canaux en rail qu'on fait glisser, la
+// moustache sur chaque ratio ; « ce qui a été fait » : l'année en frise qui
+// sert de navigateur, et la semaine choisie en grand — posts et campagnes.
+// ════════════════════════════════════════════════════════════════════════
+const COUL = { "Meta": "#4a6cf7", "Google Ads": "#e3a008", "Instagram": "#c13584" };
+const CLAIR = { "Meta": "#e4e9fe", "Google Ads": "#fcefc8" };
+
+function lireRatioDe(cn, r) {
+  const v = cn.repond ? cn.ratios[r.cle] : null, ref = cn.reference[r.cle];
+  if (v == null || ref.med == null) return { v, ref, etat: null, mot: v == null ? "pas de ratio cette semaine" : `trop peu d'historique (${ref.n} semaines sur 6)` };
+  const pos = v > ref.q3 ? "au-dessus" : v < ref.q1 ? "en dessous" : "dans";
+  const bon = pos === "dans" ? "dans" : ((pos === "au-dessus") === (r.mieux === "haut") ? "mieux" : "moins");
+  return { v, ref, etat: bon, mot: pos === "dans" ? "dans tes habitudes" : `${pos} de tes habitudes` };
+}
+
+// La moustache : moustaches = la moins bonne et la meilleure des semaines de
+// la fenêtre, boîte = « tes habitudes » (écart interquartile), trait = semaine
+// type, point = la semaine regardée.
+function moustache(r, l) {
+  if (l.etat == null) return `<div class="doux petit">${l.mot}</div>`;
+  const s = l.ref.semaines, lo = Math.min(...s, l.v), hi = Math.max(...s, l.v), w = 260;
+  const x = v => 8 + (v - lo) / (hi - lo || 1) * (w - 16);
+  const mn = Math.min(...s), mx = Math.max(...s);
+  const [meil, pire] = r.mieux === "haut" ? [mx, mn] : [mn, mx];
+  const coul = { mieux: "var(--mieux-encre)", moins: "var(--moins-encre)", dans: "#444" }[l.etat];
+  return `<svg width="100%" viewBox="0 0 ${w} 40" style="max-width:${w}px;display:block" aria-hidden="true">
+    <line x1="${x(mn)}" x2="${x(mx)}" y1="14" y2="14" stroke="#bbb"/>
+    <line x1="${x(mn)}" x2="${x(mn)}" y1="8" y2="20" stroke="#bbb"/><line x1="${x(mx)}" x2="${x(mx)}" y1="8" y2="20" stroke="#bbb"/>
+    <rect x="${x(l.ref.q1)}" y="6" width="${Math.max(2, x(l.ref.q3) - x(l.ref.q1))}" height="16" rx="3" fill="#eeede9" stroke="#d5d4cf"/>
+    <line x1="${x(l.ref.med)}" x2="${x(l.ref.med)}" y1="6" y2="22" stroke="#777" stroke-width="2"/>
+    <circle cx="${x(l.v)}" cy="14" r="5.5" fill="${coul}" stroke="#fff" stroke-width="2"/>
+    <text x="${x(meil)}" y="36" font-size="9.5" fill="#6b6b66" text-anchor="${meil === mx ? "end" : "start"}">meilleure ${r.fmt(meil)}</text>
+    <text x="${x(pire)}" y="36" font-size="9.5" fill="#6b6b66" text-anchor="${pire === mx ? "end" : "start"}">moins bonne ${r.fmt(pire)}</text></svg>`;
+}
+
+function carteCanal(nom, cn, note) {
+  const n = Math.max(...RATIOS.map(r => cn.reference[r.cle].n));
+  return `<a href="#" class="bloc" style="text-decoration:none;display:block;border-top:3px solid ${COUL[nom]}" title="Mène à la page ${nom}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><strong style="font-size:16px">${nom}</strong>
+      <span class="doux petit">${note || ""}</span></div>
+    <div style="display:flex;gap:26px;margin:12px 0 4px" class="num">
+      ${[["Dépense", chf(cn.repond ? cn.depense : null)], ["Impressions", nf(cn.repond ? cn.impressions : null)], ["Clics", nf(cn.repond ? cn.clics : null)]]
+        .map(([k, v]) => `<div><div class="doux petit">${k}</div><div style="font-size:19px">${v}</div></div>`).join("")}
+    </div>
+    ${RATIOS.map(r => { const l = lireRatioDe(cn, r); return `<div style="display:grid;grid-template-columns:52px 96px minmax(0,1fr);gap:10px;align-items:center;padding:8px 0 2px;border-top:1px solid var(--trait)" class="num">
+      <div><strong>${r.nom}</strong></div>
+      <div><div style="font-size:16px">${l.v == null ? "—" : r.fmt(l.v)}</div>${l.etat ? `<span class="etat ${l.etat}" style="font-size:11px">${l.mot.replace(" de tes habitudes", "").replace("dans tes habitudes", "habituel")}</span>` : ""}</div>
+      <div>${moustache(r, l)}</div></div>`; }).join("")}
+    <div class="doux petit" style="margin-top:8px">Comparé à ta semaine type — la médiane de tes ${n} dernières semaines.</div>
+  </a>`;
+}
+
+function VarianteD() {
+  const totalDep = somme(T.depense), totalImp = somme(T.impressions);
+  const stat = (lib, total, o, f) => `<div class="d-stat"><div class="doux petit">${lib}</div><div class="gros num">${f(total)}</div>
+    <div class="d-rep">${Object.entries(o).filter(([, v]) => v).map(([k, v]) => `<div title="${k}" style="flex:${v};background:${COUL[k]}"></div>`).join("")}</div>
+    <div class="d-leg num">${Object.entries(o).map(([k, v]) => `<span><i style="background:${COUL[k]}"></i>${k} <strong>${f(v)}</strong> <span class="doux">${v != null && total ? Math.round(v / total * 100) + " %" : ""}</span></span>`).join("")}</div></div>`;
+  return `<main style="max-width:1180px;margin:0 auto;padding:30px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+      <h1>${titre}</h1><span class="doux petit">du ${jourLong(S.debut)} au ${jourLong(S.fin)} · jour en cours jamais compté</span></div>
+    <div class="d-hero">
+      <section class="bloc">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px">
+          ${stat("Dépense de la semaine", totalDep, T.depense, v => chf(v))}
+          ${stat("Impressions de la semaine", totalImp, T.impressions, v => nf(v))}
+        </div>
+        <div style="border-top:1px solid var(--trait);margin-top:16px;padding-top:12px;display:flex;gap:22px;flex-wrap:wrap;align-items:baseline" class="num">
+          <span class="doux petit">Portée organique</span>
+          ${Object.entries(T.portee).map(([k, v]) => `<span>${k} <strong>${nf(v)}</strong></span>`).join("")}
+          ${absent ? `<span class="doux petit" title="${raisonPortee}">— non récoltée ⓘ</span>` : ""}
+        </div>
+      </section>
+      <aside class="bloc" style="max-height:330px;overflow:auto"><h2>Les changements</h2>${changementsHtml(true)}</aside>
+    </div>
+
+    <section style="margin-top:26px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h2 style="margin:0">Les canaux</h2>
+        <div class="d-nav"><button class="d-rond" data-rail="-1" aria-label="Canal précédent">‹</button><button class="d-rond" data-rail="1" aria-label="Canal suivant">›</button></div>
+      </div>
+      <div class="d-rail" id="rail">
+        ${carteCanal("Meta", D.meta)}
+        ${carteCanal("Google Ads", D.google, "aperçu — pas encore au module")}
+        <div class="bloc" style="border-style:dashed;display:flex;align-items:center;justify-content:center;color:var(--doux);min-height:200px">Instagram arrivera ici quand sa page sera finie.</div>
+      </div>
+    </section>
+
+    <section style="margin-top:30px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <h2 style="margin:0">Ce qui a été fait</h2>
+        <div class="d-nav"><button class="d-rond" data-sem="1" aria-label="Semaine précédente">‹</button>
+          <span class="d-semaine" id="d-titre-sem"></span>
+          <button class="d-rond" data-sem="-1" aria-label="Semaine suivante">›</button>
+          <button class="pastille" data-sem="0" id="d-retour">semaine mesurée</button></div>
+      </div>
+      <div class="frise-outils">${["Année", "Mois"].map(z => `<button class="pastille" data-dz="${z}">${z}</button>`).join("")}
+        <span class="doux petit" style="margin-left:8px">clique sur la frise pour choisir une semaine</span></div>
+      <div class="d-frise" id="d-frise"><div class="frise-toile" id="d-toile"></div></div>
+      <div id="d-semaine" style="margin-top:20px"></div>
+    </section>
+  </main>`;
+}
+
+function brancherD() {
+  const an = +S.fin.slice(0, 4), Y0 = new Date(`${an}-01-01T12:00:00`), NJ = 365;
+  const jIdx = s => Math.round((dte(s) - Y0) / 864e5);
+  const iso = d => d.toISOString().slice(0, 10);
+  const bornes = w => { const f = dte(S.fin); f.setDate(f.getDate() - 7 * w); const d = new Date(f); d.setDate(d.getDate() - 6); return [iso(d), iso(f)]; };
+  const semDe = s => Math.floor((dte(S.fin) - dte(s)) / 864e5 / 7);
+  const wMax = semDe(`${an}-01-01`);
+  let w = 0, zoom = "Année";
+  const rail = document.getElementById("rail");
+  document.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => rail.scrollBy({ left: +b.dataset.rail * rail.clientWidth * .8, behavior: "smooth" }));
+  const vue = document.getElementById("d-frise"), toile = document.getElementById("d-toile");
+
+  function frise() {
+    document.querySelectorAll("[data-dz]").forEach(b => b.classList.toggle("on", b.dataset.dz === zoom));
+    const s = zoom === "Année" ? (vue.clientWidth - 2) / NJ : 22, X = j => j * s;
+    const [a, b] = bornes(w);
+    let h = "";
+    for (let m = 0; m < 12; m++) {
+      const j = jIdx(`${an}-${String(m + 1).padStart(2, "0")}-01`), j2 = m < 11 ? jIdx(`${an}-${String(m + 2).padStart(2, "0")}-01`) : NJ;
+      h += `<div style="position:absolute;top:0;bottom:0;left:${X(j)}px;width:${X(j2) - X(j)}px;background:${m % 2 ? "#fafaf8" : "transparent"}"></div>
+            <div style="position:absolute;top:6px;left:${X(j) + 6}px;font-size:11px;color:var(--doux)">${zoom === "Année" ? MOIS[m].slice(0, 3) : MOIS[m]}</div>`;
+    }
+    h += `<div style="position:absolute;top:0;bottom:0;left:${X(jIdx(a))}px;width:${7 * s}px;background:rgba(74,108,247,.12);border-radius:4px;box-shadow:inset 0 0 0 1.5px rgba(74,108,247,.55)"></div>`;
+    h += `<div style="position:absolute;top:0;bottom:0;left:${X(jIdx(AJD))}px;border-left:1.5px dashed #c33"></div>
+          <div style="position:absolute;top:6px;left:${X(jIdx(AJD)) + 4}px;font-size:10px;color:#c33">aujourd'hui</div>`;
+    let y = 28;
+    // Le rythme des posts d'abord, sous les mois : en bas, il disparaissait
+    // derrière les campagnes Google.
+    h += `<div style="position:absolute;top:${y}px;left:8px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:${COUL.Instagram}">Posts Instagram</div>`; y += 18;
+    const pile = {};
+    for (const p of D.posts) { const j = jIdx(p.date), k = Math.floor(X(j) / 9); pile[k] = (pile[k] || 0) + 1;
+      h += `<div class="d-pt" style="left:${X(j)}px;top:${y + (pile[k] - 1) * 10}px" title="${esc(jourLong(p.date) + " · " + fmtType(p.type))}"></div>`; }
+    y += Math.max(1, ...Object.values(pile)) * 10 + 14;
+    for (const p of ["Meta", "Google Ads"]) {
+      const liste = D.campagnes.filter(c => c.plateforme === p).sort((x, z) => x.debut.localeCompare(z.debut));
+      h += `<div style="position:absolute;top:${y}px;left:8px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:${COUL[p]}">${p}</div>`; y += 18;
+      for (const c of liste) {
+        const ouverte = !c.fin_declaree && statut(c) === "en cours";
+        const j0 = Math.max(0, jIdx(c.debut)), j1 = Math.min(NJ, ouverte ? jIdx(AJD) : jIdx(c.fin || AJD));
+        const larg = Math.max(6, X(j1) - X(j0)), fait = Math.max(0, Math.min(1, (jIdx(AJD) - j0) / Math.max(1, j1 - j0)));
+        const actif = c.debut <= b && (!c.fin || c.fin >= a || ouverte);
+        h += `<div class="d-barre" style="top:${y}px;left:${X(j0)}px;width:${larg}px;background:${CLAIR[p]};opacity:${actif ? 1 : .55};box-shadow:${actif ? `inset 0 0 0 1.5px ${COUL[p]}` : "none"}" title="${esc(c.nom + (statut(c) ? " · " + statut(c) : ""))}">
+          <div class="fait" style="width:${fait * 100}%;background:${COUL[p]};opacity:.22"></div>
+          <span class="lib">${c.visuels[0] ? `<img src="${c.visuels[0]}" alt="">` : `<span style="width:8px;height:8px;border-radius:99px;background:${COUL[p]};margin-left:4px"></span>`}${esc(c.nom)}</span></div>`;
+        y += 24;
+      }
+      y += 8;
+    }
+    toile.style.width = `${X(NJ)}px`; toile.style.height = `${y}px`; toile.innerHTML = h;
+    toile.onclick = e => { const r = toile.getBoundingClientRect(); const j = Math.floor((e.clientX - r.left) / s);
+      const d = new Date(Y0); d.setDate(d.getDate() + j); choisir(semDe(iso(d))); };
+  }
+
+  function semaine() {
+    const [a, b] = bornes(w);
+    document.getElementById("d-titre-sem").textContent = `du ${dte(a).getDate()} ${MOIS[dte(a).getMonth()].slice(0, 4)}. au ${dte(b).getDate()} ${MOIS[dte(b).getMonth()].slice(0, 4)}.`;
+    document.getElementById("d-retour").style.visibility = w === 0 ? "hidden" : "visible";
+    const posts = D.posts.filter(p => p.date >= a && p.date <= b).sort((x, z) => z.date.localeCompare(x.date));
+    const camps = D.campagnes.filter(c => { const ouverte = !c.fin_declaree && statut(c) === "en cours";
+      return c.debut <= b && (ouverte || (c.fin && c.fin >= a)); })
+      .sort((x, z) => (z.sem[w] || 0) - (x.sem[w] || 0));
+    const carteCamp = c => {
+      const ouverte = !c.fin_declaree && statut(c) === "en cours";
+      const fin = c.fin_declaree ? c.fin : null;
+      const p = fin ? Math.max(0, Math.min(1, (dte(b) - dte(c.debut)) / (dte(fin) - dte(c.debut) || 1))) : null;
+      const tags = [c.debut >= a && c.debut <= b ? `<span class="d-tag" style="background:var(--mieux);color:var(--mieux-encre)">lancée cette semaine</span>` : "",
+                    fin && fin >= a && fin <= b ? `<span class="d-tag" style="background:var(--neutre)">terminée cette semaine</span>` : ""].join("");
+      const vis = c.visuels.length
+        ? `<div class="vis" style="grid-template-columns:repeat(${Math.min(2, c.visuels.length)},1fr)">${c.visuels.slice(0, 4).map(u => `<img src="${u}" alt="">`).join("")}</div>`
+        : `<div class="vis sans" style="background:${CLAIR[c.plateforme]}">${c.plateforme === "Meta" ? "aucun visuel récolté" : "pas de visuel chez Google"}</div>`;
+      const dep = c.sem[w];
+      return `<div class="d-camp">${vis}<div class="corps">
+        <div class="nom" title="${esc(c.nom)}">${esc(c.nom)}</div>
+        <div class="petit doux" style="margin-top:2px"><span style="color:${COUL[c.plateforme]}">●</span> ${c.plateforme}${statut(c) ? " · " + statut(c) : ""}</div>
+        ${p != null ? `<div class="d-prog"><div style="width:${p * 100}%;height:100%;background:${COUL[c.plateforme]}"></div></div>` : `<div class="d-prog" style="background:repeating-linear-gradient(90deg,var(--neutre) 0 6px,transparent 6px 10px)"></div>`}
+        <div class="petit doux">du ${dte(c.debut).getDate()} ${MOIS[dte(c.debut).getMonth()].slice(0, 4)}. ${fin ? `au ${dte(fin).getDate()} ${MOIS[dte(fin).getMonth()].slice(0, 4)}.` : "· sans fin déclarée"}</div>
+        <div style="margin-top:6px">${tags}</div></div>
+        <span class="d-dep num">${dep != null ? `${chf(dep)} cette semaine` : "rien dépensé cette semaine"}</span></div>`;
+    };
+    const meta = camps.filter(c => c.plateforme === "Meta"), goo = camps.filter(c => c.plateforme === "Google Ads");
+    document.getElementById("d-semaine").innerHTML = `
+      <h2>Posts publiés · ${posts.length}</h2>
+      ${posts.length ? `<div class="d-grille" style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">${posts.map(p => `<a href="#" class="d-post" style="text-decoration:none" title="Le lien vers le post demande permalink (à récolter, ticket 04)">
+        <div class="img"><img src="${p.media}" alt="" loading="lazy"><span class="d-badge">${fmtType(p.type)}</span></div>
+        <div style="padding:10px 12px 0" class="petit doux">${cap(jourLong(p.date))} · Instagram</div>
+        <div class="d-leg-post">${esc(p.legende) || "<span class='doux'>sans légende</span>"}</div></a>`).join("")}</div>`
+        : `<p class="doux">Aucun post publié cette semaine.</p>`}
+      <h2 style="margin-top:26px">Campagnes actives · ${camps.length} <span style="text-transform:none;letter-spacing:0;font-weight:400">· survol : la dépense de la semaine</span></h2>
+      ${meta.length ? `<div class="petit" style="color:${COUL.Meta};font-weight:600;margin-bottom:8px">Meta · ${meta.length}</div><div class="d-grille">${meta.map(carteCamp).join("")}</div>` : ""}
+      ${goo.length ? `<details style="margin-top:16px" ${meta.length ? "" : "open"}><summary class="petit" style="color:${COUL["Google Ads"]};font-weight:600">Google Ads · ${goo.length}</summary><div class="d-grille" style="margin-top:10px">${goo.map(carteCamp).join("")}</div></details>` : ""}`;
+  }
+
+  function choisir(n) { w = Math.max(0, Math.min(wMax, n)); frise(); semaine(); }
+  document.querySelectorAll("[data-sem]").forEach(b => b.onclick = () => choisir(b.dataset.sem === "0" ? 0 : w + +b.dataset.sem));
+  document.querySelectorAll("[data-dz]").forEach(b => b.onclick = () => { zoom = b.dataset.dz; frise();
+    if (zoom === "Mois") vue.scrollLeft = Math.max(0, jIdx(bornes(w)[0]) * 22 - vue.clientWidth / 2); });
+  choisir(0);
+}
+
 // ── Commutateur ──────────────────────────────────────────────────────────
 const VARIANTES = {
   A: ["Le fil", VarianteA, { couleur: "aucune", posts: "axe", visuels: true, parPlateforme: false }],
   B: ["Le tableau de bord", VarianteB, { couleur: "plateforme", posts: "aucun", visuels: true, parPlateforme: true }],
   C: ["La semaine au centre", VarianteC, { couleur: "statut", posts: "axe", visuels: false, parPlateforme: true }],
+  D: ["L'assemblage", VarianteD, null],
 };
 const NOTES = {
   A: "A — une colonne étroite, lue de haut en bas. Carte Meta avec jauge : les 12 semaines en tirets, la bande « tes habitudes » en gris, la médiane en trait, la semaine en point. Frise : campagnes toutes plateformes mêlées, sans couleur (le statut s'écrit), visuels au début de la barre ; posts Instagram en vignettes sur le même axe de dates.",
   B: "B — tout le chiffré avant le pli, en tuiles ; les changements en colonne collante à droite. Frise : campagnes séparées par plateforme, couleur = plateforme ; posts sortis de l'axe, en mur par mois.",
+  D: "D — l'assemblage demandé après A, B et C : totaux en avant avec leur répartition, changements à droite ; canaux en rail (‹ ›, ou glisser), une moustache par ratio ; « Ce qui a été fait » : la frise de l'année choisit la semaine, et la semaine s'affiche en grand — posts en cartes, campagnes actives avec leurs visuels, dépense au survol. La carte Google est calculée sur les vrais chiffres, mais Google n'est pas encore au module (carte).",
   C: "C — pas de cartes : les totaux en une phrase, Meta en tableau (cette semaine · semaine type · tes habitudes). Le cœur, c'est la semaine jour par jour : débuts, fins, changements et posts de chaque jour. L'année dessous, couleur = statut, sans visuels de campagne.",
 };
 const cles = Object.keys(VARIANTES);
@@ -382,7 +623,7 @@ if (!VARIANTES[courante]) courante = "A";
 function rendre() {
   const [nom, fn, opt] = VARIANTES[courante];
   document.getElementById("page").innerHTML = fn();
-  frise(document.getElementById("frise"), opt);
+  if (opt) frise(document.getElementById("frise"), opt); else brancherD();
   document.getElementById("libelle").textContent = `${courante} · ${nom}`;
   document.getElementById("note").innerHTML = `${NOTES[courante]}<br><br>Compte réel, extrait le ${jourLong(D.aujourdhui)}. Jour de travail : ${D.jour_travail}. Les changements portent l'heure UTC (le fuseau du compte n'est pas lu ici). Aucun signal ne dit encore si le journal Meta a couvert la semaine : le « 0 » ne serait pas sûr.`;
   const u = new URL(location); u.searchParams.set("variant", courante); history.replaceState(null, "", u);

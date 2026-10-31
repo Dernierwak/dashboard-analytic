@@ -86,3 +86,44 @@ Ce que les vraies données ont montré (semaine du mercredi 21 au mardi
   ligne « Hors campagne » doit avoir un nom dans la spec.
 - **Les ratios montrent les trois états** sur cette semaine : CTR et CPC dans
   les habitudes, CPM en dessous (mieux).
+
+## Première réaction de David (2026-10-31) → variante D
+
+Devant A, B et C :
+
+- **Les totaux en avant**, avec leur répartition par canal. L'idée de la
+  barre de B est bonne, mais elle doit être mieux faite.
+- **Les changements en haut à droite, à côté des totaux** (B) : « pas que
+  ce soit encore un truc en dessous ».
+- **Le module des canaux juste dessous, en rail** qu'on fait glisser à
+  gauche et à droite, une carte par canal (Meta, Google…).
+- **La moustache** de A sur chaque ratio : « en graphique visuel où on se
+  trouve actuellement, c'est quoi un peu les meilleurs, pour les 12
+  dernières semaines ».
+- **La frise** est bien placée, mais elle n'est « pas assez jolie ».
+- **Les posts ne vont pas dans la frise** : « des petits stickers en bas ».
+  Ce module compte le plus pour David : « je vois ce que j'ai fait la
+  semaine passée ». Quelqu'un d'autre doit pouvoir naviguer d'une semaine à
+  l'autre et voir à quoi ressemblent les posts et les campagnes, pas « une
+  ligne avec un nom ». Les petits visuels sur les barres de campagne lui
+  plaisent.
+
+La **variante D** assemble ces retours (`?variant=D`) :
+
+- les totaux en grand, avec une barre de répartition et une légende
+  chiffrée ;
+- les changements à droite ;
+- un rail des canaux, où la carte Google est calculée sur ses vrais
+  chiffres, en aperçu, puisque Google n'est pas encore au module ;
+- une moustache par ratio : les moustaches vont de la moins bonne à la
+  meilleure semaine, la boîte marque « tes habitudes », le trait la semaine
+  type, le point la semaine regardée ;
+- **« Ce qui a été fait »** : une frise de l'année redessinée, avec le
+  rythme des posts sous les mois, les barres arrondies, l'avancement et le
+  visuel en tête. Elle sert de navigateur : un clic choisit une semaine, et
+  ‹ › passe à la voisine. Dessous, la semaine choisie s'affiche en grand :
+  les posts en cartes 4:5 (format, date, légende, aucun chiffre), puis les
+  campagnes actives en cartes, avec leur mosaïque de visuels, l'avancement,
+  « lancée / terminée cette semaine » et la dépense de la semaine au survol.
+
+En attente : la réaction de David à D.
