@@ -57,7 +57,7 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling ✓ | — |
 | [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) | grilling | — |
 | [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype — hors périmètre | — |
-| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 03, 04, 05, 10, 11 |
+| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype — maquette prête, attend David | 10, 11 (jugés dans la même maquette) |
 | [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) | research ✓ | — |
 | [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype | — |
 | [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype | — |

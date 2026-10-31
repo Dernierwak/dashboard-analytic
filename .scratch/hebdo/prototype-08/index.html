@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page hebdo — maquette</title>
+<!--
+  PROTOTYPE, jetable — ticket 08 « La page entière, en maquette ».
+  Trois variantes de la page hebdo, ?variant=A|B|C, flèches ← → pour passer.
+  Les chiffres viennent de donnees.local.js (ignoré par git, dépôt public),
+  recréé par `python3.12 -I extraire.py <.env du worker> <début du user_id>`.
+-->
+<style>
+  :root {
+    --fond: #f7f7f5; --carte: #fff; --encre: #1c1c1a; --doux: #6b6b66; --trait: #e6e5e1;
+    --mieux: #e3f2e8; --mieux-encre: #1f6b3a; --moins: #fbe7e5; --moins-encre: #9a2f25;
+    --neutre: #efeeea; --meta: #4a6cf7; --google: #e3a008; --semaine: rgba(74,108,247,.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--encre);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  a { color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+  .doux { color: var(--doux); }
+  .petit { font-size: 12.5px; }
+  h1 { font-size: 26px; letter-spacing: -.02em; margin: 0; font-weight: 650; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--doux);
+       font-weight: 600; margin: 0 0 12px; }
+  .bloc { background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; padding: 20px; min-width: 0; }
+  .etat { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; white-space: nowrap; }
+  .etat.mieux { background: var(--mieux); color: var(--mieux-encre); }
+  .etat.moins { background: var(--moins); color: var(--moins-encre); }
+  .etat.dans { background: var(--neutre); color: var(--doux); }
+  details > summary { cursor: pointer; list-style: none; }
+  details > summary::before { content: "▸ "; color: var(--doux); }
+  details[open] > summary::before { content: "▾ "; }
+  .chg { border-left: 2px solid var(--trait); padding: 4px 10px; margin: 6px 0 6px 14px; }
+  .note { max-width: 1180px; margin: 40px auto 90px; padding: 0 16px; font-size: 12.5px; color: var(--doux); }
+
+  /* ── La frise ── */
+  .frise-outils { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .pastille { border: 1px solid var(--trait); background: var(--carte); border-radius: 99px; padding: 2px 10px;
+              font-size: 12.5px; cursor: pointer; color: var(--doux); }
+  .pastille.on { background: var(--encre); color: #fff; border-color: var(--encre); }
+  .frise-vue { overflow: auto; max-height: 78vh; border: 1px solid var(--trait); border-radius: 8px; background: var(--carte); }
+  .frise-toile { position: relative; }
+  .mois { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--trait); font-size: 11px; color: var(--doux); padding-left: 4px; }
+  .bande-semaine { position: absolute; top: 0; bottom: 0; background: var(--semaine); border-left: 1px solid rgba(74,108,247,.4); border-right: 1px solid rgba(74,108,247,.4); }
+  .ajd { position: absolute; top: 0; bottom: 0; border-left: 1.5px dashed #c33; }
+  .zone { position: absolute; left: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--doux); padding: 0 8px; }
+  .barre { position: absolute; height: 22px; border-radius: 5px; background: #d9d8d3; display: flex; align-items: center;
+           font-size: 12px; white-space: nowrap; overflow: visible; padding-left: 6px; }
+  .barre .lib { position: sticky; left: 6px; z-index: 1; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+  .barre.ouverte { border-top-right-radius: 0; border-bottom-right-radius: 0;
+                   -webkit-mask-image: linear-gradient(90deg,#000 85%,transparent); mask-image: linear-gradient(90deg,#000 85%,transparent); }
+  .barre .vis { display: flex; gap: 2px; margin-right: 6px; }
+  .barre .vis img { height: 20px; width: 20px; object-fit: cover; border-radius: 3px; }
+  .post { position: absolute; border-radius: 4px; object-fit: cover; background: var(--neutre); border: 1px solid #fff; box-shadow: 0 0 0 1px var(--trait); }
+  .post-type { position: absolute; font-size: 9px; color: #fff; background: rgba(0,0,0,.55); border-radius: 3px; padding: 0 3px; pointer-events: none; }
+
+  /* ── Le commutateur, hors design ── */
+  #commutateur { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 99;
+                 background: #111; color: #fff; border-radius: 99px; padding: 6px 8px; display: flex; gap: 8px; align-items: center;
+                 box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 13px; }
+  #commutateur button { background: #333; color: #fff; border: 0; border-radius: 99px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
+  #commutateur span { padding: 0 6px; min-width: 230px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="page"></div>
+<div class="note" id="note"></div>
+<div id="commutateur">
+  <button id="prec" aria-label="Variante précédente">←</button><span id="libelle"></span><button id="suiv" aria-label="Variante suivante">→</button>
+</div>
+
+<script src="donnees.local.js"></script>
+<script>
+const D = window.DONNEES;
+if (!D) document.body.innerHTML = "<p style='padding:40px'>donnees.local.js manque — lancer extraire.py (voir l'en-tête du fichier).</p>";
+
+// ── Formats ──────────────────────────────────────────────────────────────
+const nf = (n, d = 0) => n == null ? "—" : n.toLocaleString("fr-CH", { minimumFractionDigits: d, maximumFractionDigits: d });
+const chf = (n, d = 0) => n == null ? "—" : `${nf(n, d)} CHF`;
+const JOURS = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const dte = s => new Date(s + "T12:00:00");
+const jourLong = s => { const d = dte(s); return `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`; };
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const S = D.semaine;
+const titre = (() => {
+  const a = dte(S.debut), b = dte(S.fin);
+  const ma = a.getMonth() === b.getMonth() ? "" : ` ${MOIS[a.getMonth()]}`;
+  return `Semaine du ${a.getDate()}${ma} au ${b.getDate()} ${MOIS[b.getMonth()]}`;
+})();
+
+// ── Les ratios face à la semaine type (ticket 03) ────────────────────────
+const RATIOS = [
+  { cle: "ctr", nom: "CTR", fmt: v => `${nf(v, 2)} %`, mieux: "haut" },
+  { cle: "cpc", nom: "CPC", fmt: v => chf(v, v < 0.1 ? 3 : 2), mieux: "bas" },
+  { cle: "cpm", nom: "CPM", fmt: v => chf(v, 2), mieux: "bas" },
+];
+function lireRatio(r) {
+  const v = D.meta.repond ? D.meta.ratios[r.cle] : null, ref = D.meta.reference[r.cle];
+  if (v == null || ref.med == null) return { v, ref, etat: null, mot: v == null ? "pas de ratio cette semaine" : `trop peu d'historique (${ref.n} semaines sur 6)` };
+  const pos = v > ref.q3 ? "au-dessus" : v < ref.q1 ? "en dessous" : "dans";
+  const bon = pos === "dans" ? "dans" : ((pos === "au-dessus") === (r.mieux === "haut") ? "mieux" : "moins");
+  return { v, ref, etat: bon, mot: pos === "dans" ? "dans tes habitudes" : `${pos} de tes habitudes` };
+}
+const nSem = Math.max(...RATIOS.map(r => D.meta.reference[r.cle].n));
+const mention = `comparé à ta semaine type — la médiane de tes ${nSem} dernières semaines`
+  + (RATIOS.some(r => D.meta.reference[r.cle].n !== nSem) ? ` (${RATIOS.filter(r => D.meta.reference[r.cle].n !== nSem).map(r => `${r.nom} : ${D.meta.reference[r.cle].n}`).join(", ")})` : "");
+
+// La jauge : les semaines de la fenêtre en tirets, la bande « dans tes habitudes »
+// (écart interquartile), la médiane, et la semaine regardée en point.
+function jauge(r, l) {
+  if (l.etat == null) return "";
+  const vals = [...l.ref.semaines, l.v], lo = Math.min(...vals), hi = Math.max(...vals), w = 160;
+  const x = v => 4 + (v - lo) / (hi - lo || 1) * (w - 8);
+  const coul = { mieux: "var(--mieux-encre)", moins: "var(--moins-encre)", dans: "#555" }[l.etat];
+  return `<svg width="${w}" height="22" aria-hidden="true">
+    <rect x="${x(l.ref.q1)}" y="5" width="${x(l.ref.q3) - x(l.ref.q1)}" height="12" fill="#ecebe7" rx="2"/>
+    ${l.ref.semaines.map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="7" y2="15" stroke="#b9b8b2"/>`).join("")}
+    <line x1="${x(l.ref.med)}" x2="${x(l.ref.med)}" y1="3" y2="19" stroke="#888" stroke-width="1.5"/>
+    <circle cx="${x(l.v)}" cy="11" r="4.5" fill="${coul}"/></svg>`;
+}
+
+// ── Totaux (ticket 01) ───────────────────────────────────────────────────
+const somme = o => { const v = Object.values(o).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+const repart = (o, f) => Object.entries(o).map(([k, v]) => `${k} ${f(v)}`).join(" · ");
+const T = D.totaux;
+const absent = Object.values(T.portee).every(v => v == null);
+const raisonPortee = "la portée du compte par semaine n'est pas récoltée — seule celle de chaque post l'est, et des portées de posts ne s'additionnent pas";
+
+// ── Changements (ticket 05) ──────────────────────────────────────────────
+const CAT = { budget: "Budget", enchere: "Enchère", audience: "Audience", creatif: "Créatif", objectif: "Objectif",
+              motcle: "Mot-clé", diffusion: "Diffusion", calendrier: "Calendrier", autre: "Réglage" };
+function changementsHtml(compact) {
+  const C = D.changements.filter(c => c.plateforme === "Meta");
+  const entete = `<a href="#" title="Mène au journal Meta, ouvert sur la même semaine">Meta · ${C.length} changement${C.length > 1 ? "s" : ""} →</a>`;
+  const parJour = {};
+  for (const c of C) (parJour[c.quand.slice(0, 10)] ??= []).push(c);
+  const jours = Object.keys(parJour).sort().reverse().map(j => {
+    const parCamp = {};
+    for (const c of parJour[j]) (parCamp[c.cid || "—"] ??= []).push(c);
+    return `<div style="margin-top:12px"><div style="font-weight:600">${cap(jourLong(j))} · ${parJour[j].length}</div>
+      ${Object.values(parCamp).map(cs => `<details style="margin:4px 0 0 4px"><summary>${esc(cs[0].cid ? cs[0].campagne : "Hors campagne")} <span class="doux">— Meta · ${cs.length} changement${cs.length > 1 ? "s" : ""}</span></summary>
+        ${cs.map(c => `<div class="chg"><span class="etat dans">${CAT[c.cat] || c.cat}</span> <span class="doux petit">${c.quand.slice(11, 16)} UTC${c.objet ? " · " + esc(c.objet) : ""}</span><div>${esc(c.resume)}</div></div>`).join("")}
+      </details>`).join("")}</div>`;
+  }).join("");
+  return `<div>${entete}</div>${jours}`;
+}
+
+// ── La frise (tickets 04 et 11) ──────────────────────────────────────────
+const AJD = D.aujourdhui;
+function statut(c) {
+  if (c.fin && c.fin_declaree && c.fin < AJD) return "terminée";
+  if (c.debut > AJD) return "prévue";
+  if (c.statut === "PAUSED") return "en pause";
+  // Sans fin déclarée, la dernière dépense n'est pas une fin : la récolte
+  // s'arrête au jour d'avant, la campagne continue.
+  if (c.statut === "ACTIVE" || c.statut === "ENABLED") return "en cours";
+  if (c.statut === "WITH_ISSUES") return "signalée par Meta";
+  return null; // statut non récolté : on ne l'affiche pas
+}
+const COUL_STATUT = { "en cours": "#bfe3cb", "prévue": "#d6defd", "en pause": "#f5e2b8", "terminée": "#dddcd7", "signalée par Meta": "#f3c9c4" };
+const COUL_PLAT = { "Meta": "#c9d3fd", "Google Ads": "#f8e1a6" };
+
+function frise(hote, opt) {
+  const an = +S.fin.slice(0, 4), Y0 = new Date(`${an}-01-01T12:00:00`), NJ = 365;
+  const jIdx = s => Math.round((dte(s) - Y0) / 864e5);
+  let zoom = opt.zoom || "Année", filtre = new Set();
+  hote.innerHTML = `<div class="frise-outils">
+      ${["Année", "Mois", "Semaine"].map(z => `<button class="pastille" data-z="${z}">${z}</button>`).join("")}
+      <span style="width:14px"></span>
+      ${["en cours", "prévue", "en pause", "terminée"].map(s => `<button class="pastille" data-s="${s}">${s}</button>`).join("")}
+    </div><div class="frise-vue"><div class="frise-toile"></div></div>`;
+  const vue = hote.querySelector(".frise-vue"), toile = hote.querySelector(".frise-toile");
+
+  function dessiner() {
+    hote.querySelectorAll("[data-z]").forEach(b => b.classList.toggle("on", b.dataset.z === zoom));
+    hote.querySelectorAll("[data-s]").forEach(b => b.classList.toggle("on", filtre.has(b.dataset.s)));
+    const largeur = vue.clientWidth - 2;
+    const s = zoom === "Année" ? largeur / NJ : zoom === "Mois" ? 26 : 110;   // px par jour
+    const X = j => j * s;
+    let y = 22, html = "";
+    for (let m = 0; m < 12; m++) {
+      const j = jIdx(`${an}-${String(m + 1).padStart(2, "0")}-01`);
+      html += `<div class="mois" style="left:${X(j)}px">${zoom === "Année" ? MOIS[m].slice(0, 3) : MOIS[m]}</div>`;
+    }
+    html += `<div class="bande-semaine" style="left:${X(jIdx(S.debut))}px;width:${7 * s}px" title="${titre}"></div>`;
+    html += `<div class="ajd" style="left:${X(jIdx(AJD))}px" title="aujourd'hui"></div>`;
+
+    const camps = D.campagnes.filter(c => !filtre.size || filtre.has(statut(c)));
+    const plats = opt.parPlateforme ? ["Meta", "Google Ads"] : [null];
+    for (const p of plats) {
+      const liste = camps.filter(c => !p || c.plateforme === p).sort((a, b) => a.debut.localeCompare(b.debut));
+      if (!liste.length) continue;
+      html += `<div class="zone" style="top:${y}px">${p ? `Campagnes ${p}` : "Campagnes"}</div>`; y += 20;
+      for (const c of liste) {
+        const a = Math.max(0, jIdx(c.debut)), ouverte = !c.fin_declaree && statut(c) === "en cours";
+        const b = Math.min(NJ, ouverte ? jIdx(AJD) + 10 : jIdx(c.fin || AJD));
+        const st = statut(c);
+        const fond = opt.couleur === "statut" ? (COUL_STATUT[st] || "#e5e4df") : opt.couleur === "plateforme" ? COUL_PLAT[c.plateforme] : "#e2e1dc";
+        const vis = opt.visuels && c.visuels.length ? `<span class="vis">${c.visuels.slice(0, zoom === "Année" ? 1 : 4).map(u => `<img src="${u}" alt="">`).join("")}</span>` : "";
+        const tip = `${c.nom} · ${c.plateforme}\ndu ${jourLong(c.debut)} ${c.fin ? (c.fin_declaree ? "au " : "— dernière dépense le ") + jourLong(c.fin) : ""}${st ? "\nstatut : " + st : ""}\ndépense ${an} : ${chf(c.depense)}`;
+        const lib = `${jIdx(c.debut) < 0 ? "◂ " : ""}${esc(c.nom)}${opt.couleur === "aucune" && st ? ` <span class="doux">· ${st}</span>` : ""}${!p ? ` <span class="doux">— ${c.plateforme}</span>` : ""}`;
+        html += `<div class="barre ${ouverte ? "ouverte" : ""}" style="top:${y}px;left:${X(a)}px;width:${Math.max(4, X(b) - X(a))}px;background:${fond};${opt.couleur === "aucune" && st === "terminée" ? "opacity:.55;" : ""}" title="${esc(tip)}">${vis}<span class="lib">${lib}</span></div>`;
+        y += 28;
+      }
+      y += 10;
+    }
+
+    if (opt.posts === "axe") {
+      const taille = zoom === "Année" ? 22 : zoom === "Mois" ? 44 : 96;
+      html += `<div class="zone" style="top:${y}px">Posts Instagram</div>`; y += 20;
+      const fins = [];                  // bord droit occupé, par rangée
+      for (const p of D.posts) {
+        const x = X(jIdx(p.date)) + (s > taille ? (s - taille) / 2 : 0);
+        let r = fins.findIndex(f => f + 2 <= x); if (r < 0) { r = fins.length; fins.push(0); }
+        fins[r] = x + taille;
+        const t = y + r * (taille + 4);
+        html += `<img class="post" src="${p.media}" alt="" loading="lazy" style="left:${x}px;top:${t}px;width:${taille}px;height:${taille}px" title="${esc(jourLong(p.date) + " · " + fmtType(p.type) + "\n" + p.legende)}">`;
+        if (taille >= 44) html += `<span class="post-type" style="left:${x + 3}px;top:${t + 3}px">${fmtType(p.type)}</span>`;
+      }
+      y += fins.length * (taille + 4) + 10;
+    }
+    toile.style.width = `${X(NJ)}px`; toile.style.height = `${y}px`;
+    toile.innerHTML = html;
+  }
+  hote.addEventListener("click", e => {
+    const z = e.target.dataset.z, st = e.target.dataset.s;
+    if (z) { zoom = z; dessiner(); vue.scrollLeft = Math.max(0, (jIdx(S.debut) * (z === "Mois" ? 26 : 110)) - vue.clientWidth / 2); }
+    if (st) { filtre.has(st) ? filtre.delete(st) : filtre.add(st); dessiner(); }
+  });
+  dessiner();
+  if (zoom !== "Année") vue.scrollLeft = Math.max(0, jIdx(S.debut) * (zoom === "Mois" ? 26 : 110) - vue.clientWidth / 2);
+}
+const fmtType = t => ({ CAROUSEL_ALBUM: "Carrousel", VIDEO: "Vidéo", IMAGE: "Image" }[t] || t);
+
+// La grille de posts, par mois, hors de l'axe des campagnes (variante B).
+function grillePosts() {
+  const parMois = {};
+  for (const p of D.posts) (parMois[p.date.slice(0, 7)] ??= []).push(p);
+  return Object.keys(parMois).sort().reverse().map(m => `<div style="margin-bottom:14px">
+      <div class="petit doux" style="margin-bottom:6px">${cap(MOIS[+m.slice(5) - 1])} · ${parMois[m].length} posts</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${parMois[m].reverse().map(p => {
+        const sem = p.date >= S.debut && p.date <= S.fin;
+        return `<div style="position:relative;width:86px" title="${esc(jourLong(p.date) + "\n" + p.legende)}">
+          <img src="${p.media}" loading="lazy" alt="" style="width:86px;height:86px;object-fit:cover;border-radius:6px;${sem ? "outline:2px solid var(--meta);outline-offset:1px;" : ""}">
+          <div class="petit doux">${dte(p.date).getDate()} · ${fmtType(p.type)}</div></div>`; }).join("")}</div></div>`).join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// A — Le fil : une colonne, on lit de haut en bas, comme une lettre.
+// ════════════════════════════════════════════════════════════════════════
+function VarianteA() {
+  const carteMeta = `<a href="#" class="bloc" style="display:block;text-decoration:none" title="Mène à /meta">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><strong>Meta</strong><span class="doux petit">${mention}</span></div>
+    <div style="display:flex;gap:28px;margin:14px 0 6px;flex-wrap:wrap" class="num">
+      <div><div class="doux petit">Dépense</div><div style="font-size:20px">${chf(D.meta.repond ? D.meta.depense : null)}</div></div>
+      <div><div class="doux petit">Impressions</div><div style="font-size:20px">${nf(D.meta.repond ? D.meta.impressions : null)}</div></div>
+      <div><div class="doux petit">Clics</div><div style="font-size:20px">${nf(D.meta.repond ? D.meta.clics : null)}</div></div>
+    </div>
+    ${RATIOS.map(r => { const l = lireRatio(r); return `<div style="display:grid;grid-template-columns:60px 110px 170px 1fr;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--trait)" class="num">
+      <strong>${r.nom}</strong><span style="font-size:17px">${l.v == null ? "—" : r.fmt(l.v)}</span>${jauge(r, l)}
+      <span>${l.etat ? `<span class="etat ${l.etat}">${l.mot}</span> <span class="doux petit">type ${r.fmt(l.ref.med)}</span>` : `<span class="doux petit">${l.mot}</span>`}</span></div>`; }).join("")}
+  </a>`;
+  return `<main style="max-width:760px;margin:0 auto;padding:40px 16px">
+    <h1>${titre}</h1>
+    <p class="doux" style="margin:4px 0 26px">du ${jourLong(S.debut)} au ${jourLong(S.fin)} · le ${jourLong(D.aujourdhui)} n'est jamais compté</p>
+    <section style="margin-bottom:28px"><h2>Ce que la semaine a apporté</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px" class="num">
+        <div><div class="doux petit">Dépense</div><div style="font-size:24px">${chf(somme(T.depense))}</div><div class="doux petit">dont ${repart(T.depense, v => chf(v))}</div></div>
+        <div><div class="doux petit">Impressions</div><div style="font-size:24px">${nf(somme(T.impressions))}</div><div class="doux petit">dont ${repart(T.impressions, v => nf(v))}</div></div>
+        <div><div class="doux petit">Portée organique</div><div style="font-size:15px;margin-top:6px">${repart(T.portee, v => nf(v))}</div>${absent ? `<div class="doux petit">— : ${raisonPortee}</div>` : ""}</div>
+      </div></section>
+    <section style="margin-bottom:28px"><h2>Les canaux</h2>${carteMeta}</section>
+    <section style="margin-bottom:28px" class="bloc"><h2>Les changements de la semaine</h2>${changementsHtml()}</section>
+    <section><h2>Campagnes et posts de l'année</h2><div id="frise"></div></section>
+  </main>`;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// B — Le tableau de bord : tout le chiffré avant le pli, en grille ;
+// les changements en colonne ; campagnes sur l'axe, posts en mur à part.
+// ════════════════════════════════════════════════════════════════════════
+function VarianteB() {
+  const tuile = (lib, val, sous, etat) => `<div class="bloc" style="padding:14px"><div class="doux petit">${lib}</div>
+    <div style="font-size:18px;margin:2px 0;white-space:nowrap" class="num">${val}</div><div class="petit">${sous || "&nbsp;"}</div></div>`;
+  const barreRep = o => { const t = somme(o); if (!t) return ""; return `<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:8px">${Object.entries(o).map(([k, v]) => `<div title="${k}" style="width:${(v || 0) / t * 100}%;background:${COUL_PLAT[k] || "#ccc"}"></div>`).join("")}</div>`; };
+  return `<main style="max-width:1180px;margin:0 auto;padding:28px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+      <h1>${titre}</h1><span class="doux petit">du ${jourLong(S.debut)} au ${jourLong(S.fin)}, ${D.aujourdhui === S.fin ? "" : "jour en cours exclu"}</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px">
+      <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+          <div class="bloc" style="padding:14px"><div class="doux petit">Dépense</div><div style="font-size:26px" class="num">${chf(somme(T.depense))}</div>
+            <div class="petit doux num">${repart(T.depense, v => chf(v))}</div>${barreRep(T.depense)}</div>
+          <div class="bloc" style="padding:14px"><div class="doux petit">Impressions</div><div style="font-size:26px" class="num">${nf(somme(T.impressions))}</div>
+            <div class="petit doux num">${repart(T.impressions, v => nf(v))}</div>${barreRep(T.impressions)}</div>
+          <div class="bloc" style="padding:14px"><div class="doux petit">Portée organique</div>
+            ${Object.entries(T.portee).map(([k, v]) => `<div style="display:flex;justify-content:space-between" class="num"><span>${k}</span><span>${nf(v)}</span></div>`).join("")}
+            ${absent ? `<div class="petit doux" title="${raisonPortee}">— : non récoltée ⓘ</div>` : ""}</div>
+        </div>
+        <a href="#" class="bloc" style="text-decoration:none;display:block" title="Mène à /meta">
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px"><strong>Meta</strong><span class="doux petit">${mention}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px">
+            ${tuile("Dépense", chf(D.meta.depense), "")}${tuile("Impressions", nf(D.meta.impressions), "")}${tuile("Clics", nf(D.meta.clics), "")}
+            ${RATIOS.map(r => { const l = lireRatio(r); return tuile(r.nom, l.v == null ? "—" : r.fmt(l.v), l.etat ? `<span class="etat ${l.etat}">${l.mot.replace(" de tes habitudes", "").replace("dans tes habitudes", "habituel")}</span><div class="doux petit" style="margin-top:3px">type ${r.fmt(l.ref.med)}</div>` : `<span class="doux">${l.mot}</span>`); }).join("")}
+          </div></a>
+      </div>
+      <aside class="bloc" style="align-self:start;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto"><h2>Changements</h2>${changementsHtml(true)}</aside>
+    </div>
+    <section class="bloc" style="margin-top:16px"><h2>Campagnes de l'année</h2><div id="frise"></div></section>
+    <section class="bloc" style="margin-top:16px"><h2>Posts de l'année <span style="text-transform:none;letter-spacing:0;font-weight:400">· la semaine mesurée est entourée</span></h2>${grillePosts()}</section>
+  </main>`;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// C — La semaine au centre : les chiffres en phrases et en tableau, sans
+// cartes ; puis les sept jours de la semaine posés côte à côte, et l'année
+// dessous pour situer.
+// ════════════════════════════════════════════════════════════════════════
+function VarianteC() {
+  const jours = [...Array(7)].map((_, i) => { const d = dte(S.debut); d.setDate(d.getDate() + i); return d.toISOString().slice(0, 10); });
+  const enCours = j => D.campagnes.filter(c => c.debut <= j && (!c.fin || c.fin >= j));
+  const lignesRatios = RATIOS.map(r => { const l = lireRatio(r); return `<tr><td><strong>${r.nom}</strong></td>
+    <td class="num" style="text-align:right">${l.v == null ? "—" : r.fmt(l.v)}</td>
+    <td class="num doux" style="text-align:right">${l.etat ? r.fmt(l.ref.med) : "—"}</td>
+    <td class="num doux" style="text-align:right">${l.etat ? `${r.fmt(l.ref.q1)} – ${r.fmt(l.ref.q3)}` : ""}</td>
+    <td>${l.etat ? `<span class="etat ${l.etat}">${l.mot}</span>` : `<span class="doux petit">${l.mot}</span>`}</td></tr>`; }).join("");
+  return `<main style="max-width:1080px;margin:0 auto;padding:36px 16px">
+    <h1>${titre}</h1>
+    <p style="font-size:18px;max-width:780px;margin:14px 0 24px" class="num">
+      ${chf(somme(T.depense))} dépensés <span class="doux">(Meta ${chf(T.depense.Meta)} · Google Ads ${chf(T.depense["Google Ads"])})</span>
+      pour ${nf(somme(T.impressions))} impressions <span class="doux">(Meta ${nf(T.impressions.Meta)} · Google Ads ${nf(T.impressions["Google Ads"])})</span>.
+      Portée organique : <span title="${raisonPortee}">— ⓘ</span>.</p>
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px;align-items:start">
+      <section><h2><a href="#" title="Mène à /meta">Meta →</a></h2>
+        <table style="width:100%;border-collapse:collapse" class="num">
+          <thead class="doux petit"><tr><td></td><td style="text-align:right">cette semaine</td><td style="text-align:right">semaine type</td><td style="text-align:right">tes habitudes</td><td></td></tr></thead>
+          <tbody>
+            <tr><td>Dépense</td><td style="text-align:right">${chf(D.meta.depense)}</td><td></td><td></td><td></td></tr>
+            <tr><td>Impressions</td><td style="text-align:right">${nf(D.meta.impressions)}</td><td></td><td></td><td></td></tr>
+            <tr><td>Clics</td><td style="text-align:right">${nf(D.meta.clics)}</td><td></td><td></td><td></td></tr>
+            ${lignesRatios}
+          </tbody></table>
+        <p class="doux petit">Les volumes ne se comparent pas ; les ratios sont ${mention}. « Tes habitudes » : la moitié centrale de ces semaines.</p>
+      </section>
+      <section><h2>Les changements</h2>${changementsHtml(true)}</section>
+    </div>
+    <section style="margin-top:28px"><h2>La semaine, jour par jour</h2>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px">
+        ${jours.map(j => { const ps = D.posts.filter(p => p.date === j), cs = D.changements.filter(c => c.plateforme === "Meta" && c.quand.startsWith(j)), ec = enCours(j);
+          return `<div class="bloc" style="padding:10px;min-height:200px"><div style="font-weight:600">${cap(JOURS[dte(j).getDay()].slice(0, 3))} ${dte(j).getDate()}</div>
+            <div class="petit doux" title="${esc(ec.map(c => c.nom).join("\n"))}">${ec.length} campagnes en cours</div>
+            ${D.campagnes.filter(c => c.debut === j).map(c => `<div class="petit">▶ début : ${esc(c.nom)}</div>`).join("")}
+            ${D.campagnes.filter(c => c.fin === j && c.fin_declaree).map(c => `<div class="petit">■ fin : ${esc(c.nom)}</div>`).join("")}
+            ${cs.length ? `<div class="petit" style="margin-top:4px"><span class="etat dans">${cs.length} changement${cs.length > 1 ? "s" : ""}</span></div>` : ""}
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${ps.map(p => `<img src="${p.media}" alt="" title="${esc(fmtType(p.type) + "\n" + p.legende)}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px">`).join("")}</div></div>`; }).join("")}
+      </div></section>
+    <section style="margin-top:28px"><h2>L'année</h2><div id="frise"></div></section>
+  </main>`;
+}
+
+// ── Commutateur ──────────────────────────────────────────────────────────
+const VARIANTES = {
+  A: ["Le fil", VarianteA, { couleur: "aucune", posts: "axe", visuels: true, parPlateforme: false }],
+  B: ["Le tableau de bord", VarianteB, { couleur: "plateforme", posts: "aucun", visuels: true, parPlateforme: true }],
+  C: ["La semaine au centre", VarianteC, { couleur: "statut", posts: "axe", visuels: false, parPlateforme: true }],
+};
+const NOTES = {
+  A: "A — une colonne étroite, lue de haut en bas. Carte Meta avec jauge : les 12 semaines en tirets, la bande « tes habitudes » en gris, la médiane en trait, la semaine en point. Frise : campagnes toutes plateformes mêlées, sans couleur (le statut s'écrit), visuels au début de la barre ; posts Instagram en vignettes sur le même axe de dates.",
+  B: "B — tout le chiffré avant le pli, en tuiles ; les changements en colonne collante à droite. Frise : campagnes séparées par plateforme, couleur = plateforme ; posts sortis de l'axe, en mur par mois.",
+  C: "C — pas de cartes : les totaux en une phrase, Meta en tableau (cette semaine · semaine type · tes habitudes). Le cœur, c'est la semaine jour par jour : débuts, fins, changements et posts de chaque jour. L'année dessous, couleur = statut, sans visuels de campagne.",
+};
+const cles = Object.keys(VARIANTES);
+let courante = new URLSearchParams(location.search).get("variant");
+if (!VARIANTES[courante]) courante = "A";
+function rendre() {
+  const [nom, fn, opt] = VARIANTES[courante];
+  document.getElementById("page").innerHTML = fn();
+  frise(document.getElementById("frise"), opt);
+  document.getElementById("libelle").textContent = `${courante} · ${nom}`;
+  document.getElementById("note").innerHTML = `${NOTES[courante]}<br><br>Compte réel, extrait le ${jourLong(D.aujourdhui)}. Jour de travail : ${D.jour_travail}. Les changements portent l'heure UTC (le fuseau du compte n'est pas lu ici). Aucun signal ne dit encore si le journal Meta a couvert la semaine : le « 0 » ne serait pas sûr.`;
+  const u = new URL(location); u.searchParams.set("variant", courante); history.replaceState(null, "", u);
+}
+const aller = d => { courante = cles[(cles.indexOf(courante) + d + cles.length) % cles.length]; rendre(); scrollTo(0, 0); };
+document.getElementById("prec").onclick = () => aller(-1);
+document.getElementById("suiv").onclick = () => aller(1);
+addEventListener("keydown", e => {
+  if (e.target.closest("input,textarea,[contenteditable]")) return;
+  if (e.key === "ArrowLeft") aller(-1);
+  if (e.key === "ArrowRight") aller(1);
+});
+addEventListener("resize", () => { clearTimeout(window._r); window._r = setTimeout(rendre, 200); });
+if (D) rendre();
+</script>
+</body>
+</html>
