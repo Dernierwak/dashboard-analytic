@@ -47,6 +47,8 @@ il se lit par plateforme. On ne découpe pas la page par plateforme.
    le juge « très pertinent », mais l'existant ne le montre pas : il faut le
    construire pour savoir s'il est faisable (ticket 07). Sa place exacte
    (avant ou après la frise) se décide en maquette.
+   **Retiré le 2026-10-31** devant le prototype — « il apporte pas
+   grand-chose, c'est complexe » (ticket 07).
 5. **Les changements** — en suspens : David ne sait pas encore s'ils méritent
    leur place, ni où (bloc ou colonne). Ticket 05, puis la maquette.
 

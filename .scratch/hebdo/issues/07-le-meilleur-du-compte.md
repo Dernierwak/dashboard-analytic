@@ -1,8 +1,7 @@
 # 07: Le meilleur du compte
 
 Type: prototype
-Status: claimed
-Assignee: Dernierwak (session 2026-10-31)
+Status: closed — hors périmètre
 Blocked by: —
 
 ## Question
@@ -72,3 +71,17 @@ glissants ; Meta au coût par résultat d'un même indicateur, 300 CHF et
 7 jours minimum ; Instagram à la portée, posts de 14 jours et plus ;
 trois, sans le pire ; moins de deux candidats → pas de « meilleur », on dit
 pourquoi.
+
+## Clôture (2026-10-31) — hors périmètre
+
+David, devant le prototype : « il apporte pas grand-chose, c'est complexe, il
+y a 1000 filtres, et puis à la fin, on sait pas ce qu'on a. Tout ça, on peut
+supprimer. » **Le module « meilleur du compte » ne va pas sur la page
+hebdo.** Un « meilleur » n'existe qu'au prix d'un critère, d'une période et
+de seuils choisis — autant de réglages que la page statique ne veut pas
+montrer.
+
+Le prototype est supprimé ; il reste dans l'historique (commit `a80c86c`,
+`.scratch/hebdo/prototype-07/`). Ce qu'il a mesuré, ci-dessus, vaut encore si
+la question revient ailleurs — notamment : la portée Instagram n'est
+cohérente qu'à partir de septembre 2024.

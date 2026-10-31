@@ -19,7 +19,7 @@ le design, la présentation et le choix des éléments sont le cœur du chantier
   3. la vue rapide de **toutes les campagnes et tous les posts** — en cours,
      publiés, et **à venir** (« les posts en dessous pas forcément idéaux ») ;
   4. **les changements effectués cette semaine** ;
-  5. peut-être **nos meilleurs X** — « la meilleure campagne, ce qui a le mieux
+  5. ~~peut-être **nos meilleurs X**~~ (retiré le 2026-10-31) — « la meilleure campagne, ce qui a le mieux
      fonctionné ».
 - **La page est statique** au sens de David : la comparaison se voit **sans
   régler de filtre**. Bouger, zoomer, défiler, voir l'année : permis (ticket
@@ -56,8 +56,8 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [La vue des campagnes et des posts](issues/04-la-vue-des-campagnes-et-des-posts.md) | grilling ✓ | — |
 | [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling ✓ | — |
 | [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) | grilling | — |
-| [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype | — |
-| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 03, 04, 05, 07, 10, 11 |
+| [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype — hors périmètre | — |
+| [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 03, 04, 05, 10, 11 |
 | [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) | research ✓ | — |
 | [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype | — |
 | [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype | — |
@@ -69,9 +69,10 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 - [La structure de la page](issues/01-la-structure-de-la-page.md) : des blocs,
   chacun lu par plateforme — titre et totaux (dépense, impressions ; portée
   côte à côte sans total) → module des canaux → campagnes et posts sur l'année
-  → meilleur du compte ; changements en suspens. Le verdict, la boussole et le
-  bandeau « n'a pas répondu » partent ; une absence s'écrit « — ». La
-  boussole et le meilleur se jugent en maquette.
+  ; changements en suspens. Le verdict, la boussole et le bandeau « n'a pas
+  répondu » partent ; une absence s'écrit « — ». La boussole se juge en
+  maquette. (Le meilleur du compte, d'abord retenu, est retiré ensuite — voir
+  Out of scope.)
 - [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) :
   tranché par le ticket 01 — verdict retiré, boussole fondue dans le module
   des canaux.
@@ -127,6 +128,10 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 - **Google Ads et Instagram dans le module des canaux, pour l'instant** —
   leurs pages ne sont pas finies ; ils entrent quand elles le seront.
 
+- **[Le meilleur du compte](issues/07-le-meilleur-du-compte.md)** — retiré
+  devant le prototype (2026-10-31) : « il apporte pas grand-chose, c'est
+  complexe, il y a 1000 filtres ». Un « meilleur » exige un critère, une
+  période et des seuils que la page statique ne veut pas montrer.
 - **L'email hebdo** — David : « on va l'ouvrir dans une autre section ».
 - **Un connecteur LLM** pour poser des questions à ses données — David : « on
   verra dans une autre issue ». Un futur chantier, qui devra rouvrir

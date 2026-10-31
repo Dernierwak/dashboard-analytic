@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 03, 04, 05, 07, 10, 11
+Blocked by: 03, 04, 05, 10, 11
 
 ## Question
 
@@ -18,7 +18,7 @@ pour la hiérarchie.
 - la forme de chaque bloc (chiffres, courbe, frise, liste).
 
 Charpente de départ (ticket 01) : titre et totaux → module des canaux →
-campagnes et posts sur l'année → meilleur du compte (place à confirmer) ;
-changements selon le ticket 05.
+campagnes et posts sur l'année ; changements selon le ticket 05. Le
+meilleur du compte est retiré (ticket 07, 2026-10-31).
 
 La spec de la page s'écrit à la clôture de ce ticket.
