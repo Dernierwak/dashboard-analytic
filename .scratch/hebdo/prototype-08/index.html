@@ -45,7 +45,7 @@
 
   .haut { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 16px; }
   .rail { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 10px; scrollbar-width: thin; }
-  .rail > * { scroll-snap-align: start; flex: 0 0 min(560px, 88%); }
+  .rail > * { scroll-snap-align: start; flex: 0 0 90%; }
 
   .fait { display: grid; grid-template-columns: minmax(0,1fr) 400px; gap: 16px; align-items: start; }
   .frise { position: relative; overflow: auto; max-height: 640px; border-radius: 14px; background: var(--carte); border: 1px solid var(--trait); cursor: pointer; }
@@ -141,6 +141,61 @@ function moustache(r, l) {
     <text x="${x(meil)}" y="36" font-size="9.5" fill="#6b6b66" text-anchor="${meil === mx ? "end" : "start"}">meilleure ${r.fmt(meil)}</text>
     <text x="${x(pire)}" y="36" font-size="9.5" fill="#6b6b66" text-anchor="${pire === mx ? "end" : "start"}">moins bonne ${r.fmt(pire)}</text></svg>`;
 }
+// La moustache, grande (version E) : un axe avec ses deux bouts nommés, les
+// 12 semaines en petits points pour voir où elles se tassent, la boîte
+// « tes habitudes », la semaine type nommée au-dessus, la semaine en gros point.
+function moustacheE(r, l) {
+  if (l.etat == null) return `<div class="doux petit">${l.mot}</div>`;
+  const s = l.ref.semaines, w = 460, mn = Math.min(...s), mx = Math.max(...s);
+  const lo = Math.min(mn, l.v), hi = Math.max(mx, l.v), pad = (hi - lo) * .06 || 1;
+  // Le « mieux » toujours à droite : un CPC plus bas se lit vers la droite.
+  const x = v => { const t = (v - (lo - pad)) / (hi - lo + 2 * pad); return 14 + (r.mieux === "haut" ? t : 1 - t) * (w - 28); };
+  const coul = { mieux: "var(--mieux-encre)", moins: "var(--moins-encre)", dans: "#333" }[l.etat];
+  const [pire, meil] = r.mieux === "haut" ? [mn, mx] : [mx, mn];
+  return `<svg width="100%" viewBox="0 0 ${w} 62" style="display:block" aria-hidden="true">
+    <text x="${x(l.ref.med)}" y="11" font-size="10.5" fill="#6b6b66" text-anchor="middle">semaine type ${r.fmt(l.ref.med)}</text>
+    <line x1="${x(pire)}" x2="${x(meil)}" y1="32" y2="32" stroke="#cfcec9" stroke-width="1.5"/>
+    <rect x="${Math.min(x(l.ref.q1), x(l.ref.q3))}" y="21" width="${Math.max(3, Math.abs(x(l.ref.q3) - x(l.ref.q1)))}" height="22" rx="6" fill="#f0efeb"/>
+    ${s.map(v => `<circle cx="${x(v)}" cy="32" r="2.6" fill="#a9a8a2"/>`).join("")}
+    <line x1="${x(l.ref.med)}" x2="${x(l.ref.med)}" y1="16" y2="46" stroke="#6b6b66" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="${x(l.v)}" cy="32" r="7.5" fill="${coul}" stroke="#fff" stroke-width="2.5"/>
+    <text x="${x(pire)}" y="59" font-size="10" fill="#8a8984" text-anchor="start">moins bonne ${r.fmt(pire)}</text>
+    <text x="${x(meil)}" y="59" font-size="10" fill="#8a8984" text-anchor="end">meilleure ${r.fmt(meil)} →</text></svg>`;
+}
+
+// Les changements d'un canal, par catégorie (ticket 05, regroupement revu
+// par David le 2026-10-31) : une ligne dépliable par catégorie.
+function changementsCanal(plateforme) {
+  const C = D.changements.filter(c => c.plateforme === plateforme), parCat = {};
+  for (const c of C) (parCat[c.cat] ??= []).push(c);
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0">Changements · ${C.length}</h2>
+      <span class="petit doux" style="text-decoration:underline" title="Mène au journal ${plateforme}, ouvert sur la même semaine">journal →</span></div>
+    ${C.length ? Object.entries(parCat).sort((a, b) => b[1].length - a[1].length).map(([cat, cs]) => `<details style="margin-top:10px;border-top:1px solid var(--trait);padding-top:8px">
+      <summary><strong>${CAT[cat] || cat}</strong> <span class="doux">· ${cs.length}</span></summary>
+      ${cs.map(c => `<div class="chg"><div class="doux petit">${cap(jourLong(c.quand.slice(0, 10)))} · ${esc(c.cid ? c.campagne : "hors campagne")}</div><div class="petit">${esc(c.resume)}</div></div>`).join("")}</details>`).join("")
+      : `<p class="doux petit">Aucun changement écrit par ${plateforme} cette semaine.</p>`}`;
+}
+
+function carteCanalE(nom, cn, note) {
+  const n = Math.max(...RATIOS.map(r => cn.reference[r.cle].n));
+  return `<div class="bloc" style="border-top:3px solid ${COUL[nom]};padding:22px 24px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:14px">
+      <a href="#" title="Mène à la page ${nom}"><strong style="font-size:18px">${nom}</strong> <span class="doux">→</span></a><span class="doux petit">${note || ""}</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:32px">
+      <div>
+        <div style="display:flex;gap:36px;margin-bottom:10px" class="num">
+          ${[["Dépense", chf(cn.repond ? cn.depense : null)], ["Impressions", nf(cn.repond ? cn.impressions : null)], ["Clics", nf(cn.repond ? cn.clics : null)]]
+            .map(([k, v]) => `<div><div class="doux petit">${k}</div><div style="font-size:22px;font-weight:600">${v}</div></div>`).join("")}
+        </div>
+        ${RATIOS.map(r => { const l = lireRatio(cn, r); return `<div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:18px;align-items:center;padding:10px 0 4px;border-top:1px solid var(--trait)" class="num">
+          <div><div class="doux petit">${r.nom}</div><div style="font-size:20px;font-weight:600">${l.v == null ? "—" : r.fmt(l.v)}</div>${l.etat ? `<span class="etat ${l.etat}">${l.mot}</span>` : ""}</div>
+          <div>${moustacheE(r, l)}</div></div>`; }).join("")}
+        <div class="doux petit" style="margin-top:8px">Comparé à ta semaine type — la médiane de tes ${n} dernières semaines. Le mieux est toujours à droite.</div>
+      </div>
+      <div style="border-left:1px solid var(--trait);padding-left:24px">${changementsCanal(nom)}</div>
+    </div></div>`;
+}
+
 function carteCanal(nom, cn, note) {
   const n = Math.max(...RATIOS.map(r => cn.reference[r.cle].n));
   return `<a href="#" class="bloc" style="display:block;border-top:3px solid ${COUL[nom]}" title="Mène à la page ${nom}">
@@ -250,12 +305,15 @@ function frise(etat, rafraichir) {
 
 // La charpente commune : titre, haut (totaux + changements), canaux, puis
 // « Ce qui a été fait » (frise | panneau). Seuls les totaux et le panneau changent.
-function page(totaux) {
+function page(totaux, seul) {
   return `<main style="max-width:1240px;margin:0 auto;padding:30px 16px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:16px">
       <h1>${titre}</h1><span class="doux petit">du ${jourLong(S.debut)} au ${jourLong(S.fin)} · jour en cours jamais compté</span></div>
-    <div class="haut">${totaux}${changements()}</div>
-    ${canaux()}
+    ${seul ? totaux : `<div class="haut">${totaux}${changements()}</div>`}
+    ${seul ? `<section style="margin-top:26px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0">Les canaux</h2>
+        <div style="display:flex;gap:6px"><button class="rond" data-rail="-1" aria-label="Canal précédent">‹</button><button class="rond" data-rail="1" aria-label="Canal suivant">›</button></div></div>
+      <div class="rail" id="rail">${carteCanalE("Meta", D.meta)}${carteCanalE("Google Ads", D.google, "aperçu — pas encore au module")}</div></section>` : canaux()}
     <section style="margin-top:30px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <h2 style="margin:0">Ce qui a été fait</h2>
@@ -375,22 +433,72 @@ const D3 = {
   },
 };
 
+// ════════════════════════════════════════════════════════════════════════
+// E — D2 corrigée (retours de David, 2026-10-31) : totaux en bandeau ; un
+// canal par écran, ses changements dedans, par catégorie ; la semaine à
+// droite, en onglets par source : Organique · Instagram, Campagnes · Meta,
+// Campagnes · Google Ads.
+// ════════════════════════════════════════════════════════════════════════
+const E = {
+  nom: "D2 corrigée", zoom: "Mois", onglet: "Instagram", seul: true,
+  totaux() {
+    const col = (lib, total, o, f, note) => `<div style="padding:4px 28px 4px 0">
+      <div class="doux petit">${lib}</div>
+      <div class="num" style="font-size:38px;font-weight:650;letter-spacing:-.03em;line-height:1.15;margin:2px 0 8px">${total}</div>
+      <div class="num petit" style="display:flex;gap:16px;flex-wrap:wrap">${Object.entries(o).map(([k, v]) =>
+        `<span><span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:${COUL[k] || "#bbb"};margin-right:6px;vertical-align:1px"></span><span class="doux">${k}</span> ${f(v)}</span>`).join("")}</div>
+      ${note ? `<div class="doux petit" style="margin-top:6px">${note}</div>` : ""}</div>`;
+    return `<section class="bloc" style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:22px 26px">
+      ${col("Dépense de la semaine", chf(somme(T.depense)), T.depense, v => `<strong>${chf(v)}</strong>`)}
+      <div style="border-left:1px solid var(--trait);padding-left:28px">${col("Impressions de la semaine", nf(somme(T.impressions)), T.impressions, v => `<strong>${nf(v)}</strong>`)}</div>
+      <div style="border-left:1px solid var(--trait);padding-left:28px">${col("Portée organique", "—", T.portee, v => `<strong>${nf(v)}</strong>`, `Pas de total : une même personne compterait deux fois. <span title="${raisonPortee}" style="text-decoration:underline dotted">Pourquoi « — » ?</span>`)}</div>
+    </section>`;
+  },
+  panneau(w) {
+    const posts = postsDe(w), camps = campsDe(w);
+    const groupes = [["Organique", [["Instagram", posts.length]]],
+                     ["Campagnes", [["Meta", camps.filter(c => c.plateforme === "Meta").length], ["Google Ads", camps.filter(c => c.plateforme === "Google Ads").length]]]];
+    const onglets = `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">${groupes.map(([g, os]) => `<div>
+      <div class="doux" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;margin:0 0 4px 2px">${g}</div>
+      <div style="display:flex;gap:4px">${os.map(([o, n]) => `<button class="pastille ${this.onglet === o ? "on" : ""}" data-onglet="${o}">${o} · ${n}</button>`).join("")}</div></div>`).join("")}</div>`;
+    let corps;
+    if (this.onglet === "Instagram") {
+      corps = posts.length ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${posts.map(p => `<div title="${esc(p.legende)}">
+          <div style="position:relative;aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--neutre)">
+          <img class="cover" src="${p.media}" alt="" loading="lazy"><span class="badge">${fmtType(p.type)}</span></div>
+          <div class="doux petit" style="margin-top:4px">${cap(JOURS[dte(p.date).getDay()].slice(0, 3))}. ${dte(p.date).getDate()}</div></div>`).join("")}</div>`
+        : `<p class="doux petit">Aucun post publié cette semaine.</p>`;
+    } else {
+      const cs = camps.filter(c => c.plateforme === this.onglet);
+      corps = cs.length ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${cs.map(c => `<div class="survol" style="border:1px solid var(--trait);border-radius:10px;overflow:hidden">
+          <div style="aspect-ratio:1;background:${CLAIR[c.plateforme]};display:flex;align-items:center;justify-content:center;color:${COUL[c.plateforme]};font-size:12px">${c.visuels[0] ? `<img class="cover" src="${c.visuels[0]}" alt="">` : "pas de visuel"}</div>
+          <div style="padding:6px 8px"><div class="petit" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.nom)}">${esc(c.nom)}</div>
+          <div class="doux" style="font-size:11px">${dates(c)} ${marque(c, w)}</div></div>
+          <span class="dep num">${depSem(c, w)}</span></div>`).join("")}</div>`
+        : `<p class="doux petit">Aucune campagne ${this.onglet} active cette semaine.</p>`;
+    }
+    return entete(w) + onglets + corps;
+  },
+};
+
 // ── Commutateur ──────────────────────────────────────────────────────────
-const VARIANTES = { D1, D2, D3 };
+const VARIANTES = { E };
 const NOTES = {
+  E: "E — D2 corrigée : totaux en bandeau ; un canal par écran (le suivant dépasse à droite), ses changements dedans par catégorie, la moustache en grand avec les 12 semaines en points et le mieux toujours à droite ; à droite de la frise, la semaine en onglets Organique · Instagram et Campagnes · Meta / Google Ads.",
   D1: "D1 — totaux en chiffres seuls, la part de chaque canal en lignes ; à droite, les posts en grandes cartes, les campagnes en liste. Frise ouverte sur l'année.",
   D2: "D2 — un anneau par total ; à droite, deux onglets Posts · Campagnes en grille. Frise ouverte sur le mois.",
   D3: "D3 — les totaux en petit tableau canal × total ; à droite, la mosaïque des posts, les campagnes à visuels en bandeau, les autres en pastilles. Frise ouverte sur le mois.",
 };
 const cles = Object.keys(VARIANTES);
 let courante = new URLSearchParams(location.search).get("variant");
-if (!VARIANTES[courante]) courante = "D1";
+if (!VARIANTES[courante]) courante = cles[0];
 const etat = { w: 0, zoom: null };
 
 function rendre() {
   const v = VARIANTES[courante];
   etat.zoom ??= v.zoom;
-  document.getElementById("page").innerHTML = page(v.totaux());
+  document.getElementById("page").innerHTML = page(v.totaux(), v.seul);
+  document.getElementById("commutateur").style.display = cles.length > 1 ? "flex" : "none";
   const rail = document.getElementById("rail");
   document.querySelectorAll("[data-rail]").forEach(b => b.onclick = () => rail.scrollBy({ left: +b.dataset.rail * rail.clientWidth * .8, behavior: "smooth" }));
   const vue = document.getElementById("frise"), panneau = document.getElementById("panneau");

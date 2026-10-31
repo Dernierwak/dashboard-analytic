@@ -156,4 +156,30 @@ diffèrent ainsi :
 En zoom Mois, la frise ne garde que les campagnes actives à six semaines
 près de la semaine choisie : sinon le mois se lit entre des rangées vides.
 
-En attente : le choix de David parmi D1, D2 et D3.
+## Troisième réaction de David (2026-10-31) → E, D2 corrigée
+
+David retient D2 (« une base qui est plutôt clean ») et demande :
+
+- **Les totaux en haut**, mais plus jolis.
+- **Un canal par écran**, avec le suivant qui dépasse d'environ 10 % « pour
+  se dire, ah, mais ok, on peut slider ».
+- **Les changements dans la carte de leur canal**, regroupés **par
+  catégorie**, et non plus dans un bloc à part.
+- **La moustache plus jolie** : « il manque un peu de vision, tout est un
+  peu regroupé ».
+- **Le panneau de la semaine séparé par source** : Organique · Instagram (et
+  les suivantes), Campagnes · Meta, Campagnes · Google Ads.
+- Les couleurs ne lui plaisent pas, mais ce n'est pas le sujet pour l'instant.
+
+**E** (`?variant=E`, seule version restante) :
+
+- les totaux en bandeau de trois colonnes (dépense, impressions, portée)
+  séparées par un filet, le grand chiffre puis les canaux en petit ;
+- la carte d'un canal à 90 % de la largeur, avec les chiffres et les
+  moustaches à gauche, les changements par catégorie à droite ;
+- une moustache trois fois plus large, les 12 semaines en points, la
+  semaine type nommée au-dessus, **le mieux toujours à droite** (un CPC
+  plus bas se lit vers la droite) ;
+- le panneau en onglets groupés par source.
+
+En attente : la suite, que David annonce une fois ces corrections faites.
