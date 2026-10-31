@@ -126,4 +126,34 @@ La **variante D** assemble ces retours (`?variant=D`) :
   campagnes actives en cartes, avec leur mosaïque de visuels, l'avancement,
   « lancée / terminée cette semaine » et la dépense de la semaine au survol.
 
-En attente : la réaction de David à D.
+## Deuxième réaction de David (2026-10-31) → D1, D2, D3
+
+Devant D :
+
+- **On garde D, et on supprime A, B et C.** David veut trois nouvelles
+  propositions, **plus simples**.
+- **Les totaux** : l'idée de la répartition est bonne, mais la barre
+  séparée ne plaît pas. Il faut chercher une autre forme.
+- **La semaine choisie, avec ses visuels, s'affiche à droite de la frise**,
+  pas dessous, « pour qu'on ait un truc un peu plus clean ». Changer de
+  semaine lui plaît. En zoom Mois, « tu vois tout ce qui s'est passé ».
+
+Les trois propositions (`?variant=D1|D2|D3`) gardent la même charpente :
+totaux et changements en haut, rail des canaux avec moustaches, puis la
+frise à gauche et le panneau de la semaine à droite, collant. Elles
+diffèrent ainsi :
+
+- **D1 · Les chiffres** : les totaux sans aucun graphique (le grand
+  chiffre, puis une ligne par canal avec sa part) ; à droite, les posts en
+  grandes cartes empilées, puis les campagnes en liste avec leur vignette ;
+  la frise s'ouvre sur l'année.
+- **D2 · L'anneau** : un anneau par total ; à droite, deux onglets, Posts et
+  Campagnes, en grille de deux colonnes ; la frise s'ouvre sur le mois.
+- **D3 · Le tableau** : les totaux en tableau canal × total ; à droite, la
+  mosaïque des posts, puis les campagnes à visuels en bandeau et les autres
+  en pastilles ; la frise s'ouvre sur le mois.
+
+En zoom Mois, la frise ne garde que les campagnes actives à six semaines
+près de la semaine choisie : sinon le mois se lit entre des rangées vides.
+
+En attente : le choix de David parmi D1, D2 et D3.
