@@ -54,7 +54,7 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [Le module des canaux](issues/02-les-metriques-de-la-semaine-face-a-la-precedente.md) | grilling | — |
 | [Ce que veut dire « la moyenne du compte »](issues/03-ce-que-veut-dire-la-moyenne-du-compte.md) | grilling ✓ | — |
 | [La vue des campagnes et des posts](issues/04-la-vue-des-campagnes-et-des-posts.md) | grilling ✓ | — |
-| [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling | — |
+| [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) | grilling ✓ | — |
 | [Le verdict et la boussole dans une page statique](issues/06-le-verdict-et-la-boussole-dans-une-page-statique.md) | grilling | — |
 | [Le meilleur du compte](issues/07-le-meilleur-du-compte.md) | prototype | — |
 | [La page entière, en maquette](issues/08-la-page-entiere-en-maquette.md) | prototype | 03, 04, 05, 07, 10, 11 |
@@ -95,6 +95,12 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   format et visuels directs, sans chiffre ; à-venir pour les campagnes seules ;
   `permalink` et `media_product_type` à récolter. La forme se juge dans « La
   frise, en maquette ».
+- [Les changements de la semaine](issues/05-les-changements-de-la-semaine.md) :
+  gardés, réduits, sous le module des canaux — la semaine mesurée seule,
+  seulement ce que la plateforme a écrit (plus rien de déduit), sans ce que
+  la frise montre ; en-tête « Meta · 7 changements » par plateforme, chaque
+  mention liée à son journal ; puis par jour, une campagne dépliable par
+  ligne marquée « — Meta » ; « 0 » sur une semaine récoltée, « — » sinon.
 
 ## Not yet specified
 
@@ -104,6 +110,9 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   Elle dira aussi ce qui **sort** : `metrics_read/prev/series` et `kpis` ne
   sont lus par personne ([l'inventaire du 2026-10-28](inventaire-2026-10-28.md)) ; ils
   sortent, avec `canaux_muets` côté page.
+  Sortent aussi les `changements` déduits ; entre un **signal de couverture
+  du journal** de chaque plateforme, sans lequel « 0 changement » et une
+  récolte en panne se confondent ([le ticket 05](issues/05-les-changements-de-la-semaine.md)).
 - **Les états de la page** : une source pas branchée, une source muette cette
   semaine, un compte de moins de deux semaines (rien à comparer), une semaine
   sans aucune campagne. Chaque bloc retenu en aura, ils se trancheront avec la
