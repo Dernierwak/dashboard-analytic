@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import { JOUR_DEFAUT } from "@/lib/jour-de-travail";
 import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
+import type { PayloadHebdo } from "@/lib/hebdo/payload";
 
 // Couche données du rapport hebdo.
 // Règle maison : fenêtre = 7 jours PLEINS, ancrés sur la dernière date de
@@ -126,7 +127,9 @@ export type CanalMuet = {
   semaines_muettes?: number;
 };
 
-export type ReportPayload = {
+// Les clés neuves du chantier hebdo (`semaine`, `sources`, `canaux`…) se
+// déclarent dans `lib/hebdo/`, un fichier par bloc.
+export type ReportPayload = PayloadHebdo & {
   version: number;
   /** Toujours présent depuis le ticket 20, vide quand la récolte a tout lu.
    *  Absent des payloads d'avant : `undefined` ne veut donc PAS dire « aucun
@@ -164,7 +167,7 @@ export type ReportPayload = {
    *  FENÊTRE MESURÉE, pas celui du jour de fabrication (`build_report.py`).
    *  Publié depuis le ticket 13 de la construction, absent des payloads
    *  d'avant. Déclaré ici pour que la clé d'écriture soit lisible côté web ;
-   *  aucun écran ne s'en sert — le rapport se date par les trois dates. */
+   *  aucun écran ne s'en sert — le rapport se date par `semaine`. */
   week_start?: string | null;
   since: string;
   until: string;

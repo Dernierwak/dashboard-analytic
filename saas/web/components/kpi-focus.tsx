@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LineChart } from "@/components/line-chart";
-import { SOURCE } from "@/components/etat-action";
+import { SOURCE } from "@/lib/plateformes";
 import { Pente, Triangle, sensPente } from "@/components/pente";
 import type { KpiFocus, KpiOption } from "@/lib/report";
 

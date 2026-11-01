@@ -33,9 +33,9 @@ import { JOURS, delai, enFrancais, prochainPassage } from "@/lib/jour-de-travail
 //           heure fixe, le jour choisi n'est pas une heure garantie.
 
 // LES SEPT JOURS, LE CALCUL DU PROCHAIN PASSAGE ET L'ÉCRITURE EN FRANÇAIS ONT
-// DÉMÉNAGÉ dans `lib/jour-de-travail.ts`, un module SANS directive. Les trois
-// dates en tête du rapport (`components/trois-dates.tsx`) ont besoin du même
-// calcul et sont rendues par le serveur : une constante exportée depuis un
+// DÉMÉNAGÉ dans `lib/jour-de-travail.ts`, un module SANS directive. Le titre
+// de l'hebdo (`components/hebdo/titre-semaine.tsx`) a besoin du même
+// calcul et est rendu par le serveur : une constante exportée depuis un
 // module `"use client"` y arriverait sous forme de proxy, sans que rien ne lève
 // (`CLAUDE.md` §8). Ce module-ci reste client — il porte l'état des sept
 // boutons — et lit les mêmes valeurs que le serveur.
