@@ -36,14 +36,14 @@ pas.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Protocol
 
 from saas.data.supabase.processed_data.weekly_report._ga4 import build_ga4_context
 from saas.data.supabase._queries import (
     fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
     fetch_objectif, fetch_google_ads,
-    fetch_ga4_insights, fetch_canaux_muets,
+    fetch_ga4_insights, fetch_canaux_muets, _all_pages,
 )
 
 
@@ -64,6 +64,8 @@ class Lecteur(Protocol):
     # ── Les réglages du compte ───────────────────────────────────────────────
     def objectif(self) -> str | None: ...
     def canaux_muets(self) -> dict[str, str]: ...
+    def jour_de_travail(self) -> str | None: ...
+    def connexions_etat(self) -> list[dict]: ...
 
     # ── GA4 ──────────────────────────────────────────────────────────────────
     def ga4_contexte(self, since: date, until: date) -> dict | None: ...
@@ -72,6 +74,12 @@ class Lecteur(Protocol):
     # ── Les lectures qui passaient par `sb.table(...)` en clair ──────────────
     def dates_declarees(self, table: str) -> list[dict]: ...
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]: ...
+
+    # ── Les lectures des blocs neufs (`blocs/`, chantier hebdo) ──────────────
+    def campagnes_config(self, table: str) -> list[dict]: ...
+    def creas(self) -> list[dict]: ...
+    def changements(self, debut: date, fin: date) -> list[dict]: ...
+    def couverture(self) -> list[dict]: ...
 
     # ── L'horloge ────────────────────────────────────────────────────────────
     def aujourd_hui(self) -> date: ...
@@ -119,6 +127,23 @@ class LecteurSupabase:
         """
         return fetch_canaux_muets(self.sb, self.user_id)
 
+    def jour_de_travail(self) -> str | None:
+        """`profiles.fetch_schedule`, en anglais (« Thursday »). `None` si le
+        profil n'en porte pas : `blocs/semaine.py` retombe alors sur lundi."""
+        rows = (self.sb.table("profiles").select("fetch_schedule")
+                .eq("id", self.user_id).limit(1).execute().data) or []
+        return rows[0].get("fetch_schedule") if rows else None
+
+    def connexions_etat(self) -> list[dict]:
+        """Une ligne par connexion : quelle source, depuis quand, et si la
+        récolte l'a marquée à reconnecter.
+
+        AUCUNE COLONNE DE JETON N'EST LUE : le payload est lu par les membres
+        invités, et un jeton n'y entre jamais, même par mégarde (`CLAUDE.md` §7)."""
+        return (self.sb.table("connected_accounts")
+                .select("provider, created_at, a_reconnecter_depuis, a_reconnecter_raison")
+                .eq("user_id", self.user_id).execute().data) or []
+
     # ── GA4 ──────────────────────────────────────────────────────────────────
 
     def ga4_contexte(self, since: date, until: date) -> dict | None:
@@ -150,6 +175,40 @@ class LecteurSupabase:
                 .lt("week_start", avant)
                 .order("week_start", desc=True)
                 .limit(limite).execute().data) or []
+
+    # ── Les lectures des blocs neufs (`blocs/`, chantier hebdo) ──────────────
+
+    def campagnes_config(self, table: str) -> list[dict]:
+        """Identité par ID, statut et dates déclarées — la frise du ticket 07
+        identifie une campagne par son ID, plus par son nom."""
+        return _all_pages(lambda: self.sb.table(table)
+                          .select("campaign_id, campaign_name, effective_status, start_date, end_date")
+                          .eq("user_id", self.user_id))
+
+    def creas(self) -> list[dict]:
+        return _all_pages(lambda: self.sb.table("meta_ads_creatives")
+                          .select("ad_id, image_url, vignette_url")
+                          .eq("user_id", self.user_id))
+
+    def changements(self, debut: date, fin: date) -> list[dict]:
+        """Le journal de la plateforme autour de la semaine.
+
+        Un jour de plus de chaque côté : `occurred_at` est en UTC, la semaine se
+        juge au fuseau de la ligne (`fuseau`), qui peut déborder d'un jour. Le
+        bloc qui lit ces lignes refait le tri au bon fuseau."""
+        depuis = (debut - timedelta(days=1)).isoformat()
+        jusqu_a = (fin + timedelta(days=2)).isoformat()
+        return _all_pages(lambda: self.sb.table("platform_changes")
+                          .select("channel, occurred_at, fuseau, categorie, campaign_id, "
+                                  "campaign_name, niveau, object_id, object_name, resume, extra_data")
+                          .eq("user_id", self.user_id)
+                          .gte("occurred_at", depuis).lt("occurred_at", jusqu_a)
+                          .order("occurred_at"))
+
+    def couverture(self) -> list[dict]:
+        """La couverture par source et par flux. Sa table naît au ticket 03 ;
+        le ticket 04 la lit ici. Vide en attendant."""
+        return []
 
     # ── L'horloge ────────────────────────────────────────────────────────────
 

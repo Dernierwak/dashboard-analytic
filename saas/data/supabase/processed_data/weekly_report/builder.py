@@ -2,7 +2,8 @@
 
 Seul producteur de weekly_reports.payload : ce worker publie après le fetch
 cron → Pulse est frais le lundi matin sans que personne n'ouvre quoi que ce soit.
-Fenêtre de 7 jours pleins ancrés sur la dernière donnée, jamais aujourd'hui.
+Fenêtre : 7 jours pleins qui finissent la veille du dernier Jour de travail
+(`blocs/semaine.py`), jamais aujourd'hui.
 
 CE RAPPORT NE CONSEILLE RIEN, IL CONSTATE. Le moteur de recommandations, les
 règles payantes, les constats « ce qui marche », le brief rédigé par Gemini et
@@ -18,6 +19,8 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from saas.data.supabase.processed_data.weekly_report.blocs.assemble import blocs_neufs
+from saas.data.supabase.processed_data.weekly_report.blocs.semaine import semaine_du_rapport
 from saas.data.supabase.processed_data.weekly_report.reader import Lecteur
 
 MONTHS_FR = {1: "jan", 2: "fév", 3: "mar", 4: "avr", 5: "mai", 6: "jun",
@@ -188,63 +191,28 @@ def build_payload(lecteur: Lecteur) -> dict | None:
                 aveugles.add(_c)
         return aveugles
 
-    # ── Fenêtre : 7 jours pleins ancrés sur la dernière donnée (jamais aujourd'hui)
-    yesterday = today - timedelta(days=1)
-    # UN CANAL MUET N'ANCRE PAS LA FENÊTRE (ticket 20). Sa dernière date est
-    # périmée PAR DÉFINITION — c'est le jour où il a cessé d'écrire. L'ancrer
-    # dessus revient à décider que « la dernière donnée » remonte à une semaine,
-    # donc à REPUBLIER LA SEMAINE PRÉCÉDENTE sous sa propre clé : le client ne
-    # reçoit pas un rapport troué, il reçoit l'ancien, et la panne devient
-    # invisible pour tout le monde, lui comme nous. C'est la porte de sortie la
-    # plus discrète du ticket, et c'est un compte SANS Instagram — celui qui ne
-    # fait que de la pub — qui l'emprunte, faute d'une autre source pour ancrer.
-    _data_dates = []
-    if ("meta" not in pub_muette
-            and df_meta_raw is not None and "date_start" in df_meta_raw.columns):
-        _d = pd.to_datetime(df_meta_raw["date_start"], errors="coerce").max()
-        if pd.notna(_d):
-            _data_dates.append(_d.date())
-    if not df_insta.empty and "date" in df_insta.columns:
-        _d = pd.to_datetime(df_insta["date"], errors="coerce", utc=True).max()
-        if pd.notna(_d):
-            _data_dates.append(_d.date())
-    if not df_follows.empty and "fetched_at" in df_follows.columns:
-        _d = pd.to_datetime(df_follows["fetched_at"], errors="coerce", utc=True).max()
-        if pd.notna(_d):
-            _data_dates.append(_d.date())
-    last_data_date = max(_data_dates) if _data_dates else yesterday
-
-    last_full_day = min(last_data_date, yesterday)
-    cur_since = last_full_day - timedelta(days=6)
+    # ── Fenêtre : la semaine calée sur le Jour de travail (`blocs/semaine.py`)
+    # Une seule fin pour les anciennes clés et les neuves : ancrée hier sur la
+    # dernière donnée, la fenêtre glissait d'un jour quand le rapport était
+    # refait un samedi et avalait le jour du fetch, incomplet (harnais 14).
+    # Un canal muet n'a plus besoin d'être écarté d'un ancrage qui n'existe
+    # plus : sa panne se lit sur la semaine même, via `_pub_aveugle`.
+    try:
+        _jour_de_travail = lecteur.jour_de_travail()
+    except Exception:
+        # Profil illisible : repli lundi, le défaut de la base. Le rapport sort
+        # quand même — mieux vaut la semaine d'un lundi que pas de rapport.
+        _jour_de_travail = None
+    semaine = semaine_du_rapport(_jour_de_travail, today)
+    last_full_day = semaine.fin
+    cur_since = semaine.debut
     prev_until = cur_since - timedelta(days=1)
     prev_since = prev_until - timedelta(days=6)
 
-    # ── LA SEMAINE DE CE RAPPORT SORT DE LA FENÊTRE MESURÉE, PLUS DE `today` ──
-    #
-    # `week_start` était le lundi d'AUJOURD'HUI, et le numéro de semaine du
-    # libellé aussi. Republier le même rapport dans une semaine calendaire
-    # différente écrivait donc une DEUXIÈME ligne (la clé est
-    # `(user_id, week_start)`) et le renumérotait, alors que les chiffres sont
-    # identiques — deux lignes pour une même semaine, c'est deux vérités.
-    # Le défaut est mesuré dans `.scratch/refonte/issues/13-entre-deux-jours-de-travail.md`
-    # (« le piège à connaître si un rapport est republié à la main »).
-    #
-    # Ancrer sur la fenêtre rend la publication IDEMPOTENTE : tant que la
-    # dernière donnée n'a pas bougé, republier écrase sa propre ligne, quel que
-    # soit le jour où on le fait. C'est le même invariant que la fenêtre
-    # elle-même, qui est ancrée sur la dernière donnée et non sur le jour de
-    # fabrication (l. ci-dessus) — les deux se tenaient déjà, seule la clé
-    # d'écriture ne suivait pas.
-    #
-    # CE QUE ÇA DÉPLACE EN SERVICE, une fois et une seule : pour un compte dont
-    # le Jour de travail est le LUNDI, la fenêtre finit le dimanche, donc dans
-    # la semaine ISO précédente — son `week_start` recule de sept jours. La
-    # publication suivante tombe alors sur la ligne que la précédente occupait
-    # et l'écrase (upsert, aucune suppression) : on perd le payload d'UNE
-    # semaine d'historique, jamais une ligne de suivi ni une décision. Pour tous
-    # les autres jours, hier est dans la même semaine ISO qu'aujourd'hui et
-    # rien ne bouge.
-    week_start_rapport = last_full_day - timedelta(days=last_full_day.weekday())
+    # La clé d'écriture `(user_id, week_start)` suit la fin de la semaine,
+    # jamais le jour de fabrication : republier à n'importe quel jour avant le
+    # Jour de travail suivant écrase sa propre ligne (upsert idempotent).
+    week_start_rapport = semaine.lundi_iso
 
     # LES CANAUX PAYANTS MUETS SUR LA SEMAINE DU RAPPORT (ticket 20). Posé ICI,
     # dès que la fenêtre est connue et avant le premier chiffre qui en dépend :
@@ -363,7 +331,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     # Le numéro suit la fenêtre, pas le jour de fabrication : « Semaine 38 ·
     # 7 → 13 septembre » se contredisait tout seul pour un compte servi le
     # lundi, et republier un mardi renumérotait le même rapport.
-    week_num = week_start_rapport.isocalendar()[1]
+    week_num = semaine.numero
     week_label = (
         f"Semaine {week_num} · {cur_since.day} → {last_full_day.day} "
         f"{MONTHS_FR[last_full_day.month]} · 7 jours pleins"
@@ -1204,6 +1172,7 @@ def build_payload(lecteur: Lecteur) -> dict | None:
     ]
 
     return {
+        **blocs_neufs(lecteur, semaine),
         "version": 2,
         # La liste est TOUJOURS présente, vide quand tout va bien : un écran qui
         # doit distinguer « pas de trou » de « payload d'avant le ticket 20 »

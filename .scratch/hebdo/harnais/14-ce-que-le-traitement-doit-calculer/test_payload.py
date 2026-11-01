@@ -46,6 +46,7 @@ class FauxLecteur:
         return [{"fetched_at": datetime(2026, 10, 29, 7, tzinfo=timezone.utc).isoformat(), "followers": 500}]
     def google_ads(self): return []
     def objectif(self): return None
+    def jour_de_travail(self): return "Thursday"
     def canaux_muets(self): return {}
     def ga4_contexte(self, since, until): return None
     def ga4_insights(self): return []
@@ -73,9 +74,10 @@ constat(set(jeudi) >= {"metrics_read", "metrics_prev", "metrics_series", "kpis",
 
 constat((jeudi["since"], jeudi["until"]) == ("2026-10-22", "2026-10-28"),
         f"publié le Jour de travail : semaine {jeudi['since']} → {jeudi['until']} (jeudi → mercredi, juste)")
-constat(samedi["until"] == JOUR_FETCH.isoformat(),
+# Inversé par le ticket 01 : la semaine est calée sur le Jour de travail.
+constat((samedi["since"], samedi["until"]) == ("2026-10-22", "2026-10-28"),
         f"refait le samedi sans nouvelle récolte : semaine {samedi['since']} → {samedi['until']} "
-        "— elle avale le jour du fetch, incomplet (§7)")
+        "— elle ne glisse plus, le jour du fetch reste dehors (ticket 01)")
 
 noms = sorted(c["nom"] for c in jeudi["frise"]["campagnes"])
 constat(noms == ["Ancien nom", "Nouveau nom", "Été"],
