@@ -20,11 +20,16 @@ et à ce qu'il produit aujourd'hui.
 
 Ce que la carte sait déjà :
 
-- **sortent** : `metrics_read`, `metrics_prev`, `metrics_series`, `kpis`,
-  `canaux_muets` ([l'inventaire](../inventaire-2026-10-28.md)) et les
-  `changements` déduits de la dépense (ticket 05) ;
+- **sortent** : `metrics_read`, `metrics_prev`, `metrics_series`, `kpis`
+  ([l'inventaire](../inventaire-2026-10-28.md)) et les `changements` déduits
+  de la dépense (ticket 05). `canaux_muets` ne sort plus : il devient la
+  source de l'état par canal ci-dessous ([Les états de la page](13-les-etats-de-la-page.md)) ;
 - **entrent** : un **signal de couverture du journal** par plateforme
-  (ticket 05) ; `permalink` et `media_product_type` des posts (ticket 04) ;
+  (ticket 05, exigence ferme du ticket 13) ; `permalink` et
+  `media_product_type` des posts (ticket 04) ; un **état par canal** pour la
+  semaine — récolté · jeton mort · panne interne, semaine partielle comprise
+  — ; la **date de connexion** de chaque source ; le nombre de semaines avec
+  un ratio (ticket 13) ;
 - **la semaine** s'ancre sur le Jour de travail, pas sur la veille du jour
   de fabrication (ticket 02, `builder.py`, `last_full_day`) ;
 - la frise navigue sur **toute l'année** : le payload hebdo la porte-t-il,

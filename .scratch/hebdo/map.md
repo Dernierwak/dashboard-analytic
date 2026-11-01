@@ -34,6 +34,7 @@ le design, la présentation et le choix des éléments sont le cœur du chantier
   meilleur ».
 - **§7 s'applique partout** : aucun chiffre fabriqué, une absence n'est pas un
   zéro, le jour en cours est exclu de toute comparaison.
+- **Grilling : trois questions au plus par série** (David, 2026-10-31).
 - Skills à appeler : `grilling` + `domain-modeling` pour les grillings,
   `prototype` pour la maquette ; l'agent `vision-ux` pour la hiérarchie et la
   forme, `vision-produit` pour juger ce qui mérite d'exister.
@@ -61,10 +62,11 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [Les posts à venir se lisent-ils chez Meta ?](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md) | research ✓ | — |
 | [La boussole et le haut de page, en maquette](issues/10-le-haut-de-page-en-maquette.md) | prototype ✓ (par 08) | — |
 | [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype ✓ (par 08) | — |
-| [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research | — |
-| [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling | — |
+| [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research ✓ | — |
+| [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling ✓ | — |
 | [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | — |
-| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 12, 13, 14 |
+| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 13, 14, 16 |
+| [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) | grilling | — |
 
 ## Decisions so far
 
@@ -120,6 +122,19 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   par 08 — les posts sortent de la frise (seul leur rythme y reste) ; un
   visuel de campagne n'existe que pour 3 campagnes Meta sur 10, et pour
   aucune campagne Google.
+- [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) :
+  non — `reach` du compte n'existe qu'au jour, son `total_value` sur une
+  plage est documenté comme une somme, et il compte les pubs ; aucune portée
+  de semaine honnête. `views` et `total_interactions` s'additionnent, au prix
+  d'un essai de permissions (`pages_read_engagement` absent).
+- [Les états de la page](issues/13-les-etats-de-la-page.md) : le client ne
+  voit qu'une erreur, le jeton expiré (→ se reconnecter, la récolte repart) ;
+  toute autre panne est la nôtre, dite par une phrase sans bouton, et le
+  total somme les sources qui ont répondu avec une note. Source pas branchée :
+  nulle part. Historique court : « encore N ». Trois textes pour un onglet
+  vide, « problème signalé par Meta » pour `WITH_ISSUES`, « Compte
+  publicitaire » hors campagne, une seule carte pour un compte neuf. Exige au
+  ticket 14 un état par canal et la couverture du journal.
 
 ## Not yet specified
 
@@ -139,6 +154,11 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   devant le prototype (2026-10-31) : « il apporte pas grand-chose, c'est
   complexe, il y a 1000 filtres ». Un « meilleur » exige un critère, une
   période et des seuils que la page statique ne veut pas montrer.
+- **La remontée des erreurs de récolte chez nous** — alerte par mail, et une
+  relance interne de la récolte pour tous les clients. David : « toutes les
+  données qu'on doit récupérer, ça se passe de notre côté ». Chantier à part
+  ([Les états de la page](issues/13-les-etats-de-la-page.md), point 13) ;
+  cette carte n'en garde que les signaux, au ticket 14.
 - **L'email hebdo** — David : « on va l'ouvrir dans une autre section ».
 - **Un connecteur LLM** pour poser des questions à ses données — David : « on
   verra dans une autre issue ». Un futur chantier, qui devra rouvrir
