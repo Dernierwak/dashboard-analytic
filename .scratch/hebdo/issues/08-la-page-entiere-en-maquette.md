@@ -198,6 +198,8 @@ changements ne se déplient plus, ils forment une liste qu'on fait défiler,
    puis la valeur de chaque canal en petit, avec sa pastille. **Ni barre ni
    anneau.** La portée n'a pas de total ; aujourd'hui elle vaut « — » (voir
    [La portée organique du compte](12-la-portee-organique-du-compte.md)).
+   *Remplacé par [Ce que montre la case Instagram du bandeau](16-ce-que-montre-la-case-instagram-du-bandeau.md) :
+   la colonne portée sort, le bandeau garde dépense et impressions.*
 3. **Le module des canaux, en rail** : une carte par canal à 90 % de la
    largeur, le canal suivant dépasse à droite, ‹ › ou glisser pour passer.
    Dans une carte :

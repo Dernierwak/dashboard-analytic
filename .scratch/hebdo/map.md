@@ -64,9 +64,10 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [La frise, en maquette](issues/11-la-frise-en-maquette.md) | prototype ✓ (par 08) | — |
 | [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research ✓ | — |
 | [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling ✓ | — |
-| [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | — |
-| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 13, 14, 16 |
-| [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) | grilling | — |
+| [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
+| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 17 |
+| [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) | grilling ✓ | — |
+| [Le statut d'une campagne Google supprimée](issues/17-le-statut-d-une-campagne-google-supprimee.md) | grilling | — |
 
 ## Decisions so far
 
@@ -135,6 +136,21 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   vide, « problème signalé par Meta » pour `WITH_ISSUES`, « Compte
   publicitaire » hors campagne, une seule carte pour un compte neuf. Exige au
   ticket 14 un état par canal et la couverture du journal.
+- [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) :
+  la table clé → source → calcul → fenêtre, avec un harnais exécuté. Sortent
+  le verdict, `kpi_focus`, les `metrics_*`, `kpis`, les changements déduits
+  et `canaux_muets` ; entrent la semaine calée sur le Jour de travail (le
+  builder avale le jour du fetch si on le relance plus tard), l'état par
+  source, les totaux, les ratios et leurs 12 semaines, les changements
+  déclarés, et la frise de l'année **dans le payload**, identifiée par ID.
+  La récolte doit d'abord : brancher `verifier()` du jeton (jamais appelé,
+  rien n'écrit `a_reconnecter_depuis`), écrire un signal de couverture par
+  flux, et récolter `permalink` et `media_product_type`.
+- [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) :
+  la case sort — le bandeau garde dépense et impressions, `totaux.portee`
+  quitte le payload. Instagram reprend un chiffre par sa carte du module
+  des canaux, quand sa page sera finie ; vues et interactions s'y
+  rejugeront.
 
 ## Not yet specified
 
