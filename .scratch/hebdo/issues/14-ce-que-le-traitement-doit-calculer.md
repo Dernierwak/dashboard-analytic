@@ -170,8 +170,8 @@ seules les campagnes de l'année entrent.
 | `frise.annee` | `semaine.fin` | L'année de `fin`. Aujourd'hui, deux ans depuis janvier N-1 (harnais). |
 | `frise.campagnes[].id`, `.plateforme` | `campaign_id` des insights et des `*_campaign_config` | **Identité par ID** (ticket 04). Le harnais le prouve : aujourd'hui deux homonymes se fusionnent et une campagne renommée se coupe en deux barres. |
 | `.nom` | config, sinon la ligne d'insights la plus récente | Le nom **actuel**. |
-| `.debut`, `.fin`, `.fin_declaree` | `start_date` / `end_date` de la config ; sinon premier et dernier jour avec dépense | En base : Meta 395/395 débuts et 373 fins déclarés, Google 156/158 et 120. |
-| `.statut` | `effective_status` + dates | Fin déclarée passée → `terminee` ; sinon `WITH_ISSUES` → `probleme` ; `ACTIVE`/`ENABLED` → `en_cours` ; `PAUSED` → `en_pause` ; début déclaré futur → `prevue` ; non récolté → absent (ticket 13, point 10). Valeurs vues en base : Meta `ACTIVE`, `PAUSED`, `WITH_ISSUES` (**aucun statut « programmé » chez Meta** : `prevue` ne vient que d'un début futur) ; Google `ENABLED`, `PAUSED`, `REMOVED`, `null`. **`REMOVED` n'entre dans aucun statut tranché** (§8). |
+| `.debut`, `.fin`, `.fin_declaree` | `start_date` / `end_date` de la config ; sinon premier jour avec dépense pour le début, et pour la fin la règle de [Le statut d'une campagne Google supprimée](17-le-statut-d-une-campagne-google-supprimee.md) (supprimée : date de suppression, sinon dernier jour de dépense ; vivante sans fin : pointillés jusqu'au 31 décembre) | En base : Meta 395/395 débuts et 373 fins déclarés, Google 156/158 et 120. |
+| `.statut` | `effective_status` + dates | Fin déclarée passée → `terminee` ; sinon `WITH_ISSUES` → `probleme` ; `ACTIVE`/`ENABLED` → `en_cours` ; `PAUSED` → `en_pause` ; début déclaré futur → `prevue` ; non récolté → absent (ticket 13, point 10). Valeurs vues en base : Meta `ACTIVE`, `PAUSED`, `WITH_ISSUES` (**aucun statut « programmé » chez Meta** : `prevue` ne vient que d'un début futur) ; Google `ENABLED`, `PAUSED`, `REMOVED`, `null`. `REMOVED` → `supprimee`, avant la fin passée (ticket 17). |
 | `.visuels[]` | `meta_ads_insights.ad_id` → `meta_ads_creatives.image_url` ou `vignette_url` | Les créas des annonces, par dépense décroissante, sans doublon, 4 au plus. Rien pour Google (ticket 11). |
 | `.depense_par_semaine` | insights | Dépense de chaque semaine de l'année, calée sur le Jour de travail : sert la dépense au survol pour **n'importe quelle** semaine choisie, et « lancée / terminée cette semaine ». |
 | Entrée dans l'année | — | A dépensé dans l'année, ou ses dates déclarées la touchent ; une fin non déclarée seule ne suffit pas (le prototype l'a mesuré : des campagnes « actives » sans fin n'ont rien diffusé depuis des années). |
@@ -208,8 +208,8 @@ sortent de `semaine` et du Jour de travail.
 
 ### 8 · Ce que ce ticket laisse ouvert
 
-- **Une campagne Google `REMOVED`** (41 en base) : terminée, cachée, ou un
-  sixième statut ? À David → [Le statut d'une campagne Google supprimée](17-le-statut-d-une-campagne-google-supprimee.md).
+- ~~**Une campagne Google `REMOVED`**~~ : tranché par le ticket 17 — un
+  sixième statut, « supprimée ».
 - ~~**La portée du bandeau**~~ : tranché par le ticket 16 — la case sort.
 - **La méthode de quartile** : à écrire dans la spec (§5), pour que « tes
   habitudes » ne dépende pas de l'outil.

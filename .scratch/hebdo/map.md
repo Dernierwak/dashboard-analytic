@@ -65,9 +65,9 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research ✓ | — |
 | [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling ✓ | — |
 | [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | 17 |
+| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | — |
 | [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) | grilling ✓ | — |
-| [Le statut d'une campagne Google supprimée](issues/17-le-statut-d-une-campagne-google-supprimee.md) | grilling | — |
+| [Le statut d'une campagne Google supprimée](issues/17-le-statut-d-une-campagne-google-supprimee.md) | grilling ✓ | — |
 
 ## Decisions so far
 
@@ -151,6 +151,11 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   quitte le payload. Instagram reprend un chiffre par sa carte du module
   des canaux, quand sa page sera finie ; vues et interactions s'y
   rejugeront.
+- [Le statut d'une campagne Google supprimée](issues/17-le-statut-d-une-campagne-google-supprimee.md) :
+  `REMOVED` donne « supprimée », visible par défaut et filtrable. Une barre
+  par campagne, sans pause dessinée : une supprimée finit à sa suppression
+  (sinon au dernier jour de dépense) ; une vivante sans fin va en pointillés
+  jusqu'au 31 décembre. Aucune supprimée n'entre en 2026 aujourd'hui.
 
 ## Not yet specified
 
@@ -160,6 +165,11 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   dépend du chantier des pages plateformes.
 - **Les couleurs** : celles de la maquette ne sont pas retenues ; elles se
   reprennent du style de l'hebdo actuel à la construction.
+
+- **Les campagnes supprimées ou archivées chez Meta** : la récolte appelle
+  `/campaigns` sans filtre de statut et la base n'en montre aucune ; Meta les
+  écarte probablement par défaut (non vérifié). Si on les veut dans la
+  frise comme les supprimées Google, c'est une question de récolte.
 
 ## Out of scope
 

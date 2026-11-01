@@ -73,6 +73,8 @@ David : « eux, la seule qu'ils doivent avoir, c'est token a expiré ».
     quel que soit `effective_status` ; sinon `WITH_ISSUES` donne un cinquième
     statut, « problème signalé par Meta » ; un statut non récolté ne
     s'affiche pas, et le filtre le range sous « statut inconnu ».
+    *Complété par [Le statut d'une campagne Google supprimée](17-le-statut-d-une-campagne-google-supprimee.md) :
+    `REMOVED` donne « supprimée », avant la règle de la fin passée.*
 11. **Changement hors campagne** : « Compte publicitaire » au niveau du
     compte ; sinon le nom de l'objet tel que Meta l'écrit. Jamais « Hors
     campagne ».
