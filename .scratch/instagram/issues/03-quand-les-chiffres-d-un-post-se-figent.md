@@ -3,7 +3,7 @@
 Type: research
 Status: open
 Blocked by: —
-Assignee: —
+Assignee: Claude (recherche en cours)
 
 ## Question
 
