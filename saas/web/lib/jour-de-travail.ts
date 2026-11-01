@@ -9,8 +9,8 @@
 //
 // Ces sept jours et ce calcul vivaient dans `components/jour-recolte.tsx`, qui
 // porte `"use client"`. Deux lecteurs en ont besoin maintenant : ce module-là,
-// et les trois dates en tête du rapport (`components/trois-dates.tsx`), qui
-// sont rendues par le SERVEUR. Importer une valeur exportée depuis un module
+// et le titre de l'hebdo (`components/hebdo/titre-semaine.tsx`), qui
+// est rendu par le SERVEUR. Importer une valeur exportée depuis un module
 // `"use client"` dans un composant serveur ne lève rien et passe TypeScript —
 // la valeur lue est une référence client, c'est-à-dire un proxy
 // (`CLAUDE.md` §8). Les valeurs partagées vivent donc dans un module sans
