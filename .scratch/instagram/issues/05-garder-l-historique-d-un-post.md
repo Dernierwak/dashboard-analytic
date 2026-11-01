@@ -20,3 +20,8 @@ si l'API rend déjà la série jour par jour, ce ticket se réduit ; si elle ne
 rend que le cumul, il devient le cœur de la récolte. Un relevé ne commence
 qu'au jour où on le construit : les posts déjà publiés n'auront jamais leur
 J+2 — dire ce que la page montre pour eux.
+
+> **Éclairé par [la recherche 03](03-quand-les-chiffres-d-un-post-se-figent.md)
+> (2026-11-01)** : l'API ne rend qu'un cumul `lifetime` ; **le relevé daté est
+> la seule voie vers l'âge égal**, et la seule source possible d'un seuil de
+> maturité au-delà de 48 h. Les insights d'un média restent lisibles 2 ans.

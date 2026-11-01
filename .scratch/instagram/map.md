@@ -83,7 +83,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 |---|---|---|
 | [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling | — |
 | [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research | — |
-| [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research | — |
+| [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research ✓ | — |
 | [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research | — |
 | [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling | Quand les chiffres d'un post se figent |
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling | Ce que l'API Instagram donne d'un post |
@@ -100,6 +100,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 ## Decisions so far
 
 <!-- une ligne par ticket clos : [titre](lien) : l'essentiel de la réponse -->
+
+- [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) :
+  l'API ne rend qu'un cumul `lifetime`, aucune série par jour ; aucun délai de
+  maturité documenté, seule la latence de 48 h — l'âge égal et tout seuil
+  au-delà de 48 h passent par nos propres relevés. Le Reel n'a pas de `follows`.
 
 ## Not yet specified
 

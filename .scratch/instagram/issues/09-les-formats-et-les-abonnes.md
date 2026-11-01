@@ -26,3 +26,9 @@ module, et où se calcule-t-il une seule fois ?**
   en a-t-elle besoin aussi ?
 - **la frontière du conseil** : la page dit « les images ont rapporté X
   abonnés par post », jamais « concentre-toi sur les images » (§1).
+
+> **Éclairé par [la recherche 03](03-quand-les-chiffres-d-un-post-se-figent.md)
+> (2026-11-01)** : le **Reel n'a pas de `follows`** (ni `profile_visits`) dans
+> l'API. « Quel format rapporte des abonnés » ne peut pas y mettre le Reel —
+> à confirmer par la recherche 02, puis à trancher ici : on l'écrit, on ne
+> l'estime pas.

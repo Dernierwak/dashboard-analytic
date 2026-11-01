@@ -19,3 +19,9 @@ Tranché au cadrage : un post neuf se compare **à âge égal**, et un post trop
   de J+2 ([Garder l'historique](05-garder-l-historique-d-un-post.md)) ;
 - si le seuil se règle, **où** (filtre de la page, mode « plus pro » — voir
   [Les règles d'analyse réglables](11-les-regles-d-analyse-reglables.md)).
+
+> **Éclairé par [la recherche 03](03-quand-les-chiffres-d-un-post-se-figent.md)
+> (2026-11-01)** : Meta ne documente **aucun** délai de maturité ; seule la
+> latence de 48 h est écrite. Le seuil par défaut ne peut donc pas être
+> « celui d'Instagram » : 48 h comme plancher sourcé, et au-delà une
+> observation tirée de nos propres relevés, dite comme telle.
