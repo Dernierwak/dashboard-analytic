@@ -81,7 +81,8 @@ constat(p.get("semaine", {}).get("fin") == "2026-10-25",
 constat(build_payload(FauxLecteur(JOUR_FETCH)) is None,
         "compte sans aucune donnée : pas de rapport (la page montre la carte « compte neuf »)")
 
-constat(not ({"sources", "totaux", "canaux"} & set(jeudi)),
+# `sources` et `totaux` sont construits depuis le ticket 04 (son harnais).
+constat(not ({"canaux"} & set(jeudi)),
         "les blocs pas encore construits n'écrivent aucune clé")
 
 prec = semaines_precedentes(Semaine(date(2026, 10, 22), date(2026, 10, 28)), 2)

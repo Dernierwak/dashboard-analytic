@@ -1,5 +1,6 @@
 // `payload.sources` et `payload.totaux` — ticket 04 (`blocs/sources.py`).
-// Forme proposée par `.scratch/hebdo/spec.md` ; le ticket 04 la fixe.
+// Seules les sources BRANCHÉES ont une entrée, dans `sources` comme dans
+// `totaux` : une clé absente veut dire « pas branchée », pas « zéro ».
 export type EtatSource = "recolte" | "jeton_mort" | "panne";
 
 export type SourcesHebdo = Record<

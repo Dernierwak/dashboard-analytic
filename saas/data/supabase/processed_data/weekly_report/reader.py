@@ -135,14 +135,27 @@ class LecteurSupabase:
         return rows[0].get("fetch_schedule") if rows else None
 
     def connexions_etat(self) -> list[dict]:
-        """Une ligne par connexion : quelle source, depuis quand, et si la
-        récolte l'a marquée à reconnecter.
+        """Une ligne par connexion BRANCHÉE : `source` (meta | google), depuis
+        quand, et si la récolte l'a marquée à reconnecter.
 
-        AUCUNE COLONNE DE JETON N'EST LUE : le payload est lu par les membres
-        invités, et un jeton n'y entre jamais, même par mégarde (`CLAUDE.md` §7)."""
-        return (self.sb.table("connected_accounts")
-                .select("provider, created_at, a_reconnecter_depuis, a_reconnecter_raison")
-                .eq("user_id", self.user_id).execute().data) or []
+        « Branchée » = le même tri que `execution_plan._plateforme` et
+        `planifier` : Meta si la ligne porte un jeton Meta ; Google si la ligne
+        `provider='google'` porte un refresh token ET un customer id — sans
+        lui, `planifier` ne récolte pas Google Ads.
+
+        AUCUNE COLONNE DE JETON N'EST LUE : leur présence se teste côté
+        PostgREST (`not.is.null`), jamais leur valeur. Le payload est lu par les
+        membres invités, et un jeton n'y entre jamais (`CLAUDE.md` §7)."""
+        colonnes = "created_at, a_reconnecter_depuis"
+        meta = (self.sb.table("connected_accounts").select(colonnes)
+                .eq("user_id", self.user_id)
+                .not_.is_("meta_token", "null").execute().data) or []
+        google = (self.sb.table("connected_accounts").select(colonnes)
+                  .eq("user_id", self.user_id).eq("provider", "google")
+                  .not_.is_("google_refresh_token", "null")
+                  .not_.is_("google_customer_id", "null").execute().data) or []
+        return ([dict(l, source="meta") for l in meta]
+                + [dict(l, source="google") for l in google])
 
     # ── GA4 ──────────────────────────────────────────────────────────────────
 
@@ -206,9 +219,12 @@ class LecteurSupabase:
                           .order("occurred_at"))
 
     def couverture(self) -> list[dict]:
-        """La couverture par source et par flux. Sa table naît au ticket 03 ;
-        le ticket 04 la lit ici. Vide en attendant."""
-        return []
+        """La plage récoltée sans trou, par source et par flux
+        (`couverture_recolte`, écrite par `source_data/couverture.py`). Au plus
+        3 sources × 3 flux : pas de pagination."""
+        return (self.sb.table("couverture_recolte")
+                .select("source, flux, sans_trou_depuis, sans_trou_jusqu_au")
+                .eq("user_id", self.user_id).execute().data) or []
 
     # ── L'horloge ────────────────────────────────────────────────────────────
 
