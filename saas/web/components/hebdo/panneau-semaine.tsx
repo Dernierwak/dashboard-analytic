@@ -7,6 +7,7 @@ import { dateFr, dateNue } from "@/lib/jour-de-travail";
 import { tourneDans, type Bornes, type FriseHebdo } from "@/lib/hebdo/frise";
 import { PanneauCampagnes } from "@/components/hebdo/panneau-campagnes";
 import { PanneauOrganique } from "@/components/hebdo/panneau-organique";
+import { postsDans } from "@/lib/hebdo/posts";
 
 type Onglet = "organique" | "campagnes";
 
@@ -47,9 +48,11 @@ export function PanneauSemaine({
   );
 
   const campagnes = frise.campagnes.filter((c) => tourneDans(c, choisie, semaine));
+  // Le compte de l'onglet est celui de la semaine choisie, comme Campagnes.
+  const posts = frise.posts && postsDans(frise.posts, choisie);
   const onglets: { cle: Onglet; nom: string; compte?: number }[] = [
     ...(avecOrganique
-      ? [{ cle: "organique" as const, nom: "Organique", compte: frise.posts?.length }]
+      ? [{ cle: "organique" as const, nom: "Organique", compte: posts?.length }]
       : []),
     ...(avecCampagnes ? [{ cle: "campagnes" as const, nom: "Campagnes", compte: campagnes.length }] : []),
   ];
@@ -110,7 +113,7 @@ export function PanneauSemaine({
         </div>
       )}
 
-      {actif === "organique" && <PanneauOrganique frise={frise} choisie={choisie} />}
+      {actif === "organique" && <PanneauOrganique frise={frise} choisie={choisie} sources={sources} />}
       {actif === "campagnes" && (
         <PanneauCampagnes campagnes={campagnes} choisie={choisie} sources={sources} mesuree={w === 0} />
       )}

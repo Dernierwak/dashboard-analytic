@@ -31,3 +31,22 @@ export const CANAL: Record<string, { glyphe: string; couleur: string; nom: strin
   meta: SOURCE.meta,
   google: SOURCE.google,
 };
+
+// LE FORMAT D'UNE PUBLICATION, en un glyphe et un nom. Il vivait dans
+// `components/frise-semaine.tsx` ; il sort ici parce que la frise de l'année et
+// le panneau Organique de l'hebdo le lisent aussi (ticket 08).
+//
+// Les clés sont les `media_type` de Meta, plus `REEL` : le worker ne l'écrit que
+// si `media_product_type` vaut `REELS` (`weekly_report/blocs/posts.py`). Sans
+// lui, une vidéo reste « Vidéo » — on n'invente pas le Reel.
+export const FORMAT: Record<string, { glyphe: string; nom: string }> = {
+  IMAGE: { glyphe: "▢", nom: "Image" },
+  CAROUSEL_ALBUM: { glyphe: "▤", nom: "Carrousel" },
+  VIDEO: { glyphe: "▶", nom: "Vidéo" },
+  REEL: { glyphe: "▶", nom: "Reel" },
+  REELS: { glyphe: "▶", nom: "Reel" },
+  STORY: { glyphe: "◷", nom: "Story" },
+};
+export const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };
+export const formatDe = (t: string | null | undefined) =>
+  FORMAT[(t || "").toUpperCase()] ?? FORMAT_INCONNU;

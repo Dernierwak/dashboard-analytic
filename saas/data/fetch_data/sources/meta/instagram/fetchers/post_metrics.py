@@ -6,9 +6,16 @@ from saas.data.fetch_data.shared import http_client as http
 
 
 def info_du_post(acces: AccesMeta, post_id: str) -> dict:
-    """Légende, type, URL du média et date d'un post — la réponse brute de Meta."""
+    """Légende, type, URL du média, date, lien public et produit d'un post — la
+    réponse brute de Meta.
+
+    `permalink` et `media_product_type` (ticket 08 de `.scratch/hebdo/`) se
+    lisent avec la même permission `instagram_basic` que les autres champs :
+    aucun re-consentement. `media_product_type` est le seul à dire si un `VIDEO`
+    est un Reel (`REELS`) ou une vidéo du fil (`FEED`)."""
     params = {
-        "fields": "caption,media_type,media_url,thumbnail_url,timestamp",
+        "fields": "caption,media_type,media_url,thumbnail_url,timestamp,"
+                  "permalink,media_product_type",
         "access_token": acces.jeton,
     }
     # Sans `timeout`, `requests` attend indéfiniment : un serveur Graph muet

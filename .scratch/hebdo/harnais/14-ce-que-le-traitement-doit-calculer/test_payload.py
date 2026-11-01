@@ -89,9 +89,11 @@ constat(noms == ["Nouveau nom", "Été", "Été"],
 constat(all(c.get("id") for c in jeudi["frise"]["campagnes"])
         and all("statut" not in c for c in jeudi["frise"]["campagnes"]),
         "chaque campagne porte son ID ; sans config récoltée, pas de statut (« statut inconnu »)")
-# Les posts quittent la frise avec l'ancienne forme ; le ticket 08 les remet.
-constat("posts" not in jeudi["frise"],
-        "la frise ne porte pas encore de posts (ticket 08)")
+# Les posts ont quitté la frise avec l'ancienne forme ; le ticket 08 les remet,
+# sans aucun chiffre.
+constat([set(p) for p in jeudi["frise"].get("posts", [])]
+        == [{"plateforme", "date", "format", "visuel", "lien"}],
+        "la frise porte les posts de l'année, sans aucun chiffre (ticket 08)")
 constat(jeudi["frise"]["annee"] == 2026 and "debut" not in jeudi["frise"],
         f"la frise couvre une seule année : {jeudi['frise']['annee']} (ticket 07)")
 
