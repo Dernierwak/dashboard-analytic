@@ -84,18 +84,20 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling | — |
 | [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research ✓ | — |
 | [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research ✓ | — |
-| [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research | — |
+| [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research ✓ | — |
 | [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling | Quand les chiffres d'un post se figent |
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling | Ce que l'API Instagram donne d'un post |
 | [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling | Quand les chiffres se figent ; Garder l'historique |
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling | La place d'un post |
 | [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling | Ce que l'API Instagram donne d'un post |
-| [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | Ce que l'API donne du compte |
+| [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | L'état des abonnés en base ; L'essai réel |
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling | La place ; L'âge ; Écarter un post |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | La place ; Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype | La structure ; Les formats ; Le compte dans le temps ; Le carré |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | L'âge ; Les règles ; La page entière |
 | [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | Ce que la récolte et le traitement doivent calculer |
+| [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
+| [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 
 ## Decisions so far
 
@@ -110,6 +112,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   `profile_visits` sur FEED et STORY, jamais REELS ; chiffres organiques hors
   boost ; absence = jeu vide ; deux défauts de récolte relevés (vidéo du fil
   sans `likes`, absence écrite 0).
+- [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) :
+  seule `reach` se lit en série par jour ; `views`, interactions et
+  `follows_and_unfollows` s'additionnent, `reach` non ; 90 jours
+  d'historique ; gagnés/perdus et `follower_count` incertains ;
+  `followers_history` n'a plus d'écrivain depuis septembre — d'où deux tâches
+  nouvelles, l'état des abonnés en base et l'essai réel.
 
 ## Not yet specified
 
