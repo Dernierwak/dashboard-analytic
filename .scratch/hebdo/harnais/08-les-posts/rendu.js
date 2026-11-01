@@ -69,6 +69,12 @@ constat(P.organiqueVide(ig("2026-03-02", "2026-10-18"), sem) === "Posts en cours
   "semaine que la couverture ne contient pas : « en cours de récupération »");
 constat(P.organiqueVide(ig("2026-10-25", "2026-10-28"), sem) === "Instagram n'était pas encore connecté",
   "semaine finie avant la connexion : « … n'était pas encore connecté »");
+const mort = (jusqu_au) => ({ instagram: { etat: "jeton_mort", connecte_le: "2026-03-02",
+  posts: { depuis: "0001-01-01", jusqu_au } } });
+constat(P.organiqueVide(mort("2026-10-18"), sem) === "Pas de données Instagram pour cette semaine.",
+  "jeton mort, semaine non couverte : « Pas de données Instagram pour cette semaine. », comme l'onglet Campagnes");
+constat(P.organiqueVide(mort("2026-10-28"), sem) === "Aucun post publié cette semaine",
+  "jeton mort, semaine que la couverture contient : le vide est prouvé");
 constat(P.organiqueVide({}, sem) === "Posts en cours de récupération",
   "sans entrée Instagram, rien ne prouve une semaine vide");
 const vide = rendre({ ...payload, frise: { ...payload.frise, posts: [] } });

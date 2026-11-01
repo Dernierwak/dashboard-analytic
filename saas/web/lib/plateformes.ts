@@ -43,7 +43,6 @@ const FORMAT: Record<string, { glyphe: string; nom: string }> = {
   CAROUSEL_ALBUM: { glyphe: "▤", nom: "Carrousel" },
   VIDEO: { glyphe: "▶", nom: "Vidéo" },
   REEL: { glyphe: "▶", nom: "Reel" },
-  REELS: { glyphe: "▶", nom: "Reel" },
   STORY: { glyphe: "◷", nom: "Story" },
 };
 export const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };

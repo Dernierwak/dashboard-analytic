@@ -1,9 +1,12 @@
 // `payload.canaux` — ticket 05 (`blocs/canaux.py`). Les changements de la
 // carte ont leur propre type (`changements.ts`, ticket 06).
 //
-// Module SANS directive : la carte (serveur) et le rail (client) lisent la
-// table des ratios — une constante exportée d'un `"use client"` se lirait
-// côté serveur comme un proxy, sans erreur (`CLAUDE.md` §8).
+// Module SANS directive : la carte du canal (`carte-canal.tsx`, rendue côté
+// serveur) lit la table des ratios, la moustache ses types. Le rail qui fait
+// défiler les cartes est client (`rail-defilant.tsx`) mais ne lit pas ce
+// module : il reçoit les cartes déjà rendues. Sans directive, un composant
+// client pourra le lire sans qu'une constante exportée devienne un proxy
+// côté serveur (`CLAUDE.md` §8).
 import type { ChangementHebdo } from "@/lib/hebdo/changements";
 
 export type RatioHebdo = {

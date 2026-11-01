@@ -115,8 +115,10 @@ constat(f["g1"]["fin"] == "2026-03-10",
         f"journal illisible : la frise part, sur le repli — {f['g1']['fin']}")
 
 
+# Google est la régie branchée de ce compte : c'est sa lecture qui échoue. Meta,
+# pas branché, n'est plus lu du tout (user story 48, revue d'intégration).
 class InsightsIllisibles(Compte):
-    def meta_ads(self): raise RuntimeError("base injoignable")
+    def google_ads(self): raise RuntimeError("base injoignable")
 
 
 p = build_payload(InsightsIllisibles(goo, cfg))

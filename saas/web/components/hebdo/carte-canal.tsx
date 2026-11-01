@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fmtCHF } from "@/lib/report";
+import { chf, entier } from "@/lib/hebdo/format";
 import type { CanalHebdo, EtatSource, SemaineHebdo, SourcesHebdo } from "@/lib/hebdo/payload";
 import { PAGE_CANAL, RATIOS, SEMAINES_MINIMUM, jugement, type Jugement } from "@/lib/hebdo/canaux";
 import { SOURCE } from "@/lib/plateformes";
@@ -26,9 +26,6 @@ const MOT: Record<Jugement, { texte: string; classe: string }> = {
   moins: { texte: "moins bien que tes habitudes", classe: "text-neg" },
   dans: { texte: "dans tes habitudes", classe: "text-muted" },
 };
-
-const chf = (n: number) => `${fmtCHF(n)} CHF`;
-const entier = (n: number) => fmtCHF(Math.round(n));
 
 function Volumes({ volumes }: { volumes: CanalHebdo["volumes"] | null }) {
   const cases: [string, number | null | undefined, (n: number) => string][] = [
@@ -66,11 +63,22 @@ function LigneRatio({ def, donnees, lu }: { def: (typeof RATIOS)[number]; donnee
         {juge && valeur !== null && (
           <p className={`text-[11px] leading-snug ${MOT[juge].classe}`}>{MOT[juge].texte}</p>
         )}
-        {avecHistorique && <p className="text-[10.5px] text-faint">sur {ratio.n} semaines</p>}
+        {/* Le nombre de semaines se dit aussi sous le seuil : « encore 2 » se
+            lit mieux à côté de « sur 4 semaines ». */}
+        {lu && ratio && ratio.n > 0 && (
+          <p className="text-[10.5px] text-faint">
+            sur {ratio.n} semaine{ratio.n > 1 ? "s" : ""}
+          </p>
+        )}
       </div>
       <div className="min-w-0">
         {!lu ? null : avecHistorique ? (
-          <Moustache ratio={ratio} def={def} juge={juge} />
+          <>
+            <Moustache ratio={ratio} def={def} juge={juge} />
+            {/* Sans valeur cette semaine (dénominateur nul), la moustache n'a
+                pas de gros point : on le dit, au lieu d'un dessin muet. */}
+            {valeur === null && <p className="text-[11px] text-muted">— cette semaine</p>}
+          </>
         ) : (
           <p className="text-[12px] text-muted">
             Semaine type dès {SEMAINES_MINIMUM} semaines d&apos;historique — encore{" "}

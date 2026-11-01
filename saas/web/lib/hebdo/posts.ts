@@ -5,7 +5,7 @@
 // côté serveur comme un proxy (`CLAUDE.md` §8).
 //
 // AUCUN CHIFFRE. Un post dit ce qui a été publié, pas comment ça a marché.
-import type { Bornes } from "@/lib/hebdo/frise";
+import { pasDeDonnees, type Bornes } from "@/lib/hebdo/frise";
 import type { SourcesHebdo } from "@/lib/hebdo/sources";
 
 export type PostFrise = {
@@ -32,10 +32,13 @@ export function postsDans(posts: PostFrise[], sem: Bornes): PostFrise[] {
 /**
  * L'onglet Organique vide se dit (spec, tableau des états, point 9). Dans cet
  * ordre : semaine finie avant la connexion → « … n'était pas encore connecté » ;
- * semaine que la couverture des posts ne contient pas → « en cours de
- * récupération » ; sinon une vraie semaine sans post. Sans entrée Instagram
- * dans `sources`, rien ne prouve que la semaine est vide : elle est dite en
- * cours de récupération plutôt que « aucun post ».
+ * semaine que la couverture des posts ne contient pas → « Pas de données
+ * Instagram pour cette semaine. » si le jeton est mort (la même phrase que
+ * l'onglet Campagnes, `pasDeDonnees` : rien ne se récupère tant que le client
+ * n'a pas reconnecté), sinon « en cours de récupération » ; sinon une vraie
+ * semaine sans post — la couverture la prouve, même jeton mort. Sans entrée
+ * Instagram dans `sources`, rien ne prouve que la semaine est vide : elle est
+ * dite en cours de récupération plutôt que « aucun post ».
  */
 export function organiqueVide(sources: SourcesHebdo | null | undefined, sem: Bornes): string {
   const ig = sources?.instagram;
@@ -43,7 +46,7 @@ export function organiqueVide(sources: SourcesHebdo | null | undefined, sem: Bor
   if (connecte && sem.fin < connecte) return "Instagram n'était pas encore connecté";
   const plage = ig?.posts;
   if (!plage || plage.depuis > sem.debut || plage.jusqu_au < sem.fin) {
-    return "Posts en cours de récupération";
+    return ig?.etat === "jeton_mort" ? pasDeDonnees(["instagram"]) : "Posts en cours de récupération";
   }
   return "Aucun post publié cette semaine";
 }

@@ -165,22 +165,38 @@ class LecteurSupabase:
 
     def campagnes_config(self, table: str) -> list[dict]:
         """Identité par ID, statut et dates déclarées — la frise du ticket 07
-        identifie une campagne par son ID, plus par son nom."""
+        identifie une campagne par son ID, plus par son nom.
+
+        PAGINÉE, DONC TRIÉE SUR UNE CLÉ TOTALE (`CLAUDE.md` §8) : sans ordre,
+        PostgREST ne garantit pas le même ordre d'une page à l'autre, et une
+        ligne peut sortir deux fois quand une autre se perd. `campaign_id` est
+        la clé (`user_id`, `campaign_id`) des deux tables neuves ; une base Meta
+        d'avant l'étape B garde la clé (`user_id`, `campaign_name`) avec des
+        `campaign_id` nuls — `campaign_name` départage alors (migration,
+        `meta_campaign_config`)."""
         return _all_pages(lambda: self.sb.table(table)
                           .select("campaign_id, campaign_name, effective_status, start_date, end_date")
-                          .eq("user_id", self.user_id))
+                          .eq("user_id", self.user_id)
+                          .order("campaign_id").order("campaign_name"))
 
     def creas(self) -> list[dict]:
+        """Paginée : triée sur `ad_id`, la clé (`user_id`, `ad_id`) de la table."""
         return _all_pages(lambda: self.sb.table("meta_ads_creatives")
                           .select("ad_id, image_url, vignette_url")
-                          .eq("user_id", self.user_id))
+                          .eq("user_id", self.user_id)
+                          .order("ad_id"))
 
     def changements(self, debut: date, fin: date) -> list[dict]:
         """Le journal de la plateforme autour de la semaine.
 
         Un jour de plus de chaque côté : `occurred_at` est en UTC, la semaine se
         juge au fuseau de la ligne (`fuseau`), qui peut déborder d'un jour. Le
-        bloc qui lit ces lignes refait le tri au bon fuseau."""
+        bloc qui lit ces lignes refait le tri au bon fuseau.
+
+        Deux changements à la même seconde sont courants (un lot de Meta) :
+        `channel` puis `change_id` — la clé (`user_id`, `channel`, `change_id`)
+        de la table — départagent, pour que la pagination ne répète ni ne perde
+        une ligne (`CLAUDE.md` §8)."""
         depuis = (debut - timedelta(days=1)).isoformat()
         jusqu_a = (fin + timedelta(days=2)).isoformat()
         return _all_pages(lambda: self.sb.table("platform_changes")
@@ -188,19 +204,20 @@ class LecteurSupabase:
                                   "campaign_name, niveau, object_id, object_name, resume, extra_data")
                           .eq("user_id", self.user_id)
                           .gte("occurred_at", depuis).lt("occurred_at", jusqu_a)
-                          .order("occurred_at"))
+                          .order("occurred_at").order("channel").order("change_id"))
 
     def statuts_google(self) -> list[dict]:
         """Les changements de statut des campagnes Google, sur tout le journal
         — pas la semaine : une campagne supprimée en mars finit en mars dans la
         frise d'octobre (ticket 09). Seules les lignes qui portent le statut
         structuré (`extra_data.statut`, écrit par `google/ads/fetchers/changes.py`)
-        sont lues : la phrase `resume` ne se relit jamais."""
+        sont lues : la phrase `resume` ne se relit jamais. Le canal est fixé :
+        `change_id` départage deux lignes à la même heure (`CLAUDE.md` §8)."""
         return _all_pages(lambda: self.sb.table("platform_changes")
                           .select("campaign_id, occurred_at, extra_data")
                           .eq("user_id", self.user_id).eq("channel", "google")
                           .not_.is_("extra_data->statut", "null")
-                          .order("occurred_at"))
+                          .order("occurred_at").order("change_id"))
 
     def couverture(self) -> list[dict]:
         """La plage récoltée sans trou, par source et par flux

@@ -21,6 +21,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
+from saas.data.supabase.processed_data.weekly_report.blocs._commun import (
+    REGIES, Regie, jour_tel_qu_ecrit,
+)
 from saas.data.supabase.processed_data.weekly_report.blocs.semaine import UNE_SEMAINE, Semaine
 
 CONFIG = {"meta": "meta_campaign_config", "google": "google_campaign_config"}
@@ -42,21 +45,26 @@ class _Campagne:
     supprimee_le: date | None = None
 
 
-def frise_campagnes(lecteur, semaine: Semaine) -> dict | None:
+def frise_campagnes(lecteur, semaine: Semaine, sources: dict | None) -> dict | None:
     """`None` quand une lecture échoue — même règle que `canaux.py` : une
     lecture ratée n'est pas une année sans campagne. La page tolère la clé
-    absente, et le reste du rapport part."""
+    absente, et le reste du rapport part.
+
+    SEULES LES RÉGIES BRANCHÉES ENTRENT (spec, user story 48) : une régie
+    débranchée garde ses lignes en base, mais le client ne la voit nulle part.
+    « Branchée » = une entrée dans `sources` (`blocs/sources.py`), lu une fois ;
+    sans `sources`, on ne sait pas ce qui est branché, et rien n'entre."""
+    branchees = [r for r in REGIES if r in ((sources or {}).get("sources") or {})]
     try:
-        creas = {c.get("ad_id"): c for c in lecteur.creas() if c.get("ad_id")}
+        creas = {c.get("ad_id"): c for c in lecteur.creas() if c.get("ad_id")} if branchees else {}
         lectures = {
-            "meta": (list(_lignes_meta(lecteur.meta_ads())),
-                     lecteur.campagnes_config(CONFIG["meta"]) or []),
-            "google": (list(_lignes_google(lecteur.google_ads())),
-                       lecteur.campagnes_config(CONFIG["google"]) or []),
+            plateforme: (list(_lignes(REGIES[plateforme], REGIES[plateforme].lire(lecteur) or [])),
+                         lecteur.campagnes_config(CONFIG[plateforme]) or [])
+            for plateforme in branchees
         }
     except Exception:
         return None
-    suppressions = _suppressions_google(lecteur, semaine)
+    suppressions = _suppressions_google(lecteur, semaine) if "google" in lectures else {}
 
     campagnes = []
     for plateforme, (lignes, config_rows) in lectures.items():
@@ -89,7 +97,7 @@ def _suppressions_google(lecteur, semaine: Semaine) -> dict[str, date]:
     out: dict[str, date] = {}
     for ligne in lignes:
         statut = (ligne.get("extra_data") or {}).get("statut") or {}
-        jour, cid = _jour(ligne.get("occurred_at")), ligne.get("campaign_id")
+        jour, cid = jour_tel_qu_ecrit(ligne.get("occurred_at")), ligne.get("campaign_id")
         if statut.get("apres") != "REMOVED" or not cid or jour is None or jour > semaine.fin:
             continue
         cid = str(cid)
@@ -100,22 +108,14 @@ def _suppressions_google(lecteur, semaine: Semaine) -> dict[str, date]:
 
 # ── Lecture des insights ─────────────────────────────────────────────────────
 
-def _lignes_meta(rows):
+def _lignes(regie: Regie, rows):
+    """(ligne, dépense). Une ligne dont la dépense est illisible n'est pas
+    rendue : elle n'ouvre pas de campagne et ne compte ni comme 0 ni comme
+    valeur (`_commun`)."""
     for r in rows:
-        yield r, float(r.get("spend") or 0)
-
-
-def _lignes_google(rows):
-    # Google donne la dépense en micros de la devise du compte.
-    for r in rows:
-        yield r, float(r.get("cost_micros") or 0) / 1_000_000
-
-
-def _jour(x) -> date | None:
-    try:
-        return date.fromisoformat(str(x)[:10]) if x else None
-    except ValueError:
-        return None
+        depense = regie.depense(r)
+        if depense is not None:
+            yield r, depense
 
 
 def _rassembler(plateforme, lignes, config_rows, semaine: Semaine) -> dict[str, _Campagne]:
@@ -125,7 +125,7 @@ def _rassembler(plateforme, lignes, config_rows, semaine: Semaine) -> dict[str, 
         return rangees.setdefault(cid, _Campagne(id=cid, plateforme=plateforme))
 
     for ligne, depense in lignes:
-        cid, jour = ligne.get("campaign_id"), _jour(ligne.get("date_start"))
+        cid, jour = ligne.get("campaign_id"), jour_tel_qu_ecrit(ligne.get("date_start"))
         # Après `semaine.fin` : le jour du fetch, partiel, ou un rapport refait
         # plus tard — hors du rapport figé.
         if not cid or jour is None or jour > semaine.fin:
@@ -159,7 +159,7 @@ def _fin_de_semaine(jour: date, semaine: Semaine) -> date:
 
 def _sortie(c: _Campagne, semaine: Semaine, creas: dict) -> dict | None:
     cfg = c.config or {}
-    debut_declare, fin_declaree = _jour(cfg.get("start_date")), _jour(cfg.get("end_date"))
+    debut_declare, fin_declaree = jour_tel_qu_ecrit(cfg.get("start_date")), jour_tel_qu_ecrit(cfg.get("end_date"))
     if not _dans_l_annee(c, debut_declare, fin_declaree, semaine.fin.year):
         return None
 
@@ -225,7 +225,7 @@ def _statut(cfg: dict | None, semaine: Semaine) -> str | None:
     if cfg is None:
         return None
     etat = cfg.get("effective_status")
-    debut, fin = _jour(cfg.get("start_date")), _jour(cfg.get("end_date"))
+    debut, fin = jour_tel_qu_ecrit(cfg.get("start_date")), jour_tel_qu_ecrit(cfg.get("end_date"))
     if etat == "REMOVED":
         return "supprimee"
     # Finie le dernier jour de la semaine, elle est finie quand le rapport sort.

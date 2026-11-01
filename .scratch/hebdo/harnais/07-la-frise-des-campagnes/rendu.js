@@ -77,13 +77,44 @@ const avec = (etat, connecte_le) => ({ meta: { etat, connecte_le, journal: "couv
 constat(F.campagnesVides(null, sem, true) === "Aucune campagne active cette semaine", "sans `sources` : une vraie semaine vide");
 constat(F.campagnesVides(avec("panne", "2026-01-01T00:00:00Z"), sem, true) === "Campagnes en cours de récupération",
   "panne la semaine mesurée : en cours de récupération");
-constat(F.campagnesVides(avec("jeton_mort", "2026-01-01T00:00:00Z"), sem, true) === "Aucune campagne active cette semaine",
-  "jeton mort : panneau inchangé");
+constat(F.campagnesVides(avec("jeton_mort", "2026-01-01T00:00:00Z"), sem, true) === "Pas de données Meta pour cette semaine.",
+  "jeton mort, semaine vide : « Pas de données Meta pour cette semaine. » (ni « aucune … active », ni « en cours de récupération »)");
+constat(F.campagnesVides(avec("jeton_mort", "2026-01-01T00:00:00Z"), sem, false) === "Pas de données Meta pour cette semaine.",
+  "jeton mort : la même phrase pour une semaine plus ancienne (le payload ne dit pas depuis quand)");
+const deux = { meta: { etat: "jeton_mort", connecte_le: "2026-01-01", journal: "couvert" },
+  google: { etat: "jeton_mort", connecte_le: "2026-01-01", journal: "couvert" } };
+constat(F.campagnesVides(deux, sem, true) === "Pas de données Meta et Google pour cette semaine.",
+  "deux jetons morts : les deux régies nommées");
 constat(F.campagnesVides(avec("recolte", "2026-11-01T00:00:00Z"), sem, false) === "Meta n'était pas encore connecté",
   "avant la connexion : « Meta n'était pas encore connecté »");
 const vide = { ...payload, frise: { ...payload.frise, campagnes: [] }, sources: avec("panne", "2026-01-01") };
 constat(rendre(vide).includes("Campagnes en cours de récupération") && rendre(vide).includes("Campagnes · 0"),
   "onglet gardé, compte 0, phrase de récupération");
+
+// ── Une semaine sans montant n'est pas un 0 ──────────────────────────────────
+const vivanteSansCle = { ...payload.frise.campagnes.find((c) => c.id === "m_vit"), depense_par_semaine: {} };
+const sansMontant = rendre({ ...payload, frise: { ...payload.frise, campagnes: [vivanteSansCle] } });
+constat(sansMontant.includes("— dépense non disponible cette semaine"),
+  "clé de semaine absente : « — dépense non disponible », jamais « aucune dépense »");
+constat(!/aucune dépense|\b0 CHF/.test(sansMontant), "ni « aucune dépense » ni « 0 CHF »");
+constat(F.tourneDans(vivanteSansCle, sem, payload.semaine) === true,
+  "sans montant, une campagne vivante tourne quand même : le trait décide");
+
+// ── La carte du canal (revue d'intégration) : le nombre de semaines, et la
+// semaine sans valeur ────────────────────────────────────────────────────────
+const { CarteCanal } = require(path.join(WEB, "components/hebdo/carte-canal.tsx"));
+const ratio = (valeur, n) => ({ valeur, semaines: Array(n).fill(1), n,
+  q1: n >= 6 ? 0.8 : null, mediane: n >= 6 ? 1 : null, q3: n >= 6 ? 1.2 : null, etat: null });
+const carte = (r) => renderToStaticMarkup(React.createElement(CarteCanal, {
+  canal: "meta", etat: "recolte", journal: "couvert", semaine: payload.semaine,
+  donnees: { volumes: { depense: 0, impressions: 0, clics: 0 }, ratios: { ctr: r, cpc: r, cpm: r } } }));
+const jeune = carte(ratio(1.1, 4));
+constat(jeune.includes("encore 2") && jeune.includes("sur 4 semaines"),
+  "sous 6 semaines : « encore 2 » et « sur 4 semaines »");
+const muette = carte(ratio(null, 8));
+constat(muette.includes("— cette semaine") && muette.includes("sur 8 semaines"),
+  "n ≥ 6 sans valeur : « — cette semaine » sous la moustache");
+constat(!carte(ratio(1.1, 8)).includes("— cette semaine"), "avec une valeur : pas de phrase");
 
 // ── Le trait ─────────────────────────────────────────────────────────────────
 const S = payload.semaine;

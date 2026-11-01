@@ -45,9 +45,10 @@ class Compte(FauxLecteur):
 
     # Une source branchée : depuis le ticket 10, c'est elle qui fait publier
     # le rapport, pas la dépense — la frise sort même sans dépense récente.
+    # Les deux régies : seule une régie branchée entre dans la frise (user story 48).
     def connexions_etat(self):
-        return [{"source": "meta", "created_at": "2025-01-01T00:00:00+00:00",
-                 "a_reconnecter_depuis": None}]
+        return [{"source": s, "created_at": "2025-01-01T00:00:00+00:00",
+                 "a_reconnecter_depuis": None} for s in ("meta", "google")]
 
     def meta_ads(self): return self._meta
     def google_ads(self): return self._google

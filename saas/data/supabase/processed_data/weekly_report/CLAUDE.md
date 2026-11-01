@@ -8,10 +8,25 @@ Le projet est **Pulse** (voir `CLAUDE.md` à la racine).
 
 | Fichier | Ce qu'il fait |
 |---|---|
-| `reader.py` | Lit dans Supabase les données sources nécessaires au traitement et porte le seam hors ligne. |
-| `builder.py` | Construit le payload sans imposer de client Supabase à `build_payload`. |
+| `reader.py` | Le `Lecteur` : tout ce que la construction lit dehors (Supabase, l'horloge), derrière un seul objet — le seam hors ligne. |
+| `builder.py` | `build_payload(Lecteur)` : fixe la semaine, assemble les blocs, ne publie que si `sources` est écrit. |
 | `publisher.py` | Interface appelée par l'orchestrateur pour publier le rapport. |
-| `_ga4.py` | Prépare le contexte GA4 interne depuis les données stockées. |
+| `blocs/` | Un fichier par bloc du payload (`semaine`, `sources`, `canaux`, `changements`, `frise`, `posts`, `canaux_muets`), `assemble.py` qui les réunit, et `_commun.py` — jour, dépense par régie et filtre « dans la semaine », partagés par `sources`, `canaux` et `frise`. |
+
+## Les clés du payload
+
+Écrites par `blocs/assemble.py`, plus trois par `builder.py`. Un bloc qui rend
+`None` n'écrit aucune clé : la page lit une clé absente comme « rien à montrer ».
+
+| Clé | Bloc | Ce qu'elle porte |
+|---|---|---|
+| `semaine` | `semaine.py` | Début, fin et numéro de la semaine mesurée, calée sur le Jour de travail. |
+| `sources` | `sources.py` | L'état de chaque source **branchée** (`recolte` / `panne` / `jeton_mort`), sa date de connexion, la couverture de son journal ; Instagram avec la plage de ses posts. Une source pas branchée n'a pas d'entrée — et n'apparaît nulle part ailleurs non plus (user story 48). |
+| `totaux` | `sources.py` | Dépense et impressions de la semaine par régie, `null` hors `recolte` — jamais un 0 d'absence. |
+| `canaux` | `canaux.py` + `changements.py` | Par régie au module (Meta aujourd'hui) : volumes, CTR / CPC / CPM face aux 12 semaines précédentes, et les changements de la semaine. |
+| `frise` | `frise.py` + `posts.py` | L'année : `annee`, `campagnes` (une barre par campagne, identité par ID) et `posts` (sans chiffre). Seules les régies branchées y entrent. |
+| `version`, `week_start` | `builder.py` | La forme du payload, et la clé d'écriture `(user_id, week_start)`. |
+| `canaux_muets` | `canaux_muets.py` | **La page ne la lit plus.** Elle reste pour l'escalade de la récolte : `error_reporter.note_canaux_qui_durent` la reçoit, et `semaines_muettes` compte la série en relisant cette clé dans les rapports déjà publiés — la retirer remettrait le compte à 1 pour toujours, sans erreur. |
 
 ## CE DOSSIER NE CONSEILLE RIEN
 
@@ -30,14 +45,13 @@ Le thème — l'étiquette posée sur des campagnes et des publications, les
 tour (`.scratch/meta-ads/issues/01-…`), **et rien ne l'a remplacé** : ni
 cartes, ni anneau, ni regroupement, ni objectif ou événement GA4 par thème.
 
-Ce que le payload porte encore, et rien d'autre : le verdict de la semaine
-(déterministe), la boussole (`kpi_focus`), la frise (`frise`), les faits de
-plateforme (`changements`), les canaux muets (`canaux_muets`) et les métriques
-de lecture rapide (`metrics_read`, `metrics_prev`, `metrics_series`).
+Le payload ne porte que les clés du tableau plus haut. Le verdict, la boussole
+(`kpi_focus`), les métriques de lecture rapide (`metrics_*`) et l'ancienne
+liste `changements` sont partis avec le ticket 10 du chantier hebdo.
 
 **Les payloads DÉJÀ PUBLIÉS gardent leurs clés mortes** (`recos`, `brief`,
 `tracking`, `vision`, `reglages`, `themes_tips`, `top_recos`, `themes_focus`,
-`themes`, `matrice`, le `theme` des campagnes de la frise…). Plus personne ne
+`themes`, `matrice`, `verdict`, `kpi_focus`, `metrics_*`…). Plus personne ne
 les lit ; elles s'éteignent d'elles-mêmes à la prochaine publication. Ne pas
 écrire de migration pour les nettoyer : ça coûterait une réécriture de tous les
 payloads pour gagner des octets que personne ne paie.
@@ -65,7 +79,7 @@ rapport côté Next.js sans repasser par cette décision.
 fonction appelée par `saas/data/fetch_data/orchestration/account_sync.py` en fin de
 récolte — imports locaux dans `account_sync.py` pour éviter un cycle.
 
-`SEUIL_ESCALADE` est lue par `saas/data/fetch_data/orchestration/error_reporter.py` **par
+`SEUIL_ESCALADE` (`blocs/canaux_muets.py`) est lue par `saas/data/fetch_data/orchestration/error_reporter.py` **par
 import local**, depuis `note_canaux_qui_durent`. Aucun appelant ne se voit dans ce fichier : une
 analyse de code mort la déclarera inatteignable, et elle ne l'est pas.
 
@@ -76,5 +90,7 @@ analyse de code mort la déclarera inatteignable, et elle ne l'est pas.
 faux lecteur suffit à construire le rapport sans base, sans secret, sans réseau.
 
 Les harnais qui le faisaient ont quitté l'arbre le 2026-10-01 ; ils restent dans
-l'historique (`git log --diff-filter=D -- .scratch/construction`). Toucher au
-traitement, c'est écrire le harnais du ticket, pas en supposer un.
+l'historique (`git log --diff-filter=D -- .scratch/construction`). Ceux du
+chantier hebdo vivent dans `.scratch/hebdo/harnais/` (un dossier par ticket,
+faux lecteur commun dans `commun/`). Toucher au traitement, c'est écrire le
+harnais du ticket, pas en supposer un.

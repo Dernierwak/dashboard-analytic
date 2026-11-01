@@ -43,7 +43,8 @@ export type CampagneFrise = {
   visuels: string[];
   /** CLÉ = DERNIER JOUR de la semaine calée sur le Jour de travail (la même
    *  que `semaine.fin` pour la semaine mesurée). Creux : une semaine absente
-   *  n'a enregistré aucune dépense. */
+   *  ne porte pas de montant — la page écrit « — », jamais 0 ni « aucune
+   *  dépense » (`CLAUDE.md` §7). */
   depense_par_semaine: Record<string, number>;
 };
 
@@ -147,9 +148,11 @@ export function segments(
 }
 
 /** A tourné pendant la semaine choisie : son trait plein la touche, ou elle y
- *  a dépensé. */
+ *  a dépensé. Une semaine absente de `depense_par_semaine` ne prouve rien —
+ *  ni dépense ni 0 : seul le trait décide alors. */
 export function tourneDans(c: CampagneFrise, sem: Bornes, semaine: SemaineHebdo): boolean {
-  if ((c.depense_par_semaine[sem.fin] ?? 0) > 0) return true;
+  const depense = c.depense_par_semaine[sem.fin];
+  if (depense !== undefined && depense > 0) return true;
   const { plein } = segments(c, semaine, Number(semaine.fin.slice(0, 4)));
   return plein !== null && plein.debut <= sem.fin && plein.fin >= sem.debut;
 }
@@ -187,11 +190,22 @@ export function nomStatut(c: CampagneFrise): string {
 
 const PUBS = ["meta", "google"] as const;
 
+/** « Meta », « Meta et Google ». */
+const noms = (cles: string[]) => cles.map((c) => SOURCE[c]?.nom ?? c).join(" et ");
+
+/** La phrase neutre d'un onglet vide quand le jeton est mort : la récolte ne
+ *  lit plus rien, donc ni « aucune … » (ce serait affirmer un vide qu'on n'a
+ *  pas vu) ni « en cours de récupération » (rien ne se récupère tant que le
+ *  client n'a pas reconnecté). La même pour Campagnes et Organique. */
+export const pasDeDonnees = (cles: string[]) => `Pas de données ${noms(cles)} pour cette semaine.`;
+
 /**
  * Le vide se dit (spec, tableau des états, point 9). Dans cet ordre :
  * avant la connexion de toutes les régies → « … n'était pas encore connecté » ;
- * la semaine mesurée d'une régie en panne → « en cours de récupération » (un
- * jeton mort laisse le panneau inchangé) ; sinon une vraie semaine sans
+ * une régie au jeton mort → « Pas de données … pour cette semaine. » — pour
+ * toute semaine : le payload ne dit pas depuis quand le jeton est mort, donc
+ * pas jusqu'où une semaine vide a vraiment été lue ; la semaine mesurée d'une
+ * régie en panne → « en cours de récupération » ; sinon une vraie semaine sans
  * campagne. Sans `sources` (payload d'avant le ticket 04), seul le dernier cas
  * peut se dire.
  */
@@ -206,23 +220,14 @@ export function campagnesVides(
     return le ? sem.fin < le.slice(0, 10) : false;
   });
   if (pubs.length > 0 && avant.length === pubs.length) {
-    const noms = avant.map((c) => SOURCE[c]?.nom ?? c);
-    return noms.length > 1
-      ? `${noms.join(" et ")} n'étaient pas encore connectés`
-      : `${noms[0]} n'était pas encore connecté`;
+    return avant.length > 1
+      ? `${noms(avant)} n'étaient pas encore connectés`
+      : `${noms(avant)} n'était pas encore connecté`;
   }
+  const morts = pubs.filter((c) => sources?.[c]?.etat === "jeton_mort");
+  if (morts.length > 0) return pasDeDonnees(morts);
   if (mesuree && pubs.some((c) => sources?.[c]?.etat === "panne")) {
     return "Campagnes en cours de récupération";
   }
   return "Aucune campagne active cette semaine";
-}
-
-// ── L'affichage ──────────────────────────────────────────────────────────────
-
-/** « 1 240 CHF ». Pas de `toLocaleString` : serveur et navigateur n'ont pas
- *  toujours les mêmes données de locale, et deux rendus différents font une
- *  erreur d'hydratation (voir `lib/jour-de-travail.ts`). */
-export function chf(n: number): string {
-  const entier = String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${entier} CHF`;
 }

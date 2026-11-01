@@ -80,8 +80,10 @@ constat(p is not None and "frise" in p and "campagnes" in p["frise"],
         "la clé `frise` est celle des blocs neufs (campagnes de l'année)")
 
 # ── Les insights se lisent une fois ─────────────────────────────────────────
-constat(avec_tout.appels == {"meta_ads": 1, "google_ads": 1},
-        f"meta_ads() et google_ads() lus une seule fois par rapport : {avec_tout.appels}")
+# Google n'est pas branché sur ce compte : depuis la revue d'intégration
+# (user story 48), la frise ne lit plus une régie débranchée.
+constat(avec_tout.appels == {"meta_ads": 1, "google_ads": 0},
+        f"meta_ads() lu une seule fois par rapport, google_ads() (pas branché) jamais : {avec_tout.appels}")
 
 # ── La publication tient aux blocs neufs ────────────────────────────────────
 p = build_payload(Compte(lignes=[]))

@@ -27,13 +27,20 @@ from saas.data.supabase.processed_data.weekly_report.blocs.semaine import Semain
 FORMATS = {"IMAGE", "CAROUSEL_ALBUM", "VIDEO"}
 
 
-def frise_posts(lecteur, semaine: Semaine) -> list[dict] | None:
+def frise_posts(lecteur, semaine: Semaine, sources: dict | None) -> list[dict] | None:
     """Les posts de l'année de `semaine.fin`, jusqu'à elle, triés par jour.
 
     None quand le compte n'a ni post ni couverture Instagram : il n'a pas
     d'Instagram, et l'onglet Organique ne doit pas apparaître. Une liste vide
     avec couverture est une vraie année sans post.
+
+    None aussi quand Meta n'est pas branché (spec, user story 48) : Instagram
+    se récolte avec son jeton (`sources.py`), et des posts restés en base après
+    un débranchement ne se montrent pas. Sans `sources`, on ne sait pas ce qui
+    est branché : rien.
     """
+    if "meta" not in ((sources or {}).get("sources") or {}):
+        return None
     try:
         lignes = lecteur.publications() or []
     except Exception:

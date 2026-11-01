@@ -30,9 +30,12 @@ from __future__ import annotations
 
 from datetime import date
 
+from saas.data.supabase.processed_data.weekly_report.blocs._commun import (
+    REGIES, dans_la_semaine, jour_iso, nombre,
+)
 from saas.data.supabase.processed_data.weekly_report.blocs.semaine import Semaine
 
-SOURCES = ("meta", "google")
+SOURCES = tuple(REGIES)
 
 
 def sources_et_totaux(lecteur, semaine: Semaine) -> dict | None:
@@ -130,30 +133,23 @@ def _connecte_le(lignes: list[dict]) -> str | None:
     return jours[0] if jours else None
 
 
-def _dans_la_semaine(ligne: dict, semaine: Semaine) -> bool:
-    jour = str(ligne.get("date_start") or "")[:10]
-    return semaine.debut.isoformat() <= jour <= semaine.fin.isoformat()
-
-
-def _nombre(valeur) -> float:
-    try:
-        return float(valeur or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def _sommes(lecteur, source: str, semaine: Semaine) -> tuple[float, int] | None:
-    """(dépense CHF, impressions) de la semaine, ou None si la lecture échoue —
-    une lecture ratée n'est pas une semaine sans diffusion."""
+    """(dépense, impressions) de la semaine, ou None si la lecture échoue —
+    une lecture ratée n'est pas une semaine sans diffusion. La dépense est
+    celle de la régie, sans conversion (`_commun.depense_google`). Une ligne
+    dont la dépense ou les impressions sont illisibles n'entre pas, ni pour
+    l'une ni pour l'autre : ni 0, ni valeur — et les deux totaux décrivent les
+    mêmes lignes."""
+    regie = REGIES[source]
     try:
-        lignes = lecteur.meta_ads() if source == "meta" else lecteur.google_ads()
+        lignes = regie.lire(lecteur) or []
     except Exception:
         return None
-    lignes = [l for l in (lignes or []) if _dans_la_semaine(l, semaine)]
-    if source == "meta":
-        depense = sum(_nombre(l.get("spend")) for l in lignes)
-    else:
-        # Google rend la dépense en micros de la devise du compte.
-        depense = sum(_nombre(l.get("cost_micros")) for l in lignes) / 1_000_000
-    impressions = sum(_nombre(l.get("impressions")) for l in lignes)
+    depense = impressions = 0.0
+    for ligne in lignes:
+        montant, vues = regie.depense(ligne), nombre(ligne.get("impressions"))
+        if montant is None or vues is None or not dans_la_semaine(jour_iso(ligne), semaine):
+            continue
+        depense += montant
+        impressions += vues
     return round(depense, 2), int(impressions)
