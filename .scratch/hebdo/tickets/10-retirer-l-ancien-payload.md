@@ -7,7 +7,7 @@ l'expand–contract ouvert au ticket 01.
 
 **Blocked by:** 04, 05, 06, 07, 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — Le payload (« Sortent »), La page
 (« Ce qui part de la page ») ; ticket 14 de la carte, §1.
@@ -31,3 +31,9 @@ l'expand–contract ouvert au ticket 01.
       `rm -rf .next tsconfig.tsbuildinfo`, `tsc` et `build` verts, 18
       routes.
 - [ ] Le harnais passe : aucune clé sortante dans le payload.
+
+## Réponse (2026-11-01)
+
+`builder.py` réduit à l'assemblage des blocs neufs (1 216 → ~90 lignes), `version` 3 ; `canaux_muets` **conservé** (l'escalade le relit, `blocs/canaux_muets.py`). Publication dès qu'une source est branchée (0 CHF, jeton mort et panne publient). `publications()` paginée, lectures `meta_ads`/`google_ads` faites une fois. `_ga4.py`, `kpi-focus.tsx`, `canal-muet.tsx`, `frise-semaine.tsx` supprimés. Restent sans lecteur, par décision : `lib/changements-api.ts`, `components/changements.tsx`. Harnais 10.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

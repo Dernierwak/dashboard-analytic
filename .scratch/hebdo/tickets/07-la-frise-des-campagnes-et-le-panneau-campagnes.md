@@ -13,7 +13,7 @@ Campagnes : des cartes avec visuel ou « pas de visuel », nom, dates,
 
 **Blocked by:** 01 (la semaine)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — Le payload (`frise.campagnes`, statut
 d'une campagne), La page (« Ce qui a été fait »), tableau des états
@@ -46,3 +46,9 @@ d'une campagne), La page (« Ce qui a été fait »), tableau des états
 - [ ] Un payload sans `frise` à la nouvelle forme ne casse pas la page.
 - [ ] `tsc` et `build` verts, 18 routes ; visible en ligne après un passage
       du worker (`report_only`).
+
+## Réponse (2026-11-01)
+
+`blocs/frise.py` : campagnes de l'année par ID, nom actuel, statut dans l'ordre de la spec, visuels ≤ 4, dépense par semaine ; plateformes débranchées exclues (revue). Frise Année·Mois, panneau collant, onglet Campagnes (`frise-et-panneau`, `frise-annee`, `panneau-semaine`, `panneau-campagnes`). Harnais 07 + `rendu.js`.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

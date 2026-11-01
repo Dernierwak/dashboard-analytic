@@ -9,7 +9,7 @@ la règle juste pour la suite.
 
 **Blocked by:** 07 (la frise des campagnes)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — La récolte, à construire d'abord
 (point 4), Le payload (fin d'une campagne Google supprimée) ; ticket 17 de
@@ -28,3 +28,9 @@ la carte.
 - [ ] `python3.12 -m py_compile` sur ce qui est touché.
 - [ ] Vérifié après un passage du worker **avec `force`** : les
       changements de statut Google récoltés portent le statut structuré.
+
+## Réponse (2026-11-01)
+
+`changes.py` écrit `extra_data.statut {avant, apres}` sur un changement de statut de campagne Google ; plafond 10 000 compté comme trou. `blocs/frise.py` : fin d'une supprimée = suppression structurée la plus récente, sinon dernier jour de dépense, sinon début ; `reader.statuts_google`. Harnais 09.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

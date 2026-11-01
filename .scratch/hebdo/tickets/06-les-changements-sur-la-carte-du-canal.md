@@ -9,7 +9,7 @@ changement cette semaine » de « Changements en cours de récupération ».
 
 **Blocked by:** 03 (la couverture du journal), 05 (la carte)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — Le payload (`canaux.changements`),
 tableau des états (journal non couvert, hors campagne) ; tickets de la
@@ -33,3 +33,9 @@ carte 05, 13 (points 8, 11), 14 (§5).
       changement de niveau compte.
 - [ ] `tsc` et `build` verts, 18 routes ; visible en ligne après un passage
       du worker (`report_only`).
+
+## Réponse (2026-11-01)
+
+`blocs/changements.py` : changements de la semaine au fuseau de la ligne, catégories de la spec (`statut`/`creation` → `autre`, décision du coordinateur). `changements-canal.tsx` dans la liste défilante, « journal → » vers `/meta?from&to&panneau=changements`, « en cours de récupération » vs vrai 0. Ancien bloc et lecture par API quittent la page. Harnais 06. Note : « Compte publicitaire » ne peut pas se déclencher aujourd'hui (le CHECK `niveau` n'admet pas le compte).
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

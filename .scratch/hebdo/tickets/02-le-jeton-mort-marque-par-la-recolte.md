@@ -8,7 +8,7 @@ plateformes, mais aucun code ne l'appelle.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — La récolte, à construire d'abord
 (point 1) ; ticket 14 de la carte, §7 point 1.
@@ -25,3 +25,9 @@ plateformes, mais aucun code ne l'appelle.
 - [ ] Vérifié **après un passage du worker** lancé à la main
       (`weekly-fetch.yml`, `force`) : un compte au jeton valide n'est pas
       marqué.
+
+## Réponse (2026-11-01)
+
+`execution_plan.planifier` décide (mort → marquer et sauter, inconnu → rien) ; `account_sync.verifier_jetons` appelle les vérifications existantes ; `source_data/account.marquer_a_reconnecter` pose la date si vide (jamais écrasée). Harnais 02. **Préalable** : `META_APP_ID` et `META_APP_SECRET` absents de `weekly-fetch.yml` — sans eux le jeton Meta reste « inconnu ».
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

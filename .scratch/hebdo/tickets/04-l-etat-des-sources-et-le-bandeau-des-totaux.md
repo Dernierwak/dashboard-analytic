@@ -9,7 +9,7 @@ nulle part.
 
 **Blocked by:** 01 (la semaine), 03 (la couverture)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — Le payload (`sources`, `totaux`, état
 d'une source), Le `Lecteur`, La page (bandeau), tableau des états (jeton
@@ -32,3 +32,9 @@ mort, panne) ; tickets de la carte 13 (points 1–5), 14 (§3, §4), 16.
       page.
 - [ ] `tsc` et `build` verts, 18 routes ; visible en ligne après un passage
       du worker (`report_only` si 02 et 03 sont passés).
+
+## Réponse (2026-11-01)
+
+`blocs/sources.py` : `sources[canal]` (branchées seulement ; `jeton_mort` → `panne` si la couverture ne va pas de `debut` à `fin` → `recolte`), `totaux` `null` hors `recolte`. Bandeau à deux colonnes `bandeau-totaux.tsx`, note de la source absente. Harnais 04.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

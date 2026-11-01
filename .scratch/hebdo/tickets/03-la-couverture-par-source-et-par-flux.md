@@ -9,7 +9,7 @@ chaque passage, `fini` même avec des tranches refusées) ne le disent.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — La récolte, à construire d'abord
 (point 2), Le payload (état d'une source) ; ticket 14 de la carte, §3 et
@@ -28,3 +28,9 @@ chaque passage, `fini` même avec des tranches refusées) ne le disent.
 - [ ] `python3.12 -m py_compile` sur ce qui est touché.
 - [ ] Vérifié **après un passage du worker** (`force`) : une ligne par
       source connectée et par flux, à la bonne date.
+
+## Réponse (2026-11-01)
+
+Table `couverture_recolte` (section 14septies de `000_run_me_all.sql`, ajout seul, RLS lecture par le propriétaire, **non appliquée**). Règle pure `source_data/couverture.etendre` : n'avance que sans tranche refusée, ne recule jamais ; colonne `sans_trou_depuis` ajoutée pour ne jamais enjamber un trou. Journal en échec ou tronqué (y compris plafond Google 10 000, ajouté au 09) → pas d'écriture. Harnais 03.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.

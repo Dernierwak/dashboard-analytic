@@ -10,7 +10,7 @@ semaines porte la comparaison. Le nom du canal mène à sa page.
 
 **Blocked by:** 04 (l'état des sources)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Références :** [spec](../spec.md) — Le payload (`canaux.volumes`,
 `canaux.ratios`, ratios, quartiles), La page (rail, moustache), tableau
@@ -37,3 +37,9 @@ des états (jeton mort, panne, historique < 6) ; tickets de la carte 02,
 - [ ] Un payload sans `canaux` ne casse pas la page.
 - [ ] `tsc` et `build` verts, 18 routes ; visible en ligne après un passage
       du worker (`report_only`).
+
+## Réponse (2026-11-01)
+
+`blocs/canaux.py` : volumes, ratios CTR/CPC/CPM, 12 semaines calées sur le Jour de travail, quartiles `statistics.quantiles(method="exclusive")` ([1…6] → 1,75 / 5,25), `null` sous 6. Rail, carte et moustache (`rail-canaux`, `carte-canal`, `moustache`, `rail-defilant`) ; axe inversé CPC/CPM ; états jeton mort / panne / < 6. Verdict, focus KPI et canal muet quittent la page. Harnais 05.
+
+Vérifié hors ligne sur la branche d'intégration `worktree-hebdo-carte` (870963f) : les 13 harnais de `.scratch/hebdo/harnais/` et les `rendu.js` 07/08 tiennent, `py_compile`, `tsc` et `build` verts, 18 routes. **Pas vu en ligne** : le contrôle après passage du worker est le ticket 11.
