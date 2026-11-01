@@ -44,6 +44,7 @@ class FauxLecteur:
     def campagnes_config(self, table): return []
     def creas(self): return []
     def changements(self, debut, fin): return []
+    def statuts_google(self): return []
     def couverture(self): return []
     def rapports_publies(self, avant, limite=8): return []
 
