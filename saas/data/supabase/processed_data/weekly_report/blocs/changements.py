@@ -43,7 +43,7 @@ def changements_par_canal(lecteur, semaine: Semaine) -> dict[str, list[dict]] | 
     par_canal: dict[str, list[tuple[str, str, dict]]] = {canal: [] for canal in CANAUX}
     for ligne in lignes:
         canal = ligne.get("channel")
-        jour = _jour(ligne)
+        jour = _jour_au_fuseau_de_la_ligne(ligne)
         if canal not in par_canal or jour is None:
             continue
         if not semaine.debut <= jour <= semaine.fin:
@@ -67,7 +67,9 @@ def _changement(ligne: dict, jour: date) -> dict:
     }
 
 
-def _jour(ligne: dict) -> date | None:
+def _jour_au_fuseau_de_la_ligne(ligne: dict) -> date | None:
+    """Meta : l'instant UTC ramené au fuseau du compte (`fuseau`). Google : les
+    dix premiers caractères, déjà à l'heure du compte (`lib/changements-api.ts`)."""
     brut = ligne.get("occurred_at")
     if not brut:
         return None

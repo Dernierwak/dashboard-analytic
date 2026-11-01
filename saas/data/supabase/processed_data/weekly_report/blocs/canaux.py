@@ -22,13 +22,17 @@ sens — un CTR haut est mieux, un CPC ou un CPM bas aussi — se décide à
 l'affichage.
 
 Google n'entre pas au module aujourd'hui (spec, « hors périmètre ») : il y
-viendra avec les mêmes clés en s'ajoutant à `_LIGNES`.
+viendra avec les mêmes clés en s'ajoutant à `_LIGNES` (sa régie est déjà dans
+`_commun.REGIES`).
 """
 
 from __future__ import annotations
 
 import statistics
 
+from saas.data.supabase.processed_data.weekly_report.blocs._commun import (
+    REGIES, Regie, dans_la_semaine, jour_iso, nombre,
+)
 from saas.data.supabase.processed_data.weekly_report.blocs.semaine import (
     Semaine, semaines_precedentes,
 )
@@ -37,13 +41,17 @@ FENETRE = 12          # semaines de l'historique (spec hebdo, « Ratios »)
 MINIMUM = 6           # semaines pour une semaine type (spec, tableau des états)
 RATIOS = ("ctr", "cpc", "cpm")
 
+# Les régies qui entrent au module : Meta seul (voir plus haut). Lecture et
+# dépense sont celles de `_commun.REGIES`, les mêmes que pour `sources`.
+_LIGNES = {canal: REGIES[canal] for canal in ("meta",)}
 
-def _meta(ligne: dict) -> tuple[float, float, float]:
-    return _nombre(ligne.get("spend")), _nombre(ligne.get("impressions")), _nombre(ligne.get("clicks"))
 
-
-# Canal → (lecture du Lecteur, ligne → (dépense CHF, impressions, clics)).
-_LIGNES = {"meta": (lambda lecteur: lecteur.meta_ads(), _meta)}
+def _volumes(regie: Regie, ligne: dict) -> tuple[float, float, float] | None:
+    """(dépense, impressions, clics), ou None si l'un est illisible : la ligne
+    n'entre alors dans aucune semaine — ni 0, ni valeur, et les trois totaux
+    décrivent les mêmes lignes."""
+    valeurs = (regie.depense(ligne), nombre(ligne.get("impressions")), nombre(ligne.get("clicks")))
+    return None if None in valeurs else valeurs
 
 
 def canaux(lecteur, semaine: Semaine, sources: dict | None) -> dict | None:
@@ -54,9 +62,10 @@ def canaux(lecteur, semaine: Semaine, sources: dict | None) -> dict | None:
 
 
 def _canal(lecteur, semaine: Semaine, canal: str, etat: str) -> dict:
-    lire, convertir = _LIGNES[canal]
+    regie = _LIGNES[canal]
     try:
-        lignes = [(str(l.get("date_start") or "")[:10], convertir(l)) for l in (lire(lecteur) or [])]
+        lues = [(jour_iso(l), _volumes(regie, l)) for l in (regie.lire(lecteur) or [])]
+        lignes = [(jour, v) for jour, v in lues if v is not None]
     except Exception:
         # Une lecture ratée n'est pas une semaine sans diffusion.
         lignes = None
@@ -73,8 +82,7 @@ def _canal(lecteur, semaine: Semaine, canal: str, etat: str) -> dict:
 
 
 def _totaux(lignes: list[tuple[str, tuple]], semaine: Semaine) -> tuple[float, float, float]:
-    debut, fin = semaine.debut.isoformat(), semaine.fin.isoformat()
-    dans = [v for jour, v in lignes if debut <= jour <= fin]
+    dans = [v for jour, v in lignes if dans_la_semaine(jour, semaine)]
     return (sum(v[0] for v in dans), sum(v[1] for v in dans), sum(v[2] for v in dans))
 
 
@@ -122,10 +130,3 @@ def _ratio(nom: str, courante, historique: list) -> dict:
 def _arrondi(valeur: float | None) -> float | None:
     # 6 décimales : un CPC sous le centime reste lisible, le JSON reste court.
     return None if valeur is None else round(valeur, 6)
-
-
-def _nombre(valeur) -> float:
-    try:
-        return float(valeur or 0)
-    except (TypeError, ValueError):
-        return 0.0

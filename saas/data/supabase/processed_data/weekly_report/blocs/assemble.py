@@ -32,8 +32,10 @@ def blocs_neufs(lecteur, semaine: Semaine) -> dict:
                 par_canal[canal]["changements"] = liste
         blocs["canaux"] = par_canal
 
-    frise = frise_campagnes(lecteur, semaine)
-    posts = frise_posts(lecteur, semaine)
+    # Seules les sources branchées entrent dans la frise (spec, user story 48) :
+    # `sources` le dit, comme pour la carte du canal.
+    frise = frise_campagnes(lecteur, semaine, sources)
+    posts = frise_posts(lecteur, semaine, sources)
     if frise is not None or posts is not None:
         frise = dict(frise or {})
         if posts is not None:
