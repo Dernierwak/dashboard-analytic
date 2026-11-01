@@ -3,13 +3,12 @@ import type { CanalMuetLive } from "@/lib/canaux-muets";
 
 // « CE QU'ON N'A PAS PU LIRE », SUR LES PAGES QUI CALCULENT ELLES-MÊMES.
 //
-// POURQUOI UN SECOND MODULE À CÔTÉ DE `CanalMuetAlerte`. Ce n'est pas un
-// doublon, c'est la même chose dite sur une autre SOURCE. `CanalMuetAlerte` lit
-// `canaux_muets` dans le payload : c'est la photo du jour où le worker a écrit,
-// et c'est la bonne source pour le rapport, qui est ce payload. `/couts`,
-// `/meta` et `/google` ne lisent aucun payload — ils rouvrent les tables brutes
-// — donc ils ont besoin de l'état de MAINTENANT (`lib/canaux-muets.ts`), qui
-// peut déjà être réparé quand le payload dit encore le contraire.
+// LA SOURCE EST L'ÉTAT DE MAINTENANT. Le rapport hebdo dit l'état de chaque
+// source dans son payload (`sources[c].etat`) : la photo du jour où le worker
+// a écrit, la bonne source pour un rapport. `/couts`, `/meta` et `/google` ne
+// lisent aucun payload — ils rouvrent les tables brutes — donc ils ont besoin
+// de l'état de MAINTENANT (`lib/canaux-muets.ts`), qui peut déjà être réparé
+// quand le payload dit encore le contraire.
 //
 // CE MODULE EST LA MOITIÉ QUI TRANSFORME UN SILENCE EN GESTE. Sans lui, les
 // « — » posés par le ticket 48 se lisent comme un bug de Pulse — et un produit

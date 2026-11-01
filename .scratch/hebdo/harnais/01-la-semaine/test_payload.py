@@ -35,6 +35,12 @@ class AvecMeta(FauxLecteur):
                  "impressions": 1000, "clicks": 20}
                 for i in range((self._derniere - DEBUT).days + 1)]
 
+    # Meta branché : depuis le ticket 10, c'est une source branchée qui fait
+    # publier le rapport.
+    def connexions_etat(self):
+        return [{"source": "meta", "created_at": "2026-09-01T00:00:00+00:00",
+                 "a_reconnecter_depuis": None}]
+
 
 class JourIllisible(AvecMeta):
     def jour_de_travail(self):
@@ -55,9 +61,6 @@ constat(samedi.get("semaine") == SEMAINE_44,
 constat(mercredi.get("semaine") == SEMAINE_44,
         f"refait le mercredi 4/11, veille du Jour de travail suivant : {mercredi.get('semaine')}")
 
-constat((samedi["since"], samedi["until"]) == ("2026-10-22", "2026-10-28"),
-        f"l'ancienne fenêtre suit la même fin : {samedi['since']} → {samedi['until']} "
-        "(le jour du fetch, incomplet, n'est plus avalé — §7)")
 constat(samedi["week_start"] == jeudi["week_start"] == "2026-10-26",
         f"la clé d'écriture suit la fin : week_start {samedi['week_start']} (lundi ISO du 28/10)")
 
@@ -81,9 +84,10 @@ constat(p.get("semaine", {}).get("fin") == "2026-10-25",
 constat(build_payload(FauxLecteur(JOUR_FETCH)) is None,
         "compte sans aucune donnée : pas de rapport (la page montre la carte « compte neuf »)")
 
-# `sources` et `totaux` sont construits depuis le ticket 04 (son harnais).
-constat(not ({"canaux"} & set(jeudi)),
-        "les blocs pas encore construits n'écrivent aucune clé")
+# Inversé par le ticket 10 : tous les blocs sont construits, et l'ancien
+# payload a quitté le rapport — sa fenêtre `since`/`until` comprise.
+constat(not ({"since", "until", "week_label", "verdict", "kpis"} & set(jeudi)),
+        f"aucune clé de l'ancien payload : {sorted(jeudi)}")
 
 prec = semaines_precedentes(Semaine(date(2026, 10, 22), date(2026, 10, 28)), 2)
 constat([(s.debut.isoformat(), s.fin.isoformat()) for s in prec]

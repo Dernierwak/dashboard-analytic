@@ -1,8 +1,8 @@
 """Assemble les blocs neufs du payload en un dict que `build_payload` fusionne.
 
 UN BLOC QUI REND `None` N'ÉCRIT AUCUNE CLÉ. La page lit une clé absente comme
-« payload publié avant ce bloc » et retombe sur l'ancien affichage : un bloc pas
-encore construit, ou un payload déjà en base, ne la casse donc pas.
+« rien à montrer ici » : une lecture ratée, ou un payload publié avant ce bloc,
+ne la casse donc pas. `build_payload` ne publie que si `sources` est écrit.
 """
 
 from __future__ import annotations

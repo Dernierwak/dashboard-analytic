@@ -26,21 +26,14 @@ class FauxLecteur:
     # La récolte
     def meta_ads(self): return []
     def publications(self): return []
-    def abonnes(self): return []
     def google_ads(self): return []
 
     # Les réglages du compte
-    def objectif(self): return None
     def canaux_muets(self): return {}
     def jour_de_travail(self): return self._jt
     def connexions_etat(self): return []
 
-    # GA4
-    def ga4_contexte(self, since, until): return None
-    def ga4_insights(self): return []
-
     # Les lectures de tables
-    def dates_declarees(self, table): return []
     def campagnes_config(self, table): return []
     def creas(self): return []
     def changements(self, debut, fin): return []

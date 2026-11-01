@@ -45,16 +45,10 @@ class FauxLecteur(LecteurNeutre):
     def publications(self):
         return [{"date": (JOUR_FETCH - timedelta(days=3)).isoformat() + "T10:00:00+0000",
                  "type": "IMAGE", "likes": 10, "comments": 1, "saved": 0, "reach": 300}]
-    def abonnes(self):
-        return [{"fetched_at": datetime(2026, 10, 29, 7, tzinfo=timezone.utc).isoformat(), "followers": 500}]
-    def google_ads(self): return []
-    def objectif(self): return None
+    def connexions_etat(self):
+        return [{"source": "meta", "created_at": datetime(2025, 6, 1, tzinfo=timezone.utc).isoformat(),
+                 "a_reconnecter_depuis": None}]
     def jour_de_travail(self): return "Thursday"
-    def canaux_muets(self): return {}
-    def ga4_contexte(self, since, until): return None
-    def ga4_insights(self): return []
-    def dates_declarees(self, table): return []
-    def rapports_publies(self, avant, limite=8): return []
     def aujourd_hui(self): return self._auj
 
 
@@ -71,15 +65,20 @@ jeudi = build_payload(FauxLecteur(JOUR_FETCH))
 samedi = build_payload(FauxLecteur(JOUR_FETCH + timedelta(days=2)))
 
 print("clés publiées :", sorted(jeudi))
-constat(set(jeudi) >= {"metrics_read", "metrics_prev", "metrics_series", "kpis", "changements",
-                       "canaux_muets", "kpi_focus", "verdict", "frise"},
-        "le payload porte encore tout ce que la page validée retire ou remplace")
+# Inversé par le ticket 10 : l'ancien payload a quitté le rapport. Seule
+# `canaux_muets` reste — l'escalade de la récolte la relit (pas la page).
+SORTANTES = {"metrics_read", "metrics_prev", "metrics_series", "kpis", "changements",
+             "kpi_focus", "verdict", "verdict_pct", "verdict_metric", "verdict_tone",
+             "week_label", "since", "until"}
+constat(not (SORTANTES & set(jeudi)),
+        f"le payload ne porte plus rien de ce que la page validée retire : {sorted(SORTANTES & set(jeudi))}")
 
-constat((jeudi["since"], jeudi["until"]) == ("2026-10-22", "2026-10-28"),
-        f"publié le Jour de travail : semaine {jeudi['since']} → {jeudi['until']} (jeudi → mercredi, juste)")
+semaine_44 = {"debut": "2026-10-22", "fin": "2026-10-28", "numero": 44}
+constat(jeudi["semaine"] == semaine_44,
+        f"publié le Jour de travail : semaine {jeudi['semaine']} (jeudi → mercredi, juste)")
 # Inversé par le ticket 01 : la semaine est calée sur le Jour de travail.
-constat((samedi["since"], samedi["until"]) == ("2026-10-22", "2026-10-28"),
-        f"refait le samedi sans nouvelle récolte : semaine {samedi['since']} → {samedi['until']} "
+constat(samedi["semaine"] == semaine_44,
+        f"refait le samedi sans nouvelle récolte : semaine {samedi['semaine']} "
         "— elle ne glisse plus, le jour du fetch reste dehors (ticket 01)")
 
 # Inversés par le ticket 07 : la frise identifie par ID, sur une seule année.

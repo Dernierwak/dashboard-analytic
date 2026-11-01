@@ -23,8 +23,8 @@ harnais 16 rejoue chaque méthode et compare la fonction atteinte et ses argumen
 à ce que `build_payload` appelait avant l'injection.
 
 LES `try/except` SONT RESTÉS CHEZ L'APPELANT, ET C'EST DÉLIBÉRÉ. Un lecteur qui
-avalerait les pannes changerait le comportement du rapport : chaque `except` de
-`build_payload` porte un commentaire qui dit quoi faire du vide — rester muet,
+avalerait les pannes changerait le comportement du rapport : chaque `except` d'un
+bloc (`blocs/`) porte un commentaire qui dit quoi faire du vide — rester muet,
 publier quand même, ne pas confondre une migration manquante avec une coupure
 réseau.
 
@@ -39,11 +39,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Protocol
 
-from saas.data.supabase.processed_data.weekly_report._ga4 import build_ga4_context
 from saas.data.supabase._queries import (
-    fetch_meta_ads, fetch_post_metrics, fetch_daily_followers,
-    fetch_objectif, fetch_google_ads,
-    fetch_ga4_insights, fetch_canaux_muets, _all_pages,
+    fetch_meta_ads, fetch_google_ads, fetch_canaux_muets, _all_pages,
 )
 
 
@@ -58,21 +55,14 @@ class Lecteur(Protocol):
     # ── La récolte ───────────────────────────────────────────────────────────
     def meta_ads(self) -> list[dict]: ...
     def publications(self) -> list[dict]: ...
-    def abonnes(self) -> list[dict]: ...
     def google_ads(self) -> list[dict]: ...
 
     # ── Les réglages du compte ───────────────────────────────────────────────
-    def objectif(self) -> str | None: ...
     def canaux_muets(self) -> dict[str, str]: ...
     def jour_de_travail(self) -> str | None: ...
     def connexions_etat(self) -> list[dict]: ...
 
-    # ── GA4 ──────────────────────────────────────────────────────────────────
-    def ga4_contexte(self, since: date, until: date) -> dict | None: ...
-    def ga4_insights(self) -> list[dict]: ...
-
-    # ── Les lectures qui passaient par `sb.table(...)` en clair ──────────────
-    def dates_declarees(self, table: str) -> list[dict]: ...
+    # ── Les rapports déjà publiés (escalade du canal muet) ───────────────────
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]: ...
 
     # ── Les lectures des blocs neufs (`blocs/`, chantier hebdo) ──────────────
@@ -104,24 +94,23 @@ class LecteurSupabase:
         return fetch_meta_ads(self.sb, self.user_id)
 
     def publications(self) -> list[dict]:
-        return fetch_post_metrics(self.sb, self.user_id)
-
-    def abonnes(self) -> list[dict]:
-        return fetch_daily_followers(self.sb, self.user_id)
+        """Paginée : 462 posts sur un compte réel, et PostgREST tronque à 1 000
+        en silence (`CLAUDE.md` §8). `post_id` départage deux posts à la même
+        date, sinon une page pourrait en répéter un et en perdre un autre."""
+        return _all_pages(lambda: self.sb.table("instagram_organic_posts").select("*")
+                          .eq("user_id", self.user_id)
+                          .order("date", desc=True).order("post_id"))
 
     def google_ads(self) -> list[dict]:
         return fetch_google_ads(self.sb, self.user_id)
 
     # ── Les réglages du compte ───────────────────────────────────────────────
 
-    def objectif(self) -> str | None:
-        return fetch_objectif(self.sb, self.user_id)
+    def canaux_muets(self) -> dict[str, str]:
+        """Les canaux dont la récolte a échoué au dernier passage, {canal: mot}.
+        Seule l'escalade s'en sert (`blocs/canaux_muets.py`).
 
-    def canaux_muets(self) -> dict[str, str]: #CODEX : Je comprends pas cette function
-        """Les canaux dont la récolte a échoué au dernier passage.
-
-        LE SEUL ÉTAT QUE `build_payload` LIT DE LA RÉCOLTE, et il passe par la
-        base plutôt que par un paramètre de `publish_weekly_report` — pour que
+        Il passe par la base plutôt que par un paramètre de `publish_weekly_report` — pour que
         `report_only` (qui republie sans rien récolter) voie exactement le même
         trou que la récolte complète. Un seul chemin, donc un seul comportement
         à vérifier.
@@ -158,25 +147,7 @@ class LecteurSupabase:
         return ([dict(l, source="meta") for l in meta]
                 + [dict(l, source="google") for l in google])
 
-    # ── GA4 ──────────────────────────────────────────────────────────────────
-
-    def ga4_contexte(self, since: date, until: date) -> dict | None:
-        return build_ga4_context(self.sb, self.user_id, since, until)
-
-    def ga4_insights(self) -> list[dict]:
-        return fetch_ga4_insights(self.sb, self.user_id)
-
-    # ── Les lectures qui passaient par `sb.table(...)` en clair ──────────────
-
-    def dates_declarees(self, table: str) -> list[dict]:
-        """Les dates que les plateformes DÉCLARENT, par table de configuration.
-
-        Elles ne se déduisent pas de la dépense, et c'est leur intérêt : la
-        dépense dit qu'une campagne TOURNE, la date déclarée dit qu'elle DEVAIT
-        tourner."""
-        return (self.sb.table(table)
-                .select("campaign_name, start_date, end_date")
-                .eq("user_id", self.user_id).execute().data) or []
+    # ── Les rapports déjà publiés (escalade du canal muet) ───────────────────
 
     def rapports_publies(self, avant: str, limite: int = 8) -> list[dict]:
         """Les rapports déjà publiés, LA SEMAINE EN COURS EXCLUE.
