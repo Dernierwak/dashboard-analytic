@@ -25,21 +25,27 @@ def photo_budget(sb, uid, canal: str, recolte, jour) -> None:
         print(f"    budgets {canal} KO : {sans_jeton(str(e))}")
 
 
-def journal_changements(sb, uid, canal: str, recolte) -> None:
-    """Le journal des changements déclarés. Best-effort, JAMAIS bloquant —
-    même raison que `photo_budget` : le fil se passe d'une ligne, pas la
-    récolte d'une semaine d'insights.
+def journal_changements(sb, uid, canal: str, recolte) -> bool:
+    """Le journal des changements déclarés → écrit sans trou ? Best-effort,
+    JAMAIS bloquant — même raison que `photo_budget` : le fil se passe d'une
+    ligne, pas la récolte d'une semaine d'insights.
 
-    `recolte()` rend (lignes, trous).
+    `recolte()` rend (lignes, trous). Une liste tronquée s'écrit — ce qui a été
+    lu est bon — mais rend False : l'appelant n'avance pas la couverture du
+    journal (`couverture.py`), sinon la page lirait « aucun changement » là où
+    la liste s'est arrêtée.
     """
     try:
         rows, trous = recolte()
         if rows:
             upsert_platform_changes(sb, uid, canal, rows)
-        elif trous:
-            print(f"    changements {canal} ignorés : {sans_jeton(' | '.join(map(str, trous)))}")
+        if trous:
+            print(f"    changements {canal} incomplets, {len(rows)} ligne(s) écrite(s) : "
+                  f"{sans_jeton(' | '.join(map(str, trous)))}")
+        return not trous
     except Exception as e:
         print(f"    changements {canal} KO : {sans_jeton(str(e))}")
+        return False
 
 
 # ── Budget PLANIFIÉ (photos) — platform_budgets ───────────────────────────────

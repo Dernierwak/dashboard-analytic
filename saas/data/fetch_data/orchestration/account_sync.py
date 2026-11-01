@@ -19,11 +19,15 @@ from saas.data.fetch_data.orchestration import error_reporter as alarmes
 from saas.data.fetch_data.orchestration import execution_plan as plans
 from saas.data.fetch_data.orchestration.concurrent_runner import executer
 from saas.data.supabase.fetch_state.state import CANAUX, Suivi
+from saas.data.fetch_data.shared.token_status import INCONNU, TokenStatus
 from saas.data.fetch_data.sources.google.ads import sync as recolte_google
+from saas.data.fetch_data.sources.google.auth import token as jeton_google
 from saas.data.fetch_data.sources.google.analytics import sync as recolte_ga4
 from saas.data.fetch_data.sources.meta.ads import sync as recolte_meta
+from saas.data.fetch_data.sources.meta.auth import token as jeton_meta
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram import sync as recolte_instagram
+from saas.data.supabase.source_data.account import marquer_a_reconnecter
 from saas.config.secrets import secret
 
 _RANG = {c: i for i, c in enumerate(CANAUX)}
@@ -57,14 +61,56 @@ def entete(nb_profils: int, mode: str = "") -> None:
 
 def connexions(sb, uid: str) -> list[dict]:
     """Toutes les connexions de l'utilisateur (Meta + Google) vivent dans
-    connected_accounts. provider='google' porte les jetons Google (Ads + GA4)."""
+    connected_accounts. provider='google' porte les jetons Google (Ads + GA4).
+
+    `id` et `a_reconnecter_depuis` servent au marquage d'un jeton mort : écrire
+    sur la bonne ligne, et ne jamais écraser la date du premier constat."""
     try:
         return sb.table("connected_accounts").select(
-            "provider, meta_token, instagram_business_id, "
-            "google_refresh_token, google_customer_id, ga4_property_id"
+            "id, provider, meta_token, instagram_business_id, "
+            "google_refresh_token, google_customer_id, ga4_property_id, "
+            "a_reconnecter_depuis"
         ).eq("user_id", uid).execute().data or []
     except Exception:
         return []
+
+
+def verifier_jetons(lignes: list[dict]) -> dict[str, TokenStatus]:
+    """L'état du jeton de chaque ligne, par `id` — AVANT le plan, qui le lit.
+
+    Un appel par jeton (`/debug_token` Meta, un refresh Google). Le refresh
+    Google est refait par `recolte_google.recolter` : un appel de plus, pour ne
+    pas toucher au `sync.py` de Google Ads. Une exception inattendue n'est pas
+    un jeton mort : INCONNU, rien ne sera marqué, et le message nomme le type
+    d'erreur, jamais son texte — qui peut porter une URL avec le jeton.
+    """
+    etats: dict[str, TokenStatus] = {}
+    for a in lignes:
+        try:
+            if a.get("meta_token"):
+                etats[a["id"]] = jeton_meta.verifier(a["meta_token"])
+            elif a.get("provider") == "google" and a.get("google_refresh_token"):
+                etats[a["id"]] = jeton_google.verifier(a["google_refresh_token"])[0]
+        except Exception as e:
+            etats[a["id"]] = TokenStatus(INCONNU, f"vérification en erreur ({type(e).__name__})")
+    return etats
+
+
+def _marquer(sb, uid: str, le_plan: plans.ExecutionPlan) -> list[tuple[int, str]]:
+    """Marque « à reconnecter » chaque ligne au jeton mort → lignes de journal
+    pour celles qui n'ont pas pu l'être (la page Comptes ne le dirait pas)."""
+    journal: list[tuple[int, str]] = []
+    for connexion, raison in le_plan.a_marquer:
+        canal = "meta" if connexion.get("meta_token") else "google"
+        try:
+            ecrit = marquer_a_reconnecter(sb, uid, connexion, raison)
+            if not ecrit:
+                journal.append((_RANG[canal], f"{canal}: marquage à reconnecter NON "
+                                              f"écrit — 0 ligne touchée"))
+        except Exception as e:
+            journal.append((_RANG[canal], f"{canal}: marquage à reconnecter NON écrit "
+                                          f"({type(e).__name__})"))
+    return journal
 
 
 def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
@@ -118,9 +164,11 @@ def passer(sb, uid: str, depuis: date | None = None) -> list[str]:
     panneau, de sorte que deux récoltes se comparent ligne à ligne.
     """
     logs: list[str] = []
-    le_plan = plans.planifier(connexions(sb, uid))
+    lignes = connexions(sb, uid)
+    le_plan = plans.planifier(lignes, verifier_jetons(lignes))
     suivi = Suivi(uid)
     journal: list[tuple[int, str]] = [(_RANG[c], mot) for c, mot in le_plan.journal]
+    journal += _marquer(sb, uid, le_plan)
 
     # `planifie` pose tous les canaux prévus à « attente » avec un run_id neuf.
     # C'est aussi ce qui EFFACE un « en cours » laissé par un worker mort au
