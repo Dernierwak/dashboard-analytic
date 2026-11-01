@@ -58,6 +58,13 @@ constat(html.includes("84 CHF cette semaine"), "la dépense de la semaine au sur
 constat(html.includes("Organique") === false, "sans posts ni Instagram branché, pas d'onglet Organique");
 constat(html.includes('aria-pressed="true"') && />Mois</.test(html), "la frise s'ouvre sur le Mois");
 
+constat(payload.sources && payload.sources.meta && payload.sources.meta.etat === "recolte",
+  "le payload porte `sources` (ticket 04) : Meta récolté");
+const sansPub = rendre({ ...payload, sources: {} });
+constat(!sansPub.includes("Campagnes ·"), "aucune régie branchée : pas d'onglet Campagnes");
+constat(rendre({ ...payload, sources: undefined }).includes("Campagnes · 2"),
+  "payload d'avant le ticket 04 (sans `sources`) : l'onglet Campagnes reste");
+
 // ── Les payloads d'avant ne cassent pas la page ──────────────────────────────
 const ancien = { ...payload, frise: { debut: "2025-01-01", fin: "2026-12-31", semaine_debut: "2026-10-22", campagnes: [], posts: [] } };
 constat(rendre(ancien) === "", "ancienne forme de `frise` : le bloc ne se montre pas");

@@ -22,7 +22,20 @@ lignes += [meta(d, "m_pb", "Signalée", "a3", 3.0) for d in jours(date(2026, 10,
 google = [{"date_start": d.isoformat(), "campaign_id": "g_rem", "campaign_name": "Google supprimée",
            "cost_micros": 4_000_000} for d in jours(date(2026, 5, 1), date(2026, 5, 20))]
 
-payload = build_payload(Compte(
+class Branche(Compte):
+    """Meta et Google branchés et récoltés sans trou (forme du ticket 04)."""
+
+    def connexions_etat(self):
+        return [{"source": s, "created_at": "2026-01-05T08:00:00+00:00", "a_reconnecter_depuis": None}
+                for s in ("meta", "google")]
+
+    def couverture(self):
+        return [{"source": s, "flux": f, "sans_trou_depuis": "2026-01-01",
+                 "sans_trou_jusqu_au": "2026-10-28"}
+                for s in ("meta", "google") for f in ("insights", "journal")]
+
+
+payload = build_payload(Branche(
     meta_rows=lignes, google_rows=google,
     config_meta=[config("m_vit", "Automne vivante", "ACTIVE", "2026-09-01"),
                  config("m_fin", "Printemps", "PAUSED", "2026-03-01", "2026-04-30"),
