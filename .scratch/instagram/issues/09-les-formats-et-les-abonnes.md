@@ -30,5 +30,8 @@ module, et où se calcule-t-il une seule fois ?**
 > **Éclairé par [la recherche 03](03-quand-les-chiffres-d-un-post-se-figent.md)
 > (2026-11-01)** : le **Reel n'a pas de `follows`** (ni `profile_visits`) dans
 > l'API. « Quel format rapporte des abonnés » ne peut pas y mettre le Reel —
-> à confirmer par la recherche 02, puis à trancher ici : on l'écrit, on ne
-> l'estime pas.
+> **confirmé par [la recherche 02](02-ce-que-l-api-donne-d-un-post.md)** —
+> reste à trancher ici : on l'écrit, on ne l'estime pas. La recherche 02
+> ajoute que les chiffres organiques d'un post boosté excluent le payant, et
+> que le format se lit dans `media_product_type` (FEED / REELS / STORY) : une
+> image, un carrousel et une vidéo du fil sont tous `FEED`.

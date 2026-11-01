@@ -13,3 +13,13 @@ des posts, colonnes et tables, ce qui se calcule dans le traitement Python et
 ce qui se calcule dans `lib/` côté page, et la correction de `follows` écrit
 `0` en cas d'absence. Chaque calcul nommé une seule fois, à un seul endroit.
 Sur le modèle de `.scratch/hebdo/issues/14-ce-que-le-traitement-doit-calculer.md`.
+
+Défauts de récolte déjà relevés, à porter dans la liste
+([recherche 02](02-ce-que-l-api-donne-d-un-post.md)) :
+- `fetchers/post_metrics.py:33` range le format par `media_type` et teste
+  `"REEL"`, valeur qui n'existe pas : une vidéo du fil perd ses `likes`. Le
+  format se lit dans `media_product_type` ;
+- une métrique absente — `follows` en tête, et toujours sur un Reel — est
+  écrite `0` au lieu de rester absente (§7) ;
+- `pages_read_engagement` exigé par la doc en Facebook Login, absent de nos
+  scopes : un essai réel avant toute nouvelle métrique.

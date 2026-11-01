@@ -82,7 +82,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | Ticket | Type | Bloqué par |
 |---|---|---|
 | [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling | — |
-| [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research | — |
+| [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research ✓ | — |
 | [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research ✓ | — |
 | [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research | — |
 | [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling | Quand les chiffres d'un post se figent |
@@ -105,6 +105,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   l'API ne rend qu'un cumul `lifetime`, aucune série par jour ; aucun délai de
   maturité documenté, seule la latence de 48 h — l'âge égal et tout seuil
   au-delà de 48 h passent par nos propres relevés. Le Reel n'a pas de `follows`.
+- [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) :
+  format = `media_product_type` (FEED / REELS / STORY) ; `follows` et
+  `profile_visits` sur FEED et STORY, jamais REELS ; chiffres organiques hors
+  boost ; absence = jeu vide ; deux défauts de récolte relevés (vidéo du fil
+  sans `likes`, absence écrite 0).
 
 ## Not yet specified
 
@@ -113,11 +118,10 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   commentaires ? Se précise avec la maquette de la page.
 - **Les états de la page** : compte gratuit à 10 posts (une foule trop maigre
   pour une distribution ?), compte neuf, jeton mort, format qui n'a que 2 posts.
-- **Les posts boostés** : un post sponsorisé garde-t-il des chiffres
-  organiques purs, ou faut-il le marquer — dépend des recherches sur le post et
-  sur le compte.
-- **Les stories** : non récoltées aujourd'hui ; utiles ou non, selon la
-  recherche sur le post.
+- **Les posts boostés** : leurs chiffres organiques excluent le payant
+  (recherche 02) ; reste à savoir si la page le marque (`boost_ads_list`).
+- **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
+  `story_insights` — utiles ou non, à voir avec la structure de la page.
 - **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
   Instagram doivent parler des mêmes posts avec les mêmes mots.
 
