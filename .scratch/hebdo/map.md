@@ -198,7 +198,7 @@ scope.
   À rouvrir comme chantier à part.
 - **La page plateforme ouverte sur la semaine du rapport** — dépend du
   chantier des pages plateformes ; l'hebdo n'y fait qu'ouvrir le journal sur
-  la semaine ([la spec](spec.md), §8).
+  la semaine ([la spec](spec.md), Out of Scope).
 - **Les campagnes Meta supprimées ou archivées** — une question de récolte
   (`/campaigns` les écarte probablement par défaut, non vérifié), pas de la
   page : la frise applique les mêmes statuts à ce qu'on lui donne.
