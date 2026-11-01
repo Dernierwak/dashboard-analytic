@@ -65,7 +65,7 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
 | [La portée organique du compte](issues/12-la-portee-organique-du-compte.md) | research ✓ | — |
 | [Les états de la page](issues/13-les-etats-de-la-page.md) | grilling ✓ | — |
 | [Ce que le traitement doit calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task | — |
+| [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) | task ✓ | — |
 | [Ce que montre la case Instagram du bandeau](issues/16-ce-que-montre-la-case-instagram-du-bandeau.md) | grilling ✓ | — |
 | [Le statut d'une campagne Google supprimée](issues/17-le-statut-d-une-campagne-google-supprimee.md) | grilling ✓ | — |
 
@@ -157,19 +157,17 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   (sinon au dernier jour de dépense) ; une vivante sans fin va en pointillés
   jusqu'au 31 décembre. Aucune supprimée n'entre en 2026 aujourd'hui.
 
+- [La spec de la page hebdo](issues/15-la-spec-de-la-page-hebdo.md) :
+  **[la spec](spec.md)**, destination atteinte. Quartiles en méthode
+  « exclusive » (celle de la maquette), suppression Google lue dans
+  `extra_data`, ordre de construction récolte → traitement → page. Le
+  prototype a quitté le dépôt.
+
 ## Not yet specified
 
-- **Le contexte du passage vers une page plateforme** : le nom du canal mène
-  à sa page et « journal → » à son journal sur la même semaine ; reste à
-  dire si la page plateforme s'ouvre elle aussi sur cette semaine — cela
-  dépend du chantier des pages plateformes.
-- **Les couleurs** : celles de la maquette ne sont pas retenues ; elles se
-  reprennent du style de l'hebdo actuel à la construction.
-
-- **Les campagnes supprimées ou archivées chez Meta** : la récolte appelle
-  `/campaigns` sans filtre de statut et la base n'en montre aucune ; Meta les
-  écarte probablement par défaut (non vérifié). Si on les veut dans la
-  frise comme les supprimées Google, c'est une question de récolte.
+Rien : la destination est atteinte. Les couleurs sont tranchées dans la spec
+(celles de l'hebdo actuel) ; les deux autres patchs sont passés en Out of
+scope.
 
 ## Out of scope
 
@@ -198,3 +196,9 @@ Blocked by`. Le frontier = `Status: open`, rien d'ouvert dans `Blocked by`.
   re-consentement de tous les comptes, d'une App Review et d'une nouvelle
   source à récolter ([la recherche](issues/09-les-posts-a-venir-se-lisent-ils-chez-meta.md)).
   À rouvrir comme chantier à part.
+- **La page plateforme ouverte sur la semaine du rapport** — dépend du
+  chantier des pages plateformes ; l'hebdo n'y fait qu'ouvrir le journal sur
+  la semaine ([la spec](spec.md), §8).
+- **Les campagnes Meta supprimées ou archivées** — une question de récolte
+  (`/campaigns` les écarte probablement par défaut, non vérifié), pas de la
+  page : la frise applique les mêmes statuts à ce qu'on lui donne.
