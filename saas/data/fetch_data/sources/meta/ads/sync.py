@@ -13,6 +13,7 @@ from saas.data.supabase.source_data.meta import (
     BUCKET_CREAS, remplacer_creas, televerser_image, upsert_campaign_statuses,
     upsert_meta_ads,
 )
+from saas.data.supabase.source_data.couverture import avancer_couverture
 from saas.data.supabase.source_data.platform import journal_changements, photo_budget
 from saas.data.fetch_data.sources.meta.ads.fetchers import accounts as comptes
 from saas.data.fetch_data.sources.meta.ads.fetchers import activities as activites
@@ -151,15 +152,16 @@ def _changements(sb, uid, acces: AccesMeta, today: date) -> tuple[list[dict], li
 
     La hiérarchie est lue AVANT l'appel : si elle lève, le journal de ce
     passage est sauté sans qu'aucun appel Meta n'ait été fait (voir `_hierarchie`).
-    Une liste tronquée s'écrit — ce qui a été lu est bon — mais se dit.
+    Une liste tronquée rend ce qu'elle a lu ET ses trous : `journal_changements`
+    écrit l'un et, pour l'autre, refuse d'avancer la couverture du journal.
     """
     parents = _hierarchie(sb, uid)
-    actes, trous = activites.recuperer(
-        acces, Fenetre(today - timedelta(days=_CHANGES_JOURS_META), today))
-    if actes:
-        for err in trous:
-            print(f"    activités Meta : {err} — la suite est ignorée.")
-    return activites.lignes_activites(actes, parents, acces.fuseau), ([] if actes else trous)
+    actes, trous = activites.recuperer(acces, _fenetre_changements(today))
+    return activites.lignes_activites(actes, parents, acces.fuseau), trous
+
+
+def _fenetre_changements(today: date) -> Fenetre:
+    return Fenetre(today - timedelta(days=_CHANGES_JOURS_META), today)
 
 
 def _creas(sb, uid, acces: AccesMeta) -> None:
@@ -218,7 +220,8 @@ def recolter(sb, uid, jeton: str, note=_rien, since_forcee: date | None = None) 
     # ensemble créé depuis le dernier passage reste sans campagne aujourd'hui,
     # et la gagne au suivant — la fenêtre de 180 jours relit le même changement
     # et l'upsert sur `change_id` réécrit sa campagne.
-    journal_changements(sb, uid, "meta", lambda: _changements(sb, uid, acces, today))
+    if journal_changements(sb, uid, "meta", lambda: _changements(sb, uid, acces, today)):
+        avancer_couverture(sb, uid, ("meta", "journal"), _fenetre_changements(today), [])
     note("créas")
     # Avant le garde-fou des insights, comme les budgets : les créas ne
     # touchent pas meta_ads_insights et n'ont pas à attendre ses colonnes.
@@ -329,4 +332,8 @@ def recolter(sb, uid, jeton: str, note=_rien, since_forcee: date | None = None) 
                     "sautée. Rejouer saas/data/supabase/migrations/000_run_me_all.sql en ENTIER "
                     "(section ad_id), puis relancer.") from e
             raise
+    # Après l'écriture, et même sans aucune ligne : un jour sans diffusion,
+    # Meta n'écrit rien — c'est le vrai 0 que la couverture doit porter. Un
+    # rejeu à trous a déjà levé plus haut.
+    avancer_couverture(sb, uid, ("meta", "insights"), Fenetre(since, today), trous)
     return f"meta: {len(rows)} lignes"

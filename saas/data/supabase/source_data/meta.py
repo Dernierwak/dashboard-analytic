@@ -15,6 +15,12 @@ from saas.data.fetch_data.shared import http_client as http
 
 # ── Instagram — instagram_organic_posts, connected_accounts, post-images ─────
 
+# Les colonnes ajoutées par le ticket 08 de `.scratch/hebdo/`. Un post ne les
+# envoie que si Meta les a rendues : l'upsert réécrit chaque colonne reçue, et
+# un None effacerait un lien déjà acquis.
+COLONNES_SI_CONNUES = ("permalink", "media_product_type")
+
+
 def insert_instagram_org(supabase: Client, results):
     """Écrit les posts récoltés — un jeu de lignes PAR UTILISATEUR.
 
@@ -22,14 +28,46 @@ def insert_instagram_org(supabase: Client, results):
     deux comptes Pulse peuvent suivre la même page Instagram, et avec un
     conflit global l'upsert de l'un réécrivait le user_id des lignes de
     l'autre. Chaque récolte volait donc les posts du voisin au lieu d'ajouter
-    les siens, sans lever la moindre erreur. Voir
-    Le schéma courant impose donc l'identité (user_id, post_id).
+    les siens, sans lever la moindre erreur.
+
+    UN LOT PAR JEU DE CLÉS : PostgREST écrit NULL pour une clé absente d'une
+    ligne mais présente dans le lot (même piège que `platform_changes`,
+    `platform.py:lots_sans_effacer_la_campagne`).
+
+    TANT QUE LA MIGRATION DES DEUX COLONNES N'EST PAS PASSÉE, PostgREST refuse
+    tout le lot (« could not find the 'permalink' column ») : les posts
+    s'écrivent alors sans elles, et la récolte le dit au lieu de perdre la
+    semaine de posts.
     """
     if not results:
         return
+    lots: dict[frozenset, list[dict]] = {}
+    for r in results:
+        lots.setdefault(frozenset(r), []).append(r)
+    for lot in lots.values():
+        try:
+            _upsert_posts(supabase, lot)
+        except Exception as e:
+            if not _colonne_absente(e):
+                raise
+            print("    posts Instagram : colonnes permalink / media_product_type absentes "
+                  "— lance saas/data/supabase/migrations/000_run_me_all.sql ; "
+                  "posts écrits sans elles.")
+            _upsert_posts(supabase, [{k: v for k, v in r.items() if k not in COLONNES_SI_CONNUES}
+                                     for r in lot])
+
+
+def _upsert_posts(supabase: Client, lot: list[dict]) -> None:
     supabase.table("instagram_organic_posts").upsert(
-        results, on_conflict="user_id,post_id"
+        lot, on_conflict="user_id,post_id"
     ).execute()
+
+
+def _colonne_absente(err: Exception) -> bool:
+    """PostgREST répond PGRST204 quand une colonne envoyée n'est pas au schéma."""
+    msg = str(err).lower()
+    return ("pgrst204" in msg or "could not find" in msg) and any(
+        c in msg for c in COLONNES_SI_CONNUES)
 
 
 def insert_instagram_total_posts_id(supabase: Client, user_id, total_posts_id):

@@ -113,3 +113,28 @@ def save_user_profile(supabase: Client, user_id: str, profile_text: str | None) 
             "user_profile_updated_at": datetime.now(timezone.utc).isoformat(),
         }
     ).eq("id", user_id).execute()
+
+
+# ── Connexion à reconnecter — écrit par la récolte quand un jeton est mort ────
+
+def marquer_a_reconnecter(supabase: Client, user_id: str, connexion: dict, raison: str,
+                          *, maintenant=None) -> bool:
+    """Marque UNE ligne `connected_accounts` « à reconnecter » ; True si écrite.
+
+    `a_reconnecter_depuis` est la date du PREMIER passage qui a trouvé le jeton
+    mort : c'est elle qui mesure la panne (migration §4bis). PostgREST ne sait
+    pas écrire `coalesce(a_reconnecter_depuis, now())` dans un update, donc on
+    ne l'envoie que si la valeur lue au même passage était vide. La raison,
+    elle, est toujours la dernière dite par la plateforme.
+
+    Le compte de lignes touchées est vérifié : un update refusé ou mal filtré
+    ne lève rien, il touche zéro ligne (CLAUDE.md §8).
+    """
+    from datetime import datetime, timezone
+    champs: dict = {}
+    if not connexion.get("a_reconnecter_depuis"):
+        champs["a_reconnecter_depuis"] = (maintenant or datetime.now(timezone.utc)).isoformat()
+    champs["a_reconnecter_raison"] = raison
+    r = (supabase.table("connected_accounts").update(champs)
+         .eq("id", connexion["id"]).eq("user_id", user_id).execute())
+    return bool(r.data)

@@ -189,12 +189,12 @@ export function LineChart({
   const espacementPx = 327 * (largeurCol / 100);
   // LE PIRE CONTENEUR RÉEL DU COMPOSANT N'EST PAS 327 PX (rejet du checker,
   // TASK-039, 3e passe) : ce nombre ne correspond à AUCUN appelant mesuré,
-  // c'était une estimation. `KpiFocusCard` — « Ta boussole », la carte même
-  // visée par TASK-039 — compresse le tracé sous 259 px à 375 px de viewport
-  // dès que `bandes` est fourni (page `px-4` + carte `px-3` + colonne des noms
-  // de zone `w-[52px]` + `gap-1.5`), et c'est le plus étroit des appelants
-  // recensés (259 px < 303 px de `channel-dash`/`comparaison`/`couts-modules`,
-  // qui n'ont pas cette colonne). Cette valeur ne sert QUE le calcul
+  // c'était une estimation. La carte « Ta boussole » visée par TASK-039
+  // compressait le tracé sous 259 px à 375 px de viewport dès que `bandes`
+  // était fourni (page `px-4` + carte `px-3` + colonne des noms de zone
+  // `w-[52px]` + `gap-1.5`). Elle a quitté l'hebdo (ticket 10 du chantier
+  // hebdo) ; 259 px reste la borne, et une marge sous les 303 px des appelants
+  // restants (`channel-dash`/`comparaison`/`couts-modules`). Cette valeur ne sert QUE le calcul
   // d'effacement des étiquettes ci-dessous, pas le dimensionnement des points
   // juste au-dessus (`taillePoint`) : rien n'a signalé ce dernier comme faux,
   // et 327 y reste une marge, pas une mesure de collision — le changer sans
@@ -447,9 +447,8 @@ export function LineChart({
             surestime l'espace dont dispose un conteneur PLUS ÉTROIT que 259,
             et la garantie ne tient plus (rejet du checker, TASK-039, 4e
             passe). Tous les appelants réels recensés de ce composant sont
-            ≥ 259 px (le plus étroit : `KpiFocusCard` avec `bandes`, voir la
-            note de `espacementPxLabel`) — largement au-dessus de 243 px, donc
-            couverts en pratique. Marge la plus faible mesurée à chacun des
+            ≥ 259 px (voir la note de `espacementPxLabel`) — largement
+            au-dessus de 243 px, donc couverts en pratique. Marge la plus faible mesurée à chacun des
             trois conteneurs réels connus : 3,36 px à 259 px, 9,56 px à 303 px,
             15,18 px à 343 px. */}
         {labels.map((l, i) => {

@@ -37,8 +37,10 @@
 --   14bis) profiles.ga4_event_catalog — les événements que GA4 émet vraiment
 --   14ter) fetch_progress — l'avancement RÉEL de la récolte, canal par canal.
 --          AVANT la section 15 elle aussi, même raison.
+--   14septies) couverture_recolte — jusqu'où chaque flux a été récolté sans trou
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
+--   22)    instagram_organic_posts.permalink / media_product_type (hebdo, ticket 08)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1321,6 +1323,57 @@ ALTER TABLE public.fetch_progress ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================================
+-- 14septies) couverture_recolte — jusqu'où chaque flux a été récolté SANS TROU.
+--
+--        Ni les lignes d'insights (Meta n'écrit rien un jour sans diffusion) ni
+--        fetch_progress (remis à zéro à chaque passage, `fini` même avec des
+--        tranches refusées) ne séparent une semaine sans diffusion (vrai 0)
+--        d'une semaine non récoltée (« — »). Le worker écrit ici une plage par
+--        (compte, source, flux), seulement après un passage SANS tranche
+--        refusée, et `sans_trou_jusqu_au` ne recule jamais : la règle vit dans
+--        `source_data/couverture.py` (`etendre`), testée hors ligne par
+--        `.scratch/hebdo/harnais/03-couverture/test_couverture.py`.
+--
+--        `sans_trou_jusqu_au` = veille du fetch : le jour du fetch est
+--        incomplet. `sans_trou_depuis` existe parce qu'un trou entre deux
+--        passages (panne plus longue qu'un recouvrement ; journal Google, dont
+--        `change_event` ne remonte que 30 jours) ne doit pas être enjambé : la
+--        plage repart alors du début du passage. `0001-01-01` = aucune borne
+--        basse (inventaire Instagram complet, tout en base).
+--
+--        Ajout seul. Lecture par le PROPRIÉTAIRE uniquement, et aucune
+--        politique d'écriture : seul le worker (clé service) écrit. Hors de la
+--        liste 15.1 exprès — `partage_update` laisserait un éditeur invité
+--        déclarer récolté ce qui ne l'est pas, et la page lit le payload figé,
+--        pas cette table.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.couverture_recolte (
+    user_id            uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    source             text NOT NULL CHECK (source IN ('meta', 'google', 'instagram')),
+    flux               text NOT NULL CHECK (flux IN ('insights', 'journal', 'posts')),
+    sans_trou_depuis   date NOT NULL,
+    sans_trou_jusqu_au date NOT NULL,
+    maj_a              timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, source, flux),
+    CHECK (sans_trou_depuis <= sans_trou_jusqu_au)
+);
+
+ALTER TABLE public.couverture_recolte ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'couverture_recolte'
+                     AND policyname = 'couverture_select_proprietaire') THEN
+        CREATE POLICY "couverture_select_proprietaire" ON public.couverture_recolte
+            FOR SELECT TO authenticated
+            USING ((SELECT auth.uid()) = user_id);
+    END IF;
+END $$;
+
+
+-- ============================================================================
 -- 14quinquies) conversion_categories + ga4_event_categories — les catégories
 --              de conversions (voir conversion_categories.sql, source de vérité).
 --
@@ -1641,6 +1694,30 @@ CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
 
 
 -- ============================================================================
+-- 22) instagram_organic_posts.permalink / media_product_type — le lien public
+--     d'un post et ce qu'il est vraiment (ticket 08 de `.scratch/hebdo/`).
+--
+--     Le panneau Organique du rapport hebdo montre chaque post avec son lien et
+--     son format. Meta dit `VIDEO` pour une vidéo du fil comme pour un Reel :
+--     seul `media_product_type` (`REELS` / `FEED`) les sépare — 122 posts
+--     `VIDEO` en base au 2026-11-01. Le `permalink` porte un code court, pas
+--     l'ID Graph : il ne se reconstruit pas, il se récolte.
+--
+--     Même permission `instagram_basic` que les autres champs du post : aucun
+--     re-consentement. NULL = pas encore relu par la récolte (elle ne relit
+--     qu'une partie des anciens posts) ; la page n'affiche alors ni lien ni
+--     Reel, plutôt que d'en inventer. Tant que cette section n'est pas jouée,
+--     la récolte écrit les posts sans ces deux colonnes (`source_data/meta.py`).
+--
+--     Ajout seul. RLS déjà posée (table de la liste 15.1).
+-- ============================================================================
+
+ALTER TABLE public.instagram_organic_posts
+    ADD COLUMN IF NOT EXISTS permalink          text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS media_product_type text DEFAULT NULL;
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1685,6 +1762,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'platform_budgets',         NULL),
     ('t', 'platform_changes',         NULL),
     ('t', 'fetch_progress',           NULL),   -- §14ter
+    ('t', 'couverture_recolte',       NULL),   -- §14septies
     ('t', 'conversion_categories',    NULL),   -- §14quinquies
     ('t', 'ga4_event_categories',     NULL),   -- §14quinquies
     -- ── Colonnes : chacune est une fonctionnalité qui, sinon, refuse de ─────
@@ -1712,6 +1790,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'meta_campaign_config',     'end_date'),             -- §16
     ('c', 'google_campaign_config',   'start_date'),           -- §16
     ('c', 'google_campaign_config',   'end_date'),             -- §16
+    ('c', 'instagram_organic_posts',  'permalink'),            -- §22
+    ('c', 'instagram_organic_posts',  'media_product_type'),   -- §22
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

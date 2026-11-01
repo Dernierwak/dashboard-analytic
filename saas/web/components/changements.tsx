@@ -1,7 +1,8 @@
 import type { ChangementPlateforme } from "@/lib/report";
 import type { ChangementApi } from "@/lib/changements-api";
 import type { CategorieChangement } from "@/lib/categorie-changement";
-import { CANAL, dateCourte, phraseChangement } from "@/components/etat-action";
+import { dateCourte, phraseChangement } from "@/components/etat-action";
+import { CANAL } from "@/lib/plateformes";
 
 // CE QUI A BOUGÉ SUR TES PLATEFORMES — une chronologie de FAITS, rien d'autre.
 //
