@@ -11,7 +11,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from saas.data.supabase.processed_data.weekly_report.builder import build_payload  # noqa: E402
+# Les lectures des blocs neufs (config, créas, couverture…) en valeur neutre.
+from commun.faux_lecteur import FauxLecteur as LecteurNeutre  # noqa: E402
 
 # Le compte : Jour de travail = jeudi. Le fetch du jeudi 29 octobre écrit, comme
 # en service (`Fenetre(since, today)`), une ligne Meta pour le jour même — partielle.
@@ -34,7 +37,7 @@ def meta_rows():
     return rows
 
 
-class FauxLecteur:
+class FauxLecteur(LecteurNeutre):
     def __init__(self, aujourd_hui):
         self._auj = aujourd_hui
 
@@ -79,15 +82,18 @@ constat((samedi["since"], samedi["until"]) == ("2026-10-22", "2026-10-28"),
         f"refait le samedi sans nouvelle récolte : semaine {samedi['since']} → {samedi['until']} "
         "— elle ne glisse plus, le jour du fetch reste dehors (ticket 01)")
 
+# Inversés par le ticket 07 : la frise identifie par ID, sur une seule année.
 noms = sorted(c["nom"] for c in jeudi["frise"]["campagnes"])
-constat(noms == ["Ancien nom", "Nouveau nom", "Été"],
-        f"la frise identifie par NOM : {noms} — 2 homonymes fusionnés, 1 renommée coupée en deux")
-constat(all("id" not in c and "statut" not in c for c in jeudi["frise"]["campagnes"]),
-        "une campagne de la frise n'a ni ID ni statut")
-constat(all(set(p) == {"plateforme", "date", "type"} for p in jeudi["frise"]["posts"]),
-        "un post de la frise n'a que plateforme, date, type — ni visuel ni lien")
-constat(jeudi["frise"]["debut"] < "2026-01-01",
-        f"la frise couvre deux ans (depuis {jeudi['frise']['debut']}), la page une année")
+constat(noms == ["Nouveau nom", "Été", "Été"],
+        f"la frise identifie par ID : {noms} — 2 homonymes en deux barres, 1 renommée en une (ticket 07)")
+constat(all(c.get("id") for c in jeudi["frise"]["campagnes"])
+        and all("statut" not in c for c in jeudi["frise"]["campagnes"]),
+        "chaque campagne porte son ID ; sans config récoltée, pas de statut (« statut inconnu »)")
+# Les posts quittent la frise avec l'ancienne forme ; le ticket 08 les remet.
+constat("posts" not in jeudi["frise"],
+        "la frise ne porte pas encore de posts (ticket 08)")
+constat(jeudi["frise"]["annee"] == 2026 and "debut" not in jeudi["frise"],
+        f"la frise couvre une seule année : {jeudi['frise']['annee']} (ticket 07)")
 
 print()
 if echecs:

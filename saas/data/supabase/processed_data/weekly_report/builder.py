@@ -1182,7 +1182,9 @@ def build_payload(lecteur: Lecteur) -> dict | None:
         "metrics_read": metrics_read,
         "metrics_prev": metrics_prev,
         "kpi_focus": kpi_focus,
-        "frise": frise,
+        # L'ancienne `frise` (calculée plus haut avec les changements déduits)
+        # ne s'écrit plus : la clé est celle de `blocs/frise.py` (ticket 07).
+        # Son calcul part avec le ticket 10.
         "metrics_series": metrics_series,
         "kpis": {
             # Chiffres bruts (l'email les met en forme) — mêmes fenêtres que Pulse
