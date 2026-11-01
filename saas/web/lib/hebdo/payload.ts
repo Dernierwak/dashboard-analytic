@@ -5,9 +5,10 @@
 // Un fichier de types par bloc, réexportés ici une fois pour toutes : chaque
 // ticket du chantier ajuste SON fichier sans toucher celui des autres.
 //
-// La nouvelle `frise` (tickets 07 à 09) n'est pas déclarée ici : elle porte le
-// même nom que l'ancienne (`Frise` de `lib/report.ts`), et c'est le ticket 07
-// qui fait la bascule.
+// La nouvelle `frise` (`lib/hebdo/frise.ts`) porte le même nom que l'ancienne
+// (`Frise` de `lib/report.ts`) : la clé reste déclarée là-bas, en union des
+// deux formes, tant que des payloads publiés avant le ticket 07 existent. La
+// page les distingue par `estFriseHebdo`.
 import type { SemaineHebdo } from "@/lib/hebdo/semaine";
 import type { SourcesHebdo, TotauxHebdo } from "@/lib/hebdo/sources";
 import type { CanauxHebdo } from "@/lib/hebdo/canaux";
@@ -16,6 +17,7 @@ export type { SemaineHebdo, SourcesHebdo, TotauxHebdo, CanauxHebdo };
 export type { EtatSource } from "@/lib/hebdo/sources";
 export type { CanalHebdo, RatioHebdo } from "@/lib/hebdo/canaux";
 export type { ChangementHebdo } from "@/lib/hebdo/changements";
+export type { FriseHebdo, CampagneFrise, StatutCampagne } from "@/lib/hebdo/frise";
 
 export type PayloadHebdo = {
   semaine?: SemaineHebdo | null;

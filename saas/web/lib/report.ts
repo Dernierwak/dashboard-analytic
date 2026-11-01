@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
 import { JOUR_DEFAUT } from "@/lib/jour-de-travail";
 import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
-import type { PayloadHebdo } from "@/lib/hebdo/payload";
+import type { PayloadHebdo, FriseHebdo } from "@/lib/hebdo/payload";
 
 // Couche données du rapport hebdo.
 // Règle maison : fenêtre = 7 jours PLEINS, ancrés sur la dernière date de
@@ -146,7 +146,9 @@ export type ReportPayload = PayloadHebdo & {
   } | null;
   // L'indicateur qui compte pour cet objectif, avec sa pente et ses zones.
   kpi_focus?: KpiFocus | null;
-  frise?: Frise | null;
+  /** Nouvelle forme depuis le ticket 07 (`FriseHebdo`) ; l'ancienne reste
+   *  dans les payloads publiés avant. */
+  frise?: FriseHebdo | Frise | null;
   // Les quatre tuiles sur 10 semaines — une pente vaut mieux qu'un chiffre nu.
   metrics_series?: {
     labels: string[];
