@@ -1,5 +1,5 @@
 import type { ReportPayload } from "@/lib/report";
-import { fmtCHF } from "@/lib/report";
+import { chf, entier } from "@/lib/hebdo/format";
 import type { SourcesHebdo } from "@/lib/hebdo/sources";
 import { SOURCE } from "@/lib/plateformes";
 
@@ -22,9 +22,6 @@ type Valeurs = Partial<Record<string, number | null>>;
 type Colonne = { titre: string; valeurs: Valeurs; format: (n: number) => string };
 
 const ORDRE = ["meta", "google"] as const;
-
-const chf = (n: number) => `${fmtCHF(n)} CHF`;
-const entier = (n: number) => fmtCHF(Math.round(n));
 
 function listeNoms(noms: string[]): string {
   return noms.length < 2 ? noms.join("") : `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;

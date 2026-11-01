@@ -1,9 +1,9 @@
 import type { SourcesHebdo } from "@/lib/hebdo/sources";
 import { SOURCE } from "@/lib/plateformes";
 import { dateFr, dateNue } from "@/lib/jour-de-travail";
+import { chf } from "@/lib/hebdo/format";
 import {
   campagnesVides,
-  chf,
   lanceeDans,
   nomStatut,
   sansFin,
@@ -46,10 +46,13 @@ export function PanneauCampagnes({
   if (campagnes.length === 0) {
     return <p className="text-[12.5px] text-muted">{campagnesVides(sources, choisie, mesuree)}</p>;
   }
-  const depense = (c: CampagneFrise) => c.depense_par_semaine[choisie.fin] ?? 0;
+  // Tri seulement : une dépense non disponible passe après toute dépense lue,
+  // sans être lue comme un 0.
+  const rang = (c: CampagneFrise) => c.depense_par_semaine[choisie.fin] ?? -Infinity;
   const triees = [...campagnes].sort(
     (a, b) =>
-      Number(a.plateforme !== "meta") - Number(b.plateforme !== "meta") || depense(b) - depense(a)
+      Number(a.plateforme !== "meta") - Number(b.plateforme !== "meta") ||
+      (rang(b) === rang(a) ? 0 : rang(b) > rang(a) ? 1 : -1)
   );
 
   return (
@@ -64,10 +67,11 @@ export function PanneauCampagnes({
 function Carte({ c, choisie }: { c: CampagneFrise; choisie: Bornes }) {
   const src = SOURCE[c.plateforme];
   const montant = c.depense_par_semaine[choisie.fin];
-  // Une semaine absente de `depense_par_semaine` n'a enregistré aucune
-  // dépense — ce qu'on écrit, sans en faire un « 0 CHF » mesuré.
+  // Une semaine absente de `depense_par_semaine` ne porte pas de montant : on
+  // écrit « — », ni « 0 CHF » ni « aucune dépense » — le payload ne distingue
+  // pas une semaine sans dépense d'une semaine non lue (`CLAUDE.md` §7).
   const depense =
-    montant !== undefined ? `${chf(montant)} cette semaine` : "aucune dépense enregistrée cette semaine";
+    montant !== undefined ? `${chf(montant)} cette semaine` : "— dépense non disponible cette semaine";
   const marque = lanceeDans(c, choisie) ? "lancée cette semaine" : termineeDans(c, choisie) ? "terminée cette semaine" : null;
 
   return (
