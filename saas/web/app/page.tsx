@@ -5,8 +5,8 @@
 //
 // ELLE N'EST QU'UNE SUITE DE SLOTS, un composant par bloc du payload
 // (`components/hebdo/`). Chaque ticket du chantier hebdo
-// (`.scratch/hebdo/tickets/`) construit SON composant sans toucher ce fichier ;
-// un bloc pas encore construit rend l'ancien affichage, ou rien.
+// (`.scratch/hebdo/tickets/`) a construit SON composant sans toucher ce
+// fichier ; un payload publié avant un bloc ne rend rien à sa place.
 
 import { getWeeklyData } from "@/lib/report";
 import { SetupWizard } from "@/components/setup-wizard";

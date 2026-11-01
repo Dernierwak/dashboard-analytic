@@ -9,7 +9,7 @@ import {
 
 // ── LE TITRE DE L'HEBDO : LA SEMAINE MESURÉE ─────────────────────────────────
 //
-// Il absorbe les trois dates d'avant (`trois-dates.tsx`, parti) : la semaine en
+// Il absorbe les trois dates qui ouvraient l'ancien rapport : la semaine en
 // titre, puis en ligne discrète quand ce texte a été publié et quand il
 // changera. Aucune de ces dates ne juge le rapport — un rapport de six jours
 // est vieux, pas faux, et rien ne mesure à partir de quand il tromperait
@@ -18,8 +18,8 @@ import {
 // LA SEMAINE SE LIT DANS LE PAYLOAD (`semaine`), elle ne se recalcule pas ici :
 // c'est le worker qui l'a mesurée, et c'est elle que les chiffres couvrent.
 // Un payload publié avant le ticket 01 n'a pas `semaine` : on retombe sur
-// `since`/`until` — sa fenêtre réelle, ancrée sur la dernière donnée — puis sur
-// `week_label`. Une date absente ne s'écrit pas, jamais une date approchée.
+// `since`/`until` — sa fenêtre réelle, ancrée sur la dernière donnée. Une date
+// absente ne s'écrit pas, jamais une date approchée.
 
 /** « du 21 au 27 octobre », ou « du 28 septembre au 4 octobre ». */
 function plage(debut: Date, fin: Date): string {
@@ -52,7 +52,7 @@ export function TitreSemaine({
   return (
     <header className="mb-6">
       <h1 className="font-serif text-[26px] sm:text-[32px] leading-[1.15] text-ink text-balance">
-        {debut && fin ? `Semaine ${plage(debut, fin)}` : report.week_label}
+        {debut && fin ? `Semaine ${plage(debut, fin)}` : "La semaine"}
       </h1>
       <p className="text-[12.5px] text-muted mt-1.5">Le jour en cours n&apos;est jamais compté.</p>
       <p className="text-[11px] text-faint mt-1 leading-relaxed">

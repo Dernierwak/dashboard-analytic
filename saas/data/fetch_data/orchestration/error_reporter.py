@@ -75,7 +75,7 @@ def note_canaux_qui_durent(uid: str, canaux_muets: list[dict]) -> None:
     semaines sur un compte 100 % organique ne cache rien AUJOURD'HUI et cassera
     tout le jour où ce client lancera sa première campagne.
     """
-    from saas.data.supabase.processed_data.weekly_report.builder import SEUIL_ESCALADE
+    from saas.data.supabase.processed_data.weekly_report.blocs.canaux_muets import SEUIL_ESCALADE
     _CANAUX_QUI_DURENT.extend(
         (uid, c) for c in (canaux_muets or [])
         if (c.get("semaines_muettes") or 0) >= SEUIL_ESCALADE)
@@ -84,9 +84,10 @@ def note_canaux_qui_durent(uid: str, canaux_muets: list[dict]) -> None:
 def vu_par_le_client(canal: dict) -> bool:
     """Ce canal a-t-il été dit au client dans son rapport ?
 
-    C'EST LE REVERS DE L'ASYMÉTRIE CI-DESSUS, et il ne va pas de soi. Les deux
-    Le composant `canal-muet.tsx` ne montre que les canaux à `chiffres_tus`
-    vrai ; David, lui, les voit tous. Donc pour la moitié
+    C'EST LE REVERS DE L'ASYMÉTRIE CI-DESSUS, et il ne va pas de soi. La page
+    hebdo ne dit une source en panne que si sa récolte n'atteint pas la fin de
+    la semaine (`sources[c].etat`, ticket 04 du chantier hebdo) — c'est le cas
+    des canaux à `chiffres_tus` vrai ; David, lui, les voit tous. Donc pour la moitié
     exacte des cas que cette escalade existe pour attraper — le canal qui ne tait
     rien aujourd'hui — le client n'a RIEN reçu.
 

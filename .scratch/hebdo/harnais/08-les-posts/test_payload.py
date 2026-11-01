@@ -50,9 +50,6 @@ class Compte(FauxLecteur):
         super().__init__(JOUR_FETCH, "Thursday")
         self._posts, self._couv, self._marque = list(posts), list(couverture), marque
 
-    def abonnes(self):
-        return [{"fetched_at": "2026-10-29T07:00:00+00:00", "followers": 500}]
-
     def publications(self): return self._posts
     def couverture(self): return self._couv
 

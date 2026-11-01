@@ -160,8 +160,9 @@ constat({s["etat"] for s in p["sources"].values()} == {"panne"}
         and set(p["totaux"]["depense"].values()) == {None},
         "couverture illisible (migration pas jouée) → tout en panne, rapport publié quand même")
 p = build_payload(ConnexionsIllisibles())
-constat("sources" not in p and "totaux" not in p,
-        "connexions illisibles → aucune clé : la page retombe sur « payload publié avant »")
+# Inversé par le ticket 10 : la publication tient à une source branchée, et
+# des connexions illisibles n'en prouvent aucune.
+constat(p is None, "connexions illisibles → aucun rapport (le précédent reste affiché)")
 
 # ── Jamais un jeton dans le payload (§7) ─────────────────────────────────────
 class AvecJetons(Compte):

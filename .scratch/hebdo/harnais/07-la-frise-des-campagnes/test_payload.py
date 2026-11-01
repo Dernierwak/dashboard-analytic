@@ -43,10 +43,11 @@ class Compte(FauxLecteur):
                      "google_campaign_config": list(config_google)}
         self._creas = list(creas)
 
-    # Des abonnés : sans dépense dans la semaine, l'ancien builder ne publie
-    # rien (`has_data`) — ici, la frise doit sortir même sans dépense récente.
-    def abonnes(self):
-        return [{"fetched_at": "2026-10-29T07:00:00+00:00", "followers": 500}]
+    # Une source branchée : depuis le ticket 10, c'est elle qui fait publier
+    # le rapport, pas la dépense — la frise sort même sans dépense récente.
+    def connexions_etat(self):
+        return [{"source": "meta", "created_at": "2025-01-01T00:00:00+00:00",
+                 "a_reconnecter_depuis": None}]
 
     def meta_ads(self): return self._meta
     def google_ads(self): return self._google

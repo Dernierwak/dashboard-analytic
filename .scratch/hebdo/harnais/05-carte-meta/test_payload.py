@@ -125,16 +125,15 @@ constat(r["cpc"]["valeur"] is None and r["cpc"]["etat"] is None, f"0 clic → CP
 constat(r["ctr"]["valeur"] == 0.0, f"0 clic sur 2 100 impressions → CTR 0, un vrai 0 : {r['ctr']['valeur']}")
 
 # ── Répondu sans diffusion ──────────────────────────────────────────────────
-# L'ancien `build_payload` ne publie rien quand AUCUNE source n'a dépensé
-# (`has_data`, retiré au ticket 10) : Google dépense ici pour que le rapport
-# sorte, et Meta seul se tait.
+# Depuis le ticket 10, le rapport sort dès qu'une source est branchée : Meta
+# seul, sans aucune ligne cette semaine, suffit.
 class GoogleDepense(Compte):
     def google_ads(self):
         return [{"date_start": j.isoformat(), "campaign_id": "g1", "cost_micros": 5_000_000,
                  "impressions": 500, "clicks": 10} for j in semaine_de(0)]
 
 
-p = build_payload(GoogleDepense(connexions=(META, GOOGLE), semaine=None))
+p = build_payload(Compte(semaine=None))
 meta = p["canaux"]["meta"]
 constat(meta["volumes"] == {"depense": 0, "impressions": 0, "clics": 0},
         f"recolte sans ligne → volumes 0 CHF / 0 / 0 : {meta['volumes']}")
@@ -156,7 +155,7 @@ for nom, compte in (("jeton mort", Compte(connexions=(mort,))),
 p = build_payload(Compte(connexions=(META, GOOGLE)))
 constat(set(p["canaux"]) == {"meta"}, f"Google n'entre pas au module aujourd'hui : {set(p['canaux'])}")
 p = build_payload(Compte(connexions=()))
-constat("canaux" not in p, "aucune source branchée → pas de clé canaux")
+constat(p is None, "aucune source branchée → aucun rapport, donc pas de clé canaux (ticket 10)")
 
 
 class Illisible(GoogleDepense):

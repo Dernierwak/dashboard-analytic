@@ -52,8 +52,10 @@ class Compte(FauxLecteur):
         super().__init__(JOUR_FETCH, "Thursday")
         self._google, self._cfg, self._statuts = list(google_rows), list(config_google), list(statuts)
 
-    def abonnes(self):
-        return [{"fetched_at": "2026-10-29T07:00:00+00:00", "followers": 500}]
+    # Une source branchée : depuis le ticket 10, c'est elle qui fait publier.
+    def connexions_etat(self):
+        return [{"source": "google", "created_at": "2025-01-01T00:00:00+00:00",
+                 "a_reconnecter_depuis": None}]
 
     def google_ads(self): return self._google
 
