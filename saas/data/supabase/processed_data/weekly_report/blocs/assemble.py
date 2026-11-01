@@ -22,7 +22,9 @@ def blocs_neufs(lecteur, semaine: Semaine) -> dict:
     if sources is not None:
         blocs.update(sources)
 
-    par_canal = canaux(lecteur, semaine)
+    # L'état de chaque source se lit une fois, dans `sources` : la carte du
+    # canal le reprend au lieu de le recalculer.
+    par_canal = canaux(lecteur, semaine, sources)
     changements = changements_par_canal(lecteur, semaine)
     if par_canal is not None:
         for canal, liste in (changements or {}).items():
