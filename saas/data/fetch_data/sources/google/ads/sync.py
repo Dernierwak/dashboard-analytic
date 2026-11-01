@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from saas.data.supabase.source_data.google import (
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
 )
+from saas.data.supabase.source_data.couverture import avancer_couverture
 from saas.data.supabase.source_data.platform import journal_changements, photo_budget
 from saas.data.fetch_data.sources.google.client import AccesGoogle
 from saas.data.fetch_data.sources.google.ads.fetchers import (
@@ -99,9 +100,12 @@ def recolter(sb, uid, refresh, customer_id, note=_rien, depuis: date | None = No
     smap, _ = statuts.fetch_campaign_statuses(access, customer_id)
     noms = {cid: v[0] for cid, v in (smap or {}).items()}
     note("changements")
-    journal_changements(sb, uid, "google", lambda: changements.recuperer(
-        acces, Fenetre(today - timedelta(days=_CHANGES_JOURS_GOOGLE), today),
-        noms_campagnes=noms))
+    fenetre_journal = Fenetre(today - timedelta(days=_CHANGES_JOURS_GOOGLE), today)
+    if journal_changements(sb, uid, "google", lambda: changements.recuperer(
+            acces, fenetre_journal, noms_campagnes=noms)):
+        # Trente jours seulement : un compte resté plus longtemps sans passage
+        # a un trou avant, et `etendre` repart alors de ce début-là.
+        avancer_couverture(sb, uid, ("google", "journal"), fenetre_journal, [])
 
     note("insights")
     since = depuis or depart_recolte(fetch_google_ads_latest_date(sb, uid),
@@ -111,6 +115,9 @@ def recolter(sb, uid, refresh, customer_id, note=_rien, depuis: date | None = No
     rows, trous = insights_campagnes.recuperer(acces, Fenetre(since, today))
     if rows:
         upsert_google_ads(sb, uid, rows)
+    # Les insights de CAMPAGNE seulement : le détail par annonce (`trous_ad`,
+    # plus bas) ne fait pas les totaux de la semaine.
+    avancer_couverture(sb, uid, ("google", "insights"), Fenetre(since, today), trous)
     if smap:
         upsert_google_campaign_statuses(sb, uid, smap)
 

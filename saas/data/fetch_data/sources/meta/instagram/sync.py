@@ -5,8 +5,12 @@ décide quoi relire et envoie à Supabase (`saas/data/supabase/source_data/meta.
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 
+from saas.data.fetch_data.shared.date_ranges import Fenetre
+from saas.data.supabase.source_data.couverture import avancer_couverture, debut_des_posts_complets
 from saas.data.supabase.source_data.meta import (
     insert_instagram_org, insert_instagram_total_posts_id, televerser_image_instagram,
 )
@@ -205,4 +209,7 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
     note("écriture")
     if resultats:
         insert_instagram_org(supabase=sb, results=resultats)
+    en_base = set(media_connu) | {str(r["post_id"]) for r in resultats}
+    avancer_couverture(sb, uid, ("instagram", "posts"),
+                       Fenetre(debut_des_posts_complets(medias, en_base), date.today()), trous)
     return f"insta: {len(resultats)} nouveaux posts"
