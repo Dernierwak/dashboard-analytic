@@ -30,6 +30,9 @@ from saas.data.fetch_data.shared.date_ranges import Fenetre
 # Doc : https://developers.google.com/google-ads/api/docs/change-event
 
 _CHANGE_FENETRE_MAX = 30
+# Contrainte 3. L'API ne dit pas qu'elle a coupé : une liste qui arrive à ce
+# compte est réputée tronquée (les plus anciens manquent, l'ordre est DESC).
+_CHANGE_LIMITE = 10_000
 
 
 def _chf(v: float) -> str:
@@ -583,7 +586,9 @@ def fetch_campaign_changes(
     lisibles.
 
     Returns: (rows, error|None) — chaque row : change_id, occurred_at,
-    categorie, campaign_id, campaign_name, resume.
+    categorie, campaign_id, campaign_name, resume, et `extra_data` sur un
+    changement de statut de campagne. Une liste au plafond rend ses lignes
+    ET une erreur : elle est tronquée.
     """
     plancher = date.today() - timedelta(days=_CHANGE_FENETRE_MAX - 1)
     depuis = max(since, plancher)
@@ -600,7 +605,7 @@ def fetch_campaign_changes(
         WHERE change_event.change_date_time >= '{depuis.isoformat()}'
           AND change_event.change_date_time <= '{jusqua.isoformat()}'
         ORDER BY change_event.change_date_time DESC
-        LIMIT 10000
+        LIMIT {_CHANGE_LIMITE}
     """
     url = f"{BASE}/customers/{customer_id}/googleAds:searchStream"
     try:
@@ -620,10 +625,12 @@ def fetch_campaign_changes(
     evenements: list[tuple[dict, str, str | None, str | None]] = []
     a_resoudre: list[str] = []
     batches = data if isinstance(data, list) else [data]
+    recus = 0
     for batch in batches:
         if isinstance(batch, dict) and "error" in batch:
             return [], batch["error"].get("message", str(batch["error"]))
         for row in batch.get("results", []):
+            recus += 1
             ev = row.get("changeEvent", row.get("change_event", {})) or {}
             quand = ev.get("changeDateTime") or ev.get("change_date_time")
             if not quand:
@@ -678,7 +685,35 @@ def fetch_campaign_changes(
                 "campaign_name": nom,
                 "resume":        resume,
             })
+            statut = _statut_campagne(ev)
+            # Clé absente sinon : un `None` envoyé effacerait une valeur déjà
+            # écrite (`upsert_platform_changes`).
+            if statut is not None:
+                rows[-1]["extra_data"] = statut
+    if recus >= _CHANGE_LIMITE:
+        # Ce qui a été lu est bon et s'écrit, mais `journal_changements` doit
+        # rendre False : sinon la couverture du journal avancerait sur une
+        # liste coupée, et la page lirait « aucun changement » dans le trou.
+        return rows, (f"liste tronquée au plafond de {_CHANGE_LIMITE} changements : "
+                      "les plus anciens de la fenêtre manquent")
     return rows, None
+
+
+def _statut_campagne(ev: dict) -> dict | None:
+    """`{"statut": {"avant": "ENABLED", "apres": "REMOVED"}}` pour un
+    changement de statut de campagne — majuscules Google. La frise lit la
+    date d'une suppression ICI (ticket 09), jamais dans la phrase `resume`."""
+    typ = str(ev.get("changeResourceType") or ev.get("change_resource_type") or "").upper()
+    if typ != "CAMPAIGN" or "status" not in _champs(ev.get("changedFields") or ev.get("changed_fields")):
+        return None
+    old = ev.get("oldResource") or ev.get("old_resource") or {}
+    new = ev.get("newResource") or ev.get("new_resource") or {}
+
+    def etat(bloc):
+        valeur = _ressource(bloc, "campaign", "campaign").get("status")
+        return str(valeur).upper() if valeur else None
+
+    return {"statut": {"avant": etat(old), "apres": etat(new)}}
 
 
 def recuperer(acces: AccesGoogle, fenetre: Fenetre, limite: int | None = None,

@@ -79,6 +79,7 @@ class Lecteur(Protocol):
     def campagnes_config(self, table: str) -> list[dict]: ...
     def creas(self) -> list[dict]: ...
     def changements(self, debut: date, fin: date) -> list[dict]: ...
+    def statuts_google(self) -> list[dict]: ...
     def couverture(self) -> list[dict]: ...
 
     # ── L'horloge ────────────────────────────────────────────────────────────
@@ -216,6 +217,18 @@ class LecteurSupabase:
                                   "campaign_name, niveau, object_id, object_name, resume, extra_data")
                           .eq("user_id", self.user_id)
                           .gte("occurred_at", depuis).lt("occurred_at", jusqu_a)
+                          .order("occurred_at"))
+
+    def statuts_google(self) -> list[dict]:
+        """Les changements de statut des campagnes Google, sur tout le journal
+        — pas la semaine : une campagne supprimée en mars finit en mars dans la
+        frise d'octobre (ticket 09). Seules les lignes qui portent le statut
+        structuré (`extra_data.statut`, écrit par `google/ads/fetchers/changes.py`)
+        sont lues : la phrase `resume` ne se relit jamais."""
+        return _all_pages(lambda: self.sb.table("platform_changes")
+                          .select("campaign_id, occurred_at, extra_data")
+                          .eq("user_id", self.user_id).eq("channel", "google")
+                          .not_.is_("extra_data->statut", "null")
                           .order("occurred_at"))
 
     def couverture(self) -> list[dict]:

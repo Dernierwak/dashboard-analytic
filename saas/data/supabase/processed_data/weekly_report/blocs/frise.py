@@ -1,5 +1,6 @@
 """`frise.annee` et `frise.campagnes` : les campagnes de l'année, une barre par
-campagne (ticket 07 ; le ticket 09 ajoutera la date de suppression Google).
+campagne (ticket 07), et la fin d'une Google supprimée lue dans le journal
+(ticket 09).
 
 Les posts vivent dans `posts.py`, à part, pour que 08 et 09 ne se croisent pas.
 
@@ -38,19 +39,63 @@ class _Campagne:
     jours_depense: set[date] = field(default_factory=set)
     par_semaine: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     par_annonce: dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    supprimee_le: date | None = None
 
 
-def frise_campagnes(lecteur, semaine: Semaine) -> dict:
-    creas = {c.get("ad_id"): c for c in lecteur.creas() if c.get("ad_id")}
+def frise_campagnes(lecteur, semaine: Semaine) -> dict | None:
+    """`None` quand une lecture échoue — même règle que `canaux.py` : une
+    lecture ratée n'est pas une année sans campagne. La page tolère la clé
+    absente, et le reste du rapport part."""
+    try:
+        creas = {c.get("ad_id"): c for c in lecteur.creas() if c.get("ad_id")}
+        lectures = {
+            "meta": (list(_lignes_meta(lecteur.meta_ads())),
+                     lecteur.campagnes_config(CONFIG["meta"]) or []),
+            "google": (list(_lignes_google(lecteur.google_ads())),
+                       lecteur.campagnes_config(CONFIG["google"]) or []),
+        }
+    except Exception:
+        return None
+    suppressions = _suppressions_google(lecteur, semaine)
+
     campagnes = []
-    for plateforme, lignes in (("meta", _lignes_meta(lecteur.meta_ads())),
-                               ("google", _lignes_google(lecteur.google_ads()))):
-        rangees = _rassembler(plateforme, lignes, lecteur.campagnes_config(CONFIG[plateforme]),
-                              semaine)
+    for plateforme, (lignes, config_rows) in lectures.items():
+        rangees = _rassembler(plateforme, lignes, config_rows, semaine)
+        if plateforme == "google":
+            for cid, jour in suppressions.items():
+                if cid in rangees:
+                    rangees[cid].supprimee_le = jour
         campagnes += sorted(
             (c for c in (_sortie(r, semaine, creas) for r in rangees.values()) if c is not None),
             key=lambda c: (c["debut"], c["id"]))
     return {"annee": semaine.fin.year, "campagnes": campagnes}
+
+
+def _suppressions_google(lecteur, semaine: Semaine) -> dict[str, date]:
+    """{campaign_id: jour de la suppression la plus récente}, lu dans le champ
+    structuré du journal (`extra_data.statut.apres == "REMOVED"`), jamais dans
+    la phrase. Les 10 premiers caractères suffisent : Google écrit l'heure du
+    compte sans décalage, stockée telle quelle (`lib/changements-api.ts`).
+
+    Une suppression après `semaine.fin` n'existe pas encore pour ce rapport
+    figé. Une lecture du journal qui échoue rend {} : la frise retombe sur le
+    repli (dernier jour de dépense), comme pour une suppression de plus de
+    30 jours avant le premier passage outillé — `change_event` ne remonte pas
+    plus loin (`CLAUDE.md` §8)."""
+    try:
+        lignes = list(lecteur.statuts_google() or [])
+    except Exception:
+        return {}
+    out: dict[str, date] = {}
+    for ligne in lignes:
+        statut = (ligne.get("extra_data") or {}).get("statut") or {}
+        jour, cid = _jour(ligne.get("occurred_at")), ligne.get("campaign_id")
+        if statut.get("apres") != "REMOVED" or not cid or jour is None or jour > semaine.fin:
+            continue
+        cid = str(cid)
+        if cid not in out or jour > out[cid]:
+            out[cid] = jour
+    return out
 
 
 # ── Lecture des insights ─────────────────────────────────────────────────────
@@ -125,9 +170,11 @@ def _sortie(c: _Campagne, semaine: Semaine, creas: dict) -> dict | None:
     derniere_depense = max(c.jours_depense) if c.jours_depense else None
 
     if statut == "supprimee":
-        # Repli du ticket 17 : le dernier jour de dépense, sinon un repère au
-        # début. La date de suppression lue dans le journal vient au ticket 09.
-        fin, declaree = derniere_depense or debut, False
+        # La date de suppression du journal (ticket 09) ; sinon le repli du
+        # ticket 17 : le dernier jour de dépense, sinon un repère au début.
+        # Jamais avant le début : la barre aurait une longueur négative.
+        fin = max(c.supprimee_le, debut) if c.supprimee_le else (derniere_depense or debut)
+        declaree = False
     elif fin_declaree is not None:
         fin, declaree = fin_declaree, True
     else:
