@@ -10,6 +10,7 @@
 // semaine-là. Aucun chiffre ne se recalcule.
 import type { SemaineHebdo } from "@/lib/hebdo/semaine";
 import type { SourcesHebdo } from "@/lib/hebdo/sources";
+import type { PostFrise } from "@/lib/hebdo/posts";
 import { SOURCE } from "@/lib/plateformes";
 
 /** Testé dans cet ordre par le worker ; absent = statut non récolté. */
@@ -50,8 +51,9 @@ export type FriseHebdo = {
   /** L'année de `semaine.fin` — une seule. */
   annee: number;
   campagnes: CampagneFrise[];
-  /** Ticket 08. */
-  posts?: unknown[];
+  /** Les posts de l'année jusqu'à `semaine.fin` (ticket 08, `lib/hebdo/posts.ts`).
+   *  Absent : le compte n'a pas d'Instagram, ou le payload est d'avant. */
+  posts?: PostFrise[];
 };
 
 /** Un payload publié avant le ticket 07 porte l'ancienne `frise` (sans

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, type MouseEvent } from "react";
 import type { SemaineHebdo } from "@/lib/hebdo/semaine";
-import { SOURCE } from "@/lib/plateformes";
-import { MOIS } from "@/lib/jour-de-travail";
+import { formatDe, SOURCE } from "@/lib/plateformes";
+import { MOIS, dateFr, dateNue } from "@/lib/jour-de-travail";
+import type { PostFrise } from "@/lib/hebdo/posts";
 import {
   ajouteJours,
   cleStatut,
@@ -122,6 +123,10 @@ export function FriseAnnee({
           ))}
         </div>
 
+        {frise.posts && frise.posts.length > 0 && (
+          <PointsPosts posts={frise.posts} choisie={choisie} pct={pct} />
+        )}
+
         {visibles.length === 0 && (
           <p className="sticky left-0 px-3 py-6 text-[12.5px] text-muted">
             {frise.campagnes.length === 0
@@ -145,6 +150,59 @@ export function FriseAnnee({
                 <Barre key={c.id} c={c} semaine={semaine} annee={annee} choisie={choisie} pct={pct} />
               ))}
             </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Le rythme des posts : un point par post sous les mois (spec, point 30), les
+// posts d'un même jour empilés. Aucun chiffre — le point dit qu'on a publié,
+// son infobulle le jour et le format. Un clic choisit la semaine, comme
+// partout ailleurs dans la frise.
+const PAS_PILE_PX = 8;
+
+function PointsPosts({
+  posts,
+  choisie,
+  pct,
+}: {
+  posts: PostFrise[];
+  choisie: Bornes;
+  pct: (iso: string) => number;
+}) {
+  const rang = new Map<string, number>();
+  const points = posts.map((p) => {
+    const k = rang.get(p.date) ?? 0;
+    rang.set(p.date, k + 1);
+    return { p, k };
+  });
+  const hauteur = Math.max(...Array.from(rang.values())) * PAS_PILE_PX + 6;
+  const ig = SOURCE.instagram;
+
+  return (
+    <div className="relative mt-1">
+      <div className="sticky left-2 inline-block text-[10.5px] font-bold uppercase tracking-wide px-1 py-0.5"
+        style={{ color: ig.couleur }}>
+        {ig.glyphe} Posts {ig.nom}
+      </div>
+      <div className="relative" style={{ height: `${hauteur}px` }}>
+        {points.map(({ p, k }, i) => {
+          const dedans = p.date >= choisie.debut && p.date <= choisie.fin;
+          const d = dateNue(p.date);
+          return (
+            <span
+              key={`${p.date}-${i}`}
+              className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full"
+              style={{
+                left: `${(pct(p.date) + pct(ajouteJours(p.date, 1))) / 2}%`,
+                top: `${2 + k * PAS_PILE_PX}px`,
+                background: ig.couleur,
+                opacity: dedans ? 1 : 0.55,
+              }}
+              title={`${d ? dateFr(d) : p.date} · ${formatDe(p.format).nom}`}
+            />
           );
         })}
       </div>

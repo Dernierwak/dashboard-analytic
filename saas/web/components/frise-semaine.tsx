@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Frise } from "@/lib/report";
+import { FORMAT, formatDe } from "@/lib/plateformes";
 
 // « Ce qui tournait » — le temps, enfin visible.
 //
@@ -57,17 +58,8 @@ const CANAL: Record<string, string> = { meta: "▣", google: "◆" };
 
 // Le format d'une publication. Un point unique disait « il s'est passé quelque
 // chose » ; il ne disait pas quoi. Le glyphe porte le format, dans le même
-// badge que la plateforme.
-const FORMAT: Record<string, { glyphe: string; nom: string }> = {
-  IMAGE: { glyphe: "▢", nom: "Image" },
-  CAROUSEL_ALBUM: { glyphe: "▤", nom: "Carrousel" },
-  VIDEO: { glyphe: "▶", nom: "Vidéo" },
-  REEL: { glyphe: "▶", nom: "Reel" },
-  REELS: { glyphe: "▶", nom: "Reel" },
-  STORY: { glyphe: "◷", nom: "Story" },
-};
-const FORMAT_INCONNU = { glyphe: "·", nom: "Autre" };
-const format = (t: string) => FORMAT[(t || "").toUpperCase()] ?? FORMAT_INCONNU;
+// badge que la plateforme. La table vit dans `lib/plateformes.ts`.
+const format = formatDe;
 
 // La plateforme d'une publication. Le badge la porte TOUJOURS, même quand une
 // seule source alimente la frise : c'est ce qui la rend lisible le jour où

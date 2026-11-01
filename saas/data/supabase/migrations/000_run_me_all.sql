@@ -40,6 +40,7 @@
 --   14septies) couverture_recolte — jusqu'où chaque flux a été récolté sans trou
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
+--   22)    instagram_organic_posts.permalink / media_product_type (hebdo, ticket 08)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1693,6 +1694,30 @@ CREATE INDEX IF NOT EXISTS idx_instagram_posts_user_date
 
 
 -- ============================================================================
+-- 22) instagram_organic_posts.permalink / media_product_type — le lien public
+--     d'un post et ce qu'il est vraiment (ticket 08 de `.scratch/hebdo/`).
+--
+--     Le panneau Organique du rapport hebdo montre chaque post avec son lien et
+--     son format. Meta dit `VIDEO` pour une vidéo du fil comme pour un Reel :
+--     seul `media_product_type` (`REELS` / `FEED`) les sépare — 122 posts
+--     `VIDEO` en base au 2026-11-01. Le `permalink` porte un code court, pas
+--     l'ID Graph : il ne se reconstruit pas, il se récolte.
+--
+--     Même permission `instagram_basic` que les autres champs du post : aucun
+--     re-consentement. NULL = pas encore relu par la récolte (elle ne relit
+--     qu'une partie des anciens posts) ; la page n'affiche alors ni lien ni
+--     Reel, plutôt que d'en inventer. Tant que cette section n'est pas jouée,
+--     la récolte écrit les posts sans ces deux colonnes (`source_data/meta.py`).
+--
+--     Ajout seul. RLS déjà posée (table de la liste 15.1).
+-- ============================================================================
+
+ALTER TABLE public.instagram_organic_posts
+    ADD COLUMN IF NOT EXISTS permalink          text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS media_product_type text DEFAULT NULL;
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1765,6 +1790,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'meta_campaign_config',     'end_date'),             -- §16
     ('c', 'google_campaign_config',   'start_date'),           -- §16
     ('c', 'google_campaign_config',   'end_date'),             -- §16
+    ('c', 'instagram_organic_posts',  'permalink'),            -- §22
+    ('c', 'instagram_organic_posts',  'media_product_type'),   -- §22
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
