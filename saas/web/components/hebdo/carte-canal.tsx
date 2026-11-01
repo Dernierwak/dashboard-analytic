@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { fmtCHF } from "@/lib/report";
-import type { CanalHebdo, EtatSource } from "@/lib/hebdo/payload";
+import type { CanalHebdo, EtatSource, SemaineHebdo, SourcesHebdo } from "@/lib/hebdo/payload";
 import { PAGE_CANAL, RATIOS, SEMAINES_MINIMUM, jugement, type Jugement } from "@/lib/hebdo/canaux";
 import { SOURCE } from "@/lib/plateformes";
 import { Moustache } from "@/components/hebdo/moustache";
@@ -86,10 +86,14 @@ export function CarteCanal({
   canal,
   donnees,
   etat,
+  journal,
+  semaine,
 }: {
   canal: string;
   donnees: CanalHebdo;
   etat: EtatSource | undefined;
+  journal: SourcesHebdo[string]["journal"] | undefined;
+  semaine: SemaineHebdo | null | undefined;
 }) {
   const source = SOURCE[canal];
   const nom = source?.nom ?? canal;
@@ -135,7 +139,7 @@ export function CarteCanal({
           )}
         </div>
         <div className="min-w-0 lg:flex-1 empty:hidden">
-          <ChangementsCanal canal={canal} donnees={donnees} />
+          <ChangementsCanal canal={canal} donnees={donnees} journal={journal} semaine={semaine} />
         </div>
       </div>
     </article>

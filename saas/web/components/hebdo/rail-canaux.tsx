@@ -27,7 +27,13 @@ export function RailCanaux({ report }: { report: ReportPayload }) {
       <RailDefilant titre={<SectionTitle>Les canaux</SectionTitle>} plusieurs={presents.length > 1}>
         {presents.map((canal) => (
           <div key={canal} className={`snap-start shrink-0 min-w-0 ${largeur}`}>
-            <CarteCanal canal={canal} donnees={canaux[canal]} etat={report.sources?.[canal]?.etat} />
+            <CarteCanal
+              canal={canal}
+              donnees={canaux[canal]}
+              etat={report.sources?.[canal]?.etat}
+              journal={report.sources?.[canal]?.journal}
+              semaine={report.semaine}
+            />
           </div>
         ))}
       </RailDefilant>
