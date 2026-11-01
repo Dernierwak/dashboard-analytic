@@ -9,24 +9,16 @@
 // un bloc pas encore construit rend l'ancien affichage, ou rien.
 
 import { getWeeklyData } from "@/lib/report";
-import { getChangementsApi } from "@/lib/changements-api";
 import { SetupWizard } from "@/components/setup-wizard";
 import { TitreSemaine, CompteNeuf } from "@/components/hebdo/titre-semaine";
 import { BandeauTotaux } from "@/components/hebdo/bandeau-totaux";
 import { RailCanaux } from "@/components/hebdo/rail-canaux";
 import { CeQuiAEteFait } from "@/components/hebdo/ce-qui-a-ete-fait";
-import { AnciensChangements } from "@/components/hebdo/changements-canal";
 
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  // Les changements que les plateformes déclarent, sur 90 jours : Google Ads ne
-  // garde `change_event` que trente jours et Meta un peu plus — demander plus
-  // large ne coûte rien. Lancée SANS être attendue, en même temps que
-  // `getWeeklyData` : `AnciensChangements` l'attend lui-même.
-  const depuisChg = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-  const changementsApi = getChangementsApi(depuisChg);
   const data = await getWeeklyData();
   const report = data.report;
 
@@ -61,7 +53,6 @@ export default async function Page() {
           <BandeauTotaux report={report} />
           <RailCanaux report={report} />
           <CeQuiAEteFait report={report} />
-          <AnciensChangements report={report} changementsApi={changementsApi} />
         </>
       ) : (
         // AUCUN RAPPORT N'EXISTE ENCORE : une seule carte, qui dit quand
