@@ -35,3 +35,16 @@ module, et où se calcule-t-il une seule fois ?**
 > ajoute que les chiffres organiques d'un post boosté excluent le payant, et
 > que le format se lit dans `media_product_type` (FEED / REELS / STORY) : une
 > image, un carrousel et une vidéo du fil sont tous `FEED`.
+
+> **Éclairé par [La structure de la page](01-la-structure-de-la-page.md)
+> (2026-11-02)** : il n'y a **pas de module Formats à part**. Les formats
+> vivent dans la Comparaison (une moustache par format), sur la métrique de
+> l'objectif choisi ; « quel format rapporte des abonnés », c'est la
+> Comparaison en vue **Abonnés**. Choisir un format filtre vers ses meilleurs
+> posts. « Ce module » se lit donc : la Comparaison par format. Deux points
+> pro ajoutés par David :
+> - **réactions légères et fortes** — un « j'aime » contre un enregistrement
+>   ou un partage (`saved`, `shares`, rendus partout) : la vue Engagement
+>   les distingue-t-elle ?
+> - **le Reel lu avec ses propres chiffres** — exclu de la vue Abonnés, mais
+>   seul à avoir le temps de visionnage moyen et total (recherche 02).

@@ -18,3 +18,12 @@ la représentation de la place (moustache, bandes, points), le geste pour
 écarter et la note qui suit, et l'ouverture de l'aperçu d'un post. Référence :
 la Comparaison de Meta (`saas/web/components/meta/comparaison.tsx`), qui coche
 jusqu'à quatre éléments.
+
+> **Éclairé par [La structure de la page](01-la-structure-de-la-page.md)
+> (2026-11-02)** : le carré s'appelle **Sélection** et se place sous la
+> Comparaison (une moustache par format) ; chaque post y est situé sur la
+> moustache de son format. La maquette tranche aussi **Comparaison et
+> Sélection : un module ou deux** — « peut-être encore avec le format, et on
+> peut avoir les différents formats sur le carré, dur à dire » (David). Point
+> pro ajouté : **un lien qui garde la sélection** (les posts choisis et
+> l'objectif), pour en discuter avec quelqu'un qui voit la même chose.

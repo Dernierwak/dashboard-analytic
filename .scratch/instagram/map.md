@@ -72,6 +72,12 @@ aller chercher en plus et ce que le traitement doit calculer.
   forme) et `vision-produit` (ce qui mérite d'exister).
 - Pas de `CONTEXT.md` dans l'arbre : le vocabulaire tranché vit dans ces Notes,
   puis dans la spec.
+  - **Objectif** (organique) : ce que le client veut lire — Portée, Engagement
+    ou Abonnés —, choisi au Sélecteur de vue ; la métrique de toute la foule
+    des posts. _À éviter_ : « vue » pour l'objectif lui-même (le Sélecteur de
+    vue le porte).
+  - **Sélection** : le carré, 3 à 5 posts côte à côte. _À éviter_ : « Top »,
+    « SWOT ».
 
 ## Tickets
 
@@ -81,7 +87,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
-| [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling | — |
+| [La structure de la page](issues/01-la-structure-de-la-page.md) | grilling ✓ | — |
 | [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research ✓ | — |
 | [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research ✓ | — |
 | [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research ✓ | — |
@@ -98,6 +104,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | Ce que la récolte et le traitement doivent calculer |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
+| [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | La place d'un post |
 
 ## Decisions so far
 
@@ -118,14 +125,19 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   d'historique ; gagnés/perdus et `follower_count` incertains ;
   `followers_history` n'a plus d'écrivain depuis septembre — d'où deux tâches
   nouvelles, l'état des abonnés en base et l'essai réel.
+- [La structure de la page](issues/01-la-structure-de-la-page.md) : le fil
+  conducteur est l'**objectif** (Portée, Engagement, Abonnés) — Bandeau →
+  Tendance (le compte) → Sélecteur de vue → Comparaison (une moustache par
+  format, qui absorbe « Formats ») → Sélection (le carré) → Tableau détaillé,
+  plus le Panneau latéral ; Sélecteur sous la Tendance, écart à l'ADR 0011.
 
 ## Not yet specified
 
 - **Le Panneau latéral « lire un post »** : ce qu'on a (image, légende, lien
   public) suffit-il, ou faut-il la vidéo, le carrousel entier, les
   commentaires ? Se précise avec la maquette de la page.
-- **Les états de la page** : compte gratuit à 10 posts (une foule trop maigre
-  pour une distribution ?), compte neuf, jeton mort, format qui n'a que 2 posts.
+- **Les états de la page** : compte neuf, jeton mort, format qui n'a que 2
+  posts (le compte gratuit a son ticket).
 - **Les posts boostés** : leurs chiffres organiques excluent le payant
   (recherche 02) ; reste à savoir si la page le marque (`boost_ads_list`).
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
