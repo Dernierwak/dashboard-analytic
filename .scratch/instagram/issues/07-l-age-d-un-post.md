@@ -25,3 +25,9 @@ Tranché au cadrage : un post neuf se compare **à âge égal**, et un post trop
 > latence de 48 h est écrite. Le seuil par défaut ne peut donc pas être
 > « celui d'Instagram » : 48 h comme plancher sourcé, et au-delà une
 > observation tirée de nos propres relevés, dite comme telle.
+
+> **Éclairé par [Garder l'historique](05-garder-l-historique-d-un-post.md)
+> (2026-11-03)** : relevé quotidien de J+0 à J+7, puis hebdomadaire jusqu'à
+> J+30, âge réel en heures. Les âges comparables sont donc J+1 … J+7 au jour
+> près, au-delà à la semaine près ; un post antérieur à la mise en service
+> n'a aucun relevé jeune.

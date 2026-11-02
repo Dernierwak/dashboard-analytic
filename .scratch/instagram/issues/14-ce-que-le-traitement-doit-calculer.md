@@ -23,3 +23,9 @@ Défauts de récolte déjà relevés, à porter dans la liste
   écrite `0` au lieu de rester absente (§7) ;
 - `pages_read_engagement` exigé par la doc en Facebook Login, absent de nos
   scopes : un essai réel avant toute nouvelle métrique.
+
+Tranché par [Garder l'historique](05-garder-l-historique-d-un-post.md) :
+une table de relevés (un relevé s'ajoute, n'écrase jamais, porte son âge
+réel), un mode quotidien léger du worker (insights + `follows` des posts de
+J+0 à J+7, sans plafond), la relecture du Jour de travail qui ajoute aussi un
+relevé, et la durée réelle d'un passage à mesurer à l'essai.

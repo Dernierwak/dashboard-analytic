@@ -78,6 +78,13 @@ aller chercher en plus et ce que le traitement doit calculer.
     vue le porte).
   - **Sélection** : le carré, 3 à 5 posts côte à côte. _À éviter_ : « Top »,
     « SWOT ».
+  - **Relevé** : la lecture datée du cumul d'un post ; il s'ajoute, il
+    n'écrase jamais. _À éviter_ : « snapshot », « historique » pour un relevé.
+  - **Âge d'un post** : heures écoulées entre la publication et le relevé ;
+    « J+n » = au moins n × 24 h.
+- **Idée gardée, pas encore à faire** : relever les posts jeunes **heure par
+  heure** pour voir comment ils démarrent (David, 2026-11-03) — `BACKLOG.md`
+  est absent de l'arbre, elle vit ici.
 
 ## Tickets
 
@@ -91,7 +98,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Ce que l'API Instagram donne d'un post](issues/02-ce-que-l-api-donne-d-un-post.md) | research ✓ | — |
 | [Quand les chiffres d'un post se figent](issues/03-quand-les-chiffres-d-un-post-se-figent.md) | research ✓ | — |
 | [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research ✓ | — |
-| [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling | Quand les chiffres d'un post se figent |
+| [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling ✓ | — |
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling | Ce que l'API Instagram donne d'un post |
 | [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling | Quand les chiffres se figent ; Garder l'historique |
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling | La place d'un post |
@@ -105,6 +112,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | La place d'un post |
+| [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | La place d'un post |
 
 ## Decisions so far
 
@@ -130,6 +138,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   Tendance (le compte) → Sélecteur de vue → Comparaison (une moustache par
   format, qui absorbe « Formats ») → Sélection (le carré) → Tableau détaillé,
   plus le Panneau latéral ; Sélecteur sous la Tendance, écart à l'ADR 0011.
+- [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) :
+  oui, des relevés datés qui s'ajoutent — chaque jour pour tous les posts de
+  J+0 à J+7 (passage léger, 2 appels par post), puis à chaque Jour de travail
+  jusqu'à J+30 ; âge réel en heures ; aucun passé reconstitué ; la page montre
+  le dernier relevé daté et explique l'écart avec l'hebdo.
 
 ## Not yet specified
 
@@ -138,8 +151,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   commentaires ? Se précise avec la maquette de la page.
 - **Les états de la page** : compte neuf, jeton mort, format qui n'a que 2
   posts (le compte gratuit a son ticket).
-- **Les posts boostés** : leurs chiffres organiques excluent le payant
-  (recherche 02) ; reste à savoir si la page le marque (`boost_ads_list`).
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
   `story_insights` — utiles ou non, à voir avec la structure de la page.
 - **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
