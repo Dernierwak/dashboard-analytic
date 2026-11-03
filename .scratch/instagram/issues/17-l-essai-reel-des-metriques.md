@@ -22,6 +22,9 @@ sur un compte branché, qui répond à :
    média est-il remplacé ? (03)
 6. **`reach` du compte** en `total_value` sur 7 jours face à la somme des 7
    valeurs `time_series` : dédoublonné ou non ? (hebdo 12)
+7. **`media_product_type`** distingue-t-il un Reel d'une vidéo du fil, et un
+   post du fil sans abonné gagné rend-il `follows` = 0 ou rien ?
+   ([Les formats et les abonnés](09-les-formats-et-les-abonnes.md))
 
 Le script se prépare sur le modèle de la skill `wizard` (étapes que seul
 David peut faire) ; il imprime les réponses, jamais le jeton. Le résultat

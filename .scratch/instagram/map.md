@@ -94,6 +94,11 @@ aller chercher en plus et ce que le traitement doit calculer.
     « sans les hors norme ») sort de la foule et de la Sélection ; il reste
     visible, grisé, avec sa raison. _À éviter_ : « supprimé », « exclu »
     (sonnent définitifs), « masqué ».
+  - **Format** : Reel, Carrousel, Image ou Vidéo du fil — un fait rendu par
+    Meta. _À éviter_ : « type » à l'écran, « thème ».
+  - **Réactions fortes** : enregistrements et partages rapportés à la
+    portée, face au « j'aime », réaction légère. _À éviter_ : « bon
+    engagement ».
 - **Idée gardée, pas encore à faire** : relever les posts jeunes **heure par
   heure** pour voir comment ils démarrent (David, 2026-11-03) — notée au
   `BACKLOG.md`.
@@ -114,7 +119,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling ✓ | — |
 | [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling ✓ | — |
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling ✓ | — |
-| [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling | Ce que l'API Instagram donne d'un post |
+| [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling ✓ | — |
 | [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | L'état des abonnés en base ; L'essai réel |
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling | L'âge ; Écarter un post |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
@@ -174,6 +179,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   passe, désactivé par défaut) ; l'écarté sort de la moustache et de la
   Sélection, reste grisé avec sa raison au Tableau ; la page dit combien et
   pourquoi ; écarter à la main est au `BACKLOG.md`.
+- [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) :
+  la Comparaison en vue Abonnés, sur quatre formats (Reel, Carrousel, Image,
+  Vidéo du fil) en ordre fixe, sans phrase de classement ; un bloc par
+  format au-dessus des moustaches (post type, total seulement pour ce qui se
+  compte, `n`) ; abonnés pour 1 000 comptes touchés et réactions fortes en
+  plus ; le propre d'un format (visionnage du Reel) se lit au niveau du
+  post ; un seul calcul de la foule, à la lecture, dans un dossier commun de
+  `lib/` ; 0 si Instagram le rend, « – » sinon, l'existant nettoyé.
 
 ## Not yet specified
 

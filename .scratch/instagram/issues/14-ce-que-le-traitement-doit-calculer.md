@@ -50,3 +50,20 @@ posts au-delà retirés, quartiles recalculés sur le reste, sans itérer.
 [Les posts boostés](19-les-posts-boostes.md). Il faut donc, par format et par
 métrique, les quartiles avec et sans les écartés, le nombre d'écartés et leur
 raison, et le minimum de 6 jugé après le retrait.
+
+Tranché par [Les formats et les abonnés](09-les-formats-et-les-abonnes.md) :
+- **le lieu du calcul** : à la lecture (période libre, filtres dans l'URL),
+  **un seul calcul de la foule** dans un dossier commun de `lib/` qui sert
+  tous les graphiques — quartiles exclusifs, Tukey, minimum 6, totaux,
+  « x sur n » — contrôlé sur [1…6] → 1,75 / 3,5 ;
+- **quatre formats** (Reel, Carrousel, Image, Vidéo du fil) : la récolte
+  stocke `media_product_type` en plus de `media_type` (`sync.py:193-197`
+  range aujourd'hui un Reel en `VIDEO`) ;
+- **totaux** seulement pour ce qui se compte (`follows`, likes, commentaires,
+  partages, enregistrements, vues, visites de profil), jamais portée ni taux ;
+- **deux métriques dérivées** : `follows` ÷ portée × 1 000 ; (enregistrements
+  + partages) ÷ portée — vides sans portée ;
+- **nettoyage de l'existant** : `follows` des Reels → null ; une relecture
+  unique de tous les posts du fil réécrit `follows` (0 si Instagram rend 0,
+  null s'il ne rend rien) — lancement à la main depuis GitHub Actions
+  (`weekly-fetch.yml`, `force`), à confronter au plafond de relecture.

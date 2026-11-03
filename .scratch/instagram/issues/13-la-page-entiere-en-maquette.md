@@ -23,3 +23,10 @@ compte neuf, jeton mort).
 > dans un module. Aussi : le choix de métrique dans l'objectif, la phrase qui
 > remplace la moustache d'un format sans la métrique, la mention « pas assez
 > de posts » et son mobile.
+
+> **Éclairé par [Les formats et les abonnés](09-les-formats-et-les-abonnes.md)
+> (2026-11-03)** : quatre formats en ordre fixe (Reel, Carrousel, Image,
+> Vidéo du fil) ; **un bloc par format au-dessus des moustaches** — post
+> type, total (seulement pour ce qui se compte), `n`, « x sur n » ; aucune
+> phrase de classement ; le temps de visionnage du Reel se montre au niveau
+> du post (Sélection, Panneau latéral, Tableau), pas dans la Comparaison.
