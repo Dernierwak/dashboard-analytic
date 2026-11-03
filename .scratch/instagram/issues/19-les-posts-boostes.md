@@ -2,7 +2,7 @@
 
 Type: grilling
 Status: open
-Blocked by: 06
+Blocked by: —
 Assignee: —
 
 ## Question
@@ -14,3 +14,6 @@ doit-elle **marquer** un post boosté (`boost_ads_list`), le **sortir de la
 foule** ou le laisser dedans, et le relevé doit-il **noter** qu'un post était
 boosté au moment de la lecture ? Dépend de [La place d'un post](06-la-place-d-un-post.md) :
 qui compose la foule.
+
+> **Tranché par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
+> la foule = les posts du même format sur la période, le post compris.

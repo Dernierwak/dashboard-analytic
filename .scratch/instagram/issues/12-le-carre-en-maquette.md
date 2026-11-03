@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 06, 08
+Blocked by: 08
 Assignee: —
 
 ## Question
@@ -27,3 +27,10 @@ jusqu'à quatre éléments.
 > peut avoir les différents formats sur le carré, dur à dire » (David). Point
 > pro ajouté : **un lien qui garde la sélection** (les posts choisis et
 > l'objectif), pour en discuter avec quelqu'un qui voit la même chose.
+
+> **Éclairé par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
+> chaque post porte **sa place sur la métrique choisie**, une à la fois — elle
+> change avec la métrique (« si on travaille sur les likes, tout est filtré sur
+> les likes »). Mots : « post type », « en dessous », « bas / haut de tes
+> habitudes », « au-dessus », « hors norme ». Pas de place sous 6 posts du
+> format : la maquette montre la mention.

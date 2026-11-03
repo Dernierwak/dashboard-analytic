@@ -2,7 +2,7 @@
 
 Type: grilling
 Status: open
-Blocked by: 06
+Blocked by: —
 Assignee: —
 
 ## Question
@@ -22,3 +22,7 @@ n'y a pas de sens. **Que voit un compte gratuit sur la page `/instagram` ?**
 
 Dépend du **minimum de posts** qu'une place exige, tranché dans
 [La place d'un post](06-la-place-d-un-post.md).
+
+> **Tranché par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
+> **6 posts du format au minimum** ; en dessous, points et `n` sans place, et
+> une mention. À 10 posts relus, aucun format ou presque ne l'atteint.

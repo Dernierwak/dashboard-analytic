@@ -2,7 +2,7 @@
 
 Type: grilling
 Status: open
-Blocked by: 06
+Blocked by: —
 Assignee: —
 
 ## Question
@@ -20,3 +20,10 @@ Reste à fixer :
   grisé, absent) ;
 - une exclusion change-t-elle la **place** des autres posts (la foule est
   recalculée sans lui) — et le dit-on ?
+
+> **Éclairé par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
+> la foule est le format sur la période, **le post compris** ; « hors norme »
+> = Tukey, 1,5 × IQR. Écarter un post recalcule donc les quartiles de son
+> format — et peut faire tomber la foule sous le minimum de 6. La place se lit
+> sur la métrique choisie : un post hors norme en likes peut ne pas l'être en
+> portée — écarte-t-on pour une métrique ou pour toutes ?

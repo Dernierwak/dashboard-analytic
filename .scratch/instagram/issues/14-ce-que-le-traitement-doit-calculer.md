@@ -29,3 +29,9 @@ une table de relevés (un relevé s'ajoute, n'écrase jamais, porte son âge
 réel), un mode quotidien léger du worker (insights + `follows` des posts de
 J+0 à J+7, sans plafond), la relecture du Jour de travail qui ajoute aussi un
 relevé, et la durée réelle d'un passage à mesurer à l'essai.
+
+Tranché par [La place d'un post](06-la-place-d-un-post.md) : quartiles
+exclusifs **par format × métrique × période**, le post compris, minimum 6,
+hors norme à 1,5 × IQR ; taux d'engagement = interactions ÷ portée du post
+(vide sans portée). À calculer **une seule fois, à un seul endroit** — décider
+lequel (traitement ou `lib/`), la période venant du Bandeau.
