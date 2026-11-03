@@ -107,7 +107,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Ce que l'API Instagram donne du compte, jour par jour](issues/04-ce-que-l-api-donne-du-compte.md) | research ✓ | — |
 | [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling ✓ | — |
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling ✓ | — |
-| [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling | Quand les chiffres se figent ; Garder l'historique |
+| [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling ✓ | — |
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling | — |
 | [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling | Ce que l'API Instagram donne d'un post |
 | [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | L'état des abonnés en base ; L'essai réel |
@@ -157,6 +157,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   mention en dessous ; une moustache par format qui change avec la
   métrique, choisie dans l'objectif ; un nuage date × métrique à juger en
   maquette.
+- [L'âge d'un post](issues/07-l-age-d-un-post.md) : trois tranches fixes,
+  tous formats — moins de 48 h (latence Meta) hors de la foule ; 48 h →
+  7 jours placé à âge égal (même J+n, minimum 6) ; au-delà, la foule normale ;
+  les posts antérieurs au relevé comptent comme plus de 7 jours. À l'écran,
+  l'âge écrit avec une icône « peut encore changer », aucun nom d'état ;
+  aucun réglage.
 
 ## Not yet specified
 
@@ -167,6 +173,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   posts (le compte gratuit a son ticket).
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
   `story_insights` — utiles ou non, à voir avec la structure de la page.
+- **Relire tous les posts à chaque passage ?** David attend que « toutes les
+  données soient mises à jour à chaque fois » (2026-11-03), alors que
+  [Garder l'historique](issues/05-garder-l-historique-d-un-post.md) arrête la
+  relecture à J+30 (plafond 40) et que le gratuit ne suit que 10 posts. À
+  confronter au coût en appels avant d'en faire un ticket.
 - **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
   Instagram doivent parler des mêmes posts avec les mêmes mots.
 

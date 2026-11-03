@@ -35,3 +35,9 @@ exclusifs **par format × métrique × période**, le post compris, minimum 6,
 hors norme à 1,5 × IQR ; taux d'engagement = interactions ÷ portée du post
 (vide sans portée). À calculer **une seule fois, à un seul endroit** — décider
 lequel (traitement ou `lib/`), la période venant du Bandeau.
+
+Tranché par [L'âge d'un post](07-l-age-d-un-post.md) : trois tranches fixes
+sur l'âge réel du dernier relevé — moins de 48 h (hors de la foule), 48 h →
+7 jours (quartiles **à âge égal** : par format × J+n, sur les relevés de ce
+J+n, minimum 6), plus de 7 jours (foule normale). Les posts antérieurs à la
+mise en service = plus de 7 jours, jamais dans l'âge égal.

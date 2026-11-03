@@ -28,3 +28,6 @@ chiffre par défaut.
 > **portée ÷ abonnés du jour de publication**, variante de la Portée brute
 > (dépend de [L'état des abonnés en base](16-l-etat-des-abonnes-en-base.md)).
 > Le minimum de 6 et la foule par format sont tranchés, pas réglables.
+
+> **Éclairé par [L'âge d'un post](07-l-age-d-un-post.md) (2026-11-03)** :
+> les seuils d'âge (48 h, 7 jours) sont **fixes** — retirés des candidates.
