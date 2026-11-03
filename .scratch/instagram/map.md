@@ -83,8 +83,8 @@ aller chercher en plus et ce que le traitement doit calculer.
   - **Âge d'un post** : heures écoulées entre la publication et le relevé ;
     « J+n » = au moins n × 24 h.
 - **Idée gardée, pas encore à faire** : relever les posts jeunes **heure par
-  heure** pour voir comment ils démarrent (David, 2026-11-03) — `BACKLOG.md`
-  est absent de l'arbre, elle vit ici.
+  heure** pour voir comment ils démarrent (David, 2026-11-03) — notée au
+  `BACKLOG.md`.
 
 ## Tickets
 

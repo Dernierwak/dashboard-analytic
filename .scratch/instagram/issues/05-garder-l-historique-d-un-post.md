@@ -65,7 +65,6 @@ seule voie vers l'âge égal (recherche 03).
 - **Heure par heure** : écarté pour l'instant. L'API ne rend aucune courbe ;
   il faudrait 24 passages par jour, et le cron GitHub ne garantit pas l'heure.
   Idée gardée par David (« on se la note et on voit comment faire ») —
-  `BACKLOG.md` est absent de l'arbre depuis `1b05a92`, elle vit donc ici et
-  sur la carte.
+  notée au `BACKLOG.md`, rétabli le 2026-11-03.
 - **Posts boostés** : remarque de David pendant ce grilling (« ça fait une
   grosse différence ») → nouveau ticket [Les posts boostés](19-les-posts-boostes.md).
