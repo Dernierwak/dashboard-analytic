@@ -17,3 +17,10 @@ qui compose la foule.
 
 > **Tranché par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
 > la foule = les posts du même format sur la période, le post compris.
+
+> **Tranché par [Écarter un post](08-ecarter-un-post.md) (2026-11-03)** :
+> un post boosté **reste dans la foule par défaut**, et le client peut l'en
+> sortir avec le filtre **« sans les boostés »** (toutes métriques, dans
+> l'URL ; grisé « écarté : boosté » dans le Tableau détaillé). Reste à fixer
+> ici : comment Pulse **sait** qu'un post est boosté (`boost_ads_list`, au
+> relevé ou une fois pour toutes) et comment il le **marque** à l'écran.

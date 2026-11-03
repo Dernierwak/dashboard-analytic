@@ -34,3 +34,13 @@ jusqu'à quatre éléments.
 > les likes »). Mots : « post type », « en dessous », « bas / haut de tes
 > habitudes », « au-dessus », « hors norme ». Pas de place sous 6 posts du
 > format : la maquette montre la mention.
+
+> **Éclairé par [Écarter un post](08-ecarter-un-post.md) (2026-11-03)** :
+> pas de geste « écarter ce post » ni de note à écrire — deux filtres,
+> « sans les boostés » et « sans les hors norme » (sur la métrique affichée),
+> dans l'URL. Filtrée, la Sélection saute les posts écartés (« les 5
+> meilleurs » parmi ceux qui restent). La maquette montre le geste type de
+> David : une Sélection sur les likes, un post hors norme qui écrase les
+> autres, le filtre qui le retire pour voir les « haut de tes habitudes » —
+> et la phrase « 1 post hors norme écarté — moustache sur 18 Reels au lieu
+> de 19 ».

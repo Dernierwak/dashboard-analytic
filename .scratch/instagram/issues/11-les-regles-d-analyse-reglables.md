@@ -31,3 +31,10 @@ chiffre par défaut.
 
 > **Éclairé par [L'âge d'un post](07-l-age-d-un-post.md) (2026-11-03)** :
 > les seuils d'âge (48 h, 7 jours) sont **fixes** — retirés des candidates.
+
+> **Éclairé par [Écarter un post](08-ecarter-un-post.md) (2026-11-03)** :
+> écarter se fait par **deux filtres de lecture dans l'URL** — « sans les
+> boostés » et « sans les hors norme » (métrique affichée, désactivé par
+> défaut) —, jamais mémorisés. La page écrit combien de posts sont écartés et
+> pourquoi : c'est le modèle pour « comment la page dit qu'elle tourne avec
+> des règles non standard ». Pas de geste manuel.

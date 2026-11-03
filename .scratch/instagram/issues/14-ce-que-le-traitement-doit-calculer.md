@@ -41,3 +41,12 @@ sur l'âge réel du dernier relevé — moins de 48 h (hors de la foule), 48 h �
 7 jours (quartiles **à âge égal** : par format × J+n, sur les relevés de ce
 J+n, minimum 6), plus de 7 jours (foule normale). Les posts antérieurs à la
 mise en service = plus de 7 jours, jamais dans l'âge égal.
+
+Tranché par [Écarter un post](08-ecarter-un-post.md) : deux filtres de
+lecture, dans l'URL. « Sans les hors norme » : bornes de Tukey (1,5 × IQR)
+calculées **une fois** sur la foule du format pour la métrique affichée, les
+posts au-delà retirés, quartiles recalculés sur le reste, sans itérer.
+« Sans les boostés » : toutes métriques, sur un marqueur de boost que fixe
+[Les posts boostés](19-les-posts-boostes.md). Il faut donc, par format et par
+métrique, les quartiles avec et sans les écartés, le nombre d'écartés et leur
+raison, et le minimum de 6 jugé après le retrait.

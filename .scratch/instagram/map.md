@@ -42,8 +42,9 @@ aller chercher en plus et ce que le traitement doit calculer.
     et attend un seuil de maturité tiré de ce qu'Instagram documente, réglable
     par filtre ;
   - une **valeur aberrante est signalée par la mesure, jamais écartée seule** ;
-    on peut l'écarter par un filtre, avec une note, pour les moyennes comme pour
-    « les 5 meilleurs » ;
+    on peut l'écarter par un filtre, pour les moyennes comme pour « les 5
+    meilleurs » (précisé par [Écarter un post](issues/08-ecarter-un-post.md) :
+    deux filtres, pas de note à écrire) ;
   - les règles d'analyse se règlent en **mode « plus pro »** pour qui veut
     aller plus loin.
 - **Faits relevés au cadrage** (code de `main`, `df48d2b`) :
@@ -89,6 +90,10 @@ aller chercher en plus et ce que le traitement doit calculer.
   - **Hors norme** : un post au-delà de 1,5 × l'écart interquartile, d'un
     côté ou de l'autre. _À éviter_ : « aberrant » à l'écran (sonne comme
     une erreur), « viral ».
+  - **Écarté** : un post qu'un filtre de lecture (« sans les boostés »,
+    « sans les hors norme ») sort de la foule et de la Sélection ; il reste
+    visible, grisé, avec sa raison. _À éviter_ : « supprimé », « exclu »
+    (sonnent définitifs), « masqué ».
 - **Idée gardée, pas encore à faire** : relever les posts jeunes **heure par
   heure** pour voir comment ils démarrent (David, 2026-11-03) — notée au
   `BACKLOG.md`.
@@ -108,7 +113,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Garder l'historique des chiffres d'un post](issues/05-garder-l-historique-d-un-post.md) | grilling ✓ | — |
 | [La place d'un post](issues/06-la-place-d-un-post.md) | grilling ✓ | — |
 | [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling ✓ | — |
-| [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling | — |
+| [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling ✓ | — |
 | [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling | Ce que l'API Instagram donne d'un post |
 | [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | L'état des abonnés en base ; L'essai réel |
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling | L'âge ; Écarter un post |
@@ -163,6 +168,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   les posts antérieurs au relevé comptent comme plus de 7 jours. À l'écran,
   l'âge écrit avec une icône « peut encore changer », aucun nom d'état ;
   aucun réglage.
+- [Écarter un post de la lecture](issues/08-ecarter-un-post.md) : deux
+  filtres dans l'URL, jamais mémorisés — « sans les boostés » (toutes
+  métriques) et « sans les hors norme » (métrique affichée, Tukey en une
+  passe, désactivé par défaut) ; l'écarté sort de la moustache et de la
+  Sélection, reste grisé avec sa raison au Tableau ; la page dit combien et
+  pourquoi ; écarter à la main est au `BACKLOG.md`.
 
 ## Not yet specified
 

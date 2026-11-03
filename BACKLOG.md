@@ -347,3 +347,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   (`.scratch/instagram/issues/05-garder-l-historique-d-un-post.md`). À
   reprendre si les relevés quotidiens ne suffisent pas à lire le démarrage
   d'un post.
+- **Écarter un post à la main.** Un post de concours, ni boosté ni hors
+  norme, fausse la lecture et aucun filtre ne l'attrape. Le geste « écarter
+  ce post », avec une note écrite par le client, est laissé de côté : « pour
+  l'instant c'est un en trop » (David, 2026-11-03). Seuls deux filtres
+  existent, « sans les boostés » et « sans les hors norme »
+  (`.scratch/instagram/issues/08-ecarter-un-post.md`). À reprendre si un
+  client bute sur un post qu'aucun des deux n'écarte.
