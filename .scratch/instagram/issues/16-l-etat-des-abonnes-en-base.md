@@ -24,3 +24,8 @@ le chiffre d'abonnés affiché aujourd'hui est figé (un bug en production,
 hors de cette carte, à signaler à part) et ce que
 [Le compte dans le temps](10-le-compte-dans-le-temps.md) peut supposer de
 l'historique existant.
+
+> **Éclairé par [Les règles d'analyse réglables](11-les-regles-d-analyse-reglables.md)
+> (2026-11-05)** : une métrique de plus en dépend — la portée ÷ abonnés du
+> jour de publication (objectif Portée) exige un nombre d'abonnés **daté**
+> pour chaque jour où un post est publié.

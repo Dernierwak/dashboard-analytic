@@ -44,3 +44,9 @@ jusqu'à quatre éléments.
 > autres, le filtre qui le retire pour voir les « haut de tes habitudes » —
 > et la phrase « 1 post hors norme écarté — moustache sur 18 Reels au lieu
 > de 19 ».
+
+> **Éclairé par [Les règles d'analyse réglables](11-les-regles-d-analyse-reglables.md)
+> (2026-11-05)** : les deux filtres se rangent sous un bouton discret
+> « Règles de lecture » du Bandeau (« · n » quand un filtre est coché) ; la
+> phrase des écartés vit **au-dessus des moustaches**, avec le lien
+> « Revenir aux règles standard ». Pas de mode avancé.

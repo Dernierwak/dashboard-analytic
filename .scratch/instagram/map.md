@@ -99,6 +99,10 @@ aller chercher en plus et ce que le traitement doit calculer.
   - **Réactions fortes** : enregistrements et partages rapportés à la
     portée, face au « j'aime », réaction légère. _À éviter_ : « bon
     engagement ».
+  - **Règles de lecture** : les deux filtres « sans les boostés » et « sans
+    les hors norme », rangés sous ce nom dans le Bandeau ; ils ne touchent
+    que la foule des posts. _À éviter_ : « mode avancé », « mode pro »,
+    « paramètres ».
 - **Idée gardée, pas encore à faire** : relever les posts jeunes **heure par
   heure** pour voir comment ils démarrent (David, 2026-11-03) — notée au
   `BACKLOG.md`.
@@ -121,7 +125,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling ✓ | — |
 | [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling ✓ | — |
 | [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling ✓ | — |
-| [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling | L'âge ; Écarter un post |
+| [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling ✓ | — |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype | Le carré |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | L'âge ; Les règles ; La page entière |
@@ -195,6 +199,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   portée organique du compte ne se mesure pas) ; 90 jours lus au premier
   passage ; « Engagement du compte » et « Croissance 30 j » partent ; pas de
   table sous la Tendance, l'export Excel va au Tableau des posts.
+- [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) :
+  pas de mode avancé, aucune règle de calcul réglable (Tukey 1,5 fixe) ; le
+  « plus pro » = les **Règles de lecture**, les deux filtres discrets du
+  Bandeau, sur la foule des posts seulement ; un filtre actif se voit au
+  compteur du bouton et à une ligne au-dessus des moustaches, rien sinon ;
+  portée ÷ abonnés devient une métrique de l'objectif Portée.
 
 ## Not yet specified
 

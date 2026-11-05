@@ -37,3 +37,9 @@ compte neuf, jeton mort).
 > période d'avant en pointillé, publications marquées, un petit filtre
 > Tout / Organique / Boosté dans son en-tête ; pas de table sous elle. Le
 > Tableau des posts **s'exporte vers Excel** (David, 2026-11-04).
+
+> **Éclairé par [Les règles d'analyse réglables](11-les-regles-d-analyse-reglables.md)
+> (2026-11-05)** : le Bandeau porte « Règles de lecture » (les deux filtres,
+> désactivés par défaut, compteur « · n ») ; ils ne touchent que la foule
+> des posts — l'interrupteur Tout / Organique / Boosté de la Tendance reste
+> à part. La métrique « portée ÷ abonnés » figure dans l'objectif Portée.

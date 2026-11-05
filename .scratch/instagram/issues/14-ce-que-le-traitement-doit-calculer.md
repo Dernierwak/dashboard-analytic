@@ -67,3 +67,10 @@ Tranché par [Les formats et les abonnés](09-les-formats-et-les-abonnes.md) :
   unique de tous les posts du fil réécrit `follows` (0 si Instagram rend 0,
   null s'il ne rend rien) — lancement à la main depuis GitHub Actions
   (`weekly-fetch.yml`, `force`), à confronter au plafond de relecture.
+
+> **Éclairé par [Les règles d'analyse réglables](11-les-regles-d-analyse-reglables.md)
+> (2026-11-05)** : aucun paramètre de calcul réglable — Tukey 1,5, minimum
+> 6, quartiles exclusifs et seuils d'âge sont des constantes. À calculer en
+> plus : la **portée ÷ abonnés du jour de publication** par post, vide
+> quand l'abonné du jour manque (dépend de
+> [L'état des abonnés en base](16-l-etat-des-abonnes-en-base.md)).
