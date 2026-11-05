@@ -25,6 +25,14 @@ sur un compte branché, qui répond à :
 7. **`media_product_type`** distingue-t-il un Reel d'une vidéo du fil, et un
    post du fil sans abonné gagné rend-il `follows` = 0 ou rien ?
    ([Les formats et les abonnés](09-les-formats-et-les-abonnes.md))
+8. **La part boostée du compte** : `reach` et `total_interactions` en
+   `breakdown=media_product_type` rendent-ils une valeur `AD` ? Les valeurs
+   d'interactions se somment-elles au total ? (interrupteur Tout / Organique
+   / Boosté de [Le compte dans le temps](10-le-compte-dans-le-temps.md))
+8. **La part boostée du compte** : `reach` et `total_interactions` en
+   `breakdown=media_product_type` rendent-ils une valeur `AD` ? Les valeurs
+   d'interactions se somment-elles au total ? (Interrupteur organique /
+   boosté de la Tendance, [Le compte dans le temps](10-le-compte-dans-le-temps.md))
 
 Le script se prépare sur le modèle de la skill `wizard` (étapes que seul
 David peut faire) ; il imprime les réponses, jamais le jeton. Le résultat

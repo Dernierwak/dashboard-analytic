@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 01, 09, 10, 12
+Blocked by: 12
 Assignee: —
 
 ## Question
@@ -30,3 +30,10 @@ compte neuf, jeton mort).
 > type, total (seulement pour ce qui se compte), `n`, « x sur n » ; aucune
 > phrase de classement ; le temps de visionnage du Reel se montre au niveau
 > du post (Sélection, Panneau latéral, Tableau), pas dans la Comparaison.
+
+> **Repris de [Le compte dans le temps](10-le-compte-dans-le-temps.md)
+> (2026-11-05)** : la Tendance montre la page seule — trois courbes de
+> compte (Portée, Interactions, Abonnés en cumul + barres gagnés/perdus),
+> période d'avant en pointillé, publications marquées, un petit filtre
+> Tout / Organique / Boosté dans son en-tête ; pas de table sous elle. Le
+> Tableau des posts **s'exporte vers Excel** (David, 2026-11-04).

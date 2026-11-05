@@ -120,10 +120,10 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [L'âge d'un post](issues/07-l-age-d-un-post.md) | grilling ✓ | — |
 | [Écarter un post de la lecture](issues/08-ecarter-un-post.md) | grilling ✓ | — |
 | [Les formats et les abonnés](issues/09-les-formats-et-les-abonnes.md) | grilling ✓ | — |
-| [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling | L'état des abonnés en base ; L'essai réel |
+| [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling ✓ | — |
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling | L'âge ; Écarter un post |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
-| [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype | La structure ; Les formats ; Le compte dans le temps ; Le carré |
+| [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype | Le carré |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | L'âge ; Les règles ; La page entière |
 | [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | Ce que la récolte et le traitement doivent calculer |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
@@ -187,6 +187,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   plus ; le propre d'un format (visionnage du Reel) se lit au niveau du
   post ; un seul calcul de la foule, à la lecture, dans un dossier commun de
   `lib/` ; 0 si Instagram le rend, « – » sinon, l'existant nettoyé.
+- [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) : le haut
+  de la page montre **la page seule** — Portée, Interactions et Abonnés du
+  compte (cumul + barres gagnés/perdus, ou net), période d'avant en
+  pointillé, publications marquées, un trou pour un jour sans donnée ; un
+  interrupteur Tout / Organique / Boosté conditionné à l'essai réel (la
+  portée organique du compte ne se mesure pas) ; 90 jours lus au premier
+  passage ; « Engagement du compte » et « Croissance 30 j » partent ; pas de
+  table sous la Tendance, l'export Excel va au Tableau des posts.
 
 ## Not yet specified
 
