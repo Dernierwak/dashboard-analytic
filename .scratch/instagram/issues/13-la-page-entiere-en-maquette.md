@@ -213,3 +213,54 @@ posts » des petites périodes.
    dans tout son historique : moustache sur ce qu'il a (dès 6), comme
    aujourd'hui ?
 3. **Le lecteur Instagram** dans la carte, ou seulement dans le Panneau ?
+
+## Réaction de David, deuxième tour (2026-11-06)
+
+- **La B** (un nuage par format, les moustaches à droite) est préférée.
+- **La référence devient l'année**, plus les X derniers posts : « ça prend
+  vraiment tous les posts », sans l'effet « ceux de Noël, tout est haut ;
+  janvier, tout est bas ». **Remplace la décision du tour précédent** (X
+  derniers posts) — et donc toujours « sur la période » du ticket 06.
+- **L'évolution manque** : « est-ce que nos derniers posts sont en général un
+  peu plus haut ? » → **deux ou trois moustaches côte à côte** — l'année,
+  puis les derniers mois.
+- **Moitié nuage, moitié moustaches** : « là c'est tout coincé à droite ».
+- **De la C : la liste des posts qui défile à droite**, avec la métrique
+  analysée, « plus clean que de nouveau un truc en bas », tout dans un
+  module.
+- Le message s'arrête sur « et puis ça serait… » : la suite est à demander.
+
+## Prototype, troisième tour (2026-11-06)
+
+`/instagram?maquette=page&d=90` ouvre maintenant **D · Ton année, et la
+liste à droite** (A, B, C du tour 2 restent derrière ← →) :
+
+- **Un module** : à gauche, une rangée par format — en tête, « post type de
+  l'année » en phrase, puis l'écart des derniers mois écrit (« 3 derniers
+  mois : post type 12 506 sur 15 posts — +9 % sur ton année ») ; dessous,
+  **moitié nuage** (les posts de la période) et **moitié moustaches** :
+  **12 mois** (boîte pleine, la référence), **3 derniers mois** et
+  **dernier mois** (boîtes en pointillé), même axe, valeurs écrites, petits
+  points des posts qui les font. À droite, **une colonne collante qui
+  défile** : la sélection (5 meilleurs…) ou **tous les posts** du meilleur
+  au moins bon, en cartes compactes avec la mini-moustache « parmi tes
+  Reels des 12 derniers mois ».
+- **La référence = 12 mois glissants**, pas l'année civile : janvier ne
+  remet rien à zéro. La place de chaque post (nuage, cartes, Tableau,
+  Panneau) se lit contre elle.
+- L'écart d'une moustache courte à l'année = l'écart de leurs post types ;
+  sous **±5 %**, « comme ton année » (deux médianes de quelques posts ne
+  disent pas un sens) ; sous 6 posts, pas de moustache et la raison.
+
+Ce que les vrais chiffres montrent déjà (portée, 2026-11-06) : Reels
+**+9 %** sur 3 mois mais **−12 %** le dernier mois ; Carrousels **−10 %**
+et **−25 %** ; l'Image n'a que 5 posts en 3 mois et 2 le dernier mois — ses
+moustaches courtes ne se dessinent pas.
+
+### Pour trancher (David)
+
+1. **La suite de ton message** (« et puis ça serait… »).
+2. **Les moustaches d'évolution** : 3 mois + 1 mois, ou d'autres durées ?
+   Le dernier mois a souvent moins de 6 posts par format.
+3. **±5 %** pour « comme ton année » : le garder, ou toujours écrire
+   l'écart ?
