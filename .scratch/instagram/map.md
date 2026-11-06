@@ -83,8 +83,8 @@ aller chercher en plus et ce que le traitement doit calculer.
     n'écrase jamais. _À éviter_ : « snapshot », « historique » pour un relevé.
   - **Âge d'un post** : heures écoulées entre la publication et le relevé ;
     « J+n » = au moins n × 24 h.
-  - **Place d'un post** : sa bande parmi les posts de son format, sur la
-    métrique choisie — « en dessous », « bas de tes habitudes », « haut de
+  - **Place d'un post** : sa bande parmi les posts de son format des 12
+    derniers mois glissants, sur la métrique choisie — « en dessous », « bas de tes habitudes », « haut de
     tes habitudes », « au-dessus ». _À éviter_ : « rang », « score ».
   - **Post type** : la médiane de la foule. _À éviter_ : « moyenne ».
   - **Hors norme** : un post au-delà de 1,5 × l'écart interquartile, d'un
@@ -127,13 +127,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le compte dans le temps](issues/10-le-compte-dans-le-temps.md) | grilling ✓ | — |
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling ✓ | — |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
-| [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype | Le carré |
+| [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | L'âge ; Les règles ; La page entière |
 | [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | Ce que la récolte et le traitement doivent calculer |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | — |
+| [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling | — |
 
 ## Decisions so far
 
@@ -205,14 +206,17 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   Bandeau, sur la foule des posts seulement ; un filtre actif se voit au
   compteur du bouton et à une ligne au-dessus des moustaches, rien sinon ;
   portée ÷ abonnés devient une métrique de l'objectif Portée.
+- [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) :
+  Bandeau → Tendance (**abonnés en grand à gauche**, portée et interactions
+  à droite) → Sélecteur de vue → **un module « tes posts face à ton
+  année »** — par format, le nuage de la période sur la bande 25-75 % de
+  l'année, et ses moustaches pesées (12 mois la référence, 3 mois, dernier
+  mois ; rien sous 6 posts) — avec **les 5 meilleurs de la période** en
+  liste à droite → Tableau de **tous les posts** (Date triable, export
+  Excel) ; Panneau avec le lecteur Instagram ; **la référence devient les
+  12 derniers mois glissants**, plus la période.
 
 ## Not yet specified
-
-- **Le Panneau latéral « lire un post »** : ce qu'on a (image, légende, lien
-  public) suffit-il, ou faut-il la vidéo, le carrousel entier, les
-  commentaires ? Se précise avec la maquette de la page.
-- **Les états de la page** : compte neuf, jeton mort, format qui n'a que 2
-  posts (le compte gratuit a son ticket).
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
   `story_insights` — utiles ou non, à voir avec la structure de la page.
 - **Relire tous les posts à chaque passage ?** David attend que « toutes les

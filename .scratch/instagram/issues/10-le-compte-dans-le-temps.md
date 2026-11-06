@@ -107,3 +107,8 @@ Engagement) et « Croissance 30 j » (remplacée par la courbe et les barres).
 **Résolu sous condition** : gagnés / perdus et l'interrupteur sont écrits
 pour les deux issues de [L'essai réel](17-l-essai-reel-des-metriques.md) ;
 il reste à savoir laquelle s'applique, aucune décision nouvelle.
+
+> **Amendé par [La page entière, en maquette](13-la-page-entiere-en-maquette.md)
+> (2026-11-06)** : l'ordre change — **les abonnés en grand à gauche**
+> (cumul + barres gagnés / perdus), portée et interactions du compte
+> empilées à droite. Le reste de cette réponse tient.

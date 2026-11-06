@@ -115,3 +115,12 @@ Répercuté sur : la carte (Decisions so far, vocabulaire) ;
 [Ce que le traitement doit calculer](14-ce-que-le-traitement-doit-calculer.md),
 [Le compte gratuit à 10 posts](18-le-compte-gratuit-a-10-posts.md),
 [Les posts boostés](19-les-posts-boostes.md).
+
+> **Amendé par [La page entière, en maquette](13-la-page-entiere-en-maquette.md)
+> (2026-11-06)** : la foule d'un post n'est plus « ceux de son format sur la
+> période » mais **ses pareils des 12 derniers mois glissants** (plus de
+> 48 h), quelle que soit la période affichée — elle ne choisit plus que les
+> posts posés sur le nuage. Quartiles exclusifs, Tukey 1,5, minimum 6 :
+> inchangés. À côté, deux moustaches d'évolution (3 derniers mois, dernier
+> mois), sans place calculée contre elles. Un post plus vieux que 12 mois :
+> [La place d'un post hors de l'année](20-la-place-d-un-post-hors-de-l-annee.md).

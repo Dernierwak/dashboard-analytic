@@ -74,3 +74,21 @@ Tranché par [Les formats et les abonnés](09-les-formats-et-les-abonnes.md) :
 > plus : la **portée ÷ abonnés du jour de publication** par post, vide
 > quand l'abonné du jour manque (dépend de
 > [L'état des abonnés en base](16-l-etat-des-abonnes-en-base.md)).
+
+> **Éclairé par [La page entière, en maquette](13-la-page-entiere-en-maquette.md)
+> (2026-11-06)** :
+> - **la référence** : quartiles par format × métrique sur **les 12 derniers
+>   mois glissants** (plus « × période ») ; en plus, les quartiles des **3
+>   derniers mois** et du **dernier mois** (minimum 6, sinon rien) et l'écart
+>   de leur médiane à celle de l'année ;
+> - **la liste de droite** : les 5 meilleurs de la période sur la métrique
+>   choisie ; **le Tableau** : tous les posts du compte, triable par date et
+>   par métrique, **export `.csv`** (Date en première colonne, absence =
+>   cellule vide) ;
+> - **lire `permalink`** dans la lecture des posts (en base, ignoré par
+>   `getInstaDash`) — c'est lui qui ouvre le lecteur Instagram ; quelques
+>   posts n'en ont pas ;
+> - relevé dans la base : `follows` et `shares` **absents** de
+>   `instagram_organic_posts` (l'objectif Abonnés n'a aucun chiffre) ; les
+>   **Reels sans j'aime** ; portée et interactions du compte **jamais
+>   récoltées** ; `followers_history` figé au 2026-09-04.

@@ -1,7 +1,7 @@
 # 13: La page entière, en maquette
 
 Type: prototype
-Status: open
+Status: resolved
 Blocked by: 12
 Assignee: David (session Claude, 2026-11-06)
 
@@ -337,3 +337,102 @@ Carrousels baissent des deux côtés (9 040, puis 7 500).
    lui ?
 3. **La suite de ton message du tour 3** (« et puis ça serait… ») et le
    seuil de ±5 %, toujours ouverts.
+
+## Réaction de David, quatrième tour (2026-11-06) — « part avec ça »
+
+- **La version 1 (moustaches pesées) est retenue** : « nickel ». 12 mois
+  est la référence, les 3 derniers mois suivent, et une moustache sans
+  assez de posts ne se dessine pas — « ça fait sens ». La bande 25-75 % de
+  l'année derrière le nuage et les 5 meilleurs numérotés dedans : gardés.
+- **Tendance** : **les abonnés en grand à gauche**, portée et interactions
+  à droite.
+- **La liste de droite ne montre que les 5 meilleurs de la période**, sans
+  filtre. Les meilleurs de tout l'historique se trouvent **dans le
+  Tableau**, en le triant.
+- **Le Tableau porte toujours tous les posts**, sans filtre de période ;
+  **une colonne Date triable** (le premier post, les derniers) ; **la date
+  dans l'export Excel**.
+
+Fait dans la maquette avant de clore : versions 2 et 3 retirées du code,
+Tendance retournée, liste sans filtre, Tableau de tous les posts (235)
+avec la Date triable dans les deux sens, **export réel** en `.csv` pour
+Excel (point-virgule, une absence = cellule vide, date en première colonne,
+236 lignes vérifiées). `tsc` et `npm run build` verts, 18 routes. Capturé
+sur `prototype/instagram-page`.
+
+## Answer
+
+**La page `/instagram` se lit de haut en bas ainsi** (maquette retenue :
+branche jetable `prototype/instagram-page`,
+`saas/web/app/instagram/_prototype-page/maquette.tsx`, ouverte par
+`/instagram?maquette=page`) :
+
+1. **Bandeau** — période, et « Règles de lecture » ([ticket 11](11-les-regles-d-analyse-reglables.md)).
+2. **Ta page (la Tendance)** — **les abonnés en grand à gauche** (cumul +
+   barres gagnés / perdus), **portée et interactions du compte empilées à
+   droite** (trait plein = période, pointillé = période d'avant, jours de
+   publication cliquables, un trou pour un jour sans donnée). Remplace
+   l'ordre Portée → Interactions → Abonnés de [Le compte dans le temps](10-le-compte-dans-le-temps.md),
+   qui garde tout le reste.
+3. **Le Sélecteur de vue** — objectif (Portée / Engagement / Abonnés) et
+   ses métriques ; une métrique pas en base reste grisée avec sa raison.
+4. **« Tes posts face à ton année » — un seul module** : une ligne de
+   texte (la référence, la définition de la métrique), puis **une rangée
+   par format** :
+   - en tête, « post type de l'année » et son nombre de posts, et deux
+     pastilles d'évolution — « 3 mois +9 % · 15 posts », « 1 mois −12 % ·
+     6 posts » (sous ±5 %, « ≈ ») ;
+   - **à gauche, le nuage** des posts de la période (date × métrique),
+     posé sur **la bande 25-75 % et la ligne du post type de l'année** ;
+     les 5 meilleurs y sont numérotés ;
+   - **à droite, les moustaches pesées** sur le même axe : **12 mois** (la
+     référence, large et pleine), **3 derniers mois** (« à lire avec
+     prudence ») et **dernier mois** (« encore mince ») ; la largeur et
+     l'encre d'une boîte suivent son nombre de posts ; **sous 6 posts, pas
+     de moustache**, « 5 / 6 posts » à la place.
+   - **À droite du module, la liste des 5 meilleurs posts de la période**,
+     collante, qui défile : vignette, valeur, place, mini-moustache « parmi
+     tes Reels des 12 derniers mois », légende, « Lire le post ». Aucun
+     filtre. Cela tranche « Comparaison et Sélection, un module ou deux » :
+     **un seul**.
+5. **Tous tes posts (le Tableau)** — **tout l'historique**, sans filtre de
+   période ; colonne **Date** triable dans les deux sens ; chaque métrique
+   triable ; colonne Place ; **export Excel** avec la date.
+6. **Le Panneau « lire un post »** (`?post=`) — **le lecteur public
+   d'Instagram** pour un Reel ou une vidéo (à partir du `permalink` : Pulse
+   ne garde pas la vidéo), la légende, le lien public, la valeur et la
+   moustache sur la métrique choisie, **sa place sur chaque métrique**.
+   Carrousel entier, commentaires, temps de visionnage : absents.
+
+**La référence change** : la place d'un post se lit contre **ses pareils
+des 12 derniers mois glissants** (plus de 48 h), plus contre ceux de la
+période — « ça prend vraiment tous les posts », sans l'effet Noël puis
+janvier ; changer la période déplace les points, jamais les moustaches.
+**Remplace « sur la période »** de [La place d'un post](06-la-place-d-un-post.md)
+(minimum 6, quartiles exclusifs, Tukey 1,5 : inchangés).
+
+**Les états** : *compte neuf* — un seul encart qui dit ce que le premier
+passage du worker lira ; *jeton mort* — un grand encart en tête (« Tes
+chiffres Instagram sont figés au … », ce qui reste juste / ce qui manque,
+« Reconnecter Instagram »), la page grisée dessous, badge « figé au … » ;
+*compte gratuit (10 posts)* — les moustaches disparaissent faute de 6
+posts, la page le dit.
+
+**Ce que la maquette a montré pour la suite** :
+- le haut de page n'a **aucune donnée** aujourd'hui (portée et interactions
+  du compte jamais récoltées ; abonnés figés au 2026-09-04) — la maquette
+  dessine une **série inventée, marquée « exemple »** : rien de cela n'ira
+  en production ;
+- **l'objectif Abonnés n'a aucun chiffre par post** (`follows`, `shares`
+  absents de la table) ; les **Reels n'ont aucun j'aime** en base ;
+- `permalink` est en base mais `getInstaDash` ne le lit pas ; quelques
+  posts n'en ont pas (pas de lecteur).
+
+**Reste ouvert, porté ailleurs** :
+- **un post plus vieux que 12 mois** (Tableau) est placé contre l'année
+  **actuelle** — garder ou le placer contre la sienne → nouveau ticket
+  [La place d'un post hors de l'année](20-la-place-d-un-post-hors-de-l-annee.md),
+  avec le seuil de ±5 % des pastilles ;
+- le carré : [Le carré de sélection, en maquette](12-le-carre-en-maquette.md)
+  est **répondu par cette page** (un module ; les 5 meilleurs de la
+  période, sans choix de mode) — à clore par la session qui le tient.
