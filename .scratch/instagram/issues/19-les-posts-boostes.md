@@ -61,3 +61,10 @@ Pour [Ce que la récolte et le traitement doivent calculer](14-ce-que-le-traitem
 la colonne `booste` de la fiche devient `booste_vu_le` (date, null = aucun
 boost vu) ; le relevé porte `booste` (booléen du moment). La relecture
 unique remplit `booste_vu_le` pour les posts déjà en base.
+
+> **Éclairé par [L'essai réel](17-l-essai-reel-des-metriques.md)
+> (2026-11-06)** : `boost_ads_list` est obtenu et **garde les annonces
+> terminées** — la mention « boosts vus seulement quand ils tournaient »
+> tombe ; un vieux boost est vu dès la relecture unique. La même annonce
+> revient plusieurs fois : dédoublonner par `ad_id`. Le statut `error` se
+> tranche dans [Ce que l'essai réel laisse à décider](22-ce-que-l-essai-laisse-a-decider.md).

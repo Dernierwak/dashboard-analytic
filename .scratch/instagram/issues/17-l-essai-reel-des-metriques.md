@@ -1,9 +1,9 @@
 # 17: L'essai réel des métriques Instagram
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
-Assignee: —
+Assignee: David (session Claude, 2026-11-06)
 
 ## Question
 
@@ -55,3 +55,54 @@ sortie. **Pas encore lancé sur un vrai compte.**
 
 Lancer, depuis la racine du worktree :
 `.scratch/instagram/essai/essai_reel.sh`
+
+## Résolution (2026-11-06, essai lancé par David sur un compte réel)
+
+Compte `0b83e564-…` (Instagram `17841400933148249`), 200 posts lus, Graph
+v24.0. Détail brut : `.essais/essai-instagram-20261106-2301.json` (local,
+ignoré par git). Chiffres sur 7 jours arrêtés au 2026-11-05.
+
+1. **Scopes : suffisants.** Insights du compte et des posts lus sans
+   `pages_read_engagement` (accordés : `ads_management`, `business_management`,
+   `instagram_basic`, `instagram_manage_insights`, `pages_show_list`).
+2. **`follower_count` existe, et compte les abonnés GAGNÉS par jour**, pas le
+   total : 30 valeurs (du 2026-10-07 au 2026-11-05), de 16 à 90 par jour ; une
+   fenêtre de plus de 30 jours entre `since` et `until` est refusée (erreur
+   100). Remonter plus loin par fenêtres successives : **pas essayé**.
+3. **`follows_and_unfollows` par `follow_type`** : `FOLLOWER` = gagnés,
+   `NON_FOLLOWER` = perdus — 300 et 146 sur 7 jours ; 300 = la somme exacte de
+   `follower_count` sur les mêmes jours, d'où la lecture. `total_value.value`
+   n'est pas rendu avec la ventilation. Meta : les perdus comptent aussi les
+   comptes qui ont quitté Instagram.
+4. **`follows` sur un Reel : erreur 100** (« does not support the follows
+   metric for this media product type »), pas un jeu vide. La récolte, qui
+   écrit 0 sur exception, doit écrire null.
+5. **`lifetime` = le cumul à la lecture** ; `period=day` sur un post est
+   remplacé : la réponse dit `lifetime`, même valeur.
+6. **La portée du compte sur 7 jours est dédoublonnée** : `total_value` =
+   65 980, la somme des 7 jours = 101 990. La portée par jour ne
+   s'additionne pas ; la portée d'une période se lit en `total_value`.
+7. **`media_product_type` sépare bien** : 72 Carrousels, 70 Images, 58 Reels
+   (`VIDEO/REELS`) — **aucune vidéo du fil** dans les 200 derniers posts.
+   Sur 15 posts du fil, `follows` rend **0** pour 4 et plus de 0 pour 11 : un
+   post du fil sans abonné gagné rend un vrai 0, pas un vide.
+8. **La part boostée existe** : `AD` présent dans les deux ventilations.
+   - **Interactions** : la ventilation s'additionne au total (7 609, dont
+     `AD` = 91) → Organique = total − `AD`, **mesurable**.
+   - **Portée** : la somme de la ventilation (83 519) dépasse le total
+     (65 980) — elle est dédoublonnée par produit, pas entre produits. `AD` =
+     32 223 se lit, mais l'organique ne se déduit pas (confirme
+     [Le compte dans le temps](10-le-compte-dans-le-temps.md)).
+   - La ventilation compte aussi `STORY`, et `CAROUSEL_CONTAINER` /
+     `CAROUSEL_ITEM` pour la portée.
+9. **`boost_ads_list` : obtenu.** Entrée = `ad_id`, `ad_status` ; 5 posts sur
+   200 ont au moins une annonce. **La même annonce revient plusieurs fois**
+   (jusqu'à 6) : dédoublonner par `ad_id`. Statuts vus : `completed`,
+   `archived`, `error` (une seule annonce, sur un Reel de juillet 2025) —
+   minuscules.
+10. **Les annonces terminées restent listées** (`completed`, `archived`) : la
+    mention « boosts vus seulement quand ils tournaient » de
+    [Les posts boostés](19-les-posts-boostes.md) n'a pas lieu d'être.
+
+Deux questions nouvelles, pour David : [Ce que l'essai réel laisse à
+décider](22-ce-que-l-essai-laisse-a-decider.md).

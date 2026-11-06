@@ -137,13 +137,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; Ce que l'essai laisse à décider |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
-| [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
+| [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) ✓ | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling ✓ | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling ✓ | — |
 | [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling ✓ | — |
 | [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling ✓ | — |
+| [Ce que l'essai réel laisse à décider](issues/22-ce-que-l-essai-laisse-a-decider.md) | grilling | — |
 
 ## Decisions so far
 
@@ -256,6 +257,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   raté puis vu est marqué dès qu'il est vu ; un anneau autour du point au
   nuage, l'étiquette « Boosté » ailleurs, aucun budget ; l'absence veut dire
   « aucun boost vu », et deux cas restent à l'essai réel.
+- [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) :
+  nos scopes suffisent ; `follower_count` = gagnés par jour (30 jours au
+  plus), gagnés / perdus = `FOLLOWER` / `NON_FOLLOWER` ; `follows` sur un
+  Reel = erreur (→ null), 0 réel sur le fil ; `lifetime` = cumul ; portée
+  dédoublonnée sur la période ; `AD` rendu — Organique mesurable pour les
+  interactions, pas pour la portée ; `boost_ads_list` obtenu et garde les
+  annonces terminées ; aucune vidéo du fil dans les 200 derniers posts.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook

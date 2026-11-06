@@ -295,3 +295,10 @@ format relevés au même J+n, donc des semaines de relevés après la mise en
 service. La sonde de §0, rejouée après la relecture, doit montrer
 `media_product_type` sur tous les posts relus, `follows` vide sur les Reels
 et `likes` > 0 sur les vidéos.
+
+> **Éclairé par [L'essai réel](17-l-essai-reel-des-metriques.md)
+> (2026-11-06)** : `follows` sur un Reel rend une **erreur 100** → null, jamais
+> 0 ; sur un post du fil, 0 est un vrai 0. Gagnés / perdus = `FOLLOWER` /
+> `NON_FOLLOWER` de `follows_and_unfollows`, fenêtre ≤ 30 jours. Part `AD` :
+> à stocker pour Portée et Interactions (2.3). `boost_ads_list` : dédoublonner
+> par `ad_id`, statuts en minuscules.

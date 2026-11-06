@@ -112,3 +112,13 @@ il reste à savoir laquelle s'applique, aucune décision nouvelle.
 > (2026-11-06)** : l'ordre change — **les abonnés en grand à gauche**
 > (cumul + barres gagnés / perdus), portée et interactions du compte
 > empilées à droite. Le reste de cette réponse tient.
+
+> **Éclairé par [L'essai réel](17-l-essai-reel-des-metriques.md)
+> (2026-11-06)** : l'interrupteur Tout / Organique / Boosté **existe** —
+> `AD` est rendu ; Organique se mesure pour les **Interactions** (la
+> ventilation s'additionne au total), pas pour la **Portée** (ventilation
+> dédoublonnée par produit, somme > total) : Boosté seul s'y lit. Abonnés :
+> gagnés = `FOLLOWER`, perdus = `NON_FOLLOWER` de `follows_and_unfollows`
+> (300 = la somme de `follower_count`), fenêtre de 30 jours au plus. Le
+> départ de la courbe se rouvre dans [Ce que l'essai réel laisse à
+> décider](22-ce-que-l-essai-laisse-a-decider.md).
