@@ -42,6 +42,7 @@ import { SwitcherPage } from "./switcher";
 type SP = DashParams & Record<string, string | string[] | undefined>;
 
 const VARIANTES = [
+  { cle: "D", nom: "Ton année, et la liste à droite" },
   { cle: "A", nom: "Côte à côte" },
   { cle: "B", nom: "Un nuage par format" },
   { cle: "C", nom: "Les cartes à côté" },
@@ -128,13 +129,16 @@ function quartiles(v: number[]): { q1: number; med: number; q3: number } | null 
   return { q1: q[0], med: q[1], q3: q[2] };
 }
 
-function foulesN(historique: InstaPost[], fenetre: InstaPost[], cle: string, sansHorsNorme: boolean, n: number, maintenant: number): FouleN[] {
+type Reference = { n: number } | { jours: number };
+
+function foulesN(historique: InstaPost[], fenetre: InstaPost[], cle: string, sansHorsNorme: boolean, reference: Reference, maintenant: number): FouleN[] {
   const hist = foules(historique, cle, false, maintenant);
   return foules(fenetre, cle, false, maintenant).map((fv) => {
     const ref = (hist.find((h) => h.format === fv.format)?.lus ?? [])
       .filter((l) => l.dehors === null)
       .sort((a, b) => b.post.date.localeCompare(a.post.date))
-      .slice(0, n);
+      .filter((l) => !("jours" in reference) || maintenant - new Date(l.post.date).getTime() <= reference.jours * 86400_000)
+      .slice(0, "n" in reference ? reference.n : undefined);
     let gardes = ref.map((l) => l.valeur!);
     let refEcartes: number[] = [];
     let q = quartiles(gardes);
@@ -197,7 +201,17 @@ type Lecture = {
   liens: Map<string, string>;
   exemple: boolean;
   fige: boolean;
+  /** Tour 3 : la référence est l'année (12 mois glissants). */
+  parAnnee: boolean;
+  /** Les moustaches d'évolution : 3 derniers mois, dernier mois. */
+  recents: Map<string, { trois?: FouleN; un?: FouleN }>;
 };
+
+/** Ce contre quoi un post est placé, en mots. */
+function refTexte(L: Lecture, f: FouleN | undefined, format: string): string {
+  const k = f?.valeurs.length ?? 0;
+  return L.parAnnee ? `tes ${pluriel(format, 2)} des 12 derniers mois (${k})` : `tes ${k} derniers ${pluriel(format, 2)}`;
+}
 
 // `permalink` est en base mais `getInstaDash` ne le lit pas : la maquette va le
 // chercher elle-même plutôt que de toucher `lib/channels.ts`.
@@ -247,24 +261,34 @@ export async function PrototypePage({
   const mode = (MODES.some((m) => m.cle === sp.pmode) ? sp.pmode : "haut") as Mode;
   const sansHorsNorme = sp.phn === "1";
   const choisis = String(sp.ps ?? "").split(",").filter(Boolean).slice(0, 5);
-  const variante = VARIANTES.some((v) => v.cle === sp.pv) ? String(sp.pv) : "A";
+  const variante = VARIANTES.some((v) => v.cle === sp.pv) ? String(sp.pv) : "D";
   const maintenant = Date.now();
+  // Tour 3 (David) : la référence est l'année — 12 mois glissants, pas
+  // l'année civile, pour que janvier ne remette pas tout à zéro.
+  const parAnnee = variante === "D";
+  const reference: Reference = parAnnee ? { jours: 365 } : { n };
 
-  const fs = cle ? foulesN(historique, posts, cle, sansHorsNorme, n, maintenant).filter((f) => f.lus.length > 0) : [];
+  const fs = cle ? foulesN(historique, posts, cle, sansHorsNorme, reference, maintenant).filter((f) => f.lus.length > 0) : [];
   const sel = cle ? selection(fs, mode, choisis, 5) : [];
   const tousLus = foules(posts, "reach", false, maintenant).flatMap((f) => f.lus);
   const ouvert = sp.post ? (fs.flatMap((f) => f.lus).find((l) => l.post.id === sp.post) ?? tousLus.find((l) => l.post.id === sp.post)) : undefined;
   const places = ouvert
     ? METRIQUES.map((m) => {
-        const f = foulesN(historique, posts, m.cle, sansHorsNorme, n, maintenant).find((x) => x.format === ouvert.post.type);
+        const f = foulesN(historique, posts, m.cle, sansHorsNorme, reference, maintenant).find((x) => x.format === ouvert.post.type);
         const l = f?.lus.find((x) => x.post.id === ouvert.post.id);
         return { nom: m.nom, valeur: fmt(l?.valeur ?? null, m.cle), texte: l ? placeN(l, f) : "–" };
       })
     : [];
   const liens = await lirePermaliens();
+  const recents = new Map<string, { trois?: FouleN; un?: FouleN }>();
+  if (parAnnee && cle) {
+    const trois = foulesN(historique, posts, cle, sansHorsNorme, { jours: 90 }, maintenant);
+    const un = foulesN(historique, posts, cle, sansHorsNorme, { jours: 30 }, maintenant);
+    for (const f of fs) recents.set(f.format, { trois: trois.find((x) => x.format === f.format), un: un.find((x) => x.format === f.format) });
+  }
 
   const L: Lecture = {
-    sp, objectif, metrique, cle, fs, n, sel, mode, choisis, sansHorsNorme, posts, serie, debut, fin, ouvert, places, liens,
+    sp, objectif, metrique, cle, fs, n, sel, mode, choisis, sansHorsNorme, posts, serie, debut, fin, ouvert, places, liens, parAnnee, recents,
     exemple: sp.ex !== "0" && etat !== "neuf",
     fige: etat === "jeton",
   };
@@ -288,6 +312,7 @@ export async function PrototypePage({
                 <SansMetrique L={L} />
               ) : (
                 <>
+                  {variante === "D" && <PageD {...L} />}
                   {variante === "A" && <PageA {...L} />}
                   {variante === "B" && <PageB {...L} />}
                   {variante === "C" && <PageC {...L} />}
@@ -922,7 +947,7 @@ function CartePost({ L, l, n, compacte }: { L: Lecture; l: PostLu; n: number; co
           <div className="mt-1">
             <MoustacheH f={f} cle={L.cle!} marques={[{ l }]} />
             <div className="flex justify-between text-[9.5px] text-faint">
-              <span>parmi tes {f.valeurs.length} derniers {pluriel(f.format, 2)}</span>
+              <span>parmi {refTexte(L, f, f.format)}</span>
               <span>post type {fmt(f.q.med, L.cle!)}</span>
             </div>
           </div>
@@ -1056,7 +1081,7 @@ function Tableau({ L }: { L: Lecture }) {
     <div className="rounded-2xl border border-line bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-[12px]">
         <span className="font-semibold text-ink">{rangs.length} posts</span>
-        <span className="text-faint">· place lue en {L.metrique.nom.toLowerCase()}, contre les {L.n} derniers posts du format</span>
+        <span className="text-faint">· place lue en {L.metrique.nom.toLowerCase()}, contre {L.parAnnee ? "les posts du format des 12 derniers mois" : `les ${L.n} derniers posts du format`}</span>
         <span className="ml-auto rounded-full border border-line px-2.5 py-1 font-semibold text-muted" title="Maquette : exporte le Tableau tel que trié et filtré">Exporter vers Excel</span>
       </div>
       <div className="max-h-[460px] overflow-auto">
@@ -1133,7 +1158,7 @@ function PanneauLateral({ L }: { L: Lecture }) {
           </div>
         )}
         <div className="mt-4">
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Sa place sur chaque métrique, parmi tes {L.n} derniers {pluriel(p.type, 2)}</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Sa place sur chaque métrique, parmi {refTexte(L, f, p.type)}</div>
           <dl className="divide-y divide-line rounded-xl border border-line text-[12px]">
             {L.places.map((x) => (
               <div key={x.nom} className="flex items-baseline gap-2 px-3 py-1.5">
@@ -1150,5 +1175,198 @@ function PanneauLateral({ L }: { L: Lecture }) {
         </p>
       </aside>
     </>
+  );
+}
+
+// ── PAGE D · TON ANNÉE, ET LA LISTE À DROITE (tour 3) ───────────────────────
+// David : la référence est l'année — « ça prend vraiment tous les posts », sans
+// l'effet Noël puis janvier ; à côté, les derniers mois, pour voir « si
+// généralement ils sont un peu plus haut » ; moitié nuage, moitié moustaches ;
+// et la liste des posts qui défile à droite, tout dans un module (de la C).
+
+function SurQuoiAnnee({ L }: { L: Lecture }) {
+  return (
+    <div className="mb-4 rounded-xl bg-canvas px-4 py-3 text-[12.5px] leading-relaxed text-muted">
+      <b className="text-ink">Ta référence : tes posts des 12 derniers mois</b>, format par format — une année entière, Noël et janvier
+      compris. C&apos;est contre elle que chaque post prend sa place, et{" "}
+      <b className="text-ink">elle ne bouge pas quand tu changes la période</b> : seuls les points du nuage changent. À côté, tes{" "}
+      <b className="text-ink">3 derniers mois</b> et ton <b className="text-ink">dernier mois</b> : si leur boîte est plus haute que celle de
+      l&apos;année, tes posts montent en général, pas seulement un.
+    </div>
+  );
+}
+
+const AVANT = { annee: "12 mois", trois: "3 derniers mois", un: "dernier mois" };
+
+function ecart(recent: FouleN | undefined, annee: FouleN, cle: string, nom: string) {
+  if (!recent || !recent.q || !annee.q) {
+    return <span className="text-faint">{nom} : {recent?.nAvant ?? 0} post{(recent?.nAvant ?? 0) > 1 ? "s" : ""}, il en faut {MINIMUM} pour une moustache</span>;
+  }
+  const d = annee.q.med > 0 ? ((recent.q.med - annee.q.med) / annee.q.med) * 100 : null;
+  // ±5 % : en deçà, deux médianes de quelques posts ne disent pas un sens.
+  const sens = d === null || Math.abs(d) < 5 ? "comme ton année" : `${d > 0 ? "+" : "−"}${Math.abs(Math.round(d))} % sur ton année`;
+  const couleur = d === null || Math.abs(d) < 5 ? "#5a5d66" : d > 0 ? POS : NEG;
+  return (
+    <span>
+      {nom} : post type <b className="font-mono text-ink">{fmt(recent.q.med, cle)}</b> sur {recent.valeurs.length} posts —{" "}
+      <b style={{ color: couleur }}>{sens}</b>
+    </span>
+  );
+}
+
+function RangeeFormat({ L, f }: { L: Lecture; f: FouleN }) {
+  const cle = L.cle!;
+  const r = L.recents.get(f.format) ?? {};
+  return (
+    <div className="border-t border-line pt-5 first:border-0 first:pt-0">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: COULEUR_FORMAT[f.format] }} /> {f.format}
+        </span>
+        <span className="text-[12.5px] text-muted">
+          {f.q ? (
+            <>post type de l&apos;année <b className="font-mono text-ink">{fmt(f.q.med, cle)}</b> — la moitié de tes {f.valeurs.length} {pluriel(f.format, 2)} des 12 derniers mois fait plus, l&apos;autre moins</>
+          ) : (
+            <>{f.nAvant} {pluriel(f.format, f.nAvant)} en 12 mois : il en faut {MINIMUM} pour une moustache</>
+          )}
+        </span>
+        <span className="text-[11px] text-faint">{f.lus.length} sur la période affichée</span>
+      </div>
+      <div className="mb-1 flex flex-wrap gap-x-5 gap-y-0.5 text-[12px] text-muted">
+        {ecart(r.trois, f, cle, AVANT.trois)}
+        {ecart(r.un, f, cle, AVANT.un)}
+      </div>
+      <NuageEvolution L={L} f={f} colonnes={[{ nom: AVANT.annee, f, ref: true }, { nom: AVANT.trois, f: r.trois }, { nom: AVANT.un, f: r.un }]} />
+    </div>
+  );
+}
+
+/** Moitié gauche : le nuage du format sur la période. Moitié droite : ses
+ *  moustaches côte à côte (l'année, puis les derniers mois), même axe. */
+function NuageEvolution({ L, f, colonnes }: { L: Lecture; f: FouleN; colonnes: { nom: string; f?: FouleN; ref?: boolean }[] }) {
+  const cle = L.cle!;
+  const W = 1100;
+  const H = 250;
+  const NX = 560;
+  const t0 = new Date(L.debut).getTime();
+  const t1 = Math.max(new Date(L.fin).getTime(), t0 + 86400_000);
+  const tukey = (g: FouleN) => {
+    const e = 1.5 * (g.q!.q3 - g.q!.q1);
+    const dedans = g.valeurs.filter((v) => v >= g.q!.q1 - e && v <= g.q!.q3 + e);
+    return { haut: Math.max(...dedans), bas: Math.min(...dedans) };
+  };
+  const avecBoite = colonnes.filter((c) => c.f?.q);
+  const lus = f.lus.filter((l) => l.valeur !== null);
+  const plafond = Math.max(...(avecBoite.length ? avecBoite.map((c) => tukey(c.f!).haut) : lus.map((l) => l.valeur!)), 1);
+  const vmax = plafond * 1.1;
+  const y = (v: number) => H - 30 - (Math.min(v, vmax) / vmax) * (H - 56);
+  const x = (t: number) => 64 + ((t - t0) / (t1 - t0)) * (NX - 84);
+  const tous = L.sp.pt === "1";
+  const numero = new Map(L.sel.map((l, i) => [l.post.id, i + 1]));
+  const c = COULEUR_FORMAT[f.format] ?? NEUTRE.trait;
+  const colW = (W - NX - 30) / colonnes.length;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="block" role="img" aria-label={`Les ${f.format} de la période face à leur année`}>
+      {[0, 0.5, 1].map((k) => (
+        <g key={k}>
+          <line x1={58} x2={W - 6} y1={y(k * plafond)} y2={y(k * plafond)} stroke={NEUTRE.trait} strokeOpacity={0.22} />
+          <text x={52} y={y(k * plafond) + 3.5} fontSize={11} fill="#8b8e98" textAnchor="end">{fmt(k * plafond, cle)}</text>
+        </g>
+      ))}
+      <text x={64} y={H - 8} fontSize={11} fill="#8b8e98">{dateCourte(L.debut)}</text>
+      <text x={NX - 20} y={H - 8} fontSize={11} fill="#8b8e98" textAnchor="end">{dateCourte(L.fin)}</text>
+      <line x1={NX} x2={NX} y1={8} y2={H - 22} stroke={NEUTRE.trait} strokeOpacity={0.45} strokeDasharray="3 3" />
+      {lus.map((l) => {
+        const cx = x(new Date(l.post.date).getTime());
+        const dessus = l.valeur! > vmax;
+        const n = tous ? undefined : numero.get(l.post.id);
+        const creux = l.dehors !== null || l.recent || l.ecarte;
+        return (
+          <a key={l.post.id} href={lien(L.sp, { post: l.post.id })}>
+            <title>{`${fmt(l.valeur, cle)} · ${placeN(l, f)}`}</title>
+            {dessus ? (
+              <>
+                <path d={`M${cx - 6},${y(vmax) + 7} L${cx + 6},${y(vmax) + 7} L${cx},${y(vmax) - 2} Z`} fill={c} />
+                <text x={cx} y={y(vmax) - 6} fontSize={10} fill="#5a5d66" textAnchor="middle">{n ? `${n} · ` : ""}{fmt(l.valeur, cle)}</text>
+              </>
+            ) : (
+              <circle cx={cx} cy={y(l.valeur!)} r={n ? 10 : 5} fill={creux && !n ? "#fff" : c} stroke={n ? "#fff" : c} strokeWidth={n ? 2.5 : 1.5} opacity={l.ecarte ? 0.4 : 1} />
+            )}
+            {n && !dessus && <text x={cx} y={y(l.valeur!) + 4} fontSize={11} fontWeight={700} fill="#fff" textAnchor="middle">{n}</text>}
+          </a>
+        );
+      })}
+      {colonnes.map((col, i) => {
+        const cx = NX + 30 + colW * i + colW / 2 - 20;
+        const g = col.f;
+        return (
+          <g key={col.nom}>
+            <text x={cx} y={H - 8} fontSize={11.5} fontWeight={col.ref ? 700 : 500} fill={col.ref ? "#0e0f12" : "#5a5d66"} textAnchor="middle">{col.nom}</text>
+            {g?.q ? (
+              <>
+                <line x1={cx} x2={cx} y1={y(tukey(g).haut)} y2={y(tukey(g).bas)} stroke={c} strokeOpacity={0.6} />
+                <line x1={cx - 9} x2={cx + 9} y1={y(tukey(g).haut)} y2={y(tukey(g).haut)} stroke={c} strokeOpacity={0.6} />
+                <line x1={cx - 9} x2={cx + 9} y1={y(tukey(g).bas)} y2={y(tukey(g).bas)} stroke={c} strokeOpacity={0.6} />
+                <rect x={cx - 22} y={y(g.q.q3)} width={44} height={Math.max(3, y(g.q.q1) - y(g.q.q3))} rx={5} fill={c} fillOpacity={col.ref ? 0.2 : 0.08} stroke={c} strokeDasharray={col.ref ? undefined : "4 3"} />
+                <line x1={cx - 26} x2={cx + 26} y1={y(g.q.med)} y2={y(g.q.med)} stroke={c} strokeWidth={3} />
+                {g.valeurs.filter((v) => v <= vmax).map((v, k) => <circle key={k} cx={cx - 34} cy={y(v)} r={1.8} fill={c} opacity={0.5} />)}
+                <text x={cx + 30} y={y(g.q.q3) + 4} fontSize={10} fill="#5a5d66">{fmt(g.q.q3, cle)}</text>
+                <text x={cx + 30} y={y(g.q.med) + 4} fontSize={11} fontWeight={700} fill="#0e0f12">{fmt(g.q.med, cle)}</text>
+                <text x={cx + 30} y={y(g.q.q1) + 4} fontSize={10} fill="#5a5d66">{fmt(g.q.q1, cle)}</text>
+                <text x={cx} y={H - 22} fontSize={9.5} fill="#8b8e98" textAnchor="middle">{g.valeurs.length} posts</text>
+                {g.valeurs.some((v) => v > vmax) && (
+                  <text x={cx} y={14} fontSize={9.5} fill="#5a5d66" textAnchor="middle">{`▲ ${g.valeurs.filter((v) => v > vmax).length} plus haut`}</text>
+                )}
+              </>
+            ) : (
+              <text x={cx} y={H / 2} fontSize={10.5} fill="#8b8e98" textAnchor="middle">{`${g?.nAvant ?? 0} / ${MINIMUM} posts`}</text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ColonnePosts({ L }: { L: Lecture }) {
+  const tous = L.sp.pt === "1";
+  const liste = tous ? selection(L.fs, "haut", [], 999) : L.sel;
+  return (
+    <aside className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white xl:sticky xl:top-4">
+      <div className="border-b border-line px-4 py-3">
+        <div className="text-[13.5px] font-semibold text-ink">{tous ? `Tous tes posts, du meilleur au moins bon en ${L.metrique.nom.toLowerCase()}` : intitule(L)}</div>
+        <div className="mt-0.5 text-[11px] text-faint">chacun placé contre ses pareils des 12 derniers mois</div>
+        <div className="mt-2 flex gap-1">
+          <Pastille href={lien(L.sp, { pt: undefined })} actif={!tous}>La sélection</Pastille>
+          <Pastille href={lien(L.sp, { pt: "1" })} actif={tous}>Tous ({selection(L.fs, "haut", [], 999).length})</Pastille>
+        </div>
+      </div>
+      <div className="grid max-h-[80vh] gap-2 overflow-y-auto bg-canvas p-2">
+        {liste.map((l, i) => <CartePost key={l.post.id} L={L} l={l} n={i + 1} compacte />)}
+      </div>
+    </aside>
+  );
+}
+
+function PageD(L: Lecture) {
+  return (
+    <section>
+      <Titre titre="Tes posts face à ton année" sous="Format par format : le nuage de la période à gauche, tes moustaches à droite — l'année, puis tes derniers mois." droite={<ChoixSelection L={L} />} />
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 rounded-2xl border border-line bg-white p-5">
+          <SurQuoiAnnee L={L} />
+          <Definition L={L} />
+          <PhraseEcartes L={L} />
+          <div className="grid gap-5">
+            {L.fs.map((f) => <RangeeFormat key={f.format} L={L} f={f} />)}
+          </div>
+          <p className="mt-3 text-[11px] text-faint">
+            Point creux = moins de 48 h, peut encore changer, ou écarté. Triangle = au-delà du haut de l&apos;axe. Boîte pleine = l&apos;année, ta
+            référence ; boîtes en pointillé = tes derniers mois. Les petits points à gauche d&apos;une boîte sont les posts qui la font.
+          </p>
+        </div>
+        <ColonnePosts L={L} />
+      </div>
+    </section>
   );
 }
