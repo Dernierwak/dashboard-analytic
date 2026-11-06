@@ -314,7 +314,7 @@ export default async function InstagramPage({
       />
 
       {process.env.NODE_ENV !== "production" && (searchParams as Record<string, string | undefined>).maquette === "page" ? (
-        <PrototypePage posts={d.posts} serie={d.followersSeries} debut={d.windowDebut} fin={d.windowFin} sp={searchParams as Parameters<typeof PrototypePage>[0]["sp"]} />
+        <PrototypePage posts={d.posts} historique={d.allPosts} serie={d.followersSeries} debut={d.windowDebut} fin={d.windowFin} sp={searchParams as Parameters<typeof PrototypePage>[0]["sp"]} />
       ) : (<>
       {process.env.NODE_ENV !== "production" && (
         <PrototypeSelection posts={d.posts} sp={searchParams as Parameters<typeof PrototypeSelection>[0]["sp"]} />
