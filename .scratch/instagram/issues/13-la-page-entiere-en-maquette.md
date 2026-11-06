@@ -423,6 +423,9 @@ posts, la page le dit.
   du compte jamais récoltées ; abonnés figés au 2026-09-04) — la maquette
   dessine une **série inventée, marquée « exemple »** : rien de cela n'ira
   en production ;
+- _Corrigé par [Ce que la récolte et le traitement doivent calculer](14-ce-que-le-traitement-doit-calculer.md)
+  (sonde du 2026-11-06) : `follows` **est** en base, mais à 0 sur les 124
+  vidéos (faux zéros) ; seul `shares` manque._
 - **l'objectif Abonnés n'a aucun chiffre par post** (`follows`, `shares`
   absents de la table) ; les **Reels n'ont aucun j'aime** en base ;
 - `permalink` est en base mais `getInstaDash` ne le lit pas ; quelques

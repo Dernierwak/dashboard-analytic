@@ -128,13 +128,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Les règles d'analyse réglables](issues/11-les-regles-d-analyse-reglables.md) | grilling ✓ | — |
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
-| [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task | L'âge ; Les règles ; La page entière |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | Ce que la récolte et le traitement doivent calculer |
+| [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés ; Hors de l'année ; La profondeur de l'historique |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | — |
 | [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling | — |
+| [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling | — |
 
 ## Decisions so far
 
@@ -215,15 +216,18 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   liste à droite → Tableau de **tous les posts** (Date triable, export
   Excel) ; Panneau avec le lecteur Instagram ; **la référence devient les
   12 derniers mois glissants**, plus la période.
+- [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) :
+  la récolte se corrige (format par `media_product_type`, absence jamais
+  écrite 0, `shares` en plus) ; trois ajouts en base — relevés des posts,
+  un relevé du compte par jour, colonnes `shares` / `releve_a` — et une
+  relecture unique de **tous** les posts en base par un drapeau dédié ; la
+  foule, la place, l'âge égal et les filtres se calculent **une fois, à la
+  lecture, dans `lib/instagram/`**, rien en Python. La sonde corrige le
+  ticket 13 : `follows` est en base, mais à 0 sur les 124 vidéos.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
   `story_insights` — utiles ou non, à voir avec la structure de la page.
-- **Relire tous les posts à chaque passage ?** David attend que « toutes les
-  données soient mises à jour à chaque fois » (2026-11-03), alors que
-  [Garder l'historique](issues/05-garder-l-historique-d-un-post.md) arrête la
-  relecture à J+30 (plafond 40) et que le gratuit ne suit que 10 posts. À
-  confronter au coût en appels avant d'en faire un ticket.
 - **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
   Instagram doivent parler des mêmes posts avec les mêmes mots.
 
