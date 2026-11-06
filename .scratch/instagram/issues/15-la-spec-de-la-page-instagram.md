@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Blocked by: —
-Assignee: —
+Assignee: David (session Claude, 2026-11-06)
 
 ## Question
 
