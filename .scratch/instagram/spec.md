@@ -247,7 +247,11 @@ standard » ([Les règles d'analyse réglables][11]).
 
 **Une rangée par format**, en ordre fixe — Reel, Carrousel, Image, Vidéo du
 fil —, jamais trié par valeur, aucune phrase qui les classe
-([Les formats et les abonnés][09]).
+([Les formats et les abonnés][09]). Un format **sans aucun post sur les 12
+mois** n'a pas de rangée (la vidéo du fil, chez le compte de l'essai) ; un
+format qui en a dans l'année mais **aucun sur la période** garde sa rangée :
+sa bande de l'année, et « aucun post sur la période » à la place du nuage
+([arbitrage du 2026-11-06][15]).
 
 - **En tête de rangée** : « post type de l'année » et son `n` ; le **total**
   seulement pour ce qui se compte (`follows`, j'aime, commentaires, partages,
@@ -257,7 +261,9 @@ fil —, jamais trié par valeur, aucune phrase qui les classe
   « 3 mois +9 % · 15 posts », « 1 mois −12 % · 6 posts » — le post type de la
   fenêtre face au post type des 12 mois, jamais entre elles ; l'écart toujours
   écrit, signé, avec son nombre de posts ; **aucun « ≈ »** ; sous 6 posts,
-  pas de pastille ([La place d'un post hors de l'année][20]).
+  pas de pastille ([La place d'un post hors de l'année][20]). **Post type des
+  12 mois à 0** : un % n'existe pas (§7) ; la pastille écrit l'écart en
+  valeur — « 3 mois : 2 abonnés de plus · 15 posts » ([arbitrage du 2026-11-06][15]).
 - **À gauche, le nuage** : les posts de la période, date × métrique, couleur
   du format, posés sur **la bande 25-75 % et la ligne du post type de
   l'année** ; les 5 meilleurs y sont numérotés. Un post de moins de 48 h est
@@ -280,8 +286,7 @@ fil —, jamais trié par valeur, aucune phrase qui les classe
   Reels des 12 derniers mois », légende, étiquette « Boosté » s'il y a lieu
   ([Les posts boostés][19]), « Lire le post ». Aucun filtre propre. Sans les
   écartés ; un post sans valeur ou de moins de 48 h n'y entre pas
-  ([Ce que la récolte et le traitement doivent calculer][14], § 4). Le temps
-  de visionnage : voir § Ce qui reste ouvert.
+  ([Ce que la récolte et le traitement doivent calculer][14], § 4).
 
 ### Tableau détaillé — « Tous tes posts » ([La page entière, en maquette][13])
 
@@ -291,6 +296,8 @@ fil —, jamais trié par valeur, aucune phrase qui les classe
   colonne **Place** sur la métrique choisie ; la date du dernier relevé
   ([La profondeur de l'historique][21]) ; l'étiquette « Boosté » à côté du
   format ([Les posts boostés][19]).
+- Colonne **temps de visionnage moyen**, remplie pour les Reels, « – »
+  ailleurs ([arbitrage du 2026-11-06][15]).
 - Un post de plus de 12 mois : Place = **« plus d'un an »**, triable sur sa
   valeur brute, hors de tout calcul ([La place d'un post hors de l'année][20]).
 - Un écarté reste, **grisé, avec sa raison** : « écarté : hors norme sur les
@@ -310,6 +317,8 @@ fil —, jamais trié par valeur, aucune phrase qui les classe
   sur la métrique choisie, et **sa place sur chaque métrique**.
 - Pour un boosté : l'étiquette et la ligne « Chiffres organiques, hors boost —
   Instagram les rend ainsi » ([Les posts boostés][19]).
+- Pour un Reel : **le temps de visionnage moyen** ; « – » pour les autres
+  formats ([Les formats et les abonnés][09], [arbitrage du 2026-11-06][15]).
 - Absents : le carrousel entier, les commentaires.
 
 ### Les états de la page ([La page entière, en maquette][13])
@@ -385,7 +394,11 @@ lecture ajoute `permalink`, en base mais ignoré aujourd'hui. Les prototypes
 - **R1** — `post_metrics.py` choisit ses métriques par `media_product_type` :
   `REELS` et `FEED` demandent `reach, views, likes, comments, saved, shares` ;
   `FEED` seul ajoute `follows, profile_visits`. La vidéo du fil retrouve ses
-  j'aime.
+  j'aime. `REELS` ajoute **le temps de visionnage moyen** ([arbitrage du 2026-11-06][15]) — rendu pour
+  les seuls Reels d'après [Ce que l'API Instagram donne d'un post][02] ; son
+  nom exact se relève dans la doc Media Insights à la construction ; non
+  essayé avec notre jeton : vérifié au premier passage du worker, grisé
+  avec sa raison s'il ne revient pas.
 - **R2, R3** — une métrique non rendue **reste absente** : plus de `val or 0`,
   plus de `follows = 0` en cas d'exception ; `m.get(k)` au lieu de
   `m.get(k, 0)`. `follows` sur un Reel rend une **erreur 100** → null ; sur un
@@ -599,25 +612,11 @@ Rien ici n'est comblé par la spec : chaque point attend une décision de David.
    [Le carré][12]) ; et **le lien qui garde la sélection** (posts choisis et
    objectif), demandé par [La structure de la page][01], que [La page
    entière, en maquette][13] ne reprend pas.
-4. **Le temps de visionnage du Reel** : [Les formats et les abonnés][09] le
-   met au niveau du post (Sélection, Panneau, Tableau) ; [La page entière, en
-   maquette][13] le liste « absent » du Panneau ; [Ce que la récolte et le
-   traitement doivent calculer][14] ne le récolte pas (R1).
-5. **Les bornes exactes des bandes** (≤ ou < à q1, à la médiane, à q3, aux
+4. **Les bornes exactes des bandes** (≤ ou < à q1, à la médiane, à q3, aux
    limites de Tukey) : [Ce que la récolte et le traitement doivent
    calculer][14] dit qu'elles « s'écrivent une fois, dans la spec » ; aucun
    ticket ne les fixe.
-6. **Un format sans post** : [Les formats et les abonnés][09] dit « quatre
-   formats en ordre fixe » et « la vidéo du fil n'apparaît que si le compte en
-   a » ; [La page entière, en maquette][13] cache le bloc vide et le laisse
-   « à trancher ». Avec la référence sur 12 mois, le cas d'un format qui a des
-   posts dans l'année mais aucun sur la période n'est dit nulle part.
-7. **Une pastille d'évolution quand le post type des 12 mois vaut 0** (un
-   format dont la moitié des posts n'a gagné aucun abonné) : l'écart en %
-   n'existe pas (`CLAUDE.md` §7, pas de « +∞ % ») ; ce que la pastille écrit
-   alors n'est tranché par aucun ticket ([La place d'un post hors de
-   l'année][20]).
-8. **`docs/mesures-impossibles.md` n'existe plus** : tout `docs/` a quitté
+5. **`docs/mesures-impossibles.md` n'existe plus** : tout `docs/` a quitté
    l'arbre au commit `1b05a92`, sur `main` aussi. [Le compte dans le
    temps][10] y fait entrer la portée organique du compte : recréer le
    fichier, ou dire ailleurs ce qu'on ne mesure pas.

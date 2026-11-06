@@ -30,3 +30,11 @@ cite sous « arbitrage du 2026-11-06 ».
    Abonnés → abonnés pour 1 000 comptes touchés ; interrupteur sur Tout ;
    Tableau par date décroissante ; période comme Meta (les 7 jours qui
    finissent la veille du dernier Jour de travail).
+4. **Le temps de visionnage moyen du Reel** est récolté (`REELS` seulement),
+   affiché au Panneau et au Tableau, « – » ailleurs ; vérifié au premier
+   passage, grisé avec sa raison s'il ne revient pas.
+5. **Un format sans post** : aucun post sur les 12 mois → pas de rangée ;
+   des posts dans l'année mais aucun sur la période → la rangée garde sa
+   bande, « aucun post sur la période » à la place du nuage.
+6. **Post type des 12 mois à 0** : la pastille écrit l'écart en valeur
+   (« 3 mois : 2 abonnés de plus · 15 posts »), jamais un %.
