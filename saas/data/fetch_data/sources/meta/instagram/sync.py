@@ -1,18 +1,19 @@
 """La synchronisation Instagram : posts à relire, images et écriture.
 
-Les appels vivent dans `posts.py`, `account.py` et `metrics.py` ; ce fichier
-décide quoi relire et envoie à Supabase (`saas/data/supabase/source_data/meta.py`).
+Les appels vivent dans `posts.py`, `account.py` et `post_metrics.py` ; ce
+fichier décide quoi relire et envoie à Supabase (`saas/data/supabase/source_data/meta.py`).
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pandas as pd
 
 from saas.data.fetch_data.shared.date_ranges import Fenetre
 from saas.data.supabase.source_data.couverture import avancer_couverture, debut_des_posts_complets
 from saas.data.supabase.source_data.meta import (
-    COLONNES_SI_CONNUES, insert_instagram_org, insert_instagram_total_posts_id, televerser_image_instagram,
+    COLONNES_SI_CONNUES, insert_instagram_org, insert_instagram_releves, insert_instagram_total_posts_id,
+    televerser_image_instagram,
 )
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram.fetchers import account as compte
@@ -185,34 +186,86 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
     # Lu et jamais écrit — c'était déjà le cas avant le déménagement. Gardé
     # pour ne rien changer ; l'essai (ticket 08) en a besoin pour son contrôle.
     compte.recuperer(acces)
-    resultats = []
+    resultats, releves, refuses = [], [], 0
     total = len(a_relire)
     for rang, post_id in enumerate(a_relire, start=1):
         note(f"posts {rang}/{total}")
         info = metriques.info_du_post(acces, post_id)
-        media_type = info.get("media_type", "IMAGE")
-        m = metriques.metriques_du_post(acces, post_id, media_type)
-        resultats.append({
-            "post_id": post_id,
-            "type": info.get("media_type"),
-            "caption": info.get("caption", "")[:500],
-            "date": info.get("timestamp", ""),
-            "media_url": _image_du_post(sb, uid, post_id, info, media_connu),
-            "follows": m.get("follows", 0),
-            "likes": m.get("likes", 0),
-            "comments": m.get("comments", 0),
-            "saved": m.get("saved", 0),
-            "views": m.get("views", 0),
-            "reach": m.get("reach", 0),
-            "user_id": uid,
-            # Seulement si Meta les rend : l'upsert réécrit chaque colonne
-            # envoyée, et un None effacerait une valeur déjà acquise.
-            **{k: info[k] for k in COLONNES_SI_CONNUES if info.get(k)},
-        })
+        m = (None if info.get("error")
+             else metriques.metriques_du_post(acces, post_id, info.get("media_product_type")))
+        fiche, releve = lignes_du_post(uid, info, m, datetime.now(timezone.utc))
+        if fiche is None:
+            refuses += 1
+            continue
+        fiche["media_url"] = _image_du_post(sb, uid, post_id, info, media_connu)
+        resultats.append(fiche)
+        if releve is None:
+            refuses += 1
+        else:
+            releves.append(releve)
+    if refuses:
+        # Une panne n'est pas une absence : ces posts gardent leurs valeurs
+        # d'avant, sans relevé ce passage-ci. Ça se dit.
+        print(f"    posts Instagram : {refuses} lecture(s) refusée(s) par Meta "
+              "— valeurs précédentes gardées, pas de relevé.")
     note("écriture")
     if resultats:
         insert_instagram_org(supabase=sb, results=resultats)
+    insert_instagram_releves(sb, releves)
     en_base = set(media_connu) | {str(r["post_id"]) for r in resultats}
     avancer_couverture(sb, uid, ("instagram", "posts"),
                        Fenetre(debut_des_posts_complets(medias, en_base), date.today()), trous)
-    return f"insta: {len(resultats)} nouveaux posts"
+    return f"insta: {len(resultats)} posts relus, {len(releves)} relevés"
+
+
+def lignes_du_post(uid: str, info: dict, metriques: dict | None,
+                   releve_a: datetime) -> tuple[dict | None, dict | None]:
+    """Une lecture d'un post → (sa fiche, son relevé) à écrire.
+
+    La fiche porte le dernier relevé ; le relevé s'AJOUTE, daté, avec son âge
+    réel (spec § Ce qui s'ajoute, « Le relevé d'un post ») : un passage manqué
+    donne un J+8, jamais un faux J+7.
+
+    · Fiche refusée par Meta (post supprimé, jeton) → (None, None) : sans ce
+      contrôle, `media_type` retombait sur « IMAGE » et une ligne fausse
+      s'écrivait.
+    · Métriques refusées (`metriques` à None) → la fiche sans aucune métrique
+      ni `releve_a`, et pas de relevé : l'upsert ne réécrit que les colonnes
+      envoyées, les bonnes valeurs déjà en base restent.
+    · L'image (`media_url`) se règle à part : elle demande le stockage.
+    """
+    if info.get("error") or not info.get("id"):
+        return None, None
+    fiche = {
+        "post_id": info["id"],
+        "user_id": uid,
+        "type": info.get("media_type"),
+        "caption": (info.get("caption") or "")[:500],
+        "date": info.get("timestamp", ""),
+        # Seulement si Meta les rend : l'upsert réécrit chaque colonne
+        # envoyée, et un None effacerait une valeur déjà acquise.
+        **{k: info[k] for k in COLONNES_SI_CONNUES if info.get(k)},
+    }
+    if metriques is None:
+        return fiche, None
+    horodatage = releve_a.isoformat()
+    fiche.update(metriques, releve_a=horodatage)
+    releve = {"user_id": uid, "post_id": info["id"], "releve_a": horodatage,
+              "age_heures": _age_en_heures(info.get("timestamp"), releve_a), **metriques}
+    return fiche, releve
+
+
+def _age_en_heures(publie_le: str | None, releve_a: datetime) -> float | None:
+    """Heures écoulées entre la publication et le relevé — None si la date de
+    publication est illisible : un âge inventé placerait le post au mauvais J+n."""
+    if not publie_le:
+        return None
+    try:
+        # Meta écrit « 2026-11-01T07:00:00+0000 » ; `fromisoformat` lit le
+        # décalage sans deux-points depuis Python 3.11.
+        debut = datetime.fromisoformat(publie_le)
+    except ValueError:
+        return None
+    if debut.tzinfo is None:
+        return None
+    return round((releve_a - debut).total_seconds() / 3600, 2)

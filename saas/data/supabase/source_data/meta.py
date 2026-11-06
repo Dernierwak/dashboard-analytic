@@ -19,6 +19,10 @@ from saas.data.fetch_data.shared import http_client as http
 # envoie que si Meta les a rendues : l'upsert réécrit chaque colonne reçue, et
 # un None effacerait un lien déjà acquis.
 COLONNES_SI_CONNUES = ("permalink", "media_product_type")
+# Les colonnes de la section 23 (`.scratch/instagram/spec.md` § La base) :
+# tant qu'elle n'est pas jouée, les posts s'écrivent sans elles. `booste_vu_le`
+# n'est pas encore envoyée (ticket 02) mais se retire de même.
+COLONNES_SECTION_23 = ("shares", "profile_visits", "avg_watch_time", "releve_a", "booste_vu_le")
 
 
 def insert_instagram_org(supabase: Client, results):
@@ -34,10 +38,11 @@ def insert_instagram_org(supabase: Client, results):
     ligne mais présente dans le lot (même piège que `platform_changes`,
     `platform.py:lots_sans_effacer_la_campagne`).
 
-    TANT QUE LA MIGRATION DES DEUX COLONNES N'EST PAS PASSÉE, PostgREST refuse
-    tout le lot (« could not find the 'permalink' column ») : les posts
-    s'écrivent alors sans elles, et la récolte le dit au lieu de perdre la
-    semaine de posts.
+    TANT QU'UNE MIGRATION N'EST PAS PASSÉE (section 22, puis 23), PostgREST
+    refuse tout le lot (« could not find the 'permalink' column ») : les posts
+    s'écrivent alors sans ses colonnes, et la récolte le dit au lieu de perdre
+    la semaine de posts. La 23 se retire d'abord, pour garder le lien et le
+    produit d'une base qui a la 22 sans la 23.
     """
     if not results:
         return
@@ -45,16 +50,23 @@ def insert_instagram_org(supabase: Client, results):
     for r in results:
         lots.setdefault(frozenset(r), []).append(r)
     for lot in lots.values():
-        try:
-            _upsert_posts(supabase, lot)
-        except Exception as e:
-            if not _colonne_absente(e):
-                raise
-            print("    posts Instagram : colonnes permalink / media_product_type absentes "
-                  "— lance saas/data/supabase/migrations/000_run_me_all.sql ; "
-                  "posts écrits sans elles.")
-            _upsert_posts(supabase, [{k: v for k, v in r.items() if k not in COLONNES_SI_CONNUES}
-                                     for r in lot])
+        _upsert_en_retirant(supabase, lot, [COLONNES_SECTION_23, COLONNES_SI_CONNUES])
+
+
+def _upsert_en_retirant(supabase: Client, lot: list[dict], a_retirer: list[tuple]) -> None:
+    """Upsert du lot ; sur une colonne absente du schéma, retire le premier
+    groupe de colonnes qui la contient et recommence."""
+    try:
+        _upsert_posts(supabase, lot)
+    except Exception as e:
+        groupe = next((g for g in a_retirer if _colonne_absente(e, g)), None)
+        if groupe is None:
+            raise
+        print(f"    posts Instagram : colonnes {' / '.join(groupe)} absentes "
+              "— lance saas/data/supabase/migrations/000_run_me_all.sql ; "
+              "posts écrits sans elles.")
+        _upsert_en_retirant(supabase, [{k: v for k, v in r.items() if k not in groupe} for r in lot],
+                            [g for g in a_retirer if g is not groupe])
 
 
 def _upsert_posts(supabase: Client, lot: list[dict]) -> None:
@@ -63,11 +75,33 @@ def _upsert_posts(supabase: Client, lot: list[dict]) -> None:
     ).execute()
 
 
-def _colonne_absente(err: Exception) -> bool:
+def _colonne_absente(err: Exception, colonnes: tuple) -> bool:
     """PostgREST répond PGRST204 quand une colonne envoyée n'est pas au schéma."""
     msg = str(err).lower()
-    return ("pgrst204" in msg or "could not find" in msg) and any(
-        c in msg for c in COLONNES_SI_CONNUES)
+    return ("pgrst204" in msg or "could not find" in msg) and any(c in msg for c in colonnes)
+
+
+def insert_instagram_releves(supabase: Client, releves: list[dict]) -> None:
+    """Ajoute les relevés des posts — un `insert`, jamais un upsert : un relevé
+    ne s'écrase pas (spec, vocabulaire « Relevé »).
+
+    La clé `(user_id, post_id, releve_a)` ne se heurte pas en pratique : chaque
+    lecture prend son propre horodatage. Tant que la section 23 n'est pas
+    jouée, la table n'existe pas (PGRST205) : la récolte le dit et garde les
+    posts, plutôt que de perdre le passage pour un journal.
+    """
+    for debut in range(0, len(releves), _LOT_LIGNES_MAX):
+        try:
+            supabase.table("instagram_post_releves").insert(
+                releves[debut:debut + _LOT_LIGNES_MAX]).execute()
+        except Exception as e:
+            msg = str(e).lower()
+            if "pgrst205" not in msg and "could not find the table" not in msg:
+                raise
+            print("    relevés Instagram : table instagram_post_releves absente "
+                  "— lance saas/data/supabase/migrations/000_run_me_all.sql ; "
+                  "aucun relevé écrit ce passage.")
+            return
 
 
 def insert_instagram_total_posts_id(supabase: Client, user_id, total_posts_id):
