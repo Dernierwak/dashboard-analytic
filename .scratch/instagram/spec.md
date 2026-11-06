@@ -3,8 +3,8 @@
 Status: brouillon — passe à ready-for-agent quand « Ce qui reste ouvert » est vide
 Carte : [`map.md`](map.md) · ADR 0008, 0010, 0011 — retirées de l'arbre au
 commit `1b05a92`, à lire dans l'historique : `git show 1b05a92^:docs/adr/<fichier>`
-(`git ls-tree --name-only 1b05a92^ docs/adr/` les liste) · Mesures
-impossibles : même chose, `git show 1b05a92^:docs/mesures-impossibles.md`
+(`git ls-tree --name-only 1b05a92^ docs/adr/` les liste) · Ce qu'on ne
+mesure pas : § du même nom, dans cette spec
 
 Écrite le 2026-11-06 à partir des tickets clos de la carte (01 à 11, 13, 14,
 16 à 22). Rien n'y est inventé : chaque décision renvoie à son ticket. Quand
@@ -197,8 +197,8 @@ Le vocabulaire tranché de la carte. Le mot de droite ne s'emploie pas.
     83 519 > total 65 980) ; tout moins boosté compterait deux fois ;
   - Abonnés : sans effet, Meta ne les ventile pas ;
   - aucun lien avec « sans les boostés ».
-- **La portée organique du compte** entre à `docs/mesures-impossibles.md` :
-  cette spec le demande ([Le compte dans le temps][10]).
+- **La portée organique du compte** ne se mesure pas : § Ce qu'on ne mesure
+  pas ([Le compte dans le temps][10]).
 - **Retirés** : « Engagement du compte » (une statistique de la foule, lue
   dans le module des posts en Engagement) et « Croissance 30 j » (remplacée
   par la courbe et les barres).
@@ -361,7 +361,7 @@ calculer][14]). Fonctions pures, sans `"use client"` (`CLAUDE.md` §8).
 | **âge** | `releve_a − date`, en heures. < 48 h : hors de la foule, aucune place. 48 h → 7 jours : place à âge égal. Au-delà : la référence. Sans `releve_a` : plus de 7 jours. 48 h = la seule latence que Meta documente ([Quand les chiffres d'un post se figent][03], [L'âge d'un post][07]). |
 | **la référence** | Les posts du format, **12 mois glissants**, âge > 48 h, valeur non vide, le post lui-même compris. Quartiles **exclusifs** — ceux de `statistics.quantiles(method="exclusive")`, contrôle [1…6] → 1,75 / 3,5 / 5,25 ; médiane = post type ; `n` et « x sur n » ; **rien sous 6** ([La place d'un post][06], [La page entière, en maquette][13]). |
 | **3 mois, 1 mois** | Mêmes quartiles sur les fenêtres plus courtes, minimum 6 ; écart de leur médiane à celle des 12 mois, en %. Aucune place calculée contre elles ([La place d'un post hors de l'année][20]). |
-| **la place** | Sous q1 « en dessous » ; q1 → médiane « bas de tes habitudes » ; médiane → q3 « haut de tes habitudes » ; au-delà de q3 « au-dessus ». **Hors norme** hors de [q1 − 1,5 × IQR ; q3 + 1,5 × IQR]. Les bornes exactes : § Ce qui reste ouvert. |
+| **la place** | Sous q1 « en dessous » ; q1 → médiane « bas de tes habitudes » ; médiane → q3 « haut de tes habitudes » ; au-delà de q3 « au-dessus ». **Hors norme** hors de [q1 − 1,5 × IQR ; q3 + 1,5 × IQR]. Bornes ([arbitrage du 2026-11-06][15], comme l'hebdo, `blocs/canaux.py`) : **< q1** en dessous ; **q1 ≤ v < médiane** bas ; **médiane ≤ v ≤ q3** haut (un post pile au post type est en haut) ; **> q3** au-dessus ; hors norme **strictement** au-delà des limites de Tukey ; quartiles en méthode exclusive. |
 | **place à âge égal** | Pour un post à J+n (n = ⌊âge ÷ 24⌋, 2 ≤ n ≤ 7) : de chaque autre post du format sur 12 mois, son **premier** relevé tombé dans [n × 24 ; (n+1) × 24) h ; mêmes quartiles ; minimum 6, sinon pas de place et une mention ([L'âge d'un post][07], [Ce que la récolte et le traitement doivent calculer][14]). |
 | **« sans les hors norme »** | Bornes de Tukey calculées **une fois** sur la référence de la métrique affichée, posts au-delà retirés, quartiles refaits sur le reste, **sans recommencer** ; minimum 6 jugé après le retrait ; nombre d'écartés et raison. Désactivé par défaut ([Écarter un post][08]). |
 | **« sans les boostés »** | Retire les boostés (`booste_vu_le` non null) de toutes les foules, toutes métriques ; même comptage ([Écarter un post][08], [Les posts boostés][19]). |
@@ -526,6 +526,10 @@ pas de lanceur, chaque ticket **écrit son harnais** et le dit (`CLAUDE.md` §9)
 ## Out of Scope
 
 - **Les thèmes et les labels** ; **Google Ads** et toute refonte de Meta (carte).
+- **Les stories** ([arbitrage du 2026-11-06][15]) : non récoltées, lisibles 24 h, le webhook
+  `story_insights` pour les garder — un chantier à part, au `BACKLOG.md`. La
+  part `STORY` de la ventilation du compte reste comptée dans sa portée et
+  ses interactions, sans module propre.
 - **Un mode avancé**, tout paramètre de calcul réglable
   ([Les règles d'analyse réglables][11], [L'âge d'un post][07]).
 - Au `BACKLOG.md` : **écarter un post à la main** ([Écarter un post][08]),
@@ -535,6 +539,30 @@ pas de lanceur, chaque ticket **écrit son harnais** et le dit (`CLAUDE.md` §9)
 - **Un budget ou un chiffre payant** sur un boosté ([Les posts boostés][19]).
 - **Une table sous la Tendance** ([Le compte dans le temps][10]) ;
   **« Évolution des posts »** ([La structure de la page][01]).
+
+---
+
+## Ce qu'on ne mesure pas
+
+Une page qui afficherait une de ces valeurs mentirait ([arbitrage du 2026-11-06][15] ; tout `docs/`,
+dont `mesures-impossibles.md`, a quitté l'arbre au commit `1b05a92`).
+
+- **La portée organique du compte** : la ventilation de la portée est
+  dédoublonnée par produit, pas entre produits ; total − `AD` compterait deux
+  fois ([L'essai réel][17], [Le compte dans le temps][10]). Seule la part
+  boostée se lit.
+- **Les abonnés au-delà de 30 jours avant le premier passage**, hors de
+  `followers_history` : Instagram ne rend gagnés et perdus que sur 30 jours
+  ([L'essai réel][17], [Ce que l'essai réel laisse à décider][22]).
+- **Le passé d'un post avant son premier relevé** : l'API ne rend qu'un
+  cumul `lifetime` ([Quand les chiffres d'un post se figent][03],
+  [Garder l'historique][05]).
+- **`follows` et visites de profil d'un Reel** : Instagram les refuse
+  (erreur 100) — « – », jamais 0 ([Ce que l'API Instagram donne d'un
+  post][02], [L'essai réel][17]).
+- **La portée d'un ensemble de posts** : des portées de posts ne
+  s'additionnent pas ; aucun total, seulement le post type
+  ([Les formats et les abonnés][09]).
 
 ---
 
@@ -582,7 +610,7 @@ pas.
    remontée des abonnés), le marqueur de boost.
 3. Le Rattrapage par blocs, après la mesure de la durée d'un passage ; la
    relecture trimestrielle.
-4. `lib/instagram/` et la page ; l'entrée de `docs/mesures-impossibles.md`.
+4. `lib/instagram/` et la page.
 
 ### Dans le brouillard, sans bloquer
 
@@ -596,31 +624,18 @@ profondeur de l'historique][21]).
 
 Rien ici n'est comblé par la spec : chaque point attend une décision de David.
 
-1. **Les stories** : non récoltées ; lisibles 24 h, les garder exige le
-   webhook `story_insights` — utiles ou non, à voir avec la structure de la
-   page (carte, Not yet specified ; [Ce que l'API Instagram donne d'un
-   post][02]).
-2. **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
+1. **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
    Instagram doivent parler des mêmes posts avec les mêmes mots (carte, Not
    yet specified). Y tient aussi **la phrase qui explique l'écart** entre le
    dernier relevé et le rapport hebdo, figé au jour de sa publication :
    [Garder l'historique][05] en renvoyait le texte à la maquette, et
    [La page entière, en maquette][13] ne l'a pas écrit.
-3. **La forme de la Sélection** — [Le carré de sélection, en maquette][12],
+2. **La forme de la Sélection** — [Le carré de sélection, en maquette][12],
    ouvert : « 5 meilleurs » seulement ([La page entière, en maquette][13]) ou
    aussi « 5 plus récents » et « à la main » ([La structure de la page][01],
    [Le carré][12]) ; et **le lien qui garde la sélection** (posts choisis et
    objectif), demandé par [La structure de la page][01], que [La page
    entière, en maquette][13] ne reprend pas.
-4. **Les bornes exactes des bandes** (≤ ou < à q1, à la médiane, à q3, aux
-   limites de Tukey) : [Ce que la récolte et le traitement doivent
-   calculer][14] dit qu'elles « s'écrivent une fois, dans la spec » ; aucun
-   ticket ne les fixe.
-5. **`docs/mesures-impossibles.md` n'existe plus** : tout `docs/` a quitté
-   l'arbre au commit `1b05a92`, sur `main` aussi. [Le compte dans le
-   temps][10] y fait entrer la portée organique du compte : recréer le
-   fichier, ou dire ailleurs ce qu'on ne mesure pas.
-
 [01]: issues/01-la-structure-de-la-page.md
 [02]: issues/02-ce-que-l-api-donne-d-un-post.md
 [03]: issues/03-quand-les-chiffres-d-un-post-se-figent.md

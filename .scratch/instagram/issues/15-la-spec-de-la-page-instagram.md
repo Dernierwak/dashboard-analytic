@@ -38,3 +38,10 @@ cite sous « arbitrage du 2026-11-06 ».
    bande, « aucun post sur la période » à la place du nuage.
 6. **Post type des 12 mois à 0** : la pastille écrit l'écart en valeur
    (« 3 mois : 2 abonnés de plus · 15 posts »), jamais un %.
+7. **Les bornes des bandes** comme l'hebdo : < q1 en dessous ; q1 ≤ v <
+   médiane bas ; médiane ≤ v ≤ q3 haut ; > q3 au-dessus ; hors norme
+   strictement au-delà des limites de Tukey ; quartiles exclusifs.
+8. **Les stories sortent du chantier** : Out of Scope de la carte et de la
+   spec, une ligne au `BACKLOG.md` ; la part `STORY` du compte reste comptée.
+9. **Ce qu'on ne mesure pas s'écrit dans la spec**, § du même nom, au lieu de
+   recréer `docs/mesures-impossibles.md`.

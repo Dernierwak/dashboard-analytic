@@ -274,8 +274,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   lui et la remontée de 30 jours.
 
 ## Not yet specified
-- **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
-  `story_insights` — utiles ou non, à voir avec la structure de la page.
 - **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
   Instagram doivent parler des mêmes posts avec les mêmes mots.
 
@@ -284,3 +282,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 - **Les labels / thèmes** : retirés le 2026-09-30 ; s'ils reviennent, ce sera
   une issue séparée (David, 2026-11-01).
 - **Le dashboard Google Ads** et toute refonte de Meta.
+- **Les stories** : non récoltées, lisibles 24 h, le webhook `story_insights`
+  pour les garder — un chantier à part (David, 2026-11-06, arbitrages de
+  [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md)) ;
+  au `BACKLOG.md`.

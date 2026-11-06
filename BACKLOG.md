@@ -370,3 +370,9 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   mois sans le dire (constaté le 2026-11-06,
   `.scratch/instagram/issues/16-l-etat-des-abonnes-en-base.md`). La nouvelle
   page le règle par le relevé du compte ; d'ici là, la page actuelle ment.
+- **Les stories Instagram.** Sorties du chantier de la page `/instagram`
+  (David, 2026-11-06) : non récoltées, Instagram ne les garde que 24 h, et
+  les garder exige le webhook `story_insights` (Facebook Login). La
+  ventilation du compte les compte déjà (`STORY` dans `reach` et
+  `total_interactions`). À reprendre comme un chantier à part si un client
+  les demande (`.scratch/instagram/issues/02-ce-que-l-api-donne-d-un-post.md`).
