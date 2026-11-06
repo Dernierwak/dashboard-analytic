@@ -40,3 +40,18 @@ Le script se prépare sur le modèle de la skill `wizard` (étapes que seul
 David peut faire) ; il imprime les réponses, jamais le jeton. Le résultat
 débloque [Le compte dans le temps](10-le-compte-dans-le-temps.md) et précise
 [Les formats et les abonnés](09-les-formats-et-les-abonnes.md).
+
+## Le script (2026-11-06)
+
+`.scratch/instagram/essai/essai_reel.sh` (wizard, 5 étapes) lance
+`essai_reel.py` : il trouve le `.env` (worktree ou dépôt principal), passe les
+clés Supabase au script par l'environnement sans les afficher, liste les
+comptes branchés, demande le `user_id` et, en option, le lien d'un post boosté
+puis arrêté (point 10). Lecture seule, environ 40 appels Graph v24.0 ; il
+imprime un **résumé à coller** (une ligne par point, aucun jeton) et garde les
+réponses brutes dans `.essais/` (ignoré par git). Vérifié hors ligne avec une
+API simulée : pagination, `boost_ads_list` refusé, aucun jeton dans la
+sortie. **Pas encore lancé sur un vrai compte.**
+
+Lancer, depuis la racine du worktree :
+`.scratch/instagram/essai/essai_reel.sh`
