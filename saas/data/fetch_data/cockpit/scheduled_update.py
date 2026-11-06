@@ -6,6 +6,10 @@ reprend la récolte là où la base s'arrête, MOINS le recouvrement de chaque
 plateforme (`shared/date_ranges.py`, pavé « LE RECOUVREMENT »), puis publie le
 rapport. C'est le « ça marche sans moi ».
 
+Chaque jour aussi, pour TOUS les comptes Instagram, le passage léger
+(`account_sync.leger`) : relevé des posts de moins de 8 × 24 h et fiche des
+posts neufs, sans rapport ni `fetch_progress`.
+
     python3.12 saas/data/fetch_data/cockpit/scheduled_update.py                 # le cron
     python3.12 saas/data/fetch_data/cockpit/scheduled_update.py --force         # tous, quel que soit le jour
     python3.12 saas/data/fetch_data/cockpit/scheduled_update.py --user UID      # un compte, sans attendre son jour
@@ -27,7 +31,7 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Racine du dépôt sur le path : le script se lance par son chemin.
@@ -38,21 +42,24 @@ from saas.data.fetch_data.orchestration import error_reporter as alarmes  # noqa
 from saas.data.fetch_data.orchestration.concurrent_runner import client_service  # noqa: E402
 
 
-def _due_today(fetch_schedule: str | None) -> bool:
+def _due_today(fetch_schedule: str | None, aujourdhui: datetime | None = None) -> bool:
     """True si c'est le jour de mise à jour de l'utilisateur.
     Pas de jour défini → on prend lundi par défaut (évite de fetch tous les jours)."""
-    today = datetime.utcnow().strftime("%A")  # 'Monday', ...
+    today = (aujourdhui or datetime.now(timezone.utc)).strftime("%A")  # 'Monday', ...
     return (fetch_schedule or "Monday") == today
 
 
 class ScheduledUpdate:
-    """Reprend chaque compte dû là où sa base s'arrête, moins le recouvrement."""
+    """Reprend chaque compte dû là où sa base s'arrête, moins le recouvrement ;
+    et chaque jour, pour tous, le passage léger Instagram."""
 
     def __init__(self, force: bool = False, seul: str | None = None,
-                 rapport_seulement: bool = False) -> None:
+                 rapport_seulement: bool = False,
+                 aujourdhui: datetime | None = None) -> None:
         self.force = force or bool(seul)      # un seul compte : pas d'attente de son jour
         self.seul = seul
         self.rapport_seulement = rapport_seulement
+        self.aujourdhui = aujourdhui
 
     def executer(self) -> None:
         sb = client_service()
@@ -65,7 +72,17 @@ class ScheduledUpdate:
 
         for p in profils:
             uid = p["id"]
-            if not self.force and not _due_today(p.get("fetch_schedule")):
+            # LE PASSAGE LÉGER, TOUS LES JOURS ET POUR TOUS (spec § La récolte —
+            # Ce qui s'ajoute) : sinon un post du mardi attendrait le Jour de
+            # travail pour son premier relevé, et ses J+0…J+7 seraient perdus.
+            # Le Jour de travail aussi : la relecture complète plafonne encore
+            # les posts relus, le léger garantit le relevé du jour. Il passe
+            # AVANT le complet et ne touche pas au rapport. `rapport_seulement`
+            # n'appelle aucune plateforme : pas de léger.
+            if not self.rapport_seulement:
+                for ligne in passage.leger(sb, uid):
+                    print(f"  {uid} → {ligne}")
+            if not self.force and not _due_today(p.get("fetch_schedule"), self.aujourdhui):
                 continue
             # `rapport_seulement` : republie juste le rapport à partir des
             # données déjà en base (aucun appel aux plateformes). Aucun bouton

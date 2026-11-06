@@ -13,12 +13,14 @@ Ce code vivait dans `run()` de `fetch_all.py` jusqu'au ticket 07 de
 from __future__ import annotations
 
 import os
+import time
 from datetime import date, datetime
 
 from saas.data.fetch_data.orchestration import error_reporter as alarmes
 from saas.data.fetch_data.orchestration import execution_plan as plans
 from saas.data.fetch_data.orchestration.concurrent_runner import executer
 from saas.data.supabase.fetch_state.state import CANAUX, Suivi
+from saas.data.fetch_data.shared.http_client import sans_jeton
 from saas.data.fetch_data.shared.token_status import INCONNU, TokenStatus
 from saas.data.fetch_data.sources.google.ads import sync as recolte_google
 from saas.data.fetch_data.sources.google.auth import token as jeton_google
@@ -153,6 +155,41 @@ def republier(sb, uid: str) -> list[str]:
     except Exception as e:
         logs.append(f"rapport KO: {e}")
     return logs
+
+
+def leger(sb, uid: str) -> list[str]:
+    """Le passage léger quotidien d'un compte → les lignes du journal.
+
+    Instagram seul, chaque jour, Jour de travail ou non (spec § La récolte —
+    Ce qui s'ajoute). Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
+    `fetch_canaux_muets` et `lib/canaux-muets.ts` ne lisent que le dernier
+    `run_id` — une ligne « instagram » d'un passage léger ferait oublier
+    l'échec Meta du Jour de travail, et la page Meta comme le rapport se
+    remettraient à montrer des chiffres troués. Le journal du worker suffit.
+
+    La ligne porte la DURÉE du passage : c'est elle qui fixera la taille d'un
+    bloc du Rattrapage (ticket 08 de `.scratch/instagram-construction/`).
+    """
+    lignes = [a for a in connexions(sb, uid)
+              if a.get("meta_token") and a.get("instagram_business_id")]
+    if not lignes:
+        return []
+    le_plan = plans.planifier(lignes, verifier_jetons(lignes))
+    journal = [mot for canal, mot in le_plan.journal if canal == "meta"]
+    journal += [mot for _, mot in _marquer(sb, uid, le_plan)]
+    for tache in (t for f in le_plan.fils for t in f if t.canal == "instagram"):
+        c = tache.connexion
+        debut = time.monotonic()
+        try:
+            mot = recolte_instagram.releve_quotidien(
+                sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]))
+        except Exception as e:
+            # Un compte qui tombe ne coupe pas les suivants. Le type et le
+            # texte passent par `sans_jeton` : une exception `requests`
+            # recopie l'URL appelée, jeton compris (`CLAUDE.md` §7).
+            mot = sans_jeton(f"instagram léger KO: {type(e).__name__}: {e}")
+        journal.append(f"instagram léger en {time.monotonic() - debut:.1f} s — {mot}")
+    return journal
 
 
 def passer(sb, uid: str, depuis: date | None = None) -> list[str]:
