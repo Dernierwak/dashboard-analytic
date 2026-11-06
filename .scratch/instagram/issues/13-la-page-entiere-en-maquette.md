@@ -264,3 +264,76 @@ moustaches courtes ne se dessinent pas.
    Le dernier mois a souvent moins de 6 posts par format.
 3. **±5 %** pour « comme ton année » : le garder, ou toujours écrire
    l'écart ?
+
+## Réaction de David, troisième tour (2026-11-06)
+
+- **La Tendance** : à gauche l'évolution de la page (la portée) en grand, à
+  droite les deux autres courbes l'une sous l'autre.
+- **On garde la D seule** ; A, B, C partent. **Peu de texte** au-dessus des
+  graphes.
+- **Les moustaches d'évolution ne convainquent pas encore** : « on ne voit
+  pas forcément l'évolution, c'est dur de voir quel format est mieux » ;
+  « comparer 6 posts avec 12 posts, dur à dire ». Il faut faire comprendre
+  que **12 mois est la référence**, que **3 mois se lit avec prudence**, et
+  qu'au **dernier mois il manque encore des données** — mais que l'ensemble
+  donne une évolution. Une ou deux variantes demandées.
+- Le nuage plaît : on y voit les meilleurs et les pires posts de la
+  période.
+- **Question ouverte de David** : voir aussi **les meilleurs posts de tout
+  l'historique** — dans la liste, ou tout en bas dans le Tableau.
+
+## Prototype, quatrième tour (2026-11-06)
+
+`/instagram?maquette=page&d=90&pv=1` ; A, B, C ont quitté le code (ils
+restent dans l'historique de la branche jetable).
+
+- **Tendance** : la portée du compte en grand à gauche, interactions et
+  abonnés empilés à droite (série d'exemple, toujours marquée).
+- **Une seule ligne** au-dessus des graphes : la référence (« tes 12
+  derniers mois, format par format — elle ne bouge pas avec la période ») et
+  la définition de la métrique. L'évolution d'un format tient en deux
+  pastilles à côté de son nom : « 3 mois **+9 %** · 15 posts », « 1 mois
+  **−12 %** · 6 posts ».
+- **L'année est dessinée derrière le nuage** : la bande de ses habitudes et
+  la ligne « post type de l'année » — chaque post se lit contre elle sans
+  quitter le nuage.
+
+Trois façons de montrer l'évolution (`?pv=`) :
+
+1. **Les moustaches, pesées** — à droite du nuage, 12 mois / 3 derniers
+   mois / dernier mois ; **la largeur et l'encre d'une boîte suivent son
+   nombre de posts** (42 → large et pleine ; 6 → fine et pâle), et chacune
+   porte son statut écrit : « la référence », « à lire avec prudence »,
+   « encore mince ». La ligne du post type de l'année traverse les trois.
+2. **La pente** — **un graphe pour tous les formats**, au-dessus des
+   rangées : le post type de l'année → des 3 derniers mois → du dernier
+   mois. La hauteur dit quel format porte le plus, la pente s'il monte ; le
+   rayon du point suit le nombre de posts, le dernier segment est en
+   pointillé, un format sous 6 posts n'a pas de point (« Image : 5/6
+   posts »). Le nuage prend alors toute la largeur.
+3. **Mois par mois** — à droite du nuage, le post type **glissant** : à la
+   fin de chacun des 12 derniers mois, la médiane des 3 mois qui précèdent,
+   sur la bande de l'année ; le rayon suit le nombre de posts, un mois sous
+   6 posts est un trou avec « 5/6 ».
+
+**Les meilleurs de tout l'historique** : la liste de droite a une portée —
+**La période / 12 mois / Tout** — et « 5 / Tous » ; le Tableau du bas a
+**La période / Tout l'historique** (235 posts). Vérifié : « Tout » ouvre
+sur un Carrousel du 3 juillet 2025 (63 606) et une Image du 9 janvier 2026
+(63 438), deux hors norme.
+
+Ce que la pente montre sur les vrais chiffres (portée) : les Reels portent
+plus que les Carrousels toute l'année (11 506 contre 10 021), montent sur
+3 mois (12 506) et redescendent le dernier mois (10 103, 6 posts) ; les
+Carrousels baissent des deux côtés (9 040, puis 7 500).
+
+### Pour trancher (David)
+
+1. **Laquelle des trois** montre le mieux l'évolution — ou un mélange (la
+   pente en tête, les moustaches pesées dans les rangées) ?
+2. **Un vieux post dans « Tout »** est placé contre **ton année actuelle**,
+   pas contre la sienne : le Carrousel de juillet 2025 est « hors norme »
+   face aux Carrousels de 2026. Garder, ou le placer contre ses 12 mois à
+   lui ?
+3. **La suite de ton message du tour 3** (« et puis ça serait… ») et le
+   seuil de ±5 %, toujours ouverts.
