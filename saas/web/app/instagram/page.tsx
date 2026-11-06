@@ -27,6 +27,10 @@ import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
 import { lienDash } from "@/lib/liens";
 
 import { Triangle, sensPente } from "@/components/pente";
+// PROTOTYPE JETABLE — ticket « Le carré de sélection, en maquette ».
+import { PrototypeSelection } from "./_prototype-selection/variantes";
+// PROTOTYPE JETABLE — ticket « La page entière, en maquette ».
+import { PrototypePage } from "./_prototype-page/maquette";
 
 export const dynamic = "force-dynamic";
 
@@ -309,6 +313,12 @@ export default async function InstagramPage({
         }}
       />
 
+      {process.env.NODE_ENV !== "production" && (searchParams as Record<string, string | undefined>).maquette === "page" ? (
+        <PrototypePage posts={d.posts} serie={d.followersSeries} debut={d.windowDebut} fin={d.windowFin} sp={searchParams as Parameters<typeof PrototypePage>[0]["sp"]} />
+      ) : (<>
+      {process.env.NODE_ENV !== "production" && (
+        <PrototypeSelection posts={d.posts} sp={searchParams as Parameters<typeof PrototypeSelection>[0]["sp"]} />
+      )}
 
       {/* ── TA PAGE ── */}
       <div className="flex items-baseline gap-2 flex-wrap mb-3 mt-5">
@@ -478,6 +488,7 @@ export default async function InstagramPage({
           </>
         )}
       </p>
+      </>)}
 
     </main>
   );
