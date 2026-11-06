@@ -173,7 +173,10 @@ Le vocabulaire tranché de la carte. Le mot de droite ne s'emploie pas.
   même axe des jours, des barres — gagnés (`FOLLOWER`) vers le haut, perdus
   (`NON_FOLLOWER`) vers le bas ([L'essai réel][17]). Jamais de double axe.
 - **À droite, empilées** : la **portée** du compte par jour (`reach` en
-  `time_series`) — aucun total sur la période, au plus une moyenne par jour ;
+  `time_series`), avec au-dessus **la portée de la période** que rend
+  Instagram (`total_value`, chaque compte compté une fois) — « 65 980 comptes
+  touchés sur la période, chacun compté une fois », la période d'avant à côté ;
+  jamais la somme des jours, qui compte deux fois ([L'essai réel][17], [arbitrage du 2026-11-06][15]) ;
   les **interactions** du compte par jour (`total_interactions`).
 - Sur chaque courbe : trait plein = période, **pointillé = période d'avant** ;
   **jours de publication marqués** sous l'axe, cliquables vers le Panneau —
@@ -204,10 +207,15 @@ Le vocabulaire tranché de la carte. Le mot de droite ne s'emploie pas.
 
 | Objectif | Métriques, chacune séparément |
 |---|---|
-| Portée | portée ; vues ; portée ÷ abonnés du jour de publication |
+| Portée | **portée (par défaut)** ; vues ; portée ÷ abonnés du jour de publication |
 | Engagement | **taux (par défaut)** ; j'aime ; commentaires ; partages ; enregistrements ; réactions fortes |
-| Abonnés | abonnés gagnés (`follows`) ; visites de profil ; abonnés gagnés pour 1 000 comptes touchés |
+| Abonnés | **abonnés gagnés pour 1 000 comptes touchés (par défaut)** ; abonnés gagnés (`follows`) ; visites de profil |
 
+- **À l'ouverture** ([arbitrage du 2026-11-06][15]) : Objectif **Engagement** (le taux se compare
+  d'un post à l'autre quelle que soit sa portée) ; interrupteur de la Tendance
+  sur **Tout** ; Tableau trié par **date, du plus récent au plus ancien** ;
+  période du Bandeau **comme Meta** — les 7 jours qui finissent la veille du
+  dernier Jour de travail (`saas/web/lib/meta/lecture.ts`, `periodeDe`).
 - L'Objectif donne la métrique par défaut ; le module offre ensuite les
   métriques de cet objectif. **Une place à la fois, sur la métrique choisie** :
   le module, la liste et le Tableau la suivent ([La place d'un post][06]).
@@ -216,8 +224,9 @@ Le vocabulaire tranché de la carte. Le mot de droite ne s'emploie pas.
   moustache à zéro.
 - Une métrique pas encore en base reste **grisée avec sa raison**
   ([La page entière, en maquette][13]).
-- Abonnés pour 1 000, réactions fortes : jamais par défaut, vides sans portée
-  ([Les formats et les abonnés][09]). Portée ÷ abonnés : « – » quand l'abonné
+- Réactions fortes : jamais par défaut. Abonnés pour 1 000 : par défaut en
+  Abonnés ([arbitrage du 2026-11-06][15]) — il compare des posts de portées différentes. Les deux vides
+  sans portée ([Les formats et les abonnés][09]). Portée ÷ abonnés : « – » quand l'abonné
   du jour manque, aucune estimation ([Les règles d'analyse réglables][11],
   [L'état des abonnés en base][16]).
 
@@ -336,7 +345,7 @@ calculer][14]). Fonctions pures, sans `"use client"` (`CLAUDE.md` §8).
 |---|---|
 | **format** | `REELS` → Reel ; `FEED` + `VIDEO` → Vidéo du fil ; `CAROUSEL_ALBUM` → Carrousel ; `IMAGE` → Image. `media_product_type` vide + `VIDEO` → **format inconnu**, hors des quatre foules. |
 | **métriques brutes** | Le dernier relevé, lu tel quel : **null reste null** (aujourd'hui `Number(p.x) \|\| 0` refait des zéros). |
-| **taux d'engagement** | (j'aime + commentaires + enregistrements + partages) ÷ portée × 100 ; vide si la portée est vide ou nulle, ou si un terme manque. Voir § Ce qui reste ouvert (ADR 0008). |
+| **taux d'engagement** | (j'aime + commentaires + enregistrements + partages) ÷ portée × 100 ; vide si la portée est vide ou nulle, ou si un terme manque. Les partages s'ajoutent aux trois termes de l'ADR 0008, qui reprenait la formule en place quand ils n'étaient pas récoltés ; le chiffre affiché bouge, et le dit ([arbitrage du 2026-11-06][15]). |
 | **réactions fortes** | (enregistrements + partages) ÷ portée ; même règle du vide. |
 | **abonnés pour 1 000** | `follows` ÷ portée × 1 000 ; vide sur un Reel. |
 | **portée ÷ abonnés** | portée ÷ abonnés du jour de publication ; vide si ce jour n'a pas d'abonnés mesurés. |
@@ -535,7 +544,7 @@ Le plus récent fait foi ; l'ancien porte souvent déjà un encadré « Amendé 
 | Comparaison et Sélection | deux modules ([La structure de la page][01]) | un seul ([La page entière, en maquette][13]) |
 | La relecture | J+30, plafond 40, 200 / 10 posts ([Garder l'historique][05]) | [La profondeur de l'historique][21], [Le compte gratuit à 10 posts][18] |
 | `follows` en base | absent ([La page entière, en maquette][13]) | présent, faux zéros sur les vidéos ([Ce que la récolte et le traitement doivent calculer][14]) |
-| Le taux d'engagement | trois termes ([La page entière, en maquette][13]) | quatre ([Ce que la récolte et le traitement doivent calculer][14]) — réserve de l'ADR 0008, § Ce qui reste ouvert |
+| Le taux d'engagement | trois termes ([La page entière, en maquette][13]) | quatre ([Ce que la récolte et le traitement doivent calculer][14]), au-delà de l'ADR 0008 — [arbitrage du 2026-11-06][15] |
 | Une place à la fois | partout ([La place d'un post][06], point 9) | sauf au Panneau, « sa place sur chaque métrique » ([La page entière, en maquette][13]) |
 
 **`profile_visits`** : [Ce que la récolte et le traitement doivent
@@ -590,40 +599,28 @@ Rien ici n'est comblé par la spec : chaque point attend une décision de David.
    [Le carré][12]) ; et **le lien qui garde la sélection** (posts choisis et
    objectif), demandé par [La structure de la page][01], que [La page
    entière, en maquette][13] ne reprend pas.
-4. **La formule du taux d'engagement face à l'ADR 0008** : l'ADR fixe
-   (j'aime + commentaires + enregistrements) ÷ portée ; [Ce que la récolte et
-   le traitement doivent calculer][14] ajoute les partages sans revenir sur
-   l'ADR. Une ADR ne se re-litige pas sans y revenir (`CLAUDE.md` §6).
-5. **Le temps de visionnage du Reel** : [Les formats et les abonnés][09] le
+4. **Le temps de visionnage du Reel** : [Les formats et les abonnés][09] le
    met au niveau du post (Sélection, Panneau, Tableau) ; [La page entière, en
    maquette][13] le liste « absent » du Panneau ; [Ce que la récolte et le
    traitement doivent calculer][14] ne le récolte pas (R1).
-6. **Les bornes exactes des bandes** (≤ ou < à q1, à la médiane, à q3, aux
+5. **Les bornes exactes des bandes** (≤ ou < à q1, à la médiane, à q3, aux
    limites de Tukey) : [Ce que la récolte et le traitement doivent
    calculer][14] dit qu'elles « s'écrivent une fois, dans la spec » ; aucun
    ticket ne les fixe.
-7. **Les valeurs par défaut à l'ouverture** : l'Objectif, la période du
-   Bandeau, la position de l'interrupteur Tout / Organique / Boosté, le tri du
-   Tableau ; et **la métrique par défaut** des objectifs Portée et Abonnés —
-   [La place d'un post][06] ne la nomme que pour Engagement (le taux).
-8. **Un format sans post** : [Les formats et les abonnés][09] dit « quatre
+6. **Un format sans post** : [Les formats et les abonnés][09] dit « quatre
    formats en ordre fixe » et « la vidéo du fil n'apparaît que si le compte en
    a » ; [La page entière, en maquette][13] cache le bloc vide et le laisse
    « à trancher ». Avec la référence sur 12 mois, le cas d'un format qui a des
    posts dans l'année mais aucun sur la période n'est dit nulle part.
-9. **La portée du compte sur la période** : [Le compte dans le temps][10]
-   n'en veut aucun total (« au plus une moyenne par jour ») ;
-   [L'essai réel][17] montre qu'Instagram la rend dédoublonnée en
-   `total_value`. Aucun ticket ne dit si la Tendance l'affiche.
-10. **Une pastille d'évolution quand le post type des 12 mois vaut 0** (un
-    format dont la moitié des posts n'a gagné aucun abonné) : l'écart en %
-    n'existe pas (`CLAUDE.md` §7, pas de « +∞ % ») ; ce que la pastille écrit
-    alors n'est tranché par aucun ticket ([La place d'un post hors de
-    l'année][20]).
-11. **`docs/mesures-impossibles.md` n'existe plus** : tout `docs/` a quitté
-    l'arbre au commit `1b05a92`, sur `main` aussi. [Le compte dans le
-    temps][10] y fait entrer la portée organique du compte : recréer le
-    fichier, ou dire ailleurs ce qu'on ne mesure pas.
+7. **Une pastille d'évolution quand le post type des 12 mois vaut 0** (un
+   format dont la moitié des posts n'a gagné aucun abonné) : l'écart en %
+   n'existe pas (`CLAUDE.md` §7, pas de « +∞ % ») ; ce que la pastille écrit
+   alors n'est tranché par aucun ticket ([La place d'un post hors de
+   l'année][20]).
+8. **`docs/mesures-impossibles.md` n'existe plus** : tout `docs/` a quitté
+   l'arbre au commit `1b05a92`, sur `main` aussi. [Le compte dans le
+   temps][10] y fait entrer la portée organique du compte : recréer le
+   fichier, ou dire ailleurs ce qu'on ne mesure pas.
 
 [01]: issues/01-la-structure-de-la-page.md
 [02]: issues/02-ce-que-l-api-donne-d-un-post.md
@@ -639,6 +636,7 @@ Rien ici n'est comblé par la spec : chaque point attend une décision de David.
 [12]: issues/12-le-carre-en-maquette.md
 [13]: issues/13-la-page-entiere-en-maquette.md
 [14]: issues/14-ce-que-le-traitement-doit-calculer.md
+[15]: issues/15-la-spec-de-la-page-instagram.md
 [16]: issues/16-l-etat-des-abonnes-en-base.md
 [17]: issues/17-l-essai-reel-des-metriques.md
 [18]: issues/18-le-compte-gratuit-a-10-posts.md
