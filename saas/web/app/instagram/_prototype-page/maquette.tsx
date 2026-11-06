@@ -2,19 +2,13 @@
 // (.scratch/instagram/issues/13-la-page-entiere-en-maquette.md). Ne part
 // jamais sur `main` : il vit sur la branche `prototype/instagram-page`.
 //
-// Quatrième tour (2026-11-06). David a retenu la page « D » : une rangée par
-// format — le nuage des posts de la période à gauche, l'évolution à droite —
-// et la liste des posts qui défile à droite du module. La référence est
-// l'année (12 mois glissants). Trois façons de montrer l'évolution, par `?pv=` :
-//   1 « Les moustaches, pesées » — 12 mois large et plein (la référence),
-//                                  3 mois et 1 mois plus fins et plus pâles ;
-//   2 « La pente »               — un graphe pour tous les formats : post type
-//                                  de l'année → 3 derniers mois → dernier mois ;
-//   3 « Mois par mois »          — le post type glissant (3 mois) mois après
-//                                  mois sur les 12 derniers, sur la bande de
-//                                  l'année.
+// Version retenue par David (2026-11-06, « part avec ça ») : une rangée par
+// format — le nuage des posts de la période sur la bande de son année, et à
+// droite ses moustaches pesées (12 mois, la référence ; 3 derniers mois ;
+// dernier mois) — et à droite du module, les 5 meilleurs posts de la période.
+// Dessous, le Tableau de tous les posts, triable par date, exportable.
 // `?etat=neuf|jeton|gratuit` simule les états ; `?ex=0` retire la Tendance
-// d'exemple ; `?pc=an|tout` élargit la liste de droite ; `?ts=tout` le Tableau.
+// d'exemple.
 //
 // Le calcul de base vient du prototype du carré (`calcul.ts`, ticket 12).
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +20,6 @@ import { NEUTRE } from "@/lib/palette";
 import {
   METRIQUES,
   MINIMUM,
-  MODES,
   age,
   fmt,
   foules,
@@ -37,15 +30,9 @@ import {
   type Place,
   type PostLu,
 } from "../_prototype-selection/calcul";
-import { SwitcherPage } from "./switcher";
 
 type SP = DashParams & Record<string, string | string[] | undefined>;
 
-const VARIANTES = [
-  { cle: "1", nom: "Les moustaches, pesées" },
-  { cle: "2", nom: "La pente" },
-  { cle: "3", nom: "Mois par mois" },
-];
 const JOUR = 86400_000;
 
 const POS = "#1a7a4a";
@@ -206,8 +193,6 @@ type Lecture = {
   fige: boolean;
   /** Les moustaches d'évolution : 3 derniers mois, dernier mois. */
   recents: Map<string, { trois?: FouleN; un?: FouleN }>;
-  /** Le post type glissant, mois par mois (version 3). */
-  glissements: Map<string, { fin: number; med: number | null; n: number }[]>;
 };
 
 /** Ce contre quoi un post est placé, en mots. */
@@ -219,12 +204,6 @@ function formatDe(L: Lecture, format: string): FouleN | undefined {
   return L.fsListe.find((f) => f.format === format) ?? L.fs.find((f) => f.format === format) ?? L.fsTableau.find((f) => f.format === format);
 }
 
-const mediane = (v: number[]) => {
-  if (!v.length) return null;
-  const d = [...v].sort((a, b) => a - b);
-  const m = Math.floor(d.length / 2);
-  return d.length % 2 ? d[m] : (d[m - 1] + d[m]) / 2;
-};
 
 // `permalink` est en base mais `getInstaDash` ne le lit pas : la maquette va le
 // chercher elle-même plutôt que de toucher `lib/channels.ts`.
@@ -270,21 +249,22 @@ export async function PrototypePage({
     objectif.metriques.find((m) => m.cle !== null) ??
     objectif.metriques[0];
   const cle = metrique.cle;
-  const mode = (MODES.some((m) => m.cle === sp.pmode) ? sp.pmode : "haut") as Mode;
+  const mode: Mode = "haut";
   const sansHorsNorme = sp.phn === "1";
   const choisis = String(sp.ps ?? "").split(",").filter(Boolean).slice(0, 5);
-  const variante = VARIANTES.some((v) => v.cle === sp.pv) ? String(sp.pv) : "1";
   const maintenant = Date.now();
   const annee: Reference = { jours: 365 };
   const lire = (fenetre: InstaPost[], c: string, ref: Reference = annee) =>
     foulesN(historique, fenetre, c, sansHorsNorme, ref, maintenant).filter((f) => f.lus.length > 0);
 
-  const portee = sp.pc === "an" || sp.pc === "tout" ? sp.pc : "periode";
-  const dansLAnnee = historique.filter((p) => maintenant - new Date(p.date).getTime() <= 365 * JOUR);
+  // David : la liste de droite ne montre que les 5 meilleurs de la période ;
+  // les meilleurs de tout l'historique se trouvent en triant le Tableau, qui
+  // porte toujours tous les posts.
+  const portee = "periode" as const;
   const fs = cle ? lire(posts, cle) : [];
-  const fsListe = !cle ? [] : portee === "periode" ? fs : lire(portee === "an" ? dansLAnnee : historique, cle);
-  const sel = cle ? selection(fsListe, mode, choisis, sp.pt === "1" ? 999 : 5) : [];
-  const fsTableau = !cle ? [] : sp.ts === "tout" ? lire(historique, cle) : fs;
+  const fsListe = fs;
+  const sel = cle ? selection(fs, "haut", [], 5) : [];
+  const fsTableau = !cle ? [] : lire(historique, cle);
 
   const tousLus = foules(historique, "reach", false, maintenant).flatMap((f) => f.lus);
   const ouvert = sp.post
@@ -300,28 +280,10 @@ export async function PrototypePage({
   const liens = await lirePermaliens();
 
   const recents = new Map<string, { trois?: FouleN; un?: FouleN }>();
-  const glissements = new Map<string, { fin: number; med: number | null; n: number }[]>();
   if (cle) {
     const trois = foulesN(historique, posts, cle, sansHorsNorme, { jours: 90 }, maintenant);
     const un = foulesN(historique, posts, cle, sansHorsNorme, { jours: 30 }, maintenant);
     for (const f of fs) recents.set(f.format, { trois: trois.find((x) => x.format === f.format), un: un.find((x) => x.format === f.format) });
-    // Version 3 : à la fin de chacun des 12 derniers mois, le post type des 3
-    // mois qui précèdent — une moyenne glissante de médianes, sans trou.
-    const hist = foules(historique, cle, false, maintenant);
-    for (const f of fs) {
-      const lus = (hist.find((h) => h.format === f.format)?.lus ?? []).filter((l) => l.dehors === null);
-      glissements.set(
-        f.format,
-        Array.from({ length: 12 }, (_, k) => {
-          const finK = maintenant - (11 - k) * 30 * JOUR;
-          const v = lus.filter((l) => {
-            const t = new Date(l.post.date).getTime();
-            return t <= finK && t > finK - 90 * JOUR;
-          }).map((l) => l.valeur!);
-          return { fin: finK, med: v.length >= MINIMUM ? mediane(v) : null, n: v.length };
-        })
-      );
-    }
   }
 
   const L: Lecture = {
@@ -329,7 +291,6 @@ export async function PrototypePage({
     exemple: sp.ex !== "0" && etat !== "neuf",
     fige: etat === "jeton",
     recents,
-    glissements,
   };
 
   return (
@@ -347,9 +308,9 @@ export async function PrototypePage({
           ) : (
             <>
               <SelecteurObjectif L={L} />
-              {!L.cle ? <SansMetrique L={L} /> : <PageD L={L} variante={variante} />}
+              {!L.cle ? <SansMetrique L={L} /> : <PageD L={L} />}
               <section>
-                <Titre titre="Tous tes posts" droite={<PorteeTableau L={L} />} />
+                <Titre titre="Tous tes posts" />
                 <Tableau L={L} />
               </section>
             </>
@@ -357,7 +318,6 @@ export async function PrototypePage({
         </div>
       </div>
       {ouvert && <PanneauLateral L={L} />}
-      <SwitcherPage variantes={VARIANTES} />
     </section>
   );
 }
@@ -372,7 +332,7 @@ function BandeauMaquette({ sp, etat, n }: { sp: SP; etat: string; n: number }) {
   return (
     <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-dashed border-[#7b4fff66] bg-[#7b4fff0d] px-3 py-2 text-[11.5px] text-muted">
       <span>
-        <b className="text-ink">Prototype jetable</b> — {VARIANTES.length} façons de montrer l&apos;évolution (← → ou la barre en bas),
+        <b className="text-ink">Prototype jetable</b> — la version retenue,
         sur les {n} posts de la période.
       </span>
       <span className="inline-flex flex-wrap gap-1">
@@ -513,8 +473,12 @@ function CourbeExemple({ nom, resume, courant, avant, jours, pubs, sp, posts, de
   grand?: boolean;
 }) {
   const W = 460;
-  const H = barres ? 170 : grand ? 300 : 140;
-  const bas = barres ? 110 : grand ? 270 : 118;
+  const H = grand ? (barres ? 330 : 300) : barres ? 170 : 140;
+  const bas = grand ? (barres ? 236 : 270) : barres ? 110 : 118;
+  // Les barres gagnés / perdus vivent sous la courbe, sur leur propre ligne.
+  const base = H - 24;
+  const hGagnes = grand ? 44 : 22;
+  const hPerdus = grand ? 28 : 16;
   const toutes = [...courant, ...avant].filter((v): v is number => v !== null);
   const min = barres ? Math.min(...toutes) : 0;
   const max = Math.max(...toutes, 1);
@@ -555,11 +519,11 @@ function CourbeExemple({ nom, resume, courant, avant, jours, pubs, sp, posts, de
         )}
         {barres?.map((b, i) => (
           <g key={i}>
-            <rect x={x(i) - 1.6} y={146 - (b.gagnes / maxBarre) * 22} width={3.2} height={(b.gagnes / maxBarre) * 22} fill={POS} opacity={0.7} />
-            <rect x={x(i) - 1.6} y={146} width={3.2} height={(b.perdus / maxBarre) * 16} fill={NEG} opacity={0.7} />
+            <rect x={x(i) - 1.6} y={base - (b.gagnes / maxBarre) * hGagnes} width={3.2} height={(b.gagnes / maxBarre) * hGagnes} fill={POS} opacity={0.7} />
+            <rect x={x(i) - 1.6} y={base} width={3.2} height={(b.perdus / maxBarre) * hPerdus} fill={NEG} opacity={0.7} />
           </g>
         ))}
-        <line x1={10} x2={W - 10} y1={barres ? 146 : bas + 6} y2={barres ? 146 : bas + 6} stroke={NEUTRE.trait} strokeOpacity={0.4} />
+        <line x1={10} x2={W - 10} y1={barres ? base : bas + 6} y2={barres ? base : bas + 6} stroke={NEUTRE.trait} strokeOpacity={0.4} />
         {!barres && posts.map((p) => {
           const i = Math.round((new Date(p.date).getTime() - t0) / 86400_000);
           if (i < 0 || i >= jours) return null;
@@ -572,7 +536,9 @@ function CourbeExemple({ nom, resume, courant, avant, jours, pubs, sp, posts, de
       </svg>
       {grand && (
         <p className="mt-1 text-[11px] leading-snug text-faint">
-          Trait plein : la période. Pointillé : la période d&apos;avant. Points : tes publications, cliquables. Un trou = un jour sans donnée.
+          {barres
+            ? "Total d'abonnés, jour après jour ; dessous, les gagnés (vert) et les perdus (rouge) de chaque jour."
+            : "Trait plein : la période. Pointillé : la période d'avant. Points : tes publications, cliquables. Un trou = un jour sans donnée."}
         </p>
       )}
     </div>
@@ -588,10 +554,10 @@ function Tendance({ L }: { L: Lecture }) {
     const vide = Array<number | null>(jours).fill(null);
     return (
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <CourbeExemple nom="Portée du compte" resume="–" courant={vide} avant={vide} grand {...commun} />
+        <CourbeExemple nom="Abonnés" resume="–" courant={vide} avant={vide} grand {...commun} />
         <div className="grid min-w-0 gap-3">
+          <CourbeExemple nom="Portée du compte" resume="–" courant={vide} avant={vide} {...commun} />
           <CourbeExemple nom="Interactions du compte" resume="–" courant={vide} avant={vide} {...commun} />
-          <CourbeExemple nom="Abonnés" resume="–" courant={vide} avant={vide} {...commun} />
         </div>
       </div>
     );
@@ -613,10 +579,10 @@ function Tendance({ L }: { L: Lecture }) {
   const nf = (v: number) => v.toLocaleString("fr-CH");
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-      <CourbeExemple nom="Portée du compte" resume={`${nf(moy)} / jour en moyenne`} courant={portee} avant={porteeAvant} grand {...commun} />
+      <CourbeExemple nom="Abonnés" resume={`${nf(abonnes[abonnes.length - 1])} · ${net >= 0 ? "+" : "−"}${nf(Math.abs(net))} sur la période`} courant={abonnes} avant={[]} barres={mouvements} grand {...commun} />
       <div className="grid min-w-0 gap-3">
+        <CourbeExemple nom="Portée du compte" resume={`${nf(moy)} / jour en moyenne`} courant={portee} avant={porteeAvant} {...commun} />
         <CourbeExemple nom="Interactions du compte" resume={`${nf(somme)} sur la période`} courant={inter} avant={interAvant} {...commun} />
-        <CourbeExemple nom="Abonnés" resume={`${nf(abonnes[abonnes.length - 1])} · ${net >= 0 ? "+" : "−"}${nf(Math.abs(net))}`} courant={abonnes} avant={[]} barres={mouvements} {...commun} />
       </div>
     </div>
   );
@@ -720,25 +686,7 @@ function MoustacheH({ f, cle, marques = [], haut = 34 }: { f: FouleN; cle: strin
 
 // ── LA SÉLECTION ────────────────────────────────────────────────────────────
 
-function ChoixSelection({ L }: { L: Lecture }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Montrer</span>
-      {MODES.map((m) => (
-        <Pastille key={m.cle} href={lien(L.sp, { pmode: m.cle })} actif={m.cle === L.mode}>{m.nom}</Pastille>
-      ))}
-    </div>
-  );
-}
 
-function intitule(L: Lecture): string {
-  const m = L.metrique.nom.toLowerCase();
-  const n = L.sel.length;
-  if (L.mode === "haut") return `Tes ${n} meilleurs posts en ${m}`;
-  if (L.mode === "bas") return `Tes ${n} posts les moins bons en ${m}`;
-  if (L.mode === "recents") return `Tes ${n} posts les plus récents, lus en ${m}`;
-  return `Ta sélection, lue en ${m}`;
-}
 
 const CHIFFRES = [
   { cle: "reach", nom: "Portée" },
@@ -826,26 +774,64 @@ function CartePost({ L, l, n, compacte }: { L: Lecture; l: PostLu; n: number; co
 
 // ── LE TABLEAU DES POSTS ────────────────────────────────────────────────────
 
+const nombreBrut = (p: InstaPost, cle: string): number | null => {
+  const x = (p as unknown as Record<string, number | null>)[cle];
+  if (x === null || ((cle === "views" || cle === "reach") && x === 0)) return null;
+  if (cle === "likes" && p.type === "Reel" && x === 0) return null;
+  return x;
+};
+
+/** Le fichier pour Excel : point-virgule (Excel en français), BOM pour les
+ *  accents ; une absence reste une cellule vide, jamais un 0. */
+function csvDe(L: Lecture, rangs: PostLu[]): string {
+  const cellule = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const tete = ["Date", "Format", "Légende", ...CHIFFRES.map((c) => c.nom), `Place (${L.metrique.nom.toLowerCase()})`, "Lien"];
+  const lignes = rangs.map((l) => [
+    l.post.date.slice(0, 10),
+    l.post.type,
+    l.post.caption.replace(/\s+/g, " ").trim(),
+    ...CHIFFRES.map((c) => {
+      const v = nombreBrut(l.post, c.cle);
+      return v === null ? "" : c.cle === "eng" ? v.toFixed(2).replace(".", ",") : String(v);
+    }),
+    L.cle ? placeN(l, L.fsTableau.find((f) => f.format === l.post.type)) : "",
+    L.liens.get(l.post.id) ?? "",
+  ]);
+  return "\ufeff" + [tete, ...lignes].map((r) => r.map(cellule).join(";")).join("\r\n");
+}
+
 function Tableau({ L }: { L: Lecture }) {
   const lus = L.cle ? L.fsTableau.flatMap((f) => f.lus) : foules(L.posts, "reach", false, Date.now()).flatMap((f) => f.lus);
   const s = String(L.sp.s ?? "date");
-  const v = (l: PostLu) => {
-    const x = (l.post as unknown as Record<string, number | null>)[s];
-    return x === null || (s !== "eng" && x === 0) ? -1 : x;
-  };
-  const rangs = s === "date" || !CHIFFRES.some((c) => c.cle === s) ? lus.sort((a, b) => b.post.date.localeCompare(a.post.date)) : lus.sort((a, b) => v(b) - v(a));
+  const v = (l: PostLu) => nombreBrut(l.post, s) ?? -1;
+  const rangs =
+    s === "date-asc" ? lus.sort((a, b) => a.post.date.localeCompare(b.post.date))
+    : CHIFFRES.some((c) => c.cle === s) ? lus.sort((a, b) => v(b) - v(a))
+    : lus.sort((a, b) => b.post.date.localeCompare(a.post.date));
+  const triDate = s === "date" || s === "date-asc";
   return (
     <div className="rounded-2xl border border-line bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5 text-[12px]">
         <span className="font-semibold text-ink">{rangs.length} posts</span>
-        <span className="text-faint">· {L.sp.ts === "tout" ? "tout l'historique" : "la période"}, place lue en {L.metrique.nom.toLowerCase()} contre les 12 derniers mois du format</span>
-        <span className="ml-auto rounded-full border border-line px-2.5 py-1 font-semibold text-muted" title="Maquette : exporte le Tableau tel que trié et filtré">Exporter vers Excel</span>
+        <span className="text-faint">· tout ton historique · place lue en {L.metrique.nom.toLowerCase()} contre les 12 derniers mois du format</span>
+        <a
+          href={`data:text/csv;charset=utf-8,${encodeURIComponent(csvDe(L, rangs))}`}
+          download="pulse-instagram-posts.csv"
+          className="ml-auto rounded-full border border-line px-2.5 py-1 font-semibold text-ink hover:bg-black/[0.03]"
+        >
+          Exporter vers Excel
+        </a>
       </div>
-      <div className="max-h-[460px] overflow-auto">
-        <table className="w-full min-w-[760px] text-[12px]">
+      <div className="max-h-[520px] overflow-auto">
+        <table className="w-full min-w-[860px] text-[12px]">
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-faint">
-              <th className="sticky top-0 bg-white px-3 py-2 text-left"><a href={lien(L.sp, { s: "date" })} className={s === "date" ? "text-ink" : ""}>Post</a></th>
+              <th className="sticky top-0 bg-white px-3 py-2 text-left">
+                <a href={lien(L.sp, { s: s === "date" ? "date-asc" : undefined })} className={triDate ? "text-ink" : ""} title="Du plus récent au plus ancien, ou l'inverse">
+                  Date {s === "date-asc" ? "↑" : triDate ? "↓" : ""}
+                </a>
+              </th>
+              <th className="sticky top-0 bg-white px-2 py-2 text-left">Post</th>
               <th className="sticky top-0 bg-white px-2 py-2 text-left">Format · âge</th>
               {CHIFFRES.map((c) => (
                 <th key={c.cle} className="sticky top-0 bg-white px-2 py-2 text-right">
@@ -858,7 +844,8 @@ function Tableau({ L }: { L: Lecture }) {
           <tbody className="divide-y divide-line">
             {rangs.map((l) => (
               <tr key={l.post.id} className={l.ecarte ? "opacity-45" : ""}>
-                <td className="px-3 py-2">
+                <td className="whitespace-nowrap px-3 py-2 font-mono text-[11.5px] text-muted">{dateCourte(l.post.date)}</td>
+                <td className="px-2 py-2">
                   <a href={lien(L.sp, { post: l.post.id })} className="flex items-center gap-2.5 hover:underline">
                     <Vignette p={l.post} taille="h-8 w-8" />
                     <span className="max-w-[240px] truncate text-ink">{l.post.caption || "(sans légende)"}</span>
@@ -877,7 +864,7 @@ function Tableau({ L }: { L: Lecture }) {
         </table>
       </div>
       <p className="border-t border-line px-4 py-2 text-[11px] text-faint">
-        Chiffres au dernier relevé du post. Grisé = écarté par une règle de lecture. Un « – » n&apos;a pas été rendu par Instagram, ce n&apos;est pas un zéro.
+        Chiffres au dernier relevé du post. Un « – » n&apos;a pas été rendu par Instagram, ce n&apos;est pas un zéro — dans l&apos;export, une cellule vide.
       </p>
     </div>
   );
@@ -941,15 +928,6 @@ function PanneauLateral({ L }: { L: Lecture }) {
 // format est mieux » ; « comparer 6 posts avec 12 posts, dur à dire » — 12 mois
 // est LA référence, 3 mois se lit avec prudence, le dernier mois manque encore
 // de données. Peu de texte au-dessus des graphes.
-
-function PorteeTableau({ L }: { L: Lecture }) {
-  return (
-    <div className="flex gap-1">
-      <Pastille href={lien(L.sp, { ts: undefined })} actif={L.sp.ts !== "tout"}>La période</Pastille>
-      <Pastille href={lien(L.sp, { ts: "tout" })} actif={L.sp.ts === "tout"}>Tout l&apos;historique</Pastille>
-    </div>
-  );
-}
 
 function tukey(g: FouleN) {
   const e = 1.5 * (g.q!.q3 - g.q!.q1);
@@ -1074,101 +1052,6 @@ function MoustachesPesees({ L, f, e }: { L: Lecture; f: FouleN; e: Echelle }) {
   );
 }
 
-// ── 2 · LA PENTE ────────────────────────────────────────────────────────────
-// Tous les formats sur un graphe : la hauteur dit quel format porte le plus,
-// la pente s'il monte. Le rayon d'un point suit son nombre de posts ; en dessous
-// de 6, pas de point, et le trait s'arrête.
-
-function Pente({ L }: { L: Lecture }) {
-  const cle = L.cle!;
-  const W = 1100;
-  const H = 280;
-  const colonnes = [140, 520, 900];
-  const series = L.fs.map((f) => {
-    const r = L.recents.get(f.format) ?? {};
-    return { f, pts: [f, r.trois, r.un].map((g) => (g?.q ? { med: g.q.med, n: g.valeurs.length } : { med: null, n: g?.nAvant ?? 0 })) };
-  });
-  const vals = series.flatMap((s) => s.pts.map((p) => p.med)).filter((v): v is number => v !== null);
-  const max = Math.max(...vals, 1) * 1.15;
-  const min = Math.min(...vals, max) * 0.8;
-  const y = (v: number) => H - 40 - ((v - min) / (max - min || 1)) * (H - 80);
-  const nMax = Math.max(1, ...series.map((s) => s.pts[0].n));
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="block" role="img" aria-label="Post type de chaque format, de l'année au dernier mois">
-      {STATUTS.map((st, i) => (
-        <g key={st.cle}>
-          <line x1={colonnes[i]} x2={colonnes[i]} y1={20} y2={H - 40} stroke={NEUTRE.trait} strokeOpacity={i === 0 ? 0.6 : 0.3} strokeDasharray={i === 0 ? undefined : "3 4"} />
-          <text x={colonnes[i]} y={H - 20} fontSize={12} fontWeight={i === 0 ? 700 : 500} fill="#0e0f12" textAnchor="middle">{st.nom}</text>
-          <text x={colonnes[i]} y={H - 6} fontSize={10.5} fill="#8b8e98" textAnchor="middle">{st.statut}</text>
-        </g>
-      ))}
-      {series.map(({ f, pts }) => {
-        const c = COULEUR_FORMAT[f.format] ?? NEUTRE.trait;
-        return (
-          <g key={f.format}>
-            {pts.slice(1).map((p, i) => {
-              const a = pts[i];
-              if (a.med === null || p.med === null) return null;
-              return <line key={i} x1={colonnes[i]} y1={y(a.med)} x2={colonnes[i + 1]} y2={y(p.med)} stroke={c} strokeWidth={2.5} strokeDasharray={i === 1 ? "6 5" : undefined} />;
-            })}
-            {pts.map((p, i) =>
-              p.med === null ? (
-                <text key={i} x={colonnes[i] + 10} y={y(pts[0].med ?? min) + 4} fontSize={10} fill={c}>{`${f.format} : ${p.n}/${MINIMUM} posts`}</text>
-              ) : (
-                <g key={i}>
-                  <circle cx={colonnes[i]} cy={y(p.med)} r={4 + 9 * Math.sqrt(p.n / nMax)} fill={i === 0 ? c : "#fff"} stroke={c} strokeWidth={2.5} />
-                  <text x={colonnes[i] + 16} y={y(p.med) + 4} fontSize={11} fill="#0e0f12" fontWeight={i === 0 ? 700 : 500}>{`${fmt(p.med, cle)} · ${p.n}`}</text>
-                </g>
-              )
-            )}
-            {pts[0].med !== null && <text x={colonnes[0] - 18} y={y(pts[0].med) + 4} fontSize={12} fontWeight={700} fill={c} textAnchor="end">{f.format}</text>}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// ── 3 · MOIS PAR MOIS ───────────────────────────────────────────────────────
-
-const MOIS = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-
-function Glissement({ L, f, e }: { L: Lecture; f: FouleN; e: Echelle }) {
-  const cle = L.cle!;
-  const W = 560;
-  const pts = L.glissements.get(f.format) ?? [];
-  const c = COULEUR_FORMAT[f.format] ?? NEUTRE.trait;
-  const x = (k: number) => 30 + (k / 11) * (W - 80);
-  const nMax = Math.max(1, ...pts.map((p) => p.n));
-  const d = pts.reduce((acc, p, k) => (p.med === null ? acc + " " : acc + `${acc.trim() === "" || pts[k - 1]?.med === null ? "M" : "L"}${x(k).toFixed(1)},${e.y(p.med).toFixed(1)} `), "");
-  return (
-    <svg viewBox={`0 0 ${W} ${H_RANG}`} width="100%" className="block" role="img" aria-label={`Le post type des ${f.format}, mois après mois`}>
-      {f.q && (
-        <>
-          <rect x={10} y={e.y(f.q.q3)} width={W - 16} height={Math.max(2, e.y(f.q.q1) - e.y(f.q.q3))} fill={c} fillOpacity={0.08} />
-          <line x1={10} x2={W - 6} y1={e.y(f.q.med)} y2={e.y(f.q.med)} stroke={c} strokeOpacity={0.6} strokeDasharray="5 4" />
-        </>
-      )}
-      <path d={d} fill="none" stroke={c} strokeWidth={2.5} />
-      {pts.map((p, k) => (
-        <g key={k}>
-          {p.med !== null ? (
-            <circle cx={x(k)} cy={e.y(p.med)} r={2.5 + 5 * Math.sqrt(p.n / nMax)} fill={k === pts.length - 1 ? "#fff" : c} stroke={c} strokeWidth={2}>
-              <title>{`${MOIS[new Date(p.fin).getMonth()]} : post type ${fmt(p.med, cle)} sur les 3 mois d'avant (${p.n} posts)`}</title>
-            </circle>
-          ) : (
-            <text x={x(k)} y={H_RANG - 34} fontSize={9} fill="#8b8e98" textAnchor="middle">{`${p.n}/${MINIMUM}`}</text>
-          )}
-          {k % 2 === 1 && <text x={x(k)} y={H_RANG - 8} fontSize={10} fill="#8b8e98" textAnchor="middle">{MOIS[new Date(p.fin).getMonth()]}</text>}
-        </g>
-      ))}
-      {pts.length > 0 && pts[pts.length - 1].med !== null && (
-        <text x={x(11) + 10} y={e.y(pts[pts.length - 1].med!) + 4} fontSize={11} fontWeight={700} fill="#0e0f12">{fmt(pts[pts.length - 1].med, cle)}</text>
-      )}
-    </svg>
-  );
-}
-
 // ── LA RANGÉE D'UN FORMAT ET LA PAGE ────────────────────────────────────────
 
 function Puce({ nom, g, annee, cle }: { nom: string; g?: FouleN; annee: FouleN; cle: string }) {
@@ -1184,10 +1067,10 @@ function Puce({ nom, g, annee, cle }: { nom: string; g?: FouleN; annee: FouleN; 
   );
 }
 
-function Rangee({ L, f, variante }: { L: Lecture; f: FouleN; variante: string }) {
+function Rangee({ L, f }: { L: Lecture; f: FouleN }) {
   const cle = L.cle!;
   const r = L.recents.get(f.format) ?? {};
-  const extras = variante === "3" ? (L.glissements.get(f.format) ?? []).map((p) => p.med) : [r.trois?.q ? tukey(r.trois).haut : null, r.un?.q ? tukey(r.un).haut : null];
+  const extras = [r.trois?.q ? tukey(r.trois).haut : null, r.un?.q ? tukey(r.un).haut : null];
   const e = echelle(f, extras);
   return (
     <div className="border-t border-line pt-4 first:border-0 first:pt-0">
@@ -1201,37 +1084,19 @@ function Rangee({ L, f, variante }: { L: Lecture; f: FouleN; variante: string })
         <Puce nom="3 mois" g={r.trois} annee={f} cle={cle} />
         <Puce nom="1 mois" g={r.un} annee={f} cle={cle} />
       </div>
-      {variante === "2" ? (
-        <NuagePeriode L={L} f={f} e={e} W={1120} />
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="min-w-0"><NuagePeriode L={L} f={f} e={e} /></div>
-          <div className="min-w-0">{variante === "3" ? <Glissement L={L} f={f} e={e} /> : <MoustachesPesees L={L} f={f} e={e} />}</div>
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="min-w-0"><NuagePeriode L={L} f={f} e={e} /></div>
+        <div className="min-w-0"><MoustachesPesees L={L} f={f} e={e} /></div>
+      </div>
     </div>
   );
 }
 
 function ColonnePosts({ L }: { L: Lecture }) {
-  const tous = L.sp.pt === "1";
-  const portees = [
-    { cle: undefined, nom: "La période" },
-    { cle: "an", nom: "12 mois" },
-    { cle: "tout", nom: "Tout" },
-  ];
   return (
     <aside className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white xl:sticky xl:top-4">
-      <div className="grid gap-2 border-b border-line px-4 py-3">
-        <div className="text-[13.5px] font-semibold text-ink">{tous ? `Tous, du meilleur au moins bon en ${L.metrique.nom.toLowerCase()}` : intitule(L)}</div>
-        <div className="flex flex-wrap gap-1">
-          {portees.map((p) => (
-            <Pastille key={p.nom} href={lien(L.sp, { pc: p.cle })} actif={(p.cle ?? "periode") === L.portee}>{p.nom}</Pastille>
-          ))}
-          <span className="mx-1 w-px bg-line" />
-          <Pastille href={lien(L.sp, { pt: undefined })} actif={!tous}>5</Pastille>
-          <Pastille href={lien(L.sp, { pt: "1" })} actif={tous}>Tous</Pastille>
-        </div>
+      <div className="border-b border-line px-4 py-3 text-[13.5px] font-semibold text-ink">
+        Tes 5 meilleurs posts de la période en {L.metrique.nom.toLowerCase()}
       </div>
       <div className="grid max-h-[85vh] gap-2 overflow-y-auto bg-canvas p-2">
         {L.sel.map((l, i) => <CartePost key={l.post.id} L={L} l={l} n={i + 1} compacte />)}
@@ -1240,10 +1105,10 @@ function ColonnePosts({ L }: { L: Lecture }) {
   );
 }
 
-function PageD({ L, variante }: { L: Lecture; variante: string }) {
+function PageD({ L }: { L: Lecture }) {
   return (
     <section>
-      <Titre titre="Tes posts face à ton année" droite={<ChoixSelection L={L} />} />
+      <Titre titre="Tes posts face à ton année" />
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 rounded-2xl border border-line bg-white p-5">
           <p className="mb-3 text-[12px] text-muted">
@@ -1251,13 +1116,8 @@ function PageD({ L, variante }: { L: Lecture; variante: string }) {
             {L.metrique.definition && <> · <b className="text-ink">{L.metrique.nom}</b> = {L.metrique.definition}.</>}
           </p>
           <PhraseEcartes L={L} />
-          {variante === "2" && (
-            <div className="mb-4 border-b border-line pb-4">
-              <Pente L={L} />
-            </div>
-          )}
           <div className="grid gap-4">
-            {L.fs.map((f) => <Rangee key={f.format} L={L} f={f} variante={variante} />)}
+            {L.fs.map((f) => <Rangee key={f.format} L={L} f={f} />)}
           </div>
         </div>
         <ColonnePosts L={L} />
