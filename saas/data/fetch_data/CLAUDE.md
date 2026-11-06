@@ -47,8 +47,12 @@ de départ change.
   (`mode: mise_a_jour`, cron 07:00 UTC) : chaque compte dont c'est le Jour de
   travail (`profiles.fetch_schedule`, `_due_today`) reprend là où sa base
   s'arrête moins le recouvrement, puis le rapport est publié.
+  Avant cela, chaque jour et pour tous les comptes Instagram, le **passage
+  léger** (`account_sync.leger`) : posts de moins de 8 × 24 h relevés, fiche
+  des posts neufs — sans rapport, sans `fetch_progress` (il ferait oublier
+  l'échec Meta du Jour de travail), une ligne de journal avec sa durée.
   `--user` (récolte d'amorçage, déclenchée par le web), `--force`,
-  `--report-only`.
+  `--report-only` (sans léger : aucune plateforme appelée).
 - **`cockpit/full_history.py`** — `mode: complete` : un compte (`--user`
   obligatoire), tout l'historique depuis `--depuis` (37 mois par défaut, la
   limite de Meta). Écrit, publie et envoie comme la mise à jour.
