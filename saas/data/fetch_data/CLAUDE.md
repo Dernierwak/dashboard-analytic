@@ -49,7 +49,9 @@ de départ change.
   s'arrête moins le recouvrement, puis le rapport est publié.
   Avant cela, chaque jour et pour tous les comptes Instagram, le **passage
   léger** (`account_sync.leger`) : posts de moins de 8 × 24 h relevés, fiche
-  des posts neufs — sans rapport, sans `fetch_progress` (il ferait oublier
+  des posts neufs, journée d'hier du compte (`instagram/releve_compte.py` →
+  `instagram_compte_jours`, et la portée des 7 jours dans
+  `instagram_compte_periodes`) — sans rapport, sans `fetch_progress` (il ferait oublier
   l'échec Meta du Jour de travail), une ligne de journal avec sa durée.
   `--user` (récolte d'amorçage, déclenchée par le web), `--force`,
   `--report-only` (sans léger : aucune plateforme appelée).

@@ -42,7 +42,8 @@
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   22)    instagram_organic_posts.permalink / media_product_type (hebdo, ticket 08)
 --   23)    Instagram — instagram_post_releves, instagram_compte_jours, et les
---          colonnes du relevé sur la fiche du post (instagram-construction, 01)
+--          colonnes du relevé sur la fiche du post (instagram-construction, 01),
+--          instagram_compte_periodes (instagram-construction, 05)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1747,6 +1748,13 @@ ALTER TABLE public.instagram_organic_posts
 --       échouer la section sur une base où elle manque.
 --     · instagram_compte_jours — clé (user_id, jour) ; un jour sans ligne est
 --       un trou, jamais un zéro.
+--     · instagram_compte_periodes — clé (user_id, debut, fin) : la portée
+--       dédoublonnée d'une période (`total_value`) telle qu'Instagram la rend.
+--       Elle ne se reconstitue pas à partir des jours : la somme compte deux
+--       fois un compte touché deux jours (101 990 pour 65 980 sur 30 jours,
+--       essai réel, `issues/17`). Chaque passage léger y AJOUTE les 7 jours
+--       finissant hier — la période par défaut de la page ; ajout seul, une
+--       période déjà là garde sa valeur (ticket 05).
 --
 --     Ajout seul. RLS : lecture par `a_acces(user_id)` (section 12) — la page
 --     /instagram lit ces tables directement et l'invité doit voir la même page
@@ -1802,8 +1810,18 @@ CREATE TABLE IF NOT EXISTS public.instagram_compte_jours (
     PRIMARY KEY (user_id, jour)
 );
 
+CREATE TABLE IF NOT EXISTS public.instagram_compte_periodes (
+    user_id   uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    debut     date        NOT NULL,
+    fin       date        NOT NULL,
+    reach     bigint      NOT NULL,
+    lu_a      timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, debut, fin)
+);
+
 ALTER TABLE public.instagram_post_releves ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instagram_compte_jours ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instagram_compte_periodes ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -1818,6 +1836,17 @@ BEGIN
                    WHERE schemaname = 'public' AND tablename = 'instagram_compte_jours'
                      AND policyname = 'ig_compte_jours_select_acces') THEN
         CREATE POLICY "ig_compte_jours_select_acces" ON public.instagram_compte_jours
+            FOR SELECT TO authenticated
+            USING (public.a_acces(user_id));
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'instagram_compte_periodes'
+                     AND policyname = 'ig_compte_periodes_select_acces') THEN
+        CREATE POLICY "ig_compte_periodes_select_acces" ON public.instagram_compte_periodes
             FOR SELECT TO authenticated
             USING (public.a_acces(user_id));
     END IF;
@@ -1901,6 +1930,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'instagram_organic_posts',  'media_product_type'),   -- §22
     ('t', 'instagram_post_releves',   NULL),                   -- §23
     ('t', 'instagram_compte_jours',   NULL),                   -- §23
+    ('t', 'instagram_compte_periodes', NULL),                  -- §23
     ('c', 'instagram_organic_posts',  'shares'),               -- §23
     ('c', 'instagram_organic_posts',  'profile_visits'),       -- §23
     ('c', 'instagram_organic_posts',  'avg_watch_time'),       -- §23
