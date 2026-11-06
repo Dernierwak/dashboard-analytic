@@ -122,3 +122,8 @@ il reste à savoir laquelle s'applique, aucune décision nouvelle.
 > (300 = la somme de `follower_count`), fenêtre de 30 jours au plus. Le
 > départ de la courbe se rouvre dans [Ce que l'essai réel laisse à
 > décider](22-ce-que-l-essai-laisse-a-decider.md).
+
+> **Tranché par [Ce que l'essai réel laisse à décider](22-ce-que-l-essai-laisse-a-decider.md)
+> (2026-11-06)** : la courbe des abonnés **remonte 30 jours** au premier
+> passage (total du jour − gagnés + perdus, jour après jour) ; un jour
+> manquant l'arrête là.

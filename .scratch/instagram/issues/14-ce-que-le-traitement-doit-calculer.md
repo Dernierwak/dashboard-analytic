@@ -302,3 +302,8 @@ et `likes` > 0 sur les vidéos.
 > `NON_FOLLOWER` de `follows_and_unfollows`, fenêtre ≤ 30 jours. Part `AD` :
 > à stocker pour Portée et Interactions (2.3). `boost_ads_list` : dédoublonner
 > par `ad_id`, statuts en minuscules.
+
+> **Tranché par [Ce que l'essai réel laisse à décider](22-ce-que-l-essai-laisse-a-decider.md)
+> (2026-11-06)** : `booste_vu_le` ne se remplit que pour une annonce hors
+> `error` ; au premier passage, `follows_and_unfollows` jour par jour sur
+> 30 jours pour remonter la courbe des abonnés (≈ 30 appels, une fois).

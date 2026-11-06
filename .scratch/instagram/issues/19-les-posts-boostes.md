@@ -68,3 +68,6 @@ unique remplit `booste_vu_le` pour les posts déjà en base.
 > tombe ; un vieux boost est vu dès la relecture unique. La même annonce
 > revient plusieurs fois : dédoublonner par `ad_id`. Le statut `error` se
 > tranche dans [Ce que l'essai réel laisse à décider](22-ce-que-l-essai-laisse-a-decider.md).
+
+> **Tranché par [Ce que l'essai réel laisse à décider](22-ce-que-l-essai-laisse-a-decider.md)
+> (2026-11-06)** : boosté = au moins une annonce **hors `error`**.

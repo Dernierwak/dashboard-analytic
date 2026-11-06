@@ -1,9 +1,9 @@
 # 22: Ce que l'essai réel laisse à décider
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: —
-Assignee: —
+Assignee: David (session Claude, 2026-11-06)
 
 ## Question
 
@@ -26,3 +26,16 @@ décisions :
    mais un écart de Meta entre ses propres compteurs se reporterait sur toute
    la courbe. À trancher : on remonte, ou on attend les relevés. Non essayé :
    `follows_and_unfollows` jour par jour (un appel par jour) sur 30 jours.
+
+## Résolution (2026-11-06, David : « oui pour les deux, on remonte les abonnés »)
+
+1. **Boosté = au moins une annonce hors `error`** dans `boost_ads_list`
+   (`completed`, `archived`, active…). Une annonce en `error` seule ne marque
+   pas le post : rien ne dit qu'elle a tourné.
+2. **La courbe des abonnés remonte 30 jours** au premier passage d'un compte :
+   le total de chaque jour passé = le total du jour (`followers_count`) moins
+   les gagnés, plus les perdus de chaque jour suivant (`follows_and_unfollows`
+   par `follow_type`). Au-delà de 30 jours, la courbe commence là — rien
+   d'autre ne se reconstitue. À vérifier à la construction : la lecture jour
+   par jour sur 30 jours (un appel par jour, non essayée) ; si un jour manque,
+   la courbe s'arrête à ce jour au lieu de sauter le trou (§7).
