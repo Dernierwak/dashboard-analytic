@@ -363,3 +363,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   (`.scratch/instagram/issues/18-le-compte-gratuit-a-10-posts.md`). La page
   `/instagram` elle-même n'en porte aucun : elle dit le fait (« 3 Reels, il
   en faut 6 pour situer un post »), pas l'offre. À reprendre avec l'offre.
+- **Bug de production : les abonnés Instagram sont figés au 2026-09-04.**
+  Plus rien n'écrit `followers_history` depuis le départ de l'Edge Function
+  `fetch-followers` (`7f188f3`) ; la page `/instagram` actuelle lit cette
+  table (`saas/web/lib/channels.ts`) et affiche donc un chiffre vieux de deux
+  mois sans le dire (constaté le 2026-11-06,
+  `.scratch/instagram/issues/16-l-etat-des-abonnes-en-base.md`). La nouvelle
+  page le règle par le relevé du compte ; d'ici là, la page actuelle ment.

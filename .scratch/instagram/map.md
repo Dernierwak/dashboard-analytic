@@ -137,8 +137,8 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés |
-| [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | — |
+| [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) ✓ | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) ✓ | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling ✓ | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling ✓ | — |
@@ -268,6 +268,10 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   boosté = au moins une annonce hors `error` ; la courbe des abonnés remonte
   30 jours au premier passage (total du jour − gagnés + perdus), un jour
   manquant l'arrête là.
+- [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) :
+  `followers_history` figée au 2026-09-04 (bug de production, au
+  `BACKLOG.md`) ; son historique mesuré se garde, la courbe a un trou entre
+  lui et la remontée de 30 jours.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook

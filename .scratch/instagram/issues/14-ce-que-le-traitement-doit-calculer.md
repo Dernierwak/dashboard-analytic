@@ -307,3 +307,8 @@ et `likes` > 0 sur les vidéos.
 > (2026-11-06)** : `booste_vu_le` ne se remplit que pour une annonce hors
 > `error` ; au premier passage, `follows_and_unfollows` jour par jour sur
 > 30 jours pour remonter la courbe des abonnés (≈ 30 appels, une fois).
+
+> **Éclairé par [L'état des abonnés en base](16-l-etat-des-abonnes-en-base.md)
+> (2026-11-06)** : `followers_history` (jusqu'au 2026-09-04) se garde comme
+> source mesurée de la courbe des abonnés ; le relevé du compte prend le
+> relais, avec un trou entre les deux.
