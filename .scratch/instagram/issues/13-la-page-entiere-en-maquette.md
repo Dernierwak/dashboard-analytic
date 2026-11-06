@@ -129,3 +129,87 @@ Ce que la maquette a déjà montré (90 jours, 31 posts) :
    formats, ou la réserve tient-elle ?
 3. **Le Panneau latéral** : surimpression (A, B) ou colonne collante qui
    absorbe la Sélection (C) ?
+
+## Réaction de David (2026-11-06)
+
+- **La page B est retenue** : le nuage des posts et, à sa droite, les
+  moustaches des formats, côte à côte — « on voit les posts ». Mais **sur
+  toute la largeur**.
+- Sous le nuage, **les posts choisis** (« les 5 meilleurs », vus directement
+  dans le nuage), chacun avec **la petite moustache de la page A** qui dit
+  où il se situe, ses chiffres, et **le texte du post** (« autumn,
+  machin… »). **Lire la vidéo** si possible.
+- **Expliquer chaque chiffre** : « post type 0,6 % », c'est quoi ? Et la
+  moustache, plus de détails.
+- **Décision nouvelle — la moustache se calcule sur les X derniers posts du
+  format, pas sur la période** : « qu'on comprenne que si on change la date,
+  ça ne change pas mes moustaches, parce que c'est pris sur les X derniers
+  posts » — et que ce soit bien écrit à l'écran. **Cela remplace « parmi
+  ceux de son format sur la période »** de [La place d'un post](06-la-place-d-un-post.md) :
+  à reporter dans sa réponse et dans la carte quand ce ticket se résout.
+- **La Tendance** : il veut voir comment Portée, Interactions et Abonnés du
+  compte fonctionneront, pas trois cadres vides.
+- **Compte gratuit** et **compte neuf** : bien. **Jeton mort** : « super »,
+  mais plus joli et plus présent sur la page — « assez important ».
+- Puis : refaire B avec tout cela, et **d'autres versions bâties sur B**.
+
+## Prototype, deuxième tour (2026-11-06)
+
+Même adresse, `/instagram?maquette=page&d=90&pv=A`. Trois versions de la
+page « nuage + moustaches » :
+
+- **A · Côte à côte** — la B corrigée : nuage et moustaches sur toute la
+  largeur, une légende dessinée à droite (post type, boîte, moustaches, hors
+  norme), puis les 5 posts choisis en cartes : média (▶ sur un Reel),
+  date et âge, valeur, place, **mini-moustache « parmi tes 20 derniers
+  Reels »**, trois lignes de légende, les six chiffres du post.
+- **B · Un nuage par format** — une ligne par format : son post type écrit
+  en phrase à gauche, son nuage et sa moustache sur **sa propre échelle**
+  (un Reel se lit contre tes Reels), puis les mêmes cartes.
+- **C · Les cartes à côté** — le nuage à gauche, les 5 posts en colonne
+  collante à droite, en cartes compactes ; la vidéo s'ouvre dans le Panneau.
+
+Ce qui a changé, pour les trois :
+- **La foule = les N derniers posts du format** (de plus de 48 h), tout
+  l'historique confondu ; la période ne choisit que les posts posés dessus.
+  Un bandeau le dit en tête du module : « Changer la date déplace les
+  points, jamais les moustaches ». La maquette laisse choisir 12 / 20 / 30
+  pour juger X (`?pn=`) ; **20 par défaut**.
+- **Chaque chiffre en phrase** : « post type en portée : la moitié de tes
+  20 derniers Reels fait plus, l'autre moins — sur 20 posts, du 7 juil. au
+  1er nov. » ; la définition de la métrique au-dessus (« Engagement =
+  (j'aime + commentaires + enregistrements) ÷ portée — sur 100 comptes
+  touchés, combien ont réagi »).
+- **La moustache détaillée** : valeurs du haut de la boîte, du post type et
+  du bas écrites à côté, les petits points des posts qui la font, des
+  moustaches arrêtées à la limite hors norme (Tukey) ; un hors norme de la
+  référence n'étire plus l'axe, il est compté en haut (« ▲ 1 hors norme
+  plus haut »).
+- **La vidéo** : la récolte ne garde que l'image (`_image_du_post`,
+  `sync.py`) et le lien vidéo de Meta expire. La maquette ouvre donc **le
+  lecteur public d'Instagram** à partir du `permalink` du post (en base,
+  lu par la maquette elle-même, pas par `getInstaDash`) — dans la carte et
+  dans le Panneau. Vérifié : il joue. À porter au ticket du traitement :
+  lire `permalink` ; quelques Reels n'en ont pas (pas de ▶).
+- **La Tendance d'exemple** : Portée, Interactions et Abonnés avec une
+  **série inventée**, marquée « exemple inventé » sur chaque courbe — les
+  jours de publication, eux, sont réels. Seule exception à « aucun chiffre
+  fabriqué », confinée à la maquette, pour juger la forme ; le bandeau de la
+  maquette rebascule sur la base réelle (vide).
+- **Le jeton mort** en tête de page, pleine largeur : « Tes chiffres
+  Instagram sont figés au 1 nov. 2026 », ce qui reste juste / ce qui
+  manque, « Reconnecter Instagram » ; le reste de la page grisé, badge
+  « figé au … ».
+
+Vu au passage : **avec 20 derniers posts, l'Image a sa moustache** (post
+type 7 252, du 9 janv. au 28 oct.) alors qu'elle n'en avait pas sur
+90 jours (5 posts) — la règle de David règle aussi le « pas assez de
+posts » des petites périodes.
+
+### Pour trancher (David)
+
+1. **Quelle version** — A, B ou C (ou un mélange) ?
+2. **X** : 20 derniers posts, ou 12 / 30 ? Et un format qui n'a pas X posts
+   dans tout son historique : moustache sur ce qu'il a (dès 6), comme
+   aujourd'hui ?
+3. **Le lecteur Instagram** dans la carte, ou seulement dans le Panneau ?
