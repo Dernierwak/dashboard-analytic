@@ -166,9 +166,11 @@ Conditionnel à l'essai, point 8 : `reach` et `total_interactions` en
 `breakdown=media_product_type` pour la part `AD` — sans valeur `AD`, rien
 à stocker et l'interrupteur n'existe pas.
 
-**2.4 · Le marqueur de boost** : `boost_ads_list` (une fois pour toutes ou
-au relevé) — **fixé par [Les posts boostés](19-les-posts-boostes.md)**. Le
-filtre « sans les boostés » n'existe pas avant.
+**2.4 · Le marqueur de boost** : `boost_ads_list` lu **à chaque relevé**,
+au même appel que les chiffres ; la première fois qu'une annonce y paraît,
+`booste_vu_le` prend la date et ne se vide plus — **fixé par
+[Les posts boostés](19-les-posts-boostes.md)**. Sans `boost_ads_list` pour
+notre jeton (essai réel, point 9), le filtre « sans les boostés » n'existe pas.
 
 **2.5 · La relecture unique de tous les posts en base.** Elle remplit
 `media_product_type`, `permalink`, `shares`, `profile_visits`, les `likes`
@@ -194,7 +196,7 @@ relevé** — ce que la page affiche :
 | `shares` int, null | Partages (Engagement) et réactions fortes. |
 | `profile_visits` int, null | Rendu par Meta sur le fil, au même appel que `follows` ; aucune décision ne l'affiche encore — **à retirer de R1 si la spec ne lui donne pas de place**. |
 | `releve_a` timestamptz, null | La date du dernier relevé, que la page écrit (« chiffres au … »). Null = antérieur au relevé. |
-| `booste` (forme selon le ticket 19) | Le filtre « sans les boostés ». |
+| `booste_vu_le` date, null | Le filtre « sans les boostés » et l'étiquette « Boosté » — forme fixée par [Les posts boostés](19-les-posts-boostes.md) ; le relevé porte en plus `booste` (booléen du moment). |
 
 **3.2 · `instagram_post_releves`** (nouvelle), clé `(user_id, post_id,
 releve_a)` : `age_heures` (réel, numérique : un passage manqué donne 200 h,
@@ -243,7 +245,7 @@ Organique de l'hebdo ne porte aucun chiffre, hebdo ticket 04).
 | **la place** | valeur, quartiles de la référence | `en dessous` sous q1, `bas de tes habitudes` de q1 à la médiane, `haut de tes habitudes` de la médiane à q3, `au-dessus` au-delà ; **hors norme** hors de [q1 − 1,5 × IQR, q3 + 1,5 × IQR]. Les bornes exactes (≤ ou <) s'écrivent une fois, dans la spec. |
 | place à âge égal | `instagram_post_releves`, âge < 8 × 24 h | Pour un post à J+n (n = ⌊âge ÷ 24⌋, 2 ≤ n ≤ 7) : de chaque autre post du format sur les 12 mois, son **premier** relevé tombé dans [n × 24, (n+1) × 24) h ; mêmes quartiles, minimum 6, sinon une mention. |
 | « sans les hors norme » | la référence | Bornes de Tukey calculées **une fois** sur la référence de la métrique affichée, posts au-delà retirés, quartiles refaits sur le reste, minimum 6 jugé **après** ; nombre d'écartés et raison. |
-| « sans les boostés » | `booste` (ticket 19) | Retire les boostés de toutes les foules ; même comptage. |
+| « sans les boostés » | `booste_vu_le` (ticket 19) | Retire les boostés de toutes les foules ; même comptage. |
 | totaux d'un format | follows, likes, comments, shares, saved, views, profile_visits | Somme des valeurs non vides, avec « x sur n » ; **jamais** portée ni taux. |
 | les 5 meilleurs | posts de la période, âge > 48 h | Tri décroissant sur la métrique choisie, sans les écartés ; un post sans valeur n'y entre pas. |
 | le Tableau | tous les posts en base | Tri par date ou par métrique ; place contre la référence actuelle (ou selon le ticket 20 pour un post de plus de 12 mois). |

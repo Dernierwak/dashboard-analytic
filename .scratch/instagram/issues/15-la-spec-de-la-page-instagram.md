@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Blocked by: 16, 17, 18, 19
+Blocked by: 16, 17
 Assignee: —
 
 ## Question

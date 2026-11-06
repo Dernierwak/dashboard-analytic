@@ -354,3 +354,12 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   existent, « sans les boostés » et « sans les hors norme »
   (`.scratch/instagram/issues/08-ecarter-un-post.md`). À reprendre si un
   client bute sur un post qu'aucun des deux n'écarte.
+- **Où pousser le passage au payant.** David veut lister les endroits où un
+  compte gratuit pourrait être invité à acheter : « les appels à faire les
+  achats, ça faudrait qu'on se les mette quelque part, pour voir où on
+  pourrait appuyer » (2026-11-06). Point de départ : ce que le gratuit n'a
+  pas, c'est **l'historique antérieur à son arrivée** — il démarre à 10
+  posts et grandit avec chaque post publié
+  (`.scratch/instagram/issues/18-le-compte-gratuit-a-10-posts.md`). La page
+  `/instagram` elle-même n'en porte aucun : elle dit le fait (« 3 Reels, il
+  en faut 6 pour situer un post »), pas l'offre. À reprendre avec l'offre.

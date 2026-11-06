@@ -103,6 +103,10 @@ aller chercher en plus et ce que le traitement doit calculer.
   - **Réactions fortes** : enregistrements et partages rapportés à la
     portée, face au « j'aime », réaction légère. _À éviter_ : « bon
     engagement ».
+  - **Boosté** : un post dont Instagram a listé au moins une annonce à un
+    relevé ; il le reste après la fin du boost. Sans étiquette = aucun
+    boost vu, jamais « pas boosté ». _À éviter_ : « sponsorisé »,
+    « payant » pour le post.
   - **Règles de lecture** : les deux filtres « sans les boostés » et « sans
     les hors norme », rangés sous ce nom dans le Bandeau ; ils ne touchent
     que la foule des posts. _À éviter_ : « mode avancé », « mode pro »,
@@ -133,11 +137,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
-| [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | — |
-| [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | — |
+| [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling ✓ | — |
+| [Les posts boostés](issues/19-les-posts-boostes.md) | grilling ✓ | — |
 | [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling ✓ | — |
 | [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling ✓ | — |
 
@@ -240,6 +244,18 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   (« plus d'un an ») ; la place se lit face aux 12 mois seulement ; les
   pastilles 3 mois et 1 mois se comparent au post type de l'année, l'écart
   toujours écrit avec son nombre de posts — le seuil de ±5 % part.
+- [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) :
+  le gratuit, c'est le payant **sans le rattrapage** — 10 posts à l'arrivée,
+  puis chaque nouveau post s'ajoute et rien ne s'efface ; relu comme le
+  payant ; même page, mêmes règles, le minimum de 6 fait le tri ; la ligne
+  de référence dit depuis quand ; aucun appel à l'achat sur la page (« où
+  pousser le payant » va au `BACKLOG.md`).
+- [Les posts boostés](issues/19-les-posts-boostes.md) : Pulse le sait par
+  `boost_ads_list` d'Instagram, au relevé ; boosté une fois, boosté pour
+  toujours (date du premier boost vu) ; aucune relecture de plus — un boost
+  raté puis vu est marqué dès qu'il est vu ; un anneau autour du point au
+  nuage, l'étiquette « Boosté » ailleurs, aucun budget ; l'absence veut dire
+  « aucun boost vu », et deux cas restent à l'essai réel.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook

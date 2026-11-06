@@ -29,10 +29,12 @@ sur un compte branché, qui répond à :
    `breakdown=media_product_type` rendent-ils une valeur `AD` ? Les valeurs
    d'interactions se somment-elles au total ? (interrupteur Tout / Organique
    / Boosté de [Le compte dans le temps](10-le-compte-dans-le-temps.md))
-8. **La part boostée du compte** : `reach` et `total_interactions` en
-   `breakdown=media_product_type` rendent-ils une valeur `AD` ? Les valeurs
-   d'interactions se somment-elles au total ? (Interrupteur organique /
-   boosté de la Tendance, [Le compte dans le temps](10-le-compte-dans-le-temps.md))
+9. **`boost_ads_list`** sur un post : notre jeton l'obtient-il ? Que rend-il
+   (identifiants, statut) ? ([Les posts boostés](19-les-posts-boostes.md))
+10. **Une annonce terminée** reste-t-elle dans `boost_ads_list` ? À essayer
+   sur un post boosté puis arrêté. Si non, la page écrit « boosts vus par
+   Pulse seulement quand ils tournaient au moment d'un relevé ».
+   ([Les posts boostés](19-les-posts-boostes.md))
 
 Le script se prépare sur le modèle de la skill `wizard` (étapes que seul
 David peut faire) ; il imprime les réponses, jamais le jeton. Le résultat
