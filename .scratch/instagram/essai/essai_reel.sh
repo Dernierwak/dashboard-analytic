@@ -205,6 +205,17 @@ ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RACINE="$(git -C "$ICI" rev-parse --show-toplevel)"
 PRINCIPAL="$(dirname "$(git -C "$ICI" rev-parse --path-format=absolute --git-common-dir)")"
 PY="$ICI/essai_reel.py"
+# Sans terminal (le préfixe `!` de Claude Code n'a pas de clavier), les
+# questions lisent une fin de fichier et le wizard s'arrêtait en silence :
+# `--user UID [--boost LIEN]` les remplace.
+ARG_UID=""; ARG_BOOST=""
+while (( $# )); do
+  case "$1" in
+    --user)  ARG_UID="${2:-}"; shift 2 ;;
+    --boost) ARG_BOOST="${2:-}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
 
 banner "Pulse · l'essai réel des métriques Instagram"
 
@@ -249,7 +260,11 @@ if ! LISTE="$(python3.12 "$PY" --lister 2>&1)"; then
 fi
 printf '%s\n' "$LISTE" | sed 's/^/  /'
 printf '\n'
-ask ESSAI_UID "Colle le user_id du compte à essayer :"
+if [[ -n "$ARG_UID" ]]; then
+  ESSAI_UID="$ARG_UID"; say "Compte donné : $ESSAI_UID"
+else
+  ask ESSAI_UID "Colle le user_id du compte à essayer :"
+fi
 
 # ── 3 · Un post boosté puis arrêté (facultatif) ───────────────────────────
 stage "Un post boosté puis arrêté (facultatif)"
@@ -258,14 +273,16 @@ say "Si tu connais un post de ce compte qui a été boosté puis arrêté,"
 say "ouvre-le sur instagram.com et copie son lien (https://www.instagram.com/p/…)."
 note "Il doit être parmi les 200 derniers posts. Sans lien, le script juge sur les"
 note "statuts des annonces qu'il trouve lui-même."
-ESSAI_BOOST=""
-ask ESSAI_BOOST "Lien du post (Entrée pour passer) :" || true
+ESSAI_BOOST="$ARG_BOOST"
+if [[ -z "$ARG_UID" ]]; then
+  ask ESSAI_BOOST "Lien du post (Entrée pour passer) :" || true
+fi
 
 # ── 4 · L'essai ───────────────────────────────────────────────────────────
 stage "L'essai"
 say "Lecture seule : rien n'est écrit en base, le jeton ne s'affiche nulle part."
 say "Environ 40 appels à l'API Graph, moins d'une minute."
-if ! confirm "Lancer l'essai sur $ESSAI_UID ?"; then
+if [[ -z "$ARG_UID" ]] && ! confirm "Lancer l'essai sur $ESSAI_UID ?"; then
   warn "essai annulé."; exit 0
 fi
 printf '\n'
