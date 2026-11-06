@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from saas.data.fetch_data.sources.meta.graph_client import GRAPH, AccesMeta
+from saas.data.fetch_data.sources.meta.instagram.fetchers import boost
 from saas.data.fetch_data.shared import http_client as http
 from saas.data.fetch_data.shared.http_client import sans_jeton
 
@@ -44,14 +45,23 @@ def info_du_post(acces: AccesMeta, post_id: str) -> dict:
     `permalink` et `media_product_type` (ticket 08 de `.scratch/hebdo/`) se
     lisent avec la même permission `instagram_basic` que les autres champs :
     aucun re-consentement. `media_product_type` est le seul à dire si un `VIDEO`
-    est un Reel (`REELS`) ou une vidéo du fil (`FEED`)."""
-    params = {
-        "fields": "caption,media_type,media_url,thumbnail_url,timestamp,"
-                  "permalink,media_product_type",
-        "access_token": acces.jeton,
-    }
+    est un Reel (`REELS`) ou une vidéo du fil (`FEED`).
+
+    `boost_ads_list` vient au même appel (ticket 02). Un champ refusé fait
+    échouer TOUTE la requête (essai réel, `essai_reel.py:lire_posts`) : sur un
+    refus, la fiche se relit sans lui — le boost reste alors inconnu, la fiche
+    et les métriques ne sont pas perdues pour lui."""
+    champs = "caption,media_type,media_url,thumbnail_url,timestamp,permalink,media_product_type"
+    reponse = _fiche(acces, post_id, boost.avec_le_champ(champs))
+    if not reponse.get("error"):
+        return boost.obtenu(reponse)
+    return _fiche(acces, post_id, champs)
+
+
+def _fiche(acces: AccesMeta, post_id: str, champs: str) -> dict:
     # Sans `timeout`, `requests` attend indéfiniment : un serveur Graph muet
     # tenait le worker jusqu'au plafond du job GitHub Actions (6 h).
+    params = {"fields": champs, "access_token": acces.jeton}
     return http.get(f"{GRAPH}/{post_id}", params=params, timeout=30).json()
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from saas.data.fetch_data.sources.meta.graph_client import GRAPH, AccesMeta, lire, pages
+from saas.data.fetch_data.sources.meta.instagram.fetchers import boost
 from saas.data.fetch_data.shared.date_ranges import Fenetre
 
 # Plafond de pages sur l'inventaire des médias. À 100 par page, 60 pages =
@@ -67,12 +68,20 @@ def recents(acces: AccesMeta, plus_jeune_que: datetime) -> tuple[list[dict], lis
     Retour `(medias, trous)` : une page refusée après la première rend ce qui a
     été lu ET le dit, comme `graph_client.pages`.
     """
-    params = {"fields": _CHAMPS_DE_LA_FICHE, "limit": _PAGE_DU_JOUR,
+    # `boost_ads_list` avec la fiche (ticket 02) ; un champ refusé fait échouer
+    # toute la page : on la relit sans lui, le boost reste inconnu ce jour-là.
+    # Les pages suivantes suivent `next`, qui porte les champs de la première.
+    url = f"{GRAPH}/{acces.instagram}/media"
+    params = {"fields": boost.avec_le_champ(_CHAMPS_DE_LA_FICHE), "limit": _PAGE_DU_JOUR,
               "access_token": acces.jeton}
-    data, err = lire(f"{GRAPH}/{acces.instagram}/media", params, timeout=30)
+    data, err = lire(url, params, timeout=30)
+    marquer = boost.obtenu
+    if err:
+        data, err = lire(url, {**params, "fields": _CHAMPS_DE_LA_FICHE}, timeout=30)
+        marquer = _tel_quel
     if err:
         return [], [err]
-    medias = list(data.get("data") or [])
+    medias = [marquer(m) for m in data.get("data") or []]
     for _ in range(_PAGES_DU_JOUR_MAX - 1):
         nxt = (data.get("paging") or {}).get("next")
         if not nxt or not medias or not _plus_jeune(medias[-1], plus_jeune_que):
@@ -85,8 +94,12 @@ def recents(acces: AccesMeta, plus_jeune_que: datetime) -> tuple[list[dict], lis
         lot = data.get("data") or []
         if not lot:
             return medias, []
-        medias += lot
+        medias += [marquer(m) for m in lot]
     return medias, []
+
+
+def _tel_quel(media: dict) -> dict:
+    return media
 
 
 def _plus_jeune(media: dict, borne: datetime) -> bool:
