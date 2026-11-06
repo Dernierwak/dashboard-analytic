@@ -21,7 +21,8 @@ from saas.data.fetch_data.shared import http_client as http
 COLONNES_SI_CONNUES = ("permalink", "media_product_type")
 # Les colonnes de la section 23 (`.scratch/instagram/spec.md` § La base) :
 # tant qu'elle n'est pas jouée, les posts s'écrivent sans elles. `booste_vu_le`
-# n'est pas encore envoyée (ticket 02) mais se retire de même.
+# n'est envoyée qu'à la première vue d'un boost (`sync.lignes_du_post`) : une
+# ligne qui ne la porte pas ne la vide donc pas.
 COLONNES_SECTION_23 = ("shares", "profile_visits", "avg_watch_time", "releve_a", "booste_vu_le")
 
 

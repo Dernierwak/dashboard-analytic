@@ -17,6 +17,7 @@ from saas.data.supabase.source_data.meta import (
 )
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram.fetchers import account as compte
+from saas.data.fetch_data.sources.meta.instagram.fetchers import boost
 from saas.data.fetch_data.sources.meta.instagram.fetchers import post_metrics as metriques
 from saas.data.fetch_data.sources.meta.instagram.fetchers import posts
 
@@ -76,8 +77,36 @@ def _rien(_etape: str) -> None:
     return None
 
 
+def _en_base(sb, uid: str, ids: list[str] | None = None) -> dict[str, dict]:
+    """`{post_id: {media_url, booste_vu_le}}` des posts déjà en base (tous, ou `ids`).
+
+    `booste_vu_le` se lit ici, dans la lecture de l'image : l'upsert réécrit
+    chaque colonne envoyée, donc la date ne s'envoie que si elle manque — c'est
+    ce qui la garde « pour toujours » (ticket 02). Tant que la section 23 n'est
+    pas jouée, la colonne n'existe pas (42703) : on relit sans elle.
+    """
+    for colonnes in ("post_id, media_url, booste_vu_le", "post_id, media_url"):
+        requete = sb.table("instagram_organic_posts").select(colonnes).eq("user_id", uid)
+        if ids is not None:
+            requete = requete.in_("post_id", ids)
+        try:
+            return {str(r["post_id"]): r for r in requete.execute().data or []}
+        except Exception as e:
+            if "booste_vu_le" not in colonnes or not _colonne_boost_absente(e):
+                raise
+            print("    posts Instagram : colonne booste_vu_le absente — lance "
+                  "saas/data/supabase/migrations/000_run_me_all.sql.")
+    return {}
+
+
+def _colonne_boost_absente(err: Exception) -> bool:
+    """PostgreSQL répond 42703 à un `select` d'une colonne inconnue."""
+    msg = str(err).lower()
+    return "booste_vu_le" in msg and ("42703" in msg or "does not exist" in msg)
+
+
 def _a_relire(sb, uid: str, medias: list[dict]) -> tuple[list, dict]:
-    """L'inventaire → (posts à relire, {post_id: media_url déjà en base}).
+    """L'inventaire → (posts à relire, `_en_base`).
 
     Écrit au passage le décompte total des posts (`total_posts_id_instagram`),
     comme avant.
@@ -91,9 +120,7 @@ def _a_relire(sb, uid: str, medias: list[dict]) -> tuple[list, dict]:
     limite = 200 if is_paid else 10
     all_post_ids = df["id"][:limite].tolist()
 
-    existing_rows = (sb.table("instagram_organic_posts")
-                     .select("post_id, media_url")
-                     .eq("user_id", uid).execute().data) or []
+    connus = _en_base(sb, uid)
     # LE BUG QUI RENDAIT LA RÉCOLTE JAMAIS INCRÉMENTALE, ET DEPUIS TOUJOURS.
     # `post_id` est une colonne numérique (bigint) : PostgREST le rend en
     # `int` Python. `df["id"]` vient du Graph API, qui rend TOUJOURS ses IDs
@@ -112,8 +139,8 @@ def _a_relire(sb, uid: str, medias: list[dict]) -> tuple[list, dict]:
     # toujours `None`, et `_image_du_post` refaisait le trajet
     # téléchargement + envoi pour une image qu'on avait déjà — le poste le
     # plus cher de la récolte Instagram, payé pour rien à chaque passage.
-    existing_ids = {str(row["post_id"]) for row in existing_rows}
-    media_connu = {str(r["post_id"]): r.get("media_url") for r in existing_rows}
+    existing_ids = set(connus)
+    media_connu = {pid: r.get("media_url") for pid, r in connus.items()}
 
     # La fenêtre de rafraîchissement, en jours (voir _JOURS_RAFRAICHIS).
     # `errors="coerce"` : un timestamp illisible devient NaT, donc hors
@@ -140,7 +167,7 @@ def _a_relire(sb, uid: str, medias: list[dict]) -> tuple[list, dict]:
                 or not _dans_le_stockage(media_connu.get(pid))):
             a_reprendre.append(pid)
             repris += 1
-    return a_reprendre, media_connu
+    return a_reprendre, connus
 
 
 def _image_du_post(sb, uid: str, post_id: str, info: dict, media_connu: dict) -> str:
@@ -181,7 +208,8 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
         # Pas une erreur : ce qui a été lu est bon. Mais ça se dit, sinon
         # `total_posts` est faux sans que rien ne le signale.
         print(f"    médias Instagram : {trous[0]} — le total sera sous-estimé.")
-    a_relire, media_connu = _a_relire(sb, uid, medias)
+    a_relire, connus = _a_relire(sb, uid, medias)
+    media_connu = {pid: r.get("media_url") for pid, r in connus.items()}
     note("abonnés")
     # Lu et jamais écrit — c'était déjà le cas avant le déménagement. Gardé
     # pour ne rien changer ; l'essai (ticket 08) en a besoin pour son contrôle.
@@ -193,7 +221,8 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
         info = metriques.info_du_post(acces, post_id)
         m = (None if info.get("error")
              else metriques.metriques_du_post(acces, post_id, info.get("media_product_type")))
-        fiche, releve = lignes_du_post(uid, info, m, datetime.now(timezone.utc))
+        fiche, releve = lignes_du_post(uid, info, m, datetime.now(timezone.utc),
+                                       booste_vu_le=(connus.get(post_id) or {}).get("booste_vu_le"))
         if fiche is None:
             refuses += 1
             continue
@@ -278,9 +307,8 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
         print(f"    médias Instagram (léger) : {trous[0]}")
     ids = [str(m["id"]) for m in medias if m.get("id")]
     # Au plus 8 × 25 lignes : sous le plafond de 1 000 de PostgREST.
-    lignes = (sb.table("instagram_organic_posts").select("post_id, media_url")
-              .eq("user_id", uid).in_("post_id", ids).execute().data) if ids else []
-    media_connu = {str(r["post_id"]): r.get("media_url") for r in lignes or []}
+    connus = _en_base(sb, uid, ids) if ids else {}
+    media_connu = {pid: r.get("media_url") for pid, r in connus.items()}
 
     fiches, releves, refuses, neufs = [], [], 0, 0
     for media in posts_du_jour(medias, set(media_connu), maintenant):
@@ -289,7 +317,8 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
         # L'heure du passage, pas celle de chaque appel : le léger d'un compte
         # dure de l'ordre de la minute, un écart sans effet sur un J+n compté
         # en jours — et c'est ce qui rend l'âge vérifiable hors ligne.
-        fiche, releve = lignes_du_post(uid, media, m, maintenant)
+        fiche, releve = lignes_du_post(uid, media, m, maintenant,
+                                       booste_vu_le=(connus.get(post_id) or {}).get("booste_vu_le"))
         if fiche is None or releve is None:
             # Pas de relevé, et pas de fiche non plus : un post neuf sans
             # métriques reviendra demain, absent de la base, et sera repris.
@@ -308,8 +337,8 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
     return f"insta léger: {len(releves)} posts relevés dont {neufs} neufs"
 
 
-def lignes_du_post(uid: str, info: dict, metriques: dict | None,
-                   releve_a: datetime) -> tuple[dict | None, dict | None]:
+def lignes_du_post(uid: str, info: dict, metriques: dict | None, releve_a: datetime,
+                   booste_vu_le: str | None = None) -> tuple[dict | None, dict | None]:
     """Une lecture d'un post → (sa fiche, son relevé) à écrire.
 
     La fiche porte le dernier relevé ; le relevé s'AJOUTE, daté, avec son âge
@@ -323,6 +352,12 @@ def lignes_du_post(uid: str, info: dict, metriques: dict | None,
       ni `releve_a`, et pas de relevé : l'upsert ne réécrit que les colonnes
       envoyées, les bonnes valeurs déjà en base restent.
     · L'image (`media_url`) se règle à part : elle demande le stockage.
+    · Le boost (ticket 02) : le relevé porte l'état du moment (`booste`, None
+      si le champ n'a pas été obtenu) ; la fiche reçoit `booste_vu_le` — la
+      date du relevé — à la première vue seulement (`booste_vu_le` = la valeur
+      déjà en base). Jamais envoyée sinon : l'upsert la viderait ou la
+      déplacerait. Lu au même appel que la fiche, il se pose même si les
+      métriques ont été refusées.
     """
     if info.get("error") or not info.get("id"):
         return None, None
@@ -336,12 +371,16 @@ def lignes_du_post(uid: str, info: dict, metriques: dict | None,
         # envoyée, et un None effacerait une valeur déjà acquise.
         **{k: info[k] for k in COLONNES_SI_CONNUES if info.get(k)},
     }
+    booste = boost.est_booste(info)
+    if booste and not booste_vu_le:
+        fiche["booste_vu_le"] = releve_a.date().isoformat()
     if metriques is None:
         return fiche, None
     horodatage = releve_a.isoformat()
     fiche.update(metriques, releve_a=horodatage)
     releve = {"user_id": uid, "post_id": info["id"], "releve_a": horodatage,
-              "age_heures": _age_en_heures(info.get("timestamp"), releve_a), **metriques}
+              "age_heures": _age_en_heures(info.get("timestamp"), releve_a),
+              "booste": booste, **metriques}
     return fiche, releve
 
 
