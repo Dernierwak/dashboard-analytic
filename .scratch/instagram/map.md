@@ -85,7 +85,8 @@ aller chercher en plus et ce que le traitement doit calculer.
     « J+n » = au moins n × 24 h.
   - **Place d'un post** : sa bande parmi les posts de son format des 12
     derniers mois glissants, sur la métrique choisie — « en dessous », « bas de tes habitudes », « haut de
-    tes habitudes », « au-dessus ». _À éviter_ : « rang », « score ».
+    tes habitudes », « au-dessus » ; un post de plus de 12 mois n'en a
+    pas (« plus d'un an »). _À éviter_ : « rang », « score ».
   - **Post type** : la médiane de la foule. _À éviter_ : « moyenne ».
   - **Hors norme** : un post au-delà de 1,5 × l'écart interquartile, d'un
     côté ou de l'autre. _À éviter_ : « aberrant » à l'écran (sonne comme
@@ -132,12 +133,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés ; Hors de l'année |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | — |
-| [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling | — |
+| [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling ✓ | — |
 | [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling ✓ | — |
 
 ## Decisions so far
@@ -234,6 +235,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   tous les 3 mois ; chaque chiffre porte sa date ; la référence écrit la
   période qu'elle couvre tant que l'année n'est pas chargée ; le gratuit reste
   à 10 posts.
+- [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) :
+  un post de plus de 12 mois reste au Tableau mais sort de tous les calculs
+  (« plus d'un an ») ; la place se lit face aux 12 mois seulement ; les
+  pastilles 3 mois et 1 mois se comparent au post type de l'année, l'écart
+  toujours écrit avec son nombre de posts — le seuil de ±5 % part.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook
