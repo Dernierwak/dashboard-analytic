@@ -94,6 +94,9 @@ aller chercher en plus et ce que le traitement doit calculer.
     « sans les hors norme ») sort de la foule et de la Sélection ; il reste
     visible, grisé, avec sa raison. _À éviter_ : « supprimé », « exclu »
     (sonnent définitifs), « masqué ».
+  - **Rattrapage** : le premier chargement de tout l'historique d'un
+    compte, du post le plus récent au plus ancien, par blocs. _À éviter_ :
+    « backfill » à l'écran, « import ».
   - **Format** : Reel, Carrousel, Image ou Vidéo du fil — un fait rendu par
     Meta. _À éviter_ : « type » à l'écran, « thème ».
   - **Réactions fortes** : enregistrements et partages rapportés à la
@@ -129,13 +132,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés ; Hors de l'année ; La profondeur de l'historique |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | L'état des abonnés ; L'essai réel ; Le compte gratuit ; Les posts boostés ; Hors de l'année |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling | — |
 | [Les posts boostés](issues/19-les-posts-boostes.md) | grilling | — |
 | [La place d'un post hors de l'année](issues/20-la-place-d-un-post-hors-de-l-annee.md) | grilling | — |
-| [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling | — |
+| [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) | grilling ✓ | — |
 
 ## Decisions so far
 
@@ -224,6 +227,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   foule, la place, l'âge égal et les filtres se calculent **une fois, à la
   lecture, dans `lib/instagram/`**, rien en Python. La sonde corrige le
   ticket 13 : `follows` est en base, mais à 0 sur les 124 vidéos.
+- [La profondeur de l'historique des posts](issues/21-la-profondeur-de-l-historique.md) :
+  **tout l'historique** en payant, chargé du plus récent au plus ancien par
+  blocs sur le passage quotidien (la page se remplit à mesure) ; les posts de
+  moins de 30 jours relus à chaque Jour de travail, **tous** les posts relus
+  tous les 3 mois ; chaque chiffre porte sa date ; la référence écrit la
+  période qu'elle couvre tant que l'année n'est pas chargée ; le gratuit reste
+  à 10 posts.
 
 ## Not yet specified
 - **Les stories** : non récoltées ; lisibles 24 h, les garder exige le webhook

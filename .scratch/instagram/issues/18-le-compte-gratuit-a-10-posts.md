@@ -26,3 +26,8 @@ Dépend du **minimum de posts** qu'une place exige, tranché dans
 > **Tranché par [La place d'un post](06-la-place-d-un-post.md) (2026-11-03)** :
 > **6 posts du format au minimum** ; en dessous, points et `n` sans place, et
 > une mention. À 10 posts relus, aucun format ou presque ne l'atteint.
+
+> **Tranché par [La profondeur de l'historique des posts](21-la-profondeur-de-l-historique.md)
+> (2026-11-06)** : le compte gratuit **reste à 10 posts** pour l'instant
+> (David : « ça augmentera avec le temps ») — l'option « une autre limite de
+> relecture » est écartée. Reste à trancher ce que sa page montre.
