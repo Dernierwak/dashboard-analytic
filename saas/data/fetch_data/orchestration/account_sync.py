@@ -28,6 +28,7 @@ from saas.data.fetch_data.sources.google.analytics import sync as recolte_ga4
 from saas.data.fetch_data.sources.meta.ads import sync as recolte_meta
 from saas.data.fetch_data.sources.meta.auth import token as jeton_meta
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
+from saas.data.fetch_data.sources.meta.instagram import releve_compte
 from saas.data.fetch_data.sources.meta.instagram import sync as recolte_instagram
 from saas.data.supabase.source_data.account import marquer_a_reconnecter
 from saas.config.secrets import secret
@@ -161,7 +162,8 @@ def leger(sb, uid: str) -> list[str]:
     """Le passage léger quotidien d'un compte → les lignes du journal.
 
     Instagram seul, chaque jour, Jour de travail ou non (spec § La récolte —
-    Ce qui s'ajoute). Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
+    Ce qui s'ajoute) : relevé des posts jeunes, puis relevé du compte pour
+    hier. Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
     `fetch_canaux_muets` et `lib/canaux-muets.ts` ne lisent que le dernier
     `run_id` — une ligne « instagram » d'un passage léger ferait oublier
     l'échec Meta du Jour de travail, et la page Meta comme le rapport se
@@ -179,16 +181,24 @@ def leger(sb, uid: str) -> list[str]:
     journal += [mot for _, mot in _marquer(sb, uid, le_plan)]
     for tache in (t for f in le_plan.fils for t in f if t.canal == "instagram"):
         c = tache.connexion
+        acces = AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"])
         debut = time.monotonic()
-        try:
-            mot = recolte_instagram.releve_quotidien(
-                sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]))
-        except Exception as e:
-            # Un compte qui tombe ne coupe pas les suivants. Le type et le
-            # texte passent par `sans_jeton` : une exception `requests`
-            # recopie l'URL appelée, jeton compris (`CLAUDE.md` §7).
-            mot = sans_jeton(f"instagram léger KO: {type(e).__name__}: {e}")
-        journal.append(f"instagram léger en {time.monotonic() - debut:.1f} s — {mot}")
+        # Les posts puis le compte (ticket 05), chacun dans son `try` : une
+        # panne de l'inventaire n'empêche pas la journée d'hier du compte de
+        # s'écrire, et inversement. Une seule ligne, une seule durée : c'est
+        # le passage entier qui fixera le bloc du Rattrapage.
+        mots = []
+        for nom, relever in (("instagram léger", recolte_instagram.releve_quotidien),
+                             ("compte", releve_compte.releve_du_compte)):
+            try:
+                mots.append(relever(sb, uid, acces))
+            except Exception as e:
+                # Un compte qui tombe ne coupe pas les suivants. Le type et le
+                # texte passent par `sans_jeton` : une exception `requests`
+                # recopie l'URL appelée, jeton compris (`CLAUDE.md` §7).
+                mots.append(sans_jeton(f"{nom} KO: {type(e).__name__}: {e}"))
+        journal.append(f"instagram léger en {time.monotonic() - debut:.1f} s — "
+                       + " · ".join(mots))
     return journal
 
 
