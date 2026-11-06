@@ -5,7 +5,7 @@ fichier décide quoi relire et envoie à Supabase (`saas/data/supabase/source_da
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -216,6 +216,96 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
     avancer_couverture(sb, uid, ("instagram", "posts"),
                        Fenetre(debut_des_posts_complets(medias, en_base), date.today()), trous)
     return f"insta: {len(resultats)} posts relus, {len(releves)} relevés"
+
+
+# Spec § La relecture, premier tiret : « chaque jour de J+0 à J+7 ». J+7 se
+# termine à 8 × 24 h après la publication ; au-delà, c'est la relecture du Jour
+# de travail (moins de 30 jours) qui prend le relais.
+_AGE_DU_RELEVE_QUOTIDIEN = timedelta(hours=8 * 24)
+
+
+def posts_du_jour(medias: list[dict], en_base: set[str], maintenant: datetime) -> list[dict]:
+    """Les posts de l'inventaire que le passage léger relève, dans son ordre.
+
+    · moins de 8 × 24 h : un relevé par jour de J+0 à J+7 ;
+    · absent de la base, quel que soit son âge : sa fiche et son premier relevé
+      — sinon un post du mardi attendrait le Jour de travail (spec).
+    Un post en base à la date illisible n'est pas relevé : un âge inventé le
+    rangerait au mauvais J+n.
+    """
+    borne = maintenant - _AGE_DU_RELEVE_QUOTIDIEN
+    retenus = []
+    for media in medias:
+        if str(media.get("id")) not in en_base:
+            retenus.append(media)
+            continue
+        try:
+            publie_le = datetime.fromisoformat(media.get("timestamp") or "")
+        except ValueError:
+            continue
+        if publie_le.tzinfo is not None and publie_le > borne:
+            retenus.append(media)
+    return retenus
+
+
+def releve_quotidien(sb, uid: str, acces: AccesMeta,
+                     maintenant: datetime | None = None) -> str:
+    """Le passage léger d'un compte → son mot de fin.
+
+    Relève les posts de moins de 8 × 24 h et écrit la fiche des posts neufs
+    (spec § La récolte — Ce qui s'ajoute). Ce qu'il NE fait pas, exprès :
+    · ni `total_posts_id_instagram` ni la couverture des posts — il ne lit que
+      le haut de l'inventaire, un total ou une couverture tirés de là
+      seraient faux ;
+    · ni `fetch_progress` ni le rapport : c'est l'appelant
+      (`account_sync.leger`) qui s'en tient à l'écart.
+    """
+    if not acces.instagram:
+        raise ValueError("instagram_business_id requis en mode headless")
+    maintenant = maintenant or datetime.now(timezone.utc)
+    # UN COMPTE JAMAIS RÉCOLTÉ ATTEND SON PREMIER PASSAGE COMPLET. Le gratuit
+    # n'y prend que ses 10 plus récents (spec § Le compte gratuit) : le léger,
+    # qui ajoute tout post absent de la base, en importerait 25 et plus.
+    deja = (sb.table("instagram_organic_posts").select("post_id")
+            .eq("user_id", uid).limit(1).execute().data)
+    if not deja:
+        return "insta léger: aucun post en base — premier passage complet attendu"
+    medias, trous = posts.recents(acces, maintenant - _AGE_DU_RELEVE_QUOTIDIEN)
+    # Même règle que `recolter` : une panne n'est pas un compte sans post neuf.
+    if trous and not medias:
+        raise ValueError("Instagram — l'API a refusé la liste des médias : " + trous[0])
+    if trous:
+        print(f"    médias Instagram (léger) : {trous[0]}")
+    ids = [str(m["id"]) for m in medias if m.get("id")]
+    # Au plus 8 × 25 lignes : sous le plafond de 1 000 de PostgREST.
+    lignes = (sb.table("instagram_organic_posts").select("post_id, media_url")
+              .eq("user_id", uid).in_("post_id", ids).execute().data) if ids else []
+    media_connu = {str(r["post_id"]): r.get("media_url") for r in lignes or []}
+
+    fiches, releves, refuses, neufs = [], [], 0, 0
+    for media in posts_du_jour(medias, set(media_connu), maintenant):
+        post_id = str(media["id"])
+        m = metriques.metriques_du_post(acces, post_id, media.get("media_product_type"))
+        # L'heure du passage, pas celle de chaque appel : le léger d'un compte
+        # dure de l'ordre de la minute, un écart sans effet sur un J+n compté
+        # en jours — et c'est ce qui rend l'âge vérifiable hors ligne.
+        fiche, releve = lignes_du_post(uid, media, m, maintenant)
+        if fiche is None or releve is None:
+            # Pas de relevé, et pas de fiche non plus : un post neuf sans
+            # métriques reviendra demain, absent de la base, et sera repris.
+            refuses += 1
+            continue
+        fiche["media_url"] = _image_du_post(sb, uid, post_id, media, media_connu)
+        neufs += post_id not in media_connu
+        fiches.append(fiche)
+        releves.append(releve)
+    if refuses:
+        print(f"    posts Instagram (léger) : {refuses} lecture(s) refusée(s) par Meta "
+              "— valeurs précédentes gardées, pas de relevé.")
+    if fiches:
+        insert_instagram_org(supabase=sb, results=fiches)
+    insert_instagram_releves(sb, releves)
+    return f"insta léger: {len(releves)} posts relevés dont {neufs} neufs"
 
 
 def lignes_du_post(uid: str, info: dict, metriques: dict | None,
