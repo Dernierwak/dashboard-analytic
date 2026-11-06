@@ -137,7 +137,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le carré de sélection, en maquette](issues/12-le-carre-en-maquette.md) | prototype | Écarter un post |
 | [La page entière, en maquette](issues/13-la-page-entiere-en-maquette.md) | prototype ✓ | — |
 | [Ce que la récolte et le traitement doivent calculer](issues/14-ce-que-le-traitement-doit-calculer.md) | task ✓ | — |
-| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task | — |
+| [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) | task ✓ | — |
 | [L'état des abonnés en base](issues/16-l-etat-des-abonnes-en-base.md) | task (HITL) ✓ | — |
 | [L'essai réel des métriques Instagram](issues/17-l-essai-reel-des-metriques.md) | task (HITL) ✓ | — |
 | [Le compte gratuit à 10 posts](issues/18-le-compte-gratuit-a-10-posts.md) | grilling ✓ | — |
@@ -272,10 +272,15 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   `followers_history` figée au 2026-09-04 (bug de production, au
   `BACKLOG.md`) ; son historique mesuré se garde, la courbe a un trou entre
   lui et la remontée de 30 jours.
+- [La spec de la page Instagram](issues/15-la-spec-de-la-page-instagram.md) :
+  **la destination est atteinte** — [`spec.md`](spec.md), ready-for-agent,
+  avec onze arbitrages de David (taux à quatre termes, portée de la période,
+  valeurs à l'ouverture, visionnage du Reel, format sans post, pastille en
+  valeur, bornes de l'hebdo, stories hors chantier, « Ce qu'on ne mesure
+  pas », les mots partagés avec l'hebdo, la Sélection amendable par le
+  carré).
 
 ## Not yet specified
-- **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
-  Instagram doivent parler des mêmes posts avec les mêmes mots.
 
 ## Out of scope
 

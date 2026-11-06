@@ -1,7 +1,7 @@
 # 15: La spec de la page Instagram
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Assignee: David (session Claude, 2026-11-06)
 
@@ -45,3 +45,19 @@ cite sous « arbitrage du 2026-11-06 ».
    spec, une ligne au `BACKLOG.md` ; la part `STORY` du compte reste comptée.
 9. **Ce qu'on ne mesure pas s'écrit dans la spec**, § du même nom, au lieu de
    recréer `docs/mesures-impossibles.md`.
+10. **La cohérence avec l'hebdo se règle par les mots** : l'onglet Organique
+    reprend le vocabulaire de la spec ; la phrase de l'écart entre le dernier
+    relevé et le rapport s'écrit au Panneau ; refaire l'hebdo va au
+    `BACKLOG.md`.
+11. **La spec part à la construction sans attendre le ticket du carré** : la
+    Sélection = les 5 meilleurs de la période ; [Le carré de sélection, en
+    maquette](12-le-carre-en-maquette.md) n'amendera que ce paragraphe.
+
+## Résolution (2026-11-06)
+
+`.scratch/instagram/spec.md`, **Status: ready-for-agent**. Écrite par un
+agent à partir des tickets clos, contrôlée par Claude (liens, deux décisions
+recoupées avec leur ticket, contradictions relues), puis complétée des onze
+arbitrages ci-dessus. Tout `docs/` (ADR, mesures impossibles) a quitté
+l'arbre au commit `1b05a92` : la spec renvoie à l'historique pour les ADR et
+porte elle-même « Ce qu'on ne mesure pas ».

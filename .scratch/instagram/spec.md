@@ -1,6 +1,6 @@
 # Spec — La page Instagram organique
 
-Status: brouillon — passe à ready-for-agent quand « Ce qui reste ouvert » est vide
+Status: ready-for-agent
 Carte : [`map.md`](map.md) · ADR 0008, 0010, 0011 — retirées de l'arbre au
 commit `1b05a92`, à lire dans l'historique : `git show 1b05a92^:docs/adr/<fichier>`
 (`git ls-tree --name-only 1b05a92^ docs/adr/` les liste) · Ce qu'on ne
@@ -9,8 +9,8 @@ mesure pas : § du même nom, dans cette spec
 Écrite le 2026-11-06 à partir des tickets clos de la carte (01 à 11, 13, 14,
 16 à 22). Rien n'y est inventé : chaque décision renvoie à son ticket. Quand
 deux tickets se contredisent, le plus récent l'emporte, et la spec le dit
-(§ Notes). Ce qu'aucun ticket ne tranche est listé à la fin, sans être comblé
-(§ Ce qui reste ouvert).
+(§ Notes). Ce qu'aucun ticket ne tranchait a été arbitré par David le
+2026-11-06, point par point, dans [La spec de la page Instagram][15].
 
 ---
 
@@ -73,6 +73,10 @@ affiche ; il ne classe pas les formats et ne conseille rien (`CLAUDE.md` §1).
 ---
 
 ## Vocabulaire
+
+Ces mots sont aussi ceux de l'onglet Organique de l'hebdo : quand il parle
+d'Instagram, il les reprend tels quels ([arbitrage du 2026-11-06][15]) ; le refaire est un chantier à
+part, au `BACKLOG.md`.
 
 Le vocabulaire tranché de la carte. Le mot de droite ne s'emploie pas.
 
@@ -319,6 +323,10 @@ sa bande de l'année, et « aucun post sur la période » à la place du nuage
   Instagram les rend ainsi » ([Les posts boostés][19]).
 - Pour un Reel : **le temps de visionnage moyen** ; « – » pour les autres
   formats ([Les formats et les abonnés][09], [arbitrage du 2026-11-06][15]).
+- Sous les chiffres, **la phrase de l'écart avec l'hebdo** quand un rapport
+  a lu ce post ([arbitrage du 2026-11-06][15]) : « Chiffres au <date du dernier relevé>. Le rapport du
+  <date du rapport> les avait lus ce jour-là : un post continue de gagner des
+  vues après sa publication. » ([Garder l'historique][05]).
 - Absents : le carrousel entier, les commentaires.
 
 ### Les états de la page ([La page entière, en maquette][13])
@@ -594,13 +602,15 @@ calculer][14] le dit « à retirer si la spec ne lui donne pas de place ».
 donnent une — métrique de l'objectif Abonnés, comptée dans les totaux. Il
 reste récolté.
 
-### La forme de la Sélection attend son ticket
+### La forme de la Sélection reste amendable
 
 [Le carré de sélection, en maquette][12] est **encore ouvert**, tenu par une
 autre session. Cette spec suit [La page entière, en maquette][13] : les 5
-meilleurs de la période, en liste à droite, sans choix de mode. [Le
-carré][12] peut encore changer cette forme ; le reste de la spec n'en dépend
-pas.
+meilleurs de la période, en liste à droite, sans choix de mode — et part à la
+construction sans l'attendre ([arbitrage du 2026-11-06][15]). Si [le carré][12] tranche autrement
+(« 5 plus récents », choix à la main, lien qui garde la sélection), il
+n'amende que ce paragraphe et celui de la liste ; le reste de la spec n'en
+dépend pas.
 
 ### Ordre de construction suggéré ([Ce que la récolte et le traitement doivent calculer][14], § 6)
 
@@ -622,20 +632,10 @@ profondeur de l'historique][21]).
 
 ## Ce qui reste ouvert
 
-Rien ici n'est comblé par la spec : chaque point attend une décision de David.
+Rien. Les onze points que la première écriture laissait ouverts sont tranchés
+([arbitrage du 2026-11-06][15], le détail dans le ticket). Seule la forme de la Sélection reste
+amendable par [Le carré de sélection, en maquette][12] (§ Notes).
 
-1. **La cohérence avec l'hebdo** : l'onglet Organique de la frise et la page
-   Instagram doivent parler des mêmes posts avec les mêmes mots (carte, Not
-   yet specified). Y tient aussi **la phrase qui explique l'écart** entre le
-   dernier relevé et le rapport hebdo, figé au jour de sa publication :
-   [Garder l'historique][05] en renvoyait le texte à la maquette, et
-   [La page entière, en maquette][13] ne l'a pas écrit.
-2. **La forme de la Sélection** — [Le carré de sélection, en maquette][12],
-   ouvert : « 5 meilleurs » seulement ([La page entière, en maquette][13]) ou
-   aussi « 5 plus récents » et « à la main » ([La structure de la page][01],
-   [Le carré][12]) ; et **le lien qui garde la sélection** (posts choisis et
-   objectif), demandé par [La structure de la page][01], que [La page
-   entière, en maquette][13] ne reprend pas.
 [01]: issues/01-la-structure-de-la-page.md
 [02]: issues/02-ce-que-l-api-donne-d-un-post.md
 [03]: issues/03-quand-les-chiffres-d-un-post-se-figent.md

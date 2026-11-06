@@ -376,3 +376,8 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   ventilation du compte les compte déjà (`STORY` dans `reach` et
   `total_interactions`). À reprendre comme un chantier à part si un client
   les demande (`.scratch/instagram/issues/02-ce-que-l-api-donne-d-un-post.md`).
+- **L'onglet Organique de l'hebdo, aux mots de la page Instagram.** La spec
+  `/instagram` fixe le vocabulaire (post type, place, format, hors norme,
+  boosté) ; l'hebdo doit le reprendre quand il parle d'Instagram (David,
+  2026-11-06, `.scratch/instagram/spec.md` § Vocabulaire). Refaire l'onglet
+  est un chantier à part.
