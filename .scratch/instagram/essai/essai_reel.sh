@@ -223,7 +223,9 @@ if [[ -z "$ENV_FILE" ]]; then
   exit 1
 fi
 SB_URL="$(_existing SUPABASE_URL || true)"
-SB_CLE="$(_existing SUPABASE_SERVICE_ROLE_KEY || _existing SUPABASE_SECRET_KEY || true)"
+# La clé secrète d'abord, comme `client_service` : l'ancienne clé
+# service_role du .env répond 401 (essayé le 2026-11-06).
+SB_CLE="$(_existing SUPABASE_SECRET_KEY || _existing SUPABASE_SERVICE_ROLE_KEY || true)"
 if [[ -z "$SB_URL" || -z "$SB_CLE" ]]; then
   warn "le .env ($ENV_FILE) n'a pas SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_SECRET_KEY)."
   exit 1
@@ -240,7 +242,12 @@ pause "Entrée pour continuer"
 stage "Le compte à essayer"
 say "Voici les comptes avec un Instagram branché (aucun jeton affiché) :"
 printf '\n'
-python3.12 "$PY" --lister | sed 's/^/  /'
+if ! LISTE="$(python3.12 "$PY" --lister 2>&1)"; then
+  warn "la lecture de connected_accounts a échoué :"
+  printf '%s\n' "$LISTE" | tail -n 1 | sed 's/^/    /'
+  exit 1
+fi
+printf '%s\n' "$LISTE" | sed 's/^/  /'
 printf '\n'
 ask ESSAI_UID "Colle le user_id du compte à essayer :"
 
