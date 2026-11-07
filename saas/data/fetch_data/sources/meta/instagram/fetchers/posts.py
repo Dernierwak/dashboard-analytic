@@ -98,6 +98,37 @@ def recents(acces: AccesMeta, plus_jeune_que: datetime) -> tuple[list[dict], lis
     return medias, []
 
 
+def page_du_rattrapage(acces: AccesMeta, apres: str | None,
+                       taille: int) -> tuple[list[dict], str | None, str | None]:
+    """Une page de l'inventaire, avec la fiche de chaque post, à partir du
+    curseur `apres` (None = le haut) → `(medias, curseur suivant, erreur)`.
+
+    · Le curseur suivant est `paging.cursors.after`, et seulement si la page
+      porte un `next` : Meta rend encore `cursors.after` sur la dernière page,
+      et la doc de la pagination par curseur dit que c'est l'absence de `next`
+      qui marque la fin — pas une page plus courte que `limit`
+      (https://developers.facebook.com/docs/graph-api/results). None = fin.
+    · Le curseur, pas l'URL `next` : celle-ci porte le jeton, elle ne se garde
+      pas en base. Le curseur s'envoie en `after`, avec nos propres champs.
+    · Mêmes champs et même repli sur `boost_ads_list` que `recents`.
+    """
+    url = f"{GRAPH}/{acces.instagram}/media"
+    params = {"fields": boost.avec_le_champ(_CHAMPS_DE_LA_FICHE), "limit": taille,
+              "access_token": acces.jeton}
+    if apres:
+        params["after"] = apres
+    data, err = lire(url, params, timeout=30)
+    marquer = boost.obtenu
+    if err:
+        data, err = lire(url, {**params, "fields": _CHAMPS_DE_LA_FICHE}, timeout=30)
+        marquer = _tel_quel
+    if err:
+        return [], None, err
+    paging = data.get("paging") or {}
+    suivant = (paging.get("cursors") or {}).get("after") if paging.get("next") else None
+    return [marquer(m) for m in data.get("data") or []], suivant, None
+
+
 def _tel_quel(media: dict) -> dict:
     return media
 

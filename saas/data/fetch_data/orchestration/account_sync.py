@@ -162,15 +162,16 @@ def leger(sb, uid: str) -> list[str]:
     """Le passage léger quotidien d'un compte → les lignes du journal.
 
     Instagram seul, chaque jour, Jour de travail ou non (spec § La récolte —
-    Ce qui s'ajoute) : relevé des posts jeunes, puis relevé du compte pour
-    hier. Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
+    Ce qui s'ajoute) : relevé des posts jeunes, relevé du compte pour hier,
+    puis un bloc du Rattrapage (payant seulement). Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
     `fetch_canaux_muets` et `lib/canaux-muets.ts` ne lisent que le dernier
     `run_id` — une ligne « instagram » d'un passage léger ferait oublier
     l'échec Meta du Jour de travail, et la page Meta comme le rapport se
     remettraient à montrer des chiffres troués. Le journal du worker suffit.
 
-    La ligne porte la DURÉE du passage : c'est elle qui fixera la taille d'un
-    bloc du Rattrapage (ticket 08 de `.scratch/instagram-construction/`).
+    La ligne porte la DURÉE du passage, et celle du bloc du Rattrapage à
+    part : c'est elle qui fixera la taille d'un bloc (`sync._TAILLE_DU_BLOC`,
+    ticket 08 de `.scratch/instagram-construction/`).
     """
     lignes = [a for a in connexions(sb, uid)
               if a.get("meta_token") and a.get("instagram_business_id")]
@@ -197,9 +198,26 @@ def leger(sb, uid: str) -> list[str]:
                 # texte passent par `sans_jeton` : une exception `requests`
                 # recopie l'URL appelée, jeton compris (`CLAUDE.md` §7).
                 mots.append(sans_jeton(f"{nom} KO: {type(e).__name__}: {e}"))
+        mots.append(_bloc_du_rattrapage(sb, uid, acces, c["id"]))
         journal.append(f"instagram léger en {time.monotonic() - debut:.1f} s — "
                        + " · ".join(mots))
     return journal
+
+
+def _bloc_du_rattrapage(sb, uid: str, acces: AccesMeta, connexion_id) -> str:
+    """Un bloc du Rattrapage (ticket 08) → son mot, avec SA durée.
+
+    Sa durée à part de celle du passage : c'est elle, rapportée au nombre de
+    posts importés, qui fixera `sync._TAILLE_DU_BLOC` — la durée du passage
+    entier mêle les relevés et le compte. Dans son propre `try`, comme les
+    deux autres : une panne du bloc n'emporte ni les posts jeunes ni le compte.
+    """
+    debut = time.monotonic()
+    try:
+        mot = recolte_instagram.rattrapage(sb, uid, acces, connexion_id)
+    except Exception as e:
+        return sans_jeton(f"rattrapage KO: {type(e).__name__}: {e}")
+    return f"{mot} en {time.monotonic() - debut:.1f} s"
 
 
 def passer(sb, uid: str, depuis: date | None = None) -> list[str]:

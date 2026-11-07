@@ -186,3 +186,56 @@ def noter_relecture_instagram(supabase: Client, user_id: str, connexion_id, quan
             raise ColonneRelectureAbsente from e
         raise
     return bool(r.data)
+
+
+# ── Instagram — où en est le Rattrapage, par connexion ────────────────────────
+#
+# Spec § La récolte — Ce qui s'ajoute, « Le Rattrapage » : un bloc par passage
+# quotidien, du plus récent au plus ancien. Le curseur de pagination de
+# l'inventaire se garde entre deux passages (`rattrapage_instagram_curseur`,
+# NULL = reprendre au haut), et la fin se date (`rattrapage_instagram_fini_le`,
+# posée quand Meta ne rend plus de page). Migration §23, ticket 08.
+
+class ColonneRattrapageAbsente(Exception):
+    """La section 23 n'est pas jouée : l'état du Rattrapage ne se lit ni ne s'écrit."""
+
+
+def _colonne_rattrapage_absente(err: Exception) -> bool:
+    msg = str(err)
+    return "rattrapage_instagram_" in msg and any(
+        code in msg for code in ("42703", "PGRST204", "does not exist", "Could not find"))
+
+
+def etat_du_rattrapage(supabase: Client, user_id: str, connexion_id) -> dict:
+    """`{rattrapage_instagram_curseur, rattrapage_instagram_fini_le}` d'UNE connexion.
+
+    Lève `ColonneRattrapageAbsente` si les colonnes manquent : un curseur
+    illisible n'est pas un curseur nul — le prendre pour tel relirait le haut
+    de l'inventaire chaque jour sans jamais avancer."""
+    try:
+        lignes = (supabase.table("connected_accounts")
+                  .select("id, rattrapage_instagram_curseur, rattrapage_instagram_fini_le")
+                  .eq("id", connexion_id).eq("user_id", user_id).execute().data) or [{}]
+    except Exception as e:
+        if _colonne_rattrapage_absente(e):
+            raise ColonneRattrapageAbsente from e
+        raise
+    return {"rattrapage_instagram_curseur": lignes[0].get("rattrapage_instagram_curseur"),
+            "rattrapage_instagram_fini_le": lignes[0].get("rattrapage_instagram_fini_le")}
+
+
+def noter_rattrapage(supabase: Client, user_id: str, connexion_id, curseur: str | None,
+                     fini_le=None) -> bool:
+    """Écrit où reprendre (et la fin, si elle est atteinte) ; True si écrit.
+
+    Zéro ligne touchée ne lève rien (`CLAUDE.md` §8) : le booléen le dit."""
+    champs = {"rattrapage_instagram_curseur": curseur,
+              "rattrapage_instagram_fini_le": fini_le.isoformat() if fini_le else None}
+    try:
+        r = (supabase.table("connected_accounts").update(champs)
+             .eq("id", connexion_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        if _colonne_rattrapage_absente(e):
+            raise ColonneRattrapageAbsente from e
+        raise
+    return bool(r.data)
