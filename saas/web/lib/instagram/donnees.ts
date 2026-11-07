@@ -21,6 +21,7 @@ import {
   type RelevesParPost,
 } from "@/lib/instagram/lecture";
 import { jourDuRapport } from "@/lib/instagram/panneau";
+import { type LigneProgres } from "@/lib/instagram/etat";
 
 // ── CE QUE LA PAGE INSTAGRAM LIT DANS SUPABASE ───────────────────────────────
 //
@@ -42,6 +43,10 @@ export type DonneesInstagram = {
   raccourcis: Raccourci[];
   /** La borne haute du calendrier : le jour en cours n'est jamais compté. */
   hier: string;
+  /** La ligne `fetch_progress` du canal `instagram`, ou `null` (jamais
+   *  écrite, ou illisible) — d'où se lisent le jeton mort et le compte neuf
+   *  (`lib/instagram/etat.ts`). */
+  progres: LigneProgres | null;
 };
 
 function iso(d: Date): string {
@@ -64,7 +69,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
   };
   const periode = periodeDe(choix, ctxPeriode);
 
-  const [lignes, historique, jours] = await Promise.all([
+  const [lignes, historique, jours, progres] = await Promise.all([
     // `*` plutôt qu'une liste : une base où la section 23 n'est pas encore
     // jouée n'a ni `shares` ni `releve_a`, et une colonne nommée absente
     // ferait échouer toute la lecture. Absente, elle se lit « rien rendu ».
@@ -106,6 +111,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
       console.error("[instagram] instagram_compte_jours illisible", e);
       return [];
     }),
+    lireProgres(supabase, uid),
   ]);
 
   const abonnes = abonnesParJourDe(historique, jours);
@@ -123,7 +129,25 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
     periode,
     raccourcis: raccourcisDe(periode, ctxPeriode),
     hier: decaler(ctxPeriode.aujourdhui, -1),
+    progres,
   };
+}
+
+/** Illisible → `null` : la page se rend comme si rien n'était su du worker
+ *  (ni encart jeton mort, ni passage fini), plutôt que de tomber. */
+async function lireProgres(supabase: ReturnType<typeof createClient>, uid: string): Promise<LigneProgres | null> {
+  const { data, error } = await supabase
+    .from("fetch_progress")
+    .select("etat, mot_de_fin")
+    .eq("user_id", uid)
+    .eq("canal", "instagram")
+    .limit(1);
+  if (error) {
+    console.error("[instagram] fetch_progress illisible", error);
+    return null;
+  }
+  const l = data?.[0] as { etat?: unknown; mot_de_fin?: unknown } | undefined;
+  return l && typeof l.etat === "string" ? { etat: l.etat, mot_de_fin: typeof l.mot_de_fin === "string" ? l.mot_de_fin : null } : null;
 }
 
 /** Les relevés de 48 h à 7 jours des 12 derniers mois — la matière de la

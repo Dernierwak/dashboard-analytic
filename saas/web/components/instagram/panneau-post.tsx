@@ -49,7 +49,7 @@ export function PanneauPost({
       {lecteur ? (
         // Le lecteur public d'Instagram : Pulse ne garde que l'image, et le
         // lien vidéo de Meta expire (spec). 520 px : la hauteur du Panneau du
-        // prototype D retenu par David (`_prototype-page/maquette.tsx`) — pas
+        // prototype D retenu par David (maquette jetable, jamais versionnée) — pas
         // remesurée sur un vrai Reel dans un navigateur.
         <iframe
           src={lecteur}
