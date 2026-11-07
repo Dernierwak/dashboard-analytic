@@ -3,6 +3,7 @@ import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
 import { METRIQUES, NOM_FORMAT, NOM_FORMAT_PLURIEL, type CleMetrique } from "@/lib/instagram/lecture";
 import { textePastille, type PeriodeLue, type Rangee } from "@/lib/instagram/annee";
 import type { Params } from "@/lib/instagram/liens";
+import { mentionSousSix } from "@/lib/instagram/regles";
 import { Nuage } from "./nuage";
 import { Moustaches } from "./moustaches";
 
@@ -78,10 +79,17 @@ export function RangeeFormat({
           <Moustaches rangee={rangee} metrique={metrique} />
         </div>
       </div>
-      {rangee.postType === null && rangee.n > 0 && (
-        <p className="text-[12px] text-faint">
-          {rangee.n} {pluriel} ont {METRIQUES[metrique].nom.toLowerCase()} sur les 12 derniers mois, il en faut 6 pour un post type.
-        </p>
+      {rangee.postType === null && rangee.ecartes > 0 ? (
+        // Un filtre a fait passer la rangée sous 6 : la mention le dit, pour
+        // qu'on ne croie pas manquer de posts (spec, « La mention sous 6 »).
+        <p className="text-[12px] text-faint">{mentionSousSix(rangee.n, rangee.format, rangee.ecartes)}.</p>
+      ) : (
+        rangee.postType === null &&
+        rangee.n > 0 && (
+          <p className="text-[12px] text-faint">
+            {rangee.n} {pluriel} ont {METRIQUES[metrique].nom.toLowerCase()} sur les 12 derniers mois, il en faut 6 pour un post type.
+          </p>
+        )
       )}
     </div>
   );

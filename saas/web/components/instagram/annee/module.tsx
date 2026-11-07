@@ -15,7 +15,7 @@ import { RangeeFormat } from "./rangee";
 // Découpé pour les tickets suivants : `aside` reçoit la liste collante des 5
 // meilleurs (ticket 11) à droite des rangées, `rangs` leurs numéros pour le
 // nuage ; `regles` la seconde ligne « Lu sans les boostés — 4 posts
-// écartés » (ticket 12). `params` : un point du nuage ouvre `?post=` en
+// écartés. Revenir aux règles standard », posée par la page. `params` : un point du nuage ouvre `?post=` en
 // gardant le reste de l'URL.
 
 export function TesPostsFaceATonAnnee({

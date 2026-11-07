@@ -2,6 +2,7 @@ import Link from "next/link";
 import { dateCourte, formaterValeur, libellePlace, raisonPlace } from "@/lib/instagram/tableau";
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
+import { NEUTRE } from "@/lib/palette";
 import { NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture";
 import type { PeriodeLue, RangeeLue } from "@/lib/instagram/annee";
 import { HAUTEUR, ordonnee, Y_BAS, Y_HAUT } from "./dessin";
@@ -14,8 +15,9 @@ import { HAUTEUR, ordonnee, Y_BAS, Y_HAUT } from "./dessin";
 // est une flèche en haut, sa valeur écrite — il n'étire pas l'axe.
 //
 // Les 5 meilleurs y portent leur numéro, le même que dans la liste ; un clic
-// sur un point ouvre le Panneau (`?post=`, ticket 11). À venir : le gris des
-// écartés et l'anneau des boostés (ticket 12).
+// sur un point ouvre le Panneau (`?post=`, ticket 11). Un écarté par les
+// Règles de lecture est gris, sa raison dans l'infobulle ; un boosté porte un
+// anneau fin (ticket 12).
 
 const L = 560;
 const GAUCHE = 64;
@@ -95,7 +97,18 @@ export function Nuage({
         const cx = x(p.post.date);
         const place = libellePlace(p.place);
         const rang = rangs[p.post.id];
-        const bulle = [rang ? `n° ${rang}` : null, dateCourte(p.post.date), formaterValeur(metrique, p.valeur), place, raisonPlace(p.place), "Lire le post"]
+        const booste = p.post.boosteVuLe !== null;
+        // Un écarté reste au nuage, gris : rien ne disparaît sans trace (spec).
+        const teinte = p.place.etat === "ecarte" ? NEUTRE.trait : c.trait;
+        const bulle = [
+          rang ? `n° ${rang}` : null,
+          dateCourte(p.post.date),
+          formaterValeur(metrique, p.valeur),
+          booste ? "Boosté" : null,
+          place,
+          raisonPlace(p.place),
+          "Lire le post",
+        ]
           .filter(Boolean)
           .join(" · ");
         const cy = p.horsAxe ? Y_HAUT + 3 : y(p.valeur);
@@ -106,14 +119,17 @@ export function Nuage({
             <title>{bulle}</title>
             {p.horsAxe ? (
               <>
-                <path d={`M${cx - 6},${Y_HAUT + 8} L${cx + 6},${Y_HAUT + 8} L${cx},${Y_HAUT - 2} Z`} fill={c.trait} />
+                <path d={`M${cx - 6},${Y_HAUT + 8} L${cx + 6},${Y_HAUT + 8} L${cx},${Y_HAUT - 2} Z`} fill={teinte} />
                 <text x={cx} y={Y_HAUT - 6} fontSize={10.5} fill="#5a5d66" textAnchor="middle">
                   {formaterValeur(metrique, p.valeur)}
                 </text>
               </>
             ) : (
-              <circle cx={cx} cy={cy} r={5} fill={p.jeune ? "#fff" : c.trait} stroke={c.trait} strokeWidth={1.5} />
+              <circle cx={cx} cy={cy} r={5} fill={p.jeune ? "#fff" : teinte} stroke={teinte} strokeWidth={1.5} />
             )}
+            {/* Le boosté : un anneau fin de sa propre couleur, écarté ou non —
+                il se reconnaît partout, sans budget (user story 25). */}
+            {booste && <circle cx={cx} cy={cy} r={8} fill="none" stroke={teinte} strokeWidth={1} />}
             {/* Le numéro à droite du point : posé dessus, il le cacherait. */}
             {rang && (
               <text x={cx + 8} y={cy + 4} fontSize={11} fontWeight={700} fill="#0e0f12">

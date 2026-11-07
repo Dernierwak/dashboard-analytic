@@ -417,16 +417,16 @@ export type Foule = {
   limites: Limites | null;
 };
 
-/** La foule d'un format sur une métrique : la référence (12 mois glissants),
- *  ou une fenêtre plus courte pour les pastilles 3 mois / 1 mois. Le post
- *  lui-même y est compris. Les Règles de lecture (ticket 12) retireront des
- *  posts AVANT cet appel. */
 /** Les posts d'un format qui ont l'âge et la date pour entrer dans une foule,
  *  avec ou sans valeur — le « sur n » de « 11 images sur 12 ont ce chiffre ». */
 export function eligiblesDe(posts: Post[], format: Format, ctx: Contexte, mois: number = MOIS_DE_REFERENCE): Post[] {
   return posts.filter((p) => p.format === format && maturiteDe(p) !== "jeune" && dansLesMois(p, ctx, mois));
 }
 
+/** La foule d'un format sur une métrique : la référence (12 mois glissants),
+ *  ou une fenêtre plus courte pour les pastilles 3 mois / 1 mois. Le post
+ *  lui-même y est compris. Elle ne sait rien des Règles de lecture : leurs
+ *  écartés sont retirés AVANT cet appel (`retenus`, `regles.ts`). */
 export function fouleDe(posts: Post[], format: Format, m: CleMetrique, ctx: Contexte, mois: number = MOIS_DE_REFERENCE): Foule {
   const eligibles = eligiblesDe(posts, format, ctx, mois);
   const membres = eligibles.filter((p) => valeurDe(p, m) !== null);
@@ -474,15 +474,24 @@ export function estHorsNorme(v: number, l: Limites): boolean {
   return v < l.basse || v > l.haute;
 }
 
+/** Pourquoi une Règle de lecture a retiré un post de sa foule (`regles.ts`) :
+ *  « écarté : boosté », « écarté : hors norme sur les j'aime » (spec). */
+export type RaisonEcart = { cause: "booste" } | { cause: "hors_norme"; metrique: CleMetrique };
+
 export type PlaceDuPost =
   | { etat: "place"; place: Place; horsNorme: boolean }
+  /** Retiré par une Règle de lecture : il reste à l'écran, grisé, avec sa
+   *  raison — rien ne disparaît sans trace (user story 28). */
+  | { etat: "ecarte"; raison: RaisonEcart }
   | { etat: "plus_d_un_an" }
   | { etat: "jeune" }
   /** De 48 h à 7 jours : sa place se lit à âge égal (ticket 13). */
   | { etat: "age_egal"; jours: number }
   | { etat: "format_inconnu" }
   | { etat: "sans_valeur" }
-  | { etat: "foule_mince"; n: number; format: Format };
+  /** `ecartes` : combien un filtre en a retiré, la raison de la mention sous
+   *  6 (spec) ; absent quand aucun filtre n'a rien retiré. */
+  | { etat: "foule_mince"; n: number; format: Format; ecartes?: number };
 
 /** La place d'un post sur la métrique choisie, face à la foule de son format.
  *  `foules` vient de `foulesDe` sur la même métrique et le même contexte. */

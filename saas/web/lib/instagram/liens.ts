@@ -2,7 +2,7 @@
 //
 // L'état de la page vit dans l'URL (spec, § « L'état de la page vit dans
 // l'URL ») : la période (`from`/`to`), la métrique choisie (`metrique`), et
-// viendront les deux Règles de lecture (ticket 12) et le post ouvert (`post`,
+// les deux Règles de lecture (`sansBoostes`, `sansHorsNorme`, `regles.ts`) et le post ouvert (`post`,
 // ticket 11). Un lien ÉNUMÈRE CE QU'IL CHANGE, JAMAIS CE QU'IL GARDE
 // (`CLAUDE.md` §8) : il repart de tous les paramètres présents, même ceux
 // qu'il ne connaît pas — c'est ce qui laisse les tickets suivants ajouter les

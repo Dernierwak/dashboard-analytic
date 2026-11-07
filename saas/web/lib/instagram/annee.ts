@@ -19,9 +19,10 @@
 //   · un hors norme n'étire pas l'axe, il est compté ;
 //   · le Reel en Abonnés reçoit une phrase, jamais une moustache à zéro.
 //
-// La liste des 5 meilleurs (ticket 11), les Règles de lecture (12) et l'âge
-// égal (13) s'ajoutent à côté : les Règles retireront des posts AVANT
-// `moduleAnneeDe`, l'âge égal changera la place portée par chaque point.
+// Les Règles de lecture (`regles.ts`) passent leurs écartés : ils sortent de
+// toutes les foules (moustaches, post type, pastilles, total) mais restent au
+// nuage, gris, avec leur raison. L'âge égal (13) changera la place portée par
+// chaque point.
 import {
   eligiblesDe,
   fouleDe,
@@ -31,7 +32,6 @@ import {
   METRIQUES,
   dansLesMois,
   debutDesMois,
-  placeDuPost,
   foulesDe,
   totalDe,
   valeurDe,
@@ -44,6 +44,7 @@ import {
   type Quartiles,
   type Total,
 } from "./lecture";
+import { AUCUN_ECART, placeLue, retenus, type Ecartes } from "./regles";
 import { formaterValeur } from "./tableau";
 // L'écart s'écrit comme sur la page Meta : une décimale sous 10 %, « − ».
 import { formaterEcart } from "../meta/lecture";
@@ -167,6 +168,9 @@ export type RangeeLue = {
   sur: number;
   /** `null` pour ce qui ne se compte pas (portée, ratios). Sur les 12 mois. */
   total: Total | null;
+  /** Ceux qu'une Règle de lecture a retirés de la référence — la raison de
+   *  la mention sous 6. */
+  ecartes: number;
   pastilles: [Pastille, Pastille];
   moustaches: [Moustache, Moustache, Moustache];
   /** Les posts de la période qui ont une valeur, du plus ancien au plus récent. */
@@ -200,19 +204,24 @@ function axeMaxDe(moustaches: Moustache[], valeursPeriode: number[], haute: numb
   return max > 0 ? max : 1;
 }
 
-function rangeeDe(posts: Post[], format: Format, m: CleMetrique, periode: PeriodeLue, ctx: Contexte, foules: ReturnType<typeof foulesDe>): Rangee {
+/** Les posts lus sous les Règles : `tous` pour le nuage (un écarté y reste,
+ *  gris), `gardes` pour tout ce qui se calcule sur la foule. */
+type Lus = { tous: Post[]; gardes: Post[]; ecartes: Ecartes; foules: ReturnType<typeof foulesDe> };
+
+function rangeeDe(lus: Lus, format: Format, m: CleMetrique, periode: PeriodeLue, ctx: Contexte): Rangee {
   const phrase = format === "reel" ? ABSENT_DU_REEL[m] : undefined;
   if (phrase) return { etat: "sans_metrique", format, phrase };
 
+  const { tous, gardes, ecartes, foules } = lus;
   const annee = foules[format];
   const moustaches = [
-    moustacheDe(posts, format, m, ctx, 12, annee.n),
-    moustacheDe(posts, format, m, ctx, 3, annee.n),
-    moustacheDe(posts, format, m, ctx, 1, annee.n),
+    moustacheDe(gardes, format, m, ctx, 12, annee.n),
+    moustacheDe(gardes, format, m, ctx, 3, annee.n),
+    moustacheDe(gardes, format, m, ctx, 1, annee.n),
   ] as [Moustache, Moustache, Moustache];
   const postType = annee.quartiles?.mediane ?? null;
 
-  const dePeriode = posts
+  const dePeriode = tous
     .filter((p) => p.format === format && p.jour >= periode.debut && p.jour <= periode.fin)
     .sort((a, b) => a.date.localeCompare(b.date));
   const avecValeur = dePeriode.flatMap((p) => {
@@ -227,7 +236,8 @@ function rangeeDe(posts: Post[], format: Format, m: CleMetrique, periode: Period
     postType,
     n: annee.n,
     sur: annee.sur,
-    total: totalDe(eligiblesDe(posts, format, ctx), m),
+    total: totalDe(eligiblesDe(gardes, format, ctx), m),
+    ecartes: ecartes.parFormat[format],
     pastilles: [pastilleDe(moustaches[1], postType), pastilleDe(moustaches[2], postType)],
     moustaches,
     nuage: avecValeur.map(({ post, valeur }) => ({
@@ -235,7 +245,7 @@ function rangeeDe(posts: Post[], format: Format, m: CleMetrique, periode: Period
       valeur,
       jeune: maturiteDe(post) === "jeune",
       horsAxe: valeur > axeMax,
-      place: placeDuPost(post, m, foules, ctx),
+      place: placeLue(post, m, foules, ctx, ecartes),
     })),
     surLaPeriode: dePeriode.length,
     axeMax,
@@ -254,16 +264,20 @@ export type ModuleAnnee = {
   rangees: Rangee[];
 };
 
-export function moduleAnneeDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, ctx: Contexte): ModuleAnnee {
-  const foules = foulesDe(posts, m, ctx);
+/** `ecartes` : ceux des Règles de lecture (`ecartesDe`, sur la même métrique),
+ *  retirés de toutes les foules ici et nulle part ailleurs dans le module. */
+export function moduleAnneeDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART): ModuleAnnee {
+  const gardes = retenus(posts, ecartes);
+  const lus: Lus = { tous: posts, gardes, ecartes, foules: foulesDe(gardes, m, ctx) };
   // Un post de moins de 48 h compte pour ouvrir la rangée : il paraît au
-  // nuage, en point vide, même s'il n'entre pas encore dans la foule.
+  // nuage, en point vide, même s'il n'entre pas encore dans la foule. Un
+  // format dont un filtre a tout écarté garde sa rangée : elle le dit.
   const presents = FORMATS.filter((f) => posts.some((p) => p.format === f && dansLesMois(p, ctx)));
   return {
     metrique: m,
     periode,
     reference: referenceDe(posts, ctx),
-    rangees: presents.map((f) => rangeeDe(posts, f, m, periode, ctx, foules)),
+    rangees: presents.map((f) => rangeeDe(lus, f, m, periode, ctx)),
   };
 }
 

@@ -14,7 +14,7 @@ import { lienInstagram, type Params } from "@/lib/instagram/liens";
 // travail (arbitrage du 2026-11-06). Elle choisit les points posés sur le
 // nuage, jamais la référence : la phrase sous le titre le dit.
 //
-// `reglages` : la place du bouton « Règles de lecture » (ticket 12), à côté
+// `reglages` : le bouton « Règles de lecture » (`components/instagram/regles.tsx`), à côté
 // de la période.
 
 export function BandeauInstagram({

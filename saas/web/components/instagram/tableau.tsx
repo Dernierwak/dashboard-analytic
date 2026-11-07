@@ -134,8 +134,11 @@ export function TableauPosts({ tableau, params }: { tableau: Tableau; params: Pa
 function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }) {
   const p = l.post;
   const place = libellePlace(l.place);
+  // Un écarté par une Règle de lecture reste, grisé ; sa Place dit pourquoi
+  // (spec, user story 28).
+  const ecarte = l.place.etat === "ecarte";
   return (
-    <tr className="border-t border-line">
+    <tr className={`border-t border-line ${ecarte ? "bg-canvas/60 opacity-60" : ""}`}>
       <td className="whitespace-nowrap py-2.5 pl-5 pr-3 tabular-nums text-ink">{dateCourte(p.date)}</td>
       <td className="max-w-[260px] px-3 py-2.5">
         <Link
