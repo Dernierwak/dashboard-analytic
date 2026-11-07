@@ -43,7 +43,8 @@
 --   22)    instagram_organic_posts.permalink / media_product_type (hebdo, ticket 08)
 --   23)    Instagram — instagram_post_releves, instagram_compte_jours, et les
 --          colonnes du relevé sur la fiche du post (instagram-construction, 01),
---          instagram_compte_periodes (instagram-construction, 05)
+--          instagram_compte_periodes (instagram-construction, 05),
+--          connected_accounts.relecture_instagram_le (instagram-construction, 07)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1852,6 +1853,15 @@ BEGIN
     END IF;
 END $$;
 
+-- connected_accounts.relecture_instagram_le — la date du dernier passage
+-- complet (tous les posts en base relus), par connexion (ticket 07). Le cron
+-- relance le passage quand elle a 3 mois (spec § La récolte, « La relecture ») :
+-- une date MESURÉE, posée par le worker après un passage réussi, jamais
+-- devinée. NULL = jamais passé → dû au cron suivant. Ajout seul ; la RLS de
+-- connected_accounts est déjà en place et reste fermée au partage (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS relecture_instagram_le timestamptz DEFAULT NULL;
+
 
 -- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
@@ -1936,6 +1946,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'instagram_organic_posts',  'avg_watch_time'),       -- §23
     ('c', 'instagram_organic_posts',  'releve_a'),             -- §23
     ('c', 'instagram_organic_posts',  'booste_vu_le'),         -- §23
+    ('c', 'connected_accounts',       'relecture_instagram_le'), -- §23
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

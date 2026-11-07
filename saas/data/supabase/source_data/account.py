@@ -138,3 +138,51 @@ def marquer_a_reconnecter(supabase: Client, user_id: str, connexion: dict, raiso
     r = (supabase.table("connected_accounts").update(champs)
          .eq("id", connexion["id"]).eq("user_id", user_id).execute())
     return bool(r.data)
+
+
+# ── Instagram — la date du dernier passage complet (trimestriel) ──────────────
+#
+# Spec § La récolte — Ce qui s'ajoute, « La relecture » : tous les 3 mois, tous
+# les posts en base. Le cron la décide sur cette date MESURÉE — posée après un
+# passage réussi, par connexion (`connected_accounts.relecture_instagram_le`,
+# migration §23) — jamais devinée d'un calendrier.
+
+class ColonneRelectureAbsente(Exception):
+    """La section 23 de la migration n'est pas jouée : la date ne se lit ni ne s'écrit."""
+
+
+def _colonne_relecture_absente(err: Exception) -> bool:
+    """42703 au `select`, PGRST204 à l'`update` d'une colonne inconnue."""
+    msg = str(err)
+    return "relecture_instagram_le" in msg and any(
+        code in msg for code in ("42703", "PGRST204", "does not exist", "Could not find"))
+
+
+def dates_de_relecture_instagram(supabase: Client, user_id: str) -> dict:
+    """`{id de connexion: relecture_instagram_le}` des connexions du compte.
+
+    Lève `ColonneRelectureAbsente` si la colonne manque : une date illisible
+    n'est pas une date nulle, et le cron ne doit pas relire tous les jours."""
+    try:
+        lignes = (supabase.table("connected_accounts").select("id, relecture_instagram_le")
+                  .eq("user_id", user_id).execute().data) or []
+    except Exception as e:
+        if _colonne_relecture_absente(e):
+            raise ColonneRelectureAbsente from e
+        raise
+    return {r["id"]: r.get("relecture_instagram_le") for r in lignes}
+
+
+def noter_relecture_instagram(supabase: Client, user_id: str, connexion_id, quand) -> bool:
+    """Pose la date du passage complet sur UNE connexion ; True si écrite.
+
+    Zéro ligne touchée ne lève rien (`CLAUDE.md` §8) : le booléen le dit."""
+    try:
+        r = (supabase.table("connected_accounts")
+             .update({"relecture_instagram_le": quand.isoformat()})
+             .eq("id", connexion_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        if _colonne_relecture_absente(e):
+            raise ColonneRelectureAbsente from e
+        raise
+    return bool(r.data)

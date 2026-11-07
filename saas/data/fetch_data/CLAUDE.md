@@ -53,6 +53,12 @@ de départ change.
   `instagram_compte_jours`, et la portée des 7 jours dans
   `instagram_compte_periodes`) — sans rapport, sans `fetch_progress` (il ferait oublier
   l'échec Meta du Jour de travail), une ligne de journal avec sa durée.
+  Puis le **trimestriel** (`instagram_reread.relire_si_du`) : les connexions
+  dont `connected_accounts.relecture_instagram_le` a 3 mois ou est NULL sont
+  relues en entier, et la date est reposée après un passage réussi.
+  Au Jour de travail, `sync.posts_a_relire` relit sans plafond : les posts en
+  base de moins de 30 jours, et les absents — tous pour un payant, ceux plus
+  récents que sa base pour un gratuit (10 à l'arrivée).
   `--user` (récolte d'amorçage, déclenchée par le web), `--force`,
   `--report-only` (sans léger : aucune plateforme appelée).
 - **`cockpit/full_history.py`** — `mode: complete` : un compte (`--user`
@@ -61,7 +67,8 @@ de départ change.
 - **`cockpit/instagram_reread.py`** — drapeau `relecture_instagram` : relit
   TOUS les posts Instagram en base (`sync.relire_tous`, lecture paginée, 2 à
   3 appels par post, sans image), un compte (`--user`) ou tous. Ni rapport ni
-  `fetch_progress`. Relecture unique après la section 23, puis trimestrielle.
+  `fetch_progress`. Relecture unique après la section 23 ; pose
+  `relecture_instagram_le`, comme le trimestriel du cron.
 - **`cockpit/check_data_collection.py`** — en local seulement, jamais dans le workflow (le dépôt est
   public) : N éléments par API, un JSON, aucune écriture.
 
