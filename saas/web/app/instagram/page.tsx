@@ -20,7 +20,7 @@
 // (`lib/channels.ts`) : il additionnait des zéros refaits d'absences
 // (`Number(x) || 0`) et faisait d'une vidéo du fil un Reel (spec, § Ce qui part).
 import { getDonneesInstagram, jourDuPremierRapportQuiListe } from "@/lib/instagram/donnees";
-import { METRIQUES, metriqueDe, type CleMetrique } from "@/lib/instagram/lecture";
+import { foulesDe, METRIQUES, metriqueDe, type CleMetrique } from "@/lib/instagram/lecture";
 import { moduleAnneeDe, raisonIndisponible } from "@/lib/instagram/annee";
 import { meilleursDe, rangsDe } from "@/lib/instagram/meilleurs";
 import { lecturePostDe, phraseEcartHebdo } from "@/lib/instagram/panneau";
@@ -36,7 +36,6 @@ import { TesPostsFaceATonAnnee } from "@/components/instagram/annee/module";
 import { ListeMeilleurs } from "@/components/instagram/annee/meilleurs";
 import { PanneauPost, PanneauPostIntrouvable } from "@/components/instagram/panneau-post";
 import { TableauPosts } from "@/components/instagram/tableau";
-import { getTendanceInstagram } from "@/lib/instagram/donnees-tendance";
 import { TendanceTaPage } from "@/components/instagram/tendance";
 import { BadgeFige, EncartCompteNeuf, EncartJetonMort } from "@/components/instagram/etats";
 
@@ -45,11 +44,11 @@ export const dynamic = "force-dynamic";
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default async function InstagramPage({ searchParams }: { searchParams: Params }) {
-  const { posts, ctx, periode, raccourcis, hier, progres } = await getDonneesInstagram({
+  const { posts, ctx, periode, raccourcis, hier, progres, compteMajA, tendance } = await getDonneesInstagram({
     from: un(searchParams.from),
     to: un(searchParams.to),
   });
-  const etat = etatDeLaPage({ posts, progres });
+  const etat = etatDeLaPage({ posts, progres, compteMajA });
   // Les Règles de lecture (`?sansBoostes=1`, `?sansHorsNorme=1`) : les
   // écartés se décident UNE fois, sur la métrique affichée, puis le module,
   // la liste, le Tableau et le Panneau les reçoivent. La Tendance non.
@@ -64,8 +63,9 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
     />
   );
 
-  // Compte neuf : un seul encart. Des modules vides ne diraient rien de plus,
-  // et aucune lecture de plus n'est faite pour eux.
+  // Compte neuf : un seul encart. Des modules vides ne diraient rien de plus.
+  // La Tendance, lue en parallèle des posts, a déjà été lue (vide) : c'est le
+  // prix de ne pas l'attendre après eux sur toutes les autres pages.
   if (etat.etat === "neuf") {
     return (
       // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
@@ -87,9 +87,14 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
   ) as Partial<Record<CleMetrique, string>>;
   const lue = { debut: periode.debut, fin: periode.fin };
   const ecartes = ecartesDe(posts, metrique, regles, ctx);
-  const annee = moduleAnneeDe(posts, metrique, lue, ctx, ecartes);
-  const meilleurs = meilleursDe(retenus(posts, ecartes), metrique, lue, ctx);
-  const tableau = tableauDe(posts, metrique, ctx, ecartes);
+  // LES FOULES, UNE FOIS PAR LECTURE (revue de code) : le module, la liste et
+  // le Tableau lisent la même — celle des retenus sur la métrique affichée.
+  // Chacun la recalculait sur tout l'historique.
+  const gardes = retenus(posts, ecartes);
+  const foules = foulesDe(gardes, metrique, ctx);
+  const annee = moduleAnneeDe(posts, metrique, lue, ctx, ecartes, foules);
+  const meilleurs = meilleursDe(gardes, metrique, lue, ctx, foules);
+  const tableau = tableauDe(posts, metrique, ctx, ecartes, foules);
   const lu = ligneRegles(regles, ecartes.total, metrique);
 
   // Le post ouvert (`?post=`, l'ID Graph). Le rapport hebdo n'est relu que
@@ -98,10 +103,7 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
   const idOuvert = un(searchParams.post);
   const ouvert = idOuvert ? posts.find((p) => p.id === idOuvert) ?? null : null;
   const fermeture = lienInstagram(searchParams, { post: null });
-  const [jourRapport, tendance] = await Promise.all([
-    ouvert?.permalink ? jourDuPremierRapportQuiListe(ouvert.permalink) : Promise.resolve(null),
-    getTendanceInstagram(posts, periode),
-  ]);
+  const jourRapport = ouvert?.permalink ? await jourDuPremierRapportQuiListe(ouvert.permalink) : null;
   const fige = etat.etat === "jeton_mort";
 
   return (

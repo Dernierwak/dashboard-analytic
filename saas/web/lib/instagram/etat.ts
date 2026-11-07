@@ -10,15 +10,23 @@ import { jourLong } from "./annee";
 // D'OÙ VIENT « JETON MORT ». Pas de `connected_accounts` : un Membre invité ne
 // le lit pas (RLS fermée exprès, `CLAUDE.md` §7), et la page doit être la même
 // pour lui (spec, user story 5). Deux sources partagées existaient :
-// `weekly_reports.payload.sources.instagram.etat` — figée au dernier rapport,
-// donc jusqu'à une semaine de retard dans les deux sens — et `fetch_progress`,
-// réécrite à chaque passage, le léger quotidien compris (liste 15.1, lisible
-// par l'invité). On lit la seconde : le jour où le jeton meurt, la page le dit
-// le lendemain matin, pas au Jour de travail suivant.
+// `weekly_reports.payload.sources.instagram.etat` — figée au dernier rapport —
+// et `fetch_progress` (liste 15.1, lisible par l'invité). On lit la seconde
+// pour la CAUSE : son mot de fin dit « jeton Meta à reconnecter ». Elle n'est
+// écrite que par le passage COMPLET du Jour de travail : le léger quotidien
+// n'y touche pas, exprès (`account_sync.leger` — une ligne de plus ferait
+// oublier l'échec Meta au rapport). Le constat arrive donc au Jour de travail.
+//
+// LA RECONNEXION, ELLE, SE VOIT TOUS LES JOURS : le léger écrit un relevé de
+// post (`releve_a`) et la ligne du compte (`instagram_compte_jours.maj_a`)
+// chaque matin, et ne le peut qu'avec un jeton vivant. L'un ou l'autre PLUS
+// RÉCENT que la ligne `fetch_progress` dit que le jeton revit : l'encart se
+// tait, sans attendre le Jour de travail suivant (revue de code).
 
 /** La ligne `fetch_progress` du canal `instagram` (une par canal : clé
- *  `(user_id, canal)`, réécrite à chaque passage). */
-export type LigneProgres = { etat: string; mot_de_fin: string | null };
+ *  `(user_id, canal)`, réécrite à chaque passage complet). `maj_a` absent ou
+ *  illisible : rien ne permet de dire qu'une reconnexion l'a suivie. */
+export type LigneProgres = { etat: string; mot_de_fin: string | null; maj_a?: string | null };
 
 export type EtatPage =
   | { etat: "normale" }
@@ -48,8 +56,23 @@ function figeAuDe(posts: { releveA: string | null }[]): string | null {
   return max ? new Date(max).toISOString().slice(0, 10) : null;
 }
 
-export function etatDeLaPage(e: { posts: { releveA: string | null }[]; progres: LigneProgres | null }): EtatPage {
-  if (jetonMort(e.progres)) return { etat: "jeton_mort", figeAu: figeAuDe(e.posts) };
+function plusRecent(instant: string | null | undefined, que: number): boolean {
+  return !!instant && Number.isFinite(Date.parse(instant)) && Date.parse(instant) > que;
+}
+
+/** Un relevé de post ou une ligne du compte écrits APRÈS le constat du jeton
+ *  mort : le léger a lu, le jeton revit. */
+function reconnecte(e: EntreeEtat): boolean {
+  const constat = Date.parse(e.progres?.maj_a ?? "");
+  if (!Number.isFinite(constat)) return false;
+  return plusRecent(e.compteMajA, constat) || e.posts.some((p) => plusRecent(p.releveA, constat));
+}
+
+/** `compteMajA` : le `maj_a` le plus récent d'`instagram_compte_jours`. */
+type EntreeEtat = { posts: { releveA: string | null }[]; progres: LigneProgres | null; compteMajA?: string | null };
+
+export function etatDeLaPage(e: EntreeEtat): EtatPage {
+  if (jetonMort(e.progres) && !reconnecte(e)) return { etat: "jeton_mort", figeAu: figeAuDe(e.posts) };
   // Neuf = rien en base ET aucun passage fini : un passage fini qui n'a rien
   // trouvé n'est pas un compte qui attend le worker, c'est un compte sans post.
   if (e.posts.length === 0 && e.progres?.etat !== "fini") {

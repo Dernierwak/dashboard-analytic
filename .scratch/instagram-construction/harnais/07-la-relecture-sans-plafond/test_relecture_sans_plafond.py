@@ -173,7 +173,10 @@ verifier("1 500 posts en base : les 1 500 sont lus (paginé), aucun repris comme
 
 # ── 4 · « Tous les 3 mois » ─────────────────────────────────────────────────
 du = instagram_reread.trimestriel_du
-verifier("Jamais passé (NULL en base) : dû", du(None, MAINTENANT), True)
+# Revue de code : NULL n'est plus « dû » — sinon toutes les connexions
+# existantes, à NULL après la section 23, relisaient tout au premier cron.
+verifier("Jamais passé (NULL en base) : pas dû — la date vient du premier complet réussi",
+         du(None, MAINTENANT), False)
 verifier("Passé il y a 3 mois jour pour jour : dû",
          du("2026-08-10T07:12:00+00:00", MAINTENANT), True)
 verifier("Passé il y a 3 mois moins un jour : pas dû",
@@ -258,16 +261,16 @@ connexions = [
     _connexion("c1", "u-1", "ig-du", "2026-08-01T07:00:00+00:00"),
     _connexion("c2", "u-1", "ig-pas-du", "2026-10-01T07:00:00+00:00"),
     _connexion("c3", "u-1", "ig-jamais", None),
-    _connexion("c4", "u-1", "panne", None),
+    _connexion("c4", "u-1", "panne", "2026-07-01T07:00:00+00:00"),
     _connexion("c5", "u-1", "ig-mort", None, jeton="mort"),
 ]
 sb = BaseDesConnexions(connexions)
 journal = instagram_reread.relire_si_du(sb, "u-1", MAINTENANT)
-verifier("Relit les connexions dont le dernier passage date de 3 mois ou jamais, au jeton valide",
-         RELUS, ["ig-du", "ig-jamais", "panne"])
+verifier("Relit les connexions dont le dernier passage date de 3 mois, au jeton valide ; "
+         "pas celles à NULL",
+         RELUS, ["ig-du", "panne"])
 verifier("Écrit la date du passage sur la ligne relue, pas sur les autres ; rien après une panne",
-         sb.ecrit, [("c1", {"relecture_instagram_le": MAINTENANT.isoformat()}),
-                    ("c3", {"relecture_instagram_le": MAINTENANT.isoformat()})])
+         sb.ecrit, [("c1", {"relecture_instagram_le": MAINTENANT.isoformat()})])
 verifier("La panne se dit, sans le jeton",
          any("KO" in l for l in journal) and not any("SECRET" in l for l in journal), True)
 RELUS.clear()
@@ -276,13 +279,15 @@ verifier("Le lendemain : seule la connexion en panne est reprise (sa date n'a pa
          RELUS, ["panne"])
 
 RELUS.clear()
-sb = BaseDesConnexions([_connexion("c1", "u-1", "ig-du", None)], colonne_absente=True)
+sb = BaseDesConnexions([_connexion("c1", "u-1", "ig-du", "2026-07-01T07:00:00+00:00")],
+                       colonne_absente=True)
 journal = instagram_reread.relire_si_du(sb, "u-1", MAINTENANT)
 verifier("Colonne absente (section 23 pas jouée) : le cron ne devine pas, il ne relit pas "
          "et le dit", (RELUS, any("relecture_instagram_le" in l for l in journal)), ([], True))
 
 RELUS.clear()
-sb = BaseDesConnexions([_connexion("c1", "u-1", "ig-du", None)], ecriture_refusee=True)
+sb = BaseDesConnexions([_connexion("c1", "u-1", "ig-du", "2026-07-01T07:00:00+00:00")],
+                       ecriture_refusee=True)
 journal = instagram_reread.relire_si_du(sb, "u-1", MAINTENANT)
 verifier("Date non écrite (0 ligne touchée) : ça se dit (CLAUDE.md §8)",
          any("NON écrite" in l for l in journal), True)
@@ -294,6 +299,63 @@ sb = BaseDesConnexions([_connexion("c2", "u-1", "ig-pas-du", "2026-10-01T07:00:0
 instagram_reread.main(["--user", "u-1"], sb=sb)
 verifier("À la main : relu même s'il n'est pas dû, et la date posée",
          (RELUS, [cid for cid, _ in sb.ecrit]), (["ig-pas-du"], ["c2"]))
+
+# ── 5 bis · Revue de code : une connexion à NULL reçoit sa date au premier
+# passage complet réussi (le canal instagram de `account_sync.passer`) — il
+# vient de tout relire de récent ; le trimestriel part 3 mois plus tard. Une
+# connexion déjà datée garde sa date : seul le trimestriel ou la main la bouge.
+from saas.data.fetch_data.orchestration import account_sync  # noqa: E402
+from saas.data.fetch_data.orchestration.execution_plan import IngestionTask  # noqa: E402
+
+
+def _is(self, colonne, valeur):
+    self._filtres[colonne] = None if valeur == "null" else valeur
+    return self
+
+
+BaseDesConnexions.is_ = _is
+COMPLET = {"panne": False}
+
+
+def _recolter(sb, uid, acces, note=None):
+    if COMPLET["panne"]:
+        raise RuntimeError("boum complet")
+    return "insta: 12 posts"
+
+
+account_sync.recolte_instagram.recolter = _recolter
+
+
+def _complet_instagram(sb, connexion):
+    return account_sync._appel(IngestionTask("instagram", connexion), "u-1", None)(sb, None)
+
+
+sb = BaseDesConnexions([_connexion("c1", "u-1", "ig", None),
+                        _connexion("c2", "u-1", "ig2", "2026-10-01T07:00:00+00:00")])
+mot = _complet_instagram(sb, sb.connexions[0])
+verifier("Complet réussi, connexion à NULL : la date est posée",
+         ([cid for cid, _ in sb.ecrit], mot.startswith("insta: 12 posts")), (["c1"], True))
+verifier("La date posée est une vraie date ISO (lue par trimestriel_du)",
+         isinstance(datetime.fromisoformat(sb.connexions[0]["relecture_instagram_le"]), datetime),
+         True)
+sb.ecrit.clear()
+_complet_instagram(sb, sb.connexions[1])
+verifier("Complet réussi, connexion déjà datée : la date ne bouge pas",
+         (sb.ecrit, sb.connexions[1]["relecture_instagram_le"]),
+         ([], "2026-10-01T07:00:00+00:00"))
+COMPLET["panne"] = True
+sb = BaseDesConnexions([_connexion("c1", "u-1", "ig", None)])
+try:
+    _complet_instagram(sb, sb.connexions[0])
+except RuntimeError:
+    pass
+verifier("Complet en panne : pas de date", sb.ecrit, [])
+COMPLET["panne"] = False
+sb = BaseDesConnexions([_connexion("c1", "u-1", "ig", None)], colonne_absente=True)
+mot = _complet_instagram(sb, sb.connexions[0])
+verifier("Colonne absente : le complet ne tombe pas, il le dit",
+         ("insta: 12 posts" in mot, "§23" in mot), (True, True))
+
 
 # ── 6 · Le cron : le trimestriel après le léger, avant le complet ──────────
 VU: list[tuple[str, str]] = []

@@ -43,6 +43,7 @@ from saas.data.fetch_data.cockpit import instagram_reread  # noqa: E402
 from saas.data.fetch_data.orchestration import account_sync as passage  # noqa: E402
 from saas.data.fetch_data.orchestration import error_reporter as alarmes  # noqa: E402
 from saas.data.fetch_data.orchestration.concurrent_runner import client_service  # noqa: E402
+from saas.data.fetch_data.shared.http_client import sans_jeton  # noqa: E402
 
 
 def _due_today(fetch_schedule: str | None, aujourdhui: datetime | None = None) -> bool:
@@ -84,16 +85,27 @@ class ScheduledUpdate:
             # n'appelle aucune plateforme : pas de léger.
             # LE TRIMESTRIEL, juste après : tous les posts en base, tous les
             # 3 mois, sur la date du dernier passage complet lue en base
-            # (`instagram_reread.relire_si_du`). Avant le complet du Jour de
-            # travail : un compte sans aucun post relit 0 post et reçoit sa
-            # date, au lieu de relire dès le lendemain tout ce que sa première
-            # récolte vient d'écrire.
+            # (`instagram_reread.relire_si_du`). Une connexion sans date n'est
+            # pas due : elle la reçoit au premier passage complet réussi
+            # (`account_sync._appel`), qui vient de tout relire de récent.
+            # CHACUN DANS SON `try`, PAR COMPTE (revue de code de
+            # instagram-construction) : une exception hors des `try` internes
+            # — base injoignable à la lecture des connexions, réponse
+            # inattendue — faisait tomber la boucle entière, et le complet et
+            # le rapport des comptes suivants ne passaient pas.
             if not self.rapport_seulement:
-                for ligne in passage.leger(sb, uid):
-                    print(f"  {uid} → {ligne}")
                 maintenant = self.aujourdhui or datetime.now(timezone.utc)
-                for ligne in instagram_reread.relire_si_du(sb, uid, maintenant):
-                    print(f"  {uid} → {ligne}")
+                for nom, faire in (("léger", lambda: passage.leger(sb, uid)),
+                                   ("trimestriel", lambda: instagram_reread.relire_si_du(
+                                       sb, uid, maintenant))):
+                    try:
+                        lignes = faire()
+                    except Exception as e:
+                        # `sans_jeton` : une exception `requests` recopie
+                        # l'URL appelée, jeton compris (`CLAUDE.md` §7).
+                        lignes = [sans_jeton(f"{nom} KO: {type(e).__name__}: {e}")]
+                    for ligne in lignes:
+                        print(f"  {uid} → {ligne}")
             if not self.force and not _due_today(p.get("fetch_schedule"), self.aujourdhui):
                 continue
             # `rapport_seulement` : republie juste le rapport à partir des

@@ -190,6 +190,9 @@ class BaseDesPosts:
         self._ids = set(ids)
         return self
 
+    def order(self, *_, **__):
+        return self
+
     def limit(self, _n):
         self._ids = {str(r["post_id"]) for r in self.lignes[:1]}
         return self
@@ -224,7 +227,10 @@ verifier("Léger : `booste_vu_le` lu dans la même lecture que l'image",
 
 ECRIT["fiches"].clear()
 ECRIT["releves"].clear()
-base = BaseDesPosts([{"post_id": 10, "media_url": STOCK + "10.jpg"}], sans_23=True)
+# Le 10 publié avant les autres : 11 et 12, absents, sont plus récents que la
+# base et s'importent (le léger ne prend que ceux-là, revue de code).
+base = BaseDesPosts([{"post_id": 10, "media_url": STOCK + "10.jpg",
+                      "date": "2026-11-01T00:00:00+00:00"}], sans_23=True)
 sync.releve_quotidien(base, "u", ACCES, maintenant=MAINTENANT)
 verifier("Base sans la 23 : la lecture se refait sans la colonne, le passage continue",
          sorted(r["post_id"] for r in ECRIT["releves"]), ["10", "11", "12"])

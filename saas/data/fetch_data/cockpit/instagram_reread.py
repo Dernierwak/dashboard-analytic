@@ -11,9 +11,11 @@ chemin du relevé (`sync.relire_tous`) : 2 appels pour un Reel, 3 pour le fil.
 
 LE TRIMESTRIEL (ticket 07) : le cron (`scheduled_update.py`) appelle
 `relire_si_du` pour chaque compte, chaque jour ; il ne relit que les
-connexions dont `connected_accounts.relecture_instagram_le` date de 3 mois ou
-n'existe pas. Tout passage complet réussi, à la main ou au cron, pose cette
-date.
+connexions dont `connected_accounts.relecture_instagram_le` date de 3 mois.
+Une connexion à NULL n'est pas due : elle reçoit sa date au premier passage
+complet réussi de son Jour de travail (`account_sync._appel`), qui vient de
+tout relire de récent. La relecture de tout, d'un coup, reste le lancement à
+la main (ticket 03), qui pose la date lui aussi.
 
 CE QU'ELLE NE FAIT PAS, exprès : ni `fetch_progress` ni rapport — une ligne
 `instagram` d'un `run_id` neuf ferait oublier l'échec Meta du Jour de travail
@@ -55,13 +57,16 @@ _COLONNE_ABSENTE = ("instagram trimestriel: colonne connected_accounts.relecture
 def trimestriel_du(derniere: str | None, maintenant: datetime) -> bool:
     """Le passage complet est-il dû ? `derniere` = la date lue en base.
 
-    Jamais passé (NULL) → dû : rien ne dit quand il l'aurait été. Compté en
-    JOURS, pas à la minute : le cron de 07:00 UTC ne démarre pas toujours à la
-    même minute, et un passage posé à 07:12 ne doit pas repousser le suivant
-    d'un jour entier parce que le cron de dans 3 mois démarre à 07:03.
+    Jamais passé (NULL) → PAS dû (revue de code de instagram-construction) :
+    après la section 23, toutes les connexions existantes sont à NULL, et
+    « dû » les faisait toutes relire au premier cron. Sa date vient du premier
+    passage complet réussi. Compté en JOURS, pas à la minute : le cron de
+    07:00 UTC ne démarre pas toujours à la même minute, et un passage posé à
+    07:12 ne doit pas repousser le suivant d'un jour entier parce que le cron
+    de dans 3 mois démarre à 07:03.
     """
     if not derniere:
-        return True
+        return False
     jour = datetime.fromisoformat(derniere).date()
     return maintenant.date() >= _plus_mois(jour, _TRIMESTRE_EN_MOIS)
 

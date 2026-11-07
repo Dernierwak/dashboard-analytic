@@ -62,6 +62,10 @@ export function formatDe(mediaType: string | null, produit: string | null): Form
  *  absente d'une base en retard — lue comme « rien rendu », jamais 0. */
 export type LigneBase = {
   post_id: string | number | null;
+  /** `post_id::text` : l'ID Graph (17 chiffres et plus) dépasse 2^53, le
+   *  `bigint` lu en JSON est arrondi — 17854360229135493 devenait
+   *  …492 (revue de code). C'est lui qui fait l'`id` du post. */
+  post_id_texte?: string | null;
   date: string | null;
   type: string | null;
   media_product_type?: string | null;
@@ -123,7 +127,7 @@ function mesure(v: unknown): number | null {
 }
 
 export type LigneAbonnesHistorique = { fetched_at: string | null; followers: unknown };
-export type LigneCompteJour = { jour: string | null; abonnes: unknown };
+export type LigneCompteJour = { jour: string | null; abonnes?: unknown };
 
 /** Jour → abonnés mesurés. `followers_history` porte la courbe jusqu'au
  *  2026-09-04 (plus rien ne l'écrit depuis, spec § La base) : son DERNIER
@@ -154,7 +158,7 @@ export function postDe(l: LigneBase, abonnesParJour: Record<string, number>): Po
   const date = l.date ?? "";
   const jour = date.slice(0, 10);
   return {
-    id: String(l.post_id ?? ""),
+    id: l.post_id_texte || String(l.post_id ?? ""),
     date,
     jour,
     format: formatDe(l.type ?? null, l.media_product_type ?? null),
@@ -264,7 +268,10 @@ export const OBJECTIF_PAR_DEFAUT: Objectif = "engagement";
 export const METRIQUE_PAR_DEFAUT: CleMetrique = METRIQUES_DE[OBJECTIF_PAR_DEFAUT][0];
 
 export function metriqueDe(cle: string | null | undefined): CleMetrique {
-  return cle && cle in METRIQUES ? (cle as CleMetrique) : METRIQUE_PAR_DEFAUT;
+  // `Object.hasOwn`, pas `in` : `?metrique=toString` trouvait la méthode
+  // héritée d’Object.prototype, et `METRIQUES[m].nom` faisait tomber la page
+  // en 500 (revue de code de instagram-construction).
+  return cle && Object.hasOwn(METRIQUES, cle) ? (cle as CleMetrique) : METRIQUE_PAR_DEFAUT;
 }
 
 /** Un ratio sur la portée : vide si un terme manque, ou si la portée est vide
@@ -462,10 +469,17 @@ export type Contexte = {
 };
 
 /** Le début d'une fenêtre de `mois` mois glissants finissant à `maintenant`,
- *  en mois du calendrier (le 7 novembre → le 7 novembre d'avant). */
+ *  en mois du calendrier (le 7 novembre → le 7 novembre d'avant), borné au
+ *  dernier jour du mois visé comme `_plus_mois` côté Python
+ *  (`cockpit/instagram_reread.py`) : `setUTCMonth` seul faisait du 31 mars
+ *  − 1 mois le 3 mars, et la fenêtre perdait trois jours (revue de code). */
 export function debutDesMois(maintenant: string, mois: number): string {
   const d = new Date(maintenant);
+  const jour = d.getUTCDate();
+  d.setUTCDate(1);
   d.setUTCMonth(d.getUTCMonth() - mois);
+  const dernier = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(jour, dernier));
   return d.toISOString();
 }
 
@@ -577,7 +591,9 @@ export type PlaceDuPost =
   | { etat: "age_egal_place"; jours: number; place: Place; horsNorme: boolean; n: number }
   /** De 48 h à 7 jours, moins de 6 posts relevés au même âge : pas de place,
    *  une mention. */
-  | { etat: "age_egal_mince"; jours: number; n: number; format: Format }
+  /** `ecartes` : combien un filtre en a retiré qui avaient un relevé à ce
+   *  J+n (revue de code) ; absent quand aucun. */
+  | { etat: "age_egal_mince"; jours: number; n: number; format: Format; ecartes?: number }
   /** De 48 h à 7 jours, relevés non lus (base sans la section 23, ou
    *  lecture ratée) : on ne sait pas, ce n'est pas une foule vide. */
   | { etat: "age_egal"; jours: number }
@@ -609,6 +625,15 @@ export function premierReleveDuJour(releves: Releve[] | undefined, jours: number
   return releves?.find((r) => r.ageHeures >= jours * 24 && r.ageHeures < (jours + 1) * 24) ?? null;
 }
 
+/** La valeur d'un post à son premier relevé du J+`jours`, ou `null` (pas de
+ *  relevé ce jour-là, ou pas la valeur). Le post tel qu'il était à cet âge :
+ *  ses brutes d'alors, le reste (format, abonnés du jour de publication)
+ *  inchangé. Partagée avec la mention des écartés (`regles.placeLue`). */
+export function valeurAuMemeAge(autre: Post, jours: number, m: CleMetrique, releves: RelevesParPost): number | null {
+  const r = premierReleveDuJour(releves[autre.id], jours);
+  return r ? valeurDe({ ...autre, brutes: r.brutes }, m) : null;
+}
+
 /** La place à âge égal (spec) : de chaque AUTRE post de la foule du format
  *  (12 mois, ≥ 48 h, sans les écartés des Règles — `f` vient des `retenus`),
  *  la valeur à son premier relevé du même J+n ; mêmes quartiles, minimum 6. */
@@ -618,11 +643,8 @@ function placeAgeEgal(p: Post, v: number, m: CleMetrique, f: Foule, ctx: Context
   const releves = ctx.releves;
   const valeurs = f.eligibles.flatMap((autre) => {
     if (autre.id === p.id) return [];
-    const r = premierReleveDuJour(releves[autre.id], jours);
-    // Le post tel qu'il était à cet âge : ses brutes d'alors, le reste
-    // (format, abonnés du jour de publication) inchangé.
-    const alors = r && valeurDe({ ...autre, brutes: r.brutes }, m);
-    return alors === null || alors === undefined ? [] : [alors];
+    const alors = valeurAuMemeAge(autre, jours, m, releves);
+    return alors === null ? [] : [alors];
   });
   const q = valeurs.length >= MINIMUM_FOULE ? quartiles(valeurs) : null;
   if (!q) return { etat: "age_egal_mince", jours, n: valeurs.length, format: f.format };

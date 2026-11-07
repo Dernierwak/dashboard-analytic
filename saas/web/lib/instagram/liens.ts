@@ -24,7 +24,7 @@ const DEFAUTS: Record<string, string> = { metrique: METRIQUE_PAR_DEFAUT };
 export function lienInstagram(params: Params, patch: Record<string, string | null>): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (k in patch) continue;
+    if (Object.hasOwn(patch, k)) continue;
     for (const x of Array.isArray(v) ? v : [v]) if (x) q.append(k, x);
   }
   for (const [k, v] of Object.entries(patch)) if (v) q.append(k, v);

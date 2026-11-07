@@ -4,7 +4,7 @@ Lancer depuis la racine du dépôt :
 
     python3.12 -I .scratch/instagram-construction/harnais/06-le-premier-passage/test_premier_passage.py
 
-Couture : `releve_compte.releve_du_compte(sb, uid, acces, maintenant)`, avec
+Couture : `releve_compte.releve_du_compte(sb, uid, acces, connexion_id, maintenant)`, avec
 `http_client.get` remplacé par un faux Graph qui répond selon les paramètres
 (formes de l'essai réel, `.scratch/instagram/essai/essai_reel.py`, `issues/17`)
 et les écritures / la lecture Supabase remplacées. Puis
@@ -76,8 +76,12 @@ class FauxGraph:
     """Répond à `/{ig}/insights` selon (métrique, ventilation, fenêtre) et à
     `/{ig}` pour `followers_count`. `pannes` : jeux de clés à rendre en erreur."""
 
-    def __init__(self, pannes=(), sans_non_follower=(), abonnes=ABONNES_DU_PASSAGE):
+    def __init__(self, pannes=(), sans_non_follower=(), abonnes=ABONNES_DU_PASSAGE,
+                 remontee_en_panne=False):
         self.pannes = set(pannes)
+        # Tout appel d'un jour plus ancien qu'avant-hier en erreur : la
+        # remontée n'écrit rien de plus ancien.
+        self.remontee_en_panne = remontee_en_panne
         self.sans_non_follower = set(sans_non_follower)
         self.abonnes = abonnes
         self.appels: list = []
@@ -96,6 +100,8 @@ class FauxGraph:
         cle = (metrique, ventilation, debut, fin)
         self.appels.append(cle)
         if cle in self.pannes or (metrique, ventilation, debut) in self.pannes:
+            return _Reponse(ERREUR)
+        if self.remontee_en_panne and debut < AVANT_HIER and (fin - debut).days != 7:
             return _Reponse(ERREUR)
         if params.get("metric_type") != "total_value":
             # Série jour par jour : `end_time` = fin de la journée, à 08:00 UTC
@@ -128,26 +134,37 @@ class FauxGraph:
 
 ECRIT: dict[str, list] = {"jours": [], "periodes": []}
 LU: list = []
-releve_compte.ecrire_jours_du_compte = lambda sb, lignes: ECRIT["jours"].extend(lignes)
-releve_compte.ecrire_periode_du_compte = lambda sb, ligne: ECRIT["periodes"].append(ligne)
+NOTE: list = []
+releve_compte.ecrire_periode_du_compte = (
+    lambda sb, ligne, aujourdhui: ECRIT["periodes"].append(ligne))
 
 
-def passer(graph, deja_en_base=False):
-    """`deja_en_base` : True = une ligne avant avant-hier existe ; False = aucune ;
-    une exception = la lecture tombe."""
+def passer(graph, deja_en_base=False, ecriture_ok=True, note_ok=True):
+    """`deja_en_base` : True = le marqueur du premier passage est posé
+    (`connected_accounts.premier_passage_instagram_le`) ; False = NULL ; une
+    exception = la lecture tombe. `ecriture_ok` : ce que rend l'écriture des
+    jours (False = table absente) ; `note_ok` : ce que rend la pose du marqueur."""
     ECRIT["jours"].clear()
     ECRIT["periodes"].clear()
     LU.clear()
+    NOTE.clear()
 
-    def a_des_jours_avant(sb, uid, jour):
-        LU.append(jour)
+    def premier_passage_instagram_le(sb, uid, connexion_id):
+        LU.append(connexion_id)
         if isinstance(deja_en_base, Exception):
             raise deja_en_base
-        return deja_en_base
+        return "2026-08-01T07:00:00+00:00" if deja_en_base else None
 
-    releve_compte.a_des_jours_avant = a_des_jours_avant
+    def noter_premier_passage_instagram(sb, uid, connexion_id, quand):
+        NOTE.append((connexion_id, quand))
+        return note_ok
+
+    releve_compte.premier_passage_instagram_le = premier_passage_instagram_le
+    releve_compte.noter_premier_passage_instagram = noter_premier_passage_instagram
+    releve_compte.ecrire_jours_du_compte = (
+        lambda sb, lignes: ECRIT["jours"].extend(lignes) or ecriture_ok)
     http_client.get = graph
-    mot = releve_compte.releve_du_compte(None, "u-1", ACCES, maintenant=MAINTENANT)
+    mot = releve_compte.releve_du_compte(None, "u-1", ACCES, "c-1", maintenant=MAINTENANT)
     par_jour: dict[str, dict] = {}
     for ligne in ECRIT["jours"]:
         par_jour.setdefault(ligne["jour"], {}).update(ligne)
@@ -164,9 +181,10 @@ verifier("Avant-hier relu en entier, sans les abonnés (followers_count est celu
          {"user_id": "u-1", "jour": "2026-11-08", "reach": 108, "total_interactions": 8,
           "gagnes": 3, "perdus": 1, "reach_ad": 5, "interactions_ad": 5})
 verifier("Hier garde les abonnés du passage", jours["2026-11-09"]["abonnes"], 1840)
-verifier("12 appels : 5 par jour relu, followers_count, la période des 7 jours",
-         len(graph.appels), 12)
-verifier("La détection regarde avant avant-hier", LU, [AVANT_HIER])
+verifier("13 appels : 5 par jour relu, followers_count, les deux périodes des 7 jours",
+         len(graph.appels), 13)
+verifier("La détection lit le marqueur de la connexion", LU, ["c-1"])
+verifier("Marqueur posé : il n'est pas reposé", NOTE, [])
 verifier("Pas de premier passage : le mot n'en parle pas", "premier passage" in mot, False)
 
 # ── 2 · Premier passage : 90 jours, et la remontée écrite à la main ─────────
@@ -205,7 +223,39 @@ verifier("Gagnés / perdus seulement sur les 30 jours qu'Instagram rend",
 verifier("Les jours remontés ne portent pas la part AD (pas demandée au premier passage)",
          "reach_ad" in jours["2026-09-15"], False)
 verifier("Le mot dit le premier passage et la remontée",
-         ("premier passage" in mot, "88" in mot, "abonnés" in mot), (True, True, True))
+         ("premier passage" in mot, "88/88 jours remontés" in mot, "abonnés" in mot),
+         (True, True, True))
+verifier("Remontée écrite (des jours plus anciens qu'avant-hier) : le marqueur est posé, "
+         "à l'heure du passage", NOTE, [("c-1", MAINTENANT)])
+
+# ── 2 bis · Revue de code : le premier passage est repris tant qu'il n'a rien
+# remonté. Avant, la détection « une ligne avant avant-hier » le donnait pour
+# fait dès qu'une ligne existait — un premier passage entièrement en panne ne
+# se reprenait jamais.
+# Les mouvements d'avant-hier en erreur aussi : sinon la remontée des abonnés
+# écrirait légitimement le total du 7 (hier et avant-hier connus).
+graph = FauxGraph(remontee_en_panne=True,
+                  pannes={("follows_and_unfollows", "follow_type", AVANT_HIER)})
+mot, jours = passer(graph, deja_en_base=False)
+verifier("Remontée en panne : rien de plus ancien qu'avant-hier n'est écrit",
+         [d for d in jours if d < AVANT_HIER.isoformat()], [])
+verifier("… le marqueur n'est PAS posé : le premier passage sera retenté demain",
+         (NOTE, "0/88 jours remontés" in mot, "retenté" in mot), ([], True, True))
+graph = FauxGraph()
+mot, jours = passer(graph, deja_en_base=False, ecriture_ok=False)
+verifier("Écriture des jours non faite (table absente) : pas de marqueur",
+         (NOTE, "retenté" in mot), ([], True))
+graph = FauxGraph()
+mot, jours = passer(graph, deja_en_base=False, note_ok=False)
+verifier("Marqueur non écrit (0 ligne touchée) : ça se dit (CLAUDE.md §8)",
+         "NON écrit" in mot, True)
+
+from saas.data.supabase.source_data.account import ColonnePremierPassageAbsente  # noqa: E402
+graph = FauxGraph()
+mot, jours = passer(graph, deja_en_base=ColonnePremierPassageAbsente())
+verifier("Colonne du marqueur absente : pas de premier passage à l'aveugle, et §23 est nommée",
+         (sorted(jours), len(graph.appels), "§23" in mot),
+         (["2026-11-08", "2026-11-09"], 13, True))
 
 # ── 3 · Un jour manquant arrête la courbe là ────────────────────────────────
 graph = FauxGraph(pannes={("follows_and_unfollows", "follow_type", date(2026, 11, 6))})
@@ -244,7 +294,7 @@ verifier("… et la colonne n'est pas envoyée (pas de NULL) pour ces jours",
 graph = FauxGraph()
 mot, jours = passer(graph, deja_en_base=RuntimeError("réseau"))
 verifier("Lecture de la base en erreur : pas de premier passage (pas 130 appels à l'aveugle)",
-         (sorted(jours), len(graph.appels)), (["2026-11-08", "2026-11-09"], 12))
+         (sorted(jours), len(graph.appels)), (["2026-11-08", "2026-11-09"], 13))
 verifier("… et le mot le dit", "premier passage" in mot and "non" in mot.lower(), True)
 
 
@@ -270,14 +320,39 @@ class Base:
         return self
 
 
-b = Base(data=[{"jour": "2026-10-01"}])
-verifier("a_des_jours_avant : une ligne avant la date → True",
-         instagram_compte.a_des_jours_avant(b, "u", AVANT_HIER), True)
-verifier("… filtre sur le compte et sur jour < date, une ligne suffit",
-         [op for op in b.ops if op[0] in ("eq", "lt", "limit")],
-         [("eq", ("user_id", "u"), {}), ("lt", ("jour", "2026-11-08"), {}), ("limit", (1,), {})])
-verifier("a_des_jours_avant : aucune ligne → False",
-         instagram_compte.a_des_jours_avant(Base(), "u", AVANT_HIER), False)
+from saas.data.supabase.source_data import account  # noqa: E402
+
+b = Base(data=[{"id": "c-1", "premier_passage_instagram_le": "2026-08-01T07:00:00+00:00"}])
+verifier("premier_passage_instagram_le : lit le marqueur de LA connexion du compte",
+         (account.premier_passage_instagram_le(b, "u", "c-1"),
+          [op for op in b.ops if op[0] == "eq"]),
+         ("2026-08-01T07:00:00+00:00", [("eq", ("id", "c-1"), {}), ("eq", ("user_id", "u"), {})]))
+verifier("… NULL en base → None",
+         account.premier_passage_instagram_le(
+             Base(data=[{"id": "c-1", "premier_passage_instagram_le": None}]), "u", "c-1"), None)
+b = Base(data=[{"id": "c-1"}])
+verifier("noter_premier_passage_instagram : écrit la date sur la connexion, True si écrite",
+         (account.noter_premier_passage_instagram(b, "u", "c-1", MAINTENANT),
+          [op for op in b.ops if op[0] == "update"]),
+         (True, [("update", ({"premier_passage_instagram_le": MAINTENANT.isoformat()},), {})]))
+verifier("… 0 ligne touchée → False", account.noter_premier_passage_instagram(
+    Base(), "u", "c-1", MAINTENANT), False)
+try:
+    account.premier_passage_instagram_le(
+        Base(leve="{'code': '42703', 'message': 'column connected_accounts."
+                  "premier_passage_instagram_le does not exist'}"), "u", "c-1")
+    absente = False
+except account.ColonnePremierPassageAbsente:
+    absente = True
+verifier("Colonne absente : une exception à part, pas un NULL (qui relancerait 130 appels)",
+         absente, True)
+
+sql = (RACINE / "saas/data/supabase/migrations/000_run_me_all.sql").read_text()
+verifier("Section 23 : la colonne du marqueur en ajout seul, au contrôle et au sommaire",
+         ("ADD COLUMN IF NOT EXISTS premier_passage_instagram_le timestamptz" in sql,
+          "('c','connected_accounts','premier_passage_instagram_le')" in sql.replace(" ", ""),
+          "connected_accounts.premier_passage_instagram_le (instagram-construction, 06)" in sql),
+         (True, True, True))
 
 b = Base()
 instagram_compte.ecrire_jours_du_compte(b, [
@@ -285,6 +360,9 @@ instagram_compte.ecrire_jours_du_compte(b, [
     {"user_id": "u", "jour": "2026-09-02", "total_interactions": 3},
     {"user_id": "u", "jour": "2026-09-03", "reach": 4, "total_interactions": 5},
 ])
+verifier("ecrire_jours_du_compte : True quand tout est écrit",
+         instagram_compte.ecrire_jours_du_compte(Base(), [{"user_id": "u", "jour": "2026-09-01"}]),
+         True)
 lots = [(op[1][0], op[2]) for op in b.ops if op[0] == "upsert"]
 verifier("Un lot par jeu de colonnes : PostgREST écrirait NULL pour une clé absente d'une ligne",
          sorted((len(l), sorted(l[0])) for l, _ in lots),
@@ -294,11 +372,12 @@ verifier("… chaque lot s'upserte sur (user_id, jour)",
          {o["on_conflict"] for _, o in lots}, {"user_id,jour"})
 b = Base(leve="{'code': 'PGRST205', 'message': 'Could not find the table'}")
 try:
-    instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-09-01"}])
+    ecrit = instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-09-01"}])
     leve = False
 except Exception:
     leve = True
-verifier("Section 23 pas jouée : le dit et continue", leve, False)
+verifier("Section 23 pas jouée : le dit et continue, et rend False (rien d'écrit)",
+         (leve, ecrit), (False, False))
 
 print()
 print("TOUT EST VERT" if not ECHECS else f"{len(ECHECS)} ÉCHEC(S)")

@@ -84,3 +84,9 @@ Pour les tickets suivants : le **relevé du compte** (05) et **un bloc du
 Rattrapage** (08) s'ajoutent dans `account_sync.leger`, à côté de
 `releve_quotidien`. Le marqueur de boost (02) ajoute `boost_ads_list` aux
 champs de `posts.recents` (avec le repli si le champ est refusé).
+
+Corrigé après revue : le léger et le trimestriel de chaque compte tournent chacun dans son `try` dans `scheduled_update.py` — une panne se journalise (`<uid> → léger KO: …`, sans jeton) et le complet et le rapport des comptes suivants passent.
+
+Corrigé après revue : le léger n'importe un post absent que s'il est plus récent que le post le plus récent en base (`sync.posts_du_jour`, lu par la même requête que « aucun post en base ») ; les vieux absents relèvent du complet ou du Rattrapage.
+
+Vérifié : les 15 harnais verts (`python3.12 -I …/test_*.py`, `sh …/lancer.sh`). Ne se voit en vrai qu'après un passage du worker : le cron de 07:00 UTC (ou un lancement à la main depuis GitHub Actions).

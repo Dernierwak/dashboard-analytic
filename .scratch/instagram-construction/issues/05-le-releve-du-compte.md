@@ -92,3 +92,7 @@ section 23 :
 Pour le ticket 06 : le léger écrit désormais une ligne `instagram_compte_jours`
 chaque jour ; « aucune ligne » ne suffit plus à détecter un premier passage
 si le léger tourne avant lui.
+
+Corrigé après revue : chaque passage lit aussi la période de 7 jours finissant avant-hier ; les périodes finissant hier ou avant-hier s'écrivent en upsert (`ecrire_periode_du_compte(sb, ligne, aujourdhui)`), les plus anciennes restent en ajout seul. 13 appels par passage au lieu de 12.
+
+Vérifié : les 15 harnais verts (`python3.12 -I …/test_*.py`, `sh …/lancer.sh`). Ne se voit en vrai qu'après un passage du worker : le cron de 07:00 UTC.

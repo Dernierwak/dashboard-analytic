@@ -94,3 +94,5 @@ tant que la section 23 n'est pas jouée par David et qu'un passage du worker
 n'a pas relevé les posts — le **cron de 07:00 UTC** suffit, ou un lancement à
 la main depuis l'onglet GitHub Actions (`weekly-fetch.yml`). Le rendu (1 800
 lignes, images paresseuses) n'a pas été regardé dans un navigateur.
+
+Corrigé après revue : `?metrique=toString` ne fait plus de 500 (`Object.hasOwn` dans `metriqueDe`, et le même motif retiré de `liens.ts` et `tendance.ts`) ; `debutDesMois` borné au dernier jour du mois comme `_plus_mois` (31 mai − 3 mois = 28 février) ; `post_id` lu en texte (`post_id_texte:post_id::text` sur les posts, `post_id:post_id::text` sur les relevés) — 17854360229135493 reste intact. Harnais : `09-la-lecture/revue.test.ts`.

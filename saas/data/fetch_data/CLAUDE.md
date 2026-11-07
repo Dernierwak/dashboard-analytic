@@ -49,9 +49,19 @@ de départ change.
   s'arrête moins le recouvrement, puis le rapport est publié.
   Avant cela, chaque jour et pour tous les comptes Instagram, le **passage
   léger** (`account_sync.leger`) : posts de moins de 8 × 24 h relevés, fiche
-  des posts neufs, journée d'hier du compte (`instagram/releve_compte.py` →
-  `instagram_compte_jours`, et la portée des 7 jours dans
-  `instagram_compte_periodes`) — sans rapport, sans `fetch_progress` (il ferait oublier
+  des posts neufs — un absent n'est importé que s'il est **plus récent que le
+  post le plus récent en base** (`sync.posts_du_jour`) ; les vieux absents
+  relèvent du complet (règle du gratuit) ou du Rattrapage (payant). Puis le
+  compte (`instagram/releve_compte.py`) : hier, et **avant-hier relu** (Meta
+  documente 48 h de retard) dans `instagram_compte_jours` ; la portée des 7
+  jours finissant hier **et** avant-hier dans `instagram_compte_periodes`, en
+  upsert — les périodes plus anciennes restent en ajout seul. Tant que
+  `connected_accounts.premier_passage_instagram_le` est NULL, le **premier
+  passage** (90 jours, remontée des abonnés) est retenté chaque jour
+  (journal : « k/88 jours remontés ») ; le marqueur n'est posé que si la
+  remontée a écrit au moins un jour plus ancien qu'avant-hier. Le léger et le
+  trimestriel tombent par compte, dans leur `try` : le cron continue. Sans
+  rapport, sans `fetch_progress` (il ferait oublier
   l'échec Meta du Jour de travail), une ligne de journal avec sa durée ; et
   pour un payant, **un bloc du Rattrapage** (`sync.rattrapage`) : l'inventaire
   repris au curseur gardé dans `connected_accounts.rattrapage_instagram_curseur`,
@@ -59,8 +69,10 @@ de départ change.
   La taille du bloc (`_TAILLE_DU_BLOC`) attend la durée mesurée (« rattrapage :
   … en T s » dans la ligne du léger).
   Puis le **trimestriel** (`instagram_reread.relire_si_du`) : les connexions
-  dont `connected_accounts.relecture_instagram_le` a 3 mois ou est NULL sont
-  relues en entier, et la date est reposée après un passage réussi.
+  dont `connected_accounts.relecture_instagram_le` a 3 mois sont relues en
+  entier, et la date est reposée après un passage réussi. NULL n'est **pas**
+  dû : une connexion sans date la reçoit au premier passage complet réussi
+  (canal instagram de `account_sync.passer`).
   Au Jour de travail, `sync.posts_a_relire` relit sans plafond : les posts en
   base de moins de 30 jours, et les absents — ceux de moins de 30 jours pour
   un payant (le reste n'entre que par le Rattrapage), ceux plus récents que sa

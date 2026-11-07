@@ -120,6 +120,45 @@ test("les écartés des Règles de lecture sortent aussi de l'âge égal", async
   assert.deepEqual(lue, { etat: "age_egal_place", jours: 3, place: "au_dessus", horsNorme: false, n: 6 });
 });
 
+// Revue de code : un filtre qui fait tomber l'âge égal sous 6 le dit, comme la
+// mention de la référence (« — 1 est écarté par ton filtre »). Le compte est
+// celui des écartés qui AURAIENT compté à cet âge : un relevé au même J+n,
+// avec une valeur — pas tous les écartés du format.
+test("un filtre fait tomber l'âge égal sous 6 : la mention dit combien il en a écartés à cet âge", async () => {
+  const { ecartesDe, placeLue, retenus } = await import("@/lib/instagram/regles");
+  const { raisonPlace } = await import("@/lib/instagram/tableau");
+  const { posts, lignes } = sixMures();
+  // Cinq images relevées à J+3 (la sixième pas), plus un boosté relevé à J+3
+  // et un boosté sans relevé à J+3 : six au même âge sans filtre.
+  const sansJ3 = lignes.filter((l) => !(l.post_id === posts[5].id && (l.age_heures as number) >= 72 && (l.age_heures as number) < 96));
+  const booste = image("2026-09-10T09:00:00Z", 240, 700, { booste_vu_le: "2026-09-11" });
+  const boosteSansJ3 = image("2026-09-12T09:00:00Z", 240, 800, { booste_vu_le: "2026-09-13" });
+  const j3 = image("2026-11-02T09:00:00Z", 75, 6);
+  const tous = [...posts, booste, boosteSansJ3, j3];
+  const ctx = { maintenant: MAINTENANT, releves: relevesDe([...sansJ3, releve(booste, 80, 1000), releve(boosteSansJ3, 30, 5)]) };
+  const e = ecartesDe(tous, "jaime", { sansBoostes: true, sansHorsNorme: false }, ctx);
+  const lue = placeLue(j3, "jaime", foulesDe(retenus(tous, e), "jaime", ctx), ctx, e);
+  assert.deepEqual(lue, { etat: "age_egal_mince", jours: 3, n: 5, format: "image", ecartes: 1 });
+  assert.equal(
+    raisonPlace(lue),
+    "5 Images ont un relevé à J+3 sur les 12 derniers mois, il en faut 6 — 1 est écarté par ton filtre : sa place à âge égal attendra."
+  );
+});
+
+test("sous 6 à âge égal sans filtre : la mention ne parle pas de filtre", async () => {
+  const { placeLue, AUCUN_ECART } = await import("@/lib/instagram/regles");
+  const { posts, lignes } = sixMures();
+  const sansJ3 = lignes.filter((l) => !(l.post_id === posts[5].id && (l.age_heures as number) >= 72 && (l.age_heures as number) < 96));
+  const j3 = image("2026-11-02T09:00:00Z", 75, 6);
+  const ctx = { maintenant: MAINTENANT, releves: relevesDe(sansJ3) };
+  assert.deepEqual(placeLue(j3, "jaime", foulesDe([...posts, j3], "jaime", ctx), ctx, AUCUN_ECART), {
+    etat: "age_egal_mince",
+    jours: 3,
+    n: 5,
+    format: "image",
+  });
+});
+
 test("relevés non lus (base sans la section 23) : la place à âge égal ne se calcule pas, et ce n'est pas zéro post", () => {
   const { posts } = sixMures();
   const j3 = image("2026-11-02T09:00:00Z", 75, 6);

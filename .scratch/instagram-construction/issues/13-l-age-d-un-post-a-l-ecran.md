@@ -99,3 +99,5 @@ et Panneau ; User Stories 20, 21.
   (section 23 à jouer par David). Rien n'a été regardé dans un navigateur
   (l'étiquette ambre sous la date du Tableau, sa largeur dans la carte de la
   liste sur téléphone).
+
+Corrigé après revue : quand un filtre fait tomber l'âge égal sous 6, la mention dit combien il en a écartés — ceux qui avaient un relevé au même J+n (« 5 Images ont un relevé à J+3 …, il en faut 6 — 1 est écarté par ton filtre : … »).

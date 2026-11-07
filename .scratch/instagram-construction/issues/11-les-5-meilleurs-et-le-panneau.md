@@ -107,3 +107,5 @@ publié **et** relevé après ce rapport — donc après un passage du worker
 postérieur au rapport : le **cron de 07:00 UTC** suffit, ou un lancement à
 la main depuis l'onglet GitHub Actions (`weekly-fetch.yml`). Le temps de
 visionnage reste « – » tant que la section 23 n'est pas jouée.
+
+Corrigé après revue : la page calcule les foules une fois par lecture et les passe à `moduleAnneeDe`, `meilleursDe` et `tableauDe` (paramètre optionnel) ; la Tendance se calcule sur les lectures faites en parallèle des posts — une seule lecture d'`instagram_compte_jours`, `followers_history` et `getCompteActif`. Harnais : `11-…/foules.test.ts`.

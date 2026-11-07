@@ -56,13 +56,24 @@ def _media(pid, heures, produit="FEED", media_type="IMAGE"):
 
 
 # ── 1 · Quels posts sont relevés à quel âge ─────────────────────────────────
-inventaire = [_media("1", 1), _media("2", 191), _media("3", 192), _media("4", 193),
-              _media("5", 400), {"id": "6", "timestamp": "illisible"},
-              {"id": "7", "timestamp": "illisible"}]
+# Revue de code : un absent n'est importé que s'il est PLUS RÉCENT que le post
+# le plus récent déjà en base. Les vieux absents relèvent du complet (règle du
+# gratuit, ticket 07) ou du Rattrapage (payant, ticket 08) : sinon le léger
+# gonflait un gratuit au-delà de ses 10 plus récents, page après page.
+inventaire = [_media("0", 0.5), _media("1", 1), _media("2", 191), _media("3", 192),
+              _media("4", 193), _media("5", 400), {"id": "6", "timestamp": "illisible"},
+              {"id": "7", "timestamp": "illisible"}, _media("8", 150)]
 en_base = {"1", "2", "3", "4", "6"}
-verifier("Relevés : moins de 8 × 24 h, ou absents de la base (fiche neuve)",
-         [m["id"] for m in sync.posts_du_jour(inventaire, en_base, MAINTENANT)],
-         ["1", "2", "5", "7"])
+plus_recent = MAINTENANT - timedelta(hours=1)
+verifier("Relevés : moins de 8 × 24 h en base, ou absent plus récent que la base (fiche neuve)",
+         [m["id"] for m in sync.posts_du_jour(inventaire, en_base, MAINTENANT, plus_recent)],
+         ["0", "1", "2"])
+verifier("Un absent plus ancien que le plus récent en base n'est pas importé, même jeune",
+         "8" in [m["id"] for m in sync.posts_du_jour(inventaire, en_base, MAINTENANT,
+                                                    plus_recent)], False)
+verifier("Plus récent en base illisible : aucun absent importé (le complet s'en charge)",
+         [m["id"] for m in sync.posts_du_jour(inventaire, en_base, MAINTENANT, None)],
+         ["1", "2"])
 
 
 # ── 2 · Le relevé quotidien d'un compte ─────────────────────────────────────
@@ -123,8 +134,16 @@ class BaseDesPosts:
         self._ids = set(ids)
         return self
 
+    def order(self, colonne, desc=False):
+        self._ordre = (colonne, desc)
+        return self
+
     def limit(self, _n):
-        self._ids = {str(r["post_id"]) for r in self.lignes[:1]}
+        # La lecture du plus récent en base : `order("date", desc=True).limit(1)`.
+        lignes = self.lignes
+        if getattr(self, "_ordre", None) == ("date", True):
+            lignes = sorted(lignes, key=lambda r: r.get("date") or "", reverse=True)
+        self._ids = {str(r["post_id"]) for r in lignes[:1]}
         return self
 
     def execute(self):
@@ -151,9 +170,12 @@ pages = [
 ]
 graph = FauxGraph(pages)
 http_client.get = graph
-base = BaseDesPosts([{"post_id": 10, "media_url": STOCK + "10.jpg"},
-                     {"post_id": 11, "media_url": STOCK + "11.jpg"},
-                     {"post_id": 13, "media_url": STOCK + "13.jpg"}])
+# En base : 11 (30 h) et 13 (200 h). Absents : 10 (2 h, plus récent que la
+# base → importé), 12 (150 h) et 14 (300 h), plus anciens → laissés au complet.
+base = BaseDesPosts([{"post_id": 13, "media_url": STOCK + "13.jpg",
+                      "date": "2026-11-02T03:00:00+00:00"},
+                     {"post_id": 11, "media_url": STOCK + "11.jpg",
+                      "date": "2026-11-09T01:00:00+00:00"}])
 mot = sync.releve_quotidien(base, "u-1", AccesMeta(jeton="faux", instagram="ig"),
                             maintenant=MAINTENANT)
 
@@ -169,20 +191,22 @@ insights = {}
 for chemin, metriques in graph.appels:
     if chemin.endswith("/insights"):
         insights.setdefault(chemin.split("/")[-2], []).append(metriques)
-verifier("Appels : 1 pour un Reel, 2 pour un post du fil, aucun pour un post vieux et en base",
-         {pid: len(a) for pid, a in insights.items()}, {"10": 1, "11": 2, "12": 2, "14": 2})
+verifier("Appels : 1 pour un Reel, 2 pour un post du fil, aucun pour un vieux en base "
+         "ni pour un absent plus ancien que la base",
+         {pid: len(a) for pid, a in insights.items()}, {"10": 1, "11": 2})
 verifier("Aucune fiche `/{media-id}` demandée : l'inventaire la porte",
          [c for c, a in graph.appels if a == "fiche"], [])
-verifier("Relevés écrits : les jeunes et le neuf, pas le vieux déjà en base",
-         sorted(r["post_id"] for r in ECRIT["releves"]), ["10", "11", "12", "14"])
+verifier("Relevés écrits : le jeune en base et le neuf plus récent que la base ; "
+         "ni le vieux en base, ni les absents plus anciens (12, 14)",
+         sorted(r["post_id"] for r in ECRIT["releves"]), ["10", "11"])
 verifier("Le relevé porte l'âge réel du post",
          {r["post_id"]: r["age_heures"] for r in ECRIT["releves"]},
-         {"10": 2.0, "11": 30.0, "12": 150.0, "14": 300.0})
+         {"10": 2.0, "11": 30.0})
 verifier("Image : seuls les posts absents du stockage font le trajet",
-         sorted(ECRIT["images"]), ["12", "14"])
+         sorted(ECRIT["images"]), ["10"])
 verifier("Base lue : la seule table des posts, rien d'autre (ni suivi, ni rapport)",
          set(base.tables), {"instagram_organic_posts"})
-verifier("Le mot dit ce qui a été fait", mot, "insta léger: 4 posts relevés dont 2 neufs")
+verifier("Le mot dit ce qui a été fait", mot, "insta léger: 2 posts relevés dont 1 neufs")
 
 # Un compte jamais récolté attend son premier passage complet : le gratuit
 # n'y prend que ses 10 plus récents (spec § Le compte gratuit), le léger n'y
@@ -240,6 +264,46 @@ scheduled_update.ScheduledUpdate(seul="lundi", rapport_seulement=True,
                                  aujourdhui=MAINTENANT).executer()
 verifier("Rapport seulement : aucun appel aux plateformes, donc pas de léger",
          VU, [("rapport", "lundi")])
+
+# Revue de code : une exception du léger ou du trimestriel d'un compte ne fait
+# plus tomber le cron — le complet et le rapport des comptes suivants passent.
+VU.clear()
+
+
+def _leger_qui_tombe(sb, uid):
+    VU.append(("leger", uid))
+    if uid == "lundi":
+        raise RuntimeError("https://graph.facebook.com/x?access_token=SECRET boum")
+    return []
+
+
+def _trimestriel_qui_tombe(sb, uid, maintenant):
+    VU.append(("trimestriel", uid))
+    if uid == "lundi":
+        raise RuntimeError("boum trimestriel")
+    return []
+
+
+TRIMESTRIEL = scheduled_update.instagram_reread.relire_si_du
+scheduled_update.passage.leger = _leger_qui_tombe
+scheduled_update.instagram_reread.relire_si_du = _trimestriel_qui_tombe
+import contextlib, io  # noqa: E401,E402
+sortie = io.StringIO()
+with contextlib.redirect_stdout(sortie):
+    try:
+        scheduled_update.ScheduledUpdate(force=True, aujourdhui=MAINTENANT).executer()
+        tombe = None
+    except Exception as e:
+        tombe = type(e).__name__
+verifier("Cron : le léger et le trimestriel qui tombent n'arrêtent pas la boucle",
+         (tombe, VU), (None, [("leger", "lundi"), ("trimestriel", "lundi"), ("complet", "lundi"),
+                              ("leger", "mardi"), ("trimestriel", "mardi"), ("complet", "mardi")]))
+journal = sortie.getvalue()
+verifier("Cron : chaque panne se journalise avec son compte, sans le jeton",
+         ("lundi → léger KO: RuntimeError" in journal,
+          "lundi → trimestriel KO: RuntimeError" in journal, "SECRET" in journal),
+         (True, True, False))
+scheduled_update.instagram_reread.relire_si_du = TRIMESTRIEL
 
 
 # account_sync.leger : seuls les comptes Instagram, jamais de suivi ni de rapport.

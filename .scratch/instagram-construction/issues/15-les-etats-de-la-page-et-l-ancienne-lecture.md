@@ -100,3 +100,5 @@ jour) ou un lancement à la main depuis l'onglet GitHub Actions
 suivant. Le mot exact n'a pas été relu dans une vraie ligne `fetch_progress` :
 si `_a_reconnecter` change de texte, `MOT_JETON_MORT` (`etat.ts`) doit suivre.
 La date « figé au » suppose `releve_a` rempli (section 23 jouée).
+
+Corrigé après revue : `fetch_progress` reste la source de la cause, mais l'encart jeton mort se tait si un relevé de post (`releve_a`) ou une ligne `instagram_compte_jours.maj_a` est plus récent que la ligne `fetch_progress` (reconnexion déjà active) ; le commentaire qui disait le léger écrire `fetch_progress` est corrigé. Aucune lecture de `connected_accounts` côté web.

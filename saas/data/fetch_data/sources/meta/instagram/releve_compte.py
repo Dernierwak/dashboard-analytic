@@ -10,7 +10,9 @@ Quatre règles tiennent ce fichier :
 · LE JOUR EN COURS N'EST JAMAIS ÉCRIT (`CLAUDE.md` §7) : hier au plus tard.
 · AVANT-HIER EST RELU À CHAQUE PASSAGE : Meta documente jusqu'à 48 h de retard
   sur les chiffres du compte (`issues/04`) ; la ligne écrite la veille pouvait
-  être partielle, l'upsert la complète (arbitrage du ticket 06).
+  être partielle, l'upsert la complète (arbitrage du ticket 06). Même règle
+  pour la portée des 7 jours : celle finissant avant-hier est relue, et les
+  périodes finissant hier ou avant-hier s'écrivent en upsert (revue de code).
 · UNE ABSENCE MESURÉE EST NULL, UNE PANNE N'ÉCRIT RIEN. Meta rend un jeu vide,
   ou une ventilation sans `AD` → la colonne part à NULL. Un appel en erreur →
   la colonne n'est PAS envoyée : l'upsert garde la valeur déjà en base, jamais
@@ -23,8 +25,10 @@ from datetime import date, datetime, timedelta, timezone
 
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram.fetchers import account_insights as graph
+from saas.data.supabase.source_data.account import (
+    ColonnePremierPassageAbsente, noter_premier_passage_instagram, premier_passage_instagram_le)
 from saas.data.supabase.source_data.instagram_compte import (
-    a_des_jours_avant, ecrire_jours_du_compte, ecrire_periode_du_compte)
+    ecrire_jours_du_compte, ecrire_periode_du_compte)
 
 UN_JOUR = timedelta(days=1)
 
@@ -218,10 +222,10 @@ def premier_passage(uid: str, acces: AccesMeta, aujourdhui: date,
     return lignes, mot
 
 
-def releve_du_compte(sb, uid: str, acces: AccesMeta,
+def releve_du_compte(sb, uid: str, acces: AccesMeta, connexion_id,
                      maintenant: datetime | None = None) -> str:
-    """Relève hier, avant-hier et la portée des 7 jours finissant hier — et
-    tout le premier passage si le compte est neuf → le mot du journal.
+    """Relève hier, avant-hier et la portée des 7 jours finissant hier et
+    avant-hier — et tout le premier passage s'il reste à faire → le mot du journal.
 
     Ne lève pas sur une réponse Meta en erreur : le relevé des posts du même
     passage léger ne doit pas tomber pour le compte, et inversement.
@@ -231,38 +235,57 @@ def releve_du_compte(sb, uid: str, acces: AccesMeta,
     passage ») ; avant-hier ne le reçoit pas : il garde celui du passage
     d'hier. La remontée des abonnés s'ancre sur ce total.
 
-    PREMIER PASSAGE = aucune ligne avant avant-hier (arbitrage du ticket 06) :
-    le léger écrit hier et avant-hier chaque jour, une ligne plus ancienne ne
-    vient que d'une remontée déjà faite ou d'un passage d'il y a 3 jours.
+    PREMIER PASSAGE = le marqueur `connected_accounts.premier_passage_instagram_le`
+    de la connexion est NULL (revue de code de instagram-construction ; il
+    remplace « aucune ligne avant avant-hier », qui ne disait pas si la
+    remontée avait réussi). Il n'est posé que si la remontée a écrit au moins
+    un jour plus ancien qu'avant-hier : sinon le premier passage est retenté
+    le lendemain.
     """
     if not acces.instagram:
         raise ValueError("instagram_business_id requis en mode headless")
-    aujourdhui = (maintenant or datetime.now(timezone.utc)).astimezone(timezone.utc).date()
+    instant = maintenant or datetime.now(timezone.utc)
+    aujourdhui = instant.astimezone(timezone.utc).date()
     hier, avant_hier = aujourdhui - UN_JOUR, aujourdhui - 2 * UN_JOUR
     lus = {hier: _reponses_du_jour(acces, hier), avant_hier: _reponses_du_jour(acces, avant_hier)}
     lus[hier]["abonnes"] = graph.abonnes(acces)
-    debut = aujourdhui - timedelta(days=_JOURS_DE_LA_PERIODE)
-    periode, erreur_periode = graph.total(acces, "reach", debut, aujourdhui)
+    # Les deux périodes de 7 jours finissant hier et avant-hier : Meta
+    # documente jusqu'à 48 h de retard (`issues/04`), celle d'hier lue la
+    # veille pouvait être partielle — même règle que les jours.
+    periodes = {fin: graph.total(acces, "reach", fin + UN_JOUR - timedelta(days=_JOURS_DE_LA_PERIODE),
+                                 fin + UN_JOUR)
+                for fin in (hier, avant_hier)}
 
     lignes = [ligne for jour, reponses in lus.items()
               if (ligne := ligne_du_jour(uid, jour, reponses))]
+    erreur_base = None
     try:
-        neuf: bool | None = not a_des_jours_avant(sb, uid, avant_hier)
+        neuf = premier_passage_instagram_le(sb, uid, connexion_id) is None
+    except ColonnePremierPassageAbsente:
+        neuf, erreur_base = False, ("colonne connected_accounts.premier_passage_instagram_le "
+                                    "absente — lance 000_run_me_all.sql (§23)")
     except Exception as e:
-        neuf = None
-        erreur_base = type(e).__name__
+        neuf, erreur_base = False, f"lecture de la base en erreur ({type(e).__name__})"
     mot_premier = None
+    remontees = []
     if neuf:
         remontees, mot_premier = premier_passage(uid, acces, aujourdhui, lus)
         lignes += remontees
-    if lignes:
-        ecrire_jours_du_compte(sb, lignes)
-    # Une période sans valeur ne s'écrit pas : la table est en ajout seul, une
-    # ligne NULL bloquerait la bonne valeur d'un passage suivant.
-    reach_periode = None if erreur_periode else valeur_totale(periode)
-    if reach_periode is not None:
-        ecrire_periode_du_compte(sb, {"user_id": uid, "debut": debut.isoformat(),
-                                      "fin": hier.isoformat(), "reach": reach_periode})
+    ecrit = ecrire_jours_du_compte(sb, lignes) if lignes else False
+    if neuf:
+        mot_premier += _marquer_premier_passage(sb, uid, connexion_id, instant, ecrit and any(
+            date.fromisoformat(l["jour"]) < avant_hier for l in remontees))
+    # Une période sans valeur ne s'écrit pas : une ligne NULL prendrait la
+    # place d'une valeur mesurée (et bloquerait, une fois ancienne, en ajout seul).
+    reach_periodes = {}
+    for fin, (periode, erreur_periode) in periodes.items():
+        reach_periodes[fin] = None if erreur_periode else valeur_totale(periode)
+        if reach_periodes[fin] is not None:
+            debut = fin + UN_JOUR - timedelta(days=_JOURS_DE_LA_PERIODE)
+            ecrire_periode_du_compte(sb, {"user_id": uid, "debut": debut.isoformat(),
+                                          "fin": fin.isoformat(), "reach": reach_periodes[fin]},
+                                     aujourdhui)
+    reach_periode = reach_periodes[hier]
 
     jours_ecrits = {ligne["jour"] for ligne in lignes}
     if hier.isoformat() in jours_ecrits:
@@ -276,8 +299,24 @@ def releve_du_compte(sb, uid: str, acces: AccesMeta,
         mot += f" (erreur Meta sur {', '.join(erreurs)} — valeurs en base gardées)"
     if reach_periode is None:
         mot += " ; portée des 7 jours non rendue"
-    if neuf is None:
-        mot += f" ; premier passage non vérifié — lecture de la base en erreur ({erreur_base})"
+    if reach_periodes[avant_hier] is None:
+        mot += " ; portée des 7 jours finissant avant-hier non relue"
+    if erreur_base:
+        mot += f" ; premier passage non vérifié — {erreur_base}"
     elif mot_premier:
         mot += f" ; {mot_premier}"
     return mot
+
+
+def _marquer_premier_passage(sb, uid: str, connexion_id, instant: datetime,
+                             remontee_ecrite: bool) -> str:
+    """Pose le marqueur si la remontée a écrit → la fin du mot du premier passage."""
+    if not remontee_ecrite:
+        return " — rien d'écrit avant avant-hier, premier passage retenté demain"
+    try:
+        if noter_premier_passage_instagram(sb, uid, connexion_id, instant):
+            return ""
+        # Zéro ligne touchée ne lève rien (`CLAUDE.md` §8).
+        return " — marqueur NON écrit (0 ligne touchée), premier passage retenté demain"
+    except ColonnePremierPassageAbsente:
+        return " — marqueur NON écrit (colonne absente, §23)"

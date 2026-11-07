@@ -30,7 +30,10 @@ export type Meilleur = {
   moustache: Moustache | null;
 };
 
-export function meilleursDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, ctx: Contexte): Meilleur[] {
+/** `foules` : celles des mêmes `posts` sur `m`, si l’appelant les a déjà
+ *  (la page les calcule une fois pour le module, la liste et le Tableau).
+ *  Absentes : calculées ici, comme avant. */
+export function meilleursDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, ctx: Contexte, foulesLues?: ReturnType<typeof foulesDe>): Meilleur[] {
   const candidats = posts.flatMap((p) => {
     if (p.jour < periode.debut || p.jour > periode.fin || maturiteDe(p) === "jeune") return [];
     const v = valeurDe(p, m);
@@ -41,7 +44,7 @@ export function meilleursDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, 
   const choisis = candidats.slice(0, TAILLE_LISTE);
   if (choisis.length === 0) return [];
 
-  const foules = foulesDe(posts, m, ctx);
+  const foules = foulesLues ?? foulesDe(posts, m, ctx);
   return choisis.map(({ post, valeur }, i) => ({
     rang: i + 1,
     post,

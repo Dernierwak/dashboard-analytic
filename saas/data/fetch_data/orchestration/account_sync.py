@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from saas.data.fetch_data.orchestration import error_reporter as alarmes
 from saas.data.fetch_data.orchestration import execution_plan as plans
@@ -30,7 +30,9 @@ from saas.data.fetch_data.sources.meta.auth import token as jeton_meta
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram import releve_compte
 from saas.data.fetch_data.sources.meta.instagram import sync as recolte_instagram
-from saas.data.supabase.source_data.account import marquer_a_reconnecter
+from saas.data.supabase.source_data.account import (
+    ColonneRelectureAbsente, dater_premiere_relecture_instagram, marquer_a_reconnecter,
+)
 from saas.config.secrets import secret
 
 _RANG = {c: i for i, c in enumerate(CANAUX)}
@@ -131,9 +133,13 @@ def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
                 raise
         return meta
     if tache.canal == "instagram":
-        return lambda sb, note: recolte_instagram.recolter(
-            sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]),
-            note=note)
+        def instagram(sb, note):
+            debut = datetime.now(timezone.utc)
+            mot = recolte_instagram.recolter(
+                sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]),
+                note=note)
+            return mot + _dater_premier_complet(sb, uid, c, debut)
+        return instagram
     if tache.canal == "google":
         return lambda sb, note: recolte_google.recolter(
             sb, uid, c["google_refresh_token"], c["google_customer_id"], note=note,
@@ -143,6 +149,23 @@ def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
             sb, uid, refresh_token=c["google_refresh_token"],
             property_id=c["ga4_property_id"], since_date=depuis).get("message", ""))
     raise ValueError(f"canal inconnu du plan : {tache.canal}")
+
+
+def _dater_premier_complet(sb, uid: str, connexion: dict, debut: datetime) -> str:
+    """Date du trimestriel d'une connexion qui n'en a pas → ce que le journal en dit.
+
+    Revue de code de instagram-construction : NULL n'est plus « dû »
+    (`instagram_reread.trimestriel_du`), sinon toutes les connexions existantes
+    relisaient tout au premier cron après la section 23. Un passage complet
+    réussi vient de tout relire de récent : il pose la date, et le trimestriel
+    part 3 mois plus tard. L'heure du DÉBUT : un post publié pendant la récolte
+    n'a pas été relu. Appelé seulement si la récolte n'a pas levé."""
+    try:
+        if dater_premiere_relecture_instagram(sb, uid, connexion["id"], debut):
+            return " · date du trimestriel posée"
+    except ColonneRelectureAbsente:
+        return " · date du trimestriel NON écrite (colonne absente, §23)"
+    return ""
 
 
 def republier(sb, uid: str) -> list[str]:
@@ -190,7 +213,8 @@ def leger(sb, uid: str) -> list[str]:
         # le passage entier qui fixera le bloc du Rattrapage.
         mots = []
         for nom, relever in (("instagram léger", recolte_instagram.releve_quotidien),
-                             ("compte", releve_compte.releve_du_compte)):
+                             ("compte", lambda sb, uid, acces, cid=c["id"]:
+                              releve_compte.releve_du_compte(sb, uid, acces, cid))):
             try:
                 mots.append(relever(sb, uid, acces))
             except Exception as e:
