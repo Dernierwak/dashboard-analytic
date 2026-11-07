@@ -107,7 +107,7 @@ export type Pastille =
   | { etat: "valeur"; mois: Fenetre; n: number; ecart: number };
 
 /** La largeur et l'encre d'une boîte suivent √(n ÷ n de l'année) — la règle du
- *  prototype retenu par David (version D, `_prototype-page/maquette.tsx`,
+ *  prototype retenu par David (version D, maquette jetable jamais versionnée,
  *  `MoustachesPesees`) : une boîte de 6 posts se voit plus mince qu'une de 42,
  *  sans disparaître. */
 function poidsDe(n: number, nAnnee: number): number {
