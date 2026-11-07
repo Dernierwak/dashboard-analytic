@@ -72,10 +72,13 @@ touchés, frontière avec le ticket 10).
   Barres gagnés (vert, haut) / perdus (rouge, bas) avec leur propre repère
   ±max, même axe des jours. Un jour à un post = lien ; plusieurs = liste.
 
-**Branchement attendu** (après la fusion du 10) dans `app/instagram/page.tsx` :
-`const tendance = await getTendanceInstagram(donnees.posts, periode)` avec la
-`periode` de `periodeDe` que le ticket 10 calcule, puis
-`<TendanceTaPage tendance={tendance} params={searchParams} />` en tête.
+**Branchement attendu** dans `app/instagram/page.tsx` (le 10 est fusionné ici,
+sa page rend déjà `posts` et `periode`) :
+`const tendance = await getTendanceInstagram(posts, periode)`, puis
+`<TendanceTaPage tendance={tendance} params={searchParams} />` sous le Bandeau,
+à la place de l'ancienne « Ta page » (`getInstaDash`, qui part au 15).
+Après la fusion, `lienDuPost` délègue à `lienInstagram` (`lib/instagram/liens.ts`,
+ticket 10) plutôt que d'en refaire un.
 
 **Vérifié**
 

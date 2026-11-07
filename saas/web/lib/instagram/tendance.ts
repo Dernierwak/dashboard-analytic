@@ -27,6 +27,7 @@
 import { abonnesParJourDe, NOM_FORMAT, type LigneAbonnesHistorique, type Post } from "./lecture";
 import { decaler } from "../meta/lecture";
 import { dateCourte } from "./tableau";
+import { lienInstagram, type Params } from "./liens";
 
 // ── Ce que la base rend ──────────────────────────────────────────────────────
 
@@ -220,19 +221,13 @@ function porteeDe(p: { debut: string; fin: string; jours: number }, periodes: Li
 
 // ── Le pont vers le Panneau ──────────────────────────────────────────────────
 
-export type ParamsUrl = Record<string, string | string[] | undefined>;
+export type ParamsUrl = Params;
 
 /** Un jour de publication ouvre le post dans le Panneau (`?post=`, spec § L'état
  *  de la page vit dans l'URL). Le lien ne change QUE `post` et garde tout le
  *  reste, Règles de lecture et période comprises (`CLAUDE.md` §8). */
 export function lienDuPost(params: ParamsUrl, id: string): string {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (k === "post") continue;
-    for (const x of Array.isArray(v) ? v : [v]) if (x) q.append(k, x);
-  }
-  q.append("post", id);
-  return `/instagram?${q.toString()}`;
+  return lienInstagram(params, { post: id });
 }
 
 const LEGENDE_MAX = 80;
