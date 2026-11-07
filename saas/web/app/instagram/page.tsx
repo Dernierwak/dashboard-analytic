@@ -24,7 +24,10 @@ import { meilleursDe, rangsDe } from "@/lib/instagram/meilleurs";
 import { lecturePostDe, phraseEcartHebdo } from "@/lib/instagram/panneau";
 import { tableauDe } from "@/lib/instagram/tableau";
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
+import { ecartesDe, ligneRegles, reglesDe, retenus, SANS_REGLES } from "@/lib/instagram/regles";
 import { BandeauInstagram } from "@/components/instagram/bandeau";
+import { ReglesDeLecture } from "@/components/instagram/regles";
+import Link from "next/link";
 import { SelecteurObjectif } from "@/components/instagram/selecteur";
 import { TesPostsFaceATonAnnee } from "@/components/instagram/annee/module";
 import { ListeMeilleurs } from "@/components/instagram/annee/meilleurs";
@@ -53,9 +56,15 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
     })
   ) as Partial<Record<CleMetrique, string>>;
   const lue = { debut: periode.debut, fin: periode.fin };
-  const annee = moduleAnneeDe(posts, metrique, lue, ctx);
-  const meilleurs = meilleursDe(posts, metrique, lue, ctx);
-  const tableau = tableauDe(posts, metrique, ctx);
+  // Les Règles de lecture (`?sansBoostes=1`, `?sansHorsNorme=1`) : les
+  // écartés se décident UNE fois, sur la métrique affichée, puis le module,
+  // la liste, le Tableau et le Panneau les reçoivent. La Tendance non.
+  const regles = reglesDe(searchParams);
+  const ecartes = ecartesDe(posts, metrique, regles, ctx);
+  const annee = moduleAnneeDe(posts, metrique, lue, ctx, ecartes);
+  const meilleurs = meilleursDe(retenus(posts, ecartes), metrique, lue, ctx);
+  const tableau = tableauDe(posts, metrique, ctx, ecartes);
+  const lu = ligneRegles(regles, ecartes.total, metrique);
 
   // Le post ouvert (`?post=`, l'ID Graph). Le rapport hebdo n'est relu que
   // pour lui, et seulement s'il a un permalink — c'est par lui qu'on le
@@ -75,7 +84,13 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 pb-16 sm:px-6 lg:px-8">
-      <BandeauInstagram params={searchParams} periode={periode} raccourcis={raccourcis} hier={hier} />
+      <BandeauInstagram
+        params={searchParams}
+        periode={periode}
+        raccourcis={raccourcis}
+        hier={hier}
+        reglages={<ReglesDeLecture params={searchParams} regles={regles} />}
+      />
 
       {/* ── TA PAGE — le compte seul, jour par jour (ticket 14). Remplace les
           trois tuiles (Abonnés, Croissance 30 j, Engagement du compte) et la
@@ -108,6 +123,16 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
           params={searchParams}
           rangs={rangsDe(meilleurs)}
           aside={<ListeMeilleurs liste={meilleurs} metrique={metrique} params={searchParams} />}
+          regles={
+            lu && (
+              <p className="mt-1.5 text-[12.5px] text-ink">
+                {lu}{" "}
+                <Link href={lienInstagram(searchParams, SANS_REGLES)} scroll={false} className="font-medium underline underline-offset-2">
+                  Revenir aux règles standard
+                </Link>
+              </p>
+            )
+          }
         />
         {/* ── TOUS TES POSTS — remplace « Posts de la période » et « Vue
             globale » (ticket 09) : tout l'historique, la place de chaque
@@ -118,7 +143,7 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
       {idOuvert &&
         (ouvert ? (
           <PanneauPost
-            lecture={lecturePostDe(ouvert, posts, metrique, ctx)}
+            lecture={lecturePostDe(ouvert, posts, metrique, ctx, regles)}
             metrique={metrique}
             phraseHebdo={phraseEcartHebdo(ouvert.releveA, jourRapport)}
             fermeture={fermeture}

@@ -15,6 +15,7 @@
 //   · le temps de visionnage n'existe que pour un Reel ;
 //   · le CSV écrit une cellule VIDE pour une absence, jamais 0 ni « – ».
 import {
+  COEF_HORS_NORME,
   dansLesMois,
   foulesDe,
   METRIQUES,
@@ -22,13 +23,13 @@ import {
   NOM_FORMAT,
   NOM_FORMAT_PLURIEL,
   NOM_PLACE,
-  placeDuPost,
   valeurDe,
   type CleMetrique,
   type Contexte,
   type PlaceDuPost,
   type Post,
 } from "./lecture";
+import { AUCUN_ECART, mentionSousSix, placeLue, retenus, texteEcart, type Ecartes } from "./regles";
 // Les nombres s'écrivent comme sur la page Meta (espace fine, « − »).
 import { nombre } from "../meta/lecture";
 
@@ -80,12 +81,15 @@ export function visionnageDe(p: Post): number | null {
   return p.format === "reel" && p.brutes.avgWatchTime !== null ? p.brutes.avgWatchTime / MS_PAR_SECONDE : null;
 }
 
-export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte): Tableau {
-  const foules = foulesDe(posts, m, ctx);
+/** `ecartes` : ceux des Règles de lecture sur la même métrique. Un écarté
+ *  reste une ligne, sa Place dit pourquoi (spec, user story 28) ; les autres
+ *  se placent dans la foule sans lui. */
+export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART): Tableau {
+  const foules = foulesDe(retenus(posts, ecartes), m, ctx);
   const colonnes = COLONNES_FIXES.includes(m) ? [...COLONNES_FIXES] : [...COLONNES_FIXES, m];
   const lignes = posts.map((p) => ({
     post: p,
-    place: placeDuPost(p, m, foules, ctx),
+    place: placeLue(p, m, foules, ctx, ecartes),
     valeurs: Object.fromEntries(
       (Object.keys(METRIQUES) as CleMetrique[]).map((c) => [c, valeurDe(p, c)])
     ) as Record<CleMetrique, number | null>,
@@ -151,6 +155,8 @@ export function libellePlace(p: PlaceDuPost): string | null {
   switch (p.etat) {
     case "place":
       return p.horsNorme ? `${NOM_PLACE[p.place]} · hors norme` : NOM_PLACE[p.place];
+    case "ecarte":
+      return texteEcart(p.raison);
     case "plus_d_un_an":
       return "plus d'un an";
     case "jeune":
@@ -173,6 +179,10 @@ export function raisonPlace(p: PlaceDuPost): string {
       return p.horsNorme
         ? "Au-delà de 1,5 × l'écart entre le bas et le haut de tes habitudes, parmi les posts de ce format des 12 derniers mois."
         : "Parmi les posts de ce format des 12 derniers mois.";
+    case "ecarte":
+      return p.raison.cause === "booste"
+        ? "Retiré de la lecture par ta règle « sans les boostés » : Instagram a listé une annonce sur ce post."
+        : `Retiré de la lecture par ta règle « sans les hors norme » : au-delà de ${COEF_HORS_NORME.toString().replace(".", ",")} × l'écart entre le bas et le haut de tes habitudes.`;
     case "plus_d_un_an":
       return "Publié il y a plus de 12 mois : hors de tout calcul, il se trie sur sa valeur.";
     case "jeune":
@@ -180,7 +190,9 @@ export function raisonPlace(p: PlaceDuPost): string {
     case "age_egal":
       return `J+${p.jours} : sa place se lira face aux posts du même âge.`;
     case "foule_mince":
-      return `${p.n} ${NOM_FORMAT_PLURIEL[p.format]} ont ce chiffre sur les 12 derniers mois, il en faut ${MINIMUM_FOULE}.`;
+      return p.ecartes
+        ? `${mentionSousSix(p.n, p.format, p.ecartes)}.`
+        : `${p.n} ${NOM_FORMAT_PLURIEL[p.format]} ont ce chiffre sur les 12 derniers mois, il en faut ${MINIMUM_FOULE}.`;
     case "format_inconnu":
       return "Meta n'a pas dit si cette vidéo est un Reel ou une vidéo du fil : elle n'entre dans aucune foule.";
     case "sans_valeur":

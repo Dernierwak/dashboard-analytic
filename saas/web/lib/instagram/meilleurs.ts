@@ -6,7 +6,7 @@
 //
 // Posts de la période, plus de 48 h, une valeur, triés du plus haut au plus
 // bas sur la métrique choisie. Aucun filtre propre : les Règles de lecture
-// (ticket 12) retirent les écartés AVANT cet appel, comme pour le module.
+// (`retenus`, `regles.ts`) retirent les écartés AVANT cet appel.
 // La forme de la liste reste amendable par le ticket « le carré » (spec,
 // § Notes) : seul ce fichier et `components/instagram/meilleurs.tsx` en
 // dépendent.

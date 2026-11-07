@@ -15,7 +15,6 @@ import {
   foulesDe,
   maturiteDe,
   METRIQUES,
-  placeDuPost,
   valeurDe,
   type CleMetrique,
   type Contexte,
@@ -23,6 +22,7 @@ import {
   type Post,
 } from "./lecture";
 import { jourLong, moustacheDe, type Moustache } from "./annee";
+import { ecartesDe, placeLue, retenus, STANDARD, type Regles } from "./regles";
 import { visionnageDe } from "./tableau";
 import { decaler } from "../meta/lecture";
 
@@ -78,19 +78,23 @@ function ageLu(p: Post): AgeLu {
   return { texte: `J+${Math.floor((ageDe(p) as number) / 24)}`, peutChanger: true };
 }
 
-export function lecturePostDe(p: Post, posts: Post[], m: CleMetrique, ctx: Contexte): LecturePost {
-  const places = (Object.keys(METRIQUES) as CleMetrique[]).map((c) => ({
-    metrique: c,
-    valeur: valeurDe(p, c),
-    place: placeDuPost(p, c, foulesDe(posts, c, ctx), ctx),
-  }));
+/** `regles` : les Règles de lecture de l'URL. Sur chaque métrique, les
+ *  écartés sont ceux de CETTE métrique (« les hors norme de la métrique
+ *  affichée ») : une ligne du tableau des places se lit comme la colonne
+ *  Place du Tableau si l'on choisissait sa métrique. */
+export function lecturePostDe(p: Post, posts: Post[], m: CleMetrique, ctx: Contexte, regles: Regles = STANDARD): LecturePost {
+  const places = (Object.keys(METRIQUES) as CleMetrique[]).map((c) => {
+    const ecartes = ecartesDe(posts, c, regles, ctx);
+    return { metrique: c, valeur: valeurDe(p, c), place: placeLue(p, c, foulesDe(retenus(posts, ecartes), c, ctx), ctx, ecartes) };
+  });
   const choisie = places.find((x) => x.metrique === m) as PlaceSurMetrique;
-  const foule = p.format ? foulesDe(posts, m, ctx)[p.format] : null;
+  const gardes = retenus(posts, ecartesDe(posts, m, regles, ctx));
+  const foule = p.format ? foulesDe(gardes, m, ctx)[p.format] : null;
   return {
     post: p,
     valeur: choisie.valeur,
     place: choisie.place,
-    moustache: p.format && foule ? moustacheDe(posts, p.format, m, ctx, 12, foule.n) : null,
+    moustache: p.format && foule ? moustacheDe(gardes, p.format, m, ctx, 12, foule.n) : null,
     places,
     visionnage: visionnageDe(p),
     age: ageLu(p),
