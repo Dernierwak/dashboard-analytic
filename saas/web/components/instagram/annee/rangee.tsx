@@ -2,6 +2,7 @@ import { formaterValeur } from "@/lib/instagram/tableau";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
 import { METRIQUES, NOM_FORMAT, NOM_FORMAT_PLURIEL, type CleMetrique } from "@/lib/instagram/lecture";
 import { textePastille, type PeriodeLue, type Rangee } from "@/lib/instagram/annee";
+import type { Params } from "@/lib/instagram/liens";
 import { Nuage } from "./nuage";
 import { Moustaches } from "./moustaches";
 
@@ -12,7 +13,19 @@ import { Moustaches } from "./moustaches";
 // pastilles. Les pastilles sont d'une seule encre : colorer un écart en vert
 // ou en rouge le jugerait à la place du client (user story 4).
 
-export function RangeeFormat({ rangee, metrique, periode }: { rangee: Rangee; metrique: CleMetrique; periode: PeriodeLue }) {
+export function RangeeFormat({
+  rangee,
+  metrique,
+  periode,
+  rangs,
+  params,
+}: {
+  rangee: Rangee;
+  metrique: CleMetrique;
+  periode: PeriodeLue;
+  rangs: Record<string, number>;
+  params: Params;
+}) {
   const c = COULEUR_FORMAT[rangee.format];
   const titre = (
     <span className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
@@ -59,7 +72,7 @@ export function RangeeFormat({ rangee, metrique, periode }: { rangee: Rangee; me
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
         <div className="min-w-0">
-          <Nuage rangee={rangee} metrique={metrique} periode={periode} />
+          <Nuage rangee={rangee} metrique={metrique} periode={periode} rangs={rangs} params={params} />
         </div>
         <div className="min-w-0">
           <Moustaches rangee={rangee} metrique={metrique} />

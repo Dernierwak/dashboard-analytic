@@ -12,6 +12,7 @@ import {
   type LigneCompteJour,
   type Post,
 } from "@/lib/instagram/lecture";
+import { jourDuRapport } from "@/lib/instagram/panneau";
 
 // ── CE QUE LA PAGE INSTAGRAM LIT DANS SUPABASE ───────────────────────────────
 //
@@ -107,4 +108,31 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
     raccourcis: raccourcisDe(periode, ctxPeriode),
     hier: decaler(ctxPeriode.aujourdhui, -1),
   };
+}
+
+/** Le jour (`AAAA-MM-JJ`) du PREMIER rapport hebdo qui a listé ce post, ou
+ *  `null`. Lu seulement quand le Panneau est ouvert sur un post qui a un
+ *  permalink : chaque payload porte la frise de l'année, trop lourde pour
+ *  être relue à chaque affichage de la page.
+ *
+ *  Le rapport ne porte pas de `post_id` (`lib/hebdo/posts.ts`) : on le
+ *  retrouve par le permalink, par inclusion JSON côté base (`@>`), pour ne
+ *  rapatrier qu'une ligne. Le premier, parce que c'est lui qui a vu le post le
+ *  plus tôt. Une lecture ratée rend `null` : la phrase manque, le Panneau tient. */
+export async function jourDuPremierRapportQuiListe(permalink: string): Promise<string | null> {
+  const supabase = createClient();
+  const { uid } = await getCompteActif();
+  const { data, error } = await supabase
+    .from("weekly_reports")
+    .select("week_start, fin:payload->semaine->>fin")
+    .eq("user_id", uid)
+    .contains("payload", { frise: { posts: [{ lien: permalink }] } })
+    .order("week_start", { ascending: true })
+    .limit(1);
+  if (error) {
+    console.error("[instagram] weekly_reports illisible pour le Panneau", error);
+    return null;
+  }
+  const fin = (data?.[0] as { fin?: unknown } | undefined)?.fin;
+  return typeof fin === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fin) ? jourDuRapport(fin) : null;
 }
