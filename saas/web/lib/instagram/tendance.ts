@@ -25,7 +25,7 @@
 //   · une part boostée absente n'est pas un zéro, donc l'organique de ce
 //     jour-là n'est pas le total.
 import { abonnesParJourDe, NOM_FORMAT, type LigneAbonnesHistorique, type Post } from "./lecture";
-import { decaler } from "../meta/lecture";
+import { dateBulle, decaler } from "../meta/lecture";
 import { dateCourte } from "./tableau";
 import { lienInstagram, type Params } from "./liens";
 
@@ -42,6 +42,8 @@ export type LigneJourCompte = {
   perdus?: unknown;
   reach_ad?: unknown;
   interactions_ad?: unknown;
+  /** L'instant où le worker a écrit la ligne (défaut `now()` à l'upsert). */
+  maj_a?: string | null;
 };
 
 /** Une ligne d'`instagram_compte_periodes` (migration § 23) : `debut` et `fin`
@@ -103,6 +105,9 @@ export type Publication = {
 export type Tendance = {
   /** Ce qui n'a pas pu être lu en base, dit en une phrase ; `null` sinon. */
   illisible: string | null;
+  /** « relevé du jeu. 5 nov. à 07:02 UTC » — ou, faute de `maj_a`, « chiffres
+   *  jusqu'au … » ; `null` sans aucune donnée (user story 1). */
+  releve: string | null;
   dates: string[];
   datesAvant: string[];
   /** Les jours (index dans `dates`) des 48 dernières heures : ils peuvent
@@ -230,6 +235,22 @@ export function lienDuPost(params: ParamsUrl, id: string): string {
   return lienInstagram(params, { post: id });
 }
 
+/** Ce que l'écran écrit pour dater la Tendance (user story 1 : comprendre
+ *  pourquoi un chiffre diffère de l'appli Instagram). Le `maj_a` le plus récent
+ *  des lignes lues ; sans lui, le jour le plus récent présent — une date de
+ *  données, pas un relevé, et la phrase le dit. Rien de lu → rien d'écrit.
+ *  En UTC et à la main, sans `Intl` (hydratation). */
+function releveDe(jours: LigneJourCompte[], aujourdhui: string): string | null {
+  const instants = jours.map((l) => l.maj_a ?? "").filter((x) => Number.isFinite(Date.parse(x)));
+  if (instants.length) {
+    const d = new Date(Math.max(...instants.map((x) => Date.parse(x))));
+    const iso = d.toISOString();
+    return `relevé du ${dateBulle(iso.slice(0, 10))} à ${iso.slice(11, 16)} UTC`;
+  }
+  const presents = jours.map((l) => l.jour?.slice(0, 10) ?? "").filter((x) => x && x < aujourdhui).sort();
+  return presents.length ? `chiffres jusqu'au ${dateBulle(presents[presents.length - 1])}` : null;
+}
+
 const LEGENDE_MAX = 80;
 
 export function tendanceDe(e: EntreeTendance): Tendance {
@@ -309,6 +330,7 @@ export function tendanceDe(e: EntreeTendance): Tendance {
 
   return {
     illisible: e.jours === null ? "Les chiffres du compte n'ont pas pu être lus : les courbes sont vides, ce n'est pas un zéro." : null,
+    releve: releveDe(e.jours ?? [], aujourdhui),
     dates,
     datesAvant,
     recents: dates.flatMap((d, i) => (d < aujourdhui && peutEncoreChanger(d, maintenant) ? [i] : [])),

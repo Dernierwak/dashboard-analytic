@@ -42,7 +42,7 @@ export async function getTendanceInstagram(posts: Post[], periode: PeriodeTendan
     lireToutesLesPages<LigneJourCompte>((de, a) =>
       supabase
         .from("instagram_compte_jours")
-        .select("jour, reach, total_interactions, abonnes, gagnes, perdus, reach_ad, interactions_ad")
+        .select("jour, reach, total_interactions, abonnes, gagnes, perdus, reach_ad, interactions_ad, maj_a")
         .eq("user_id", uid)
         .gte("jour", periode.avantDebut)
         .lte("jour", periode.fin)

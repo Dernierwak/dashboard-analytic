@@ -235,6 +235,31 @@ test("jours de publication : les dates des posts de la période, groupés par jo
   assert.equal(t.publications[0].posts[0].legende.length, 80);
 });
 
+// ── La date du dernier relevé (user story 1) ─────────────────────────────
+
+test("relevé : le maj_a le plus récent des lignes lues, écrit en UTC", () => {
+  const t = tendanceDe(
+    entree({
+      jours: [
+        j("2026-11-02", { reach: 1, maj_a: "2026-11-03T07:04:12.5+00:00" }),
+        j("2026-11-03", { reach: 1, maj_a: "2026-11-05T07:02:00+00:00" }),
+        j("2026-11-04", { reach: 1, maj_a: "2026-11-04T07:09:00+00:00" }),
+      ],
+    })
+  );
+  assert.equal(t.releve, "relevé du jeu. 5 nov. à 07:02 UTC");
+});
+
+test("relevé : sans maj_a, le jour le plus récent présent — jamais le jour en cours", () => {
+  const t = tendanceDe(entree({ jours: [j("2026-11-02", { reach: 1 }), j("2026-11-03", { reach: 1 }), j("2026-11-05", { reach: 9 })] }));
+  assert.equal(t.releve, "chiffres jusqu'au mar. 3 nov.");
+});
+
+test("relevé : aucune donnée → aucune date", () => {
+  assert.equal(tendanceDe(entree()).releve, null);
+  assert.equal(tendanceDe(entree({ jours: null })).releve, null);
+});
+
 test("le lien d'un jour de publication garde toute l'URL et ne change que ?post=", () => {
   assert.equal(
     lienDuPost({ from: "2026-10-01", to: "2026-10-07", sansBoostes: "1", comparer: ["a", "b"], post: "7" }, "42"),

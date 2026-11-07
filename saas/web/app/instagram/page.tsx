@@ -1,13 +1,12 @@
 // Dashboard Instagram organique :
-// Bandeau (la période) · Ta page (abonnés, courbe, croissance 30 j) · Tes
-// moyennes · le Sélecteur de vue · « Tes posts face à ton année » et la liste
-// des 5 meilleurs · Tous tes posts · le Panneau « lire un post » (`?post=`).
+// Bandeau (la période) · Ta page (la Tendance du compte) · Tes moyennes · le
+// Sélecteur de vue · « Tes posts face à ton année » et la liste des 5
+// meilleurs · Tous tes posts · le Panneau « lire un post » (`?post=`).
 //
 // LA PAGE SE RECONSTRUIT PAR TICKETS (`.scratch/instagram-construction/`) :
-// le Bandeau, le Sélecteur, le module de l'année et le Tableau lisent
-// `lib/instagram/` ; « Ta page » et « Tes moyennes » lisent encore
-// `getInstaDash`, qui part avec les tickets 14 et 15. Elles lisent la MÊME
-// période que le reste : celle de `periodeDe`, passée en `from`/`to`.
+// tout lit `lib/instagram/`, sauf « Tes moyennes », qui lit encore
+// `getInstaDash` jusqu'au ticket 15 — sur la MÊME période que le reste :
+// celle de `periodeDe`, passée en `from`/`to`.
 //
 // « TES FORMATS » ET « QUAND PUBLIER ? » ONT ÉTÉ RETIRÉS LE 2026-09-12.
 // Les deux répondaient à « qu'est-ce qui marche chez toi » en RECALCULANT la
@@ -31,17 +30,13 @@ import { TesPostsFaceATonAnnee } from "@/components/instagram/annee/module";
 import { ListeMeilleurs } from "@/components/instagram/annee/meilleurs";
 import { PanneauPost, PanneauPostIntrouvable } from "@/components/instagram/panneau-post";
 import { TableauPosts } from "@/components/instagram/tableau";
-import { fmtCHF } from "@/lib/report";
-import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
-import { Triangle } from "@/components/pente";
+import { getTendanceInstagram } from "@/lib/instagram/donnees-tendance";
+import { TendanceTaPage } from "@/components/instagram/tendance";
+import { MoyennesInsta } from "@/components/channel-dash";
 
 export const dynamic = "force-dynamic";
 
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-
-// Une publication sans portée relevée n'a pas d'engagement (ticket meta-ads 25).
-const fmtEng = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)} %`);
-const fmtCompte = (v: number | null) => (v === null ? "—" : fmtCHF(v));
 
 export default async function InstagramPage({ searchParams }: { searchParams: Params }) {
   const { posts, ctx, periode, raccourcis, hier } = await getDonneesInstagram({
@@ -70,57 +65,27 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
   const fermeture = lienInstagram(searchParams, { post: null });
   const jourRapport = ouvert?.permalink ? await jourDuPremierRapportQuiListe(ouvert.permalink) : null;
 
-  // L'ancienne lecture, sur la période du Bandeau — d'ici son départ (14, 15).
-  const d = await getInstaDash({ from: periode.debut, to: periode.fin });
+  // L'ancienne lecture ne sert plus qu'à « Tes moyennes », sur la période du
+  // Bandeau — d'ici son départ (ticket 15).
+  const [d, tendance] = await Promise.all([
+    getInstaDash({ from: periode.debut, to: periode.fin }),
+    getTendanceInstagram(posts, periode),
+  ]);
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
     <main className="px-4 pb-16 sm:px-6 lg:px-8">
       <BandeauInstagram params={searchParams} periode={periode} raccourcis={raccourcis} hier={hier} />
 
-      {/* ── TA PAGE ── */}
-      <div className="flex items-baseline gap-2 flex-wrap mb-3 mt-5">
-        <h2 className="text-[14px] font-semibold text-ink">Ta page</h2>
+      {/* ── TA PAGE — le compte seul, jour par jour (ticket 14). Remplace les
+          trois tuiles (Abonnés, Croissance 30 j, Engagement du compte) et la
+          courbe des abonnés : « Croissance 30 j » devient la courbe et ses
+          barres, « Engagement du compte » était une statistique de la foule
+          (spec § Tendance, « Retirés »). L'Objectif et les Règles de lecture
+          ne lui sont pas passés : ils ne la gouvernent pas. */}
+      <div className="mt-6">
+        <TendanceTaPage tendance={tendance} params={searchParams} />
       </div>
-      <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 gap-3 mb-4 pb-1 sm:pb-0">
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Abonnés
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">{fmtCHF(d.followers)}</div>
-          {d.followersDelta !== null && (
-            <div
-              className={`text-[11px] font-semibold mt-1.5 ${
-                d.followersDelta >= 0 ? "text-pos" : "text-neg"
-              }`}
-            >
-              <Triangle sens={d.followersDelta >= 0 ? "haut" : "bas"} />{" "}
-              {d.followersDelta >= 0 ? "+" : "−"}
-              {fmtCHF(Math.abs(d.followersDelta))}{" "}
-              <span className="text-faint font-normal">sur la période</span>
-            </div>
-          )}
-        </div>
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Croissance 30 j
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">
-            {d.growth30 !== null ? `${d.growth30 >= 0 ? "+" : ""}${fmtCHF(d.growth30)}` : "—"}
-          </div>
-          <div className="text-[11px] text-faint mt-1">nouveaux abonnés</div>
-        </div>
-        <div className="bg-white border border-line rounded-xl p-4 min-w-[200px] shrink-0 sm:min-w-0 sm:shrink">
-          <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1.5">
-            Engagement du compte
-          </div>
-          <div className="font-mono text-xl font-medium text-ink">{fmtEng(d.avgEng)}</div>
-          <div className="text-[11px] text-faint mt-1">
-            portée moyenne {fmtCompte(d.histReach)} / post
-          </div>
-        </div>
-      </div>
-      <CourbeAbonnes series={d.followersSeries} />
 
       {/* ── TES MOYENNES — une seule fois, et sur la période affichée ──
           Il y avait ICI un second module de moyennes, « Tes moyennes par post ·

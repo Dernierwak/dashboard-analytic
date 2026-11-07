@@ -67,6 +67,7 @@ export function TendanceTaPage({ tendance: t, params }: { tendance: Tendance; pa
         <div className="min-w-0">
           <h2 id="titre-ta-page" className="text-[22px] font-semibold tracking-tight text-ink">Ta page</h2>
           <p className="mt-1 text-[14px] text-muted">Ton compte jour par jour, hors de tes posts.</p>
+          {t.releve && <p className="mt-0.5 text-[12px] text-faint">{t.releve.charAt(0).toUpperCase() + t.releve.slice(1)}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-muted">
           <span className="flex items-center gap-1.5"><span className="h-[2px] w-4 rounded-full bg-[#7b4fff]" /> Cette période</span>
