@@ -11,7 +11,7 @@ qu'on ne mesure pas (portée organique du compte) ; User Stories 6 à 10.
 
 **Blocked by:** 09, 05
 
-**Status:** needs-human — composant livré, branchement dans `app/instagram/page.tsx` à faire après la fusion du ticket 10 (frontière de fichiers)
+**Status:** resolved
 
 - [x] Trois sources des abonnés (`followers_history` jusqu'au 2026-09-04, la
       remontée, le relevé), un trou entre la première et la deuxième ; un
@@ -72,24 +72,31 @@ touchés, frontière avec le ticket 10).
   Barres gagnés (vert, haut) / perdus (rouge, bas) avec leur propre repère
   ±max, même axe des jours. Un jour à un post = lien ; plusieurs = liste.
 
-**Branchement attendu** dans `app/instagram/page.tsx` (le 10 est fusionné ici,
-sa page rend déjà `posts` et `periode`) :
-`const tendance = await getTendanceInstagram(posts, periode)`, puis
-`<TendanceTaPage tendance={tendance} params={searchParams} />` sous le Bandeau,
-à la place de l'ancienne « Ta page » (`getInstaDash`, qui part au 15).
-Après la fusion, `lienDuPost` délègue à `lienInstagram` (`lib/instagram/liens.ts`,
-ticket 10) plutôt que d'en refaire un.
+**Branché** (après la fusion des tickets 10 et 11) dans `app/instagram/page.tsx` :
+`getTendanceInstagram(posts, periode)` lu en parallèle de `getInstaDash`, et
+`<TendanceTaPage>` sous le Bandeau à la place des trois tuiles et de
+`CourbeAbonnes`. « Tes moyennes » et `getInstaDash` restent (ticket 15) ;
+`CourbeAbonnes` n'a plus d'appelant, à retirer au 15 avec le reste.
+`lienDuPost` délègue à `lienInstagram` (`lib/instagram/liens.ts`), que le
+Panneau du 11 ferme avec le même lien.
+
+**Date du dernier relevé** (user story 1) : une ligne discrète sous le titre,
+« Relevé du jeu. 5 nov. à 07:02 UTC » = le `maj_a` le plus récent des lignes
+lues d'`instagram_compte_jours` ; sans `maj_a`, « Chiffres jusqu'au … » = le
+jour le plus récent présent (jamais le jour en cours) ; rien de lu, aucune
+date.
 
 **Vérifié**
 
 - `sh .scratch/instagram-construction/harnais/14-la-tendance/lancer.sh` →
-  20 tests, 20 verts (trous, 0 ≠ trou, jour en cours exclu, 48 h, trois sources
+  23 tests, 23 verts (date du relevé : maj_a le plus récent, repli sur le
+  dernier jour présent, aucune date sans donnée ; trous, 0 ≠ trou, jour en cours exclu, 48 h, trois sources
   et le trou, le compte l'emporte, sommes sans zéro, portée de période lue /
   absente et ses quatre raisons + table illisible, écart sur périodes
   complètes seulement, Organique = total − AD et AD absent → trou, compte
   sans boost qui dit pourquoi, portée organique sans série, abonnés sans
   ventilation, jours de publication, lien `?post=` qui garde l'URL).
-- Harnais 09 : 28/28 verts.
+- Harnais 09 : 28/28, 10 : 15/15, 11 : 15/15 verts (après branchement).
 - `rm -rf .next tsconfig.tsbuildinfo && npx tsc --noEmit` vert ; `npm run build`
   vert, 18 routes.
 - Rendu regardé dans Chrome sur une page de contrôle temporaire (données
@@ -107,12 +114,12 @@ ticket 10) plutôt que d'en refaire un.
   ces jours-là, Boosté et Organique sont des trous.
 - La portée de période n'existe que pour des fenêtres de 7 jours finissant la
   veille d'un passage : toute autre période choisie affiche « – » et la raison.
-- La date du dernier relevé sur chaque chiffre (user story 1) n'est pas portée
-  par ce module : la table du compte n'a que `maj_a`, non lu ici.
-- Le Panneau que `?post=` ouvre est le ticket 11.
+- La page branchée n'a pas été regardée sur de vraies données (seul le module
+  l'a été, sur données écrites à la main).
 
 **Ne se vérifie qu'en vrai** : après que David a joué la section 23, et
 qu'un passage du worker a écrit `instagram_compte_jours` et
 `instagram_compte_periodes` — le **cron de 07:00 UTC** suffit (le passage léger
 tourne chaque jour), ou un lancement à la main depuis l'onglet GitHub Actions
-(`weekly-fetch.yml`). Puis la page une fois branchée.
+(`weekly-fetch.yml`). La page lit ce qui est en base : rien d'autre à
+attendre du worker.
