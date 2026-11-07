@@ -56,9 +56,9 @@ def etendre(existante: Couverture | None, fenetre: Fenetre,
 def debut_des_posts_complets(medias: list[dict], ids_en_base: set[str]) -> date:
     """Le premier jour à partir duquel chaque post de l'inventaire est en base.
 
-    `medias` est l'inventaire COMPLET de Meta (`[{id, timestamp}]`) ; seuls les
-    N plus récents sont relus (`_a_relire`), donc un post plus ancien peut
-    manquer. Le jour d'un post manquant n'est pas couvert : la couverture
+    `medias` est l'inventaire COMPLET de Meta (`[{id, timestamp}]`) ; un
+    gratuit n'importe pas ce qui est plus ancien que sa base, un post refusé
+    par Meta n'est pas écrit (`_a_relire`), donc un post peut manquer. Le jour d'un post manquant n'est pas couvert : la couverture
     commence au lendemain du plus récent d'entre eux. Rien ne manque →
     `date.min` : l'inventaire est complet, aucun jour n'a de post inconnu.
     """
