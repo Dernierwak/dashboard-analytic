@@ -277,7 +277,7 @@ verifier("Plafond de pages : arrêt après 1 page, curseur avancé",
 # ── 3 · Le bloc dans le passage léger ───────────────────────────────────────
 VU: list = []
 account_sync.recolte_instagram.releve_quotidien = lambda sb, uid, acces: "insta léger: 0 posts"
-account_sync.releve_compte.releve_du_compte = lambda sb, uid, acces: "compte: ok"
+account_sync.releve_compte.releve_du_compte = lambda sb, uid, acces, connexion_id: "compte: ok"
 account_sync.recolte_instagram.rattrapage = (
     lambda sb, uid, acces, connexion_id: VU.append((acces.instagram, connexion_id))
     or "rattrapage: 3 posts importés")

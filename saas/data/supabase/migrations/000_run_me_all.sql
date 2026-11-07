@@ -46,7 +46,8 @@
 --          instagram_compte_periodes (instagram-construction, 05),
 --          connected_accounts.relecture_instagram_le (instagram-construction, 07),
 --          connected_accounts.rattrapage_instagram_curseur / _fini_le
---          (instagram-construction, 08)
+--          (instagram-construction, 08),
+--          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1859,10 +1860,21 @@ END $$;
 -- complet (tous les posts en base relus), par connexion (ticket 07). Le cron
 -- relance le passage quand elle a 3 mois (spec § La récolte, « La relecture ») :
 -- une date MESURÉE, posée par le worker après un passage réussi, jamais
--- devinée. NULL = jamais passé → dû au cron suivant. Ajout seul ; la RLS de
--- connected_accounts est déjà en place et reste fermée au partage (§15.2).
+-- devinée. NULL = pas encore daté → PAS dû : la date est posée au premier
+-- passage complet réussi (sinon toutes les connexions existantes, à NULL
+-- après cette section, relisaient tout au premier cron). Ajout seul ; la RLS
+-- de connected_accounts est déjà en place et reste fermée au partage (§15.2).
 ALTER TABLE public.connected_accounts
     ADD COLUMN IF NOT EXISTS relecture_instagram_le timestamptz DEFAULT NULL;
+
+-- connected_accounts.premier_passage_instagram_le — le premier passage d'un
+-- compte (90 jours et la remontée des abonnés, ticket 06) a réussi. Posé par
+-- le worker seulement quand la remontée a écrit au moins un jour plus ancien
+-- qu'avant-hier ; tant qu'il est NULL, le premier passage est retenté chaque
+-- jour. Ajout seul ; RLS de connected_accounts inchangée, fermée au partage
+-- (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS premier_passage_instagram_le timestamptz DEFAULT NULL;
 
 -- connected_accounts.rattrapage_instagram_curseur / rattrapage_instagram_fini_le
 -- — où en est le Rattrapage d'un compte payant, par connexion (ticket 08). Le
@@ -1964,6 +1976,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'relecture_instagram_le'), -- §23
     ('c', 'connected_accounts',       'rattrapage_instagram_curseur'), -- §23
     ('c', 'connected_accounts',       'rattrapage_instagram_fini_le'), -- §23
+    ('c', 'connected_accounts',       'premier_passage_instagram_le'), -- §23
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

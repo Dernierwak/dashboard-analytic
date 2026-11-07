@@ -260,26 +260,41 @@ def recolter(sb, uid: str, acces: AccesMeta, note=_rien) -> str:
 _AGE_DU_RELEVE_QUOTIDIEN = timedelta(hours=8 * 24)
 
 
-def posts_du_jour(medias: list[dict], en_base: set[str], maintenant: datetime) -> list[dict]:
+def _date_avec_fuseau(texte: str | None) -> datetime | None:
+    """L'horodatage lu → datetime avec fuseau, ou None s'il est illisible ou naïf."""
+    try:
+        quand = datetime.fromisoformat(texte or "")
+    except ValueError:
+        return None
+    return quand if quand.tzinfo is not None else None
+
+
+def posts_du_jour(medias: list[dict], en_base: set[str], maintenant: datetime,
+                  plus_recent_en_base: datetime | None) -> list[dict]:
     """Les posts de l'inventaire que le passage léger relève, dans son ordre.
 
-    · moins de 8 × 24 h : un relevé par jour de J+0 à J+7 ;
-    · absent de la base, quel que soit son âge : sa fiche et son premier relevé
-      — sinon un post du mardi attendrait le Jour de travail (spec).
-    Un post en base à la date illisible n'est pas relevé : un âge inventé le
+    · en base, moins de 8 × 24 h : un relevé par jour de J+0 à J+7 ;
+    · absent de la base ET plus récent que le post le plus récent déjà en
+      base : sa fiche et son premier relevé — sinon un post du mardi
+      attendrait le Jour de travail (spec).
+    Un absent PLUS ANCIEN n'est pas pris (revue de code de
+    instagram-construction) : il relève du complet (règle du gratuit, ticket
+    07) ou du Rattrapage (payant, ticket 08). Le prendre ici gonflait un
+    gratuit au-delà de ses 10 plus récents, une page de 25 par jour.
+    `plus_recent_en_base` illisible (None) → aucun absent : le complet s'en
+    charge. Un post à la date illisible n'est pas relevé : un âge inventé le
     rangerait au mauvais J+n.
     """
     borne = maintenant - _AGE_DU_RELEVE_QUOTIDIEN
     retenus = []
     for media in medias:
+        publie_le = _date_avec_fuseau(media.get("timestamp"))
+        if publie_le is None:
+            continue
         if str(media.get("id")) not in en_base:
-            retenus.append(media)
-            continue
-        try:
-            publie_le = datetime.fromisoformat(media.get("timestamp") or "")
-        except ValueError:
-            continue
-        if publie_le.tzinfo is not None and publie_le > borne:
+            if plus_recent_en_base is not None and publie_le > plus_recent_en_base:
+                retenus.append(media)
+        elif publie_le > borne:
             retenus.append(media)
     return retenus
 
@@ -302,10 +317,13 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
     # UN COMPTE JAMAIS RÉCOLTÉ ATTEND SON PREMIER PASSAGE COMPLET. Le gratuit
     # n'y prend que ses 10 plus récents (spec § Le compte gratuit) : le léger,
     # qui ajoute tout post absent de la base, en importerait 25 et plus.
-    deja = (sb.table("instagram_organic_posts").select("post_id")
-            .eq("user_id", uid).limit(1).execute().data)
+    # La même lecture donne le post le plus récent en base : seul un absent
+    # plus récent que lui s'importe (`posts_du_jour`).
+    deja = (sb.table("instagram_organic_posts").select("post_id, date")
+            .eq("user_id", uid).order("date", desc=True).limit(1).execute().data)
     if not deja:
         return "insta léger: aucun post en base — premier passage complet attendu"
+    plus_recent_en_base = _date_avec_fuseau(deja[0].get("date"))
     medias, trous = posts.recents(acces, maintenant - _AGE_DU_RELEVE_QUOTIDIEN)
     # Même règle que `recolter` : une panne n'est pas un compte sans post neuf.
     if trous and not medias:
@@ -318,7 +336,7 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
     media_connu = {pid: r.get("media_url") for pid, r in connus.items()}
 
     fiches, releves, refuses, neufs = [], [], 0, 0
-    for media in posts_du_jour(medias, set(media_connu), maintenant):
+    for media in posts_du_jour(medias, set(media_connu), maintenant, plus_recent_en_base):
         post_id = str(media["id"])
         m = metriques.metriques_du_post(acces, post_id, media.get("media_product_type"))
         # L'heure du passage, pas celle de chaque appel : le léger d'un compte

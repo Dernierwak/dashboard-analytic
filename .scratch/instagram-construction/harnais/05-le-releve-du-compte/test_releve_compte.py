@@ -4,7 +4,7 @@ Lancer depuis la racine du dépôt :
 
     python3.12 -I .scratch/instagram-construction/harnais/05-le-releve-du-compte/test_releve_compte.py
 
-Couture : `releve_compte.releve_du_compte(sb, uid, acces, maintenant)`, avec
+Couture : `releve_compte.releve_du_compte(sb, uid, acces, connexion_id, maintenant)`, avec
 `http_client.get` remplacé par un faux Graph (formes de réponse relevées par
 l'essai réel, `.scratch/instagram/essai/essai_reel.py` et `issues/17`) et les
 écritures Supabase capturées. Puis `account_sync.leger` : le relevé du compte
@@ -50,6 +50,9 @@ def _ts(jour: date) -> int:
 HIER = (_ts(date(2026, 11, 9)), _ts(date(2026, 11, 10)))
 AVANT_HIER = (_ts(date(2026, 11, 8)), _ts(date(2026, 11, 9)))
 SEPT_JOURS = (_ts(date(2026, 11, 3)), _ts(date(2026, 11, 10)))
+# Revue de code : la période de 7 jours finissant AVANT-HIER est relue à chaque
+# passage — Meta documente jusqu'à 48 h de retard sur les chiffres du compte.
+SEPT_JOURS_AVANT_HIER = (_ts(date(2026, 11, 2)), _ts(date(2026, 11, 9)))
 
 
 class _Reponse:
@@ -84,6 +87,7 @@ REPONSES = {
     ("follows_and_unfollows", "follow_type", HIER): _ventile(
         "follows_and_unfollows", [("FOLLOWER", 7), ("NON_FOLLOWER", 2)]),
     ("reach", None, SEPT_JOURS): _total("reach", 4210),
+    ("reach", None, SEPT_JOURS_AVANT_HIER): _total("reach", 4100),
 }
 # Avant-hier est relu à chaque passage (ticket 06) : mêmes réponses qu'hier.
 REPONSES.update({(cle[0], cle[1], AVANT_HIER): corps for cle, corps in list(REPONSES.items())
@@ -114,8 +118,10 @@ class FauxGraph:
 ECRIT: dict[str, list] = {"jours": [], "periodes": []}
 releve_compte.ecrire_jours_du_compte = lambda sb, lignes: ECRIT["jours"].extend(lignes)
 # Compte déjà en base : pas de premier passage ici (c'est le harnais 06).
-releve_compte.a_des_jours_avant = lambda sb, uid, jour: True
-releve_compte.ecrire_periode_du_compte = lambda sb, ligne: ECRIT["periodes"].append(ligne)
+releve_compte.ecrire_jours_du_compte = lambda sb, lignes: ECRIT["jours"].extend(lignes) or True
+releve_compte.premier_passage_instagram_le = lambda sb, uid, cid: "2026-10-01T07:00:00+00:00"
+releve_compte.ecrire_periode_du_compte = (
+    lambda sb, ligne, aujourdhui: ECRIT["periodes"].append(ligne))
 
 
 def passer(reponses):
@@ -123,7 +129,7 @@ def passer(reponses):
     ECRIT["periodes"].clear()
     graph = FauxGraph(reponses)
     http_client.get = graph
-    mot = releve_compte.releve_du_compte(None, "u-1", ACCES, maintenant=MAINTENANT)
+    mot = releve_compte.releve_du_compte(None, "u-1", ACCES, "c-1", maintenant=MAINTENANT)
     return graph, mot
 
 
@@ -135,11 +141,13 @@ verifier("La ligne du jour : portée, interactions, abonnés, gagnés, perdus, p
          ECRIT["jours"][0],
          {"user_id": "u-1", "jour": "2026-11-09", "reach": 812, "total_interactions": 95,
           "abonnes": 1840, "gagnes": 7, "perdus": 2, "reach_ad": 120, "interactions_ad": 0})
-verifier("La portée dédoublonnée des 7 jours finissant hier, telle que rendue",
+verifier("La portée dédoublonnée des 7 jours finissant hier, ET celle finissant avant-hier "
+         "relue, telles que rendues",
          ECRIT["periodes"],
-         [{"user_id": "u-1", "debut": "2026-11-03", "fin": "2026-11-09", "reach": 4210}])
-verifier("Douze appels, un par chiffre (hier, avant-hier, abonnés, 7 jours)",
-         len(graph.appels), 12)
+         [{"user_id": "u-1", "debut": "2026-11-03", "fin": "2026-11-09", "reach": 4210},
+          {"user_id": "u-1", "debut": "2026-11-02", "fin": "2026-11-08", "reach": 4100}])
+verifier("Treize appels, un par chiffre (hier, avant-hier, abonnés, deux périodes de 7 jours)",
+         len(graph.appels), 13)
 verifier("Le mot dit le jour relevé", "2026-11-09" in mot and "compte" in mot, True)
 
 # ── 2 · `AD` absent de la ventilation → NULL, pas 0 ─────────────────────────
@@ -168,6 +176,7 @@ panne[("reach", None, HIER)] = ERREUR
 panne[("reach", "media_product_type", HIER)] = ERREUR
 panne["fiche"] = ERREUR
 panne[("reach", None, SEPT_JOURS)] = ERREUR
+panne[("reach", None, SEPT_JOURS_AVANT_HIER)] = ERREUR
 passer(panne)
 verifier("Appel en erreur → la colonne n'est pas envoyée (la valeur en base reste)",
          sorted(ECRIT["jours"][0]),
@@ -204,18 +213,23 @@ class Base:
 
 b = Base()
 instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-11-09", "reach": 1}])
-instagram_compte.ecrire_periode_du_compte(
-    b, {"user_id": "u", "debut": "2026-11-03", "fin": "2026-11-09", "reach": 9})
-verifier("Le jour s'upserte sur (user_id, jour) ; la période s'ajoute sans écraser",
+AUJOURDHUI = date(2026, 11, 10)
+for fin in ("2026-11-09", "2026-11-08", "2026-11-07"):
+    instagram_compte.ecrire_periode_du_compte(
+        b, {"user_id": "u", "debut": "2026-11-01", "fin": fin, "reach": 9}, AUJOURDHUI)
+verifier("Le jour s'upserte sur (user_id, jour) ; une période finissant hier ou avant-hier "
+         "s'upserte (corrigeable), une plus ancienne s'ajoute sans écraser",
          [(t, o) for t, _, o in b.ops],
          [("instagram_compte_jours", {"on_conflict": "user_id,jour"}),
+          ("instagram_compte_periodes", {"on_conflict": "user_id,debut,fin"}),
+          ("instagram_compte_periodes", {"on_conflict": "user_id,debut,fin"}),
           ("instagram_compte_periodes",
            {"on_conflict": "user_id,debut,fin", "ignore_duplicates": True})])
 b = Base(leve="{'code': 'PGRST205', 'message': 'Could not find the table'}")
 try:
     instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-11-09"}])
-    instagram_compte.ecrire_periode_du_compte(b, {"user_id": "u", "debut": "x", "fin": "y",
-                                                  "reach": 1})
+    instagram_compte.ecrire_periode_du_compte(b, {"user_id": "u", "debut": "2026-11-02",
+                                                  "fin": "2026-11-08", "reach": 1}, AUJOURDHUI)
     leve = False
 except Exception:
     leve = True
@@ -234,7 +248,8 @@ verifier("Section 23 : la table des périodes, sa RLS par a_acces, et le contrô
 VU: list[str] = []
 account_sync.recolte_instagram.releve_quotidien = lambda sb, uid, acces: "insta léger: 0 posts"
 account_sync.releve_compte.releve_du_compte = (
-    lambda sb, uid, acces: VU.append(acces.instagram) or "compte: 2026-11-09 relevé")
+    lambda sb, uid, acces, connexion_id: VU.append((acces.instagram, connexion_id))
+    or "compte: 2026-11-09 relevé")
 account_sync.jeton_meta.verifier = lambda jeton: TokenStatus(VALIDE, "")
 account_sync._marquer = lambda sb, uid, plan: []
 account_sync.connexions = lambda sb, uid: [
@@ -242,7 +257,7 @@ account_sync.connexions = lambda sb, uid: [
 logs = account_sync.leger(None, "u-1")
 verifier("Léger : le compte est relevé, et la ligne unique porte les deux mots",
          (VU, len(logs), "insta léger" in logs[0] and "compte: 2026-11-09" in logs[0]),
-         (["ig-1"], 1, True))
+         ([("ig-1", "m")], 1, True))
 
 
 def _panne(sb, uid, acces):
@@ -254,7 +269,7 @@ VU.clear()
 logs = account_sync.leger(None, "u-1")
 verifier("Léger : la panne des posts n'empêche pas le relevé du compte",
          (VU, "instagram léger KO" in logs[0], "compte: 2026-11-09" in logs[0]),
-         (["ig-1"], True, True))
+         ([("ig-1", "m")], True, True))
 
 print()
 print("TOUT EST VERT" if not ECHECS else f"{len(ECHECS)} ÉCHEC(S)")

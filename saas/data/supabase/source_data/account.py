@@ -188,6 +188,77 @@ def noter_relecture_instagram(supabase: Client, user_id: str, connexion_id, quan
     return bool(r.data)
 
 
+def dater_premiere_relecture_instagram(supabase: Client, user_id: str, connexion_id,
+                                       quand) -> bool:
+    """Pose la date du passage complet sur UNE connexion qui n'en a PAS ; True si écrite.
+
+    Le filtre `IS NULL` est dans l'`update` lui-même : une date déjà posée (le
+    trimestriel, la main) ne bouge pas, sans lecture préalable qui pourrait
+    se périmer. False = déjà datée, ou zéro ligne touchée (`CLAUDE.md` §8)."""
+    try:
+        r = (supabase.table("connected_accounts")
+             .update({"relecture_instagram_le": quand.isoformat()})
+             .eq("id", connexion_id).eq("user_id", user_id)
+             .is_("relecture_instagram_le", "null").execute())
+    except Exception as e:
+        if _colonne_relecture_absente(e):
+            raise ColonneRelectureAbsente from e
+        raise
+    return bool(r.data)
+
+
+# ── Instagram — le premier passage d'un compte est-il fait ? ──────────────────
+#
+# Spec § La récolte, « Au premier passage d'un compte » : 90 jours et la
+# remontée des abonnés. Revue de code de instagram-construction : la détection
+# « une ligne plus ancienne qu'avant-hier » donnait le premier passage pour
+# fait sans dire qu'il avait réussi, et un passage entièrement en panne ne se
+# reprenait jamais. Le marqueur (`premier_passage_instagram_le`, migration §23)
+# n'est posé que si la remontée a écrit au moins un jour plus ancien
+# qu'avant-hier ; tant qu'il est NULL, le premier passage est retenté chaque jour.
+
+class ColonnePremierPassageAbsente(Exception):
+    """La section 23 n'est pas jouée : le marqueur ne se lit ni ne s'écrit."""
+
+
+def _colonne_premier_passage_absente(err: Exception) -> bool:
+    msg = str(err)
+    return "premier_passage_instagram_le" in msg and any(
+        code in msg for code in ("42703", "PGRST204", "does not exist", "Could not find"))
+
+
+def premier_passage_instagram_le(supabase: Client, user_id: str, connexion_id) -> str | None:
+    """La date du premier passage réussi d'UNE connexion, ou None s'il reste à faire.
+
+    Lève `ColonnePremierPassageAbsente` si la colonne manque : un marqueur
+    illisible n'est pas un marqueur nul — le prendre pour tel relancerait les
+    quelque 130 appels du premier passage chaque jour, sans jamais rien noter."""
+    try:
+        lignes = (supabase.table("connected_accounts")
+                  .select("id, premier_passage_instagram_le")
+                  .eq("id", connexion_id).eq("user_id", user_id).execute().data) or [{}]
+    except Exception as e:
+        if _colonne_premier_passage_absente(e):
+            raise ColonnePremierPassageAbsente from e
+        raise
+    return lignes[0].get("premier_passage_instagram_le")
+
+
+def noter_premier_passage_instagram(supabase: Client, user_id: str, connexion_id, quand) -> bool:
+    """Pose le marqueur du premier passage sur UNE connexion ; True si écrit.
+
+    Zéro ligne touchée ne lève rien (`CLAUDE.md` §8) : le booléen le dit."""
+    try:
+        r = (supabase.table("connected_accounts")
+             .update({"premier_passage_instagram_le": quand.isoformat()})
+             .eq("id", connexion_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        if _colonne_premier_passage_absente(e):
+            raise ColonnePremierPassageAbsente from e
+        raise
+    return bool(r.data)
+
+
 # ── Instagram — où en est le Rattrapage, par connexion ────────────────────────
 #
 # Spec § La récolte — Ce qui s'ajoute, « Le Rattrapage » : un bloc par passage
