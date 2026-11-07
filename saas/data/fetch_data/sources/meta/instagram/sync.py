@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 import pandas as pd
 
 from saas.data.fetch_data.shared.date_ranges import Fenetre
+from saas.data.supabase._queries import _all_pages
 from saas.data.supabase.source_data.couverture import avancer_couverture, debut_des_posts_complets
 from saas.data.supabase.source_data.meta import (
     COLONNES_SI_CONNUES, insert_instagram_org, insert_instagram_releves, insert_instagram_total_posts_id,
@@ -335,6 +336,92 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
         insert_instagram_org(supabase=sb, results=fiches)
     insert_instagram_releves(sb, releves)
     return f"insta léger: {len(releves)} posts relevés dont {neufs} neufs"
+
+
+# Écrire tous les 100 posts relus : la relecture unique d'un compte à 1 839
+# posts (le Rattrapage, spec § La profondeur de l'historique) fait ~5 000
+# appels Graph ; un job coupé ou une panne au millième post ne doit pas jeter
+# les 999 relectures déjà faites.
+_LOT_DE_RELECTURE = 100
+
+
+def relire_tous(sb, uid: str, acces: AccesMeta,
+                maintenant: datetime | None = None) -> str:
+    """La relecture de TOUS les posts en base d'un compte → son mot de fin.
+
+    Spec § La récolte — Ce qui s'ajoute, « La relecture unique » (ticket 03),
+    puis le trimestriel (07) : remplit `media_product_type`, `permalink`,
+    `shares`, `profile_visits`, `booste_vu_le`, les j'aime des vidéos, et vide
+    `follows` des Reels — par le même chemin que le relevé (fiche avec
+    `boost_ads_list`, puis 1 appel insights pour un Reel, 2 pour le fil).
+
+    · Les posts EN BASE, et seulement eux : aucun inventaire `/media`, aucun
+      post neuf — c'est le travail du passage complet et du Rattrapage.
+    · Sans image : la relecture ne téléverse rien et n'envoie pas `media_url`,
+      l'upsert garde celle qui est en base.
+    · Ni couverture, ni `total_posts_id_instagram`, ni `fetch_progress` : elle
+      ne lit pas l'inventaire, elle ne sait rien d'un total.
+    · Un post refusé (supprimé chez Meta, jeton) n'écrit rien : ses vieilles
+      valeurs restent, c'est ce que compte le nettoyage du ticket 03.
+    """
+    if not acces.instagram:
+        raise ValueError("instagram_business_id requis en mode headless")
+    maintenant = maintenant or datetime.now(timezone.utc)
+    connus = _tous_en_base(sb, uid)
+    fiches, releves, refuses, relus = [], [], 0, 0
+    for post_id, en_base in connus.items():
+        try:
+            info = metriques.info_du_post(acces, post_id)
+        except Exception:
+            # `http_client.get` ne réessaie pas une exception réseau : sur des
+            # milliers d'appels, une seule ne doit pas arrêter la relecture.
+            # Le post est compté refusé, rien n'est écrit pour lui.
+            info = {"error": "exception réseau"}
+        m = (None if info.get("error")
+             else metriques.metriques_du_post(acces, post_id, info.get("media_product_type")))
+        fiche, releve = lignes_du_post(uid, info, m, maintenant,
+                                       booste_vu_le=en_base.get("booste_vu_le"))
+        if fiche is not None:
+            fiches.append(fiche)
+        if releve is None:
+            refuses += 1
+        else:
+            releves.append(releve)
+            relus += 1
+        if len(fiches) >= _LOT_DE_RELECTURE:
+            _ecrire(sb, fiches, releves)
+            fiches, releves = [], []
+    _ecrire(sb, fiches, releves)
+    return (f"insta relecture: {len(connus)} posts en base, {relus} relus, "
+            f"{refuses} refusé(s)")
+
+
+def _ecrire(sb, fiches: list[dict], releves: list[dict]) -> None:
+    if fiches:
+        insert_instagram_org(supabase=sb, results=fiches)
+    if releves:
+        insert_instagram_releves(sb, releves)
+
+
+def _tous_en_base(sb, uid: str) -> dict[str, dict]:
+    """`{post_id: {booste_vu_le}}` de TOUS les posts du compte en base.
+
+    Paginé, ordre total sur `post_id` : PostgREST tronque à 1 000 lignes en
+    silence (`CLAUDE.md` §8) et le Rattrapage en ramène 1 839 sur le compte de
+    l'essai — sans pagination, 839 posts ne seraient jamais relus. Base sans
+    la section 23 (42703) : relue sans `booste_vu_le`, comme `_en_base`.
+    """
+    for colonnes in ("post_id, booste_vu_le", "post_id"):
+        try:
+            lignes = _all_pages(lambda: sb.table("instagram_organic_posts").select(colonnes)
+                                .eq("user_id", uid).order("post_id"))
+            return {str(r["post_id"]): r for r in lignes}
+        except Exception as e:
+            if "booste_vu_le" not in colonnes or not _colonne_boost_absente(e):
+                raise
+            print("    posts Instagram : colonne booste_vu_le absente — lance "
+                  "saas/data/supabase/migrations/000_run_me_all.sql.")
+    return {}
 
 
 def lignes_du_post(uid: str, info: dict, metriques: dict | None, releve_a: datetime,
