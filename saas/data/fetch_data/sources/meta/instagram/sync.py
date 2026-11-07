@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-import pandas as pd
-
 from saas.data.fetch_data.shared.date_ranges import Fenetre
 from saas.data.supabase._queries import _all_pages
 from saas.data.supabase.source_data.couverture import avancer_couverture, debut_des_posts_complets
@@ -22,43 +20,29 @@ from saas.data.fetch_data.sources.meta.instagram.fetchers import boost
 from saas.data.fetch_data.sources.meta.instagram.fetchers import post_metrics as metriques
 from saas.data.fetch_data.sources.meta.instagram.fetchers import posts
 
-# ── QUELS POSTS ON RELIT — une DURÉE, plus un compte ─────────────────────────
+# ── QUELS POSTS ON RELIT — la cadence de la spec ─────────────────────────────
 #
-# La règle était « les 20 derniers posts », et un compte ne se mesure pas en
-# posts, il se mesure en jours. Qui publie cinq fois par jour ne faisait relire
-# que quatre jours ; qui publie une fois par mois en faisait relire vingt mois,
-# pour rien. Or ce qui bouge, c'est le TEMPS : un post continue d'accumuler
-# vues, portée et enregistrements pendant des semaines après sa publication.
+# Spec § La récolte — Ce qui s'ajoute, « La relecture » : chaque jour de J+0 à
+# J+7 (le passage léger, `releve_quotidien`), à chaque Jour de travail les
+# posts de moins de 30 jours (`posts_a_relire`, ici), tous les 3 mois tous les
+# posts en base (`relire_tous`, déclenché par `cockpit/instagram_reread.py`).
+# Le plafond de 200 posts, la reprise à 40 et le plancher de 6 sont partis
+# (spec, « La profondeur de l'historique ») : le trimestriel relit ce que la
+# fenêtre de 30 jours laisse de côté, le plancher n'a plus de raison d'être.
 #
 # 30 jours, et il faut être honnête sur ce chiffre : contrairement aux fenêtres
 # d'attribution de Meta Ads et Google Ads, AUCUNE doc ne dit au bout de combien
 # de temps les métriques d'un post organique se stabilisent — elles sont
-# cumulées à vie et ne se stabilisent jamais tout à fait. Ce n'est donc pas un
-# nombre lu quelque part, c'est un arbitrage de coût assumé : 30 jours couvrent
-# la période où un post bouge assez pour changer une conclusion, et le plafond
-# ci-dessous empêche un compte très actif de faire exploser la récolte.
-_JOURS_RAFRAICHIS = 30
-# Plafond dur sur les posts DÉJÀ en base qu'on relit. Cinq publications par
-# jour × 30 jours = 150 posts, soit 450 appels Graph : non. À 40, le pire cas
-# est borné et connu.
-_POSTS_RAFRAICHIS_MAX = 40
-# Plancher, pour le compte qui publie une fois par mois : sans lui, la fenêtre
-# de 30 jours ne rendrait qu'un seul post et le reste du mur ne bougerait plus.
-_POSTS_RAFRAICHIS_MIN = 6
-
-# CE QUE ÇA COÛTE — simulé sur les quatre rythmes de publication, en posts
-# relus par passage (un post relu = 3 appels Graph : info, insights, follows) :
-#     1 post/jour     20 → 30      1 post/semaine  20 → 6
-#     5 posts/jour    20 → 40      1 post/mois     20 → 6
-# Deux comptes sur quatre coûtent MOINS cher qu'avant, et le pire cas est
-# plafonné. Surtout, l'image ne repart plus dans les deux sens à chaque
-# passage (voir `_image_du_post`) : on économise 20 à 40 téléchargements + 20 à
-# 40 envois de fichier, qui étaient de très loin la partie la plus lente. La
-# fenêtre s'élargit et la récolte accélère.
+# cumulées à vie et ne se stabilisent jamais tout à fait. C'est un arbitrage
+# de coût, repris tel quel par la spec.
 # Le quota n'entre pas en jeu : Meta autorise « 4800 * Number of Impressions »
-# appels par 24 h sur la plateforme Instagram — quelques centaines d'affichages
-# suffisent à couvrir mille fois ce qu'on demande.
+# appels par 24 h sur la plateforme Instagram.
 # https://developers.facebook.com/docs/graph-api/overview/rate-limiting/
+_JOURS_RAFRAICHIS = 30
+# Spec § Le compte gratuit (David, 2026-11-06, `.scratch/instagram/issues/18`) :
+# « les 10 plus récents à l'arrivée », puis il grandit — c'est l'offre, pas une
+# mesure.
+_POSTS_A_L_ARRIVEE_GRATUIT = 10
 
 
 def _dans_le_stockage(url: str | None) -> bool:
@@ -87,11 +71,17 @@ def _en_base(sb, uid: str, ids: list[str] | None = None) -> dict[str, dict]:
     pas jouée, la colonne n'existe pas (42703) : on relit sans elle.
     """
     for colonnes in ("post_id, media_url, booste_vu_le", "post_id, media_url"):
-        requete = sb.table("instagram_organic_posts").select(colonnes).eq("user_id", uid)
-        if ids is not None:
-            requete = requete.in_("post_id", ids)
+        def requete(colonnes=colonnes):
+            return sb.table("instagram_organic_posts").select(colonnes).eq("user_id", uid)
         try:
-            return {str(r["post_id"]): r for r in requete.execute().data or []}
+            if ids is not None:
+                lignes = requete().in_("post_id", ids).execute().data or []
+            else:
+                # Tous les posts du compte : sans plafond de 200, un payant en a
+                # 1 839 (le Rattrapage) et PostgREST tronque à 1 000 en silence
+                # (`CLAUDE.md` §8) — 839 posts seraient repris comme neufs.
+                lignes = _all_pages(lambda: requete().order("post_id"))
+            return {str(r["post_id"]): r for r in lignes}
         except Exception as e:
             if "booste_vu_le" not in colonnes or not _colonne_boost_absente(e):
                 raise
@@ -106,69 +96,70 @@ def _colonne_boost_absente(err: Exception) -> bool:
     return "booste_vu_le" in msg and ("42703" in msg or "does not exist" in msg)
 
 
-def _a_relire(sb, uid: str, medias: list[dict]) -> tuple[list, dict]:
+def _a_relire(sb, uid: str, medias: list[dict],
+              maintenant: datetime | None = None) -> tuple[list[str], dict]:
     """L'inventaire → (posts à relire, `_en_base`).
 
     Écrit au passage le décompte total des posts (`total_posts_id_instagram`),
     comme avant.
     """
-    df = pd.DataFrame(medias).sort_values(by="timestamp", ascending=False)
-    insert_instagram_total_posts_id(supabase=sb, user_id=uid, total_posts_id=len(df))
-
-    is_paid = sb.table("profiles").select("is_paid").eq("id", uid).execute().data[0].get("is_paid", False)
-    # 200 en payant : le dashboard Instagram a besoin de profondeur
-    # (le backfill se fait en plusieurs fetchs).
-    limite = 200 if is_paid else 10
-    all_post_ids = df["id"][:limite].tolist()
-
+    insert_instagram_total_posts_id(supabase=sb, user_id=uid, total_posts_id=len(medias))
+    profil = sb.table("profiles").select("is_paid").eq("id", uid).execute().data or [{}]
+    # Sans profil lisible, la règle la plus étroite, celle du gratuit (au lieu
+    # de l'`IndexError` d'avant).
+    is_paid = bool(profil[0].get("is_paid"))
     connus = _en_base(sb, uid)
-    # LE BUG QUI RENDAIT LA RÉCOLTE JAMAIS INCRÉMENTALE, ET DEPUIS TOUJOURS.
-    # `post_id` est une colonne numérique (bigint) : PostgREST le rend en
-    # `int` Python. `df["id"]` vient du Graph API, qui rend TOUJOURS ses IDs
-    # en chaînes JSON. `pid not in existing_ids` comparait donc une chaîne à
-    # un ensemble d'entiers — jamais égal, quoi qu'il arrive. Chaque post du
-    # compte (jusqu’à `limite`) était donc traité comme neuf à CHAQUE
-    # récolte, sans jamais toucher au plafond `_POSTS_RAFRAICHIS_MAX` : sur
-    # un compte à 200 posts, ça fait 200 posts relus (3 appels Graph
-    # chacun) au lieu d'une poignée de nouveaux + 40 rafraîchis. Mesuré en
-    # conditions réelles (2026-08-24) : `new_post_ids` rendait exactement
-    # les 200 IDs déjà en base, en chaînes, alors que `existing_ids` les
-    # portait en entiers — la comparaison ne pouvait jamais matcher.
-    # Le même bug défaisait `_media_connu` (ajouté le 18 août pour éviter
-    # de re-télécharger une image déjà en stockage) : la clé cherchée était
-    # une chaîne, le dict était indexé par entier, `.get()` rendait
-    # toujours `None`, et `_image_du_post` refaisait le trajet
-    # téléchargement + envoi pour une image qu'on avait déjà — le poste le
-    # plus cher de la récolte Instagram, payé pour rien à chaque passage.
-    existing_ids = set(connus)
-    media_connu = {pid: r.get("media_url") for pid, r in connus.items()}
+    return posts_a_relire(medias, connus, maintenant or datetime.now(timezone.utc),
+                          is_paid), connus
 
-    # La fenêtre de rafraîchissement, en jours (voir _JOURS_RAFRAICHIS).
-    # `errors="coerce"` : un timestamp illisible devient NaT, donc hors
-    # fenêtre — il sera quand même repris s'il tombe dans le plancher.
-    publie_le = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
-    borne = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=_JOURS_RAFRAICHIS)
-    recents = set(df.loc[publie_le >= borne, "id"])
 
-    # Trois raisons de relire un post DÉJÀ en base, toutes plafonnées
-    # ensemble à _POSTS_RAFRAICHIS_MAX : il est récent, il fait partie du
-    # plancher, ou son image n'a jamais atteint notre stockage (le lien de
-    # CDN qu'on avait gardé va expirer, donc on refait le trajet).
-    # Un post ABSENT de la base n'est jamais plafonné : il faut bien aller
-    # le chercher une première fois.
-    a_reprendre, repris = [], 0
-    for rang, pid in enumerate(all_post_ids):
-        if pid not in existing_ids:
-            a_reprendre.append(pid)
-            continue
-        if repris >= _POSTS_RAFRAICHIS_MAX:
-            continue
-        if (pid in recents
-                or rang < _POSTS_RAFRAICHIS_MIN
-                or not _dans_le_stockage(media_connu.get(pid))):
-            a_reprendre.append(pid)
-            repris += 1
-    return a_reprendre, connus
+def posts_a_relire(medias: list[dict], connus: dict[str, dict], maintenant: datetime,
+                   is_paid: bool) -> list[str]:
+    """Les posts que relit le passage du Jour de travail, du plus récent au plus ancien.
+
+    · Absent de la base :
+        payant — tous, sans plafond (le Rattrapage par blocs, ticket 08, bornera
+          ceux qui sont plus anciens que la base) ;
+        gratuit — ses 10 plus récents à l'arrivée, puis tout post plus récent
+          que le plus ancien de sa base : il grandit, rien ne s'efface, et pas
+          de Rattrapage (spec § Le compte gratuit).
+    · En base : publié il y a moins de 30 jours, ou image jamais arrivée dans
+      notre stockage (le lien de CDN gardé va expirer, l'image serait perdue).
+    Un post en base à la date illisible n'est pas relu ici : le trimestriel le
+    reprendra (`relire_tous`).
+
+    Les ids de Meta sont des chaînes, ceux de la base des entiers rendus par
+    PostgREST : `connus` est indexé en `str` (`_en_base`). Comparer une chaîne à
+    un entier ne matchait jamais — mesuré le 2026-08-24, la récolte reprenait
+    comme neufs les 200 posts déjà en base à chaque passage.
+    """
+    ordre = sorted(medias, key=lambda m: m.get("timestamp") or "", reverse=True)
+    ids = [str(m["id"]) for m in ordre]
+    rangs_connus = [rang for rang, pid in enumerate(ids) if pid in connus]
+    if not rangs_connus:
+        absents = set(ids if is_paid else ids[:_POSTS_A_L_ARRIVEE_GRATUIT])
+    else:
+        plus_ancien = rangs_connus[-1]
+        absents = {pid for rang, pid in enumerate(ids)
+                   if pid not in connus and (is_paid or rang < plus_ancien)}
+    borne = maintenant - timedelta(days=_JOURS_RAFRAICHIS)
+    retenus = []
+    for media, pid in zip(ordre, ids):
+        if pid in absents:
+            retenus.append(pid)
+        elif pid in connus and (_publie_depuis(media.get("timestamp"), borne)
+                                or not _dans_le_stockage(connus[pid].get("media_url"))):
+            retenus.append(pid)
+    return retenus
+
+
+def _publie_depuis(timestamp: str | None, borne: datetime) -> bool:
+    """Publié à `borne` ou après — False si la date est illisible."""
+    try:
+        publie_le = datetime.fromisoformat(timestamp or "")
+    except ValueError:
+        return False
+    return publie_le.tzinfo is not None and publie_le >= borne
 
 
 def _image_du_post(sb, uid: str, post_id: str, info: dict, media_connu: dict) -> str:

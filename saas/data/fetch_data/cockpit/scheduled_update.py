@@ -8,7 +8,9 @@ rapport. C'est le « ça marche sans moi ».
 
 Chaque jour aussi, pour TOUS les comptes Instagram, le passage léger
 (`account_sync.leger`) : relevé des posts de moins de 8 × 24 h et fiche des
-posts neufs, sans rapport ni `fetch_progress`.
+posts neufs, sans rapport ni `fetch_progress` ; puis le trimestriel
+(`instagram_reread.relire_si_du`) pour les connexions dont le dernier passage
+complet date de 3 mois.
 
     python3.12 saas/data/fetch_data/cockpit/scheduled_update.py                 # le cron
     python3.12 saas/data/fetch_data/cockpit/scheduled_update.py --force         # tous, quel que soit le jour
@@ -37,6 +39,7 @@ from pathlib import Path
 # Racine du dépôt sur le path : le script se lance par son chemin.
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
+from saas.data.fetch_data.cockpit import instagram_reread  # noqa: E402
 from saas.data.fetch_data.orchestration import account_sync as passage  # noqa: E402
 from saas.data.fetch_data.orchestration import error_reporter as alarmes  # noqa: E402
 from saas.data.fetch_data.orchestration.concurrent_runner import client_service  # noqa: E402
@@ -75,12 +78,21 @@ class ScheduledUpdate:
             # LE PASSAGE LÉGER, TOUS LES JOURS ET POUR TOUS (spec § La récolte —
             # Ce qui s'ajoute) : sinon un post du mardi attendrait le Jour de
             # travail pour son premier relevé, et ses J+0…J+7 seraient perdus.
-            # Le Jour de travail aussi : la relecture complète plafonne encore
-            # les posts relus, le léger garantit le relevé du jour. Il passe
+            # Le Jour de travail aussi : le léger garantit le relevé du jour
+            # même si la récolte complète tombe en panne. Il passe
             # AVANT le complet et ne touche pas au rapport. `rapport_seulement`
             # n'appelle aucune plateforme : pas de léger.
+            # LE TRIMESTRIEL, juste après : tous les posts en base, tous les
+            # 3 mois, sur la date du dernier passage complet lue en base
+            # (`instagram_reread.relire_si_du`). Avant le complet du Jour de
+            # travail : un compte sans aucun post relit 0 post et reçoit sa
+            # date, au lieu de relire dès le lendemain tout ce que sa première
+            # récolte vient d'écrire.
             if not self.rapport_seulement:
                 for ligne in passage.leger(sb, uid):
+                    print(f"  {uid} → {ligne}")
+                maintenant = self.aujourdhui or datetime.now(timezone.utc)
+                for ligne in instagram_reread.relire_si_du(sb, uid, maintenant):
                     print(f"  {uid} → {ligne}")
             if not self.force and not _due_today(p.get("fetch_schedule"), self.aujourdhui):
                 continue
