@@ -28,6 +28,10 @@ on:
         description: "complete : date de départ AAAA-MM-JJ (vide = 37 mois, la limite de Meta)"
         type: string
         default: ""
+      relecture_instagram:
+        description: "Relit TOUS les posts Instagram en base, sans image ni rapport (relecture unique après la migration, puis trimestrielle). Avec user_id : ce compte seul"
+        type: boolean
+        default: false
 
 # L'ESSAI N'EST PAS UN MODE DE CE WORKFLOW, et c'est voulu (ticket 07 de
 # `.scratch/recolte/`). Il écrit un JSON de données client : sur le runner,
@@ -87,9 +91,21 @@ jobs:
           USER_ID: ${{ inputs.user_id }}
           REPORT_ONLY: ${{ inputs.report_only }}
           FORCE: ${{ inputs.force }}
+          RELECTURE_IG: ${{ inputs.relecture_instagram }}
         run: |
           M=saas/data/fetch_data/cockpit/scheduled_update.py
-          if [ "$MODE" = "complete" ]; then
+          if [ "$RELECTURE_IG" = "true" ]; then
+            # Drapeau dédié, testé en premier : la relecture ne publie aucun
+            # rapport et n'écrit pas `fetch_progress` (ticket 03 de
+            # `.scratch/instagram-construction/`). ~3 appels Graph par post en
+            # base : un compte de 1 839 posts tient sous le plafond de 6 h.
+            R=saas/data/fetch_data/cockpit/instagram_reread.py
+            if [ -n "$USER_ID" ]; then
+              python "$R" --user "$USER_ID"
+            else
+              python "$R"
+            fi
+          elif [ "$MODE" = "complete" ]; then
             # La récolte complète EXIGE un compte : le script le refuse
             # lui-même sans `--user`, et c'est volontaire — forcer le passage de
             # TOUS les comptes serait une opération lourde et involontaire.

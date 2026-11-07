@@ -13,7 +13,7 @@ décidée dans `.scratch/recolte/map.md`.
 
 | Où | Quoi |
 |---|---|
-| `cockpit/` | Les trois commandes : `scheduled_update.py` (cron), `full_history.py` (historique complet), `check_data_collection.py` (JSON local, aucune écriture). |
+| `cockpit/` | Les quatre commandes : `scheduled_update.py` (cron), `full_history.py` (historique complet), `instagram_reread.py` (relecture de tous les posts Instagram), `check_data_collection.py` (JSON local, aucune écriture). |
 | `orchestration/` | Le déroulement partagé : `execution_plan.py`, `account_sync.py`, `concurrent_runner.py`, `error_reporter.py`. Le suivi persistant vit dans `../supabase/fetch_state/state.py`. |
 | `shared/` | Commun à toutes les plateformes. `http_client.py` est le SEUL chemin HTTP ; `date_ranges.py` porte les fenêtres et la reprise ; `token_status.py` distingue un jeton valide, mort ou inconnu. |
 | `../supabase/source_data/` | **Tout ce qui envoie la récolte à Supabase** — `meta.py`, `google.py`, `platform.py`. |
@@ -58,6 +58,10 @@ de départ change.
 - **`cockpit/full_history.py`** — `mode: complete` : un compte (`--user`
   obligatoire), tout l'historique depuis `--depuis` (37 mois par défaut, la
   limite de Meta). Écrit, publie et envoie comme la mise à jour.
+- **`cockpit/instagram_reread.py`** — drapeau `relecture_instagram` : relit
+  TOUS les posts Instagram en base (`sync.relire_tous`, lecture paginée, 2 à
+  3 appels par post, sans image), un compte (`--user`) ou tous. Ni rapport ni
+  `fetch_progress`. Relecture unique après la section 23, puis trimestrielle.
 - **`cockpit/check_data_collection.py`** — en local seulement, jamais dans le workflow (le dépôt est
   public) : N éléments par API, un JSON, aucune écriture.
 
