@@ -290,7 +290,7 @@ export function tendanceDe(e: EntreeTendance): Tendance {
   // compte l'emporte un jour où les deux existent (`abonnesParJourDe`). Entre
   // les deux sources, aucun jour mesuré : le trou se fait seul.
   const abonnesParJour = abonnesParJourDe(e.historique, (e.jours ?? []).map((l) => ({ jour: l.jour, abonnes: l.abonnes })));
-  const abonnes = (jours: string[]) => jours.map((d) => (d < aujourdhui && d in abonnesParJour ? abonnesParJour[d] : null));
+  const abonnes = (jours: string[]) => jours.map((d) => (d < aujourdhui && Object.hasOwn(abonnesParJour, d) ? abonnesParJour[d] : null));
   const serieAbonnes = abonnes(dates);
   const gagnes = lire(dates, col("gagnes"));
   const perdus = lire(dates, col("perdus"));

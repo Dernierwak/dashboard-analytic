@@ -15,13 +15,14 @@ import {
   type Contexte,
   type LigneAbonnesHistorique,
   type LigneBase,
-  type LigneCompteJour,
   type LigneReleve,
   type Post,
   type RelevesParPost,
 } from "@/lib/instagram/lecture";
 import { jourDuRapport } from "@/lib/instagram/panneau";
 import { type LigneProgres } from "@/lib/instagram/etat";
+import { type LigneJourCompte, type Tendance } from "@/lib/instagram/tendance";
+import { lirePeriodesDuCompte, tendanceDuCompte } from "@/lib/instagram/donnees-tendance";
 
 // ── CE QUE LA PAGE INSTAGRAM LIT DANS SUPABASE ───────────────────────────────
 //
@@ -47,6 +48,12 @@ export type DonneesInstagram = {
    *  écrite, ou illisible) — d'où se lisent le jeton mort et le compte neuf
    *  (`lib/instagram/etat.ts`). */
   progres: LigneProgres | null;
+  /** Le `maj_a` le plus récent d'`instagram_compte_jours`, ou `null` : le
+   *  léger l'écrit chaque matin avec un jeton vivant — il dit une reconnexion
+   *  (`etatDeLaPage`). */
+  compteMajA: string | null;
+  /** « Ta page », calculée sur les mêmes lectures que le reste de la page. */
+  tendance: Tendance;
 };
 
 function iso(d: Date): string {
@@ -69,7 +76,10 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
   };
   const periode = periodeDe(choix, ctxPeriode);
 
-  const [lignes, historique, jours, progres] = await Promise.all([
+  // TOUT EN PARALLÈLE, UNE LECTURE PAR TABLE (revue de code) : la Tendance
+  // ne relit plus `instagram_compte_jours` ni `followers_history` après les
+  // posts — elle reçoit ces lignes-ci (`tendanceDuCompte`).
+  const [lignes, historique, jours, progres, periodes] = await Promise.all([
     // `*` plutôt qu'une liste : une base où la section 23 n'est pas encore
     // jouée n'a ni `shares` ni `releve_a`, et une colonne nommée absente
     // ferait échouer toute la lecture. Absente, elle se lit « rien rendu ».
@@ -78,7 +88,9 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("instagram_organic_posts")
-        .select("*")
+        // `post_id::text` à côté : l'ID Graph dépasse 2^53, le `bigint` lu en
+        // JSON est arrondi (`LigneBase.post_id_texte`).
+        .select("*, post_id_texte:post_id::text")
         .eq("user_id", uid)
         .order("date", { ascending: false })
         .order("id", { ascending: true })
@@ -99,22 +111,27 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
       console.error("[instagram] followers_history illisible", e);
       return [];
     }),
-    lireToutesLesPages<LigneCompteJour>((de, a) =>
+    // Toutes les lignes, toutes les colonnes de la Tendance : 90 jours au
+    // premier passage puis une par jour, sous les 1 000 de PostgREST pendant
+    // deux ans — et paginé quand même. `jour` est la clé avec `user_id`.
+    lireToutesLesPages<LigneJourCompte>((de, a) =>
       supabase
         .from("instagram_compte_jours")
-        .select("jour, abonnes")
+        .select("jour, reach, total_interactions, abonnes, gagnes, perdus, reach_ad, interactions_ad, maj_a")
         .eq("user_id", uid)
         .order("jour", { ascending: true })
         .range(de, a)
     ).catch((e) => {
-      // Table absente tant que la section 23 n'est pas jouée.
+      // Table absente tant que la section 23 n'est pas jouée : `null`, la
+      // Tendance l'écrit en trous, jamais en zéros.
       console.error("[instagram] instagram_compte_jours illisible", e);
-      return [];
+      return null;
     }),
     lireProgres(supabase, uid),
+    lirePeriodesDuCompte(supabase, uid),
   ]);
 
-  const abonnes = abonnesParJourDe(historique, jours);
+  const abonnes = abonnesParJourDe(historique, jours ?? []);
   const posts = lignes.map((l) => postDe(l, abonnes));
   const ctx: Contexte = { maintenant: maintenant.toISOString() };
   // Les relevés ne servent qu'à placer un post de 48 h à 7 jours : sans lui,
@@ -130,7 +147,17 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
     raccourcis: raccourcisDe(periode, ctxPeriode),
     hier: decaler(ctxPeriode.aujourdhui, -1),
     progres,
+    compteMajA: plusRecentMajA(jours ?? []),
+    tendance: tendanceDuCompte({ jours, historique, periodes, posts, periode }),
   };
+}
+
+function plusRecentMajA(jours: LigneJourCompte[]): string | null {
+  let max: string | null = null;
+  for (const { maj_a } of jours) {
+    if (maj_a && Number.isFinite(Date.parse(maj_a)) && (max === null || Date.parse(maj_a) > Date.parse(max))) max = maj_a;
+  }
+  return max;
 }
 
 /** Illisible → `null` : la page se rend comme si rien n'était su du worker
@@ -138,7 +165,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
 async function lireProgres(supabase: ReturnType<typeof createClient>, uid: string): Promise<LigneProgres | null> {
   const { data, error } = await supabase
     .from("fetch_progress")
-    .select("etat, mot_de_fin")
+    .select("etat, mot_de_fin, maj_a")
     .eq("user_id", uid)
     .eq("canal", "instagram")
     .limit(1);
@@ -146,8 +173,13 @@ async function lireProgres(supabase: ReturnType<typeof createClient>, uid: strin
     console.error("[instagram] fetch_progress illisible", error);
     return null;
   }
-  const l = data?.[0] as { etat?: unknown; mot_de_fin?: unknown } | undefined;
-  return l && typeof l.etat === "string" ? { etat: l.etat, mot_de_fin: typeof l.mot_de_fin === "string" ? l.mot_de_fin : null } : null;
+  const l = data?.[0] as { etat?: unknown; mot_de_fin?: unknown; maj_a?: unknown } | undefined;
+  if (!l || typeof l.etat !== "string") return null;
+  return {
+    etat: l.etat,
+    mot_de_fin: typeof l.mot_de_fin === "string" ? l.mot_de_fin : null,
+    maj_a: typeof l.maj_a === "string" ? l.maj_a : null,
+  };
 }
 
 /** Les relevés de 48 h à 7 jours des 12 derniers mois — la matière de la
@@ -163,7 +195,8 @@ async function lireReleves(supabase: ReturnType<typeof createClient>, uid: strin
     const lignes = await lireToutesLesPages<LigneReleve>((de, a) =>
       supabase
         .from("instagram_post_releves")
-        .select("post_id, releve_a, age_heures, reach, views, likes, comments, saved, shares, follows, profile_visits")
+        // `post_id::text` : l'ID Graph dépasse 2^53 (`LigneBase.post_id_texte`).
+        .select("post_id:post_id::text, releve_a, age_heures, reach, views, likes, comments, saved, shares, follows, profile_visits")
         .eq("user_id", uid)
         .gte("age_heures", AGE_MINIMUM_HEURES)
         .lt("age_heures", AGE_EGAL_JUSQUA_HEURES)

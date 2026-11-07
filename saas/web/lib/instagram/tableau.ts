@@ -29,7 +29,7 @@ import {
   type PlaceDuPost,
   type Post,
 } from "./lecture";
-import { AUCUN_ECART, mentionSousSix, placeLue, retenus, texteEcart, type Ecartes } from "./regles";
+import { AUCUN_ECART, ecartesParTonFiltre, mentionSousSix, placeLue, retenus, texteEcart, type Ecartes } from "./regles";
 // Les nombres s'écrivent comme sur la page Meta (espace fine, « − »).
 import { nombre } from "../meta/lecture";
 
@@ -83,9 +83,10 @@ export function visionnageDe(p: Post): number | null {
 
 /** `ecartes` : ceux des Règles de lecture sur la même métrique. Un écarté
  *  reste une ligne, sa Place dit pourquoi (spec, user story 28) ; les autres
- *  se placent dans la foule sans lui. */
-export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART): Tableau {
-  const foules = foulesDe(retenus(posts, ecartes), m, ctx);
+ *  se placent dans la foule sans lui. `foulesLues` : celles des `retenus`,
+ *  si l'appelant les a déjà calculées. */
+export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART, foulesLues?: ReturnType<typeof foulesDe>): Tableau {
+  const foules = foulesLues ?? foulesDe(retenus(posts, ecartes), m, ctx);
   const colonnes = COLONNES_FIXES.includes(m) ? [...COLONNES_FIXES] : [...COLONNES_FIXES, m];
   const lignes = posts.map((p) => ({
     post: p,
@@ -200,7 +201,7 @@ export function raisonPlace(p: PlaceDuPost): string {
     case "age_egal_place":
       return `J+${p.jours} : face aux ${p.n} posts de ce format des 12 derniers mois, tels qu'ils étaient au même âge — ses chiffres peuvent encore changer.`;
     case "age_egal_mince":
-      return `${p.n} ${p.n > 1 ? `${NOM_FORMAT_PLURIEL[p.format]} ont` : `${NOM_FORMAT[p.format]} a`} un relevé à J+${p.jours} sur les 12 derniers mois, il en faut ${MINIMUM_FOULE} : sa place à âge égal attendra.`;
+      return `${p.n} ${p.n > 1 ? `${NOM_FORMAT_PLURIEL[p.format]} ont` : `${NOM_FORMAT[p.format]} a`} un relevé à J+${p.jours} sur les 12 derniers mois, il en faut ${MINIMUM_FOULE}${ecartesParTonFiltre(p.ecartes ?? 0)} : sa place à âge égal attendra.`;
     case "age_egal":
       return `J+${p.jours} : les relevés par âge ne sont pas lisibles, sa place à âge égal ne se calcule pas.`;
     case "foule_mince":

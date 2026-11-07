@@ -100,3 +100,7 @@ complet pose maintenant sa date) ; ses vérifications sont inchangées.
    blocs (08) bornera cette partie. Si 08 n'est pas fusionné avant la mise
    en production, la durée de ce passage se lit dans le journal du cron du
    Jour de travail — rien ne l'a mesurée.
+
+Corrigé après revue : NULL n'est plus « dû » au trimestriel (sinon toutes les connexions relisaient tout au premier cron). Une connexion à NULL reçoit sa date au premier passage complet réussi (`account_sync._appel`, canal instagram, `IS NULL` dans l'update) ; le trimestriel part 3 mois plus tard. La relecture unique reste le lancement à la main (03).
+
+Vérifié : les 15 harnais verts (`python3.12 -I …/test_*.py`, `sh …/lancer.sh`). Ne se voit en vrai qu'après un passage du worker : le cron de 07:00 UTC du Jour de travail.

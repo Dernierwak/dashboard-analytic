@@ -31,6 +31,7 @@ import {
   NOM_FORMAT,
   NOM_FORMAT_PLURIEL,
   placeDuPost,
+  valeurAuMemeAge,
   valeurDe,
   type CleMetrique,
   type Contexte,
@@ -81,10 +82,13 @@ export type Ecartes = {
    *  (une valeur, 12 mois, 48 h) — la raison de la mention sous 6. */
   parFormat: Record<Format, number>;
   total: number;
+  /** Les écartés eux-mêmes : la mention sous 6 à âge égal compte ceux qui
+   *  avaient un relevé au même J+n (`placeLue`), ce que `parFormat` ne dit pas. */
+  liste: Post[];
 };
 
 const ZERO_PAR_FORMAT = Object.fromEntries(FORMATS.map((f) => [f, 0])) as Record<Format, number>;
-export const AUCUN_ECART: Ecartes = { raisons: {}, parFormat: ZERO_PAR_FORMAT, total: 0 };
+export const AUCUN_ECART: Ecartes = { raisons: {}, parFormat: ZERO_PAR_FORMAT, total: 0, liste: [] };
 
 export function ecartesDe(posts: Post[], m: CleMetrique, regles: Regles, ctx: Contexte): Ecartes {
   if (!regles.sansBoostes && !regles.sansHorsNorme) return AUCUN_ECART;
@@ -107,7 +111,7 @@ export function ecartesDe(posts: Post[], m: CleMetrique, regles: Regles, ctx: Co
   const parFormat = Object.fromEntries(
     FORMATS.map((f) => [f, eligiblesDe(posts, f, ctx).filter((p) => raisons[p.id] && valeurDe(p, m) !== null).length])
   ) as Record<Format, number>;
-  return { raisons, parFormat, total: Object.keys(raisons).length };
+  return { raisons, parFormat, total: Object.keys(raisons).length, liste: posts.filter((p) => raisons[p.id]) };
 }
 
 /** Les posts que la lecture garde : c'est EUX qu'on passe à `fouleDe`,
@@ -123,6 +127,15 @@ export function placeLue(p: Post, m: CleMetrique, foules: Record<Format, Foule>,
   if (raison) return { etat: "ecarte", raison };
   const place = placeDuPost(p, m, foules, ctx);
   if (place.etat === "foule_mince" && e.parFormat[place.format] > 0) return { ...place, ecartes: e.parFormat[place.format] };
+  if (place.etat === "age_egal_mince" && ctx.releves) {
+    // Revue de code : la même mention qu'à la référence, mais comptée à cet
+    // âge — un écarté sans relevé au même J+n n'aurait pas compté.
+    const releves = ctx.releves;
+    const ecartes = eligiblesDe(e.liste, place.format, ctx).filter(
+      (a) => a.id !== p.id && valeurAuMemeAge(a, place.jours, m, releves) !== null
+    ).length;
+    if (ecartes > 0) return { ...place, ecartes };
+  }
   return place;
 }
 
@@ -161,7 +174,11 @@ export function ligneRegles(r: Regles, total: number, m: CleMetrique): string | 
 /** « 5 Reels, il en faut 6 — 1 est écarté par ton filtre » (spec, « La
  *  mention sous 6 posts »). */
 export function mentionSousSix(n: number, f: Format, ecartes: number): string {
-  const base = `${n} ${n > 1 ? NOM_FORMAT_PLURIEL[f] : NOM_FORMAT[f]}, il en faut ${MINIMUM_FOULE}`;
-  if (ecartes === 0) return base;
-  return `${base} — ${ecartes} ${ecartes > 1 ? "sont écartés" : "est écarté"} par ton filtre`;
+  return `${n} ${n > 1 ? NOM_FORMAT_PLURIEL[f] : NOM_FORMAT[f]}, il en faut ${MINIMUM_FOULE}${ecartesParTonFiltre(ecartes)}`;
+}
+
+/** « — 1 est écarté par ton filtre », ou rien quand aucun ne l'est. */
+export function ecartesParTonFiltre(ecartes: number): string {
+  if (ecartes === 0) return "";
+  return ` — ${ecartes} ${ecartes > 1 ? "sont écartés" : "est écarté"} par ton filtre`;
 }

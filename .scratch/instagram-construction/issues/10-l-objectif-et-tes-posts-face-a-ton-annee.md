@@ -108,3 +108,5 @@ partages » — c'est la vérité (§7), pas un bug ; le **cron de 07:00 UTC**
 suffit, ou un lancement à la main depuis l'onglet GitHub Actions
 (`weekly-fetch.yml`). La ligne de référence partielle ne se verra que si la
 base ne remonte pas à 12 mois (Rattrapage, ticket 08).
+
+Corrigé après revue : `moduleAnneeDe` prend des foules déjà calculées (paramètre optionnel, défaut = calcul d'avant) ; la page les calcule une fois. Les mois de `debutDesMois` ne débordent plus (harnais 09).

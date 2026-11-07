@@ -92,3 +92,7 @@ mode `mise_a_jour`, `user_id`). À regarder dans le journal et la base :
 - `saas/data/fetch_data/CLAUDE.md` (§ passage léger) ne mentionne pas encore
   avant-hier ni le premier passage : laissé hors de ma frontière (l'agent du
   ticket 03 touche aux mêmes zones de doc) — à ajouter à la fusion.
+
+Corrigé après revue : le premier passage a un marqueur explicite, `connected_accounts.premier_passage_instagram_le` (section 23, ajout seul, CONTRÔLE et sommaire ; lecture/écriture dans `source_data/account.py`). Posé seulement quand la remontée a écrit au moins un jour plus ancien qu'avant-hier ; NULL → retenté chaque jour (« k/88 jours remontés … retenté demain »). Colonne absente → pas de premier passage à l'aveugle, §23 nommée. `a_des_jours_avant` est retirée (plus d'appelant). À faire par David : rejouer `000_run_me_all.sql` (section 23).
+
+Vérifié : les 15 harnais verts (`python3.12 -I …/test_*.py`, `sh …/lancer.sh`). Ne se voit en vrai qu'après un passage du worker : le cron de 07:00 UTC, après la migration.

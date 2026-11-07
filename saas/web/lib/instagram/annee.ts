@@ -265,10 +265,19 @@ export type ModuleAnnee = {
 };
 
 /** `ecartes` : ceux des Règles de lecture (`ecartesDe`, sur la même métrique),
- *  retirés de toutes les foules ici et nulle part ailleurs dans le module. */
-export function moduleAnneeDe(posts: Post[], m: CleMetrique, periode: PeriodeLue, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART): ModuleAnnee {
+ *  retirés de toutes les foules ici et nulle part ailleurs dans le module.
+ *  `foulesLues` : celles des `retenus` sur `m`, si l'appelant les a déjà (la
+ *  page les calcule une fois pour le module, la liste et le Tableau). */
+export function moduleAnneeDe(
+  posts: Post[],
+  m: CleMetrique,
+  periode: PeriodeLue,
+  ctx: Contexte,
+  ecartes: Ecartes = AUCUN_ECART,
+  foulesLues?: ReturnType<typeof foulesDe>
+): ModuleAnnee {
   const gardes = retenus(posts, ecartes);
-  const lus: Lus = { tous: posts, gardes, ecartes, foules: foulesDe(gardes, m, ctx) };
+  const lus: Lus = { tous: posts, gardes, ecartes, foules: foulesLues ?? foulesDe(gardes, m, ctx) };
   // Un post de moins de 48 h compte pour ouvrir la rangée : il paraît au
   // nuage, en point vide, même s'il n'entre pas encore dans la foule. Un
   // format dont un filtre a tout écarté garde sa rangée : elle le dit.

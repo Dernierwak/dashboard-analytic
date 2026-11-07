@@ -63,6 +63,39 @@ test("des posts, jeton vivant : la page normale — un compte gratuit n'a aucun 
   assert.equal(etatDeLaPage({ posts: [post(null)], progres: null }).etat, "normale");
 });
 
+// Revue de code : `fetch_progress` n'est écrite que par le passage complet (le
+// léger n'y touche pas, `account_sync.leger`). Reconnecté le mardi, le compte
+// garderait l'encart jusqu'au Jour de travail suivant : un relevé ou une ligne
+// du compte PLUS RÉCENTS que la ligne `fetch_progress` disent que le jeton
+// revit, et l'encart se tait.
+const MORT_LE_LUNDI = { ...MORT, maj_a: "2026-11-02T07:01:00Z" };
+
+test("jeton mort, puis un relevé de post plus récent (reconnexion active) : pas d'encart", () => {
+  const e = etatDeLaPage({ posts: [post("2026-10-30T07:02:00Z"), post("2026-11-04T07:03:00Z")], progres: MORT_LE_LUNDI });
+  assert.equal(e.etat, "normale");
+});
+
+test("jeton mort, puis une ligne du compte plus récente (reconnexion active) : pas d'encart", () => {
+  const e = etatDeLaPage({ posts: [post("2026-10-30T07:02:00Z")], progres: MORT_LE_LUNDI, compteMajA: "2026-11-03T07:02:00Z" });
+  assert.equal(e.etat, "normale");
+});
+
+test("jeton mort, relevés et ligne du compte plus anciens que le constat : l'encart reste", () => {
+  const e = etatDeLaPage({ posts: [post("2026-10-30T07:02:00Z")], progres: MORT_LE_LUNDI, compteMajA: "2026-11-01T07:02:00Z" });
+  assert.deepEqual(e, { etat: "jeton_mort", figeAu: "2026-10-30" });
+});
+
+test("jeton mort sans date sur la ligne fetch_progress : l'encart reste (on ne devine pas une reconnexion)", () => {
+  const e = etatDeLaPage({ posts: [post("2026-11-04T07:03:00Z")], progres: { ...MORT, maj_a: null }, compteMajA: "2026-11-04T07:03:00Z" });
+  assert.equal(e.etat, "jeton_mort");
+});
+
+test("le commentaire de etat.ts ne prétend plus que le léger écrit fetch_progress", () => {
+  const source = readFileSync(join(RACINE, "saas/web/lib/instagram/etat.ts"), "utf8");
+  assert.doesNotMatch(source, /le léger quotidien compris/);
+  assert.doesNotMatch(source, /connected_accounts"\)|from\("connected_accounts/);
+});
+
 // ── Ce qui part ─────────────────────────────────────────────────────────────
 
 const RACINE = execFileSync("git", ["rev-parse", "--show-toplevel"]).toString().trim();
