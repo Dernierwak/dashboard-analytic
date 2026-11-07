@@ -241,6 +241,11 @@ class BaseDuMode:
     def select(self, *_):
         return self
 
+    def update(self, _champs):
+        # Le passage complet pose sa date (ticket 07) ; ce harnais ne la
+        # vérifie pas, le harnais 07 le fait.
+        return self
+
     def eq(self, colonne, valeur):
         self._uid = valeur
         return self
