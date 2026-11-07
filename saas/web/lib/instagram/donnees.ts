@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCompteActif } from "@/lib/account";
-import { lireToutesLesPages } from "@/lib/meta/lecture";
+import { jourDeTravailDuCompte } from "@/lib/jour-compte";
+import { dernierJourDeTravail } from "@/lib/jour-de-travail";
+import { decaler, lireToutesLesPages, periodeDe, raccourcisDe, type Periode, type Raccourci } from "@/lib/meta/lecture";
 import {
   abonnesParJourDe,
   postDe,
@@ -26,11 +28,32 @@ export type DonneesInstagram = {
   /** Tout l'historique en base, du plus récent au plus ancien. */
   posts: Post[];
   ctx: Contexte;
+  /** La période du Bandeau — elle choisit les points, jamais la référence. */
+  periode: Periode;
+  raccourcis: Raccourci[];
+  /** La borne haute du calendrier : le jour en cours n'est jamais compté. */
+  hier: string;
 };
 
-export async function getDonneesInstagram(): Promise<DonneesInstagram> {
+function iso(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** `from`/`to` : la période choisie au Bandeau (`AAAA-MM-JJ`). */
+export async function getDonneesInstagram(choix: { from?: string; to?: string } = {}): Promise<DonneesInstagram> {
   const supabase = createClient();
   const { uid } = await getCompteActif();
+  const maintenant = new Date();
+  // La période « comme Meta » (arbitrage du 2026-11-06) : par défaut les 7
+  // jours qui finissent la veille du dernier Jour de travail. Pas de
+  // `dernierJourLu` : `fetchCanauxMuets` ne connaît pas Instagram — un canal
+  // Instagram muet coûte des posts, pas une division fausse
+  // (`lib/canaux-muets.ts`).
+  const ctxPeriode = {
+    aujourdhui: iso(maintenant),
+    dernierJourDeTravail: iso(dernierJourDeTravail(await jourDeTravailDuCompte(), maintenant)),
+  };
+  const periode = periodeDe(choix, ctxPeriode);
 
   const [lignes, historique, jours] = await Promise.all([
     // `*` plutôt qu'une liste : une base où la section 23 n'est pas encore
@@ -79,6 +102,9 @@ export async function getDonneesInstagram(): Promise<DonneesInstagram> {
   const abonnes = abonnesParJourDe(historique, jours);
   return {
     posts: lignes.map((l) => postDe(l, abonnes)),
-    ctx: { maintenant: new Date().toISOString() },
+    ctx: { maintenant: maintenant.toISOString() },
+    periode,
+    raccourcis: raccourcisDe(periode, ctxPeriode),
+    hier: decaler(ctxPeriode.aujourdhui, -1),
   };
 }

@@ -421,8 +421,14 @@ export type Foule = {
  *  ou une fenêtre plus courte pour les pastilles 3 mois / 1 mois. Le post
  *  lui-même y est compris. Les Règles de lecture (ticket 12) retireront des
  *  posts AVANT cet appel. */
+/** Les posts d'un format qui ont l'âge et la date pour entrer dans une foule,
+ *  avec ou sans valeur — le « sur n » de « 11 images sur 12 ont ce chiffre ». */
+export function eligiblesDe(posts: Post[], format: Format, ctx: Contexte, mois: number = MOIS_DE_REFERENCE): Post[] {
+  return posts.filter((p) => p.format === format && maturiteDe(p) !== "jeune" && dansLesMois(p, ctx, mois));
+}
+
 export function fouleDe(posts: Post[], format: Format, m: CleMetrique, ctx: Contexte, mois: number = MOIS_DE_REFERENCE): Foule {
-  const eligibles = posts.filter((p) => p.format === format && maturiteDe(p) !== "jeune" && dansLesMois(p, ctx, mois));
+  const eligibles = eligiblesDe(posts, format, ctx, mois);
   const membres = eligibles.filter((p) => valeurDe(p, m) !== null);
   const q = membres.length >= MINIMUM_FOULE ? quartiles(membres.map((p) => valeurDe(p, m) as number)) : null;
   return {
