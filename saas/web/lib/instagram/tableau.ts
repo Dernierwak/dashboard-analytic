@@ -74,6 +74,12 @@ export type Ordre = "asc" | "desc";
  *  § 23) : si la première vraie valeur dément, c'est ici qu'on corrige. */
 const MS_PAR_SECONDE = 1000;
 
+/** Temps de visionnage moyen en secondes ; Instagram ne le donne que pour un
+ *  Reel — « – » ailleurs (spec, arbitrage du 2026-11-06). */
+export function visionnageDe(p: Post): number | null {
+  return p.format === "reel" && p.brutes.avgWatchTime !== null ? p.brutes.avgWatchTime / MS_PAR_SECONDE : null;
+}
+
 export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte): Tableau {
   const foules = foulesDe(posts, m, ctx);
   const colonnes = COLONNES_FIXES.includes(m) ? [...COLONNES_FIXES] : [...COLONNES_FIXES, m];
@@ -83,7 +89,7 @@ export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte): Tableau
     valeurs: Object.fromEntries(
       (Object.keys(METRIQUES) as CleMetrique[]).map((c) => [c, valeurDe(p, c)])
     ) as Record<CleMetrique, number | null>,
-    visionnage: p.format === "reel" && p.brutes.avgWatchTime !== null ? p.brutes.avgWatchTime / MS_PAR_SECONDE : null,
+    visionnage: visionnageDe(p),
     dansLAnnee: dansLesMois(p, ctx),
   }));
   return { metrique: m, colonnes, lignes: trier(lignes, "date", "desc"), jour: ctx.maintenant.slice(0, 10) };

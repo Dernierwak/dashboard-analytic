@@ -113,7 +113,7 @@ function poidsDe(n: number, nAnnee: number): number {
   return nAnnee > 0 ? Math.min(1, Math.sqrt(n / nAnnee)) : 0;
 }
 
-function moustacheDe(posts: Post[], format: Format, m: CleMetrique, ctx: Contexte, mois: Fenetre, nAnnee: number): Moustache {
+export function moustacheDe(posts: Post[], format: Format, m: CleMetrique, ctx: Contexte, mois: Fenetre, nAnnee: number): Moustache {
   const f = fouleDe(posts, format, m, ctx, mois);
   if (!f.quartiles) return { etat: "mince", mois, n: f.n };
   const l = limitesDe(f.quartiles);
@@ -320,7 +320,7 @@ export function raisonIndisponible(posts: Post[], m: CleMetrique): string | null
 
 const MOIS_LONGS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
-function jourLong(jour: string, avecAnnee: boolean): string {
+export function jourLong(jour: string, avecAnnee: boolean): string {
   const [a, m, j] = jour.split("-");
   return `${Number(j)} ${MOIS_LONGS[Number(m) - 1]}${avecAnnee ? ` ${a}` : ""}`;
 }
