@@ -52,13 +52,19 @@ de départ change.
   des posts neufs, journée d'hier du compte (`instagram/releve_compte.py` →
   `instagram_compte_jours`, et la portée des 7 jours dans
   `instagram_compte_periodes`) — sans rapport, sans `fetch_progress` (il ferait oublier
-  l'échec Meta du Jour de travail), une ligne de journal avec sa durée.
+  l'échec Meta du Jour de travail), une ligne de journal avec sa durée ; et
+  pour un payant, **un bloc du Rattrapage** (`sync.rattrapage`) : l'inventaire
+  repris au curseur gardé dans `connected_accounts.rattrapage_instagram_curseur`,
+  les absents d'une page importés, fin datée dans `rattrapage_instagram_fini_le`.
+  La taille du bloc (`_TAILLE_DU_BLOC`) attend la durée mesurée (« rattrapage :
+  … en T s » dans la ligne du léger).
   Puis le **trimestriel** (`instagram_reread.relire_si_du`) : les connexions
   dont `connected_accounts.relecture_instagram_le` a 3 mois ou est NULL sont
   relues en entier, et la date est reposée après un passage réussi.
   Au Jour de travail, `sync.posts_a_relire` relit sans plafond : les posts en
-  base de moins de 30 jours, et les absents — tous pour un payant, ceux plus
-  récents que sa base pour un gratuit (10 à l'arrivée).
+  base de moins de 30 jours, et les absents — ceux de moins de 30 jours pour
+  un payant (le reste n'entre que par le Rattrapage), ceux plus récents que sa
+  base pour un gratuit (10 à l'arrivée).
   `--user` (récolte d'amorçage, déclenchée par le web), `--force`,
   `--report-only` (sans léger : aucune plateforme appelée).
 - **`cockpit/full_history.py`** — `mode: complete` : un compte (`--user`

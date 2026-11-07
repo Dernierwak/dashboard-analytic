@@ -69,8 +69,10 @@ connus["150"]["media_url"] = "https://cdn.instagram.example/150.jpg"
 liste = sync.posts_a_relire(inventaire, connus, MAINTENANT, is_paid=True)
 verifier("Payant : les 60 posts en base de moins de 30 jours, tous (plus de reprise à 40)",
          [p for p in liste if int(p) <= 60], [str(i) for i in range(1, 61)])
-verifier("Payant : les 100 posts absents au-delà du 200e, tous (plus de plafond 200)",
-         [p for p in liste if int(p) > 200], [str(i) for i in range(201, 301)])
+# Ticket 08 : les absents de plus de 30 jours n'entrent plus que par le
+# Rattrapage par blocs (`sync.rattrapage`), plus par le passage complet.
+verifier("Payant : les absents au-delà du 200e (plus de 30 jours) sont laissés au Rattrapage",
+         [p for p in liste if int(p) > 200], [])
 verifier("Payant : un vieux post dont l'image n'a jamais atteint le stockage est repris",
          "150" in liste, True)
 verifier("Payant : un vieux post en base, image en stockage, n'est pas relu au Jour de travail",
@@ -78,11 +80,11 @@ verifier("Payant : un vieux post en base, image en stockage, n'est pas relu au J
 verifier("Payant : la liste suit l'inventaire, du plus récent au plus ancien",
          liste, sorted(liste, key=int))
 
-# Arrivée d'un payant : rien en base, tout l'inventaire (le Rattrapage par
-# blocs, ticket 08, bornera cette partie-là).
-verifier("Payant à l'arrivée : tout l'inventaire, sans plafond",
+# Arrivée d'un payant : rien en base, ses posts de moins de 30 jours ; le
+# reste vient du Rattrapage par blocs (ticket 08).
+verifier("Payant à l'arrivée : ses 60 posts de moins de 30 jours, le reste au Rattrapage",
          sync.posts_a_relire(inventaire, {}, MAINTENANT, is_paid=True),
-         [str(i) for i in range(1, 301)])
+         [str(i) for i in range(1, 61)])
 
 # ── 2 · Le gratuit : 10 à l'arrivée, puis il grandit, sans Rattrapage ──────
 verifier("Gratuit à l'arrivée : ses 10 plus récents",

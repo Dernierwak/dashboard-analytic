@@ -9,6 +9,9 @@ from datetime import date, datetime, timedelta, timezone
 
 from saas.data.fetch_data.shared.date_ranges import Fenetre
 from saas.data.supabase._queries import _all_pages
+from saas.data.supabase.source_data.account import (
+    ColonneRattrapageAbsente, etat_du_rattrapage, noter_rattrapage,
+)
 from saas.data.supabase.source_data.couverture import avancer_couverture, debut_des_posts_complets
 from saas.data.supabase.source_data.meta import (
     COLONNES_SI_CONNUES, insert_instagram_org, insert_instagram_releves, insert_instagram_total_posts_id,
@@ -104,13 +107,16 @@ def _a_relire(sb, uid: str, medias: list[dict],
     comme avant.
     """
     insert_instagram_total_posts_id(supabase=sb, user_id=uid, total_posts_id=len(medias))
-    profil = sb.table("profiles").select("is_paid").eq("id", uid).execute().data or [{}]
-    # Sans profil lisible, la règle la plus étroite, celle du gratuit (au lieu
-    # de l'`IndexError` d'avant).
-    is_paid = bool(profil[0].get("is_paid"))
     connus = _en_base(sb, uid)
     return posts_a_relire(medias, connus, maintenant or datetime.now(timezone.utc),
-                          is_paid), connus
+                          _est_payant(sb, uid)), connus
+
+
+def _est_payant(sb, uid: str) -> bool:
+    """`profiles.is_paid` — sans profil lisible, la règle la plus étroite, celle
+    du gratuit (au lieu de l'`IndexError` d'avant)."""
+    profil = sb.table("profiles").select("is_paid").eq("id", uid).execute().data or [{}]
+    return bool(profil[0].get("is_paid"))
 
 
 def posts_a_relire(medias: list[dict], connus: dict[str, dict], maintenant: datetime,
@@ -118,8 +124,15 @@ def posts_a_relire(medias: list[dict], connus: dict[str, dict], maintenant: date
     """Les posts que relit le passage du Jour de travail, du plus récent au plus ancien.
 
     · Absent de la base :
-        payant — tous, sans plafond (le Rattrapage par blocs, ticket 08, bornera
-          ceux qui sont plus anciens que la base) ;
+        payant — ceux de moins de 30 jours seulement. Les plus anciens entrent
+          par le Rattrapage (`rattrapage`), un bloc par passage léger, et par
+          lui seul : sans cette borne, le passage complet les importait tous
+          d'un coup (~1 600 sur le compte de l'essai, ~3 appels et une image
+          chacun, une durée que rien n'a mesurée). 30 jours plutôt que « la
+          première page de l'inventaire » : c'est la fenêtre que ce passage
+          relit déjà en base — une seule règle, « le Jour de travail touche ce
+          qui a moins de 30 jours » —, et elle suit le rythme de publication,
+          pas une taille de page que Meta ne documente pas (`posts.recuperer`) ;
         gratuit — ses 10 plus récents à l'arrivée, puis tout post plus récent
           que le plus ancien de sa base : il grandit, rien ne s'efface, et pas
           de Rattrapage (spec § Le compte gratuit).
@@ -135,14 +148,16 @@ def posts_a_relire(medias: list[dict], connus: dict[str, dict], maintenant: date
     """
     ordre = sorted(medias, key=lambda m: m.get("timestamp") or "", reverse=True)
     ids = [str(m["id"]) for m in ordre]
+    borne = maintenant - timedelta(days=_JOURS_RAFRAICHIS)
     rangs_connus = [rang for rang, pid in enumerate(ids) if pid in connus]
-    if not rangs_connus:
-        absents = set(ids if is_paid else ids[:_POSTS_A_L_ARRIVEE_GRATUIT])
+    if is_paid:
+        absents = {pid for media, pid in zip(ordre, ids)
+                   if pid not in connus and _publie_depuis(media.get("timestamp"), borne)}
+    elif not rangs_connus:
+        absents = set(ids[:_POSTS_A_L_ARRIVEE_GRATUIT])
     else:
         plus_ancien = rangs_connus[-1]
-        absents = {pid for rang, pid in enumerate(ids)
-                   if pid not in connus and (is_paid or rang < plus_ancien)}
-    borne = maintenant - timedelta(days=_JOURS_RAFRAICHIS)
+        absents = {pid for rang, pid in enumerate(ids) if pid not in connus and rang < plus_ancien}
     retenus = []
     for media, pid in zip(ordre, ids):
         if pid in absents:
@@ -327,6 +342,134 @@ def releve_quotidien(sb, uid: str, acces: AccesMeta,
         insert_instagram_org(supabase=sb, results=fiches)
     insert_instagram_releves(sb, releves)
     return f"insta léger: {len(releves)} posts relevés dont {neufs} neufs"
+
+
+# ── LE RATTRAPAGE PAR BLOCS (payant) ─────────────────────────────────────────
+#
+# Spec § La récolte — Ce qui s'ajoute, « Le Rattrapage » : tous les posts que
+# Meta rend, du plus récent au plus ancien, un bloc par passage quotidien.
+#
+# LA TAILLE DU BLOC N'EST PAS MESURÉE. La spec la veut « fixée sur la durée
+# mesurée d'un passage » (§ Notes, « Dans le brouillard ») et aucun passage n'a
+# encore tourné : 25 est une valeur d'attente, choisie pour que le bloc pèse au
+# pire autant que ce que le léger relève déjà chaque jour (une page de 25,
+# `posts._PAGE_DU_JOUR`) — il ne fait au plus que doubler une durée qu'on va
+# lire. À régler sur la ligne de journal du léger (ticket 04) : « rattrapage :
+# N posts importés en T s » donne le coût d'un post, à rapporter à ce qu'on
+# accepte de durée par compte dans le job quotidien (plafond GitHub : 6 h pour
+# TOUS les comptes). Ticket 08 de `.scratch/instagram-construction/`, laissé
+# `needs-human` pour ce réglage. Au plus 100 : la page de `/media` n'est pas
+# documentée au-delà (`posts.recuperer`).
+_TAILLE_DU_BLOC = 25
+# Coupe-circuit des pages SANS post à importer (le haut de l'inventaire, déjà en
+# base par le complet et le léger ; ou tout l'inventaire après un curseur
+# refusé). Chacune ne coûte qu'un appel ; 20 pages de 25 = 500 posts sautés par
+# passage, du même ordre que les ~19 pages de l'inventaire complet du compte de
+# l'essai (1 839 posts à 100 par page). La position gagnée est gardée : un saut
+# plus long se finit au passage suivant.
+_PAGES_PAR_PASSAGE_MAX = 20
+
+
+def rattrapage(sb, uid: str, acces: AccesMeta, connexion_id,
+               maintenant: datetime | None = None) -> str:
+    """Un bloc du Rattrapage d'une connexion → son mot de fin.
+
+    Lit l'inventaire depuis le curseur gardé en base, saute les pages dont
+    tous les posts sont déjà en base, importe les absents de la première page
+    qui en a (fiche, image, métriques, relevé), puis garde le curseur de la
+    page suivante. Plus de page → la fin est datée, les passages suivants ne
+    lisent plus rien : un post neuf arrive en HAUT de l'inventaire, c'est le
+    travail du léger et du complet.
+
+    · Gratuit : rien (spec § Le compte gratuit, « pas de Rattrapage »).
+    · Curseur refusé par Meta (un curseur pointe sur un post : supprimé, il
+      ne mène plus nulle part) : reprise du haut ; les pages déjà en base ne
+      coûtent qu'un appel chacune. Refusé aussi du haut → panne : lève, le
+      curseur ne bouge pas.
+    · Métriques refusées pour TOUT le bloc (jeton, limite) : rien n'est écrit
+      et le curseur reste AVANT la page — elle sera relue demain. Refusées
+      pour une partie : la fiche s'écrit sans métriques (inconnues, pas
+      zéro) et le trimestriel les relira ; sinon le curseur passé, ce post ne
+      reviendrait jamais.
+    """
+    if not acces.instagram:
+        raise ValueError("instagram_business_id requis en mode headless")
+    if not _est_payant(sb, uid):
+        return "rattrapage: compte gratuit — pas de Rattrapage"
+    try:
+        etat = etat_du_rattrapage(sb, uid, connexion_id)
+    except ColonneRattrapageAbsente:
+        return ("rattrapage: colonnes rattrapage_instagram_* absentes — lance "
+                "saas/data/supabase/migrations/000_run_me_all.sql")
+    if etat["rattrapage_instagram_fini_le"]:
+        return f"rattrapage: fini le {str(etat['rattrapage_instagram_fini_le'])[:10]}"
+    maintenant = maintenant or datetime.now(timezone.utc)
+    curseur = etat["rattrapage_instagram_curseur"]
+    mots: list[str] = []
+    fini, sautees, importes, refuses = False, 0, 0, 0
+    for _ in range(_PAGES_PAR_PASSAGE_MAX):
+        medias, suivant, err = posts.page_du_rattrapage(acces, curseur, _TAILLE_DU_BLOC)
+        if err and curseur:
+            medias, suivant, err = posts.page_du_rattrapage(acces, None, _TAILLE_DU_BLOC)
+            if not err:
+                mots.append("curseur refusé par Meta, reprise du haut de l'inventaire")
+                curseur = None
+        if err:
+            raise ValueError("Instagram — l'API a refusé l'inventaire du Rattrapage : " + err)
+        ids = [str(m["id"]) for m in medias if m.get("id")]
+        connus = _en_base(sb, uid, ids) if ids else {}
+        absents = [m for m in medias if m.get("id") and str(m["id"]) not in connus]
+        if absents:
+            importes, refuses = _importer(sb, uid, acces, absents, maintenant)
+            if not importes:
+                mots.append(f"{refuses} lecture(s) refusée(s) par Meta — bloc repris demain")
+                break
+        else:
+            sautees += 1
+        curseur = suivant
+        if not medias or suivant is None:
+            fini = True
+            break
+        if absents:
+            break
+    bilan = f"{importes} posts importés"
+    if refuses and importes:
+        bilan += f" ({refuses} sans métriques)"
+    if sautees:
+        bilan += f", {sautees} page(s) déjà en base sautée(s)"
+    mots.insert(0, bilan)
+    if fini:
+        mots.append("fin de l'inventaire")
+    if not noter_rattrapage(sb, uid, connexion_id, curseur, maintenant if fini else None):
+        mots.append("curseur NON écrit — 0 ligne touchée, le bloc sera refait")
+    return "rattrapage: " + ", ".join(mots)
+
+
+def _importer(sb, uid: str, acces: AccesMeta, medias: list[dict],
+              maintenant: datetime) -> tuple[int, int]:
+    """Les posts absents d'une page → (importés avec métriques, refusés).
+
+    Rien n'est écrit si aucun n'a ses métriques : c'est une panne, pas une
+    page de posts sans chiffres."""
+    lus = []
+    for media in medias:
+        post_id = str(media["id"])
+        m = metriques.metriques_du_post(acces, post_id, media.get("media_product_type"))
+        lus.append((media, m))
+    importes = sum(m is not None for _, m in lus)
+    if not importes:
+        return 0, len(lus)
+    fiches, releves = [], []
+    for media, m in lus:
+        fiche, releve = lignes_du_post(uid, media, m, maintenant)
+        if fiche is None:
+            continue
+        fiche["media_url"] = _image_du_post(sb, uid, str(media["id"]), media, {})
+        fiches.append(fiche)
+        if releve is not None:
+            releves.append(releve)
+    _ecrire(sb, fiches, releves)
+    return importes, len(lus) - importes
 
 
 # Écrire tous les 100 posts relus : la relecture unique d'un compte à 1 839

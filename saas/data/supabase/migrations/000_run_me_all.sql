@@ -44,7 +44,9 @@
 --   23)    Instagram — instagram_post_releves, instagram_compte_jours, et les
 --          colonnes du relevé sur la fiche du post (instagram-construction, 01),
 --          instagram_compte_periodes (instagram-construction, 05),
---          connected_accounts.relecture_instagram_le (instagram-construction, 07)
+--          connected_accounts.relecture_instagram_le (instagram-construction, 07),
+--          connected_accounts.rattrapage_instagram_curseur / _fini_le
+--          (instagram-construction, 08)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1862,6 +1864,19 @@ END $$;
 ALTER TABLE public.connected_accounts
     ADD COLUMN IF NOT EXISTS relecture_instagram_le timestamptz DEFAULT NULL;
 
+-- connected_accounts.rattrapage_instagram_curseur / rattrapage_instagram_fini_le
+-- — où en est le Rattrapage d'un compte payant, par connexion (ticket 08). Le
+-- passage léger importe un bloc de l'inventaire par jour, du plus récent au
+-- plus ancien (spec § La récolte, « Le Rattrapage ») : le curseur de
+-- pagination de Meta (`paging.cursors.after`, jamais l'URL `next`, qui porte
+-- le jeton) dit où reprendre le lendemain, NULL = au haut de l'inventaire ; la
+-- date de fin est posée quand Meta ne rend plus de page, et arrête le
+-- Rattrapage. Ajout seul ; RLS de connected_accounts inchangée, fermée au
+-- partage (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS rattrapage_instagram_curseur text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS rattrapage_instagram_fini_le timestamptz DEFAULT NULL;
+
 
 -- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
@@ -1947,6 +1962,8 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'instagram_organic_posts',  'releve_a'),             -- §23
     ('c', 'instagram_organic_posts',  'booste_vu_le'),         -- §23
     ('c', 'connected_accounts',       'relecture_instagram_le'), -- §23
+    ('c', 'connected_accounts',       'rattrapage_instagram_curseur'), -- §23
+    ('c', 'connected_accounts',       'rattrapage_instagram_fini_le'), -- §23
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
