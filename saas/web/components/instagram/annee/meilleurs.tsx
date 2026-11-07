@@ -5,6 +5,7 @@ import { METRIQUES, NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import type { Meilleur } from "@/lib/instagram/meilleurs";
 import { MiniMoustache } from "./mini-moustache";
+import { AgePost } from "@/components/instagram/age";
 
 // ── LA LISTE DES 5 MEILLEURS POSTS DE LA PÉRIODE ────────────────────────────
 //
@@ -72,6 +73,8 @@ function Carte({ m, metrique, params }: { m: Meilleur; metrique: CleMetrique; pa
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-faint">
             <span>{p.format ? NOM_FORMAT[p.format] : "Format inconnu"}</span>
             <span>· {dateCourte(p.date)}</span>
+            <AgePost post={p} />
+
             {p.boosteVuLe && (
               <span className="rounded-full border border-line px-1.5 py-px text-[10.5px] text-muted" title="Instagram a listé au moins une annonce sur ce post">
                 Boosté

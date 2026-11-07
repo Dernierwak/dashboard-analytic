@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { Icone } from "@/components/meta/elements";
+import { AgePost } from "@/components/instagram/age";
 import { METRIQUES, NOM_FORMAT } from "@/lib/instagram/lecture";
 import {
+  aUnePlace,
   csvDuTableau,
   dateCourte,
   formaterValeur,
@@ -139,7 +141,10 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
   const ecarte = l.place.etat === "ecarte";
   return (
     <tr className={`border-t border-line ${ecarte ? "bg-canvas/60 opacity-60" : ""}`}>
-      <td className="whitespace-nowrap py-2.5 pl-5 pr-3 tabular-nums text-ink">{dateCourte(p.date)}</td>
+      <td className="whitespace-nowrap py-2.5 pl-5 pr-3 tabular-nums text-ink">
+        {dateCourte(p.date)}
+        <AgePost post={p} className="mt-0.5 flex text-[11px]" />
+      </td>
       <td className="max-w-[260px] px-3 py-2.5">
         <Link
           href={lienInstagram(params, { post: p.id })}
@@ -168,7 +173,7 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
         {place === null ? (
           <span className="text-faint">{TIRET}</span>
         ) : (
-          <span className={l.place.etat === "place" ? "text-ink" : "text-faint"}>{place}</span>
+          <span className={aUnePlace(l.place) ? "text-ink" : "text-faint"}>{place}</span>
         )}
       </td>
       {t.colonnes.map((m) => (

@@ -3,7 +3,7 @@ import { dateCourte, formaterValeur, libellePlace, raisonPlace } from "@/lib/ins
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
 import { NEUTRE } from "@/lib/palette";
-import { NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture";
+import { ageLu, NOM_FORMAT, texteAge, type CleMetrique } from "@/lib/instagram/lecture";
 import type { PeriodeLue, RangeeLue } from "@/lib/instagram/annee";
 import { HAUTEUR, ordonnee, Y_BAS, Y_HAUT } from "./dessin";
 
@@ -103,6 +103,7 @@ export function Nuage({
         const bulle = [
           rang ? `n° ${rang}` : null,
           dateCourte(p.post.date),
+          texteAge(ageLu(p.post)),
           formaterValeur(metrique, p.valeur),
           booste ? "Boosté" : null,
           place,

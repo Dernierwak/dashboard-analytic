@@ -21,8 +21,8 @@
 //
 // Les Règles de lecture (`regles.ts`) passent leurs écartés : ils sortent de
 // toutes les foules (moustaches, post type, pastilles, total) mais restent au
-// nuage, gris, avec leur raison. L'âge égal (13) changera la place portée par
-// chaque point.
+// nuage, gris, avec leur raison. Un point de 48 h à 7 jours porte sa place à
+// âge égal (`placeDuPost`, relevés dans `ctx.releves`), calculée sans eux.
 import {
   eligiblesDe,
   fouleDe,

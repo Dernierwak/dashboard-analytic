@@ -11,10 +11,10 @@
 // Sans directive (`CLAUDE.md` §8) ; imports relatifs sans extension pour
 // Next, résolus par le crochet du harnais.
 import {
-  ageDe,
+  ageLu,
   foulesDe,
-  maturiteDe,
   METRIQUES,
+  type AgeLu,
   valeurDe,
   type CleMetrique,
   type Contexte,
@@ -52,9 +52,6 @@ export function lecteurDe(p: Post): string | null {
 
 export type PlaceSurMetrique = { metrique: CleMetrique; valeur: number | null; place: PlaceDuPost };
 
-/** `null` : le post a plus de 7 jours, ses chiffres sont faits. */
-export type AgeLu = { texte: string; peutChanger: true } | null;
-
 export type LecturePost = {
   post: Post;
   /** Sur la métrique choisie. */
@@ -68,15 +65,6 @@ export type LecturePost = {
   visionnage: number | null;
   age: AgeLu;
 };
-
-/** Sous 7 jours, l'âge se dit avec « peut encore changer » (user story 20) ;
- *  « J+n » = au moins n × 24 h (vocabulaire de la spec). */
-function ageLu(p: Post): AgeLu {
-  const maturite = maturiteDe(p);
-  if (maturite === "mur") return null;
-  if (maturite === "jeune") return { texte: "moins de 48 h", peutChanger: true };
-  return { texte: `J+${Math.floor((ageDe(p) as number) / 24)}`, peutChanger: true };
-}
 
 /** `regles` : les Règles de lecture de l'URL. Sur chaque métrique, les
  *  écartés sont ceux de CETTE métrique (« les hors norme de la métrique
