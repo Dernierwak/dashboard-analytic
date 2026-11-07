@@ -5,12 +5,20 @@ import { dernierJourDeTravail } from "@/lib/jour-de-travail";
 import { decaler, lireToutesLesPages, periodeDe, raccourcisDe, type Periode, type Raccourci } from "@/lib/meta/lecture";
 import {
   abonnesParJourDe,
+  AGE_EGAL_JUSQUA_HEURES,
+  AGE_MINIMUM_HEURES,
+  debutDesMois,
+  maturiteDe,
+  MOIS_DE_REFERENCE,
   postDe,
+  relevesDe,
   type Contexte,
   type LigneAbonnesHistorique,
   type LigneBase,
   type LigneCompteJour,
+  type LigneReleve,
   type Post,
+  type RelevesParPost,
 } from "@/lib/instagram/lecture";
 import { jourDuRapport } from "@/lib/instagram/panneau";
 
@@ -101,13 +109,52 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
   ]);
 
   const abonnes = abonnesParJourDe(historique, jours);
+  const posts = lignes.map((l) => postDe(l, abonnes));
+  const ctx: Contexte = { maintenant: maintenant.toISOString() };
+  // Les relevés ne servent qu'à placer un post de 48 h à 7 jours : sans lui,
+  // personne ne les demande et on ne les lit pas.
+  if (posts.some((p) => maturiteDe(p) === "age_egal")) {
+    const releves = await lireReleves(supabase, uid, ctx.maintenant);
+    if (releves) ctx.releves = releves;
+  }
   return {
-    posts: lignes.map((l) => postDe(l, abonnes)),
-    ctx: { maintenant: maintenant.toISOString() },
+    posts,
+    ctx,
     periode,
     raccourcis: raccourcisDe(periode, ctxPeriode),
     hier: decaler(ctxPeriode.aujourdhui, -1),
   };
+}
+
+/** Les relevés de 48 h à 7 jours des 12 derniers mois — la matière de la
+ *  place à âge égal (spec, « place à âge égal » : J+2 à J+6). `null` si la
+ *  table manque (section 23 pas jouée) ou se lit mal : la page dit alors que
+ *  l'âge égal ne se calcule pas, au lieu d'un « 0 post au même âge ».
+ *
+ *  Paginé avec un ordre TOTAL — la clé `(user_id, post_id, releve_a)` : un
+ *  relevé par post et par passage dépasse 1 000 lignes en quelques semaines,
+ *  et PostgREST tronque en silence (`CLAUDE.md` §8). */
+async function lireReleves(supabase: ReturnType<typeof createClient>, uid: string, maintenant: string): Promise<RelevesParPost | null> {
+  try {
+    const lignes = await lireToutesLesPages<LigneReleve>((de, a) =>
+      supabase
+        .from("instagram_post_releves")
+        .select("post_id, releve_a, age_heures, reach, views, likes, comments, saved, shares, follows, profile_visits")
+        .eq("user_id", uid)
+        .gte("age_heures", AGE_MINIMUM_HEURES)
+        .lt("age_heures", AGE_EGAL_JUSQUA_HEURES)
+        // Un post publié il y a plus de 12 mois n'entre dans aucune foule :
+        // ce seuil élague la lecture, `dansLesMois` reste le juge au calcul.
+        .gte("releve_a", debutDesMois(maintenant, MOIS_DE_REFERENCE))
+        .order("post_id", { ascending: true })
+        .order("releve_a", { ascending: true })
+        .range(de, a)
+    );
+    return relevesDe(lignes);
+  } catch (e) {
+    console.error("[instagram] instagram_post_releves illisible", e);
+    return null;
+  }
 }
 
 /** Le jour (`AAAA-MM-JJ`) du PREMIER rapport hebdo qui a listé ce post, ou

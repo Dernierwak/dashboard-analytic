@@ -1,6 +1,7 @@
 import { PanneauLateral } from "@/components/meta/panneau";
 import { MiniMoustache } from "@/components/instagram/annee/mini-moustache";
-import { dateCourte, formaterValeur, formaterVisionnage, libellePlace, raisonPlace, TIRET } from "@/lib/instagram/tableau";
+import { AgePost } from "@/components/instagram/age";
+import { aUnePlace, dateCourte, formaterValeur, formaterVisionnage, libellePlace, raisonPlace, TIRET } from "@/lib/instagram/tableau";
 import { METRIQUES, NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture";
 import { lecteurDe, type LecturePost } from "@/lib/instagram/panneau";
 
@@ -36,9 +37,7 @@ export function PanneauPost({
       sousTitre={
         <>
           {lecture.age ? (
-            <span title="Instagram met encore ses chiffres à jour : ils peuvent changer pendant 7 jours.">
-              <span aria-hidden>↻</span> {lecture.age.texte} · peut encore changer
-            </span>
+            <AgePost post={p} />
           ) : (
             <span>Dernier relevé : {dateCourte(p.releveA)}</span>
           )}
@@ -101,7 +100,7 @@ export function PanneauPost({
                   {METRIQUES[x.metrique].nom}
                 </th>
                 <td className="py-1.5 pr-2 text-right tabular-nums text-ink">{formaterValeur(x.metrique, x.valeur)}</td>
-                <td className={`py-1.5 text-right ${x.place.etat === "place" ? "text-ink" : "text-faint"}`} title={raisonPlace(x.place)}>
+                <td className={`py-1.5 text-right ${aUnePlace(x.place) ? "text-ink" : "text-faint"}`} title={raisonPlace(x.place)}>
                   {place ?? TIRET}
                 </td>
               </tr>

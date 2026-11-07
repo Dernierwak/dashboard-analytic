@@ -150,6 +150,12 @@ export function dateCourte(iso: string | null): string {
   return `${d.getUTCDate()} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** Une vraie place (sur la référence ou à âge égal) s'écrit en encre pleine ;
+ *  le reste — une raison de ne pas en avoir — en gris. */
+export function aUnePlace(p: PlaceDuPost): boolean {
+  return p.etat === "place" || p.etat === "age_egal_place";
+}
+
 /** Ce que la colonne Place écrit ; `null` = rien à écrire (« – »). */
 export function libellePlace(p: PlaceDuPost): string | null {
   switch (p.etat) {
@@ -161,6 +167,10 @@ export function libellePlace(p: PlaceDuPost): string | null {
       return "plus d'un an";
     case "jeune":
       return "moins de 48 h";
+    case "age_egal_place":
+      return `${NOM_PLACE[p.place]} à J+${p.jours}${p.horsNorme ? " · hors norme" : ""}`;
+    case "age_egal_mince":
+      return `J+${p.jours} · ${p.n} / ${MINIMUM_FOULE} au même âge`;
     case "age_egal":
       return `J+${p.jours}`;
     case "foule_mince":
@@ -187,8 +197,12 @@ export function raisonPlace(p: PlaceDuPost): string {
       return "Publié il y a plus de 12 mois : hors de tout calcul, il se trie sur sa valeur.";
     case "jeune":
       return "Moins de 48 h : ses chiffres bougent encore, il n'a pas de place.";
+    case "age_egal_place":
+      return `J+${p.jours} : face aux ${p.n} posts de ce format des 12 derniers mois, tels qu'ils étaient au même âge — ses chiffres peuvent encore changer.`;
+    case "age_egal_mince":
+      return `${p.n} ${p.n > 1 ? `${NOM_FORMAT_PLURIEL[p.format]} ont` : `${NOM_FORMAT[p.format]} a`} un relevé à J+${p.jours} sur les 12 derniers mois, il en faut ${MINIMUM_FOULE} : sa place à âge égal attendra.`;
     case "age_egal":
-      return `J+${p.jours} : sa place se lira face aux posts du même âge.`;
+      return `J+${p.jours} : les relevés par âge ne sont pas lisibles, sa place à âge égal ne se calcule pas.`;
     case "foule_mince":
       return p.ecartes
         ? `${mentionSousSix(p.n, p.format, p.ecartes)}.`

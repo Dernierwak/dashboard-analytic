@@ -374,9 +374,91 @@ export function maturiteDe(p: Post): Maturite {
   return "mur";
 }
 
+/** Ce qu'un post de 48 h à 7 jours affiche partout où il paraît (liste,
+ *  Tableau, Panneau, infobulle du nuage) — UNE forme pour toute la page
+ *  (user story 20). `null` : plus de 7 jours, ses chiffres sont faits. */
+export type AgeLu = { texte: string; peutChanger: true } | null;
+
+export const PEUT_ENCORE_CHANGER = "peut encore changer";
+
+/** « J+n » = au moins n × 24 h (vocabulaire de la spec) ; sous 48 h, « moins
+ *  de 48 h » — le nuage le dessine en plus en point vide. */
+export function ageLu(p: Post): AgeLu {
+  const maturite = maturiteDe(p);
+  if (maturite === "mur") return null;
+  if (maturite === "jeune") return { texte: "moins de 48 h", peutChanger: true };
+  return { texte: `J+${joursDe(ageDe(p) as number)}`, peutChanger: true };
+}
+
+/** « J+3 · peut encore changer » ; `null` au-delà de 7 jours. */
+export function texteAge(a: AgeLu): string | null {
+  return a && `${a.texte} · ${PEUT_ENCORE_CHANGER}`;
+}
+
+function joursDe(heures: number): number {
+  return Math.floor(heures / 24);
+}
+
+// ── Les relevés, pour la place à âge égal ────────────────────────────────────
+
+/** Une ligne d'`instagram_post_releves` (migration § 23) : le cumul d'un post
+ *  à un âge RÉEL — un passage manqué donne un J+8, jamais un faux J+7. */
+export type LigneReleve = {
+  post_id: string | number | null;
+  releve_a: string | null;
+  age_heures: unknown;
+  reach?: unknown;
+  views?: unknown;
+  likes?: unknown;
+  comments?: unknown;
+  saved?: unknown;
+  shares?: unknown;
+  follows?: unknown;
+  profile_visits?: unknown;
+};
+
+export type Releve = { ageHeures: number; brutes: Brutes };
+
+/** ID du post → ses relevés, du plus jeune au plus vieux. */
+export type RelevesParPost = Record<string, Releve[]>;
+
+/** Trié par âge ici, pas par la base : « le premier relevé tombé dans le
+ *  J+n » ne doit pas dépendre de l'ordre de pagination. Un âge illisible
+ *  n'est pas un relevé. */
+export function relevesDe(lignes: LigneReleve[]): RelevesParPost {
+  const out: RelevesParPost = {};
+  for (const l of lignes) {
+    const age = mesure(l.age_heures);
+    if (age === null || l.post_id === null || l.post_id === undefined) continue;
+    const id = String(l.post_id);
+    (out[id] ??= []).push({
+      ageHeures: age,
+      brutes: {
+        reach: mesure(l.reach),
+        views: mesure(l.views),
+        likes: mesure(l.likes),
+        comments: mesure(l.comments),
+        saved: mesure(l.saved),
+        shares: mesure(l.shares),
+        follows: mesure(l.follows),
+        profileVisits: mesure(l.profile_visits),
+        // Le relevé ne garde pas le temps de visionnage (migration § 23) ;
+        // aucune métrique du Sélecteur n'en dépend.
+        avgWatchTime: null,
+      },
+    });
+  }
+  for (const r of Object.values(out)) r.sort((a, b) => a.ageHeures - b.ageHeures);
+  return out;
+}
+
 export type Contexte = {
   /** L'instant de la lecture, ISO — les 12 mois glissants finissent ici. */
   maintenant: string;
+  /** Les relevés de 48 h à 7 jours, pour la place à âge égal. Absent = pas
+   *  lus (base sans la section 23, ou lecture ratée) : la place à âge égal
+   *  ne se calcule pas, et le dit — ce n'est pas « zéro post au même âge ». */
+  releves?: RelevesParPost;
 };
 
 /** Le début d'une fenêtre de `mois` mois glissants finissant à `maintenant`,
@@ -408,6 +490,10 @@ export type Foule = {
   fin: string;
   /** Les posts qui la font : format, fenêtre, ≥ 48 h, une valeur. */
   posts: Post[];
+  /** Ceux du format, de la fenêtre et de l'âge, avec ou sans valeur
+   *  aujourd'hui : la place à âge égal relit LEURS relevés — un post sans
+   *  j'aime au dernier relevé pouvait en avoir à J+3. */
+  eligibles: Post[];
   /** `n` : ceux qui ont une valeur ; `sur` : tous ceux du format, de la
    *  fenêtre et de l'âge voulus — « 11 images sur 12 ont ce chiffre ». */
   n: number;
@@ -437,6 +523,7 @@ export function fouleDe(posts: Post[], format: Format, m: CleMetrique, ctx: Cont
     debut: debutDesMois(ctx.maintenant, mois),
     fin: ctx.maintenant,
     posts: membres,
+    eligibles,
     n: membres.length,
     sur: eligibles.length,
     quartiles: q,
@@ -485,7 +572,14 @@ export type PlaceDuPost =
   | { etat: "ecarte"; raison: RaisonEcart }
   | { etat: "plus_d_un_an" }
   | { etat: "jeune" }
-  /** De 48 h à 7 jours : sa place se lit à âge égal (ticket 13). */
+  /** De 48 h à 7 jours, placé face aux `n` posts du format relevés au même
+   *  J+n (spec, « place à âge égal »). */
+  | { etat: "age_egal_place"; jours: number; place: Place; horsNorme: boolean; n: number }
+  /** De 48 h à 7 jours, moins de 6 posts relevés au même âge : pas de place,
+   *  une mention. */
+  | { etat: "age_egal_mince"; jours: number; n: number; format: Format }
+  /** De 48 h à 7 jours, relevés non lus (base sans la section 23, ou
+   *  lecture ratée) : on ne sait pas, ce n'est pas une foule vide. */
   | { etat: "age_egal"; jours: number }
   | { etat: "format_inconnu" }
   | { etat: "sans_valeur" }
@@ -502,10 +596,37 @@ export function placeDuPost(p: Post, m: CleMetrique, foules: Record<Format, Foul
   if (maturite === "jeune") return { etat: "jeune" };
   const v = valeurDe(p, m);
   if (v === null) return { etat: "sans_valeur" };
-  if (maturite === "age_egal") return { etat: "age_egal", jours: Math.floor((ageDe(p) as number) / 24) };
   const f = foules[p.format];
+  if (maturite === "age_egal") return placeAgeEgal(p, v, m, f, ctx);
   if (!f.quartiles || !f.limites) return { etat: "foule_mince", n: f.n, format: p.format };
   return { etat: "place", place: bandeDe(v, f.quartiles), horsNorme: estHorsNorme(v, f.limites) };
+}
+
+/** Le premier relevé tombé dans [n × 24 ; (n+1) × 24) h — `releves` est trié
+ *  par âge (`relevesDe`). Le premier : celui qui a l'âge le plus proche du
+ *  post jugé, pas un relevé qui aurait eu un jour de plus pour grimper. */
+export function premierReleveDuJour(releves: Releve[] | undefined, jours: number): Releve | null {
+  return releves?.find((r) => r.ageHeures >= jours * 24 && r.ageHeures < (jours + 1) * 24) ?? null;
+}
+
+/** La place à âge égal (spec) : de chaque AUTRE post de la foule du format
+ *  (12 mois, ≥ 48 h, sans les écartés des Règles — `f` vient des `retenus`),
+ *  la valeur à son premier relevé du même J+n ; mêmes quartiles, minimum 6. */
+function placeAgeEgal(p: Post, v: number, m: CleMetrique, f: Foule, ctx: Contexte): PlaceDuPost {
+  const jours = joursDe(ageDe(p) as number);
+  if (!ctx.releves) return { etat: "age_egal", jours };
+  const releves = ctx.releves;
+  const valeurs = f.eligibles.flatMap((autre) => {
+    if (autre.id === p.id) return [];
+    const r = premierReleveDuJour(releves[autre.id], jours);
+    // Le post tel qu'il était à cet âge : ses brutes d'alors, le reste
+    // (format, abonnés du jour de publication) inchangé.
+    const alors = r && valeurDe({ ...autre, brutes: r.brutes }, m);
+    return alors === null || alors === undefined ? [] : [alors];
+  });
+  const q = valeurs.length >= MINIMUM_FOULE ? quartiles(valeurs) : null;
+  if (!q) return { etat: "age_egal_mince", jours, n: valeurs.length, format: f.format };
+  return { etat: "age_egal_place", jours, place: bandeDe(v, q), horsNorme: estHorsNorme(v, limitesDe(q)), n: valeurs.length };
 }
 
 // ── Les totaux ───────────────────────────────────────────────────────────────
