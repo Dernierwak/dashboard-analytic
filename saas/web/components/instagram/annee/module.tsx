@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { METRIQUES } from "@/lib/instagram/lecture";
 import { texteReference, type ModuleAnnee } from "@/lib/instagram/annee";
+import type { Params } from "@/lib/instagram/liens";
 import { RangeeFormat } from "./rangee";
 
 // ── MODULE · « TES POSTS FACE À TON ANNÉE » ──────────────────────────────────
@@ -12,10 +13,24 @@ import { RangeeFormat } from "./rangee";
 // ticket 10) ; ce composant dessine.
 //
 // Découpé pour les tickets suivants : `aside` reçoit la liste collante des 5
-// meilleurs (ticket 11) à droite des rangées ; `regles` la seconde ligne
-// « Lu sans les boostés — 4 posts écartés » (ticket 12).
+// meilleurs (ticket 11) à droite des rangées, `rangs` leurs numéros pour le
+// nuage ; `regles` la seconde ligne « Lu sans les boostés — 4 posts
+// écartés » (ticket 12). `params` : un point du nuage ouvre `?post=` en
+// gardant le reste de l'URL.
 
-export function TesPostsFaceATonAnnee({ module, aside, regles }: { module: ModuleAnnee; aside?: ReactNode; regles?: ReactNode }) {
+export function TesPostsFaceATonAnnee({
+  module,
+  params,
+  rangs = {},
+  aside,
+  regles,
+}: {
+  module: ModuleAnnee;
+  params: Params;
+  rangs?: Record<string, number>;
+  aside?: ReactNode;
+  regles?: ReactNode;
+}) {
   const m = METRIQUES[module.metrique];
   return (
     <section aria-labelledby="titre-annee" className="min-w-0">
@@ -38,7 +53,7 @@ export function TesPostsFaceATonAnnee({ module, aside, regles }: { module: Modul
               ) : (
                 <div className="mt-4 grid gap-4">
                   {module.rangees.map((r) => (
-                    <RangeeFormat key={r.format} rangee={r} metrique={module.metrique} periode={module.periode} />
+                    <RangeeFormat key={r.format} rangee={r} metrique={module.metrique} periode={module.periode} rangs={rangs} params={params} />
                   ))}
                 </div>
               )}

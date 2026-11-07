@@ -1,7 +1,7 @@
 // Dashboard Instagram organique :
 // Bandeau (la période) · Ta page (abonnés, courbe, croissance 30 j) · Tes
-// moyennes · le Sélecteur de vue · « Tes posts face à ton année » · Tous tes
-// posts.
+// moyennes · le Sélecteur de vue · « Tes posts face à ton année » et la liste
+// des 5 meilleurs · Tous tes posts · le Panneau « lire un post » (`?post=`).
 //
 // LA PAGE SE RECONSTRUIT PAR TICKETS (`.scratch/instagram-construction/`) :
 // le Bandeau, le Sélecteur, le module de l'année et le Tableau lisent
@@ -18,14 +18,18 @@
 // « Tes posts face à ton année » ne la rouvre pas : il situe chaque post
 // contre ses pareils, sans dire quel format choisir (spec, user story 4).
 import { getInstaDash } from "@/lib/channels";
-import { getDonneesInstagram } from "@/lib/instagram/donnees";
+import { getDonneesInstagram, jourDuPremierRapportQuiListe } from "@/lib/instagram/donnees";
 import { METRIQUES, metriqueDe, type CleMetrique } from "@/lib/instagram/lecture";
 import { moduleAnneeDe, raisonIndisponible } from "@/lib/instagram/annee";
+import { meilleursDe, rangsDe } from "@/lib/instagram/meilleurs";
+import { lecturePostDe, phraseEcartHebdo } from "@/lib/instagram/panneau";
 import { tableauDe } from "@/lib/instagram/tableau";
-import type { Params } from "@/lib/instagram/liens";
+import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { BandeauInstagram } from "@/components/instagram/bandeau";
 import { SelecteurObjectif } from "@/components/instagram/selecteur";
 import { TesPostsFaceATonAnnee } from "@/components/instagram/annee/module";
+import { ListeMeilleurs } from "@/components/instagram/annee/meilleurs";
+import { PanneauPost, PanneauPostIntrouvable } from "@/components/instagram/panneau-post";
 import { TableauPosts } from "@/components/instagram/tableau";
 import { fmtCHF } from "@/lib/report";
 import { CourbeAbonnes, MoyennesInsta } from "@/components/channel-dash";
@@ -53,8 +57,18 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
       return raison ? [[m, raison]] : [];
     })
   ) as Partial<Record<CleMetrique, string>>;
-  const annee = moduleAnneeDe(posts, metrique, { debut: periode.debut, fin: periode.fin }, ctx);
+  const lue = { debut: periode.debut, fin: periode.fin };
+  const annee = moduleAnneeDe(posts, metrique, lue, ctx);
+  const meilleurs = meilleursDe(posts, metrique, lue, ctx);
   const tableau = tableauDe(posts, metrique, ctx);
+
+  // Le post ouvert (`?post=`, l'ID Graph). Le rapport hebdo n'est relu que
+  // pour lui, et seulement s'il a un permalink — c'est par lui qu'on le
+  // retrouve dans un payload (le rapport ne porte pas de `post_id`).
+  const idOuvert = un(searchParams.post);
+  const ouvert = idOuvert ? posts.find((p) => p.id === idOuvert) ?? null : null;
+  const fermeture = lienInstagram(searchParams, { post: null });
+  const jourRapport = ouvert?.permalink ? await jourDuPremierRapportQuiListe(ouvert.permalink) : null;
 
   // L'ancienne lecture, sur la période du Bandeau — d'ici son départ (14, 15).
   const d = await getInstaDash({ from: periode.debut, to: periode.fin });
@@ -124,12 +138,29 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
         {/* Remplace « Tes posts, un par un » et le « Top 3 » : la même
             question — que valent mes posts ? — lue contre l'année du format
             plutôt qu'en barres sans repère (spec, § Ce qui part). */}
-        <TesPostsFaceATonAnnee module={annee} />
+        <TesPostsFaceATonAnnee
+          module={annee}
+          params={searchParams}
+          rangs={rangsDe(meilleurs)}
+          aside={<ListeMeilleurs liste={meilleurs} metrique={metrique} params={searchParams} />}
+        />
         {/* ── TOUS TES POSTS — remplace « Posts de la période » et « Vue
             globale » (ticket 09) : tout l'historique, la place de chaque
             post face à ses pareils des 12 derniers mois. */}
-        <TableauPosts tableau={tableau} />
+        <TableauPosts tableau={tableau} params={searchParams} />
       </div>
+
+      {idOuvert &&
+        (ouvert ? (
+          <PanneauPost
+            lecture={lecturePostDe(ouvert, posts, metrique, ctx)}
+            metrique={metrique}
+            phraseHebdo={phraseEcartHebdo(ouvert.releveA, jourRapport)}
+            fermeture={fermeture}
+          />
+        ) : (
+          <PanneauPostIntrouvable fermeture={fermeture} />
+        ))}
     </main>
   );
 }

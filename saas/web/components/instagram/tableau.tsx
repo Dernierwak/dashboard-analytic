@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { Icone } from "@/components/meta/elements";
 import { METRIQUES, NOM_FORMAT } from "@/lib/instagram/lecture";
 import {
@@ -32,7 +34,9 @@ import {
 
 const TH = "sticky top-0 z-10 whitespace-nowrap border-b border-line bg-white py-3 font-medium";
 
-export function TableauPosts({ tableau }: { tableau: Tableau }) {
+/** `params` : un clic sur un post ouvre le Panneau (`?post=`) en gardant le
+ *  reste de l'URL (`lienInstagram`). */
+export function TableauPosts({ tableau, params }: { tableau: Tableau; params: Params }) {
   const [tri, setTri] = useState<Tri>("date");
   const [ordre, setOrdre] = useState<Ordre>("desc");
   const lignes = useMemo(() => trier(tableau.lignes, tri, ordre), [tableau.lignes, tri, ordre]);
@@ -113,7 +117,7 @@ export function TableauPosts({ tableau }: { tableau: Tableau }) {
             </thead>
             <tbody>
               {lignes.map((l) => (
-                <Ligne key={l.post.id} l={l} t={tableau} />
+                <Ligne key={l.post.id} l={l} t={tableau} params={params} />
               ))}
             </tbody>
           </table>
@@ -127,24 +131,27 @@ export function TableauPosts({ tableau }: { tableau: Tableau }) {
   );
 }
 
-function Ligne({ l, t }: { l: LigneTableau; t: Tableau }) {
+function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }) {
   const p = l.post;
   const place = libellePlace(l.place);
   return (
     <tr className="border-t border-line">
       <td className="whitespace-nowrap py-2.5 pl-5 pr-3 tabular-nums text-ink">{dateCourte(p.date)}</td>
       <td className="max-w-[260px] px-3 py-2.5">
-        <span className="flex min-w-0 items-center gap-2.5">
+        <Link
+          href={lienInstagram(params, { post: p.id })}
+          scroll={false}
+          title={`Lire le post — ${p.legende || "sans légende"}`}
+          className="flex min-w-0 items-center gap-2.5 hover:underline"
+        >
           {p.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={p.image} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md border border-line object-cover" />
           ) : (
             <span className="h-9 w-9 shrink-0 rounded-md border border-line bg-black/[0.04]" aria-hidden />
           )}
-          <span className="min-w-0 truncate" title={p.legende}>
-            {p.legende || "(sans légende)"}
-          </span>
-        </span>
+          <span className="min-w-0 truncate">{p.legende || "(sans légende)"}</span>
+        </Link>
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-muted">
         {p.format ? NOM_FORMAT[p.format] : "Format inconnu"}
