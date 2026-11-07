@@ -462,10 +462,14 @@ function ChoixElement({
 }
 
 // ── La période (user stories 8, 9) ───────────────────────────────────────────
+//
+// Exporté : le Bandeau Instagram le reprend tel quel (sa période est « comme
+// Meta », arbitrage du 2026-11-06), plutôt qu'un second calendrier qui
+// divergerait. Il ne connaît ni la vue ni la campagne : il rend deux dates.
 
 const JOURS_SEMAINE = ["L", "M", "M", "J", "V", "S", "D"];
 
-function ChoixPeriode({
+export function ChoixPeriode({
   periode,
   raccourcis,
   hier,

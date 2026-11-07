@@ -44,6 +44,16 @@ def total(acces: AccesMeta, metrique: str, debut: date, fin_exclue: date,
     return lire(f"{GRAPH}/{acces.instagram}/insights", params, timeout=30)
 
 
+def serie(acces: AccesMeta, metrique: str, debut: date, fin_exclue: date) -> Reponse:
+    """Une valeur par jour sur `[debut, fin_exclue[` (`period=day` sans
+    `metric_type`) : `data[0].values[{value, end_time}]` — la forme
+    `time_series` de l'essai réel. Sert au premier passage (ticket 06), qui
+    découpe ses 88 jours en tranches de 30."""
+    return lire(f"{GRAPH}/{acces.instagram}/insights",
+                {"metric": metrique, "period": "day", "since": _ts(debut),
+                 "until": _ts(fin_exclue), "access_token": acces.jeton}, timeout=30)
+
+
 def abonnes(acces: AccesMeta) -> Reponse:
     """`followers_count` à l'instant du passage — R5 : `sync.recolter` le lit
     aussi et le jette ; on le relit ici plutôt que de dépendre de lui (un
