@@ -1,7 +1,11 @@
 // Dashboard Instagram organique :
 // Ta page (abonnés, courbe, croissance 30 j) · Tes moyennes (une seule fois, et
 // sur la période affichée) · Tes posts un par un · Top 3 posts ·
-// Posts de la période vs ton post moyen · Vue globale.
+// Tous tes posts (le Tableau neuf, `lib/instagram/`).
+//
+// LA PAGE SE RECONSTRUIT PAR TICKETS (`.scratch/instagram-construction/`) :
+// le bas lit déjà `lib/instagram/` ; le haut lit encore `getInstaDash`, qui
+// part avec le ticket 15.
 //
 // « TES FORMATS » ET « QUAND PUBLIER ? » ONT ÉTÉ RETIRÉS LE 2026-09-12.
 // Les deux répondaient à « qu'est-ce qui marche chez toi » en RECALCULANT la
@@ -13,12 +17,15 @@
 import {
   getInstaDash,
   moyenneMesuree,
-  trierDecroissant,
   valeurDe,
   porteeRelevee,
   type DashParams,
   type InstaPost,
 } from "@/lib/channels";
+import { getDonneesInstagram } from "@/lib/instagram/donnees";
+import { metriqueDe } from "@/lib/instagram/lecture";
+import { tableauDe } from "@/lib/instagram/tableau";
+import { TableauPosts } from "@/components/instagram/tableau";
 import { fmtCHF } from "@/lib/report";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { ScrollList } from "@/components/scroll-list";
@@ -148,112 +155,6 @@ function PostsMetricChart({
   );
 }
 
-// Tri des posts par métrique : clique un en-tête de colonne.
-const SORTS: { key: string; label: string }[] = [
-  { key: "date", label: "Post" },
-  { key: "reach", label: "Portée" },
-  { key: "views", label: "Vues" },
-  { key: "likes", label: "J'aime" },
-  { key: "comments", label: "Comm." },
-  { key: "saved", label: "Enreg." },
-  { key: "eng", label: "Engagement" },
-];
-
-function sortPosts(posts: InstaPost[], sort: string): InstaPost[] {
-  if (sort === "date") return posts; // déjà du plus récent au plus ancien
-  return trierDecroissant(posts, (p) => valeurDe(p, sort));
-}
-
-function PostsTable({
-  posts,
-  histReach,
-  sort,
-  params,
-}: {
-  posts: InstaPost[];
-  histReach: number | null;
-  sort: string;
-  params: DashParams;
-}) {
-  const th = (s: { key: string; label: string }, align: string, px: string) => (
-    <th
-      key={s.key}
-      className={`${align} font-semibold ${px} py-3 sticky top-0 bg-white z-10 border-b border-line`}
-    >
-      <a
-        href={lienDash("/instagram", params, { s: s.key }, "reach")}
-        className={sort === s.key ? "text-ink" : "hover:text-muted"}
-        title={s.key === "date" ? "Trier par date" : `Trier par ${s.label}`}
-      >
-        {s.label}
-        {sort === s.key && s.key !== "date" && " ↓"}
-      </a>
-    </th>
-  );
-  return (
-    <div className="bg-white border border-line rounded-xl shadow-card overflow-x-auto">
-      <div className="max-h-[440px] overflow-y-auto min-w-[680px]">
-      <table className="w-full text-[12.5px]">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-wide text-faint">
-            {th(SORTS[0], "text-left", "px-5")}
-            <th className="text-left font-semibold px-2 py-3 sticky top-0 bg-white z-10 border-b border-line">Format</th>
-            {th(SORTS[1], "text-right", "px-2")}
-            {th(SORTS[2], "text-right", "px-2")}
-            {th(SORTS[3], "text-right", "px-2")}
-            {th(SORTS[4], "text-right", "px-2")}
-            {th(SORTS[5], "text-right", "px-2")}
-            {th(SORTS[6], "text-right", "px-5")}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {posts.map((p, i) => {
-            const above = histReach !== null && p.reach >= histReach;
-            return (
-              <tr key={i}>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-3">
-                    {p.mediaUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.mediaUrl}
-                        alt=""
-                        className="w-9 h-9 rounded-lg object-cover border border-line shrink-0"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-lg bg-black/[0.04] border border-line shrink-0" />
-                    )}
-                    <div>
-                      <div className="text-ink font-medium leading-snug max-w-[220px] truncate">
-                        {p.caption || "(sans légende)"}
-                      </div>
-                      <div className="text-[10.5px] text-faint mt-0.5">{fmtDate(p.date)}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-2 py-3 text-muted">{p.type}</td>
-                <td className="px-2 py-3 text-right font-mono">
-                  <span className={above ? "text-pos font-semibold" : "text-ink"}>
-                    {fmtCompte(porteeRelevee(p))}
-                  </span>
-                </td>
-                <td className="px-2 py-3 text-right font-mono text-muted">
-                  {p.views > 0 ? fmtCHF(p.views) : "—"}
-                </td>
-                <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.likes)}</td>
-                <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.comments)}</td>
-                <td className="px-2 py-3 text-right font-mono text-muted">{fmtCHF(p.saved)}</td>
-                <td className="px-5 py-3 text-right font-mono text-ink">{fmtEng(p.eng)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  );
-}
-
 // Le libellé de la métrique qui pilote la page — évite d'écrire « portée » en
 // dur alors que l'utilisateur a filtré sur les vues.
 function metricLabel(key: string): string {
@@ -263,7 +164,9 @@ function metricLabel(key: string): string {
 export default async function InstagramPage({
   searchParams,
 }: {
-  searchParams: DashParams;
+  // `metrique` : la métrique choisie, que la Place du Tableau suit (spec,
+  // Sélecteur de vue) — le Sélecteur qui l'écrit vient au ticket 10.
+  searchParams: DashParams & { metrique?: string };
 }) {
   const d = await getInstaDash(searchParams);
   const metric = ["reach", "views", "likes", "comments", "saved", "eng"].includes(
@@ -274,24 +177,8 @@ export default async function InstagramPage({
   // Graphe : posts de la fenêtre, sinon les 20 derniers (pour toujours voir la tendance)
   const chartPosts = d.posts.length >= 2 ? d.posts : d.allPosts.slice(0, 20);
 
-  // Tri des tables (?s=) + query de base pour les liens d'en-tête
-  const sort = ["date", "reach", "views", "likes", "comments", "saved", "eng"].includes(
-    searchParams?.s ?? ""
-  )
-    ? (searchParams!.s as string)
-    : "date";
-  const sortedPosts = sortPosts(d.posts, sort);
-  const sortedAll = sortPosts(d.allPosts, sort);
-
-  const engDiff =
-    d.postsEng !== null && d.avgEng !== null && d.avgEng > 0
-      ? ((d.postsEng - d.avgEng) / d.avgEng) * 100
-      : null;
-
-  // La table des POSTS ne peut pas porter d'écart — voir son pied. On garde la
-  // comparaison sous la main pour l'écrire, plutôt que de laisser un silence.
-  const cmpPosts =
-    d.comparaison.ventilations && d.comparaison.reference ? d.comparaison.reference.label : null;
+  const { posts, ctx } = await getDonneesInstagram();
+  const tableau = tableauDe(posts, metriqueDe(searchParams?.metrique), ctx);
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
@@ -417,67 +304,12 @@ export default async function InstagramPage({
         </div>
       )}
 
-      {/* ── POSTS DE LA PÉRIODE ── */}
-      <h2 className="text-[14px] font-semibold text-ink mb-3">
-        Posts de la période{" "}
-        <span className="text-faint font-normal">· comparés à ton post moyen</span>
-      </h2>
-      {engDiff !== null && Math.abs(engDiff) >= 10 && (
-        <p className={`text-[12px] font-semibold mb-3 ${engDiff > 0 ? "text-pos" : "text-warn"}`}>
-          <Triangle sens={engDiff > 0 ? "haut" : "bas"} /> Tes posts de la période engagent{" "}
-          {engDiff > 0 ? "+" : ""}
-          {engDiff.toFixed(0)} % vs ton habitude ({fmtEng(d.postsEng)} contre{" "}
-          {fmtEng(d.avgEng)}).
-        </p>
-      )}
-      {d.posts.length === 0 ? (
-        <div className="bg-white border border-line rounded-xl shadow-card p-6 text-center mb-4">
-          <p className="text-[13px] text-muted">
-            Aucun post sur la période
-            {d.histReach !== null && (
-              <> — ton compte porte d&apos;habitude à {fmtCHF(d.histReach)} par post</>
-            )}
-            .
-          </p>
-        </div>
-      ) : (
-        <div className="mb-4">
-          <PostsTable posts={sortedPosts} histReach={d.histReach} sort={sort} params={d.params} />
-        </div>
-      )}
-
-      {/* ── VUE GLOBALE ── */}
-      <details className="mb-4">
-        <summary className="text-[12.5px] font-semibold text-muted cursor-pointer select-none hover:text-ink">
-          ▸ Vue globale — tous tes posts ({d.allPosts.length})
-        </summary>
-        <div className="mt-3">
-          <PostsTable posts={sortedAll} histReach={d.histReach} sort={sort} params={d.params} />
-        </div>
-      </details>
-
-      {/* UN SEUL PIED pour les deux tables de posts, et il porte maintenant la
-          limite qui compte quand une comparaison est posée : une publication
-          appartient à UNE période, celle où elle a été publiée. Une colonne
-          d'écart ici n'aurait donc que des naissances, ligne après ligne — un
-          « nouveau » sur cent lignes n'est pas une comparaison, c'est du bruit
-          présenté comme une mesure. */}
-      <p className="text-[11.5px] text-faint leading-relaxed">
-        {d.histReach !== null
-          ? `Portée en vert = au-dessus de ton post moyen (${fmtCHF(d.histReach)}). `
-          : "Aucune publication n'a de portée relevée : pas de post moyen, rien n'est en vert. "}
-        Engagement =
-        (j&apos;aime + commentaires + enregistrements) / portée.
-        {cmpPosts && (
-          <>
-            {" "}
-            Ces deux tables ne portent pas d&apos;écart contre {cmpPosts} : une publication
-            appartient à UNE période, celle où elle a été publiée — elle n&apos;a pas d&apos;avant.
-            Une colonne d&apos;écart n&apos;aurait donc que des naissances, ligne après ligne, et
-            « nouveau » répété cent fois n&apos;est pas une comparaison.
-          </>
-        )}
-      </p>
+      {/* ── TOUS TES POSTS — remplace « Posts de la période » et « Vue globale »
+          (ticket 09 de .scratch/instagram-construction/) : tout l'historique,
+          la place de chaque post face à ses pareils des 12 derniers mois. */}
+      <div className="mt-12">
+        <TableauPosts tableau={tableau} />
+      </div>
 
     </main>
   );
