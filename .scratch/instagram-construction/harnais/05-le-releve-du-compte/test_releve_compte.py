@@ -48,6 +48,7 @@ def _ts(jour: date) -> int:
 
 
 HIER = (_ts(date(2026, 11, 9)), _ts(date(2026, 11, 10)))
+AVANT_HIER = (_ts(date(2026, 11, 8)), _ts(date(2026, 11, 9)))
 SEPT_JOURS = (_ts(date(2026, 11, 3)), _ts(date(2026, 11, 10)))
 
 
@@ -84,6 +85,9 @@ REPONSES = {
         "follows_and_unfollows", [("FOLLOWER", 7), ("NON_FOLLOWER", 2)]),
     ("reach", None, SEPT_JOURS): _total("reach", 4210),
 }
+# Avant-hier est relu à chaque passage (ticket 06) : mêmes réponses qu'hier.
+REPONSES.update({(cle[0], cle[1], AVANT_HIER): corps for cle, corps in list(REPONSES.items())
+                 if cle != "fiche" and cle[2] == HIER})
 
 
 class FauxGraph:
@@ -108,7 +112,9 @@ class FauxGraph:
 
 
 ECRIT: dict[str, list] = {"jours": [], "periodes": []}
-releve_compte.ecrire_jour_du_compte = lambda sb, ligne: ECRIT["jours"].append(ligne)
+releve_compte.ecrire_jours_du_compte = lambda sb, lignes: ECRIT["jours"].extend(lignes)
+# Compte déjà en base : pas de premier passage ici (c'est le harnais 06).
+releve_compte.a_des_jours_avant = lambda sb, uid, jour: True
 releve_compte.ecrire_periode_du_compte = lambda sb, ligne: ECRIT["periodes"].append(ligne)
 
 
@@ -123,8 +129,8 @@ def passer(reponses):
 
 # ── 1 · Tout est rendu ──────────────────────────────────────────────────────
 graph, mot = passer(REPONSES)
-verifier("Une ligne pour HIER, jamais pour le jour en cours",
-         [l["jour"] for l in ECRIT["jours"]], ["2026-11-09"])
+verifier("Une ligne pour HIER (et avant-hier relu, ticket 06), jamais pour le jour en cours",
+         [l["jour"] for l in ECRIT["jours"]], ["2026-11-09", "2026-11-08"])
 verifier("La ligne du jour : portée, interactions, abonnés, gagnés, perdus, part AD",
          ECRIT["jours"][0],
          {"user_id": "u-1", "jour": "2026-11-09", "reach": 812, "total_interactions": 95,
@@ -132,8 +138,8 @@ verifier("La ligne du jour : portée, interactions, abonnés, gagnés, perdus, p
 verifier("La portée dédoublonnée des 7 jours finissant hier, telle que rendue",
          ECRIT["periodes"],
          [{"user_id": "u-1", "debut": "2026-11-03", "fin": "2026-11-09", "reach": 4210}])
-verifier("Sept appels, un par chiffre : une panne n'en emporte pas un autre",
-         len(graph.appels), 7)
+verifier("Douze appels, un par chiffre (hier, avant-hier, abonnés, 7 jours)",
+         len(graph.appels), 12)
 verifier("Le mot dit le jour relevé", "2026-11-09" in mot and "compte" in mot, True)
 
 # ── 2 · `AD` absent de la ventilation → NULL, pas 0 ─────────────────────────
@@ -197,7 +203,7 @@ class Base:
 
 
 b = Base()
-instagram_compte.ecrire_jour_du_compte(b, {"user_id": "u", "jour": "2026-11-09", "reach": 1})
+instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-11-09", "reach": 1}])
 instagram_compte.ecrire_periode_du_compte(
     b, {"user_id": "u", "debut": "2026-11-03", "fin": "2026-11-09", "reach": 9})
 verifier("Le jour s'upserte sur (user_id, jour) ; la période s'ajoute sans écraser",
@@ -207,7 +213,7 @@ verifier("Le jour s'upserte sur (user_id, jour) ; la période s'ajoute sans écr
            {"on_conflict": "user_id,debut,fin", "ignore_duplicates": True})])
 b = Base(leve="{'code': 'PGRST205', 'message': 'Could not find the table'}")
 try:
-    instagram_compte.ecrire_jour_du_compte(b, {"user_id": "u", "jour": "2026-11-09"})
+    instagram_compte.ecrire_jours_du_compte(b, [{"user_id": "u", "jour": "2026-11-09"}])
     instagram_compte.ecrire_periode_du_compte(b, {"user_id": "u", "debut": "x", "fin": "y",
                                                   "reach": 1})
     leve = False
