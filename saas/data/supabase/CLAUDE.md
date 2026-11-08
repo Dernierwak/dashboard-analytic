@@ -13,7 +13,9 @@ Ce dossier sépare les trois trajets autour de Supabase :
 Il contient aussi toute l'infrastructure Supabase :
 
 - `config.toml` et `.temp/` pour Supabase CLI ;
-- `migrations/000_run_me_all.sql`, seul schéma conservé à installer/rejouer.
+- `migrations/000_run_me_all.sql`, seul schéma conservé à installer/rejouer ;
+- `controles/`, des requêtes de contrôle en **lecture seule**, une par chantier,
+  à coller dans le SQL Editor (un seul `SELECT` qui rend OK / KO / À LIRE).
 
 Depuis la racine, toute commande CLI utilise `supabase --workdir saas/data …`.
 Les credentials ne vivent pas ici : seul `saas/config/secrets.py` les lit.
