@@ -13,7 +13,7 @@ décidée dans `.scratch/recolte/map.md`.
 
 | Où | Quoi |
 |---|---|
-| `cockpit/` | Les trois commandes : `scheduled_update.py` (cron), `full_history.py` (historique complet), `check_data_collection.py` (JSON local, aucune écriture). |
+| `cockpit/` | Les quatre commandes : `scheduled_update.py` (cron), `full_history.py` (historique complet), `instagram_reread.py` (relecture de tous les posts Instagram), `check_data_collection.py` (JSON local, aucune écriture). |
 | `orchestration/` | Le déroulement partagé : `execution_plan.py`, `account_sync.py`, `concurrent_runner.py`, `error_reporter.py`. Le suivi persistant vit dans `../supabase/fetch_state/state.py`. |
 | `shared/` | Commun à toutes les plateformes. `http_client.py` est le SEUL chemin HTTP ; `date_ranges.py` porte les fenêtres et la reprise ; `token_status.py` distingue un jeton valide, mort ou inconnu. |
 | `../supabase/source_data/` | **Tout ce qui envoie la récolte à Supabase** — `meta.py`, `google.py`, `platform.py`. |
@@ -47,11 +47,46 @@ de départ change.
   (`mode: mise_a_jour`, cron 07:00 UTC) : chaque compte dont c'est le Jour de
   travail (`profiles.fetch_schedule`, `_due_today`) reprend là où sa base
   s'arrête moins le recouvrement, puis le rapport est publié.
+  Avant cela, chaque jour et pour tous les comptes Instagram, le **passage
+  léger** (`account_sync.leger`) : posts de moins de 8 × 24 h relevés, fiche
+  des posts neufs — un absent n'est importé que s'il est **plus récent que le
+  post le plus récent en base** (`sync.posts_du_jour`) ; les vieux absents
+  relèvent du complet (règle du gratuit) ou du Rattrapage (payant). Puis le
+  compte (`instagram/releve_compte.py`) : hier, et **avant-hier relu** (Meta
+  documente 48 h de retard) dans `instagram_compte_jours` ; la portée des 7
+  jours finissant hier **et** avant-hier dans `instagram_compte_periodes`, en
+  upsert — les périodes plus anciennes restent en ajout seul. Tant que
+  `connected_accounts.premier_passage_instagram_le` est NULL, le **premier
+  passage** (90 jours, remontée des abonnés) est retenté chaque jour
+  (journal : « k/88 jours remontés ») ; le marqueur n'est posé que si la
+  remontée a écrit au moins un jour plus ancien qu'avant-hier. Le léger et le
+  trimestriel tombent par compte, dans leur `try` : le cron continue. Sans
+  rapport, sans `fetch_progress` (il ferait oublier
+  l'échec Meta du Jour de travail), une ligne de journal avec sa durée ; et
+  pour un payant, **un bloc du Rattrapage** (`sync.rattrapage`) : l'inventaire
+  repris au curseur gardé dans `connected_accounts.rattrapage_instagram_curseur`,
+  les absents d'une page importés, fin datée dans `rattrapage_instagram_fini_le`.
+  La taille du bloc (`_TAILLE_DU_BLOC`) attend la durée mesurée (« rattrapage :
+  … en T s » dans la ligne du léger).
+  Puis le **trimestriel** (`instagram_reread.relire_si_du`) : les connexions
+  dont `connected_accounts.relecture_instagram_le` a 3 mois sont relues en
+  entier, et la date est reposée après un passage réussi. NULL n'est **pas**
+  dû : une connexion sans date la reçoit au premier passage complet réussi
+  (canal instagram de `account_sync.passer`).
+  Au Jour de travail, `sync.posts_a_relire` relit sans plafond : les posts en
+  base de moins de 30 jours, et les absents — ceux de moins de 30 jours pour
+  un payant (le reste n'entre que par le Rattrapage), ceux plus récents que sa
+  base pour un gratuit (10 à l'arrivée).
   `--user` (récolte d'amorçage, déclenchée par le web), `--force`,
-  `--report-only`.
+  `--report-only` (sans léger : aucune plateforme appelée).
 - **`cockpit/full_history.py`** — `mode: complete` : un compte (`--user`
   obligatoire), tout l'historique depuis `--depuis` (37 mois par défaut, la
   limite de Meta). Écrit, publie et envoie comme la mise à jour.
+- **`cockpit/instagram_reread.py`** — drapeau `relecture_instagram` : relit
+  TOUS les posts Instagram en base (`sync.relire_tous`, lecture paginée, 2 à
+  3 appels par post, sans image), un compte (`--user`) ou tous. Ni rapport ni
+  `fetch_progress`. Relecture unique après la section 23 ; pose
+  `relecture_instagram_le`, comme le trimestriel du cron.
 - **`cockpit/check_data_collection.py`** — en local seulement, jamais dans le workflow (le dépôt est
   public) : N éléments par API, un JSON, aucune écriture.
 

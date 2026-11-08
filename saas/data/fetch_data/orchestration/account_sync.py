@@ -13,12 +13,14 @@ Ce code vivait dans `run()` de `fetch_all.py` jusqu'au ticket 07 de
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timezone
 
 from saas.data.fetch_data.orchestration import error_reporter as alarmes
 from saas.data.fetch_data.orchestration import execution_plan as plans
 from saas.data.fetch_data.orchestration.concurrent_runner import executer
 from saas.data.supabase.fetch_state.state import CANAUX, Suivi
+from saas.data.fetch_data.shared.http_client import sans_jeton
 from saas.data.fetch_data.shared.token_status import INCONNU, TokenStatus
 from saas.data.fetch_data.sources.google.ads import sync as recolte_google
 from saas.data.fetch_data.sources.google.auth import token as jeton_google
@@ -26,8 +28,11 @@ from saas.data.fetch_data.sources.google.analytics import sync as recolte_ga4
 from saas.data.fetch_data.sources.meta.ads import sync as recolte_meta
 from saas.data.fetch_data.sources.meta.auth import token as jeton_meta
 from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
+from saas.data.fetch_data.sources.meta.instagram import releve_compte
 from saas.data.fetch_data.sources.meta.instagram import sync as recolte_instagram
-from saas.data.supabase.source_data.account import marquer_a_reconnecter
+from saas.data.supabase.source_data.account import (
+    ColonneRelectureAbsente, dater_premiere_relecture_instagram, marquer_a_reconnecter,
+)
 from saas.config.secrets import secret
 
 _RANG = {c: i for i, c in enumerate(CANAUX)}
@@ -128,9 +133,13 @@ def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
                 raise
         return meta
     if tache.canal == "instagram":
-        return lambda sb, note: recolte_instagram.recolter(
-            sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]),
-            note=note)
+        def instagram(sb, note):
+            debut = datetime.now(timezone.utc)
+            mot = recolte_instagram.recolter(
+                sb, uid, AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"]),
+                note=note)
+            return mot + _dater_premier_complet(sb, uid, c, debut)
+        return instagram
     if tache.canal == "google":
         return lambda sb, note: recolte_google.recolter(
             sb, uid, c["google_refresh_token"], c["google_customer_id"], note=note,
@@ -140,6 +149,23 @@ def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
             sb, uid, refresh_token=c["google_refresh_token"],
             property_id=c["ga4_property_id"], since_date=depuis).get("message", ""))
     raise ValueError(f"canal inconnu du plan : {tache.canal}")
+
+
+def _dater_premier_complet(sb, uid: str, connexion: dict, debut: datetime) -> str:
+    """Date du trimestriel d'une connexion qui n'en a pas → ce que le journal en dit.
+
+    Revue de code de instagram-construction : NULL n'est plus « dû »
+    (`instagram_reread.trimestriel_du`), sinon toutes les connexions existantes
+    relisaient tout au premier cron après la section 23. Un passage complet
+    réussi vient de tout relire de récent : il pose la date, et le trimestriel
+    part 3 mois plus tard. L'heure du DÉBUT : un post publié pendant la récolte
+    n'a pas été relu. Appelé seulement si la récolte n'a pas levé."""
+    try:
+        if dater_premiere_relecture_instagram(sb, uid, connexion["id"], debut):
+            return " · date du trimestriel posée"
+    except ColonneRelectureAbsente:
+        return " · date du trimestriel NON écrite (colonne absente, §23)"
+    return ""
 
 
 def republier(sb, uid: str) -> list[str]:
@@ -153,6 +179,69 @@ def republier(sb, uid: str) -> list[str]:
     except Exception as e:
         logs.append(f"rapport KO: {e}")
     return logs
+
+
+def leger(sb, uid: str) -> list[str]:
+    """Le passage léger quotidien d'un compte → les lignes du journal.
+
+    Instagram seul, chaque jour, Jour de travail ou non (spec § La récolte —
+    Ce qui s'ajoute) : relevé des posts jeunes, relevé du compte pour hier,
+    puis un bloc du Rattrapage (payant seulement). Il NE TOUCHE NI À `fetch_progress` NI AU RAPPORT, exprès :
+    `fetch_canaux_muets` et `lib/canaux-muets.ts` ne lisent que le dernier
+    `run_id` — une ligne « instagram » d'un passage léger ferait oublier
+    l'échec Meta du Jour de travail, et la page Meta comme le rapport se
+    remettraient à montrer des chiffres troués. Le journal du worker suffit.
+
+    La ligne porte la DURÉE du passage, et celle du bloc du Rattrapage à
+    part : c'est elle qui fixera la taille d'un bloc (`sync._TAILLE_DU_BLOC`,
+    ticket 08 de `.scratch/instagram-construction/`).
+    """
+    lignes = [a for a in connexions(sb, uid)
+              if a.get("meta_token") and a.get("instagram_business_id")]
+    if not lignes:
+        return []
+    le_plan = plans.planifier(lignes, verifier_jetons(lignes))
+    journal = [mot for canal, mot in le_plan.journal if canal == "meta"]
+    journal += [mot for _, mot in _marquer(sb, uid, le_plan)]
+    for tache in (t for f in le_plan.fils for t in f if t.canal == "instagram"):
+        c = tache.connexion
+        acces = AccesMeta(jeton=c["meta_token"], instagram=c["instagram_business_id"])
+        debut = time.monotonic()
+        # Les posts puis le compte (ticket 05), chacun dans son `try` : une
+        # panne de l'inventaire n'empêche pas la journée d'hier du compte de
+        # s'écrire, et inversement. Une seule ligne, une seule durée : c'est
+        # le passage entier qui fixera le bloc du Rattrapage.
+        mots = []
+        for nom, relever in (("instagram léger", recolte_instagram.releve_quotidien),
+                             ("compte", lambda sb, uid, acces, cid=c["id"]:
+                              releve_compte.releve_du_compte(sb, uid, acces, cid))):
+            try:
+                mots.append(relever(sb, uid, acces))
+            except Exception as e:
+                # Un compte qui tombe ne coupe pas les suivants. Le type et le
+                # texte passent par `sans_jeton` : une exception `requests`
+                # recopie l'URL appelée, jeton compris (`CLAUDE.md` §7).
+                mots.append(sans_jeton(f"{nom} KO: {type(e).__name__}: {e}"))
+        mots.append(_bloc_du_rattrapage(sb, uid, acces, c["id"]))
+        journal.append(f"instagram léger en {time.monotonic() - debut:.1f} s — "
+                       + " · ".join(mots))
+    return journal
+
+
+def _bloc_du_rattrapage(sb, uid: str, acces: AccesMeta, connexion_id) -> str:
+    """Un bloc du Rattrapage (ticket 08) → son mot, avec SA durée.
+
+    Sa durée à part de celle du passage : c'est elle, rapportée au nombre de
+    posts importés, qui fixera `sync._TAILLE_DU_BLOC` — la durée du passage
+    entier mêle les relevés et le compte. Dans son propre `try`, comme les
+    deux autres : une panne du bloc n'emporte ni les posts jeunes ni le compte.
+    """
+    debut = time.monotonic()
+    try:
+        mot = recolte_instagram.rattrapage(sb, uid, acces, connexion_id)
+    except Exception as e:
+        return sans_jeton(f"rattrapage KO: {type(e).__name__}: {e}")
+    return f"{mot} en {time.monotonic() - debut:.1f} s"
 
 
 def passer(sb, uid: str, depuis: date | None = None) -> list[str]:

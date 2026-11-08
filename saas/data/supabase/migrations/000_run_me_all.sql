@@ -41,6 +41,13 @@
 --   15)    Partage : la liste COMPLÈTE des tables, et le contrôle des jetons
 --   16)    Dates déclarées des campagnes (start_date / end_date)
 --   22)    instagram_organic_posts.permalink / media_product_type (hebdo, ticket 08)
+--   23)    Instagram — instagram_post_releves, instagram_compte_jours, et les
+--          colonnes du relevé sur la fiche du post (instagram-construction, 01),
+--          instagram_compte_periodes (instagram-construction, 05),
+--          connected_accounts.relecture_instagram_le (instagram-construction, 07),
+--          connected_accounts.rattrapage_instagram_curseur / _fini_le
+--          (instagram-construction, 08),
+--          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1718,6 +1725,172 @@ ALTER TABLE public.instagram_organic_posts
 
 
 -- ============================================================================
+-- 23) Instagram — le relevé d'un post et le compte jour par jour
+--     (`.scratch/instagram/spec.md` § La base ; ticket 01 de
+--     `.scratch/instagram-construction/`).
+--
+--     Un post Instagram cumule ses métriques à vie : sans relevé daté, deux
+--     posts ne se comparent qu'à des âges différents (un post d'hier contre un
+--     post d'il y a trois mois). Chaque lecture AJOUTE donc une ligne avec son
+--     âge réel — un passage manqué donne un J+8, jamais un faux J+7 — et la
+--     fiche garde le dernier relevé.
+--
+--     Toutes les métriques sont nullables : NULL = Meta ne l'a pas rendue
+--     (`follows` d'un Reel répond par une erreur 100, essai réel du
+--     2026-11-06, `.scratch/instagram/issues/17`). Un 0 est un 0 rendu.
+--
+--     · instagram_organic_posts, colonnes en plus :
+--         shares, profile_visits — R1 de la spec (FEED seul pour la seconde) ;
+--         avg_watch_time — `ig_reels_avg_watch_time`, Reels seuls, en
+--           millisecondes d'après la doc Media Insights, jamais essayé avec
+--           notre jeton : numeric pour ne rien tronquer si l'unité diffère ;
+--         releve_a — NULL = lu avant l'existence du relevé ;
+--         booste_vu_le — NULL = aucun boost vu ; ne se vide jamais (ticket 02).
+--     · instagram_post_releves — clé (user_id, post_id, releve_a). Pas de clé
+--       étrangère vers la fiche : son unicité (user_id, post_id) a été posée
+--       à la main (section 21), et une référence qui la suppose ferait
+--       échouer la section sur une base où elle manque.
+--     · instagram_compte_jours — clé (user_id, jour) ; un jour sans ligne est
+--       un trou, jamais un zéro.
+--     · instagram_compte_periodes — clé (user_id, debut, fin) : la portée
+--       dédoublonnée d'une période (`total_value`) telle qu'Instagram la rend.
+--       Elle ne se reconstitue pas à partir des jours : la somme compte deux
+--       fois un compte touché deux jours (101 990 pour 65 980 sur 30 jours,
+--       essai réel, `issues/17`). Chaque passage léger y AJOUTE les 7 jours
+--       finissant hier — la période par défaut de la page ; ajout seul, une
+--       période déjà là garde sa valeur (ticket 05).
+--
+--     Ajout seul. RLS : lecture par `a_acces(user_id)` (section 12) — la page
+--     /instagram lit ces tables directement et l'invité doit voir la même page
+--     (user story 5, arbitrage du chantier) ; AUCUNE politique d'écriture :
+--     seul le worker (clé service) écrit. Hors de la liste 15.1 exprès : elle
+--     pose aussi `partage_insert/update/delete`, qui laisseraient un éditeur
+--     invité écrire des relevés. Les politiques ne s'appellent pas `partage_*`
+--     pour ne pas fausser le contrôle A (19 tables) en fin de fichier.
+-- ============================================================================
+
+ALTER TABLE public.instagram_organic_posts
+    ADD COLUMN IF NOT EXISTS shares         bigint      DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS profile_visits bigint      DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS avg_watch_time numeric     DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS releve_a       timestamptz DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS booste_vu_le   date        DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS public.instagram_post_releves (
+    user_id        uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    post_id        bigint      NOT NULL,
+    releve_a       timestamptz NOT NULL,
+    -- NULL seulement si la date de publication rendue par Meta est illisible :
+    -- un âge inventé placerait le post au mauvais J+n.
+    age_heures     numeric,
+    reach          bigint,
+    views          bigint,
+    likes          bigint,
+    comments       bigint,
+    saved          bigint,
+    shares         bigint,
+    follows        bigint,
+    profile_visits bigint,
+    avg_watch_time numeric,
+    booste         boolean,
+    PRIMARY KEY (user_id, post_id, releve_a)
+);
+
+-- « L'âge égal » de la page lit les relevés d'un compte autour d'un J+n.
+CREATE INDEX IF NOT EXISTS idx_instagram_post_releves_user_age
+    ON public.instagram_post_releves (user_id, age_heures);
+
+CREATE TABLE IF NOT EXISTS public.instagram_compte_jours (
+    user_id            uuid   NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    jour               date   NOT NULL,
+    reach              bigint,
+    total_interactions bigint,
+    abonnes            bigint,
+    gagnes             bigint,
+    perdus             bigint,
+    reach_ad           bigint,
+    interactions_ad    bigint,
+    maj_a              timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, jour)
+);
+
+CREATE TABLE IF NOT EXISTS public.instagram_compte_periodes (
+    user_id   uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    debut     date        NOT NULL,
+    fin       date        NOT NULL,
+    reach     bigint      NOT NULL,
+    lu_a      timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, debut, fin)
+);
+
+ALTER TABLE public.instagram_post_releves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instagram_compte_jours ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instagram_compte_periodes ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'instagram_post_releves'
+                     AND policyname = 'ig_releves_select_acces') THEN
+        CREATE POLICY "ig_releves_select_acces" ON public.instagram_post_releves
+            FOR SELECT TO authenticated
+            USING (public.a_acces(user_id));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'instagram_compte_jours'
+                     AND policyname = 'ig_compte_jours_select_acces') THEN
+        CREATE POLICY "ig_compte_jours_select_acces" ON public.instagram_compte_jours
+            FOR SELECT TO authenticated
+            USING (public.a_acces(user_id));
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'instagram_compte_periodes'
+                     AND policyname = 'ig_compte_periodes_select_acces') THEN
+        CREATE POLICY "ig_compte_periodes_select_acces" ON public.instagram_compte_periodes
+            FOR SELECT TO authenticated
+            USING (public.a_acces(user_id));
+    END IF;
+END $$;
+
+-- connected_accounts.relecture_instagram_le — la date du dernier passage
+-- complet (tous les posts en base relus), par connexion (ticket 07). Le cron
+-- relance le passage quand elle a 3 mois (spec § La récolte, « La relecture ») :
+-- une date MESURÉE, posée par le worker après un passage réussi, jamais
+-- devinée. NULL = pas encore daté → PAS dû : la date est posée au premier
+-- passage complet réussi (sinon toutes les connexions existantes, à NULL
+-- après cette section, relisaient tout au premier cron). Ajout seul ; la RLS
+-- de connected_accounts est déjà en place et reste fermée au partage (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS relecture_instagram_le timestamptz DEFAULT NULL;
+
+-- connected_accounts.premier_passage_instagram_le — le premier passage d'un
+-- compte (90 jours et la remontée des abonnés, ticket 06) a réussi. Posé par
+-- le worker seulement quand la remontée a écrit au moins un jour plus ancien
+-- qu'avant-hier ; tant qu'il est NULL, le premier passage est retenté chaque
+-- jour. Ajout seul ; RLS de connected_accounts inchangée, fermée au partage
+-- (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS premier_passage_instagram_le timestamptz DEFAULT NULL;
+
+-- connected_accounts.rattrapage_instagram_curseur / rattrapage_instagram_fini_le
+-- — où en est le Rattrapage d'un compte payant, par connexion (ticket 08). Le
+-- passage léger importe un bloc de l'inventaire par jour, du plus récent au
+-- plus ancien (spec § La récolte, « Le Rattrapage ») : le curseur de
+-- pagination de Meta (`paging.cursors.after`, jamais l'URL `next`, qui porte
+-- le jeton) dit où reprendre le lendemain, NULL = au haut de l'inventaire ; la
+-- date de fin est posée quand Meta ne rend plus de page, et arrête le
+-- Rattrapage. Ajout seul ; RLS de connected_accounts inchangée, fermée au
+-- partage (§15.2).
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS rattrapage_instagram_curseur text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS rattrapage_instagram_fini_le timestamptz DEFAULT NULL;
+
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1792,6 +1965,18 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_campaign_config',   'end_date'),             -- §16
     ('c', 'instagram_organic_posts',  'permalink'),            -- §22
     ('c', 'instagram_organic_posts',  'media_product_type'),   -- §22
+    ('t', 'instagram_post_releves',   NULL),                   -- §23
+    ('t', 'instagram_compte_jours',   NULL),                   -- §23
+    ('t', 'instagram_compte_periodes', NULL),                  -- §23
+    ('c', 'instagram_organic_posts',  'shares'),               -- §23
+    ('c', 'instagram_organic_posts',  'profile_visits'),       -- §23
+    ('c', 'instagram_organic_posts',  'avg_watch_time'),       -- §23
+    ('c', 'instagram_organic_posts',  'releve_a'),             -- §23
+    ('c', 'instagram_organic_posts',  'booste_vu_le'),         -- §23
+    ('c', 'connected_accounts',       'relecture_instagram_le'), -- §23
+    ('c', 'connected_accounts',       'rattrapage_instagram_curseur'), -- §23
+    ('c', 'connected_accounts',       'rattrapage_instagram_fini_le'), -- §23
+    ('c', 'connected_accounts',       'premier_passage_instagram_le'), -- §23
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

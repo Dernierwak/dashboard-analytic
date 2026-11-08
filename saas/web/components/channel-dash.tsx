@@ -7,7 +7,7 @@ import { LineChart } from "@/components/line-chart";
 import { Chiffre } from "@/components/chiffre";
 import {
   taux,
-  type Campaign, type ChannelDash, type DashParams, type DayPoint, type InstaDash, type InstaPost,
+  type Campaign, type ChannelDash, type DashParams, type DayPoint,
 } from "@/lib/channels";
 import { lienDash } from "@/lib/liens";
 import { Pente, Triangle, sensPente } from "@/components/pente";
@@ -514,90 +514,6 @@ export function MoyennesAds({ d, path }: { d: ChannelDash; path: string }) {
         href: lienAds(path, d, { d: "0" }),
         texte: "Passe la période sur « Tout »",
       }}
-    />
-  );
-}
-
-// Les moyennes d'Instagram. Même module, même règle, même composant que Meta et
-// Google — c'est le but : trois pages canal qui posent la même question doivent
-// la poser de la même façon. Ce qui change, c'est l'unité observée quand la
-// fenêtre est trop courte pour un mois : là-bas des jours de dépense, ici des
-// PUBLICATIONS. Un jour sans post n'est pas un jour à zéro sur Instagram, c'est
-// un jour où il ne s'est rien passé ; le dénominateur naturel est le post.
-//
-// C'est ce module qui a absorbé « Tes moyennes par post · tout l'historique »,
-// supprimé de la page : il en reprend exactement les chiffres, mais sur la
-// fenêtre affichée au lieu de tout l'historique.
-export function MoyennesInsta({ d }: { d: InstaDash }) {
-  const posts = d.posts.map((p) => ({ ...p, date: String(p.date).slice(0, 10) }));
-  const { unite, groupes, pied } = uniteDeLaFenetre(
-    posts,
-    { debut: d.windowDebut, fin: d.windowFin },
-    "publication"
-  );
-
-  const som = (g: InstaPost[], f: (p: InstaPost) => number) => g.reduce((a, p) => a + f(p), 0);
-  // Zéro vue sur un post publié n'existe pas : c'est une mesure absente, pas une
-  // mesure nulle. La compter comme un zéro ferait plonger la moyenne de tout
-  // compte mêlant photos et reels.
-  const vues = (g: InstaPost[]) => {
-    const v = som(g, (p) => p.views);
-    return v > 0 ? v : null;
-  };
-
-  const chiffres: ChiffreMoyen[] = [
-    { titre: "Portée", nature: "somme", fmt: fmtCHF, parUnite: groupes.map((g) => som(g, (p) => p.reach)) },
-    { titre: "Vues", nature: "somme", fmt: fmtCHF, parUnite: groupes.map(vues) },
-    { titre: "J'aime", nature: "somme", fmt: fmtCHF, parUnite: groupes.map((g) => som(g, (p) => p.likes)) },
-    { titre: "Commentaires", nature: "somme", fmt: (v) => v.toFixed(1), parUnite: groupes.map((g) => som(g, (p) => p.comments)) },
-    { titre: "Enregistrements", nature: "somme", fmt: (v) => v.toFixed(1), parUnite: groupes.map((g) => som(g, (p) => p.saved)) },
-    {
-      titre: "Engagement", unite: "%", nature: "taux", fmt: (v) => v.toFixed(1),
-      // Le taux se calcule sur les totaux de l'unité : moyenner les engagements
-      // de chaque post donnerait le même poids à un post vu par 40 personnes et
-      // à un reel vu par 12 000.
-      parUnite: groupes.map((g) => {
-        const r = som(g, (p) => p.reach);
-        return r > 0 ? (som(g, (p) => p.likes + p.comments + p.saved) / r) * 100 : null;
-      }),
-    },
-  ];
-  // Le nombre de publications n'a de sens qu'en branche mensuelle : par
-  // publication, il vaudrait 1 partout. Il vient donc en fin de bilan, après les
-  // six métriques dont l'ordre est celui du sélecteur (`tete` en dépend).
-  if (unite === "mois")
-    chiffres.push({
-      titre: "Publications", nature: "somme", fmt: (v) => v.toFixed(1),
-      parUnite: groupes.map((g) => g.length),
-    });
-
-  const ordre = ["reach", "views", "likes", "comments", "saved", "eng"];
-  const tete = Math.max(0, ordre.indexOf(d.topMetric));
-
-  // Une fenêtre qui couvre deux mois entiers SANS aucune publication donne des
-  // moyennes à zéro, et ce zéro-là est mesuré : rien n'a été publié. Il faut le
-  // dire, sinon il se lit comme une panne de récolte.
-  const piedMois =
-    posts.length === 0
-      ? `${pied} Aucune publication sur la période : ces moyennes valent zéro parce que rien n'a été publié, pas parce que rien n'a été mesuré.`
-      : pied;
-
-  return (
-    <Moyennes
-      unite={unite}
-      n={groupes.length}
-      fenetre={bornes(d.windowDebut, d.windowFin)}
-      chiffres={chiffres}
-      tete={tete}
-      pied={
-        unite === "mois"
-          ? piedMois
-          : `Moyenne des ${posts.length} publication${posts.length > 1 ? "s" : ""} de la période affichée. ` +
-            `Une publication est le dénominateur tant que la fenêtre ne couvre pas deux mois entiers : ` +
-            `sur sept jours, un « par mois » n'aurait aucun mois à moyenner.`
-      }
-      vide="Aucune publication sur la période affichée — il n'y a rien à moyenner. Ce n'est pas une moyenne à zéro, c'est une moyenne sans dénominateur."
-      elargir={{ href: lienDash("/instagram", d.params, { d: "0" }, "reach"), texte: "Élargis la période" }}
     />
   );
 }
@@ -1143,97 +1059,5 @@ function EcartSansDetail({ mot }: { mot: string }) {
     >
       ·
     </span>
-  );
-}
-
-// ── LA COURBE DES ABONNÉS (Instagram) ────────────────────────────────────────
-//
-// Elle vit ICI et non dans `app/instagram/page.tsx` pour la raison déjà écrite
-// dans la grammaire à propos de `couts-modules` et `hors-theme` : un module
-// dessiné dans une page protégée par `middleware.ts` n'est vérifiable qu'en
-// production. Une page compose, elle ne dessine pas.
-//
-// ELLE REJOINT LE STYLE COMMUN. C'était le dernier graphe fait main de l'app :
-// un `viewBox` en `w-full` sans hauteur, donc tout à l'échelle de la largeur —
-// exactement le défaut que `components/line-chart.tsx` a été écrit pour
-// supprimer (texte à 4,5 px sur téléphone, 17 px sur écran). Il n'avait ni axe
-// des dates, ni info-bulle, ni point survolable, et son échelle n'était écrite
-// nulle part.
-//
-// UNE PARTICULARITÉ EMPÊCHAIT L'ALIGNEMENT COMPLET, et elle est réelle : le
-// nombre d'abonnés est un CUMUL, pas un flux. Les autres courbes portent ce qui
-// s'est passé CE jour-là (une dépense, des clics) et partent donc légitimement
-// de zéro. Un stock qui va de 4 120 à 4 244 sur un axe partant de zéro est un
-// trait plat : les 124 abonnés gagnés valent 3 % de la hauteur du cadre, et on
-// ne verrait rien de la croissance qu'on vient lire.
-//
-// Plutôt que de forcer, `LineChart` gagne `socle="bas"` : l'axe part du point le
-// plus bas, et ses DEUX bornes sont écrites aux coins. Le dégradé sous le
-// trait reste (retour de David, TASK-033 : cette courbe le portait comme
-// toutes les autres, l'exception qui le retirait n'avait plus lieu d'être). Le
-// défaut reste « zéro » — aucune autre courbe ne bouge.
-const MOIS_AXE = ["jan", "fév", "mar", "avr", "mai", "jun", "jul", "aoû", "sep", "oct", "nov", "déc"];
-function jourCourt(isoStr: string): string {
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return "—";
-  return `${String(d.getDate()).padStart(2, "0")} ${MOIS_AXE[d.getMonth()]}`;
-}
-
-export function CourbeAbonnes({ series }: { series: { date: string; followers: number }[] }) {
-  if (series.length < 2) return null;
-  const vals = series.map((p) => p.followers);
-  const depart = vals[0];
-  const gain = vals[vals.length - 1] - depart;
-  // Le rang 3 du module est le GAIN, pas le stock : le stock est déjà dans la
-  // tuile « Abonnés » au-dessus, et c'est la croissance que la courbe raconte.
-  const s = sensPente(depart > 0 ? (gain / depart) * 100 : null, false, 0.5);
-  return (
-    <div className="bg-white border border-line rounded-xl shadow-card p-5 mb-8">
-      <div className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-2">
-        Croissance des abonnés{" "}
-        <span className="normal-case tracking-normal font-normal">
-          · {jourCourt(series[0].date)} → {jourCourt(series[series.length - 1].date)}
-        </span>
-      </div>
-
-      <div className="flex items-baseline gap-2.5 flex-wrap mb-3">
-        <span className="font-mono text-[30px] sm:text-[34px] leading-none font-medium text-ink">
-          {gain >= 0 ? "+" : "−"}
-          {fmtCHF(Math.abs(gain))}
-          <span className="text-[15px] text-faint"> abonnés</span>
-        </span>
-        <span className="text-[11px] text-faint">sur la fenêtre relevée</span>
-        {depart > 0 && (
-          <span
-            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}
-            style={{ background: s.fond }}
-            title="Du premier au dernier relevé d'abonnés"
-          >
-            {s.plat ? (
-              "≈ stable"
-            ) : (
-              <>
-                <Triangle sens={s.monte ? "haut" : "bas"} /> {gain > 0 ? "+" : ""}
-                {((gain / depart) * 100).toFixed(1)} %
-              </>
-            )}
-          </span>
-        )}
-      </div>
-
-      <LineChart
-        labels={series.map((p) => jourCourt(p.date))}
-        series={[{ name: "Abonnés", color: "#7b4fff", values: vals }]}
-        fmt={fmtCHF}
-        socle="bas"
-        ariaLabel="Évolution du nombre d'abonnés"
-      />
-
-      <p className="text-[10.5px] text-faint leading-relaxed pt-3 mt-1 border-t border-line">
-        Un nombre d&apos;abonnés est un cumul : l&apos;axe part de {fmtCHF(Math.min(...vals))}, pas
-        de zéro — les deux bornes sont écrites sur le cadre. Sinon la croissance d&apos;un compte
-        établi se lirait comme une ligne droite.
-      </p>
-    </div>
   );
 }

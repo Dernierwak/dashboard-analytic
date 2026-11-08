@@ -236,7 +236,7 @@ function SegmentVue({ vue, params, visible }: { vue: Vue; params: Params; visibl
 
 /** Ferme le menu au clic dehors et à Échap. Le bouton qui l'ouvre compte comme
  *  dedans : sinon son propre clic le refermerait puis le rouvrirait. */
-function useFermeture(ouvert: boolean, fermer: () => void, zones: RefObject<HTMLElement>[]) {
+export function useFermeture(ouvert: boolean, fermer: () => void, zones: RefObject<HTMLElement>[]) {
   useEffect(() => {
     if (!ouvert) return;
     const clic = (e: MouseEvent) => {
@@ -252,7 +252,7 @@ function useFermeture(ouvert: boolean, fermer: () => void, zones: RefObject<HTML
   }, [ouvert, fermer, zones]);
 }
 
-function Menu({ ouvert, children, className = "", ref_ }: { ouvert: boolean; children: ReactNode; className?: string; ref_: RefObject<HTMLDivElement> }) {
+export function Menu({ ouvert, children, className = "", ref_ }: { ouvert: boolean; children: ReactNode; className?: string; ref_: RefObject<HTMLDivElement> }) {
   return (
     <div
       ref={ref_}
@@ -264,7 +264,7 @@ function Menu({ ouvert, children, className = "", ref_ }: { ouvert: boolean; chi
   );
 }
 
-function BoutonMenu({
+export function BoutonMenu({
   children,
   ouvert,
   basculer,
@@ -462,10 +462,14 @@ function ChoixElement({
 }
 
 // ── La période (user stories 8, 9) ───────────────────────────────────────────
+//
+// Exporté : le Bandeau Instagram le reprend tel quel (sa période est « comme
+// Meta », arbitrage du 2026-11-06), plutôt qu'un second calendrier qui
+// divergerait. Il ne connaît ni la vue ni la campagne : il rend deux dates.
 
 const JOURS_SEMAINE = ["L", "M", "M", "J", "V", "S", "D"];
 
-function ChoixPeriode({
+export function ChoixPeriode({
   periode,
   raccourcis,
   hier,
