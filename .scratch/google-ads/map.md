@@ -74,7 +74,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | Ticket | Type | Bloqué par |
 |---|---|---|
 | [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research | — |
-| [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) | research | — |
+| [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) | research ✓ | — |
 | [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) | task | — |
 | [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling | 01, 02 |
 | [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) | grilling | 01 |
@@ -87,6 +87,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 ## Decisions so far
 
 <!-- une ligne par ticket clos : [titre](lien) : l'essentiel de la réponse -->
+
+- [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) :
+  vue générale tous types puis tableau par campagne ; le type est un filtre,
+  jamais une structure ; Google découpe sa Vue d'ensemble par **étape**
+  (Awareness / Consideration / Action, ≈ les vues de Meta) ; PMax isolé se lit
+  par canal ; YouTube payant n'a d'onglet nulle part sauf chez Swydo ; seul
+  Google affiche un tiret pour un total non additionnable.
 
 ## Not yet specified
 
