@@ -73,7 +73,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
-| [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research | — |
+| [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research ✓ | — |
 | [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) | research ✓ | — |
 | [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) | task | — |
 | [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling | 01, 02 |
@@ -94,6 +94,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   (Awareness / Consideration / Action, ≈ les vues de Meta) ; PMax isolé se lit
   par canal ; YouTube payant n'a d'onglet nulle part sauf chez Swydo ; seul
   Google affiche un tiret pour un total non additionnable.
+- [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) :
+  l'API contrôle par ressource, pas par type (une métrique hors type n'est pas
+  rejetée → « ? » à l'essai) ; socle commun = impressions, clics, coût,
+  conversions et valeur ; vidéo = vues TrueView, quartiles, CPV (v26) ;
+  portée non additionnable, 92 j ; PMax absent de `ad_group_ad` sans erreur,
+  lisible par groupe d'éléments et par réseau ; Demand Gen est un type à part.
 
 ## Not yet specified
 
@@ -106,8 +112,10 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   seulement, ou au Tableau ; volume de lignes (PostgREST plafonne à 1 000).
   Probablement absorbé par le Tableau détaillé (09).
 - **Les conversions Google** : `conversions` vs `all_conversions`, la valeur
-  de conversion et un ROAS déclaré par Google, la date d'attribution — à
-  préciser une fois la recherche (01) rendue.
+  de conversion (rendue pour tous les types, donc un ROAS déclaré par Google
+  est possible sans GA4), la date du clic vs de la conversion
+  (`conversions_by_conversion_date` existe), aucun délai de stabilisation
+  documenté — à trancher avec la vue générale (05) et l'essai réel (10).
 - **La page entière, en maquette** — une fois l'axe, la vue générale, la
   Comparaison et le Tableau tranchés.
 - **Ce que la récolte et le traitement doivent calculer** — migration de
