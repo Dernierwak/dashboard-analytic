@@ -78,3 +78,8 @@ d'éléments, par réseau, et des « insights » incomplets. Non vérifié ; ajo
 `CONTEXT.md` : « Type de campagne » précisé (nom Google Ads ; YouTube réservé
 à l'organique ; la vidéo de PMax reste à PMax). Pas d'ADR : rien d'irréversible
 — ajouter une page YouTube organique plus tard ne défait rien ici.
+
+**Révisé par [La Comparaison sur Google](08-la-comparaison.md)** (même jour) :
+les métriques propres à la Vidéo ne vivent pas dans la Comparaison — l'analyse
+par type part au `BACKLOG.md`, un type à la fois. Le reste de cette réponse
+tient.

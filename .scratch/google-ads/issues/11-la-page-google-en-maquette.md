@@ -26,3 +26,13 @@ maquette ne les tranche pas.
 
 Pas bloqué : David veut un prototype tôt (2026-11-10). Agent utile :
 `vision-ux`.
+
+## Apport de la Comparaison (08, résolu)
+
+La Comparaison s'esquisse avec la mécanique de Meta, **sans spécialité par
+type** — les moustaches portent la lecture par type. À faire réagir David :
+sur « Tous les types », des campagnes de types différents se classent-elles
+ensemble ? Une première maquette, centrée sur ce seul module, a été rejetée
+pour avoir déroulé toutes les spécialités par type
+(`issues/08-la-comparaison.md`, réponse) : **montrer la page, pas un catalogue
+de variantes.**

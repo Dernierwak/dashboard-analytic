@@ -1,9 +1,9 @@
 # 08: La Comparaison sur Google
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 04, 06
-Assignee: —
+Assignee: Dernierwak
 
 ## Question
 
@@ -70,3 +70,53 @@ plutôt qu'à supposer. Ce qu'il attend de chaque type :
 
 Borne : « les sites qui ont le mieux fonctionné » se montre sans conseiller
 (`CLAUDE.md` §1) — un classement par trafic mesuré, pas un verdict.
+
+## Answer
+
+Grilling avec David, 2026-11-10, en deux temps.
+
+**Premier temps, révoqué.** David avait d'abord accepté que la Comparaison
+reprenne la mécanique de Meta avec **les éléments propres au type filtré**
+(mots-clés pour Search, groupes d'éléments et réseaux pour PMax, emplacements
+pour Display, annonces vidéo et courbe des quartiles pour Vidéo), le type
+choisi par le filtre du Bandeau. Trois questions en ont découlé (classement
+des campagnes de types différents, spécialités dans le menu des métriques,
+longueur des listes) ; David a demandé un visuel. La maquette jetable
+([https://claude.ai/artifact/Esu1RnLGGCodRJ5np8s6Wr](https://claude.ai/artifact/Esu1RnLGGCodRJ5np8s6Wr), chiffres fictifs, privée) l'a fait reculer :
+« c'est complètement hors de ce que nous parlions ».
+
+**Ce qui est tranché.** **La Comparaison ne détaille pas les types.** Les
+**moustaches** sous les cartes du Sélecteur montrent déjà, section par
+section, la performance de chaque type (04) ; le module n'a pas à le refaire.
+David : « l'explication par type, on la met de côté, on va devoir la faire une
+par une ». **L'analyse propre à chaque type** — mots-clés et termes de
+recherche pour Search, audiences pour PMax, emplacements pour Display, vues,
+CPV et quartiles pour Vidéo — **sort de ce chantier et va au `BACKLOG.md`**,
+à traiter un type à la fois. On avance sur la structure du dashboard.
+
+**Ce que ça défait** :
+- [YouTube : une page à part ou une vue de la page Google](07-youtube-page-a-part.md)
+  avait logé les métriques propres à la Vidéo dans ce module : elles partent
+  au `BACKLOG.md` avec les autres spécialités. Le reste de 07 tient (pas de
+  page à part, Vidéo est un type de `/google`, la vidéo de PMax reste à PMax,
+  « YouTube » = l'organique).
+- [L'essai réel des métriques Google](10-l-essai-reel.md) : les vérifications
+  « audiences PMax » et « emplacements Display » ne bloquent plus rien ; elles
+  servent le `BACKLOG.md`.
+
+**Ce qui reste du module, sans être posé à David** : la Comparaison garde
+son rôle de l'ADR 0011 — la mécanique de Meta (liste classée sur la
+métrique 1, quatre éléments cochés, deux graphes) sur les métriques de la vue,
+et elle suit le filtre du Bandeau comme toute la page (04). **Non tranché** :
+les niveaux qu'elle compare sur Google (campagnes, groupes d'annonces,
+annonces — et PMax qui n'a ni groupe ni annonce) et le classement de
+campagnes de types différents sur « Tous les types ». Ces deux points vont à
+la [maquette de la page](11-la-page-google-en-maquette.md) et au
+[Tableau détaillé](09-le-tableau-detaille.md), qui traite déjà les niveaux par
+type — pas de nouveau ticket.
+
+Leçon pour les suivants : une maquette de décision montre **la seule section
+en question**, dans la page, pas une démonstration de toutes les variantes
+possibles.
+
+Pas d'ADR, pas de terme nouveau dans `CONTEXT.md`.

@@ -29,3 +29,11 @@ Le type de campagne est un filtre du Bandeau : le Tableau suit le filtre, et
 sur « Tous les types » chaque ligne porte un repère de son type. Les métriques
 propres à un type (vidéo notamment) ne passent pas par les cartes du
 Sélecteur : le Tableau est un candidat naturel pour les porter.
+
+## Apport de la Comparaison (08, résolu)
+
+La Comparaison ne détaille pas les types ; l'analyse propre à chaque type
+(mots-clés, audiences, emplacements, quartiles) part au `BACKLOG.md`. Reste à
+ce ticket : **les niveaux** que Google offre selon le type (PMax n'a ni groupe
+d'annonces ni annonce) — la Comparaison, qui bascule entre niveaux comme sur
+Meta, suivra ce qui est tranché ici.

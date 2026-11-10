@@ -71,9 +71,8 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** : [La Comparaison sur Google](issues/08-la-comparaison.md)
+**Frontier (2026-11-10)** : [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md)
 — le prochain par numéro —,
-[Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md),
 [L'essai réel des métriques Google](issues/10-l-essai-reel.md),
 [La page Google en maquette](issues/11-la-page-google-en-maquette.md) — à prendre
 tôt, David veut un prototype vite.
@@ -87,7 +86,7 @@ tôt, David veut un prototype vite.
 | [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) | grilling ✓ | 01 |
 | [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md) | grilling ✓ | 01, 03 |
 | [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling ✓ | 01, 04 |
-| [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling | 04, 06 |
+| [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling ✓ | 04, 06 |
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task | 01, 03 |
 | [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype | — |
@@ -141,9 +140,15 @@ tôt, David veut un prototype vite.
 - [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) :
   pas de page à part — **Vidéo** (nom Google Ads, le YouTube payant) est un
   type de `/google` comme les autres ; ses métriques (vues, CPV, quartiles)
-  vivent dans l'analyse par type (08), au même niveau que Search et PMax ;
+  au `BACKLOG.md` avec l'analyse par type (révisé par 08) ;
   la vidéo de PMax reste à PMax ; « YouTube » seul = la future page
-  organique (`BACKLOG.md`). Audiences PMax à vérifier (10).
+  organique (`BACKLOG.md`).
+- [La Comparaison sur Google](issues/08-la-comparaison.md) :
+  elle ne détaille pas les types — les moustaches le font déjà ; l'analyse
+  propre à chaque type (mots-clés, audiences, emplacements, quartiles) part
+  au `BACKLOG.md`, un type à la fois ; le module garde la mécanique Meta ;
+  ses niveaux sur Google vont au Tableau (09), le classement entre types à
+  la maquette (11).
 
 ## Not yet specified
 
@@ -152,9 +157,6 @@ tôt, David veut un prototype vite.
   PMax (des éléments, pas une annonce) ; les changements du jour depuis
   `change_event`, limités à 30 jours. Dépend de ce que l'API rend (01) et des
   niveaux retenus (09).
-- **Les mots-clés et les termes de recherche** : David les veut dans
-  l'analyse de Search (07 → 08) ; restent le grain récolté, la part qui va
-  au Tableau (09) et le volume de lignes (PostgREST plafonne à 1 000).
 - **Le délai de stabilisation des conversions Google** : aucun documenté
   (ticket 01) ; ce qu'il fait à la Tendance et à la Comparaison des derniers
   jours — le reste des conversions est tranché (05), sa vérification va au 10.
@@ -172,3 +174,7 @@ tôt, David veut un prototype vite.
 - **Brancher TikTok** ou une autre plateforme — `BACKLOG.md`.
 - **Thèmes, labels, recommandations** — retirés du produit, ne reviennent pas
   par la bande.
+- **L'analyse propre à chaque type** (mots-clés, audiences PMax,
+  emplacements Display, quartiles Vidéo) — mise de côté par David, un type à
+  la fois plus tard ; [La Comparaison sur Google](issues/08-la-comparaison.md),
+  `BACKLOG.md`.

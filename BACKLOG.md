@@ -347,3 +347,15 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   vues, vidéos publiées —, sur sa propre page, comme Instagram : aucun
   contenu payant. Les annonces vidéo restent sous Google Ads, type « Vidéo ».
   David : « YouTube, il faudra aussi l'avoir en organique ».
+
+## Relevé en chemin le 2026-11-10 (ticket `.scratch/google-ads/issues/08`)
+
+- **L'analyse propre à chaque type de campagne Google**, un type à la fois.
+  David : « l'explication par type, on la met de côté, on va devoir la faire
+  une par une ». Search : mots-clés et termes de recherche ; PMax : audiences
+  (mesurabilité à vérifier dans l'API, sinon groupes d'éléments et réseaux) ;
+  Display : les emplacements qui amènent le plus de trafic ; Vidéo : vues,
+  taux de vue, CPV et la courbe des quartiles (« où le public décroche »),
+  « au même niveau » que les autres. Une première forme — la Comparaison qui
+  compare les éléments propres au type filtré — a été maquettée puis écartée
+  (`.scratch/google-ads/issues/08`).
