@@ -174,6 +174,9 @@ Google, le type **filtre** (on ne regarde que les campagnes d'un type) ; il ne
 remplace pas la vue, qui **reconfigure** (Notoriété, Trafic ou Conversion).
 « Vidéo » et pas « YouTube » : YouTube est un réseau, que PMax et d'autres
 types servent aussi — l'écrire laisserait croire que tout YouTube est là.
+Tout type hors de ces quatre (Demand Gen, Shopping, App, Local, Hotel…) se
+range sous **Autres types** : une seule entrée du filtre, jamais sortie des
+totaux, et chaque campagne y garde son vrai type au Tableau.
 _Avoid_: Format — sur Instagram il désigne Reel / Carrousel, chez Google le
 format d'une annonce ; canal — il désigne une plateforme ; YouTube pour le type.
 
