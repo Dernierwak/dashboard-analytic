@@ -36,3 +36,20 @@ ensemble ? Une première maquette, centrée sur ce seul module, a été rejetée
 pour avoir déroulé toutes les spécialités par type
 (`issues/08-la-comparaison.md`, réponse) : **montrer la page, pas un catalogue
 de variantes.**
+
+## Premier tour, rejeté (2026-11-10)
+
+Maquette dans l'app, `/google?maquette=page`, chiffres fictifs, branche jetable
+`prototype/google-page` (`1a2a683`) : filtre Type de campagne au Bandeau,
+moustaches par type (avec ou sans), 2 ou 4 types, Comparaison qui classe
+Search et PMax ensemble, Tableau dépliant jusqu'au Groupe d'éléments.
+
+David : « on veut pas pour l'instant aller dans les détails pour les search
+pmax etc. » — ce qui a été proposé « c'est pas du tout dans les normes de ce
+que j'aimerais. Donc ça on le laisse. » Les questions posées sur la moustache
+et sur le classement mélangé des types partaient dans ce détail.
+
+**Ce qui en sort** : ce qu'on montre pour chaque type (PMax, Search…) quitte
+ce ticket pour [Ce qu'on montre pour chaque type de campagne](15-ce-qu-on-montre-par-type.md).
+La maquette est à refaire, sans détail par type ; ce qu'elle montre à la
+place reste à préciser avec David.

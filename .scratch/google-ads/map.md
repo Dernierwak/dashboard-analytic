@@ -95,6 +95,7 @@ prochain par numéro, David veut un prototype vite —,
 | [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling | — |
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task (HITL) | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | — |
+| [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling | 11 |
 
 ## Decisions so far
 
