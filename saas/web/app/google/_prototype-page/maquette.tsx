@@ -18,6 +18,12 @@
 // moustaches, sur ce qui est comparable (les taux), avec l'évolution jour par
 // jour ; ensuite on ne compare que des campagnes du même type. Paramètres en
 // plus : variant, mt (la métrique du module), type (le type ouvert).
+//
+// QUATRIÈME TOUR — les trois variantes du troisième (rangées, superposé,
+// boîtes d'abord ; commit f0383ae) ont été rejetées. Celui-ci applique le point
+// d'analyse .scratch/google-ads/analyses/15-comparer-les-types.md : ni échelle
+// commune, ni moustache ; chaque type face à son passé, la répartition entre
+// types, puis la Comparaison entre campagnes d'un seul type. `mt` ne sert plus.
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
 import { BarreVariantes } from "./barre-variantes";
@@ -328,278 +334,229 @@ function Comparaison({ L, campagnes, titre }: { L: Lecture; campagnes: Ligne[]; 
   );
 }
 
-// ── MODULE 4 · LA COMPARAISON DEVENUE LE MODULE DES TYPES (ticket 15) ────────
+// ── MODULE 4 · LES TYPES DE CAMPAGNE, PUIS LA COMPARAISON (ticket 15) ────────
+// Quatrième tour, d'après le point d'analyse
+// (.scratch/google-ads/analyses/15-comparer-les-types.md) : un type est un
+// métier, pas une variante. Aucun chiffre commun, aucune échelle commune,
+// aucune moustache. Chaque taux se lit face à la période d'avant DU MÊME type ;
+// entre types, seulement la répartition (part de la dépense, part du compte de
+// la vue). Ensuite, la Comparaison de Meta entre campagnes d'un seul type.
 
 const TYPES: TypeC[] = ["Search", "PMax", "Display", "Vidéo", "Demand Gen"];
 const COULEUR_TYPE: Record<TypeC, string> = { Search: "#1a56ff", PMax: "#e08b1a", Display: "#0d9aa8", "Vidéo": "#c2185b", "Demand Gen": "#7b4fff" };
-// Les seuls chiffres qui se comparent d'un type à l'autre sont des taux : un
-// nombre de clics ou une dépense suit le budget du type, pas son fonctionnement
-// (David, tour 2 : « ctr, cpm, eux sont comparables »).
-const TAUX: Cle[] = ["ctr", "cpm", "cpc", "cpa", "taux", "roas"];
+const COMPTE_DE_LA_VUE: Record<Vue, Cle> = { notoriete: "impressions", trafic: "clics", conversion: "conversions" };
 const TAUX_DE_LA_VUE: Record<Vue, Cle> = { notoriete: "cpm", trafic: "ctr", conversion: "cpa" };
-const JOUR_SANS: Record<Cle, string> = { ctr: "sans impression", cpm: "sans impression", cpc: "sans clic", taux: "sans clic", cpa: "sans conversion", roas: "sans dépense", impressions: "", clics: "", conversions: "", valeur: "" };
-const SEUIL_JOURS = 6; // comme Instagram : sous 6 points, aucune boîte
+// Ce qu'une part veut dire, et ce qu'elle ne veut pas dire (analyse, § 3).
+const RESERVE_PART: Record<Vue, string> = {
+  notoriete: "Une impression Search et une impression Vidéo ne sont pas le même événement : la part dit d'où vient le total, pas qui fait mieux.",
+  trafic: "Un clic Search vient d'une recherche, un clic Vidéo vient après une vue : la part dit d'où viennent les clics, pas qui fait mieux.",
+  conversion: "Google attribue chaque conversion à une seule campagne ; un type qui donne envie de chercher la marque voit souvent sa conversion comptée chez Search.",
+};
 
 const VARIANTES = [
-  { cle: "A", nom: "Rangées : une courbe et une boîte par type" },
-  { cle: "B", nom: "Superposé : un seul graphe, les boîtes en marge" },
-  { cle: "C", nom: "Boîtes d'abord : un type ouvert se déplie" },
+  { cle: "A", nom: "Un bloc Types au-dessus de la Comparaison" },
+  { cle: "B", nom: "Les types en tête de la Comparaison" },
+  { cle: "C", nom: "Le bloc, avec les chiffres propres à chaque type" },
 ];
 
 const campagnesDu = (ty: TypeC) => CAMPAGNES.filter((c) => c.type === ty);
 const joursDuType = (ty: TypeC, quand: "maintenant" | "avant") =>
   Array.from({ length: JOURS }, (_, i) => additionner(campagnesDu(ty).map((c) => SERIE.get(c.id)![quand][i])));
 
-type Boite = { q1: number; med: number; q3: number; bas: number; haut: number; horsHaut: number; horsBas: number };
-type Stat = { n: number; ecartes: number; b: Boite | null };
-function quantile(s: number[], p: number) {
-  const i = (s.length - 1) * p, a = Math.floor(i);
-  return s[a] + (s[Math.min(a + 1, s.length - 1)] - s[a]) * (i - a);
-}
-function boite(vals: (number | null)[]): Stat {
-  const s = vals.filter((v): v is number => v !== null).sort((a, b) => a - b);
-  const ecartes = vals.length - s.length;
-  if (s.length < SEUIL_JOURS) return { n: s.length, ecartes, b: null };
-  const q1 = quantile(s, 0.25), med = quantile(s, 0.5), q3 = quantile(s, 0.75), e = 1.5 * (q3 - q1);
-  const dedans = s.filter((v) => v >= q1 - e && v <= q3 + e);
-  return { n: s.length, ecartes, b: { q1, med, q3, bas: dedans[0], haut: dedans[dedans.length - 1], horsHaut: s.filter((v) => v > q3 + e).length, horsBas: s.filter((v) => v < q1 - e).length } };
-}
-
-type LuType = { ty: TypeC; campagnes: Ligne[]; total: Totaux; avant: Totaux; jours: (number | null)[]; joursAvant: (number | null)[]; st: Stat };
-function lireTypes(m: Cle): LuType[] {
-  return TYPES.map((ty) => {
-    const cs = campagnesDu(ty), j = joursDuType(ty, "maintenant"), ja = joursDuType(ty, "avant");
-    const jours = j.map((x) => METRIQUES[m].calc(x));
-    return { ty, campagnes: cs, total: additionner(cs.map((c) => c.t)), avant: additionner(ja), jours, joursAvant: ja.map((x) => METRIQUES[m].calc(x)), st: boite(jours) };
+type LuType = { ty: TypeC; campagnes: Ligne[]; total: Totaux; avant: Totaux; jours: Totaux[]; joursAvant: Totaux[] };
+const lireTypes = (): LuType[] =>
+  TYPES.map((ty) => {
+    const cs = campagnesDu(ty), joursAvant = joursDuType(ty, "avant");
+    return { ty, campagnes: cs, total: additionner(cs.map((c) => c.t)), avant: additionner(joursAvant), jours: joursDuType(ty, "maintenant"), joursAvant };
   });
-}
-// Un hors norme n'étire pas l'axe (règle Instagram) : l'axe s'arrête au plus
-// haut des moustaches et des courbes sans les hors norme.
-function maxAxe(lt: LuType[]) {
-  const hauts = lt.flatMap((x) => (x.st.b ? [x.st.b.haut] : []));
-  const lignes = lt.flatMap((x) => [...x.jours, ...x.joursAvant]).filter((v): v is number => v !== null);
-  const plafond = hauts.length ? Math.max(...hauts) * 1.6 : Infinity;
-  return Math.max(...hauts, ...lignes.filter((v) => v <= plafond), 0) * 1.08 || 1;
-}
 
 function chemin(s: (number | null)[], max: number, W: number, H: number) {
-  let d = "", posé = false;
+  let d = "", pose = false;
   s.forEach((v, i) => {
-    if (v === null) { posé = false; return; }
+    if (v === null) { pose = false; return; }
     const x = (i / (JOURS - 1)) * W, y = H - (Math.min(v, max) / max) * H;
-    d += `${posé ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)} `;
-    posé = true;
+    d += `${pose ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)} `;
+    pose = true;
   });
   return d;
 }
-function Courbe({ series, couleurs, pointilles = [], max, H }: { series: (number | null)[][]; couleurs: string[]; pointilles?: number[]; max: number; H: number }) {
-  const W = 600;
+
+/** La courbe d'UN type, à SA propre échelle : elle se lit face à son passé, jamais face aux autres. */
+function Mini({ x, m, H = 34 }: { x: LuType; m: Cle; H?: number }) {
+  const W = 300;
+  const maintenant = x.jours.map((j) => METRIQUES[m].calc(j)), avant = x.joursAvant.map((j) => METRIQUES[m].calc(j));
+  const valeurs = maintenant.filter((v) => v !== null).length;
+  // Une courbe faite de 2 ou 3 jours mentirait sur la forme : on dit pourquoi elle manque.
+  if (valeurs < JOURS / 2) return <span className="block text-[11.5px] leading-tight text-muted">pas de courbe : la plupart des jours n&apos;ont pas de valeur ({valeurs} / {JOURS})</span>;
+  const max = Math.max(...[...maintenant, ...avant].filter((v): v is number => v !== null), 0) * 1.08 || 1;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full" style={{ height: H }} aria-hidden>
-      {[0.5, 1].map((f) => <line key={f} x1={0} x2={W} y1={H - f * H / 1.08} y2={H - f * H / 1.08} stroke="#eceae4" vectorEffect="non-scaling-stroke" />)}
-      <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} stroke="#d9d6cf" vectorEffect="non-scaling-stroke" />
-      {series.map((s, k) => (
-        <path key={k} d={chemin(s, max, W, H)} fill="none" stroke={couleurs[k]} strokeWidth={pointilles.includes(k) ? 1.25 : 2} strokeDasharray={pointilles.includes(k) ? "4 4" : undefined} vectorEffect="non-scaling-stroke" />
-      ))}
-    </svg>
-  );
-}
-function Dates() {
-  return (
-    <div className="flex justify-between text-[11px] text-muted">
-      {[0, 7, 14, 21, 27].map((i) => <span key={i}>{jourCourt(dateDu(i))}</span>)}
-    </div>
-  );
-}
-
-/** Une boîte verticale, à la même échelle que la courbe d'à côté. */
-function BoiteV({ st, max, H, W, couleur, m }: { st: Stat; max: number; H: number; W: number; couleur: string; m: Cle }) {
-  if (!st.b) return <div className="flex items-center justify-center text-center text-[11.5px] leading-tight text-muted" style={{ height: H, width: W }}>{st.n} / {SEUIL_JOURS} jours<br />pas de boîte</div>;
-  const y = (v: number) => H - (Math.min(v, max) / max) * H, b = st.b, cx = 22, bw = 18;
-  return (
-    <svg width={W} height={H} className="block shrink-0 overflow-visible" aria-label={`Post type ${METRIQUES[m].fmt(b.med)}`}>
-      <line x1={cx} x2={cx} y1={y(b.haut)} y2={y(b.bas)} stroke={couleur} strokeWidth={1.5} />
-      <line x1={cx - 6} x2={cx + 6} y1={y(b.haut)} y2={y(b.haut)} stroke={couleur} strokeWidth={1.5} />
-      <line x1={cx - 6} x2={cx + 6} y1={y(b.bas)} y2={y(b.bas)} stroke={couleur} strokeWidth={1.5} />
-      <rect x={cx - bw / 2} y={y(b.q3)} width={bw} height={Math.max(2, y(b.q1) - y(b.q3))} fill={couleur} fillOpacity={0.18} stroke={couleur} strokeWidth={1.5} rx={2} />
-      <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(b.med)} y2={y(b.med)} stroke={couleur} strokeWidth={2.5} />
-      {W > 60 && <text x={cx + bw / 2 + 6} y={y(b.med) + 4} fontSize={11.5} fill="#0e0f12" fontWeight={600}>{METRIQUES[m].fmt(b.med)}</text>}
-      {b.horsHaut > 0 && <text x={cx} y={-3} fontSize={10} fill="#8a8f98" textAnchor="middle">▲ {b.horsHaut}</text>}
+      <path d={chemin(avant, max, W, H)} fill="none" stroke="#b9bcc4" strokeWidth={1.25} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+      <path d={chemin(maintenant, max, W, H)} fill="none" stroke={COULEUR_TYPE[x.ty]} strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
 
-/** Une boîte horizontale ; l'axe des valeurs est partagé par toutes les rangées. */
-function BoiteH({ st, max, couleur, m }: { st: Stat; max: number; couleur: string; m: Cle }) {
-  const W = 600, H = 34;
-  if (!st.b) return <p className="text-[12px] text-muted">{st.n} / {SEUIL_JOURS} jours : pas de boîte</p>;
-  const x = (v: number) => (Math.min(v, max) / max) * W, b = st.b, cy = H / 2;
+function Part({ v, total, couleur }: { v: number; total: number; couleur: string }) {
+  const p = total ? v / total : 0;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full" style={{ height: H }} aria-label={`Jour type ${METRIQUES[m].fmt(b.med)}`}>
-      <line x1={x(b.bas)} x2={x(b.haut)} y1={cy} y2={cy} stroke={couleur} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <rect x={x(b.q1)} y={cy - 10} width={Math.max(2, x(b.q3) - x(b.q1))} height={20} fill={couleur} fillOpacity={0.18} stroke={couleur} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <line x1={x(b.med)} x2={x(b.med)} y1={cy - 10} y2={cy + 10} stroke={couleur} strokeWidth={3} vectorEffect="non-scaling-stroke" />
-    </svg>
+    <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
+      <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-canvas"><span className="block h-full rounded-full" style={{ width: `${p * 100}%`, background: couleur }} /></span>
+      <span className="text-[11.5px] tabular-nums text-muted">{Math.round(p * 100)} %</span>
+    </span>
   );
 }
 
-function TeteType({ L, x, m, ouvert }: { L: Lecture; x: LuType; m: Cle; ouvert: boolean }) {
-  const diffuse = x.campagnes.length > 0;
-  const corps = (
-    <>
-      <span className="flex items-center gap-2 text-[13.5px] font-semibold text-ink">
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COULEUR_TYPE[x.ty] }} />{x.ty}
-        {ouvert && <span className="rounded-full bg-ink px-1.5 py-px text-[10.5px] font-medium text-white">ouvert</span>}
+function Info({ texte }: { texte: string }) {
+  return <span title={texte} className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-line text-[9px] text-muted">i</span>;
+}
+
+// Chiffres FICTIFS. Ce qui est propre à chaque type, s'il est récolté un jour
+// (option C de l'analyse). Disponibilité vérifiée : vues et CPV Vidéo, PMax par
+// réseau (ticket 10) ; portée par campagne, non additionnable (ticket 01).
+function Specialite({ ty }: { ty: TypeC }) {
+  if (ty === "Vidéo") return <span className="text-[12px] tabular-nums text-ink">31 200 vues · taux de vue 32,5 % · CPV 0,017 CHF</span>;
+  if (ty === "PMax") {
+    const reseaux: [string, number, string][] = [["Search", 46, "#1a56ff"], ["YouTube", 21, "#c2185b"], ["Display", 19, "#0d9aa8"], ["Discover · Gmail", 9, "#7b4fff"], ["autres", 5, "#b9bcc4"]];
+    return (
+      <span className="block min-w-0">
+        <span className="flex h-2 w-full overflow-hidden rounded-full">{reseaux.map(([n, p, c]) => <span key={n} style={{ width: `${p}%`, background: c }} />)}</span>
+        <span className="mt-1 block text-[11px] leading-snug text-muted">dépense par réseau : {reseaux.map(([n, p]) => `${n} ${p} %`).join(" · ")}</span>
       </span>
-      {diffuse ? (
-        <>
-          <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[20px] font-semibold leading-tight tabular-nums text-ink">{valeurDe(m, x.total)}</span>
-            <Ecart m={m} e={ecart(m, x.total, x.avant)} />
-          </span>
-          <span className="block text-[11.5px] text-muted">dépense {chf(x.total.cout)} · {x.campagnes.length} campagne{x.campagnes.length > 1 ? "s" : ""}</span>
-          {x.st.ecartes > 0 && <span className="block text-[11.5px] text-muted">{x.st.ecartes} jour{x.st.ecartes > 1 ? "s" : ""} {JOUR_SANS[m]}, écarté{x.st.ecartes > 1 ? "s" : ""}</span>}
-        </>
-      ) : <span className="mt-1 block text-[12px] text-muted">aucune diffusion sur la période</span>}
-    </>
-  );
-  if (!diffuse) return <div className="min-w-0">{corps}</div>;
-  return <Link href={lien(L.sp, { type: x.ty, comparer: undefined })} scroll={false} className="block min-w-0 rounded-lg -m-1.5 p-1.5 hover:bg-canvas">{corps}</Link>;
+    );
+  }
+  if (ty === "Search") return <span className="text-[12px] text-muted">mots-clés et recherches : à venir</span>;
+  if (ty === "Display") return <span className="text-[12px] text-muted">portée et fréquence, par campagne (ne s&apos;additionnent pas)</span>;
+  return <span className="text-[12px] text-muted">chiffres de base seulement</span>;
 }
 
-function CampagnesDuType({ L, ouvert, onglets = true }: { L: Lecture; ouvert: TypeC; onglets?: boolean }) {
+function BlocTypes({ L, ouvert, specialites }: { L: Lecture; ouvert: TypeC; specialites: boolean }) {
+  const lt = lireTypes(), mc = COMPTE_DE_LA_VUE[L.vue], mt = TAUX_DE_LA_VUE[L.vue];
+  const totalCompte = METRIQUES[mc].calc(COMPTE) ?? 0;
   return (
-    <div className="mt-6">
-      {onglets && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
-          <span className="text-muted">Comparer les campagnes du type :</span>
-          {TYPES.filter((ty) => campagnesDu(ty).length).map((ty) => (
-            <Link key={ty} href={lien(L.sp, { type: ty, comparer: undefined })} scroll={false}
-              className={`rounded-full px-3 py-1 ${ty === ouvert ? "bg-ink text-white" : "border border-line bg-white text-ink hover:border-ink/30"}`}>{ty}</Link>
-          ))}
-        </div>
-      )}
-      <Comparaison L={L} campagnes={campagnesDu(ouvert)} titre={`Les campagnes ${ouvert}, entre elles`} />
-    </div>
-  );
-}
-
-function VarianteRangees({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
-  const lt = lireTypes(m), max = maxAxe(lt), H = 76;
-  return (
-    <>
-      <div className="rounded-2xl border border-line bg-white px-5 py-3">
-        <div className="grid grid-cols-[170px_minmax(0,1fr)_110px] gap-4 border-b border-line pb-2 text-[11.5px] text-muted">
-          <span>Type · {METRIQUES[m].nom} de la période</span>
-          <span>Jour par jour · en pointillé, les 28 jours d&apos;avant</span>
-          <span>Les jours de la période</span>
-        </div>
-        {lt.map((x) => (
-          <div key={x.ty} className="grid grid-cols-[170px_minmax(0,1fr)_110px] items-center gap-4 border-b border-line/60 py-3 last:border-0">
-            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
-            {x.campagnes.length ? <Courbe series={[x.joursAvant, x.jours]} couleurs={["#b9bcc4", COULEUR_TYPE[x.ty]]} pointilles={[0]} max={max} H={H} />
-              : <div className="flex items-center rounded-lg bg-canvas/60 px-3 text-[12px] text-muted" style={{ height: H }}>rien à tracer</div>}
-            {x.campagnes.length ? <BoiteV st={x.st} max={max} H={H} W={110} couleur={COULEUR_TYPE[x.ty]} m={m} /> : <span />}
-          </div>
-        ))}
-        <div className="grid grid-cols-[170px_minmax(0,1fr)_110px] gap-4 pt-1">
-          <span className="text-[11px] text-muted">même échelle pour tous · haut : {METRIQUES[m].fmt(max / 1.08)}</span><Dates /><span />
-        </div>
+    <section>
+      <Titre titre="Types de campagne" sous="Où va ton argent et d'où viennent tes résultats. Chaque type se lit face à ses 28 jours d'avant : les types ne se comparent pas entre eux." />
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+        <table className={`w-full text-[13px] ${specialites ? "min-w-[1080px]" : "min-w-[860px]"}`}>
+          <thead>
+            <tr className="whitespace-nowrap border-b border-line text-left align-bottom text-[12px] text-muted">
+              <th className="px-4 py-3 font-medium">Type</th>
+              <th className="px-3 py-3 font-medium">Dépense<span className="block text-[11px] font-normal">et sa part</span></th>
+              <th className="px-3 py-3 font-medium">{METRIQUES[mc].nom}<Info texte={RESERVE_PART[L.vue]} /><span className="block text-[11px] font-normal">et leur part</span></th>
+              <th className="px-3 py-3 font-medium">{METRIQUES[mt].nom}<span className="block text-[11px] font-normal">face à ses 28 jours d&apos;avant</span></th>
+              <th className="w-[18%] px-3 py-3 font-medium">Jour par jour, à son échelle</th>
+              {specialites && <th className="w-[24%] px-3 py-3 font-medium">Propre au type</th>}
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {lt.map((x) => {
+              const actif = x.ty === ouvert, diffuse = x.campagnes.length > 0;
+              return (
+                <tr key={x.ty} className={`border-b border-line/60 last:border-0 ${actif ? "bg-canvas/60" : ""}`}>
+                  <td className="px-4 py-3 align-top">
+                    <span className="flex items-center gap-2 whitespace-nowrap font-semibold text-ink"><span className="h-2.5 w-2.5 rounded-full" style={{ background: COULEUR_TYPE[x.ty] }} />{x.ty}</span>
+                    <span className="block whitespace-nowrap pl-[18px] text-[11.5px] text-muted">{diffuse ? `${x.campagnes.length} campagne${x.campagnes.length > 1 ? "s" : ""}` : "aucune diffusion sur la période"}</span>
+                  </td>
+                  {diffuse ? (
+                    <>
+                      <td className="px-3 py-3 align-top"><span className="tabular-nums text-ink">{chf(x.total.cout)}</span><Part v={x.total.cout} total={COMPTE.cout} couleur={COULEUR_TYPE[x.ty]} /></td>
+                      <td className="px-3 py-3 align-top"><span className="tabular-nums text-ink">{valeurDe(mc, x.total)}</span><Part v={METRIQUES[mc].calc(x.total) ?? 0} total={totalCompte} couleur={COULEUR_TYPE[x.ty]} /></td>
+                      <td className="px-3 py-3 align-top">
+                        <span className="flex flex-wrap items-baseline gap-2"><span className="text-[15px] font-semibold tabular-nums text-ink">{valeurDe(mt, x.total)}</span><Ecart m={mt} e={ecart(mt, x.total, x.avant)} /></span>
+                        <span className="block whitespace-nowrap text-[11.5px] tabular-nums text-muted">avant : {valeurDe(mt, x.avant)}</span>
+                      </td>
+                      <td className="px-3 py-3 align-middle"><Mini x={x} m={mt} /></td>
+                      {specialites && <td className="max-w-[300px] px-3 py-3 align-middle"><Specialite ty={x.ty} /></td>}
+                      <td className="px-4 py-3 text-right align-middle">
+                        {actif ? <span className="text-[12px] font-medium text-ink">ses campagnes ↓</span>
+                          : <Link href={lien(L.sp, { type: x.ty, comparer: undefined })} scroll={false} className="whitespace-nowrap text-[12px] font-medium text-brand hover:underline">Ses campagnes →</Link>}
+                      </td>
+                    </>
+                  ) : <td colSpan={specialites ? 6 : 5} className="px-3 py-3 text-[12px] text-muted">A diffusé dans l&apos;année ; rien sur la période choisie.</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <CampagnesDuType L={L} ouvert={ouvert} />
-    </>
-  );
-}
-
-function VarianteSuperposee({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
-  const lt = lireTypes(m), max = maxAxe(lt), H = 250;
-  const actifs = lt.filter((x) => x.campagnes.length);
-  return (
-    <>
-      <div className="mb-3 flex flex-wrap gap-2">
-        {lt.map((x) => (
-          <div key={x.ty} className={`min-w-[150px] flex-1 rounded-xl border bg-white p-3 ${x.ty === ouvert ? "border-ink" : "border-line"}`}>
-            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
-          </div>
-        ))}
-      </div>
-      <div className="rounded-2xl border border-line bg-white p-5">
-        <div className="mb-2 flex justify-between text-[11.5px] text-muted">
-          <span>{METRIQUES[m].nom} jour par jour, une couleur par type</span><span>Les jours de la période</span>
-        </div>
-        <div className="flex items-start gap-5">
-          <div className="min-w-0 flex-1">
-            <Courbe series={actifs.map((x) => x.jours)} couleurs={actifs.map((x) => COULEUR_TYPE[x.ty])} max={max} H={H} />
-            <div className="mt-1"><Dates /></div>
-          </div>
-          <div className="flex shrink-0 gap-1 border-l border-line pl-4">
-            {actifs.map((x) => (
-              <div key={x.ty} className="flex flex-col items-center">
-                <BoiteV st={x.st} max={max} H={H} W={44} couleur={COULEUR_TYPE[x.ty]} m={m} />
-                <span className="mt-1 text-[10.5px] text-muted">{x.ty}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <p className="mt-2 text-[11px] text-muted">même échelle pour la courbe et les boîtes · haut : {METRIQUES[m].fmt(max / 1.08)}</p>
-      </div>
-      <CampagnesDuType L={L} ouvert={ouvert} />
-    </>
+      <p className="mt-2 text-[11.5px] text-muted">
+        Ordre fixe, jamais classé. Chaque courbe a sa propre échelle : elle se lit face à son pointillé (les 28 jours d&apos;avant), pas face aux autres types.
+        Autres types : aucune diffusion sur 12 mois, pas de ligne.
+      </p>
+    </section>
   );
 }
 
-function VarianteBoites({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
-  const lt = lireTypes(m), max = maxAxe(lt);
+function OngletsTypes({ L, ouvert }: { L: Lecture; ouvert: TypeC }) {
   return (
-    <div className="rounded-2xl border border-line bg-white px-5 py-3">
-      <div className="grid grid-cols-[190px_minmax(0,1fr)] gap-4 border-b border-line pb-2 text-[11.5px] text-muted">
-        <span>Type · {METRIQUES[m].nom} de la période</span>
-        <span className="flex justify-between"><span>Les jours de la période, même échelle pour tous</span><span>0 → {METRIQUES[m].fmt(max / 1.08)}</span></span>
-      </div>
-      {lt.map((x) => (
-        <div key={x.ty} className="border-b border-line/60 py-3 last:border-0">
-          <div className="grid grid-cols-[190px_minmax(0,1fr)] items-center gap-4">
-            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
-            {x.campagnes.length ? <BoiteH st={x.st} max={max} couleur={COULEUR_TYPE[x.ty]} m={m} /> : <span />}
-          </div>
-          {x.ty === ouvert && (
-            <div className="mt-4 rounded-xl bg-canvas/50 p-4">
-              <p className="mb-1 text-[12px] text-muted">{x.ty} · {METRIQUES[m].nom} jour par jour · en pointillé, les 28 jours d&apos;avant</p>
-              <Courbe series={[x.joursAvant, x.jours]} couleurs={["#b9bcc4", COULEUR_TYPE[x.ty]]} pointilles={[0]} max={max} H={140} />
-              <div className="mt-1"><Dates /></div>
-              <CampagnesDuType L={L} ouvert={ouvert} onglets={false} />
-            </div>
-          )}
-        </div>
+    <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px]">
+      <span className="text-muted">Type :</span>
+      {TYPES.filter((ty) => campagnesDu(ty).length).map((ty) => (
+        <Link key={ty} href={lien(L.sp, { type: ty, comparer: undefined })} scroll={false}
+          className={`rounded-full px-3 py-1 ${ty === ouvert ? "bg-ink text-white" : "border border-line bg-white text-ink hover:border-ink/30"}`}>{ty}</Link>
       ))}
     </div>
+  );
+}
+
+function ComparaisonDuType({ L, ouvert }: { L: Lecture; ouvert: TypeC }) {
+  return (
+    <section>
+      <Titre titre="Comparaison" sous="Les campagnes d'un même type entre elles : elles font le même métier." />
+      <OngletsTypes L={L} ouvert={ouvert} />
+      <Comparaison L={L} campagnes={campagnesDu(ouvert)} titre={`Les campagnes ${ouvert}`} />
+    </section>
+  );
+}
+
+/** Variante B : les types sont la porte d'entrée de la Comparaison, un seul module. */
+function TypesEnTete({ L, ouvert }: { L: Lecture; ouvert: TypeC }) {
+  const lt = lireTypes(), mc = COMPTE_DE_LA_VUE[L.vue], mt = TAUX_DE_LA_VUE[L.vue];
+  const totalCompte = METRIQUES[mc].calc(COMPTE) ?? 0;
+  return (
+    <section>
+      <Titre titre="Comparaison" sous="Choisis un type : ses campagnes se comparent entre elles. Les types, eux, ne se comparent pas — chacun se lit face à ses 28 jours d'avant." />
+      <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        {lt.map((x) => {
+          const actif = x.ty === ouvert, diffuse = x.campagnes.length > 0;
+          const corps = (
+            <>
+              <span className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><span className="h-2.5 w-2.5 rounded-full" style={{ background: COULEUR_TYPE[x.ty] }} />{x.ty}</span>
+              {diffuse ? (
+                <>
+                  <span className="mt-2 block text-[11.5px] text-muted">dépense {chf(x.total.cout)}</span>
+                  <Part v={x.total.cout} total={COMPTE.cout} couleur={COULEUR_TYPE[x.ty]} />
+                  <span className="mt-1.5 block text-[11.5px] text-muted">{METRIQUES[mc].nom.toLowerCase()} {valeurDe(mc, x.total)}<Info texte={RESERVE_PART[L.vue]} /></span>
+                  <Part v={METRIQUES[mc].calc(x.total) ?? 0} total={totalCompte} couleur={COULEUR_TYPE[x.ty]} />
+                  <span className="mt-3 flex flex-wrap items-baseline gap-2"><span className="text-[11.5px] text-muted">{METRIQUES[mt].nom}</span><span className="text-[17px] font-semibold tabular-nums text-ink">{valeurDe(mt, x.total)}</span><Ecart m={mt} e={ecart(mt, x.total, x.avant)} /></span>
+                  <span className="mt-2 block"><Mini x={x} m={mt} H={30} /></span>
+                </>
+              ) : <span className="mt-2 block text-[12px] text-muted">aucune diffusion sur la période</span>}
+            </>
+          );
+          const cadre = `block min-w-0 rounded-xl border p-3 ${actif ? "border-ink bg-white shadow-[0_8px_20px_-10px_rgba(14,15,18,0.35)]" : "border-line bg-white"}`;
+          return diffuse
+            ? <Link key={x.ty} href={lien(L.sp, { type: x.ty, comparer: undefined })} scroll={false} className={`${cadre} ${actif ? "" : "hover:border-ink/30"}`}>{corps}</Link>
+            : <div key={x.ty} className={`${cadre} opacity-70`}>{corps}</div>;
+        })}
+      </div>
+      <Comparaison L={L} campagnes={campagnesDu(ouvert)} titre={`Les campagnes ${ouvert}`} />
+      <p className="mt-3 text-[11.5px] text-muted">Ordre fixe, jamais classé. Chaque petite courbe a sa propre échelle, face à son pointillé (les 28 jours d&apos;avant).</p>
+    </section>
   );
 }
 
 function ComparaisonTypes({ L }: { L: Lecture }) {
   const variante = un(L.sp.variant) ?? "A";
-  const mt = un(L.sp.mt) as Cle | undefined;
-  const m: Cle = mt && TAUX.includes(mt) ? mt : TAUX_DE_LA_VUE[L.vue];
   const ty = un(L.sp.type) as TypeC | undefined;
   const ouvert: TypeC = ty && TYPES.includes(ty) && campagnesDu(ty).length ? ty : "Search";
+  if (variante === "B") return <TypesEnTete L={L} ouvert={ouvert} />;
   return (
-    <section>
-      <Titre titre="Comparaison" sous="Tes types de campagne face à face sur un taux, jour par jour ; puis les campagnes d'un même type entre elles."
-        droite={
-          <span className="flex flex-wrap gap-1.5">
-            {TAUX.map((k) => (
-              <Link key={k} href={lien(L.sp, { mt: k })} scroll={false}
-                className={`rounded-full px-2.5 py-1 text-[12px] ${k === m ? "bg-ink text-white" : "border border-line bg-white text-ink hover:border-ink/30"}`}>{METRIQUES[k].nom}</Link>
-            ))}
-          </span>
-        } />
-      {variante === "B" ? <VarianteSuperposee L={L} m={m} ouvert={ouvert} /> : variante === "C" ? <VarianteBoites L={L} m={m} ouvert={ouvert} /> : <VarianteRangees L={L} m={m} ouvert={ouvert} />}
-      <p className="mt-3 text-[11.5px] text-muted">
-        Seuls des taux, calculés sur les totaux, se comparent d&apos;un type à l&apos;autre : un nombre de clics ou une dépense suit le budget du type.
-        Une boîte = les jours de la période ; sous {SEUIL_JOURS} jours, pas de boîte. Les types gardent un ordre fixe, jamais classés.
-        Autres types : aucune diffusion sur 12 mois, donc pas de rangée.
-      </p>
-    </section>
+    <>
+      <BlocTypes L={L} ouvert={ouvert} specialites={variante === "C"} />
+      <ComparaisonDuType L={L} ouvert={ouvert} />
+    </>
   );
 }
 
