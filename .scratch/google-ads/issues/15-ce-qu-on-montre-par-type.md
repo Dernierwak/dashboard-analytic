@@ -77,3 +77,14 @@ dit surtout le **niveau** du type, peu sa dispersion ; et le **coût par
 conversion jour par jour** d'un type qui convertit peu (Demand Gen, moins
 d'une conversion par jour) s'envole certains jours, étire l'échelle et écrase
 Search.
+
+**Rejeté par David, les trois variantes** : « on n'arrive pas forcément à
+rentrer dans le détail type de campagne […] je sais vraiment pas quoi mettre ».
+Il pose la question de fond — comparer des types, moustaches ou autre, est-ce
+que ça a un sens ? — et demande un point d'analyse avant de répondre :
+[Peut-on comparer des types de campagne Google entre eux ?](../analyses/15-comparer-les-types.md).
+Sa thèse : un type est un métier, pas une variante ; aucun chiffre commun ne
+les compare, même un taux ; les moustaches n'ont pas d'unité sur Google ; se
+comparent un type face à son passé, des campagnes du même type, et la
+répartition. Recommandation : un bloc « Types de campagne » factuel (B), puis
+les chiffres propres à chaque type, un type à la fois (C).
