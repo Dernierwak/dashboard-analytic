@@ -12,7 +12,15 @@ l'est**. Sur les comptes réels (03), lancer les requêtes GAQL que la
 recherche (01) a retenues, type par type, et noter :
 - ce qui revient rempli, ce qui revient à 0, ce qui est rejeté ;
 - les métriques vidéo et PMax sur de vraies campagnes ;
-- le volume de lignes par niveau (mots-clés, éléments) sur 90 jours.
+- le volume de lignes par niveau (mots-clés, éléments) sur 90 jours ;
+- **conversions (ticket 05)** : que `metrics.conversions` retrouve la colonne
+  « Conversions » de l'interface Google Ads et sa date (au clic — déduit, non
+  écrit par Google) ; que `all_conversions` et `view_through_conversions`
+  reviennent dans la même requête ; ce que rend `conversions_value` pour un
+  compte **sans valeur configurée** — 0 ou vide (la page affiche « — »,
+  jamais 0) ;
+- qu'un taux calculé sur les totaux (clics ÷ impressions, coût ÷ clics…) sur
+  une campagne et une période retrouve celui de l'interface Google Ads.
 
 Lecture seule, jetable (branche `essai/` ou `$CLAUDE_JOB_DIR/tmp`), aucun
 secret en sortie (§7). HITL si l'agent ne peut pas joindre l'API : checklist

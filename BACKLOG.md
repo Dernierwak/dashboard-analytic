@@ -321,3 +321,12 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   était au mauvais niveau, deux annonces d'une campagne pouvant envoyer vers
   deux pages. Google la répartit entre `final_urls` et les extensions : à
   regarder le jour où Google entre dans le socle.
+
+## Relevé en chemin le 2026-11-10 (ticket `.scratch/google-ads/issues/05`)
+
+- **Choisir la conversion affichée sur la page Google.** La première version
+  montre la colonne « Conversions » de Google seule ; David veut pouvoir
+  choisir ensuite entre « Conversions », « Toutes les conv. »
+  (`all_conversions`) et « Conv. après affichage » (`view_through_conversions`).
+  Les trois sont récoltées dès la première version, dans la même requête : il
+  ne restera que l'écran à construire, et le libellé à aligner sur Google.
