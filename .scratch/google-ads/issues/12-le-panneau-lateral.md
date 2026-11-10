@@ -1,9 +1,9 @@
 # 12: Le Panneau latéral sur Google
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: —
-Assignee: —
+Assignee: David
 
 ## Question
 
