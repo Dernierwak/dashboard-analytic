@@ -367,3 +367,12 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
     seules. Quartiles : rendus sur Vidéo et Display, absents sur PMax.
     Volumes sur 90 jours, compte principal : 20 800 lignes élément PMax ×
     jour, 8 400 mot-clé × jour, 8 700 termes.
+
+## Relevé en chemin le 2026-11-10 (ticket `.scratch/google-ads/issues/12`)
+
+- **Ouvrir un Groupe d'éléments PMax dans le Panneau latéral** — ses titres,
+  descriptions, images et vidéos. Écarté de la première page Google : comme
+  chez Meta, seul « Lire » sur une annonce ouvre le panneau, et un Groupe
+  d'éléments n'est pas une annonce. David : « pour l'instant, les panneaux,
+  on va pas aller plus en détail ». À reprendre avec l'analyse PMax
+  ci-dessus — les éléments y ont leurs chiffres (`asset_group_asset`).

@@ -72,8 +72,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-10)** :
-[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) — le
-prochain par numéro —,
 [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md)
 — HITL, dix minutes dans l'interface —,
 [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md)
@@ -93,7 +91,7 @@ prochain par numéro —,
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling ✓ | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task ✓ | 01, 03 |
 | [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype ✓ | — |
-| [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling | — |
+| [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling ✓ | — |
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task (HITL) | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | 15 |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling | 11 |
@@ -181,6 +179,14 @@ prochain par numéro —,
   de propre aux types pour l'instant (filtre et moustache du 04 suspendus,
   15) ; en bas, « Analyser une campagne — à venir » ; la Comparaison reste
   celle de Meta, à améliorer plus tard (16).
+- [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) :
+  comme Meta — « Lire » sur une annonce de la Comparaison, un point de la
+  Tendance pour un jour ; le Groupe d'éléments PMax n'ouvre rien (ses
+  éléments au `BACKLOG.md`) ; l'annonce montre tout ce qu'elle contient selon
+  son type — titres et descriptions Search, images Display, la vidéo
+  elle-même —, jamais une annonce recomposée, aucun chiffre ; le journal est
+  déjà enregistré, seul l'avant-première-récolte (30 j) manque, dit au « ⓘ » ;
+  champs de contenu à vérifier sur un appel réel.
 
 ## Not yet specified
 
@@ -193,7 +199,8 @@ prochain par numéro —,
   `google_ads_insights` (type de campagne, les trois colonnes de conversions,
   valeur, portée par fenêtre de 92 j au plus), une table des Groupes
   d'éléments PMax (09 ; ≈ 600 lignes × jour sur 90 j), les réglages de valeur
-  des actions de conversion (13), reprise de l'historique (37 mois au plus
+  des actions de conversion (13), le contenu des annonces et leurs images
+  (12), reprise de l'historique (37 mois au plus
   par jour), passage de v25 à v26 (v26 répond, vérifié au 10) ; les vidéos et
   les mots-clés sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
