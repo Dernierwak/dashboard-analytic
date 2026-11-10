@@ -73,14 +73,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 
 **Frontier (2026-11-10)** : [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md)
 — le prochain —, [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md),
-[Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md)
-(attend le feu vert de David pour une requête en lecture seule).
+[Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md),
+[L'essai réel des métriques Google](issues/10-l-essai-reel.md).
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
 | [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research ✓ | — |
 | [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) | research ✓ | — |
-| [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) | task | — |
+| [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) | task ✓ | — |
 | [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling | 01, 02 |
 | [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) | grilling | 01 |
 | [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md) | grilling | 01, 03 |
@@ -105,6 +105,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   conversions et valeur ; vidéo = vues TrueView, quartiles, CPV (v26) ;
   portée non additionnable, 92 j ; PMax absent de `ad_group_ad` sans erreur,
   lisible par groupe d'éléments et par réseau ; Demand Gen est un type à part.
+
+- [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) :
+  2 comptes annonceurs (un seul utilisateur) ; sur 90 jours, **Search et PMax
+  = 100 % de la dépense** (A : 69 / 31 %, B : 15 / 85 %) ; Display, Vidéo
+  (`VIDEO_ACTION`) et Demand Gen existent mais n'ont rien diffusé ; aucun
+  Shopping, App ni Smart. Échantillon mince, relevé à refaire.
 
 ## Not yet specified
 
