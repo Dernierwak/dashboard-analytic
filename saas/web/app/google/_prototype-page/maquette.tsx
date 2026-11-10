@@ -10,8 +10,17 @@
 //
 // Chiffres FICTIFS, calqués sur le compte A (tickets 03 et 10). L'état vit dans
 // l'URL : vue, comparer (répété), deplie.
+//
+// TROISIÈME TOUR — ticket « Ce qu'on montre pour chaque type de campagne »
+// (.scratch/google-ads/issues/15-ce-qu-on-montre-par-type.md). Trois variantes
+// de la SEULE Comparaison, qui devient le module des types : `&variant=A|B|C`,
+// barre flottante en bas. David : les types se voient d'abord ensemble par
+// moustaches, sur ce qui est comparable (les taux), avec l'évolution jour par
+// jour ; ensuite on ne compare que des campagnes du même type. Paramètres en
+// plus : variant, mt (la métrique du module), type (le type ouvert).
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
+import { BarreVariantes } from "./barre-variantes";
 
 type SP = Record<string, string | string[] | undefined>;
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -29,7 +38,8 @@ function lien(sp: SP, patch: Record<string, string | string[] | undefined>): str
 
 type Totaux = { impressions: number; clics: number; cout: number; conversions: number; valeur: number };
 const CHAMPS: (keyof Totaux)[] = ["impressions", "clics", "cout", "conversions", "valeur"];
-type Ligne = { id: string; nom: string; niveau: string; t: Totaux; enfants: Ligne[] };
+type TypeC = "Search" | "PMax" | "Display" | "Vidéo" | "Demand Gen";
+type Ligne = { id: string; nom: string; niveau: string; t: Totaux; enfants: Ligne[]; type?: TypeC };
 
 const JOURS = 28;
 const FIN = new Date("2026-11-09T00:00:00Z");
@@ -52,28 +62,33 @@ function enfants(id: string, parent: Totaux, niveau: string, noms: [string, numb
   });
 }
 const annonces = (id: string, p: Totaux) => enfants(id, p, "Annonce", [["Annonce responsive 1", 0.6], ["Annonce responsive 2", 0.4]]);
-const campagne = (nom: string, tt: Totaux, sous: [string, number][], elements = false): Ligne => ({
-  id: nom, nom, niveau: "Campagne", t: tt,
-  enfants: elements ? enfants(nom, tt, "Groupe d'éléments", sous) : enfants(nom, tt, "Groupe d'annonces", sous, annonces),
+const campagne = (type: TypeC, nom: string, tt: Totaux, sous: [string, number][]): Ligne => ({
+  id: nom, nom, niveau: "Campagne", t: tt, type,
+  enfants: type === "PMax" ? enfants(nom, tt, "Groupe d'éléments", sous) : enfants(nom, tt, "Groupe d'annonces", sous, annonces),
 });
 // Les 28 jours de A ≈ 31 % de ses 90 jours (ticket 10) : Search ≈ 5 040 CHF,
-// PMax ≈ 2 285 CHF — PMax fait beaucoup de clics bon marché.
+// PMax ≈ 2 285 CHF — PMax fait beaucoup de clics bon marché. Demand Gen et
+// Vidéo sont AJOUTÉS pour la maquette (A a dépensé en Demand Gen sur 36 mois,
+// ticket 10) : il faut plus de deux types pour juger le module. Display a
+// diffusé dans l'année mais pas sur la période (il garde sa rangée).
 const CAMPAGNES: Ligne[] = [
-  campagne("Marque", t(15_200, 2_310, 1_715, 512, 1_480), [["Marque exacte", 0.7], ["Marque + produit", 0.3]]),
-  campagne("Produits", t(12_100, 1_160, 1_360, 371, 1_120), [["Gamme A", 0.55], ["Gamme B", 0.45]]),
-  campagne("Catalogue", t(65_900, 4_260, 1_325, 70, 990), [["Tous les produits", 0.7], ["Nouveautés", 0.3]], true),
-  campagne("Générique FR", t(8_000, 880, 905, 246, 720), [["Générique", 1]]),
-  campagne("Leads", t(35_200, 2_210, 710, 37, 525), [["Formulaire", 1]], true),
-  campagne("Générique DE", t(5_400, 470, 605, 140, 410), [["Generisch", 1]]),
-  campagne("Concurrents", t(4_000, 270, 455, 99, 280), [["Concurrents", 1]]),
-  campagne("Saison", t(12_600, 710, 250, 13, 185), [["Automne", 1]], true),
+  campagne("Search", "Marque", t(15_200, 2_310, 1_715, 512, 1_480), [["Marque exacte", 0.7], ["Marque + produit", 0.3]]),
+  campagne("Search", "Produits", t(12_100, 1_160, 1_360, 371, 1_120), [["Gamme A", 0.55], ["Gamme B", 0.45]]),
+  campagne("PMax", "Catalogue", t(65_900, 4_260, 1_325, 70, 990), [["Tous les produits", 0.7], ["Nouveautés", 0.3]]),
+  campagne("Demand Gen", "Découverte automne", t(182_000, 1_910, 1_150, 24, 310), [["Lookalike clients", 0.6], ["Centres d'intérêt", 0.4]]),
+  campagne("Search", "Générique FR", t(8_000, 880, 905, 246, 720), [["Générique", 1]]),
+  campagne("PMax", "Leads", t(35_200, 2_210, 710, 37, 525), [["Formulaire", 1]]),
+  campagne("Search", "Générique DE", t(5_400, 470, 605, 140, 410), [["Generisch", 1]]),
+  campagne("Vidéo", "Film de marque", t(96_000, 390, 520, 3, 40), [["In-stream", 0.7], ["Bumper", 0.3]]),
+  campagne("Search", "Concurrents", t(4_000, 270, 455, 99, 280), [["Concurrents", 1]]),
+  campagne("Demand Gen", "Relance Gmail", t(41_000, 520, 310, 9, 95), [["Visiteurs 30 j", 1]]),
+  campagne("PMax", "Saison", t(12_600, 710, 250, 13, 185), [["Automne", 1]]),
 ];
 const AVANT = 1 / 1.04; // la période d'avant, un peu plus basse
 
 const vide = (): Totaux => t(0, 0, 0, 0, 0);
 const additionner = (ls: Totaux[]) => ls.reduce((a, b) => { CHAMPS.forEach((c) => (a[c] += b[c])); return a; }, vide());
 const COMPTE = additionner(CAMPAGNES.map((c) => c.t));
-const fois = (x: Totaux, k: number) => Object.fromEntries(CHAMPS.map((c) => [c, x[c] * k])) as Totaux;
 
 /** Répartit un total de campagne sur 28 jours : creux le week-end, du bruit. */
 function serieJours(tt: Totaux, graine: number): Totaux[] {
@@ -82,14 +97,17 @@ function serieJours(tt: Totaux, graine: number): Totaux[] {
   const parChamp = CHAMPS.map((_, ci) => {
     const poids = Array.from({ length: JOURS }, (_, i) => {
       const wd = dateDu(i).getUTCDay();
-      return (wd === 0 || wd === 6 ? 0.72 : 1.08) * (0.75 + 0.5 * bruit(i, graine)) * (0.85 + 0.3 * bruit(i, graine + 31 * (ci + 1)));
+      return (wd === 0 || wd === 6 ? 0.72 : 1.08) * (0.75 + 0.5 * bruit(i, graine)) * (0.7 + 0.6 * bruit(i, graine + 31 * (ci + 1)));
     });
     const s = poids.reduce((a, b) => a + b, 0);
     return poids.map((p) => p / s);
   });
   return Array.from({ length: JOURS }, (_, i) => Object.fromEntries(CHAMPS.map((c, ci) => [c, tt[c] * parChamp[ci][i]])) as Totaux);
 }
-const SERIE = new Map(CAMPAGNES.map((c) => [c.id, { maintenant: serieJours(c.t, graineDe(c.nom)), avant: serieJours(fois(c.t, AVANT), graineDe(c.nom) + 7) }]));
+// Un facteur par compteur et par campagne : avec un seul, la période d'avant
+// aurait exactement les mêmes taux, et tout écart de taux serait « 0,0 % ».
+const avantDe = (c: Ligne) => Object.fromEntries(CHAMPS.map((ch, k) => [ch, c.t[ch] * AVANT * (0.88 + 0.24 * bruit(k, graineDe(c.nom) + 3))])) as Totaux;
+const SERIE = new Map(CAMPAGNES.map((c) => [c.id, { maintenant: serieJours(c.t, graineDe(c.nom)), avant: serieJours(avantDe(c), graineDe(c.nom) + 7) }]));
 const jourDuCompte = (quand: "maintenant" | "avant") =>
   Array.from({ length: JOURS }, (_, i) => additionner(CAMPAGNES.map((c) => SERIE.get(c.id)![quand][i])));
 
@@ -139,13 +157,11 @@ export function PrototypePage({ sp }: { sp: SP }) {
       <div className="mt-6 space-y-12">
         <Selecteur L={L} />
         <Tendance L={L} />
-        <Comparaison L={L} />
+        <ComparaisonTypes L={L} />
         <Tableau L={L} />
         <AnalyseAVenir />
       </div>
-      <p className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#2b1a4d] px-4 py-2 text-[12.5px] font-semibold text-white shadow-2xl">
-        Maquette · chiffres fictifs
-      </p>
+      <BarreVariantes variantes={VARIANTES} />
     </main>
   );
 }
@@ -260,12 +276,12 @@ function Tendance({ L }: { L: Lecture }) {
 
 const COULEURS = ["#1a56ff", "#e08b1a", "#7b4fff", "#0d9aa8"];
 
-function Comparaison({ L }: { L: Lecture }) {
+function Comparaison({ L, campagnes, titre }: { L: Lecture; campagnes: Ligne[]; titre: string }) {
   const [m1, m2] = VUES[L.vue].tendance;
-  const rangs = [...CAMPAGNES].sort((a, b) => (METRIQUES[m1].calc(b.t) ?? 0) - (METRIQUES[m1].calc(a.t) ?? 0));
-  const demandees = tous(L.sp.comparer).filter((id) => CAMPAGNES.some((c) => c.id === id));
+  const rangs = [...campagnes].sort((a, b) => (METRIQUES[m1].calc(b.t) ?? 0) - (METRIQUES[m1].calc(a.t) ?? 0));
+  const demandees = tous(L.sp.comparer).filter((id) => campagnes.some((c) => c.id === id));
   const cochees = demandees.length ? demandees.slice(0, 4) : rangs.slice(0, 4).map((c) => c.id);
-  const max = METRIQUES[m1].calc(rangs[0].t) || 1;
+  const max = (rangs[0] && METRIQUES[m1].calc(rangs[0].t)) || 1;
   const basculer = (id: string) => {
     const n = cochees.includes(id) ? cochees.filter((x) => x !== id) : [...cochees, id].slice(-4);
     return lien(L.sp, { comparer: n.length ? n : ["_"] });
@@ -278,9 +294,15 @@ function Comparaison({ L }: { L: Lecture }) {
     </div>
   );
   return (
-    <section>
-      <Titre titre="Comparaison" sous={`Tes campagnes classées sur ${METRIQUES[m1].nom.toLowerCase()}. Coche-en jusqu'à quatre pour les suivre jour par jour.`}
-        droite={<span className="text-[12.5px] text-muted">Niveau : <b className="text-ink">Campagnes</b> · Métriques : <b className="text-ink">{METRIQUES[m1].nom}</b>, <b className="text-ink">{METRIQUES[m2].nom}</b></span>} />
+    <div>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold text-ink">{titre}</h3>
+          <p className="text-[13px] text-muted">Classées sur {METRIQUES[m1].nom.toLowerCase()}. Coche-en jusqu&apos;à quatre pour les suivre jour par jour. La mécanique de Meta, entre campagnes du même type seulement.</p>
+        </div>
+        <span className="text-[12.5px] text-muted">Niveau : <b className="text-ink">Campagnes</b> · Métriques : <b className="text-ink">{METRIQUES[m1].nom}</b>, <b className="text-ink">{METRIQUES[m2].nom}</b></span>
+      </div>
+      {campagnes.length === 0 ? <p className="rounded-2xl border border-line bg-white p-5 text-[13px] text-muted">Aucune campagne de ce type n&apos;a diffusé sur la période.</p> : (
       <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <ol className="rounded-2xl border border-line bg-white p-2">
           {rangs.map((c, i) => {
@@ -301,8 +323,288 @@ function Comparaison({ L }: { L: Lecture }) {
         </ol>
         <div className="grid min-w-0 gap-3">{graphe(m1)}{graphe(m2)}</div>
       </div>
+      )}
+    </div>
+  );
+}
+
+// ── MODULE 4 · LA COMPARAISON DEVENUE LE MODULE DES TYPES (ticket 15) ────────
+
+const TYPES: TypeC[] = ["Search", "PMax", "Display", "Vidéo", "Demand Gen"];
+const COULEUR_TYPE: Record<TypeC, string> = { Search: "#1a56ff", PMax: "#e08b1a", Display: "#0d9aa8", "Vidéo": "#c2185b", "Demand Gen": "#7b4fff" };
+// Les seuls chiffres qui se comparent d'un type à l'autre sont des taux : un
+// nombre de clics ou une dépense suit le budget du type, pas son fonctionnement
+// (David, tour 2 : « ctr, cpm, eux sont comparables »).
+const TAUX: Cle[] = ["ctr", "cpm", "cpc", "cpa", "taux", "roas"];
+const TAUX_DE_LA_VUE: Record<Vue, Cle> = { notoriete: "cpm", trafic: "ctr", conversion: "cpa" };
+const JOUR_SANS: Record<Cle, string> = { ctr: "sans impression", cpm: "sans impression", cpc: "sans clic", taux: "sans clic", cpa: "sans conversion", roas: "sans dépense", impressions: "", clics: "", conversions: "", valeur: "" };
+const SEUIL_JOURS = 6; // comme Instagram : sous 6 points, aucune boîte
+
+const VARIANTES = [
+  { cle: "A", nom: "Rangées : une courbe et une boîte par type" },
+  { cle: "B", nom: "Superposé : un seul graphe, les boîtes en marge" },
+  { cle: "C", nom: "Boîtes d'abord : un type ouvert se déplie" },
+];
+
+const campagnesDu = (ty: TypeC) => CAMPAGNES.filter((c) => c.type === ty);
+const joursDuType = (ty: TypeC, quand: "maintenant" | "avant") =>
+  Array.from({ length: JOURS }, (_, i) => additionner(campagnesDu(ty).map((c) => SERIE.get(c.id)![quand][i])));
+
+type Boite = { q1: number; med: number; q3: number; bas: number; haut: number; horsHaut: number; horsBas: number };
+type Stat = { n: number; ecartes: number; b: Boite | null };
+function quantile(s: number[], p: number) {
+  const i = (s.length - 1) * p, a = Math.floor(i);
+  return s[a] + (s[Math.min(a + 1, s.length - 1)] - s[a]) * (i - a);
+}
+function boite(vals: (number | null)[]): Stat {
+  const s = vals.filter((v): v is number => v !== null).sort((a, b) => a - b);
+  const ecartes = vals.length - s.length;
+  if (s.length < SEUIL_JOURS) return { n: s.length, ecartes, b: null };
+  const q1 = quantile(s, 0.25), med = quantile(s, 0.5), q3 = quantile(s, 0.75), e = 1.5 * (q3 - q1);
+  const dedans = s.filter((v) => v >= q1 - e && v <= q3 + e);
+  return { n: s.length, ecartes, b: { q1, med, q3, bas: dedans[0], haut: dedans[dedans.length - 1], horsHaut: s.filter((v) => v > q3 + e).length, horsBas: s.filter((v) => v < q1 - e).length } };
+}
+
+type LuType = { ty: TypeC; campagnes: Ligne[]; total: Totaux; avant: Totaux; jours: (number | null)[]; joursAvant: (number | null)[]; st: Stat };
+function lireTypes(m: Cle): LuType[] {
+  return TYPES.map((ty) => {
+    const cs = campagnesDu(ty), j = joursDuType(ty, "maintenant"), ja = joursDuType(ty, "avant");
+    const jours = j.map((x) => METRIQUES[m].calc(x));
+    return { ty, campagnes: cs, total: additionner(cs.map((c) => c.t)), avant: additionner(ja), jours, joursAvant: ja.map((x) => METRIQUES[m].calc(x)), st: boite(jours) };
+  });
+}
+// Un hors norme n'étire pas l'axe (règle Instagram) : l'axe s'arrête au plus
+// haut des moustaches et des courbes sans les hors norme.
+function maxAxe(lt: LuType[]) {
+  const hauts = lt.flatMap((x) => (x.st.b ? [x.st.b.haut] : []));
+  const lignes = lt.flatMap((x) => [...x.jours, ...x.joursAvant]).filter((v): v is number => v !== null);
+  const plafond = hauts.length ? Math.max(...hauts) * 1.6 : Infinity;
+  return Math.max(...hauts, ...lignes.filter((v) => v <= plafond), 0) * 1.08 || 1;
+}
+
+function chemin(s: (number | null)[], max: number, W: number, H: number) {
+  let d = "", posé = false;
+  s.forEach((v, i) => {
+    if (v === null) { posé = false; return; }
+    const x = (i / (JOURS - 1)) * W, y = H - (Math.min(v, max) / max) * H;
+    d += `${posé ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)} `;
+    posé = true;
+  });
+  return d;
+}
+function Courbe({ series, couleurs, pointilles = [], max, H }: { series: (number | null)[][]; couleurs: string[]; pointilles?: number[]; max: number; H: number }) {
+  const W = 600;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full" style={{ height: H }} aria-hidden>
+      {[0.5, 1].map((f) => <line key={f} x1={0} x2={W} y1={H - f * H / 1.08} y2={H - f * H / 1.08} stroke="#eceae4" vectorEffect="non-scaling-stroke" />)}
+      <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} stroke="#d9d6cf" vectorEffect="non-scaling-stroke" />
+      {series.map((s, k) => (
+        <path key={k} d={chemin(s, max, W, H)} fill="none" stroke={couleurs[k]} strokeWidth={pointilles.includes(k) ? 1.25 : 2} strokeDasharray={pointilles.includes(k) ? "4 4" : undefined} vectorEffect="non-scaling-stroke" />
+      ))}
+    </svg>
+  );
+}
+function Dates() {
+  return (
+    <div className="flex justify-between text-[11px] text-muted">
+      {[0, 7, 14, 21, 27].map((i) => <span key={i}>{jourCourt(dateDu(i))}</span>)}
+    </div>
+  );
+}
+
+/** Une boîte verticale, à la même échelle que la courbe d'à côté. */
+function BoiteV({ st, max, H, W, couleur, m }: { st: Stat; max: number; H: number; W: number; couleur: string; m: Cle }) {
+  if (!st.b) return <div className="flex items-center justify-center text-center text-[11.5px] leading-tight text-muted" style={{ height: H, width: W }}>{st.n} / {SEUIL_JOURS} jours<br />pas de boîte</div>;
+  const y = (v: number) => H - (Math.min(v, max) / max) * H, b = st.b, cx = 22, bw = 18;
+  return (
+    <svg width={W} height={H} className="block shrink-0 overflow-visible" aria-label={`Post type ${METRIQUES[m].fmt(b.med)}`}>
+      <line x1={cx} x2={cx} y1={y(b.haut)} y2={y(b.bas)} stroke={couleur} strokeWidth={1.5} />
+      <line x1={cx - 6} x2={cx + 6} y1={y(b.haut)} y2={y(b.haut)} stroke={couleur} strokeWidth={1.5} />
+      <line x1={cx - 6} x2={cx + 6} y1={y(b.bas)} y2={y(b.bas)} stroke={couleur} strokeWidth={1.5} />
+      <rect x={cx - bw / 2} y={y(b.q3)} width={bw} height={Math.max(2, y(b.q1) - y(b.q3))} fill={couleur} fillOpacity={0.18} stroke={couleur} strokeWidth={1.5} rx={2} />
+      <line x1={cx - bw / 2} x2={cx + bw / 2} y1={y(b.med)} y2={y(b.med)} stroke={couleur} strokeWidth={2.5} />
+      {W > 60 && <text x={cx + bw / 2 + 6} y={y(b.med) + 4} fontSize={11.5} fill="#0e0f12" fontWeight={600}>{METRIQUES[m].fmt(b.med)}</text>}
+      {b.horsHaut > 0 && <text x={cx} y={-3} fontSize={10} fill="#8a8f98" textAnchor="middle">▲ {b.horsHaut}</text>}
+    </svg>
+  );
+}
+
+/** Une boîte horizontale ; l'axe des valeurs est partagé par toutes les rangées. */
+function BoiteH({ st, max, couleur, m }: { st: Stat; max: number; couleur: string; m: Cle }) {
+  const W = 600, H = 34;
+  if (!st.b) return <p className="text-[12px] text-muted">{st.n} / {SEUIL_JOURS} jours : pas de boîte</p>;
+  const x = (v: number) => (Math.min(v, max) / max) * W, b = st.b, cy = H / 2;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="block w-full" style={{ height: H }} aria-label={`Jour type ${METRIQUES[m].fmt(b.med)}`}>
+      <line x1={x(b.bas)} x2={x(b.haut)} y1={cy} y2={cy} stroke={couleur} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <rect x={x(b.q1)} y={cy - 10} width={Math.max(2, x(b.q3) - x(b.q1))} height={20} fill={couleur} fillOpacity={0.18} stroke={couleur} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <line x1={x(b.med)} x2={x(b.med)} y1={cy - 10} y2={cy + 10} stroke={couleur} strokeWidth={3} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function TeteType({ L, x, m, ouvert }: { L: Lecture; x: LuType; m: Cle; ouvert: boolean }) {
+  const diffuse = x.campagnes.length > 0;
+  const corps = (
+    <>
+      <span className="flex items-center gap-2 text-[13.5px] font-semibold text-ink">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COULEUR_TYPE[x.ty] }} />{x.ty}
+        {ouvert && <span className="rounded-full bg-ink px-1.5 py-px text-[10.5px] font-medium text-white">ouvert</span>}
+      </span>
+      {diffuse ? (
+        <>
+          <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-[20px] font-semibold leading-tight tabular-nums text-ink">{valeurDe(m, x.total)}</span>
+            <Ecart m={m} e={ecart(m, x.total, x.avant)} />
+          </span>
+          <span className="block text-[11.5px] text-muted">dépense {chf(x.total.cout)} · {x.campagnes.length} campagne{x.campagnes.length > 1 ? "s" : ""}</span>
+          {x.st.ecartes > 0 && <span className="block text-[11.5px] text-muted">{x.st.ecartes} jour{x.st.ecartes > 1 ? "s" : ""} {JOUR_SANS[m]}, écarté{x.st.ecartes > 1 ? "s" : ""}</span>}
+        </>
+      ) : <span className="mt-1 block text-[12px] text-muted">aucune diffusion sur la période</span>}
+    </>
+  );
+  if (!diffuse) return <div className="min-w-0">{corps}</div>;
+  return <Link href={lien(L.sp, { type: x.ty, comparer: undefined })} scroll={false} className="block min-w-0 rounded-lg -m-1.5 p-1.5 hover:bg-canvas">{corps}</Link>;
+}
+
+function CampagnesDuType({ L, ouvert, onglets = true }: { L: Lecture; ouvert: TypeC; onglets?: boolean }) {
+  return (
+    <div className="mt-6">
+      {onglets && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="text-muted">Comparer les campagnes du type :</span>
+          {TYPES.filter((ty) => campagnesDu(ty).length).map((ty) => (
+            <Link key={ty} href={lien(L.sp, { type: ty, comparer: undefined })} scroll={false}
+              className={`rounded-full px-3 py-1 ${ty === ouvert ? "bg-ink text-white" : "border border-line bg-white text-ink hover:border-ink/30"}`}>{ty}</Link>
+          ))}
+        </div>
+      )}
+      <Comparaison L={L} campagnes={campagnesDu(ouvert)} titre={`Les campagnes ${ouvert}, entre elles`} />
+    </div>
+  );
+}
+
+function VarianteRangees({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
+  const lt = lireTypes(m), max = maxAxe(lt), H = 76;
+  return (
+    <>
+      <div className="rounded-2xl border border-line bg-white px-5 py-3">
+        <div className="grid grid-cols-[170px_minmax(0,1fr)_110px] gap-4 border-b border-line pb-2 text-[11.5px] text-muted">
+          <span>Type · {METRIQUES[m].nom} de la période</span>
+          <span>Jour par jour · en pointillé, les 28 jours d&apos;avant</span>
+          <span>Les jours de la période</span>
+        </div>
+        {lt.map((x) => (
+          <div key={x.ty} className="grid grid-cols-[170px_minmax(0,1fr)_110px] items-center gap-4 border-b border-line/60 py-3 last:border-0">
+            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
+            {x.campagnes.length ? <Courbe series={[x.joursAvant, x.jours]} couleurs={["#b9bcc4", COULEUR_TYPE[x.ty]]} pointilles={[0]} max={max} H={H} />
+              : <div className="flex items-center rounded-lg bg-canvas/60 px-3 text-[12px] text-muted" style={{ height: H }}>rien à tracer</div>}
+            {x.campagnes.length ? <BoiteV st={x.st} max={max} H={H} W={110} couleur={COULEUR_TYPE[x.ty]} m={m} /> : <span />}
+          </div>
+        ))}
+        <div className="grid grid-cols-[170px_minmax(0,1fr)_110px] gap-4 pt-1">
+          <span className="text-[11px] text-muted">même échelle pour tous · haut : {METRIQUES[m].fmt(max / 1.08)}</span><Dates /><span />
+        </div>
+      </div>
+      <CampagnesDuType L={L} ouvert={ouvert} />
+    </>
+  );
+}
+
+function VarianteSuperposee({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
+  const lt = lireTypes(m), max = maxAxe(lt), H = 250;
+  const actifs = lt.filter((x) => x.campagnes.length);
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {lt.map((x) => (
+          <div key={x.ty} className={`min-w-[150px] flex-1 rounded-xl border bg-white p-3 ${x.ty === ouvert ? "border-ink" : "border-line"}`}>
+            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-line bg-white p-5">
+        <div className="mb-2 flex justify-between text-[11.5px] text-muted">
+          <span>{METRIQUES[m].nom} jour par jour, une couleur par type</span><span>Les jours de la période</span>
+        </div>
+        <div className="flex items-start gap-5">
+          <div className="min-w-0 flex-1">
+            <Courbe series={actifs.map((x) => x.jours)} couleurs={actifs.map((x) => COULEUR_TYPE[x.ty])} max={max} H={H} />
+            <div className="mt-1"><Dates /></div>
+          </div>
+          <div className="flex shrink-0 gap-1 border-l border-line pl-4">
+            {actifs.map((x) => (
+              <div key={x.ty} className="flex flex-col items-center">
+                <BoiteV st={x.st} max={max} H={H} W={44} couleur={COULEUR_TYPE[x.ty]} m={m} />
+                <span className="mt-1 text-[10.5px] text-muted">{x.ty}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-muted">même échelle pour la courbe et les boîtes · haut : {METRIQUES[m].fmt(max / 1.08)}</p>
+      </div>
+      <CampagnesDuType L={L} ouvert={ouvert} />
+    </>
+  );
+}
+
+function VarianteBoites({ L, m, ouvert }: { L: Lecture; m: Cle; ouvert: TypeC }) {
+  const lt = lireTypes(m), max = maxAxe(lt);
+  return (
+    <div className="rounded-2xl border border-line bg-white px-5 py-3">
+      <div className="grid grid-cols-[190px_minmax(0,1fr)] gap-4 border-b border-line pb-2 text-[11.5px] text-muted">
+        <span>Type · {METRIQUES[m].nom} de la période</span>
+        <span className="flex justify-between"><span>Les jours de la période, même échelle pour tous</span><span>0 → {METRIQUES[m].fmt(max / 1.08)}</span></span>
+      </div>
+      {lt.map((x) => (
+        <div key={x.ty} className="border-b border-line/60 py-3 last:border-0">
+          <div className="grid grid-cols-[190px_minmax(0,1fr)] items-center gap-4">
+            <TeteType L={L} x={x} m={m} ouvert={x.ty === ouvert} />
+            {x.campagnes.length ? <BoiteH st={x.st} max={max} couleur={COULEUR_TYPE[x.ty]} m={m} /> : <span />}
+          </div>
+          {x.ty === ouvert && (
+            <div className="mt-4 rounded-xl bg-canvas/50 p-4">
+              <p className="mb-1 text-[12px] text-muted">{x.ty} · {METRIQUES[m].nom} jour par jour · en pointillé, les 28 jours d&apos;avant</p>
+              <Courbe series={[x.joursAvant, x.jours]} couleurs={["#b9bcc4", COULEUR_TYPE[x.ty]]} pointilles={[0]} max={max} H={140} />
+              <div className="mt-1"><Dates /></div>
+              <CampagnesDuType L={L} ouvert={ouvert} onglets={false} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ComparaisonTypes({ L }: { L: Lecture }) {
+  const variante = un(L.sp.variant) ?? "A";
+  const mt = un(L.sp.mt) as Cle | undefined;
+  const m: Cle = mt && TAUX.includes(mt) ? mt : TAUX_DE_LA_VUE[L.vue];
+  const ty = un(L.sp.type) as TypeC | undefined;
+  const ouvert: TypeC = ty && TYPES.includes(ty) && campagnesDu(ty).length ? ty : "Search";
+  return (
+    <section>
+      <Titre titre="Comparaison" sous="Tes types de campagne face à face sur un taux, jour par jour ; puis les campagnes d'un même type entre elles."
+        droite={
+          <span className="flex flex-wrap gap-1.5">
+            {TAUX.map((k) => (
+              <Link key={k} href={lien(L.sp, { mt: k })} scroll={false}
+                className={`rounded-full px-2.5 py-1 text-[12px] ${k === m ? "bg-ink text-white" : "border border-line bg-white text-ink hover:border-ink/30"}`}>{METRIQUES[k].nom}</Link>
+            ))}
+          </span>
+        } />
+      {variante === "B" ? <VarianteSuperposee L={L} m={m} ouvert={ouvert} /> : variante === "C" ? <VarianteBoites L={L} m={m} ouvert={ouvert} /> : <VarianteRangees L={L} m={m} ouvert={ouvert} />}
+      <p className="mt-3 text-[11.5px] text-muted">
+        Seuls des taux, calculés sur les totaux, se comparent d&apos;un type à l&apos;autre : un nombre de clics ou une dépense suit le budget du type.
+        Une boîte = les jours de la période ; sous {SEUIL_JOURS} jours, pas de boîte. Les types gardent un ordre fixe, jamais classés.
+        Autres types : aucune diffusion sur 12 mois, donc pas de rangée.
+      </p>
     </section>
   );
+}
+
+function RepereType({ type }: { type: TypeC }) {
+  return <span className="rounded border px-1.5 py-px text-[10.5px] font-medium" style={{ color: COULEUR_TYPE[type], borderColor: `${COULEUR_TYPE[type]}55` }}>{type}</span>;
 }
 
 // ── MODULE 5 · LE TABLEAU DÉTAILLÉ ───────────────────────────────────────────
@@ -351,6 +653,7 @@ function Tableau({ L }: { L: Lecture }) {
                     ) : <span className="w-5" />}
                     <span className={prof ? "text-ink/85" : "font-medium text-ink"}>{l.nom}</span>
                     {prof > 0 && <span className="text-[11.5px] text-muted">· {l.niveau}</span>}
+                    {prof === 0 && l.type && <RepereType type={l.type} />}
                   </span>
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{chf(l.t.cout)}</td>
