@@ -72,12 +72,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-10)** :
-[La page Google en maquette](issues/11-la-page-google-en-maquette.md) — le
-prochain par numéro, David veut un prototype vite —,
-[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md),
+[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) — le
+prochain par numéro —,
 [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md)
 — HITL, dix minutes dans l'interface —,
-[Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md).
+[Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md)
+— « plus tard » selon David —,
+[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — idem.
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -91,11 +92,12 @@ prochain par numéro, David veut un prototype vite —,
 | [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling ✓ | 04, 06 |
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling ✓ | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task ✓ | 01, 03 |
-| [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype | — |
+| [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype ✓ | — |
 | [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling | — |
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task (HITL) | — |
-| [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | — |
+| [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | 15 |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling | 11 |
+| [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
 
 ## Decisions so far
 
@@ -127,6 +129,7 @@ prochain par numéro, David veut un prototype vite —,
   métriques des cartes ; une **moustache** par type sous chaque carte garde la
   vision de tous (à éprouver au prototype) ; « vue générale / dédiée » sont des
   états du filtre, pas des modules. Terme écrit dans `CONTEXT.md`.
+  _Filtre et moustache suspendus par la maquette (11), repris au 15._
 - [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) :
   « on prend ce que Google Ads montre » — tout ce qui se compte est totalisé
   tous types confondus, la moustache fait la différence ; la portée ne se
@@ -171,6 +174,13 @@ prochain par numéro, David veut un prototype vite —,
   (défaut imposé) → « sans valeur » se lit dans `conversion_action` (13) ;
   taux de Google = recalcul exact ; PMax par réseau oui, par audience non ;
   Demand Gen ≈ 50 900 CHF sur 36 mois chez A (14).
+- [La page Google en maquette](issues/11-la-page-google-en-maquette.md) :
+  validée au deuxième tour — **la page Meta avec les chiffres de Google**,
+  mêmes modules, même ordre, **construite avec les modules Meta et non
+  d'après la maquette** (« suis exactement comme on a fait sur Meta ») ; rien
+  de propre aux types pour l'instant (filtre et moustache du 04 suspendus,
+  15) ; en bas, « Analyser une campagne — à venir » ; la Comparaison reste
+  celle de Meta, à améliorer plus tard (16).
 
 ## Not yet specified
 

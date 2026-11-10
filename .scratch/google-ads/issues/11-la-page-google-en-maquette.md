@@ -1,7 +1,7 @@
 # 11: La page Google en maquette
 
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: —
 Assignee: Dernierwak
 
@@ -53,3 +53,47 @@ et sur le classement mélangé des types partaient dans ce détail.
 ce ticket pour [Ce qu'on montre pour chaque type de campagne](15-ce-qu-on-montre-par-type.md).
 La maquette est à refaire, sans détail par type ; ce qu'elle montre à la
 place reste à préciser avec David.
+
+## Answer
+
+Validé par David le 2026-11-10 au deuxième tour : « oui, on peut partir avec
+ça ». Maquette : branche jetable `prototype/google-page` (`b19d03f`),
+`app/google/_prototype-page/maquette.tsx`, ouverte en dev par
+`/google?maquette=page`, chiffres fictifs.
+
+**La page Google est la page Meta, avec les chiffres de Google.** Mêmes
+modules, dans le même ordre (ADR 0011) : Bandeau de commandes (période,
+campagne), Sélecteur de vue (Notoriété / Trafic / Conversion), Tendance
+(total jour par jour, période d'avant en pointillé), Comparaison, Tableau
+détaillé (ligne Total, chaque campagne dépliable jusqu'au détail : groupe
+d'annonces et annonce, ou Groupe d'éléments pour PMax, ticket 09).
+
+**Rien de propre aux types de campagne pour l'instant** : ni filtre Type de
+campagne, ni moustache, ni repère de type. Le filtre et la moustache tranchés
+au ticket 04 sont suspendus, pas défaits : ils reviennent, ou non, avec
+[Ce qu'on montre pour chaque type de campagne](15-ce-qu-on-montre-par-type.md).
+
+**En bas de page, un emplacement réservé** : « Analyser une campagne — à
+venir », la future analyse par campagne et par type (`BACKLOG.md`, ticket 15).
+
+**Construire comme Meta, pas comme la maquette.** David : « suis exactement
+comme on a fait sur Meta, parce que tu changes 2-3 trucs ». La maquette fixe
+la structure, pas le format. La construction reprend les modules de
+`components/meta/` et leur grammaire, pas les dessins de la maquette, qui
+s'en écartaient sur plusieurs points :
+- la **Comparaison** de Meta : réglages (niveau, métriques 1 et 2) en tête,
+  liste classée sur deux colonnes, les deux graphes côte à côte en pleine
+  largeur, une cible « Lire » par ligne. La maquette avait mis la liste à
+  gauche et les graphes empilés à droite, sans réglage ni « Lire » ;
+- le **Tableau** de Meta garde le dépliage hors de l'URL (la maquette l'y
+  mettait) ;
+- le **Bandeau** de Meta : raccourcis de période, date de lecture, pilule qui
+  se détache au défilement, absents de la maquette.
+
+**La Comparaison est à améliorer, plus tard** : David veut l'avoir en tête
+sans savoir encore comment. Elle part dans
+[Améliorer la Comparaison](16-ameliorer-la-comparaison.md) ; en attendant,
+c'est celle de Meta.
+
+Aucun terme nouveau dans `CONTEXT.md`, aucun ADR : c'est l'ADR 0011 appliqué
+à la lettre.
