@@ -81,6 +81,16 @@ fait remarquer qu'il fallait l'augmenter.
 _Avoid_: Ad set, ad group, adset — le nom de la régie ne s'affiche pas ; il ne
 survit que dans les colonnes techniques (`adset_name`, `ad_group_name`).
 
+**Groupe d'éléments** :
+Ce qu'a une campagne PMax à la place des Groupes d'annonces : un lot de titres,
+d'images et de vidéos que Google assemble lui-même en annonces. Un Groupe
+d'éléments a ses propres chiffres, mais **aucune Annonce sous lui** : Google ne
+rend aucune performance par annonce pour PMax. Au Tableau, une campagne PMax se
+déplie donc en Groupes d'éléments, et pas plus bas.
+_Avoid_: Groupe d'annonces pour PMax — ce n'en est pas un, et l'écrire laisse
+chercher des annonces qui n'existent pas ; asset group ; « éléments » seul, qui
+désigne les titres et les images eux-mêmes.
+
 **Vues par personne** :
 Combien de fois la même personne a revu une Annonce sur la semaine. Pulse
 n'affiche **jamais** ce nombre tel quel : il affiche un **minimum** (« au moins

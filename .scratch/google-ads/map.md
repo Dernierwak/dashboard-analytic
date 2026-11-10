@@ -71,11 +71,11 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** : [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md)
+**Frontier (2026-11-10)** : [L'essai réel des métriques Google](issues/10-l-essai-reel.md)
 — le prochain par numéro —,
-[L'essai réel des métriques Google](issues/10-l-essai-reel.md),
 [La page Google en maquette](issues/11-la-page-google-en-maquette.md) — à prendre
-tôt, David veut un prototype vite.
+tôt, David veut un prototype vite —,
+[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md).
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -87,9 +87,10 @@ tôt, David veut un prototype vite.
 | [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md) | grilling ✓ | 01, 03 |
 | [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling ✓ | 01, 04 |
 | [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling ✓ | 04, 06 |
-| [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling | 01, 04 |
+| [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling ✓ | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task | 01, 03 |
 | [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype | — |
+| [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling | — |
 
 ## Decisions so far
 
@@ -150,19 +151,22 @@ tôt, David veut un prototype vite.
   ses niveaux sur Google vont au Tableau (09), le classement entre types à
   la maquette (11).
 
+- [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) :
+  un seul tableau dépliant qui suit le filtre, et chaque ligne se déplie selon
+  son type : Search, Display et Vidéo jusqu'à l'Annonce, PMax jusqu'au
+  **Groupe d'éléments** (terme écrit dans `CONTEXT.md`) ; ni éléments ni
+  mots-clés (`BACKLOG.md`) ; colonnes de la vue, « — » avec sa raison au
+  survol, ratios recalculés par ligne, export CSV avec le type.
+
 ## Not yet specified
 
-- **Le Panneau latéral sur Google** : l'aperçu d'une annonce Search
-  (titres/descriptions d'une RSA), Display (images), YouTube (la vidéo) et
-  PMax (des éléments, pas une annonce) ; les changements du jour depuis
-  `change_event`, limités à 30 jours. Dépend de ce que l'API rend (01) et des
-  niveaux retenus (09).
 - **Le délai de stabilisation des conversions Google** : aucun documenté
   (ticket 01) ; ce qu'il fait à la Tendance et à la Comparaison des derniers
   jours — le reste des conversions est tranché (05), sa vérification va au 10.
 - **Ce que la récolte et le traitement doivent calculer** — migration de
-  `google_ads_insights`, nouvelles tables (groupes d'éléments, vidéos,
-  mots-clés), reprise de l'historique.
+  `google_ads_insights` (type de campagne, valeur de conversion, portée),
+  une table des Groupes d'éléments PMax (09), reprise de l'historique ; les
+  vidéos et les mots-clés sont au `BACKLOG.md` (08).
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 
