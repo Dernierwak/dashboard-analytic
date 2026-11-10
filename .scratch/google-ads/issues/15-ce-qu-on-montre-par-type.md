@@ -88,3 +88,26 @@ les compare, même un taux ; les moustaches n'ont pas d'unité sur Google ; se
 comparent un type face à son passé, des campagnes du même type, et la
 répartition. Recommandation : un bloc « Types de campagne » factuel (B), puis
 les chiffres propres à chaque type, un type à la fois (C).
+
+## Prototype, deuxième tour (2026-11-10)
+
+David : « tu peux faire un prototype avec tes learnings ». Même branche,
+commit `d602d5c`, `/google?maquette=page&variant=A|B|C`. Ni échelle commune,
+ni moustache ; chaque type face à ses 28 jours d'avant ; entre types, la
+seule répartition (part de la dépense, part du compte de la vue, avec un ⓘ qui
+dit ce qu'une part ne veut pas dire) ; ensuite la Comparaison de Meta entre
+campagnes d'un seul type.
+
+- **A · Bloc au-dessus** : un module « Types de campagne » (une ligne par
+  type : dépense et part, compte de la vue et part, taux face à sa période
+  d'avant, petite courbe à sa propre échelle, « Ses campagnes → »), puis la
+  Comparaison avec des onglets de type.
+- **B · Types en tête** : un seul module Comparaison, dont la tête est cinq
+  cartes de type (mêmes faits) ; la carte choisie ouvre ses campagnes.
+- **C · Avec les spécialités** : A, plus une colonne « Propre au type » —
+  Vidéo : vues, taux de vue, CPV ; PMax : dépense par réseau ; Search :
+  mots-clés « à venir » ; Display : portée par campagne ; Demand Gen :
+  chiffres de base seulement.
+
+Un taux qui n'a pas de valeur la plupart des jours (coût par conversion de
+Vidéo, 3 conversions en 28 jours) n'a pas de courbe, et l'écran dit pourquoi.
