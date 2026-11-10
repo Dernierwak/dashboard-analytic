@@ -11,6 +11,8 @@ import {
 } from "@/components/channel-dash";
 import { BandeauCommandes } from "@/components/bandeau-commandes";
 import { TrouDeRecolte } from "@/components/trou-recolte";
+// PROTOTYPE JETABLE — ticket « La page Google en maquette ».
+import { PrototypePage } from "./_prototype-page/maquette";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export default async function GooglePage({
 }: {
   searchParams: DashParams;
 }) {
+  const sp = searchParams as Record<string, string | string[] | undefined>;
+  if (process.env.NODE_ENV !== "production" && sp.maquette === "page") return <PrototypePage sp={sp} />;
   const d = await getGoogleDash(searchParams);
 
   return (
