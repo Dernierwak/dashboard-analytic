@@ -340,3 +340,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   **autant de détail** que Search, PMax, Display et Vidéo — à reprendre dès
   qu'un compte réel y dépense (aucun au relevé du 2026-11-10, ticket 03). Leur
   dépense n'a jamais quitté les totaux.
+
+## Relevé en chemin le 2026-11-10 (ticket `.scratch/google-ads/issues/07`)
+
+- **Une page YouTube organique.** La chaîne YouTube d'un client — abonnés,
+  vues, vidéos publiées —, sur sa propre page, comme Instagram : aucun
+  contenu payant. Les annonces vidéo restent sous Google Ads, type « Vidéo ».
+  David : « YouTube, il faudra aussi l'avoir en organique ».

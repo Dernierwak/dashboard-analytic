@@ -50,3 +50,23 @@ Bornes : ne rien conseiller (`CLAUDE.md` §1) — comparer le coût par conversi
 de Search et de PMax pousserait à une conclusion qu'ils ne permettent pas, ils
 ne jouent pas le même rôle. YouTube (07) et le Tableau (09) disent ce qui
 leur revient.
+
+## Apport de YouTube (07, résolu)
+
+Les métriques propres à la **Vidéo** (vues, taux de vue, CPV, quartiles)
+vivent ici, **au même niveau** que les autres types — pas de page ni de carte
+Vidéo. David décrit ce module comme celui « où l'on choisit le type et où l'on
+analyse dedans » — à confronter au modèle Instagram (une rangée par type)
+plutôt qu'à supposer. Ce qu'il attend de chaque type :
+
+- **Search** : les mots-clés et les termes de recherche ;
+- **PMax** : les audiences — **mesurabilité non vérifiée**, voir l'essai réel
+  (10) ; à défaut, les groupes d'éléments et les réseaux (la vidéo diffusée par
+  PMax se lit ici, dans ses réseaux, jamais sous Vidéo) ;
+- **Display** : les sites (emplacements) qui ont amené le plus de trafic ;
+- **Vidéo** : vues, taux de vue, CPV, quartiles ;
+- **Autres types** : le socle seul (06) ; Shopping et App, la vente des
+  produits, au `BACKLOG.md`.
+
+Borne : « les sites qui ont le mieux fonctionné » se montre sans conseiller
+(`CLAUDE.md` §1) — un classement par trafic mesuré, pas un verdict.

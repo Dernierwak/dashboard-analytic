@@ -172,8 +172,12 @@ La sorte de campagne Google Ads, telle que Google la déclare : Search, PMax,
 Display, Vidéo. Une campagne a un seul type, qui ne change pas. Sur la page
 Google, le type **filtre** (on ne regarde que les campagnes d'un type) ; il ne
 remplace pas la vue, qui **reconfigure** (Notoriété, Trafic ou Conversion).
-« Vidéo » et pas « YouTube » : YouTube est un réseau, que PMax et d'autres
-types servent aussi — l'écrire laisserait croire que tout YouTube est là.
+« Vidéo » (les campagnes vidéo, le YouTube payant), **le nom que Google Ads
+donne à ce type**, et pas « YouTube » — YouTube est un
+réseau, que PMax et d'autres types servent aussi : la vidéo que diffuse PMax
+reste à PMax, et l'écrire laisserait croire que tout YouTube est là.
+**YouTube**, seul, désigne la chaîne organique d'un client, qui n'a aucun
+contenu payant.
 Tout type hors de ces quatre (Demand Gen, Shopping, App, Local, Hotel…) se
 range sous **Autres types** : une seule entrée du filtre, jamais sortie des
 totaux, et chaque campagne y garde son vrai type au Tableau.

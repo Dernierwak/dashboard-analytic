@@ -71,9 +71,8 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** : [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md)
+**Frontier (2026-11-10)** : [La Comparaison sur Google](issues/08-la-comparaison.md)
 — le prochain par numéro —,
-[La Comparaison sur Google](issues/08-la-comparaison.md),
 [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md),
 [L'essai réel des métriques Google](issues/10-l-essai-reel.md),
 [La page Google en maquette](issues/11-la-page-google-en-maquette.md) — à prendre
@@ -87,7 +86,7 @@ tôt, David veut un prototype vite.
 | [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling ✓ | 01, 02 |
 | [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) | grilling ✓ | 01 |
 | [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md) | grilling ✓ | 01, 03 |
-| [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling | 01, 04 |
+| [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling ✓ | 01, 04 |
 | [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling | 04, 06 |
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task | 01, 03 |
@@ -139,6 +138,12 @@ tôt, David veut un prototype vite.
   celles des autres vont au `BACKLOG.md` — à détailler un jour au même
   niveau ; l'analyse par type part dans la Comparaison (08), réécrite sur le
   modèle Instagram.
+- [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) :
+  pas de page à part — **Vidéo** (nom Google Ads, le YouTube payant) est un
+  type de `/google` comme les autres ; ses métriques (vues, CPV, quartiles)
+  vivent dans l'analyse par type (08), au même niveau que Search et PMax ;
+  la vidéo de PMax reste à PMax ; « YouTube » seul = la future page
+  organique (`BACKLOG.md`). Audiences PMax à vérifier (10).
 
 ## Not yet specified
 
@@ -147,9 +152,9 @@ tôt, David veut un prototype vite.
   PMax (des éléments, pas une annonce) ; les changements du jour depuis
   `change_event`, limités à 30 jours. Dépend de ce que l'API rend (01) et des
   niveaux retenus (09).
-- **Les mots-clés et les termes de recherche** : récoltés pour la vue Search
-  seulement, ou au Tableau ; volume de lignes (PostgREST plafonne à 1 000).
-  Probablement absorbé par le Tableau détaillé (09).
+- **Les mots-clés et les termes de recherche** : David les veut dans
+  l'analyse de Search (07 → 08) ; restent le grain récolté, la part qui va
+  au Tableau (09) et le volume de lignes (PostgREST plafonne à 1 000).
 - **Le délai de stabilisation des conversions Google** : aucun documenté
   (ticket 01) ; ce qu'il fait à la Tendance et à la Comparaison des derniers
   jours — le reste des conversions est tranché (05), sa vérification va au 10.

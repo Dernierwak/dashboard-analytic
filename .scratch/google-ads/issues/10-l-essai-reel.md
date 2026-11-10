@@ -19,6 +19,13 @@ recherche (01) a retenues, type par type, et noter :
   reviennent dans la même requête ; ce que rend `conversions_value` pour un
   compte **sans valeur configurée** — 0 ou vide (la page affiche « — »,
   jamais 0) ;
+- **PMax et les audiences (ticket 07)** : David veut lire PMax par ses
+  audiences. Vérifier si l'API rend une performance (impressions, coût,
+  conversions) par audience ou signal d'audience pour une campagne PMax, ou
+  seulement par groupe d'éléments, par réseau et en « insights » ; noter ce
+  qui revient et à quel grain ;
+- **Display et les emplacements (ticket 07)** : ce que rendent
+  `group_placement_view` / `detail_placement_view` (sites, trafic) ;
 - qu'un taux calculé sur les totaux (clics ÷ impressions, coût ÷ clics…) sur
   une campagne et une période retrouve celui de l'interface Google Ads.
 
