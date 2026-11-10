@@ -1,9 +1,9 @@
 # 11: La page Google en maquette
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: —
-Assignee: —
+Assignee: Dernierwak
 
 ## Question
 
