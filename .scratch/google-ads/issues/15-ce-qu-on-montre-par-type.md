@@ -7,7 +7,7 @@ Assignee: —
 
 ## Question
 
-Pour chaque type de campagne (Search, PMax, Display, Vidéo, Autres types),
+Pour chaque type de campagne (Search, PMax, Display, Vidéo, Demand Gen, Autres types — Demand Gen nommé au ticket 14),
 **qu'est-ce que la page `/google` montre de propre à ce type, et où ?** La
 moustache par type (ticket 04), le classement de campagnes de types différents
 dans la Comparaison (08), ce qui change quand le filtre est sur un seul type.
