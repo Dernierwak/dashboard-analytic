@@ -18,3 +18,11 @@ Le module **Comparaison** dit « ce qui fait mieux que quoi ». Sur Google,
   telle quelle ?
 
 Dépend de l'axe de la vue dédiée (04).
+
+## Ce que l'axe apporte (04, résolu)
+
+Le Sélecteur reste l'étape ; le type de campagne est un filtre du Bandeau ; une
+moustache sous chaque carte donne déjà la répartition (parts) ou la valeur par
+type (taux). La Comparaison n'a donc pas à porter la répartition entre types —
+reste à dire si elle compare des types entre eux ou seulement des campagnes /
+groupes. Chaque ligne porte un repère de son type.

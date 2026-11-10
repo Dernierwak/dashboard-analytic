@@ -167,6 +167,16 @@ le contenu d'une annonce ou les changements d'un jour.
 _Avoid_: Section, bloc, widget ; « Vue d'ensemble » pour la Tendance — le mot
 « vue » désigne déjà Notoriété / Trafic / Conversion.
 
+**Type de campagne** :
+La sorte de campagne Google Ads, telle que Google la déclare : Search, PMax,
+Display, Vidéo. Une campagne a un seul type, qui ne change pas. Sur la page
+Google, le type **filtre** (on ne regarde que les campagnes d'un type) ; il ne
+remplace pas la vue, qui **reconfigure** (Notoriété, Trafic ou Conversion).
+« Vidéo » et pas « YouTube » : YouTube est un réseau, que PMax et d'autres
+types servent aussi — l'écrire laisserait croire que tout YouTube est là.
+_Avoid_: Format — sur Instagram il désigne Reel / Carrousel, chez Google le
+format d'une annonce ; canal — il désigne une plateforme ; YouTube pour le type.
+
 **Mesure prise** :
 Un chiffre **enregistré à une date**, et qui ne rétroagit pas — même quand on
 saurait le recalculer. Un chiffre publié dans un rapport de la semaine 37 juge

@@ -21,3 +21,11 @@ remplis de ses propres métriques) ou **une vue dédiée de `/google`** ?
   chantier.
 
 Dépend de ce que l'API rend en vidéo (01) et de l'axe retenu (04).
+
+## Ce que l'axe apporte (04, résolu)
+
+Les cartes du Sélecteur gardent les mêmes métriques quel que soit le type
+filtré : filtrer sur Vidéo resserre les courbes, il **n'ajoute pas** vues, CPV
+ni quartiles. Si YouTube reste sur la page Google, il faut donc dire où ces
+métriques vivent (Tableau, Comparaison, un module à part ?) — c'est l'un des
+arguments de cette question. Le type s'écrit « Vidéo » (`CONTEXT.md`).

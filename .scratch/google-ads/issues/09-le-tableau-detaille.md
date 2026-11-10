@@ -22,3 +22,10 @@ dans ce chantier ? Le volume reste sous le plafond PostgREST (1 000 lignes :
 paginer).
 
 Dépend des niveaux que l'API rend (01) et de l'axe retenu (04).
+
+## Ce que l'axe apporte (04, résolu)
+
+Le type de campagne est un filtre du Bandeau : le Tableau suit le filtre, et
+sur « Tous les types » chaque ligne porte un repère de son type. Les métriques
+propres à un type (vidéo notamment) ne passent pas par les cartes du
+Sélecteur : le Tableau est un candidat naturel pour les porter.

@@ -71,23 +71,28 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** : [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md)
-— le prochain —, [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md),
-[Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md),
-[L'essai réel des métriques Google](issues/10-l-essai-reel.md).
+**Frontier (2026-11-10)** : [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md)
+— le prochain par numéro —, [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md),
+[YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md),
+[La Comparaison sur Google](issues/08-la-comparaison.md),
+[Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md),
+[L'essai réel des métriques Google](issues/10-l-essai-reel.md),
+[La page Google en maquette](issues/11-la-page-google-en-maquette.md) — à prendre
+tôt, David veut un prototype vite.
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
 | [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research ✓ | — |
 | [Comment le marché présente un compte Google Ads à plusieurs types](issues/02-comment-le-marche-presente-google-ads.md) | research ✓ | — |
 | [Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md) | task ✓ | — |
-| [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling | 01, 02 |
+| [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) | grilling ✓ | 01, 02 |
 | [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md) | grilling | 01 |
 | [Regrouper, garder ou reporter les types secondaires](issues/06-les-types-secondaires.md) | grilling | 01, 03 |
 | [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling | 01, 04 |
 | [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling | 04 |
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling | 01, 04 |
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task | 01, 03 |
+| [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype | — |
 
 ## Decisions so far
 
@@ -112,6 +117,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   (`VIDEO_ACTION`) et Demand Gen existent mais n'ont rien diffusé ; aucun
   Shopping, App ni Smart. Échantillon mince, relevé à refaire.
 
+- [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md) :
+  le Sélecteur garde l'étape (Notoriété / Trafic / Conversion, comme Meta,
+  aucun écart à l'ADR 0011) ; le **Type de campagne** est un filtre du Bandeau
+  (« Tous les types » par défaut) qui resserre les courbes sans changer les
+  métriques des cartes ; une **moustache** par type sous chaque carte garde la
+  vision de tous (à éprouver au prototype) ; « vue générale / dédiée » sont des
+  états du filtre, pas des modules. Terme écrit dans `CONTEXT.md`.
+
 ## Not yet specified
 
 - **Le Panneau latéral sur Google** : l'aperçu d'une annonce Search
@@ -127,8 +140,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   est possible sans GA4), la date du clic vs de la conversion
   (`conversions_by_conversion_date` existe), aucun délai de stabilisation
   documenté — à trancher avec la vue générale (05) et l'essai réel (10).
-- **La page entière, en maquette** — une fois l'axe, la vue générale, la
-  Comparaison et le Tableau tranchés.
 - **Ce que la récolte et le traitement doivent calculer** — migration de
   `google_ads_insights`, nouvelles tables (groupes d'éléments, vidéos,
   mots-clés), reprise de l'historique.
