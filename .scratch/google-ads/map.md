@@ -71,6 +71,11 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
+**Frontier (2026-11-10)** : [L'axe de la vue dédiée](issues/04-l-axe-de-la-vue-dediee.md)
+— le prochain —, [Ce qui s'additionne dans la vue générale](issues/05-ce-qui-s-additionne.md),
+[Les types de campagnes des comptes réels](issues/03-les-types-des-comptes-reels.md)
+(attend le feu vert de David pour une requête en lecture seule).
+
 | Ticket | Type | Bloqué par |
 |---|---|---|
 | [Ce que l'API Google Ads donne, type de campagne par type](issues/01-ce-que-l-api-donne-par-type.md) | research ✓ | — |
