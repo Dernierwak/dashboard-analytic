@@ -1,9 +1,9 @@
 # 13: Ce que l'interface Google Ads affiche, face à l'essai
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: —
-Assignee: —
+Assignee: David (relevé HITL)
 
 ## Question
 
