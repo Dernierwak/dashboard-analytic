@@ -71,11 +71,13 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** : [L'essai réel des métriques Google](issues/10-l-essai-reel.md)
-— le prochain par numéro —,
-[La page Google en maquette](issues/11-la-page-google-en-maquette.md) — à prendre
-tôt, David veut un prototype vite —,
-[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md).
+**Frontier (2026-11-10)** :
+[La page Google en maquette](issues/11-la-page-google-en-maquette.md) — le
+prochain par numéro, David veut un prototype vite —,
+[Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md),
+[Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md)
+— HITL, dix minutes dans l'interface —,
+[Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md).
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -88,9 +90,11 @@ tôt, David veut un prototype vite —,
 | [YouTube : une page à part ou une vue de la page Google](issues/07-youtube-page-a-part.md) | grilling ✓ | 01, 04 |
 | [La Comparaison sur Google](issues/08-la-comparaison.md) | grilling ✓ | 04, 06 |
 | [Le Tableau détaillé selon le type de campagne](issues/09-le-tableau-detaille.md) | grilling ✓ | 01, 04 |
-| [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task | 01, 03 |
+| [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task ✓ | 01, 03 |
 | [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype | — |
 | [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling | — |
+| [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task (HITL) | — |
+| [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | — |
 
 ## Decisions so far
 
@@ -158,15 +162,31 @@ tôt, David veut un prototype vite —,
   mots-clés (`BACKLOG.md`) ; colonnes de la vue, « — » avec sa raison au
   survol, ratios recalculés par ligne, export CSV avec le type.
 
+- [L'essai réel des métriques Google](issues/10-l-essai-reel.md) :
+  API v26, deux comptes ; un compteur hors type revient à **0**, un taux
+  revient **absent** → le « — » se décide par type dans Pulse, pas d'après
+  Google ; portée rendue aussi sur Search et PMax, 92 j, **vide sans erreur**
+  au-delà ; valeur de conversion jamais vide et souvent « 1 × conversions »
+  (défaut imposé) → « sans valeur » se lit dans `conversion_action` (13) ;
+  taux de Google = recalcul exact ; PMax par réseau oui, par audience non ;
+  Demand Gen ≈ 50 900 CHF sur 36 mois chez A (14).
+
 ## Not yet specified
 
 - **Le délai de stabilisation des conversions Google** : aucun documenté
   (ticket 01) ; ce qu'il fait à la Tendance et à la Comparaison des derniers
-  jours — le reste des conversions est tranché (05), sa vérification va au 10.
+  jours. Un premier relevé jour par jour (27.10–09.11, compte A) est dans le
+  ticket 10 ; il faut un second relevé des mêmes jours, une à deux semaines
+  plus tard, pour mesurer ce qui a bougé.
 - **Ce que la récolte et le traitement doivent calculer** — migration de
-  `google_ads_insights` (type de campagne, valeur de conversion, portée),
-  une table des Groupes d'éléments PMax (09), reprise de l'historique ; les
-  vidéos et les mots-clés sont au `BACKLOG.md` (08).
+  `google_ads_insights` (type de campagne, les trois colonnes de conversions,
+  valeur, portée par fenêtre de 92 j au plus), une table des Groupes
+  d'éléments PMax (09 ; ≈ 600 lignes × jour sur 90 j), les réglages de valeur
+  des actions de conversion (13), reprise de l'historique (37 mois au plus
+  par jour), passage de v25 à v26 (v26 répond, vérifié au 10) ; les vidéos et
+  les mots-clés sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
+  `segments.date`, Google omet les jours dont toutes les métriques demandées
+  sont à 0.
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 

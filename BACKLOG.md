@@ -359,3 +359,11 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   « au même niveau » que les autres. Une première forme — la Comparaison qui
   compare les éléments propres au type filtré — a été maquettée puis écartée
   (`.scratch/google-ads/issues/08`).
+  - _Vérifié par l'essai réel le 2026-11-10 (`.scratch/google-ads/issues/10`)_ :
+    **PMax par audience n'est pas mesurable** — les signaux d'audience
+    (`asset_group_signal`) rejettent toute métrique ; PMax se lit par groupe
+    d'éléments et par réseau (`segments.ad_network_type`). Les emplacements
+    Display rendent impressions, clics et coût, ceux de PMax les impressions
+    seules. Quartiles : rendus sur Vidéo et Display, absents sur PMax.
+    Volumes sur 90 jours, compte principal : 20 800 lignes élément PMax ×
+    jour, 8 400 mot-clé × jour, 8 700 termes.
