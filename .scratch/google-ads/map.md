@@ -72,8 +72,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-10)** :
-[Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md)
-— HITL, dix minutes dans l'interface —,
 [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md)
 — « plus tard » selon David —,
 [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — idem.
@@ -92,7 +90,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [L'essai réel des métriques Google](issues/10-l-essai-reel.md) | task ✓ | 01, 03 |
 | [La page Google en maquette](issues/11-la-page-google-en-maquette.md) | prototype ✓ | — |
 | [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling ✓ | — |
-| [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task (HITL) | — |
+| [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task ✓ | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling | 15 |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling | 11 |
 | [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
@@ -187,6 +185,12 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   elle-même —, jamais une annonce recomposée, aucun chiffre ; le journal est
   déjà enregistré, seul l'avant-première-récolte (30 j) manque, dit au « ⓘ » ;
   champs de contenu à vérifier sur un appel réel.
+- [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) :
+  relevé par l'API (Chrome n'atteint pas A) ; une action est **sans valeur**
+  quand sa valeur est imposée à 0 ou 1 ; « — » seulement si toutes les
+  actions converties sont sans valeur ; un compte mixte affiche le total de
+  Google avec un « ⓘ » (une partie n'est qu'un comptage) ; ligne Total de
+  l'écran non vue.
 
 ## Not yet specified
 
@@ -199,7 +203,8 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   `google_ads_insights` (type de campagne, les trois colonnes de conversions,
   valeur, portée par fenêtre de 92 j au plus), une table des Groupes
   d'éléments PMax (09 ; ≈ 600 lignes × jour sur 90 j), les réglages de valeur
-  des actions de conversion (13), le contenu des annonces et leurs images
+  des actions de conversion et la répartition des conversions par action
+  (13), le contenu des annonces et leurs images
   (12), reprise de l'historique (37 mois au plus
   par jour), passage de v25 à v26 (v26 répond, vérifié au 10) ; les vidéos et
   les mots-clés sont au `BACKLOG.md` (08). Piège relevé au 10 : avec

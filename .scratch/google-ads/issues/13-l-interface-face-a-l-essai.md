@@ -1,7 +1,7 @@
 # 13: Ce que l'interface Google Ads affiche, face à l'essai
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: —
 Assignee: David (relevé HITL)
 
@@ -69,3 +69,32 @@ Les 303,69 se décomposent en quatre actions principales :
 - En passant : l'achat est compté deux fois dans `metrics.conversions`
   (balise + serveur, les deux principales). Ticket 05 : pas de dédoublonnage
   maison — on affiche ce que Google affiche.
+
+## Answer
+
+Tranché par David le 2026-11-10, sur le relevé ci-dessus :
+
+1. **Une action de conversion est « sans valeur »** quand sa valeur est
+   imposée (`value_settings.always_use_default_value = true`) **à 0 ou à 1**.
+   Une valeur de 1 par conversion ne mesure rien, quelle que soit l'option de
+   l'interface qui l'a produite. Une valeur imposée à un autre montant (une
+   valeur fixe choisie par l'annonceur) est une vraie valeur, tout comme une
+   valeur portée par l'événement (`false`).
+2. **La page affiche « — » au lieu de la valeur et du ROAS** quand, sur la
+   période et le filtre, **toutes** les actions qui ont des conversions
+   (celles qui entrent dans `metrics.conversions`) sont sans valeur.
+3. **Un compte qui mélange les deux affiche le total de Google**
+   (`metrics.conversions_value`, 6 269,25 en octobre chez A), jamais un total
+   recomposé par Pulse, avec un « ⓘ » qui dit qu'une partie de cette valeur
+   n'est qu'un comptage à 1.
+4. **Limite à écrire dans `docs/mesures-impossibles.md` à la construction** :
+   une action réglée « par événement » dont les événements arrivent sans
+   montant retombe sur son défaut (1) ; ses réglages ne le montrent pas, Pulse
+   ne peut donc pas la reconnaître.
+
+Totaux : `metrics.conversions` (303,69) est bien la colonne principale de
+conversions et les taux recalculés sur les totaux égalent ceux de Google ;
+la ligne Total de l'écran n'a pas été vue (point non vérifié, sans effet sur
+une décision). La récolte doit lire `conversion_action.value_settings` et la
+répartition par action (`segments.conversion_action`) — au brouillard
+« Ce que la récolte et le traitement doivent calculer ».
