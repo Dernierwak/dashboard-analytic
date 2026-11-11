@@ -773,7 +773,7 @@ export function pluriel(n: number, mot: string): string {
   return `${n} ${mot}${n > 1 ? "s" : ""}`;
 }
 
-/** La devise des pages publicitaires de Pulse (`channel-dash.tsx`, `couts`). */
+/** La devise des pages publicitaires de Pulse (`lib/google/lecture.ts`, `couts`). */
 export const DEVISE = "CHF";
 
 export function formaterValeur(m: CleMetrique, v: number | null): string {

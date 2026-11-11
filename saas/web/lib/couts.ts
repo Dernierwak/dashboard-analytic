@@ -230,7 +230,7 @@ export async function getCoutsData(filtre: FiltreCouts = {}): Promise<CoutsData>
   // Aligner les MOTS sans aligner l'ancre aurait produit deux fenêtres
   // différentes sous un seul libellé : cette page finissait sur aujourd'hui,
   // les pages canal finissent sur la veille — et reculent jusqu'au dernier jour
-  // de donnée quand la récolte a du retard (`makeWindow`, `lib/channels.ts`).
+  // de donnée quand la récolte a du retard.
   // La journée en cours est incomplète (`CLAUDE.md` §7) : son point de courbe
   // se lit comme une chute, et sa dépense manque à la répartition.
   //

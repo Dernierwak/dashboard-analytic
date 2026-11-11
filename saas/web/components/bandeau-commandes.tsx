@@ -64,7 +64,7 @@ function useEcriture() {
       const q = depart();
       // Poser une présélection efface la plage sur mesure, et inversement : les
       // laisser cohabiter rendrait l'une des deux inerte sans le dire —
-      // `customWindow` prime sur `makeWindow` (`lib/channels.ts`), donc on
+      // la plage sur mesure prime sur la présélection, donc on
       // cliquerait « 7 j » et la plage libre continuerait de gouverner.
       q.delete("from");
       q.delete("to");
