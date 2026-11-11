@@ -254,6 +254,11 @@ tard » selon David.
   sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
+- **Deux idées de David pour l'Analyse Search, après la première version**
+  (2026-11-11, `BACKLOG.md`) : un nuage des mots-clés filtrable par campagne,
+  et une carte des termes reliés à leur catégorie de termes, façon Obsidian,
+  colorée par catégorie et filtrable par campagne. À trancher : si le nuage
+  des mots-clés entre dans la maquette (20) ou attend.
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 

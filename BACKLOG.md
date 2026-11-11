@@ -396,3 +396,31 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   de liaison FR/DE/EN écartés). En attente : on part sur les catégories de
   Google ; il revient si l'essai réel (`.scratch/google-ads/issues/19`)
   montre qu'elles ne font pas ressortir un tel mot.
+
+## Relevé en chemin le 2026-11-11 (ticket `.scratch/google-ads/issues/20`, idée de David pendant la maquette)
+
+- **Un nuage des meilleurs mots-clés, filtrable par campagne**, dans la
+  section Search de l'Analyse. Aujourd'hui le nuage Performance descend des
+  campagnes aux éléments sans niveau « mots-clés », et seul l'onglet Étendue
+  montre un point par mot-clé. La donnée existe par jour
+  (`keyword_view`, ticket 17). Point ouvert : « meilleurs » selon quoi —
+  Pulse ne classe pas (`CLAUDE.md` §1), donc le nuage montre tous les
+  mots-clés de la vue, et le filtre campagne (ou groupe d'annonces) les
+  resserre.
+- **Une carte des termes de recherche reliés à leur catégorie, façon
+  Obsidian.** Un nœud par catégorie de termes de Google, ses termes reliés
+  autour, une couleur par catégorie, la taille selon les clics : on voit d'un
+  coup d'œil quelles catégories pèsent le plus. Filtrable par campagne, ou
+  par groupe d'annonces si Google le permet. « Juste des couleurs », un
+  écran joli à lire, sans jugement. À faire **après** la première Analyse
+  Search. Ce que l'essai réel (`.scratch/google-ads/issues/19`) en dit déjà :
+  - **par campagne : oui**, vérifié (`campaign_search_term_insight`, une
+    campagne par requête) ; par groupe d'annonces : écrit dans la doc
+    (ticket 18), **pas essayé** ;
+  - les termes d'une catégorie se lisent, mais **une requête par
+    catégorie** (≈ 960 catégories sur 90 jours pour le compte A) : à
+    récolter pour les catégories qui pèsent, pas toutes ;
+  - une catégorie ne liste qu'une partie de ses termes (termes masqués), et
+    la catégorie fourre-tout (≈ 16 % des clics) n'en liste aucun : la carte
+    le dit, elle ne fabrique pas les liens manquants (`CLAUDE.md` §7) ;
+  - pas de coût par catégorie ; un même sujet y apparaît une fois par langue.
