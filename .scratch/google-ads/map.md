@@ -72,7 +72,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-11)** :
-[L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md),
 [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md),
 [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — « plus
 tard » selon David.
@@ -97,7 +96,7 @@ tard » selon David.
 | [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
 | [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research ✓ | — |
 | [L'Analyse Search](issues/18-l-analyse-search.md) | grilling ✓ | 17 |
-| [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task | 18 |
+| [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task ✓ | 18 |
 | [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) | prototype | 18 |
 
 ## Decisions so far
@@ -224,6 +223,17 @@ tard » selon David.
   condition qu'elles fassent ressortir un mot comme « gratuit » (19) ; choix
   des actions de conversion propre à l'Analyse ; aucun « mauvais », aucun
   « à supprimer ».
+- [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) :
+  **catégories de Google retenues** — « gratuit » ressort dans ses propres
+  catégories (72 clics sur 73), mais collé à un sujet et découpé par langue ;
+  `id` stables d'une semaine à l'autre, pas de coût, série par jour une
+  catégorie à la fois ; « déclenché tout seul » = appariement `EXACT` ; la
+  somme par action redonne les conversions, mais ce qui compte se lit dans
+  `campaign_conversion_goal` (94 % des conversions Search de A = « Page
+  vue », non principale) ; éléments RSA remplis par jour mais non
+  additionnables ; part perdue (budget) refusée sur `keyword_view` ; niveau
+  de qualité pour les seuls mots-clés actifs (42 %) ; 44 à 61 % des clics
+  Search viennent de termes masqués ; `EXCLUDED` non observable.
 
 ## Not yet specified
 
@@ -240,7 +250,7 @@ tard » selon David.
   (13), le contenu des annonces et leurs images
   (12), reprise de l'historique (37 mois au plus
   par jour), passage de v25 à v26 (v26 répond, vérifié au 10), les
-  mots-clés, termes, catégories, conversions par action et éléments RSA de l'Analyse Search (17, 18, 19) ; les vidéos
+  mots-clés, termes, catégories (fenêtre agrégée ; par jour une catégorie par appel), conversions par action, objectifs de conversion par campagne (`campaign_conversion_goal`) et éléments RSA de l'Analyse Search (17, 18, 19 — ≈ 245 lignes d'éléments par jour chez A) ; les vidéos
   sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
