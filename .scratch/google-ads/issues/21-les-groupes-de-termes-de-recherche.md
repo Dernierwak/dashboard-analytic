@@ -1,7 +1,7 @@
 # 21: Les groupes de termes de recherche
 
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: —
 Assignee: Claude (session 2026-11-11)
 
@@ -42,6 +42,37 @@ jamais ceux du client — le dépôt est public) :
   au-delà de combien ?), la place de la fourre-tout et des termes masqués,
   dits sans être inventés ;
 - où il vit : en bas de la page, après le choix d'une campagne.
+
+## Answer
+
+**Validé par David le 2026-11-11, au troisième tour : « c'est super ainsi ».**
+
+Les groupes de termes de Google donnent une lecture utile d'une campagne
+Search, **à condition d'être vus en grappes et à côté des mots-clés**. Ce
+qu'on garde (maquette `87a4b5c`, branche jetable `prototype/groupes-de-termes`) :
+
+- **Le graphe en grappes**, « comme un Obsidian » : un rond par groupe, ses
+  termes de recherche reliés autour ; un terme rangé dans deux groupes relie
+  les deux grappes ; 8 couleurs aux plus gros, le reste gris.
+- **Un sélecteur Mots-clés | Clusters Google** en tête du module : les mêmes
+  termes rangés sous leur mot-clé déclencheur (`search_term_view`, avec coût et
+  type de correspondance) ou sous le cluster que Google forme
+  (`campaign_search_term_insight` / `customer_search_term_insight`, sans coût).
+- **Plusieurs métriques à l'écran, jamais une seule** : totaux clics ·
+  impressions · conversions · coût ; fiche de la grappe avec les quatre, terme
+  par terme, et la ligne « Masqués par Google » ; classement clics · conv. ·
+  coût. Le coût d'un cluster s'écrit « — » (Google ne le donne pas), le
+  bouton Coût de la taille est barré en mode Clusters.
+- Filtre par campagne au-dessus, « Toutes les campagnes » compris ; taille des
+  ronds au choix (clics par défaut) ; « Sans cluster » (fourre-tout) et « N
+  petits clusters » (≤ 5 clics) hachurés, avec leur raison.
+- Place : en bas de la page Google, à la place de « Analyser une campagne — à
+  venir ».
+
+**Rejeté en chemin** : les trois formes du premier tour (constellation seule,
+blocs, barres découpées — trop de réglages, pas lisibles) et la liste en barres
+du deuxième (« complètement nul » : pas de vision, une seule métrique). Elles
+restent dans l'historique de la branche (`3e8264c`, `4d395ba`).
 
 ## Comments
 

@@ -71,8 +71,8 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-11)** :
-[Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md).
+**Frontier (2026-11-11)** : aucun ticket ouvert — la suite est dans
+« Not yet specified ».
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -96,7 +96,7 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [L'Analyse Search](issues/18-l-analyse-search.md) | grilling ✓ | 17 |
 | [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task ✓ | 18 |
 | [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) | prototype ✓ | 18 |
-| [Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md) | prototype | — |
+| [Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md) | prototype ✓ | — |
 
 ## Decisions so far
 
@@ -247,6 +247,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   liste à cocher porte l'étiquette du type ; dessous, le nuage de la période
   (axes = les deux métriques, non cochées en gris) et la courbe jour par jour.
   B et C rejetées : « trop d'informations ».
+- [Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md) :
+  validé au troisième tour — **le graphe en grappes** (un rond par groupe, ses
+  termes reliés autour) avec un sélecteur **Mots-clés | Clusters Google** : les
+  mêmes termes sous leur mot-clé déclencheur (avec coût) ou sous le cluster de
+  Google (coût « — ») ; toutes les métriques à l'écran, jamais une seule (fiche
+  de la grappe terme par terme, masqué compris, classement clics · conv. ·
+  coût) ; filtre par campagne ; en bas de la page Google. La liste en barres a
+  été rejetée (« complètement nul »).
 
 ## Not yet specified
 
@@ -272,10 +280,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
-- **Le reste de l'Analyse Search** : choisir une campagne et l'analyser —
-  nuage de ses mots-clés, ses termes, ses éléments (titres, descriptions,
-  écartés de la Comparaison au 20). Attend le verdict des groupes de termes
-  (21) ; idées de David au `BACKLOG.md` (2026-11-11).
+- **Le reste de l'Analyse Search** : les termes se lisent désormais par
+  mots-clés ou par clusters (21) ; restent le nuage des mots-clés et les
+  éléments (titres, descriptions, écartés de la Comparaison au 20) — à
+  décider s'ils viennent s'ajouter à ce module ou nulle part. Idées de David
+  au `BACKLOG.md` (2026-11-11).
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 
