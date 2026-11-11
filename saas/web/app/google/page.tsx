@@ -8,11 +8,12 @@
 //
 // L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`
 // (`lib/google/liens.ts`). Le calcul est dans `lib/google/lecture.ts`, la
-// lecture de la base dans `lib/google/donnees.ts`. Les modules suivants
-// (Comparaison, Tableau détaillé, Panneau latéral, Groupes de termes) viennent
-// par tickets.
+// lecture de la base dans `lib/google/donnees.ts`, le Tableau détaillé dans
+// `lib/google/tableau.ts`. Les modules suivants (Comparaison, Panneau latéral,
+// Groupes de termes) viennent par tickets.
 import { BandeauGoogle } from "@/components/google/bandeau";
 import { SelecteurVue } from "@/components/google/selecteur-vue";
+import { TableauDetaille } from "@/components/google/tableau";
 import { Tendance } from "@/components/google/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
 import { getDonneesGoogle } from "@/lib/google/donnees";
@@ -60,6 +61,7 @@ export default async function GooglePage({ searchParams }: { searchParams: Param
       <div className="mt-6 space-y-12">
         <SelecteurVue cartes={google.cartes} vue={google.vue} params={searchParams} />
         <Tendance metriques={google.tendance} dates={google.dates} datesAvant={google.datesAvant} sujet={sujet} />
+        <TableauDetaille tableau={google.tableau} />
       </div>
     </main>
   );

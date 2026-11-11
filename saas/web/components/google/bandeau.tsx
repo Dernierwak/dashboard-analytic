@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BoutonMenu, ChoixPeriode, Menu, useFermeture } from "@/components/meta/bandeau";
 import { Icone } from "@/components/meta/elements";
-import { ICONE_VUE, ID_SELECTEUR_VUE } from "@/components/google/elements";
+import { ICONE_VUE, ID_SELECTEUR_VUE, ReperType } from "@/components/google/elements";
 import {
   bornes,
   nombre,
@@ -17,7 +17,6 @@ import {
   type CampagneChoisie,
   type Periode,
   type Raccourci,
-  type TypeCampagne,
   type Vue,
 } from "@/lib/google/lecture";
 import { lienGoogle, type Params } from "@/lib/google/liens";
@@ -179,19 +178,6 @@ function Pastille({ couleur, className = "h-2.5 w-2.5" }: { couleur: string; cla
   return <span aria-hidden className={`shrink-0 rounded-full ${className}`} style={{ background: couleur }} />;
 }
 
-/** Le repère de type d'une campagne. Sous « Autres types », le vrai type de
- *  Google reste lisible au survol (spec : le Tableau et l'export le montrent).
- *  Une campagne sans type lu n'a pas de repère : rien n'est deviné. */
-function ReperType({ type }: { type: TypeCampagne }) {
-  return (
-    <span
-      title={type.libelle === "Autres types" ? `Type Google : ${type.brut}` : undefined}
-      className="shrink-0 rounded-md bg-[#efeee9] px-1.5 py-px text-[11px] font-medium text-muted"
-    >
-      {type.libelle}
-    </span>
-  );
-}
 
 const TOUTES = "Toutes les campagnes";
 const SANS_NOM = "Campagne sans nom";
