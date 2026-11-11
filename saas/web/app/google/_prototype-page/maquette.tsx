@@ -12,8 +12,8 @@
 // l'URL : vue, comparer (répété), deplie.
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
-// Ticket 20 : l'Analyse Search remplace l'emplacement réservé en bas de page.
-import { AnalyseSearch } from "./analyse";
+// Ticket 21 : les groupes de termes remplacent l'Analyse en bas de page (le 20 l'a jugée trop poussée pour commencer).
+import { GroupesTermes } from "./groupes-termes";
 
 type SP = Record<string, string | string[] | undefined>;
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -143,7 +143,7 @@ export function PrototypePage({ sp }: { sp: SP }) {
         <Tendance L={L} />
         <Comparaison L={L} />
         <Tableau L={L} />
-        <AnalyseSearch sp={sp} vue={L.vue} />
+        <GroupesTermes sp={sp} vue={L.vue} />
       </div>
     </main>
   );
