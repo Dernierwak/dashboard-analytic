@@ -19,6 +19,22 @@ const DEFAUTS: Record<string, string> = { vue: "notoriete" };
 
 export type Params = Record<string, string | string[] | undefined>;
 
+/** Le patch qui ferme le Panneau latéral, quoi qu'il montre : le jour ouvert
+ *  (`jour`) ou l'annonce lue (`annonce`, ticket 08). Un lien qui en ouvre un
+ *  l'étend avec ce qu'il ouvre — ouvrir un jour retire l'annonce, rien
+ *  d'autre : il ne peut jamais y avoir deux panneaux. */
+export const SANS_PANNEAU = { jour: null, annonce: null };
+
+/** Les paramètres d'un rendu serveur, SANS le jour ouvert. Le navigateur ouvre
+ *  et ferme le jour sans relire la page (`lib/meta/sur-place.ts`) : le `jour`
+ *  que le serveur a vu est donc périmé, et un lien construit dessus rouvrirait
+ *  un jour déjà refermé (même piège que Meta, `sansJournal`). Seule l'URL du
+ *  navigateur dit quel jour est ouvert. */
+export function sansJour(params: Params): Params {
+  const { jour: _jour, ...reste } = params;
+  return reste;
+}
+
 /** `null` dans le patch retire le paramètre ; une liste l'écrit répété. */
 export function lienGoogle(params: Params, patch: Record<string, string | string[] | null>): string {
   const q = new URLSearchParams();
