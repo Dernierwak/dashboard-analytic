@@ -12,13 +12,15 @@
 // l'URL : vue, comparer (répété), deplie.
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
+import { Commutateur } from "./commutateur";
+import { ComparaisonNeuve, VARIANTES } from "./comparaison";
 
-type SP = Record<string, string | string[] | undefined>;
-const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-const tous = (v: string | string[] | undefined) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
+export type SP = Record<string, string | string[] | undefined>;
+export const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+export const tous = (v: string | string[] | undefined) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
 /** Un lien n'énumère que ce qu'il CHANGE (`CLAUDE.md` §8). */
-function lien(sp: SP, patch: Record<string, string | string[] | undefined>): string {
+export function lien(sp: SP, patch: Record<string, string | string[] | undefined>): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (!(k in patch)) tous(v).forEach((x) => q.append(k, x));
   for (const [k, v] of Object.entries(patch)) tous(v).forEach((x) => q.append(k, x));
@@ -27,23 +29,23 @@ function lien(sp: SP, patch: Record<string, string | string[] | undefined>): str
 
 // ── LES DONNÉES FICTIVES ─────────────────────────────────────────────────────
 
-type Totaux = { impressions: number; clics: number; cout: number; conversions: number; valeur: number };
+export type Totaux = { impressions: number; clics: number; cout: number; conversions: number; valeur: number };
 const CHAMPS: (keyof Totaux)[] = ["impressions", "clics", "cout", "conversions", "valeur"];
-type Ligne = { id: string; nom: string; niveau: string; t: Totaux; enfants: Ligne[] };
+export type Ligne = { id: string; nom: string; niveau: string; t: Totaux; enfants: Ligne[] };
 
-const JOURS = 28;
+export const JOURS = 28;
 const FIN = new Date("2026-11-09T00:00:00Z");
-const dateDu = (i: number) => new Date(FIN.getTime() - (JOURS - 1 - i) * 86400_000);
-const jourCourt = (d: Date) => d.toLocaleDateString("fr-CH", { day: "numeric", month: "short", timeZone: "UTC" });
+export const dateDu = (i: number) => new Date(FIN.getTime() - (JOURS - 1 - i) * 86400_000);
+export const jourCourt = (d: Date) => d.toLocaleDateString("fr-CH", { day: "numeric", month: "short", timeZone: "UTC" });
 function bruit(i: number, graine: number) {
   const x = Math.sin(i * 12.9898 + graine * 78.233) * 43758.5453;
   return x - Math.floor(x);
 }
-const graineDe = (s: string) => [...s].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+export const graineDe = (s: string) => [...s].reduce((a, ch) => a + ch.charCodeAt(0), 0);
 
 const t = (impressions: number, clics: number, cout: number, conversions: number, valeur: number): Totaux => ({ impressions, clics, cout, conversions, valeur });
 /** Découpe un parent en enfants selon des parts, avec un taux propre à chacun. */
-function enfants(id: string, parent: Totaux, niveau: string, noms: [string, number][], petits?: (id: string, t: Totaux) => Ligne[]): Ligne[] {
+export function enfants(id: string, parent: Totaux, niveau: string, noms: [string, number][], petits?: (id: string, t: Totaux) => Ligne[]): Ligne[] {
   return noms.map(([nom, part], i) => {
     const f = 0.75 + 0.5 * bruit(i, graineDe(nom));
     const tt = t(parent.impressions * part, parent.clics * part * f, parent.cout * part, parent.conversions * part * f, parent.valeur * part * f);
@@ -51,14 +53,14 @@ function enfants(id: string, parent: Totaux, niveau: string, noms: [string, numb
     return { id: cid, nom, niveau, t: tt, enfants: petits ? petits(cid, tt) : [] };
   });
 }
-const annonces = (id: string, p: Totaux) => enfants(id, p, "Annonce", [["Annonce responsive 1", 0.6], ["Annonce responsive 2", 0.4]]);
+export const annonces = (id: string, p: Totaux) => enfants(id, p, "Annonce", [["Annonce responsive 1", 0.6], ["Annonce responsive 2", 0.4]]);
 const campagne = (nom: string, tt: Totaux, sous: [string, number][], elements = false): Ligne => ({
   id: nom, nom, niveau: "Campagne", t: tt,
   enfants: elements ? enfants(nom, tt, "Groupe d'éléments", sous) : enfants(nom, tt, "Groupe d'annonces", sous, annonces),
 });
 // Les 28 jours de A ≈ 31 % de ses 90 jours (ticket 10) : Search ≈ 5 040 CHF,
 // PMax ≈ 2 285 CHF — PMax fait beaucoup de clics bon marché.
-const CAMPAGNES: Ligne[] = [
+export const CAMPAGNES: Ligne[] = [
   campagne("Marque", t(15_200, 2_310, 1_715, 512, 1_480), [["Marque exacte", 0.7], ["Marque + produit", 0.3]]),
   campagne("Produits", t(12_100, 1_160, 1_360, 371, 1_120), [["Gamme A", 0.55], ["Gamme B", 0.45]]),
   campagne("Catalogue", t(65_900, 4_260, 1_325, 70, 990), [["Tous les produits", 0.7], ["Nouveautés", 0.3]], true),
@@ -76,7 +78,7 @@ const COMPTE = additionner(CAMPAGNES.map((c) => c.t));
 const fois = (x: Totaux, k: number) => Object.fromEntries(CHAMPS.map((c) => [c, x[c] * k])) as Totaux;
 
 /** Répartit un total de campagne sur 28 jours : creux le week-end, du bruit. */
-function serieJours(tt: Totaux, graine: number): Totaux[] {
+export function serieJours(tt: Totaux, graine: number): Totaux[] {
   // Un bruit commun (le volume du jour) et un bruit propre à chaque compteur :
   // sans le second, tous les taux seraient des droites.
   const parChamp = CHAMPS.map((_, ci) => {
@@ -89,17 +91,17 @@ function serieJours(tt: Totaux, graine: number): Totaux[] {
   });
   return Array.from({ length: JOURS }, (_, i) => Object.fromEntries(CHAMPS.map((c, ci) => [c, tt[c] * parChamp[ci][i]])) as Totaux);
 }
-const SERIE = new Map(CAMPAGNES.map((c) => [c.id, { maintenant: serieJours(c.t, graineDe(c.nom)), avant: serieJours(fois(c.t, AVANT), graineDe(c.nom) + 7) }]));
+export const SERIE = new Map(CAMPAGNES.map((c) => [c.id, { maintenant: serieJours(c.t, graineDe(c.nom)), avant: serieJours(fois(c.t, AVANT), graineDe(c.nom) + 7) }]));
 const jourDuCompte = (quand: "maintenant" | "avant") =>
   Array.from({ length: JOURS }, (_, i) => additionner(CAMPAGNES.map((c) => SERIE.get(c.id)![quand][i])));
 
 // ── LES MÉTRIQUES ET LES VUES (comme Meta, ADR 0011) ─────────────────────────
 
-type Cle = "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "conversions" | "cpa" | "taux" | "valeur" | "roas";
+export type Cle = "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "conversions" | "cpa" | "taux" | "valeur" | "roas";
 const entier = (v: number) => Math.round(v).toLocaleString("fr-CH");
-const chf = (v: number) => `${v.toLocaleString("fr-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF`;
+export const chf = (v: number) => `${v.toLocaleString("fr-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF`;
 const pct = (v: number) => `${(v * 100).toLocaleString("fr-CH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
-const METRIQUES: Record<Cle, { nom: string; baisseBonne?: boolean; calc: (t: Totaux) => number | null; fmt: (v: number) => string }> = {
+export const METRIQUES: Record<Cle, { nom: string; baisseBonne?: boolean; calc: (t: Totaux) => number | null; fmt: (v: number) => string }> = {
   impressions: { nom: "Impressions", calc: (x) => x.impressions, fmt: entier },
   cpm: { nom: "CPM", baisseBonne: true, calc: (x) => (x.impressions ? (x.cout / x.impressions) * 1000 : null), fmt: chf },
   clics: { nom: "Clics", calc: (x) => x.clics, fmt: entier },
@@ -111,8 +113,8 @@ const METRIQUES: Record<Cle, { nom: string; baisseBonne?: boolean; calc: (t: Tot
   valeur: { nom: "Valeur de conversion", calc: (x) => x.valeur, fmt: chf },
   roas: { nom: "ROAS", calc: (x) => (x.cout ? x.valeur / x.cout : null), fmt: (v) => `${v.toFixed(2).replace(".", ",")} ×` },
 };
-type Vue = "notoriete" | "trafic" | "conversion";
-const VUES: Record<Vue, { titre: string; question: string; icone: NomIcone; tendance: Cle[]; tableau: Cle[] }> = {
+export type Vue = "notoriete" | "trafic" | "conversion";
+export const VUES: Record<Vue, { titre: string; question: string; icone: NomIcone; tendance: Cle[]; tableau: Cle[] }> = {
   notoriete: { titre: "Notoriété", question: "Combien de fois on t'a vu, et à quel prix", icone: "oeil", tendance: ["impressions", "cpm"], tableau: ["impressions", "cpm"] },
   trafic: { titre: "Trafic", question: "Combien de clics tes annonces ont reçus", icone: "clic", tendance: ["clics", "ctr", "cpc"], tableau: ["clics", "ctr", "cpc"] },
   conversion: { titre: "Conversion", question: "Ce que tes campagnes rapportent en actions", icone: "cible", tendance: ["conversions", "cpa", "roas"], tableau: ["conversions", "cpa", "taux", "valeur", "roas"] },
@@ -133,19 +135,20 @@ type Lecture = { sp: SP; vue: Vue };
 export function PrototypePage({ sp }: { sp: SP }) {
   const v = un(sp.vue) as Vue | undefined;
   const L: Lecture = { sp, vue: v && v in VUES ? v : "trafic" };
+  // Ticket 16 : la Comparaison en trois variantes (`?av=`), M = celle de Meta.
+  const avBrut = un(sp.av);
+  const av = avBrut === "M" || avBrut === "B" || avBrut === "C" ? avBrut : "A";
   return (
     <main className="px-4 pb-16 sm:px-6 lg:px-8">
       <Bandeau />
       <div className="mt-6 space-y-12">
         <Selecteur L={L} />
         <Tendance L={L} />
-        <Comparaison L={L} />
+        {av === "M" ? <div id="comparaison"><Comparaison L={L} /></div> : <ComparaisonNeuve sp={sp} vue={L.vue} av={av} />}
         <Tableau L={L} />
         <AnalyseAVenir />
       </div>
-      <p className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#2b1a4d] px-4 py-2 text-[12.5px] font-semibold text-white shadow-2xl">
-        Maquette · chiffres fictifs
-      </p>
+      <Commutateur variantes={VARIANTES} />
     </main>
   );
 }
@@ -213,7 +216,7 @@ function Selecteur({ L }: { L: Lecture }) {
 
 // ── MODULE 3 · LA TENDANCE ───────────────────────────────────────────────────
 
-function Lignes({ series, W, H, couleurs, pointilles = [], axe = false }: { series: (number | null)[][]; W: number; H: number; couleurs: string[]; pointilles?: number[]; axe?: boolean }) {
+export function Lignes({ series, W, H, couleurs, pointilles = [], axe = false }: { series: (number | null)[][]; W: number; H: number; couleurs: string[]; pointilles?: number[]; axe?: boolean }) {
   const tout = series.flat().filter((x): x is number => x !== null);
   const max = Math.max(...tout) * 1.08 || 1;
   const pts = (s: (number | null)[]) => s.map((v, i) => `${(i / (JOURS - 1)) * W},${H - ((v ?? 0) / max) * H}`).join(" ");
@@ -260,7 +263,7 @@ function Tendance({ L }: { L: Lecture }) {
 
 const COULEURS = ["#1a56ff", "#e08b1a", "#7b4fff", "#0d9aa8"];
 
-function Comparaison({ L }: { L: Lecture }) {
+export function Comparaison({ L }: { L: Lecture }) {
   const [m1, m2] = VUES[L.vue].tendance;
   const rangs = [...CAMPAGNES].sort((a, b) => (METRIQUES[m1].calc(b.t) ?? 0) - (METRIQUES[m1].calc(a.t) ?? 0));
   const demandees = tous(L.sp.comparer).filter((id) => CAMPAGNES.some((c) => c.id === id));
@@ -390,7 +393,7 @@ function AnalyseAVenir() {
   );
 }
 
-function Titre({ titre, sous, droite }: { titre: string; sous: string; droite?: React.ReactNode }) {
+export function Titre({ titre, sous, droite }: { titre: string; sous: string; droite?: React.ReactNode }) {
   return (
     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
       <div className="min-w-0">
