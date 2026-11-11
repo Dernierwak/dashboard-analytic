@@ -1,7 +1,7 @@
 # 18: L'Analyse Search
 
 Type: grilling
-Status: claimed
+Status: resolved
 Blocked by: 17
 Assignee: Claude (session 2026-11-11)
 
@@ -58,6 +58,72 @@ et rapporte ; exclure est la décision du client, l'écran ne la propose pas.
 S'appuie sur ce que l'API rend (17). Une maquette suivra probablement ; la
 leçon des tickets 08 et 15 : montrer la seule section en question, dans la
 page, et partir de la grammaire Meta.
+
+## Answer
+
+Grilling avec David, 2026-11-11, cinq séries (détail sous `## Comments`).
+L'Analyse Search est une **descente pilotée par le haut de page** : la vue du
+Sélecteur fixe ce qu'on regarde, le Bandeau la période et la campagne, puis
+l'Analyse descend des campagnes aux éléments. Ni classement, ni étiquette
+« mauvais », ni « à supprimer » — le client lit les faits et décide (§1).
+
+**Structure, de haut en bas**
+1. **Onglets de type** en tête : Search · PMax · Display · Vidéo · Demand Gen.
+   Search seul actif, les autres grisés « à venir » (`BACKLOG.md`). Ce n'est
+   pas le filtre Type du Bandeau abandonné au 15 : il ne change que l'Analyse.
+   Une campagne choisie au Bandeau active l'onglet de son type.
+2. **Période et campagne = celles du Bandeau** ; aucun contrôle propre.
+3. **Nuage Performance**, dont les axes suivent le **Sélecteur de vue** —
+   Notoriété : impressions × CPM ; Trafic : clics × CTR (coût en taille) ;
+   Conversion : coût × conversions (clics en taille). Une phrase de lecture
+   dit ce qu'on y voit, sans juger. Choix libre des axes : `BACKLOG.md`.
+4. **Niveau** : par défaut on compare les **campagnes** ; « comme sur Meta »,
+   on choisit de descendre aux **Groupes d'annonces**, aux **Annonces** et aux
+   **Éléments** (titres, descriptions) — les mots-clés ne sont alors plus
+   regroupés par campagne. Les chiffres d'Éléments ne s'additionnent pas
+   pour redonner l'Annonce (servis ensemble) : l'écran le dit.
+5. **Nuage Étendue** (onglet à côté, axes fixes) : par mot-clé, nombre de
+   termes différents attrapés × part de ses clics venant du terme **au texte
+   identique** (casse ignorée, accents gardés), coût en taille — la mesure de
+   « déclenché tout seul » ; une variante proche compte comme un autre terme,
+   la phrase de lecture le dit.
+6. **Liste des mots-clés** (suit le nuage ; sans impression = listés sans
+   chiffres, jamais à 0) avec la colonne **« Niveau de qualité
+   (aujourd'hui) »**, « — » quand Google n'en rend pas. Puis **liste des
+   termes**, chacun avec son mot-clé déclencheur et le statut « déjà exclu » ;
+   cliquer un mot-clé filtre ses termes. Tri initial : coût décroissant — en
+   vue Conversion, les termes qui ont coûté sans convertir sont en tête, sans
+   bloc à part ni seuil inventé.
+7. **Groupes de termes = les catégories de Google** (cliquer une catégorie
+   montre ses termes) : impressions, clics, conversions, **sans coût** (Google
+   ne le rend pas), sans comparaison semaine à semaine (stabilité non
+   garantie). **Condition de David** : qu'elles fassent ressortir un mot
+   récurrent comme « gratuit » (« si c'est les catégories que Google donne,
+   on est super, on peut partir avec ça »). Si l'essai réel montre que non,
+   le groupement par mot fait par Pulse revient (mots ajoutés au mot-clé,
+   sans les mots de liaison FR/DE/EN, avec le coût).
+
+**Conversions** : en vue Conversion, l'Analyse **nomme les actions comptées**
+et le client **choisit lesquelles analyser** (cases à cocher, par défaut ce
+que compte Google ; le titre écrit la sélection). Ce choix est propre à
+l'Analyse ; le même sur toute la page reste au `BACKLOG.md`. Sans aucune action
+de conversion déclarée, une phrase remplace le nuage Conversion.
+
+**Couleurs** : une par campagne, toutes visibles ; la règle au-delà de
+8 campagnes se décide au prototype.
+
+**Hors de l'Analyse Search** : les termes de PMax (onglet PMax, à venir).
+
+**Faits d'API qui en découlent** (doc v26, sans appel réel — détail sous
+`## Comments`) : conversions par action = requête séparée des impressions /
+clics / coût, jointure et coût par conversion calculés par Pulse ; éléments
+RSA chiffrés par jour (`ad_group_ad_asset_view`), plus de label Google depuis
+v23 ; catégories (`customer_search_term_insight`,
+`campaign_search_term_insight`) sans coût. À éprouver par
+[L'essai réel de l'Analyse Search](19-l-essai-reel-de-l-analyse-search.md).
+
+Vocabulaire écrit dans `CONTEXT.md` : Élément, Mot-clé, Terme de recherche,
+Catégorie de termes. Pas d'ADR : rien de difficile à défaire.
 
 ## Comments
 

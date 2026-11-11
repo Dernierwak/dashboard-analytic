@@ -91,6 +91,34 @@ _Avoid_: Groupe d'annonces pour PMax — ce n'en est pas un, et l'écrire laisse
 chercher des annonces qui n'existent pas ; asset group ; « éléments » seul, qui
 désigne les titres et les images eux-mêmes.
 
+**Élément** :
+Un titre, une description, une image ou une vidéo dont Google compose ses
+annonces. Une Annonce Search est faite de plusieurs titres et descriptions que
+Google combine à chaque affichage. Un Élément a ses propres chiffres, mais
+**ceux des Éléments d'une Annonce ne s'additionnent pas** pour redonner
+l'Annonce : ils sont servis ensemble.
+_Avoid_: Asset, élément créatif — l'anglais ne s'affiche pas.
+
+**Mot-clé** :
+Ce que l'annonceur déclare dans un Groupe d'annonces Search pour dire sur
+quelles recherches il veut apparaître. C'est **sa** décision.
+_Avoid_: Requête, recherche — c'est ce que tape l'internaute, voir Terme de
+recherche.
+
+**Terme de recherche** :
+Ce que l'internaute a réellement tapé, et qui a déclenché une annonce par
+l'un des Mots-clés. Un Mot-clé attrape souvent beaucoup de Termes différents ;
+le Terme au texte identique au Mot-clé n'en est qu'un.
+_Avoid_: Mot-clé — confondre les deux efface précisément ce que l'Analyse
+Search montre ; requête.
+
+**Catégorie de termes** :
+Un groupe de Termes de recherche que **Google** forme lui-même, par
+intention. Pulse la reprend telle quelle et ne la recompose pas ; Google ne
+garantit pas qu'elle reste la même d'une semaine à l'autre.
+_Avoid_: Thème — le thème est retiré du produit et désignait un regroupement
+de campagnes.
+
 **Vues par personne** :
 Combien de fois la même personne a revu une Annonce sur la semaine. Pulse
 n'affiche **jamais** ce nombre tel quel : il affiche un **minimum** (« au moins

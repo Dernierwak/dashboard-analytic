@@ -72,7 +72,8 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-11)** :
-[L'Analyse Search](issues/18-l-analyse-search.md),
+[L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md),
+[L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md),
 [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — « plus
 tard » selon David.
 
@@ -95,7 +96,9 @@ tard » selon David.
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling ✓ | 11 |
 | [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
 | [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research ✓ | — |
-| [L'Analyse Search](issues/18-l-analyse-search.md) | grilling | 17 |
+| [L'Analyse Search](issues/18-l-analyse-search.md) | grilling ✓ | 17 |
+| [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task | 18 |
+| [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) | prototype | 18 |
 
 ## Decisions so far
 
@@ -211,6 +214,16 @@ tard » selon David.
   déclencheur, type d'appariement et statut actuel ; part masquée par la
   confidentialité calculable, pas lisible ; exclusions sur quatre niveaux ;
   incertitudes (part perdue budget, casse des termes) à un essai réel.
+- [L'Analyse Search](issues/18-l-analyse-search.md) :
+  une descente pilotée par le haut — onglets de type (Search seul actif),
+  période et campagne du Bandeau, nuage dont les axes suivent la vue
+  (Notoriété, Trafic, Conversion), niveau campagnes › groupes d'annonces ›
+  annonces › éléments, onglet Étendue (« déclenché tout seul » = texte
+  identique), listes mots-clés (niveau de qualité du jour) puis termes triés
+  par coût, groupes de termes = **catégories de Google** sans coût, à
+  condition qu'elles fassent ressortir un mot comme « gratuit » (19) ; choix
+  des actions de conversion propre à l'Analyse ; aucun « mauvais », aucun
+  « à supprimer ».
 
 ## Not yet specified
 
@@ -227,16 +240,10 @@ tard » selon David.
   (13), le contenu des annonces et leurs images
   (12), reprise de l'historique (37 mois au plus
   par jour), passage de v25 à v26 (v26 répond, vérifié au 10), les
-  mots-clés et termes de recherche de l'Analyse Search (17, 18) ; les vidéos
+  mots-clés, termes, catégories, conversions par action et éléments RSA de l'Analyse Search (17, 18, 19) ; les vidéos
   sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
-- **La maquette de l'Analyse Search** — après 18, sur la seule section, dans
-  la page.
-- **L'essai réel des mots-clés et termes** — ce que 17 n'a pas pu confirmer
-  (part perdue budget avec `keyword_view`, casse et accents des termes,
-  statut `EXCLUDED` face aux listes partagées) ; se ticketera selon ce que 18
-  retient.
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 

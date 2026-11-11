@@ -380,3 +380,19 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   d'éléments n'est pas une annonce. David : « pour l'instant, les panneaux,
   on va pas aller plus en détail ». À reprendre avec l'analyse PMax
   ci-dessus — les éléments y ont leurs chiffres (`asset_group_asset`).
+
+## Relevé en chemin le 2026-11-11 (ticket `.scratch/google-ads/issues/18`)
+
+- **Choisir librement les deux axes du nuage de l'Analyse Search.** La
+  première version n'a que trois préréglages, ceux du Sélecteur de vue
+  (Notoriété, Trafic, Conversion). David hésitait entre « un simple déjà » et
+  « le fait qu'on peut choisir » ; on commence par le simple.
+- **Le choix des actions de conversion sur toute la page Google** (cartes,
+  Tendance, Comparaison), et pas seulement dans l'Analyse Search où il existe
+  dès la première version. Rejoint l'entrée du 2026-11-10 (choisir la
+  conversion affichée) et la même entrée côté Meta.
+- **Grouper les termes de recherche par mot récurrent, fait par Pulse**
+  (« gratuit » : nombre de termes, coût, conversions ; mots du mot-clé et mots
+  de liaison FR/DE/EN écartés). En attente : on part sur les catégories de
+  Google ; il revient si l'essai réel (`.scratch/google-ads/issues/19`)
+  montre qu'elles ne font pas ressortir un tel mot.
