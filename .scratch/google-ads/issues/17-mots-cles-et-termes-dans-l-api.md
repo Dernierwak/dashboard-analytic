@@ -3,7 +3,7 @@
 Type: research
 Status: open
 Blocked by: —
-Assignee: —
+Assignee: Claude (agent de recherche, 2026-11-11)
 
 ## Question
 
