@@ -13,8 +13,15 @@ from supabase import Client
 def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
     """Upsert google_ads_insights.
     Chaque row attend : campaign_id, campaign_name, date_start (YYYY-MM-DD),
-    impressions, clicks, cost_micros, conversions, ctr, avg_cpc_micros.
+    impressions, clicks, cost_micros, conversions, ctr, avg_cpc_micros, et
+    advertising_channel_type, conversions_value, all_conversions,
+    view_through_conversions (`campaigns.lignes_de`).
     Conflict sur (user_id, date_start, campaign_id) : 1 ligne par campagne × jour.
+
+    Les quatre dernières passent telles quelles, `None` compris : une colonne
+    que Google n'a pas rendue s'écrit NULL, jamais 0 (`CLAUDE.md` §7). Les
+    clés sont posées sur CHAQUE ligne, même vides — PostgREST refuse un lot
+    dont les lignes n'ont pas les mêmes clés (PGRST102).
     """
     if not rows:
         return
@@ -36,6 +43,10 @@ def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
             "cost_micros":    int(r.get("cost_micros") or 0),
             "ctr":            float(r.get("ctr") or 0),
             "avg_cpc_micros": int(r.get("avg_cpc_micros") or 0),
+            "advertising_channel_type": r.get("advertising_channel_type"),
+            "conversions_value":        r.get("conversions_value"),
+            "all_conversions":          r.get("all_conversions"),
+            "view_through_conversions": r.get("view_through_conversions"),
         })
     supabase.table("google_ads_insights").upsert(
         records, on_conflict="user_id,date_start,campaign_id"

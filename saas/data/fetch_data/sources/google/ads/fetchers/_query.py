@@ -2,7 +2,7 @@
 
 Doc API : https://developers.google.com/google-ads/api/rest/
 
-Endpoint principal : POST /v17/customers/{customerId}/googleAds:searchStream
+Endpoint principal : POST /<version>/customers/{customerId}/googleAds:searchStream
 Body : { "query": "<GAQL query>" }
 Headers requis :
   - Authorization: Bearer <access_token>
@@ -31,8 +31,15 @@ from saas.config.secrets import secret
 # sunsettera en août 2027 — c'est elle qui repousse le plus loin la prochaine
 # panne du même genre.
 # Versions supportées actuellement : v23, v24, v25 (août 2026)
+#
+# Passage à v26 (sortie le 14 octobre 2026) au ticket 02 de la construction
+# Google Ads : la carte l'a appelée en conditions réelles, lecture seule, sur
+# deux comptes (`.scratch/google-ads/issues/10`, 2026-11-10, et `19`,
+# 2026-11-11) — `FROM campaign` avec `advertising_channel_type`,
+# `conversions_value`, `all_conversions` et `view_through_conversions` répond
+# 200 avec de vraies lignes. Elle repousse encore la panne d'un retrait.
 # Doc : https://developers.google.com/google-ads/api/docs/sunset-dates
-_API_VERSION = "v25"
+_API_VERSION = "v26"
 BASE = f"https://googleads.googleapis.com/{_API_VERSION}"
 
 
@@ -78,3 +85,39 @@ def micros(v) -> float | None:
         return float(v) / 1_000_000.0
     except (TypeError, ValueError):
         return None
+
+
+def mesure(v) -> float | None:
+    """Une métrique Google telle qu'elle est revenue : `None` si ABSENTE.
+
+    L'essai réel v26 (carte, issue 10) : un compteur revient `0` explicite, un
+    champ que Google ne remplit pas revient absent. Les deux ne disent pas la
+    même chose, donc `0` reste `0.0` et l'absence reste `None` — à l'inverse de
+    `micros()`, qui lit `0` comme « pas de budget ». Les int64 arrivent en
+    chaînes, les double en nombres : `float()` lit les deux.
+    """
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def resultats_de(reponse) -> tuple[list[dict], str | None]:
+    """Les `results` d'une réponse `searchStream`, ou l'erreur qu'elle porte.
+
+    `searchStream` rend une LISTE de lots ; une erreur arrive seule (objet) ou
+    au milieu du flux (un lot `error`). Une erreur, même tardive, annule tout :
+    rendre la moitié lue écrirait une période trouée comme si elle était
+    complète.
+    """
+    if isinstance(reponse, dict) and "error" in reponse:
+        err = reponse["error"]
+        return [], err.get("message", str(err))
+    resultats: list[dict] = []
+    for lot in reponse if isinstance(reponse, list) else [reponse]:
+        if isinstance(lot, dict) and "error" in lot:
+            return [], lot["error"].get("message", str(lot["error"]))
+        resultats += lot.get("results", []) if isinstance(lot, dict) else []
+    return resultats, None

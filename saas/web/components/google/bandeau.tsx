@@ -17,6 +17,7 @@ import {
   type CampagneChoisie,
   type Periode,
   type Raccourci,
+  type TypeCampagne,
   type Vue,
 } from "@/lib/google/lecture";
 import { lienGoogle, type Params } from "@/lib/google/liens";
@@ -29,8 +30,9 @@ import { lienGoogle, type Params } from "@/lib/google/liens";
 // avec recherche, pastille et coût de la période) et la période — le
 // calendrier de Meta, repris tel quel comme le fait Instagram, toujours
 // comparée à la période d'avant de même durée. Pas de menu de groupe : Google
-// ne filtre que par campagne au Bandeau (ticket 01). Le repère de type de
-// campagne au menu vient avec le type, au ticket 02.
+// ne filtre que par campagne au Bandeau (ticket 01). Chaque campagne du menu
+// porte son repère de type (ticket 02) ; pas de filtre par type au Bandeau
+// (spec, § « La structure » : abandonné).
 //
 // Au défilement, dès que les cartes du Sélecteur de vue sortent de l'écran, il
 // se détache en pilule flottante et la vue active s'y replie. L'animation se
@@ -177,6 +179,20 @@ function Pastille({ couleur, className = "h-2.5 w-2.5" }: { couleur: string; cla
   return <span aria-hidden className={`shrink-0 rounded-full ${className}`} style={{ background: couleur }} />;
 }
 
+/** Le repère de type d'une campagne. Sous « Autres types », le vrai type de
+ *  Google reste lisible au survol (spec : le Tableau et l'export le montrent).
+ *  Une campagne sans type lu n'a pas de repère : rien n'est deviné. */
+function ReperType({ type }: { type: TypeCampagne }) {
+  return (
+    <span
+      title={type.libelle === "Autres types" ? `Type Google : ${type.brut}` : undefined}
+      className="shrink-0 rounded-md bg-[#efeee9] px-1.5 py-px text-[11px] font-medium text-muted"
+    >
+      {type.libelle}
+    </span>
+  );
+}
+
 const TOUTES = "Toutes les campagnes";
 const SANS_NOM = "Campagne sans nom";
 
@@ -287,7 +303,10 @@ function ChoixCampagne({
                 >
                   {c ? <Pastille couleur={c.couleur} /> : <Icone nom="calques" className="h-4 w-4 shrink-0 text-muted" />}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ink">{c ? nomDe(c) : TOUTES}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate text-ink">{c ? nomDe(c) : TOUTES}</span>
+                      {c?.type && <ReperType type={c.type} />}
+                    </span>
                     {c?.sansId && <span className="block truncate text-[12px] font-normal text-faint">Sans identifiant Google, regroupée par son nom</span>}
                   </span>
                   {c && (
