@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
 // Ticket 21 : les groupes de termes remplacent l'Analyse en bas de page (le 20 l'a jugée trop poussée pour commencer).
-import { GroupesSimple } from "./groupes-simple";
+import { GroupesCluster } from "./groupes-cluster";
 
 type SP = Record<string, string | string[] | undefined>;
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -143,7 +143,7 @@ export function PrototypePage({ sp }: { sp: SP }) {
         <Tendance L={L} />
         <Comparaison L={L} />
         <Tableau L={L} />
-        <GroupesSimple sp={sp} />
+        <GroupesCluster sp={sp} />
       </div>
     </main>
   );
