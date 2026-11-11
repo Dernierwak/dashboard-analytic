@@ -3,7 +3,8 @@ import { getCompteActif } from "@/lib/account";
 import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
-import { contenuPage, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
+import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
+import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
 //
@@ -22,6 +23,12 @@ export type DonneesGoogle = ContenuPage & {
   /** La récolte Google a échoué au dernier passage (`lib/canaux-muets.ts`) :
    *  la période s'est arrêtée au dernier jour lu, et la page le dit. */
   muet: CanalMuetLive | null;
+  /** Le journal des changements de la période ; `null` = il n'a pas pu être
+   *  lu : la page le dit, au lieu de montrer une période sans point. */
+  journal: ChangementGoogle[] | null;
+  /** Depuis quand le journal est tenu sans trou (`aideJournal`) ; `null` = on
+   *  ne sait pas. */
+  debutJournal: string | null;
 };
 
 // `ctr` et `avg_cpc_micros` ne sont PAS lus : les taux se recalculent total ÷
@@ -84,6 +91,56 @@ function phraseLecture(l: { etat: string; run_id: string } | null): string {
   return `Chiffres Google au ${enFrancais(d)}${annee}, ${hh}:${mm} UTC`;
 }
 
+/**
+ * Le journal des changements Google de la période, paginé (`CLAUDE.md` §8).
+ * La période seulement : les points ne se posent que sur sa courbe.
+ */
+async function lireJournal(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<ChangementGoogle[] | null> {
+  try {
+    const lignes = await lireToutesLesPages<LigneChangementGoogle>((de, a) =>
+      supabase
+        .from("platform_changes")
+        .select("change_id, occurred_at, categorie, campaign_id, campaign_name, resume")
+        .eq("user_id", uid)
+        .eq("channel", "google")
+        // L'heure du compte est rangée telle quelle dans le `timestamptz`
+        // (`lib/google/changements.ts`) : la journée du compte est donc la
+        // journée UTC de la colonne, sans marge de fuseau.
+        .gte("occurred_at", `${debut}T00:00:00Z`)
+        .lt("occurred_at", `${decaler(fin, 1)}T00:00:00Z`)
+        // Un ordre TOTAL, sinon deux pages se recouvrent sur un même instant.
+        .order("occurred_at", { ascending: true })
+        .order("change_id", { ascending: true })
+        .range(de, a)
+    );
+    return lignes.flatMap((r) => changementDe(r) ?? []);
+  } catch {
+    return null;
+  }
+}
+
+/** `sans_trou_depuis` du journal Google (`couverture_recolte`). La table n'est
+ *  lisible que par son propriétaire (`000_run_me_all.sql`, section 14septies) :
+ *  pour un Membre invité la lecture rend zéro ligne, et la « ⓘ » dit qu'elle
+ *  ne sait pas — jamais une date devinée. */
+async function lireDebutJournal(supabase: ReturnType<typeof createClient>, uid: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("couverture_recolte")
+    .select("sans_trou_depuis")
+    .eq("user_id", uid)
+    .eq("source", "google")
+    .eq("flux", "journal")
+    .limit(1);
+  if (error) return null;
+  const debut = (data?.[0] as { sans_trou_depuis: string | null } | undefined)?.sans_trou_depuis;
+  return debut ? String(debut).slice(0, 10) : null;
+}
+
 export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -100,7 +157,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, progres] = await Promise.all([
+  const [brutes, progres, journal, debutJournal] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -115,6 +172,8 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
         .range(de, a)
     ),
     supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "google").limit(1),
+    lireJournal(supabase, uid, p.debut, p.fin),
+    lireDebutJournal(supabase, uid),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
@@ -122,5 +181,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
     ...contenuPage(brutes.map(versLigne), c, ctx),
     lecture: phraseLecture(ligneProgres),
     muet,
+    journal,
+    debutJournal,
   };
 }
