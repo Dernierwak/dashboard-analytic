@@ -12,6 +12,8 @@
 // l'URL : vue, comparer (répété), deplie.
 import Link from "next/link";
 import { Icone, type NomIcone } from "@/components/meta/elements";
+// Ticket 20 : l'Analyse Search remplace l'emplacement réservé en bas de page.
+import { AnalyseSearch } from "./analyse";
 
 type SP = Record<string, string | string[] | undefined>;
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -141,11 +143,8 @@ export function PrototypePage({ sp }: { sp: SP }) {
         <Tendance L={L} />
         <Comparaison L={L} />
         <Tableau L={L} />
-        <AnalyseAVenir />
+        <AnalyseSearch sp={sp} vue={L.vue} />
       </div>
-      <p className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#2b1a4d] px-4 py-2 text-[12.5px] font-semibold text-white shadow-2xl">
-        Maquette · chiffres fictifs
-      </p>
     </main>
   );
 }
