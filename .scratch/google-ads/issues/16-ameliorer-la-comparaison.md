@@ -1,9 +1,9 @@
 # 16: Améliorer la Comparaison
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: —
-Assignee: —
+Assignee: Claude (session 2026-11-11)
 
 ## Question
 
