@@ -6,24 +6,33 @@
 // Streamlit) : elle lit l'identité par ID, pagine au-delà de 1 000 lignes,
 // recalcule ses taux total ÷ total et dit à quelle date Pulse a lu Google.
 //
-// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`
-// (`lib/google/liens.ts`). Le calcul est dans `lib/google/lecture.ts`, la
-// lecture de la base dans `lib/google/donnees.ts`, le Tableau détaillé dans
-// `lib/google/tableau.ts`. Les modules suivants (Comparaison, Panneau latéral,
+// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, et le jour
+// ouvert dans le Panneau latéral (`jour`) (`lib/google/liens.ts`). Le jour est
+// tenu par le navigateur, qui l'ouvre sans relire la page
+// (`components/google/journal-ouvert.tsx`). Le calcul est dans
+// `lib/google/lecture.ts`, `lib/google/changements.ts` et
+// `lib/google/tableau.ts` (le Tableau détaillé), la lecture de la base dans
+// `lib/google/donnees.ts`. Les modules suivants (Comparaison, annonce lue,
 // Groupes de termes) viennent par tickets.
 import { BandeauGoogle } from "@/components/google/bandeau";
+import { JournalOuvert } from "@/components/google/journal-ouvert";
 import { SelecteurVue } from "@/components/google/selecteur-vue";
 import { TableauDetaille } from "@/components/google/tableau";
 import { Tendance } from "@/components/google/tendance";
+import { PanneauLateral } from "@/components/meta/panneau";
 import { TrouDeRecolte } from "@/components/trou-recolte";
+import { aideJournal, jourOuvertDe, joursMarques } from "@/lib/google/changements";
 import { getDonneesGoogle } from "@/lib/google/donnees";
-import type { Params } from "@/lib/google/liens";
+import { lienGoogle, SANS_PANNEAU, sansJour, type Params } from "@/lib/google/liens";
 
 export const dynamic = "force-dynamic";
 
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-export default async function GooglePage({ searchParams }: { searchParams: Params }) {
+export default async function GooglePage({ searchParams: brutes }: { searchParams: Params }) {
+  // Les composants reçoivent les paramètres sans le jour : c'est le
+  // navigateur qui le tient (`sansJour`).
+  const searchParams = sansJour(brutes);
   const google = await getDonneesGoogle({
     vue: un(searchParams.vue),
     campagne: un(searchParams.campagne),
@@ -32,6 +41,11 @@ export default async function GooglePage({ searchParams }: { searchParams: Param
   });
   const choisie = google.campagneChoisie;
   const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
+  // Le journal suit le filtre du Bandeau, par l'ID (`lib/google/changements.ts`).
+  const campagne = choisie?.cle ?? null;
+  const { journal } = google;
+  const marques = journal && joursMarques(journal, campagne, google.dates);
+  const fermeture = lienGoogle(searchParams, SANS_PANNEAU);
 
   return (
     // Pas de `max-w-*` : même raison que /meta, le conteneur prend toute la
@@ -60,9 +74,39 @@ export default async function GooglePage({ searchParams }: { searchParams: Param
 
       <div className="mt-6 space-y-12">
         <SelecteurVue cartes={google.cartes} vue={google.vue} params={searchParams} />
-        <Tendance metriques={google.tendance} dates={google.dates} datesAvant={google.datesAvant} sujet={sujet} />
+        <Tendance
+          metriques={google.tendance}
+          dates={google.dates}
+          datesAvant={google.datesAvant}
+          sujet={sujet}
+          marques={marques}
+          aideJournal={aideJournal(google.debutJournal)}
+          params={searchParams}
+        />
         <TableauDetaille tableau={google.tableau} />
       </div>
+
+      {journal ? (
+        <JournalOuvert
+          journal={journal}
+          campagnes={google.campagnes}
+          campagne={campagne}
+          periode={google.periode}
+          sujet={sujet}
+          fermeture={fermeture}
+        />
+      ) : (
+        // Sans journal il n'y a pas de point à cliquer : seul un lien partagé
+        // demande un jour. Il le dit au lieu d'ouvrir un panneau vide qui se
+        // lirait « aucun changement ».
+        jourOuvertDe(un(brutes.jour), google.periode) && (
+          <PanneauLateral titre="Changements du jour" fermeture={fermeture}>
+            <p className="mt-2 text-[14px] text-muted">
+              Le journal des changements n&apos;a pas pu être lu. Les chiffres de la page, eux, ne sont pas touchés.
+            </p>
+          </PanneauLateral>
+        )
+      )}
     </main>
   );
 }
