@@ -5,6 +5,7 @@ import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
 import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
 import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
+import { tableauDe, type LigneAnnonceGoogle, type Tableau } from "@/lib/google/tableau";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
 //
@@ -23,6 +24,7 @@ export type DonneesGoogle = ContenuPage & {
   /** La récolte Google a échoué au dernier passage (`lib/canaux-muets.ts`) :
    *  la période s'est arrêtée au dernier jour lu, et la page le dit. */
   muet: CanalMuetLive | null;
+  tableau: Tableau;
   /** Le journal des changements de la période ; `null` = il n'a pas pu être
    *  lu : la page le dit, au lieu de montrer une période sans point. */
   journal: ChangementGoogle[] | null;
@@ -65,6 +67,28 @@ function versLigne(r: LigneBase): LigneGoogle {
     impressions: Number(r.impressions) || 0,
     clics: Number(r.clicks) || 0,
     conversions: Number(r.conversions) || 0,
+  };
+}
+
+// Le détail par annonce, déjà récolté (étape 6 de `ads/sync.py`) : Google n'y
+// écrit que les annonces qui ont eu des impressions, et rien pour PMax.
+const COLONNES_ANNONCES = "date_start, campaign_id, campaign_name, ad_group_id, ad_group_name, ad_id, ad_name, impressions, clicks, cost_micros, conversions";
+
+type LigneBaseAnnonce = Omit<LigneBase, "advertising_channel_type"> & {
+  ad_group_id: string | null;
+  ad_group_name: string | null;
+  ad_id: string | null;
+  ad_name: string | null;
+};
+
+function versLigneAnnonce(r: LigneBaseAnnonce): LigneAnnonceGoogle {
+  return {
+    // Le type n'est pas sur cette table : le Tableau le lit sur la campagne.
+    ...versLigne({ ...r, advertising_channel_type: null }),
+    groupeId: r.ad_group_id || null,
+    groupeNom: r.ad_group_name ?? "",
+    annonceId: r.ad_id || null,
+    annonceNom: r.ad_name ?? "",
   };
 }
 
@@ -157,7 +181,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, progres, journal, debutJournal] = await Promise.all([
+  const [brutes, brutesAnnonces, progres, journal, debutJournal] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -171,14 +195,28 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
         .order("id", { ascending: true })
         .range(de, a)
     ),
+    // Paginé comme les campagnes : annonces × jours dépasse vite 1 000 lignes.
+    lireToutesLesPages<LigneBaseAnnonce>((de, a) =>
+      supabase
+        .from("google_ads_ad_insights")
+        .select(COLONNES_ANNONCES)
+        .eq("user_id", uid)
+        .gte("date_start", p.avantDebut)
+        .lte("date_start", p.fin)
+        .order("date_start", { ascending: true })
+        .order("id", { ascending: true })
+        .range(de, a)
+    ),
     supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "google").limit(1),
     lireJournal(supabase, uid, p.debut, p.fin),
     lireDebutJournal(supabase, uid),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
+  const lignes = brutes.map(versLigne);
   return {
-    ...contenuPage(brutes.map(versLigne), c, ctx),
+    ...contenuPage(lignes, c, ctx),
+    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx),
     lecture: phraseLecture(ligneProgres),
     muet,
     journal,

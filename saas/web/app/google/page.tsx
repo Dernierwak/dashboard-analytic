@@ -10,12 +10,14 @@
 // ouvert dans le Panneau latéral (`jour`) (`lib/google/liens.ts`). Le jour est
 // tenu par le navigateur, qui l'ouvre sans relire la page
 // (`components/google/journal-ouvert.tsx`). Le calcul est dans
-// `lib/google/lecture.ts` et `lib/google/changements.ts`, la lecture de la base
-// dans `lib/google/donnees.ts`. Les modules suivants (Comparaison, Tableau
-// détaillé, annonce lue, Groupes de termes) viennent par tickets.
+// `lib/google/lecture.ts`, `lib/google/changements.ts` et
+// `lib/google/tableau.ts` (le Tableau détaillé), la lecture de la base dans
+// `lib/google/donnees.ts`. Les modules suivants (Comparaison, annonce lue,
+// Groupes de termes) viennent par tickets.
 import { BandeauGoogle } from "@/components/google/bandeau";
 import { JournalOuvert } from "@/components/google/journal-ouvert";
 import { SelecteurVue } from "@/components/google/selecteur-vue";
+import { TableauDetaille } from "@/components/google/tableau";
 import { Tendance } from "@/components/google/tendance";
 import { PanneauLateral } from "@/components/meta/panneau";
 import { TrouDeRecolte } from "@/components/trou-recolte";
@@ -81,6 +83,7 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
           aideJournal={aideJournal(google.debutJournal)}
           params={searchParams}
         />
+        <TableauDetaille tableau={google.tableau} />
       </div>
 
       {journal ? (
