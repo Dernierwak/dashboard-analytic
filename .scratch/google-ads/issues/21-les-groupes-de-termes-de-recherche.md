@@ -42,3 +42,35 @@ jamais ceux du client — le dépôt est public) :
   au-delà de combien ?), la place de la fourre-tout et des termes masqués,
   dits sans être inventés ;
 - où il vit : en bas de la page, après le choix d'une campagne.
+
+## Comments
+
+- 2026-11-11 — **Maquette, premier tour.** Branche jetable
+  `prototype/groupes-de-termes` (`3e8264c`), partie du deuxième tour validé de
+  la page (`b19d03f`, via `5e2def8`) : le module « Ce que les gens ont
+  cherché » remplace l'Analyse en bas de page. Fichiers
+  `saas/web/app/google/_prototype-page/groupes-*.ts(x)`. Ouverte en dev par
+  `/google?maquette=page&gv=A#groupes` (`gv=A|B|C`, ou flèches ← →) ;
+  chiffres fictifs (même location de vélos, 6 campagnes Search).
+
+  **Commun aux trois** : filtre par campagne au-dessus (« Toutes les
+  campagnes Search » = les catégories du compte, où Google fusionne un même
+  sujet venu de plusieurs campagnes) ; taille Clics / Impressions /
+  Conversions, **par défaut celle de la vue** du Sélecteur ; une phrase de
+  tête — « X pèse N % des clics » ; dessous, la part listée, celle masquée, les
+  termes rangés dans deux catégories, et « pas de coût » ; **8 couleurs aux
+  plus grosses catégories, le reste gris** ; « Sans catégorie » (la
+  fourre-tout) et « N petites catégories » (≤ 5 clics, regroupées) hachurées
+  et toujours en dernier, avec leur raison.
+
+  | | A · Constellation | B · Blocs | C · Barres |
+  |---|---|---|---|
+  | Forme | le graphe « comme Obsidian » : un rond par catégorie, ses termes reliés autour ; un terme rangé dans deux catégories relie les deux grappes | un bloc proportionnel par catégorie (treemap), ses termes en pastilles dedans | une ligne par catégorie, la barre découpée en ses termes |
+  | Taille | aire du rond | aire du bloc | longueur de la barre |
+  | Termes masqués | ligne « Termes masqués par Google » dans la fiche de la grappe | bande hachurée au pied du bloc, à sa proportion exacte | segment hachuré au bout de la barre |
+  | Lire une catégorie | survol ou clic → fiche à droite (total, part, termes, masqué) ; légende classée dessous | tout est écrit dans le bloc | survol d'un segment ; nom du terme écrit s'il a la place |
+
+  Questions pour David : laquelle des trois (ou quel mélange) ; la taille
+  suit-elle la vue, ou toujours les clics ; « Toutes les campagnes » a-t-il
+  un sens, ou n'ouvre-t-on qu'après le choix d'une campagne ; faut-il montrer
+  les termes des catégories grises, ou seulement ceux des 8 colorées.
