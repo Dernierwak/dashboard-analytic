@@ -64,3 +64,30 @@ plus, deux métriques). À trancher avec David devant la maquette :
 - **Meta** : ADR 0011, une amélioration vaut pour les deux pages — la
   maquette montre aussi ce que le nuage donne sur Meta (campagnes, ensembles
   de publicités).
+
+## Comments
+
+- 2026-11-11 — **Maquette, premier tour.** Branche jetable
+  `prototype/comparaison` (`4429609`), partie du deuxième tour validé de la
+  page (`b19d03f`) : seule la Comparaison change. Fichiers
+  `saas/web/app/google/_prototype-page/comparaison.tsx` et `commutateur.tsx`.
+  Ouverte en dev par `/google?maquette=page&av=A#comparaison` (`av=M|A|B|C`,
+  ou flèches ← →) ; `M` = la Comparaison de Meta d'aujourd'hui, pour mémoire.
+  Bouton « Maquette vue sur Google | Meta » dans l'en-tête du module (noms et
+  niveaux de Meta — Objectif, Ensembles de pub, Publicités ; mêmes chiffres
+  fictifs). Toutes : choix au-dessus, nuage de la période à gauche, courbe
+  jour par jour à droite, quatre cases au plus, jamais d'éléments. Trois
+  réponses aux quatre questions :
+
+  | | A · Réglages | B · Descendre d'un cran | C · La liste se déplie |
+  |---|---|---|---|
+  | Axes du nuage | les deux métriques choisies (la 1re classe la liste) | ceux de la vue, rien à régler (Trafic : clics × CTR…) | ceux de la vue, « ⇄ échanger » |
+  | Non cochées | en gris | absentes | en gris, groupes et annonces en cercles creux |
+  | Descente | réglage « Niveau » (Campagnes / Groupes / Annonces), repart du pré-cochage | « Descendre ↓ » sur une ligne cochée, fil d'Ariane pour remonter ; on compare toujours des frères | on déplie sur place comme le Tableau, on coche à n'importe quel niveau (avertissement quand on mélange) |
+  | Type de campagne | réglage en pastilles | onglets au-dessus | pastilles |
+
+  Remarqué en vérifiant : quand les points cochés se serrent (Meta, vue
+  Conversion, niveau Ensembles), **leurs noms se chevauchent** — la légende
+  sous la courbe tient, celle du nuage non. PMax s'arrête au groupe
+  d'éléments (A retire « Annonces » si PMax seul ; B affiche « fin · PMax ») ;
+  sur Meta tout descend jusqu'aux publicités.
