@@ -1,81 +1,66 @@
-// Dashboard Google Ads — même base que l'onglet Streamlit : hero impressions,
-// KPIs, évolution quotidienne à métrique au choix, campagnes → groupes
-// d'annonces → annonces (google_ads_ad_insights). La période et les filtres
-// sont portés par le bandeau de commandes, pas par la page.
-import { getGoogleDash, type DashParams } from "@/lib/channels";
-import {
-  AdsKpis,
-  CampaignTable,
-  MetricChart,
-  MoyennesAds,
-} from "@/components/channel-dash";
-import { BandeauCommandes } from "@/components/bandeau-commandes";
+// ── LE DASHBOARD GOOGLE ADS ──────────────────────────────────────────────────
+//
+// Spec `.scratch/google-ads/spec.md` ; ADR 0011 : la page Google est la page
+// Meta avec les chiffres de Google — mêmes modules, même nom, même place,
+// chacun son propre code. Cette page REMPLACE l'ancienne (héritée du
+// Streamlit) : elle lit l'identité par ID, pagine au-delà de 1 000 lignes,
+// recalcule ses taux total ÷ total et dit à quelle date Pulse a lu Google.
+//
+// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`
+// (`lib/google/liens.ts`). Le calcul est dans `lib/google/lecture.ts`, la
+// lecture de la base dans `lib/google/donnees.ts`. Les modules suivants
+// (Comparaison, Tableau détaillé, Panneau latéral, Groupes de termes) viennent
+// par tickets.
+import { BandeauGoogle } from "@/components/google/bandeau";
+import { SelecteurVue } from "@/components/google/selecteur-vue";
+import { Tendance } from "@/components/google/tendance";
 import { TrouDeRecolte } from "@/components/trou-recolte";
+import { getDonneesGoogle } from "@/lib/google/donnees";
+import type { Params } from "@/lib/google/liens";
 
 export const dynamic = "force-dynamic";
 
-export default async function GooglePage({
-  searchParams,
-}: {
-  searchParams: DashParams;
-}) {
-  const d = await getGoogleDash(searchParams);
+const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function GooglePage({ searchParams }: { searchParams: Params }) {
+  const google = await getDonneesGoogle({
+    vue: un(searchParams.vue),
+    campagne: un(searchParams.campagne),
+    from: un(searchParams.from),
+    to: un(searchParams.to),
+  });
+  const choisie = google.campagneChoisie;
+  const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
 
   return (
-    // Pas de `max-w-*` : même raison que /meta, voir sa note.
-    <main className="px-4 sm:px-6 lg:px-8 py-6 lg:py-9">
-      <BandeauCommandes
-        titre="Google Ads."
-        glyphe="◆"
-        couleur="#1a7a4a"
-        periode={{
-          fenetre: d.periodLabel,
-          jours: d.days,
-          // LES BORNES RÉELLEMENT AFFICHÉES, pas celles qui ont été tapées
-          // (ticket 48). Une plage sur mesure se rabat sur le dernier jour
-          // plein — et, quand la récolte a échoué, sur le dernier jour LU.
-          // Réafficher les dates brutes laissait les deux champs annoncer une
-          // fenêtre que la page ne montrait pas.
-          from: searchParams?.from ? d.windowDebut : undefined,
-          to: searchParams?.to ? d.windowFin : undefined,
-        }}
-        statuts={d.statusOptions}
-        statutActif={d.filters.status}
-        campagnes={d.campOptions}
-        campActive={d.filters.camp}
+    // Pas de `max-w-*` : même raison que /meta, le conteneur prend toute la
+    // largeur laissée par la colonne latérale.
+    <main className="px-4 pb-16 sm:px-6 lg:px-8">
+      {/* Jamais remonté par une `key` : la pilule se rattacherait en haut à
+          chaque période choisie en plein défilement. */}
+      <BandeauGoogle
+        lecture={google.lecture}
+        params={searchParams}
+        vue={google.vue}
+        campagnes={google.campagnes}
+        campagneChoisie={choisie}
+        periode={google.periode}
+        raccourcis={google.raccourcis}
+        hier={google.hier}
       />
 
-
-      {/* CE QU'ON N'A PAS PU LIRE, AVANT LES CHIFFRES QU'IL EXPLIQUE (ticket
-          48). Les chiffres de cette page restent justes quand la récolte a
-          échoué — la fenêtre s'ancre sur la dernière ligne écrite — mais elle
-          RECULE alors sans le dire, et le client relit sa semaine d'avant sous
-          les dates du jour. C'est la sortie la plus discrète du problème : la
-          panne devient invisible pour tout le monde. Ce bandeau est ce qui
-          l'empêche. */}
-      {d.muet && (
-        <div className="mt-5">
-          <TrouDeRecolte
-            muets={[d.muet]}
-            taisent="La fenêtre affichée s'arrête au dernier jour lu, elle ne couvre pas les jours suivants"
-          />
+      {/* Ce qu'on n'a pas pu lire, AVANT les chiffres qu'il explique : sans
+          lui, une récolte en échec se lirait comme une chute. */}
+      {google.muet && (
+        <div className="mt-2">
+          <TrouDeRecolte muets={[google.muet]} taisent="La période affichée s'arrête au dernier jour lu, elle ne couvre pas les jours suivants" />
         </div>
       )}
 
-      <div className="mt-5">
-        <AdsKpis d={d} />
+      <div className="mt-6 space-y-12">
+        <SelecteurVue cartes={google.cartes} vue={google.vue} params={searchParams} />
+        <Tendance metriques={google.tendance} dates={google.dates} datesAvant={google.datesAvant} sujet={sujet} />
       </div>
-      {/* Même module, même place que sur Meta : deux pages canal qui posent la
-          même question doivent la poser dans le même ordre. */}
-      <MoyennesAds d={d} path="/google" />
-      <MetricChart d={d} path="/google" />
-      {/* La table qui suit porte l'écart des mêmes deux périodes qu'une
-          comparaison, dès qu'elle est posée — et rien de plus quand elle ne
-          l'est pas. */}
-
-      {/* Ce que la table permet est écrit DANS son pied, où c'est calculé — et
-          sur Google le détail par groupe d'annonces n'est pas toujours là. */}
-      <CampaignTable d={d} path="/google" />
     </main>
   );
 }

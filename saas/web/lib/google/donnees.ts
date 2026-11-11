@@ -1,0 +1,121 @@
+import { createClient } from "@/lib/supabase/server";
+import { getCompteActif } from "@/lib/account";
+import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
+import { jourDeTravailDuCompte } from "@/lib/jour-compte";
+import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
+import { contenuPage, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
+
+// ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
+//
+// La seule couche de la page qui touche la base ; tout le calcul est dans
+// `lecture.ts`, testé hors ligne. Elle ne déclenche aucun appel à Google : le
+// client ne déclenche rien (spec, § « La fraîcheur »).
+//
+// LE COMPTE REGARDÉ, JAMAIS LE MIEN. Un Membre invité lit `compte.uid`, et la
+// règle de partage de la base lui ouvre les mêmes lignes. Rien ici ne lit
+// `connected_accounts` : les jetons ne sont jamais à portée de cette page
+// (`CLAUDE.md` §7).
+
+export type DonneesGoogle = ContenuPage & {
+  /** « Chiffres Google au lundi 5 octobre, 07:02 UTC » — ou ce qui empêche de le dire. */
+  lecture: string;
+  /** La récolte Google a échoué au dernier passage (`lib/canaux-muets.ts`) :
+   *  la période s'est arrêtée au dernier jour lu, et la page le dit. */
+  muet: CanalMuetLive | null;
+};
+
+// `ctr` et `avg_cpc_micros` ne sont PAS lus : les taux se recalculent total ÷
+// total (`lecture.ts`), un taux récolté par ligne ne s'additionne pas.
+const COLONNES = "date_start, campaign_id, campaign_name, impressions, clicks, cost_micros, conversions";
+
+type LigneBase = {
+  date_start: string;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  impressions: number | null;
+  clicks: number | null;
+  cost_micros: number | string | null;
+  conversions: number | string | null;
+};
+
+/** Google rend le coût en millionièmes de la devise du compte. Converti ICI,
+ *  une seule fois (spec, § « Les vues et leurs métriques »). */
+const MICROS = 1_000_000;
+
+function versLigne(r: LigneBase): LigneGoogle {
+  return {
+    date: String(r.date_start).slice(0, 10),
+    campagneId: r.campaign_id || null,
+    campagneNom: r.campaign_name ?? "",
+    // Toutes NOT NULL DEFAULT 0 en base (`000_run_me_all.sql`) : un zéro y
+    // est celui qu'a écrit la récolte, pas une absence.
+    cout: (Number(r.cost_micros) || 0) / MICROS,
+    impressions: Number(r.impressions) || 0,
+    clics: Number(r.clicks) || 0,
+    conversions: Number(r.conversions) || 0,
+  };
+}
+
+function iso(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * La date à laquelle Pulse a lu Google, lue dans le dernier passage du worker
+ * (`fetch_progress`, canal `google`). Même phrase que Meta (`lib/meta/donnees.ts`) :
+ * l'heure est celle du DÉPART du passage (`run_id`), en UTC comme le cron.
+ * Quand le dernier passage n'a pas réussi, la phrase dit pourquoi au lieu
+ * d'inventer une date.
+ */
+function phraseLecture(l: { etat: string; run_id: string } | null): string {
+  if (!l) return "Pulse n'a pas encore lu Google pour ce compte";
+  if (l.etat === "attente" || l.etat === "en_cours") return "Pulse est en train de relire Google";
+  if (l.etat !== "fini") return "Le dernier passage n'a pas pu lire Google";
+  const d = horodatage(l.run_id);
+  if (!d) return "Date de lecture de Google illisible";
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  const annee = d.getUTCFullYear() !== new Date().getUTCFullYear() ? ` ${d.getUTCFullYear()}` : "";
+  return `Chiffres Google au ${enFrancais(d)}${annee}, ${hh}:${mm} UTC`;
+}
+
+export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
+  const supabase = createClient();
+  const compte = await getCompteActif();
+  const uid = compte.uid;
+  const maintenant = new Date();
+  // Le canal muet AVANT la période : c'est lui qui la borne quand la récolte a
+  // échoué (`periodeDe`).
+  const muet = (await fetchCanauxMuets(supabase, uid)).find((m) => m.canal === "google") ?? null;
+  const ctx = {
+    aujourdhui: iso(maintenant),
+    dernierJourDeTravail: iso(dernierJourDeTravail(await jourDeTravailDuCompte(), maintenant)),
+    dernierJourLu: muet?.depuis ?? null,
+  };
+  // La période d'abord, pour ne lire que ses lignes et celles d'avant.
+  const p = periodeDe(c, ctx);
+
+  const [brutes, progres] = await Promise.all([
+    lireToutesLesPages<LigneBase>((de, a) =>
+      supabase
+        .from("google_ads_insights")
+        .select(COLONNES)
+        .eq("user_id", uid)
+        .gte("date_start", p.avantDebut)
+        .lte("date_start", p.fin)
+        // Un ordre TOTAL : sans `id`, deux pages pourraient se recouvrir sur des
+        // lignes de même date et en perdre d'autres.
+        .order("date_start", { ascending: true })
+        .order("id", { ascending: true })
+        .range(de, a)
+    ),
+    supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "google").limit(1),
+  ]);
+
+  const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
+  return {
+    ...contenuPage(brutes.map(versLigne), c, ctx),
+    lecture: phraseLecture(ligneProgres),
+    muet,
+  };
+}
