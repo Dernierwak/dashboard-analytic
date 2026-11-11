@@ -33,12 +33,15 @@ export type DonneesGoogle = ContenuPage & {
 
 // `ctr` et `avg_cpc_micros` ne sont PAS lus : les taux se recalculent total ÷
 // total (`lecture.ts`), un taux récolté par ligne ne s'additionne pas.
-const COLONNES = "date_start, campaign_id, campaign_name, impressions, clicks, cost_micros, conversions";
+// `advertising_channel_type` exige la section 25 du `000` jouée : sans elle,
+// PostgREST refuse la lecture et la page lève (`lireToutesLesPages`).
+const COLONNES = "date_start, campaign_id, campaign_name, advertising_channel_type, impressions, clicks, cost_micros, conversions";
 
 type LigneBase = {
   date_start: string;
   campaign_id: string | null;
   campaign_name: string | null;
+  advertising_channel_type: string | null;
   impressions: number | null;
   clicks: number | null;
   cost_micros: number | string | null;
@@ -54,6 +57,8 @@ function versLigne(r: LigneBase): LigneGoogle {
     date: String(r.date_start).slice(0, 10),
     campagneId: r.campaign_id || null,
     campagneNom: r.campaign_name ?? "",
+    // Brut : c'est `lecture.ts` qui le nomme. NULL = pas lu, jamais deviné.
+    typeCampagne: r.advertising_channel_type || null,
     // Toutes NOT NULL DEFAULT 0 en base (`000_run_me_all.sql`) : un zéro y
     // est celui qu'a écrit la récolte, pas une absence.
     cout: (Number(r.cost_micros) || 0) / MICROS,
