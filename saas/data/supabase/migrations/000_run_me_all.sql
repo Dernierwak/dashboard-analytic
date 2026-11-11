@@ -48,6 +48,8 @@
 --          connected_accounts.rattrapage_instagram_curseur / _fini_le
 --          (instagram-construction, 08),
 --          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
+--   25)    google_ads_insights — le type de campagne et trois colonnes de
+--          conversion (google-ads, ticket 02)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -1891,6 +1893,39 @@ ALTER TABLE public.connected_accounts
 
 
 -- ============================================================================
+-- 25) google_ads_insights — le type de campagne et trois colonnes de conversion
+--     (`.scratch/google-ads/spec.md` § Les colonnes et tables nouvelles ;
+--     ticket 02 de la construction Google Ads).
+--
+--     `advertising_channel_type` : le type de Google recopié BRUT (`SEARCH`,
+--     `PERFORMANCE_MAX`, `SHOPPING`…). La page le nomme en six libellés ;
+--     stocker le libellé perdrait le vrai type que le Tableau et l'export
+--     doivent montrer sous « Autres types ».
+--
+--     `conversions_value`, `all_conversions`, `view_through_conversions` :
+--     demandées dans la même requête que les métriques d'avant (avec
+--     `segments.date`, Google omet les jours où toutes les métriques demandées
+--     valent 0 — carte, issue 10). `numeric` sans échelle : une valeur de
+--     conversion n'a pas de borne connue, et l'arrondir serait déjà un chiffre
+--     retouché.
+--
+--     Toutes NULLABLES, sans DEFAULT : NULL = pas lu (lignes écrites avant ce
+--     ticket, ou champ que Google n'a pas rendu), jamais 0 (`CLAUDE.md` §7).
+--     Les colonnes d'avant restent NOT NULL DEFAULT 0 : d'autres lecteurs en
+--     dépendent. Tant que cette section n'est pas jouée, la récolte Google qui
+--     écrit ces colonnes échoue (PGRST204) et la page Google ne se lit pas :
+--     la jouer AVANT le déploiement et avant le passage du worker.
+--
+--     Ajout seul. RLS déjà posée (table de la liste 15.1).
+-- ============================================================================
+
+ALTER TABLE public.google_ads_insights
+    ADD COLUMN IF NOT EXISTS advertising_channel_type text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS conversions_value        numeric DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS all_conversions          numeric DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS view_through_conversions numeric DEFAULT NULL;
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1977,6 +2012,10 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'rattrapage_instagram_curseur'), -- §23
     ('c', 'connected_accounts',       'rattrapage_instagram_fini_le'), -- §23
     ('c', 'connected_accounts',       'premier_passage_instagram_le'), -- §23
+    ('c', 'google_ads_insights',      'advertising_channel_type'), -- §25
+    ('c', 'google_ads_insights',      'conversions_value'),    -- §25
+    ('c', 'google_ads_insights',      'all_conversions'),      -- §25
+    ('c', 'google_ads_insights',      'view_through_conversions'), -- §25
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12

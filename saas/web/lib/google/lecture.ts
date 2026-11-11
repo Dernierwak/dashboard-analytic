@@ -2,7 +2,8 @@
 //
 // Spec `.scratch/google-ads/spec.md`, § « La lecture des données côté web ».
 // Ce fichier est le seam testé de la page Google (harnais :
-// `.scratch/google-ads/harnais/01-la-page-google-neuve/`) : tout ce qui
+// `.scratch/google-ads/harnais/01-la-page-google-neuve/`, et `02-…` pour le
+// Type de campagne) : tout ce qui
 // transforme des lignes en chiffres affichés vit ici, en fonctions pures.
 //
 // Écrit en partant de `lib/meta/lecture.ts`, mais SON PROPRE CODE (ADR 0011) :
@@ -31,6 +32,9 @@ export type LigneGoogle = {
   date: string; // YYYY-MM-DD
   campagneId: string | null;
   campagneNom: string;
+  /** `advertising_channel_type` tel que Google l'a rendu (`SEARCH`,
+   *  `PERFORMANCE_MAX`…), `null` quand il n'a pas été lu. */
+  typeCampagne: string | null;
   /** Le coût, déjà converti des micros (une seule fois, dans `donnees.ts`). */
   cout: number;
   impressions: number;
@@ -203,10 +207,47 @@ export const PALETTE_CAMPAGNES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#
 /** Au-delà de huit campagnes : un gris neutre, jamais une teinte réutilisée. */
 export const PASTILLE_NEUTRE = "#c3c2bb";
 
+// ── Le Type de campagne ──────────────────────────────────────────────────────
+
+/** Les six libellés de l'écran, dans son ordre — spec, § « Le Type de
+ *  campagne ». « Vidéo » est le YouTube payant ; « YouTube » seul désigne la
+ *  future page organique. */
+export const TYPES_CAMPAGNE = ["Search", "PMax", "Display", "Vidéo", "Demand Gen", "Autres types"] as const;
+export type LibelleType = (typeof TYPES_CAMPAGNE)[number];
+
+/** Les cinq types que l'écran nomme (carte, issues 03 et 14 : ce que les
+ *  comptes réels font tourner, Demand Gen ajouté le dernier). */
+const TYPES_NOMMES: Record<string, LibelleType> = {
+  SEARCH: "Search",
+  PERFORMANCE_MAX: "PMax",
+  DISPLAY: "Display",
+  VIDEO: "Vidéo",
+  DEMAND_GEN: "Demand Gen",
+};
+
+/** Le libellé d'un type brut de Google, ou `null` quand il n'a pas été lu.
+ *  `UNSPECIFIED` est la valeur par défaut de l'enum, pas un type : Google ne
+ *  l'émet pas pour une vraie campagne, elle se lit donc « non lu ».
+ *  `UNKNOWN`, lui, est un vrai type que v26 ne sait pas nommer — donc aucun des
+ *  cinq, que v26 connaît : « Autres types ». */
+export function libelleType(brut: string | null | undefined): LibelleType | null {
+  if (!brut || brut === "UNSPECIFIED") return null;
+  return TYPES_NOMMES[brut] ?? "Autres types";
+}
+
+export type TypeCampagne = {
+  libelle: LibelleType;
+  /** Le vrai type de Google, à montrer quand le libellé est « Autres types ». */
+  brut: string;
+};
+
 export type Campagne = {
   cle: string;
   nom: string;
   sansId: boolean;
+  /** `null` = aucune ligne de la campagne ne porte de type lu (lignes d'avant
+   *  la récolte du type) : elle n'est rangée dans aucun type, jamais devinée. */
+  type: TypeCampagne | null;
   /** Le coût de la PÉRIODE lue. `null` = aucune ligne sur la période : rien
    *  de mesuré, pas « 0 CHF ». */
   cout: number | null;
@@ -219,16 +260,35 @@ export type Campagne = {
 export function campagnesDe(lignes: LigneGoogle[], courante: { debut: string; fin: string }): Campagne[] {
   const couts = new Map<string, number | null>();
   const recentes = new Map<string, LigneGoogle>();
+  // Le type, lu sur la ligne la plus récente qui en PORTE un : Google ne
+  // laisse pas changer le type d'une campagne existante, donc toute ligne lue
+  // dit le même. Les lignes écrites avant la récolte du type (NULL) ne
+  // l'effacent pas.
+  const types = new Map<string, LigneGoogle>();
   for (const l of lignes) {
     const cle = cleCampagne(l);
     const avant = couts.get(cle) ?? null;
     couts.set(cle, l.date >= courante.debut && l.date <= courante.fin ? (avant ?? 0) + l.cout : avant);
     const vue = recentes.get(cle);
     if (!vue || l.date > vue.date) recentes.set(cle, l);
+    const typee = types.get(cle);
+    if (libelleType(l.typeCampagne) && (!typee || l.date > typee.date)) types.set(cle, l);
   }
+  const typeDe = (cle: string): TypeCampagne | null => {
+    const brut = types.get(cle)?.typeCampagne;
+    const libelle = libelleType(brut);
+    return brut && libelle ? { libelle, brut } : null;
+  };
   const couleurs = new Map([...recentes.keys()].sort().map((cle, i) => [cle, PALETTE_CAMPAGNES[i] ?? PASTILLE_NEUTRE]));
   return [...recentes]
-    .map(([cle, l]) => ({ cle, nom: l.campagneNom, sansId: l.campagneId === null, cout: couts.get(cle) ?? null, couleur: couleurs.get(cle)! }))
+    .map(([cle, l]) => ({
+      cle,
+      nom: l.campagneNom,
+      sansId: l.campagneId === null,
+      type: typeDe(cle),
+      cout: couts.get(cle) ?? null,
+      couleur: couleurs.get(cle)!,
+    }))
     .sort((a, b) => (b.cout ?? -1) - (a.cout ?? -1) || a.nom.localeCompare(b.nom, "fr"));
 }
 
