@@ -1,7 +1,7 @@
 # 16: Améliorer la Comparaison
 
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: —
 Assignee: Claude (session 2026-11-11)
 
@@ -64,6 +64,45 @@ plus, deux métriques). À trancher avec David devant la maquette :
 - **Meta** : ADR 0011, une amélioration vaut pour les deux pages — la
   maquette montre aussi ce que le nuage donne sur Meta (campagnes, ensembles
   de publicités).
+
+## Answer
+
+**Variante A · Réglages, validée par David le 2026-11-11.** « Il me semble
+que c'est la seule qui est bonne, les autres, il y a trop d'informations.
+J'aime bien, c'est assez simple. »
+
+La Comparaison devient :
+
+- **Au-dessus, une rangée de réglages** : le **Type de campagne** (Tous /
+  Search / PMax), le **Niveau** (Campagnes › Groupes › Annonces) et les
+  **deux métriques** de la vue, axe horizontal et axe vertical. La première
+  classe la liste. Changer de type ou de niveau repart du pré-cochage, comme
+  sur Meta aujourd'hui.
+- **La liste à cocher sur deux colonnes**, comme sur Meta, avec **l'étiquette
+  du type sur chaque ligne** (Search, PMax). David y tient : « t'as mis les
+  petits labels, les styles de campagne […] j'aime bien ».
+- **Dessous, côte à côte** : à gauche le **nuage sur toute la période**
+  (axes = les deux métriques choisies, taille du point = coût, **lignes non
+  cochées en gris**) ; à droite la **courbe jour par jour** des cochées, qui
+  bascule entre les deux métriques. Quatre cases au plus.
+- **On descend par le réglage Niveau** jusqu'aux annonces, et pas plus bas :
+  les éléments (assets) restent dans l'Analyse (« ça sera en dessous »).
+  PMax s'arrête au groupe d'éléments : « Annonces » disparaît quand PMax
+  est seul.
+
+Ce qui part : la descente depuis une ligne avec fil d'Ariane (B), le
+mélange des niveaux (C), les axes figés par la vue (B, C).
+
+Ce qui reste ouvert, pour la construction :
+- **les noms qui se chevauchent dans le nuage** quand les points cochés se
+  serrent (relevé au premier tour) ;
+- **sur Meta** (ADR 0011 : même module, même rôle), la variante A ajoute un
+  niveau Campagnes et un réglage Objectif à la place du Type. La maquette le
+  montrait, mais David ne s'est pas prononcé sur Meta : c'est à confirmer
+  avant d'y toucher (carte, « Not yet specified »).
+
+Prototype conservé sur la branche jetable `prototype/comparaison`
+(`4429609`). Il se lance par `/google?maquette=page&av=A#comparaison`.
 
 ## Comments
 

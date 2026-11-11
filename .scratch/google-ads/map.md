@@ -72,8 +72,6 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-11)** :
-[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — devenu
-une maquette : nuage des campagnes et courbe sous le choix, comme Meta ;
 [Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md).
 
 | Ticket | Type | Bloqué par |
@@ -93,7 +91,7 @@ une maquette : nuage des campagnes et courbe sous le choix, comme Meta ;
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task ✓ | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling ✓ | 15 (levé) |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling ✓ | 11 |
-| [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | prototype | — |
+| [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | prototype ✓ | — |
 | [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research ✓ | — |
 | [L'Analyse Search](issues/18-l-analyse-search.md) | grilling ✓ | 17 |
 | [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task ✓ | 18 |
@@ -243,8 +241,19 @@ une maquette : nuage des campagnes et courbe sous le choix, comme Meta ;
   de termes de Google** en Search, vus comme des grappes reliées par campagne
   (21). Complément d'essai : 83 % des clics des termes retrouvent leur
   catégorie chez B ; par campagne oui, par groupe d'annonces non.
+- [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) :
+  **variante A · Réglages** — Type de campagne, Niveau (Campagnes › Groupes ›
+  Annonces, jamais les éléments) et deux métriques choisies au-dessus ; la
+  liste à cocher porte l'étiquette du type ; dessous, le nuage de la période
+  (axes = les deux métriques, non cochées en gris) et la courbe jour par jour.
+  B et C rejetées : « trop d'informations ».
 
 ## Not yet specified
+
+- **La Comparaison sur Meta** : la variante A validée au 16 y ajoute un
+  niveau Campagnes et un réglage Objectif (ADR 0011). La maquette le
+  montrait, mais David ne s'est pas prononcé sur Meta. À confirmer avant
+  la construction.
 
 - **Le délai de stabilisation des conversions Google** : aucun documenté
   (ticket 01) ; ce qu'il fait à la Tendance et à la Comparaison des derniers
