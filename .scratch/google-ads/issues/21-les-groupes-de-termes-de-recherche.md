@@ -74,3 +74,12 @@ jamais ceux du client — le dépôt est public) :
   suit-elle la vue, ou toujours les clics ; « Toutes les campagnes » a-t-il
   un sens, ou n'ouvre-t-on qu'après le choix d'une campagne ; faut-il montrer
   les termes des catégories grises, ou seulement ceux des 8 colorées.
+- 2026-11-11 — **Deuxième tour.** David sur le premier : « fais-moi un truc
+  simple, je sais pas ce que tu essayes de me dire ». Les trois formes sont
+  remplacées par **une seule liste** (`4d395ba`, `groupes-simple.tsx`) : les
+  8 plus gros groupes de Google en clics, une barre colorée, le nombre de clics
+  et la part, leurs principaux termes en gris dessous, puis une ligne « + N
+  clics dans des groupes plus petits, ou sur des recherches que Google n'a pas
+  regroupées » (le total retombe juste). Seul réglage : la campagne. Plus de
+  taille au choix, de hachures ni de graphe. A, B et C restent sur la branche,
+  sans être affichées. En attente du verdict de David.
