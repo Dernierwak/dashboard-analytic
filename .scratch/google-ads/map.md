@@ -285,8 +285,9 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   éléments (titres, descriptions, écartés de la Comparaison au 20) — à
   décider s'ils viennent s'ajouter à ce module ou nulle part. Idées de David
   au `BACKLOG.md` (2026-11-11).
-- **La spec de la page Google Ads** — la destination, une fois tout le reste
-  tranché.
+- **La spec de la page Google Ads** — écrite le 2026-11-11 :
+  [`spec.md`](spec.md), `Status: ready-for-agent`. Ce qui restait ouvert
+  ci-dessus y est hors périmètre ou tranché par défaut (§ Further Notes).
 
 ## Out of scope
 
