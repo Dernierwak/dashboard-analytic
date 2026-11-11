@@ -1,9 +1,9 @@
 # 20: L'Analyse Search en maquette
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 18
-Assignee: —
+Assignee: Claude (session 2026-11-11)
 
 ## Question
 
