@@ -39,3 +39,21 @@ comme ceux du client.
     mots-clés actifs chez A) et pour tout mot-clé inactif ;
   - le **menu des actions** part des objectifs de chaque campagne : une
     action « non principale » peut porter l'essentiel des conversions.
+- 2026-11-11 — **Maquette, premier tour.** Branche jetable
+  `prototype/analyse-search` (`5e2def8`), partie du deuxième tour validé de
+  la page (`b19d03f`) : l'Analyse remplace « Analyser une campagne — à
+  venir ». Fichiers `saas/web/app/google/_prototype-page/analyse*.ts(x)`.
+  Ouverte en dev par `/google?maquette=page&av=A#analyse` (`av=A|B|C`, ou
+  flèches ← →) ; chiffres fictifs (location de vélos inventée, 12
+  campagnes Search). Trois réponses aux quatre questions :
+
+  | | A · Pas à pas | B · Plonger dans le nuage | C · La liste pilote |
+  |---|---|---|---|
+  | Couleurs > 8 campagnes | 8 teintes aux plus dépensières, « Autres (4) » en gris, légende qui met une campagne en avant | tout gris, les 5 plus gros points en noir et nommés ; une couleur une fois descendu | jusqu'à 8 lignes cochées dans la liste, colorées ; le reste gris |
+  | Phrase de lecture | mode d'emploi des axes, au-dessus | constat (le plus à droite, le plus haut), dessous | constat en titre du module, mode d'emploi dessous |
+  | Descente de niveau | onglets Campagnes › … › Éléments au-dessus du nuage | clic sur un point, fil d'Ariane pour remonter | pastilles en tête de la liste |
+  | Menu des actions | rangée de pastilles au-dessus du nuage | colonne à gauche, toujours visible | menu déroulant dans l'en-tête |
+  | Listes | empilées | mots-clés et termes côte à côte, catégories en cartes | en onglets |
+
+  Remarqué en vérifiant : au niveau Éléments, ≈ 250 points se serrent dans
+  le coin bas-gauche — la densité est une question en soi.
