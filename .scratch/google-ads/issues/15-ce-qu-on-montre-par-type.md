@@ -1,7 +1,7 @@
 # 15: Ce qu'on montre pour chaque type de campagne
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 11
 Assignee: Claude (session du 2026-11-10)
 
@@ -111,3 +111,53 @@ campagnes d'un seul type.
 
 Un taux qui n'a pas de valeur la plupart des jours (coût par conversion de
 Vidéo, 3 conversions en 28 jours) n'a pas de courbe, et l'écran dit pourquoi.
+
+## Answer
+
+David, 2026-11-11, après le deuxième prototype : « on a la base de Meta qui
+doit être prise ».
+
+**La page Google ne montre rien de propre aux types de campagne, hors de
+l'Analyse.** Ni module « Types de campagne », ni moustache, ni filtre Type de
+campagne au Bandeau, ni répartition de la dépense par type : « j'ai pas
+l'impression que ça apporte quelque chose de voir les Search, combien on
+dépense ». Le filtre et la moustache du ticket 04, suspendus au ticket 11,
+sont **abandonnés**. Le point d'analyse
+([Peut-on comparer des types de campagne Google entre eux ?](../analyses/15-comparer-les-types.md))
+reste la référence pour la raison : aucun chiffre commun ne compare deux types.
+
+**Ce qui reste de propre aux types** :
+- le **repère de type** à côté de chaque campagne du Tableau (oui du tour 1) ;
+- dans la **Comparaison**, qui reste celle de Meta, le choix possible **d'un
+  type de campagne et d'une métrique** pour comparer entre elles les
+  campagnes de ce type. David : « on peut peut-être prendre un type de
+  campagne, une métrique et comparer comme sur Meta. Ça, je laisserai comme
+  ça. » _Déduit, non posé_ : le type est un réglage de la Comparaison, à côté
+  du niveau et des métriques — confié au ticket 16.
+
+**En bas de page, l'Analyse remplace « Analyser une campagne — à venir », et
+commence par Search** : mots-clés et termes de recherche ; tous les mots-clés
+du compte, sauf si on filtre par campagne ; peut-être un nuage de points des
+mots-clés (« on voit les meilleurs mots-clés, où ils sont »), coloré par
+campagne. Le message de David s'arrête sur « et puis peut-être » : la suite est
+à reprendre au ticket de l'Analyse Search. C'est un **changement de
+périmètre** décidé par David : l'analyse de Search entre dans la carte (les
+autres types restent au `BACKLOG.md`).
+Un second message, le même jour, ajoute les **spécialités des termes de
+recherche** (un mot-clé déclenché surtout par lui-même ou par beaucoup de
+termes, les termes qui coûtent sans rapporter, les termes groupés par mot
+récurrent comme « gratuit ») et confirme : « on est censé le faire
+maintenant ». Le détail vit dans [L'Analyse Search](18-l-analyse-search.md),
+et ce que l'API en rend dans
+[Les mots-clés et les termes de recherche dans l'API Google Ads](17-mots-cles-et-termes-dans-l-api.md).
+
+**Regrouper les campagnes par thématique** : « plus intéressant, mais on le
+verra dans un prochain temps ». Ce regroupement recoupe **le thème retiré du
+produit le 2026-09-30** (`CLAUDE.md` §1, `BACKLOG.md` « Le thème, et la seule
+chose qu'il faisait bien ») : il ne revient que par une décision explicite,
+hors de cette carte.
+
+Prototypes rejetés, gardés pour mémoire : branche `prototype/google-page`,
+`f0383ae` (rangées, superposé, boîtes) et `d602d5c` (bloc, en tête, avec
+spécialités). Pas d'ADR : on revient à l'ADR 0011 appliqué à la lettre. Rien
+de nouveau dans `CONTEXT.md`.

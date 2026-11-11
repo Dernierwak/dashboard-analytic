@@ -97,3 +97,8 @@ Display, Vidéo ; il filtre, la vue reconfigure ; « Vidéo » et pas « YouTube
 à éviter : « format », « canal ».
 
 Pas d'ADR : rien ici n'est un écart, c'est l'ADR 0011 appliqué.
+
+_Révisé le 2026-11-11 par [Ce qu'on montre pour chaque type de campagne](15-ce-qu-on-montre-par-type.md)_ :
+le filtre Type de campagne du Bandeau et la moustache par type sont
+**abandonnés**. Le Sélecteur reste l'étape ; le type ne se choisit plus que
+dans la Comparaison (16).

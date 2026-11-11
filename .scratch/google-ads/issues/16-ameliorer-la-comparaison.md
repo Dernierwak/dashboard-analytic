@@ -24,3 +24,12 @@ détaillait les types), et la question restée ouverte au 08 : que vaut un
 classement de campagnes de types différents (Search et PMax n'ont pas le même
 coût par clic) ? Celle-ci peut aussi revenir par le
 [ticket 15](15-ce-qu-on-montre-par-type.md).
+
+## Apport de « Ce qu'on montre pour chaque type de campagne » (15, résolu)
+
+David, 2026-11-11 : la Comparaison reste celle de Meta — « on peut peut-être
+prendre un type de campagne, une métrique et comparer comme sur Meta. Ça, je
+laisserai comme ça. » À poser ici : le **type de campagne comme réglage** de
+la Comparaison (à côté du niveau et des métriques), qui répond aussi au
+classement de campagnes de types différents. Sur Meta, l'équivalent serait
+l'objectif de campagne — une amélioration vaut pour les deux pages.

@@ -367,6 +367,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
     seules. Quartiles : rendus sur Vidéo et Display, absents sur PMax.
     Volumes sur 90 jours, compte principal : 20 800 lignes élément PMax ×
     jour, 8 400 mot-clé × jour, 8 700 termes.
+  - _2026-11-11_ : **Search sort d'ici** — son Analyse (mots-clés, termes de
+    recherche, mots récurrents) entre dans la carte `google-ads` (tickets 17
+    et 18). David : « on est censé le faire maintenant ». PMax, Display et
+    Vidéo restent ici.
 
 ## Relevé en chemin le 2026-11-10 (ticket `.scratch/google-ads/issues/12`)
 

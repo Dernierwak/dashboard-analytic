@@ -71,10 +71,12 @@ Format : un fichier par ticket sous `issues/`, en-tête `Type / Status /
 Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
-**Frontier (2026-11-10)** :
-[Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md)
-— « plus tard » selon David —,
-[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — idem.
+**Frontier (2026-11-11)** :
+[Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md)
+(research, confiée à un agent),
+[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — « plus
+tard » selon David. Ensuite : [L'Analyse Search](issues/18-l-analyse-search.md),
+bloquée par la recherche.
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -92,8 +94,10 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 | [Le Panneau latéral sur Google](issues/12-le-panneau-lateral.md) | grilling ✓ | — |
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task ✓ | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling ✓ | 15 (levé) |
-| [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling | 11 |
+| [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling ✓ | 11 |
 | [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
+| [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research | — |
+| [L'Analyse Search](issues/18-l-analyse-search.md) | grilling | 17 |
 
 ## Decisions so far
 
@@ -195,6 +199,14 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   oui. Demand Gen est le 2ᵉ poste de A sur 36 mois, il ne reste donc pas sans
   nom sous « Autres types » ; il porte les seuls chiffres de base, sans vues
   vidéo ; rien ne change à l'écran tant que les types sont suspendus (15).
+- [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) :
+  rien, hors de l'Analyse — « on a la base de Meta qui doit être prise ».
+  Ni module des types, ni moustache, ni filtre Type au Bandeau (04
+  abandonné), ni dépense par type ; restent le repère de type au Tableau et,
+  dans la Comparaison de Meta, le choix d'un type et d'une métrique (16). En
+  bas, l'**Analyse** commence par Search — mots-clés, termes, nuage de points,
+  spécialités des termes — et **entre dans la carte** (17, 18). Raison de fond :
+  [Peut-on comparer des types de campagne Google entre eux ?](analyses/15-comparer-les-types.md).
 
 ## Not yet specified
 
@@ -210,10 +222,13 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
   des actions de conversion et la répartition des conversions par action
   (13), le contenu des annonces et leurs images
   (12), reprise de l'historique (37 mois au plus
-  par jour), passage de v25 à v26 (v26 répond, vérifié au 10) ; les vidéos et
-  les mots-clés sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
+  par jour), passage de v25 à v26 (v26 répond, vérifié au 10), les
+  mots-clés et termes de recherche de l'Analyse Search (17, 18) ; les vidéos
+  sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
+- **La maquette de l'Analyse Search** — après 18, sur la seule section, dans
+  la page.
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 
@@ -225,7 +240,11 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 - **Brancher TikTok** ou une autre plateforme — `BACKLOG.md`.
 - **Thèmes, labels, recommandations** — retirés du produit, ne reviennent pas
   par la bande.
-- **L'analyse propre à chaque type** (mots-clés, audiences PMax,
-  emplacements Display, quartiles Vidéo) — mise de côté par David, un type à
-  la fois plus tard ; [La Comparaison sur Google](issues/08-la-comparaison.md),
-  `BACKLOG.md`.
+- **L'analyse propre aux autres types** (audiences et groupes d'éléments
+  PMax, emplacements Display, quartiles Vidéo) — un type à la fois, plus tard ;
+  [La Comparaison sur Google](issues/08-la-comparaison.md), `BACKLOG.md`.
+  **Search en est sorti le 2026-11-11** : son Analyse entre dans la carte
+  ([Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md)).
+- **Regrouper les campagnes par thématique** — « plus intéressant », dit David,
+  « dans un prochain temps » ; il recoupe le thème retiré du produit
+  (`CLAUDE.md` §1) et ne revient que par une décision explicite (15).
