@@ -85,6 +85,67 @@ def upsert_google_ads_ad_insights(supabase: Client, user_id: str, rows: list[dic
     ).execute()
 
 
+def upsert_google_conversion_actions(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_conversion_actions (`conversion_actions.actions_de`).
+    Conflict sur (user_id, conversion_action_id) : les réglages ACTUELS de
+    chaque action, réécrits à chaque passage. `None` reste NULL : un réglage
+    non lu ne se devine pas.
+    """
+    if not rows:
+        return
+    par_id = {}
+    for r in rows:
+        aid = str(r.get("conversion_action_id", ""))
+        par_id[aid] = {
+            "user_id":                  user_id,
+            "conversion_action_id":     aid,
+            "name":                     r.get("name", ""),
+            "category":                 r.get("category"),
+            "status":                   r.get("status"),
+            "always_use_default_value": r.get("always_use_default_value"),
+            "default_value":            r.get("default_value"),
+            "currency_code":            r.get("currency_code"),
+        }
+    supabase.table("google_ads_conversion_actions").upsert(
+        list(par_id.values()), on_conflict="user_id,conversion_action_id"
+    ).execute()
+
+
+# Une récolte complète (37 mois × campagnes × actions) peut porter des dizaines
+# de milliers de lignes : un seul POST de cette taille risque le délai de
+# PostgREST. 1 000 = la taille de page que PostgREST rend déjà.
+_LOT_ECRITURE = 1000
+
+
+def upsert_google_conversions_par_action(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_conversions_by_action (`conversions_par_action.lignes_de`).
+    Conflict sur (user_id, date_start, campaign_id, conversion_action_id).
+    Conversions et valeur passent telles quelles, `None` compris (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("campaign_id", "")), str(r.get("conversion_action_id", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":              user_id,
+            "date_start":           key[0],
+            "campaign_id":          key[1],
+            "conversion_action_id": key[2],
+            "conversions":          r.get("conversions"),
+            "conversions_value":    r.get("conversions_value"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_conversions_by_action").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,campaign_id,conversion_action_id",
+        ).execute()
+
+
 def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:
     """status_map : {campaign_id: (campaign_name, effective_status, start, end)}
 
