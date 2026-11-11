@@ -122,3 +122,47 @@ page, et partir de la grammaire Meta.
   leur somme ne redonne pas le total de l'annonce.
 - **Groupe d'annonces** : métriques habituelles par jour avec `ad_group`,
   vérifié.
+
+### Série 4 — 2026-11-11
+
+- **Q10, vocabulaire** : oui — « adsets » = groupes d'annonces, « assets » =
+  éléments, « ou en tout cas annonces ».
+- **Q11, sélecteur de niveau** : pas compris. David voit une **descente** :
+  « soit on compare les campagnes, et puis on a les éléments, soit on descend
+  plus bas, et puis après on a les mêmes […] mais c'est mieux dispatché ».
+- **Q12, mots récurrents** : pas compris (« son petit mot, ça veut rien
+  dire »). Questions trop denses — à reposer une idée à la fois, avec un
+  exemple.
+
+### Série 5 — 2026-11-11 (Q11 et Q12 reposées avec un exemple)
+
+- **Q11, niveau** : par défaut on compare **les campagnes** ; « comme sur
+  Meta », on peut choisir les groupes d'annonces ou les annonces / éléments et
+  descendre — « les mots-clés ne sont plus regroupés sur une campagne, on voit
+  un peu les différences, ça je trouve que c'est important ».
+- **Q12, mots récurrents** : « ce serait cool », mais « c'est tout un autre
+  truc ». Question de David : « est-ce que Google nous fait les groupes
+  maintenant ? […] comme dans les PMax. Si on peut prendre tous les termes de
+  recherche et ce que Google Ads leur associe, là c'est super » (message
+  coupé) → recherche sur les catégories de termes de Google.
+
+### Recherche — catégories de termes (doc API v26, aucun appel réel)
+
+- `customer_search_term_insight` (par campagne) et
+  `campaign_search_term_insight` (par groupe d'annonces ou groupe d'éléments) ;
+  Search, PMax et Shopping (aide Google). `category_label` (vide = fourre-tout),
+  `id` ; `segments.search_subcategory` toujours vide depuis le 2025-03-03.
+- Les termes d'une catégorie se lisent (`segments.search_term`) ; une
+  catégorie compte aussi des termes masqués → la somme des termes listés ne
+  fait pas son total.
+- Métriques : clics, impressions, CTR, conversions, valeur, taux de
+  conversion, volume de recherche en fourchette. **Pas de coût**
+  (`cost_micros` non sélectionnable). Par jour depuis mars 2023. Chiffres
+  « traités différemment » du rapport des termes : petits écarts attendus.
+- **Stabilité des catégories non documentée** : regroupements automatiques,
+  `id` comme seule clé, sans garantie. Filtres obligatoires, limites de période
+  et `RESOURCE_EXHAUSTED` à éprouver par un essai réel.
+- Sources : `…/fields/v26/campaign_search_term_insight`,
+  `…/fields/v26/customer_search_term_insight`,
+  `support.google.com/google-ads/answer/11386930`,
+  `ads-developers.googleblog.com/2025/01/google-ads-api-and-google-ads-scripts.html`.
