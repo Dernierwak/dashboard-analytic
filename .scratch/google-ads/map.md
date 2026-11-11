@@ -72,9 +72,9 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-11)** :
-[L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md),
-[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — « plus
-tard » selon David.
+[Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — devenu
+une maquette : nuage des campagnes et courbe sous le choix, comme Meta ;
+[Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md).
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -93,11 +93,12 @@ tard » selon David.
 | [Ce que l'interface Google Ads affiche, face à l'essai](issues/13-l-interface-face-a-l-essai.md) | task ✓ | — |
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling ✓ | 15 (levé) |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling ✓ | 11 |
-| [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
+| [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | prototype | — |
 | [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research ✓ | — |
 | [L'Analyse Search](issues/18-l-analyse-search.md) | grilling ✓ | 17 |
 | [L'essai réel de l'Analyse Search](issues/19-l-essai-reel-de-l-analyse-search.md) | task ✓ | 18 |
-| [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) | prototype | 18 |
+| [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) | prototype ✓ | 18 |
+| [Les groupes de termes de recherche](issues/21-les-groupes-de-termes-de-recherche.md) | prototype | — |
 
 ## Decisions so far
 
@@ -234,6 +235,14 @@ tard » selon David.
   additionnables ; part perdue (budget) refusée sur `keyword_view` ; niveau
   de qualité pour les seuls mots-clés actifs (42 %) ; 44 à 61 % des clics
   Search viennent de termes masqués ; `EXCLUDED` non observable.
+- [L'Analyse Search en maquette](issues/20-l-analyse-search-en-maquette.md) :
+  aucune des trois variantes ; **la descente et le nuage des campagnes montent
+  dans la Comparaison** (choix au-dessus comme Meta, nuage de la période et
+  courbe dessous, un cran à la fois jusqu'aux annonces, sans éléments — 16) ;
+  l'Analyse en bas est « trop poussée » pour commencer, on part des **groupes
+  de termes de Google** en Search, vus comme des grappes reliées par campagne
+  (21). Complément d'essai : 83 % des clics des termes retrouvent leur
+  catégorie chez B ; par campagne oui, par groupe d'annonces non.
 
 ## Not yet specified
 
@@ -254,11 +263,10 @@ tard » selon David.
   sont au `BACKLOG.md` (08). Piège relevé au 10 : avec
   `segments.date`, Google omet les jours dont toutes les métriques demandées
   sont à 0.
-- **Deux idées de David pour l'Analyse Search, après la première version**
-  (2026-11-11, `BACKLOG.md`) : un nuage des mots-clés filtrable par campagne,
-  et une carte des termes reliés à leur catégorie de termes, façon Obsidian,
-  colorée par catégorie et filtrable par campagne. À trancher : si le nuage
-  des mots-clés entre dans la maquette (20) ou attend.
+- **Le reste de l'Analyse Search** : choisir une campagne et l'analyser —
+  nuage de ses mots-clés, ses termes, ses éléments (titres, descriptions,
+  écartés de la Comparaison au 20). Attend le verdict des groupes de termes
+  (21) ; idées de David au `BACKLOG.md` (2026-11-11).
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 

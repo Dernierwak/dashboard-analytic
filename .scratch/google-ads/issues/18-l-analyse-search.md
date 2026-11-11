@@ -61,6 +61,10 @@ page, et partir de la grammaire Meta.
 
 ## Answer
 
+_Révisé par [L'Analyse Search en maquette](20-l-analyse-search-en-maquette.md) :
+la descente des campagnes aux annonces monte dans la Comparaison (16) ; l'Analyse
+repart des groupes de termes (21)._
+
 Grilling avec David, 2026-11-11, cinq séries (détail sous `## Comments`).
 L'Analyse Search est une **descente pilotée par le haut de page** : la vue du
 Sélecteur fixe ce qu'on regarde, le Bandeau la période et la campagne, puis

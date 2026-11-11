@@ -204,3 +204,22 @@ calcule (total campagne − somme des termes) et s'affiche.
   du drapeau « principale ».
 - Éléments RSA : jamais additionnés.
 - Niveau de qualité : mots-clés actifs seulement.
+
+## Comments
+
+- 2026-11-11 — **Complément : le lien terme → catégorie** (question de David
+  pendant la maquette 20). Même fenêtre, même méthode.
+  - Google ne met pas la catégorie sur le terme : il donne les termes de chaque
+    catégorie. Le lien se refait par Pulse en croisant les textes (minuscules,
+    espaces).
+  - **B, ses 64 catégories lues** : 113 des 166 termes du rapport des termes,
+    **271 des 325 clics (83 %)**, retrouvent une catégorie ; un seul terme est
+    dans deux catégories.
+  - **A, 46 catégories lues** (61 % des clics des catégories) : 1 235 termes,
+    5 678 des 9 089 clics (62 %) ; 21 termes dans deux catégories.
+  - **Au niveau d'une campagne**, les termes d'une catégorie se lisent
+    (`campaign_search_term_insight` + `segments.search_term` +
+    `segments.search_subcategory`, campagne et catégorie filtrées) : A, 36
+    termes (1 377 des 2 164 clics de la catégorie) ; B, 31 termes (143 / 348).
+  - **Par groupe d'annonces : non** — `ad_group.id` est refusé
+    (`PROHIBITED_RESOURCE_TYPE_IN_SELECT_CLAUSE`).

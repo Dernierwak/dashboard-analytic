@@ -1,7 +1,7 @@
 # 20: L'Analyse Search en maquette
 
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: 18
 Assignee: Claude (session 2026-11-11)
 
@@ -23,6 +23,35 @@ puis termes, catégories de termes, choix des actions de conversion.
 La leçon des tickets 08 et 15 : montrer **la seule section**, dans la page, en
 partant de la grammaire Meta. Chiffres fictifs, plausibles, jamais présentés
 comme ceux du client.
+
+## Answer
+
+Premier tour vu par David le 2026-11-11. **Aucune des trois variantes telle
+quelle : la maquette déplace les choses d'un étage.**
+
+- **La descente et le nuage des campagnes montent dans la Comparaison.** « Là,
+  on voit l'évolution de la campagne, on peut les comparer entre les unes et
+  les autres. » Le choix des campagnes reste **au-dessus**, comme sur Meta ;
+  dessous, côte à côte, un **nuage des campagnes sur la période** choisie (trois
+  mois si on filtre trois mois) et la **courbe** jour par jour. Les deux suivent
+  la même sélection, et on descend d'un cran à la fois. Suite :
+  [Améliorer la Comparaison](16-ameliorer-la-comparaison.md).
+- **Les Éléments (titres, descriptions) ne vont pas dans la Comparaison** :
+  « ça, on n'a pas besoin de le mettre là, ce sera dans analyse ».
+- **L'Analyse en bas est trop poussée pour commencer.** « Je sais même pas si
+  c'est intéressant de déjà partir sur l'analyse, il me semble que c'est déjà
+  beaucoup trop poussé. » On part de **ce qui l'intéresse en Search : les
+  groupes de termes de recherche** que Google fait déjà (les catégories), vus
+  comme des grappes reliées, par campagne — « on essaye avec ça ». Suite :
+  [Les groupes de termes de recherche](21-les-groupes-de-termes-de-recherche.md).
+- **Ce qui attend** que les groupes de termes soient éprouvés : choisir une
+  campagne et l'analyser — nuage de ses mots-clés, ses termes, ses éléments.
+  Noté dans la carte (« Not yet specified ») et au `BACKLOG.md`.
+
+Les questions du ticket (couleurs au-delà de 8, phrase de lecture, place du
+menu des actions) ne sont pas tranchées : elles repartent avec les modules
+qu'elles concernent. Prototype conservé sur la branche jetable
+`prototype/analyse-search` (`5e2def8`).
 
 ## Comments
 
