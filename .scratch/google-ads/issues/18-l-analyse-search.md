@@ -1,9 +1,9 @@
 # 18: L'Analyse Search
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 17
-Assignee: —
+Assignee: Claude (session 2026-11-11)
 
 ## Question
 
