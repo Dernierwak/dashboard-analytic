@@ -83,3 +83,24 @@ jamais ceux du client — le dépôt est public) :
   regroupées » (le total retombe juste). Seul réglage : la campagne. Plus de
   taille au choix, de hachures ni de graphe. A, B et C restent sur la branche,
   sans être affichées. En attente du verdict de David.
+- 2026-11-11 — **Troisième tour.** David sur la liste : « complètement
+  nul », un bar plot sans vision ; **une seule métrique alors que deux, trois
+  comptent** ; il faut **le cluster**, et pouvoir **choisir entre mots-clés et
+  cluster pour voir les termes de recherche** ; il redemande si l'API donne
+  ces clusters. Réponse rappelée : oui, `campaign_search_term_insight` /
+  `customer_search_term_insight`, vérifié au 19 — libellé, termes, clics,
+  impressions, conversions, **pas de coût**, une campagne par requête, pas par
+  groupe d'annonces.
+
+  Maquette `87a4b5c` (`groupes-cluster.tsx`, `groupes-graphe.tsx`) : **le
+  graphe en grappes** ; en haut, **Mots-clés | Clusters Google** (`gm=`) — les
+  mêmes termes rangés sous leur mot-clé déclencheur (avec le coût, type de
+  correspondance affiché) ou sous le cluster de Google (coût « — ») ;
+  campagne (`gc=`) ; taille des ronds au choix (`gt=`, Coût barré en mode
+  Clusters) ; une ligne de totaux sur **toutes les métriques** ; à droite, la
+  **fiche de la grappe** (clics, impressions, conversions, coût, terme par
+  terme, ligne « Masqués par Google ») et un **classement** clics · conv. ·
+  coût. Ce que la maquette fait voir en mode Mots-clés : les recherches
+  « gratuit » arrivent par la requête large. Les formes du premier et du
+  deuxième tour sont retirées de la branche (dans l'historique). En attente du
+  verdict de David.
