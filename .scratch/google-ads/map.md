@@ -72,11 +72,9 @@ Blocked by / Assignee`. Le frontier = `Status: open`, rien d'ouvert dans
 `Blocked by`, pas d'`Assignee`.
 
 **Frontier (2026-11-11)** :
-[Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md)
-(research, confiée à un agent),
+[L'Analyse Search](issues/18-l-analyse-search.md),
 [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) — « plus
-tard » selon David. Ensuite : [L'Analyse Search](issues/18-l-analyse-search.md),
-bloquée par la recherche.
+tard » selon David.
 
 | Ticket | Type | Bloqué par |
 |---|---|---|
@@ -96,7 +94,7 @@ bloquée par la recherche.
 | [Demand Gen, cinquième type nommé ?](issues/14-demand-gen-nomme.md) | grilling ✓ | 15 (levé) |
 | [Ce qu'on montre pour chaque type de campagne](issues/15-ce-qu-on-montre-par-type.md) | grilling ✓ | 11 |
 | [Améliorer la Comparaison](issues/16-ameliorer-la-comparaison.md) | grilling | — |
-| [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research | — |
+| [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) | research ✓ | — |
 | [L'Analyse Search](issues/18-l-analyse-search.md) | grilling | 17 |
 
 ## Decisions so far
@@ -207,6 +205,12 @@ bloquée par la recherche.
   bas, l'**Analyse** commence par Search — mots-clés, termes, nuage de points,
   spécialités des termes — et **entre dans la carte** (17, 18). Raison de fond :
   [Peut-on comparer des types de campagne Google entre eux ?](analyses/15-comparer-les-types.md).
+- [Les mots-clés et les termes de recherche dans l'API Google Ads](issues/17-mots-cles-et-termes-dans-l-api.md) :
+  nuage des mots-clés faisable par jour (couleur = campagne) ; mots-clés sans
+  impression ou exclus absents de `keyword_view` ; termes avec mot-clé
+  déclencheur, type d'appariement et statut actuel ; part masquée par la
+  confidentialité calculable, pas lisible ; exclusions sur quatre niveaux ;
+  incertitudes (part perdue budget, casse des termes) à un essai réel.
 
 ## Not yet specified
 
@@ -229,6 +233,10 @@ bloquée par la recherche.
   sont à 0.
 - **La maquette de l'Analyse Search** — après 18, sur la seule section, dans
   la page.
+- **L'essai réel des mots-clés et termes** — ce que 17 n'a pas pu confirmer
+  (part perdue budget avec `keyword_view`, casse et accents des termes,
+  statut `EXCLUDED` face aux listes partagées) ; se ticketera selon ce que 18
+  retient.
 - **La spec de la page Google Ads** — la destination, une fois tout le reste
   tranché.
 
