@@ -30,6 +30,24 @@ from saas.data.fetch_data.shared.date_ranges import Fenetre
 # Doc : https://developers.google.com/google-ads/api/docs/change-event
 
 _CHANGE_FENETRE_MAX = 30
+
+# Ce que Pulse GARDE du journal Google, par catégorie de `platform_changes` :
+# exactement ce que `_traduire_google` sait nommer — tout le reste rend None et
+# n'est pas écrit (ciblage par âge, audience ou emplacement ; contenu d'une
+# annonce modifié ; réglages du compte). La « ⓘ » de la légende de la Tendance
+# le reprend MOT POUR MOT (`saas/web/lib/google/changements.ts`, même nom) :
+# un client qui ne voit pas de point doit savoir ce que le journal ne couvre
+# pas. Le harnais 06 de `.scratch/google-ads/harnais/` compare les deux listes
+# et vérifie que chaque catégorie émise ici y figure. Sans guillemet droit
+# dans les phrases : le harnais TS les lit par une expression régulière.
+CE_QUE_PULSE_GARDE = {
+    "budget": "les budgets quotidiens",
+    "enchere": "les enchères au clic, les stratégies d'enchères, les coûts par acquisition et retours publicitaires visés",
+    "motcle": "les mots-clés ajoutés, supprimés, mis en pause ou réactivés",
+    "statut": "les mises en pause, réactivations et suppressions de campagnes et de groupes d'annonces",
+    "creatif": "les annonces ajoutées ou retirées, et les éléments (titres, descriptions, images, vidéos, siteliens, accroches…) créés, modifiés, ajoutés ou retirés",
+    "autre": "les campagnes créées",
+}
 # Contrainte 3. L'API ne dit pas qu'elle a coupé : une liste qui arrive à ce
 # compte est réputée tronquée (les plus anciens manquent, l'ordre est DESC).
 _CHANGE_LIMITE = 10_000
