@@ -34,6 +34,7 @@ from saas.data.supabase._queries import (
     fetch_ga4_latest_date,
     fetch_google_ads_ad_insights_latest_date,
     fetch_google_ads_latest_date,
+    fetch_google_asset_groups_latest_date,
     fetch_google_conversions_par_action_latest_date,
     fetch_images_creas_stockees,
     fetch_meta_ads_latest_date,

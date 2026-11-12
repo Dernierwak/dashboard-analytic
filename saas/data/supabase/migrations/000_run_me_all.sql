@@ -28,6 +28,8 @@
 --   3bis)  google_ads_ad_insights — le détail par annonce
 --   3quater) google_ads_conversion_actions, google_ads_conversions_by_action —
 --          la règle « sans valeur » de la page Google (google-ads, ticket 03)
+--   3quinquies) google_ads_asset_group_insights — les Groupes d'éléments PMax
+--          × jour, le détail d'une campagne Performance Max (google-ads, ticket 05)
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   4bis)  connected_accounts.a_reconnecter_* — le jeton mort, la reconnexion demandée
@@ -782,6 +784,68 @@ CREATE POLICY "gads_conv_by_action_insert_own" ON public.google_ads_conversions_
 CREATE POLICY "gads_conv_by_action_update_own" ON public.google_ads_conversions_by_action
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "gads_conv_by_action_delete_own" ON public.google_ads_conversions_by_action
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3quinquies) GOOGLE ADS — les Groupes d'éléments PMax × jour
+--       (`.scratch/google-ads/spec.md` § « Les colonnes et tables nouvelles » ;
+--       ticket 05 de la construction Google Ads).
+--
+--       Google ne rend AUCUNE ligne PMax dans `ad_group_ad`, et ne lève aucune
+--       erreur (carte, issues 01 et 10) : sans cette table, une campagne
+--       Performance Max n'a pas de détail au Tableau. ≈ 600 lignes sur 90 jours
+--       chez le compte A (issue 10).
+--
+--       Le groupe se rattache à sa campagne par `campaign_id` (l'ID Google).
+--       Mesures nullables, sans DEFAULT : NULL = non rendu par Google, jamais
+--       un zéro par défaut. Un jour que Google omet n'a pas de ligne.
+--       `numeric` sans échelle pour conversions et valeur : les conversions
+--       data-driven sont fractionnaires, un arrondi par ligne fausserait la somme.
+--
+--       Ici, AVANT la section 15, pour la boucle 15.1 (politiques `partage_*`) :
+--       un invité voit la même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_asset_group_insights (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date_start        date NOT NULL,
+    campaign_id       text NOT NULL,
+    asset_group_id    text NOT NULL,
+    asset_group_name  text NOT NULL DEFAULT '',
+    impressions       bigint,
+    clicks            bigint,
+    cost_micros       bigint,
+    conversions       numeric,
+    conversions_value numeric,
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_asset_group_insights_uq
+        UNIQUE (user_id, date_start, asset_group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_asset_group_user_date
+    ON public.google_ads_asset_group_insights (user_id, date_start DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_asset_group_insights_updated_at ON public.google_ads_asset_group_insights;
+CREATE TRIGGER trg_google_ads_asset_group_insights_updated_at
+    BEFORE UPDATE ON public.google_ads_asset_group_insights
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_asset_group_insights ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_asset_group_select_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_insert_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_update_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_delete_own" ON public.google_ads_asset_group_insights;
+CREATE POLICY "gads_asset_group_select_own" ON public.google_ads_asset_group_insights
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_insert_own" ON public.google_ads_asset_group_insights
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_update_own" ON public.google_ads_asset_group_insights
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_delete_own" ON public.google_ads_asset_group_insights
     FOR DELETE USING (auth.uid() = user_id);
 
 
@@ -1633,6 +1697,8 @@ DECLARE
         'meta_campaign_config', 'google_campaign_config',
         -- la règle « sans valeur » de la page Google (section 3quater)
         'google_ads_conversion_actions', 'google_ads_conversions_by_action',
+        -- les Groupes d'éléments PMax (section 3quinquies)
+        'google_ads_asset_group_insights',
         -- ce que disent les annonces Meta (section 0bis)
         'meta_ads_creatives', 'meta_ads_creative_assets',
         -- organique et analytics
@@ -1871,7 +1937,7 @@ ALTER TABLE public.instagram_organic_posts
 --     seul le worker (clé service) écrit. Hors de la liste 15.1 exprès : elle
 --     pose aussi `partage_insert/update/delete`, qui laisseraient un éditeur
 --     invité écrire des relevés. Les politiques ne s'appellent pas `partage_*`
---     pour ne pas fausser le contrôle A (21 tables) en fin de fichier.
+--     pour ne pas fausser le contrôle A (22 tables) en fin de fichier.
 -- ============================================================================
 
 ALTER TABLE public.instagram_organic_posts
@@ -2123,6 +2189,9 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('t', 'google_ads_conversions_by_action', NULL),           -- §3quater
     ('c', 'google_ads_conversion_actions',    'always_use_default_value'), -- §3quater
     ('c', 'google_ads_conversion_actions',    'default_value'),            -- §3quater
+    ('t', 'google_ads_asset_group_insights',  NULL),           -- §3quinquies
+    ('c', 'google_ads_asset_group_insights',  'asset_group_id'),    -- §3quinquies
+    ('c', 'google_ads_asset_group_insights',  'conversions_value'), -- §3quinquies
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
@@ -2194,12 +2263,13 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 21 tables de la section 15.
+--   A) Ce que l'invité peut lire — doit lister les 22 tables de la section 15.
 --      (Mesuré le 2026-10-03 sur un PostgreSQL local, après l'arrivée de
 --      meta_ads_creatives et meta_ads_creative_assets : 19 tables distinctes
 --      portent une politique `partage_*`. Le ticket 03 Google Ads en ajoute
 --      deux — google_ads_conversion_actions, google_ads_conversions_by_action —
---      d'où 21, compté sur la liste, pas mesuré sur une base.)
+--      d'où 21 ; le ticket 05 ajoute google_ads_asset_group_insights, d'où
+--      22, compté sur la liste, pas mesuré sur une base.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;
