@@ -19,7 +19,7 @@ import {
   type Raccourci,
   type Vue,
 } from "@/lib/google/lecture";
-import { lienGoogle, type Params } from "@/lib/google/liens";
+import { lienGoogle, METRIQUES_DE_LA_VUE, type Params } from "@/lib/google/liens";
 
 // ── MODULE 1 · LE BANDEAU DE COMMANDES ───────────────────────────────────────
 //
@@ -108,7 +108,9 @@ export function BandeauGoogle({
         <SegmentVue vue={vue} params={params} visible={detache} />
 
         <div className={`relative flex min-w-0 items-center gap-2 ${enCours ? "opacity-70" : ""}`}>
-          <ChoixCampagne campagnes={campagnes} choisie={campagneChoisie} periode={periode} compact={detache} choisir={(cle) => aller({ campagne: cle })} />
+          {/* Choisir une campagne retire le niveau Campagnes de la Comparaison :
+              ses cases ne désigneraient plus rien, elle repart du pré-cochage. */}
+          <ChoixCampagne campagnes={campagnes} choisie={campagneChoisie} periode={periode} compact={detache} choisir={(cle) => aller({ campagne: cle, comparer: null })} />
           <ChoixPeriode periode={periode} raccourcis={raccourcis} hier={hier} compact={detache} choisir={(from, to) => aller({ from, to })} />
         </div>
       </div>
@@ -154,7 +156,7 @@ function SegmentVue({ vue, params, visible }: { vue: Vue; params: Params; visibl
         {ORDRE_VUES.map((v) => (
           <Link
             key={v}
-            href={lienGoogle(params, { vue: v })}
+            href={lienGoogle(params, { vue: v, ...METRIQUES_DE_LA_VUE })}
             scroll={false}
             tabIndex={visible ? undefined : -1}
             aria-current={v === vue ? "page" : undefined}

@@ -6,15 +6,18 @@
 // Streamlit) : elle lit l'identité par ID, pagine au-delà de 1 000 lignes,
 // recalcule ses taux total ÷ total et dit à quelle date Pulse a lu Google.
 //
-// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, et le jour
-// ouvert dans le Panneau latéral (`jour`) (`lib/google/liens.ts`). Le jour est
+// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, les
+// réglages de la Comparaison (`type`, `niveau`, `m1`, `m2`, `comparer`,
+// `courbe`) et le jour ouvert dans le Panneau latéral (`jour`)
+// (`lib/google/liens.ts`). Le jour est
 // tenu par le navigateur, qui l'ouvre sans relire la page
 // (`components/google/journal-ouvert.tsx`). Le calcul est dans
 // `lib/google/lecture.ts`, `lib/google/changements.ts` et
-// `lib/google/tableau.ts` (le Tableau détaillé), la lecture de la base dans
-// `lib/google/donnees.ts`. Les modules suivants (Comparaison, annonce lue,
-// Groupes de termes) viennent par tickets.
+// `lib/google/tableau.ts` (le Tableau détaillé), `lib/google/comparaison.ts`
+// (la Comparaison), la lecture de la base dans `lib/google/donnees.ts`. Les
+// modules suivants (annonce lue, Groupes de termes) viennent par tickets.
 import { BandeauGoogle } from "@/components/google/bandeau";
+import { Comparaison } from "@/components/google/comparaison";
 import { JournalOuvert } from "@/components/google/journal-ouvert";
 import { SelecteurVue } from "@/components/google/selecteur-vue";
 import { TableauDetaille } from "@/components/google/tableau";
@@ -28,6 +31,8 @@ import { lienGoogle, SANS_PANNEAU, sansJour, type Params } from "@/lib/google/li
 export const dynamic = "force-dynamic";
 
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+// `comparer` est répété (une valeur par place cochée).
+const tous = (v: string | string[] | undefined) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]);
 
 export default async function GooglePage({ searchParams: brutes }: { searchParams: Params }) {
   // Les composants reçoivent les paramètres sans le jour : c'est le
@@ -38,6 +43,12 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
     campagne: un(searchParams.campagne),
     from: un(searchParams.from),
     to: un(searchParams.to),
+    type: un(searchParams.type),
+    niveau: un(searchParams.niveau),
+    m1: un(searchParams.m1),
+    m2: un(searchParams.m2),
+    comparer: tous(searchParams.comparer),
+    courbe: un(searchParams.courbe),
   });
   const choisie = google.campagneChoisie;
   const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
@@ -83,6 +94,7 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
           aideJournal={aideJournal(google.debutJournal)}
           params={searchParams}
         />
+        <Comparaison comparaison={google.comparaison} dates={google.dates} params={searchParams} sujet={sujet} />
         <TableauDetaille tableau={google.tableau} />
       </div>
 

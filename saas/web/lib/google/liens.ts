@@ -17,6 +17,11 @@ export const CHEMIN_GOOGLE = "/google";
  *  Doit suivre `VUE_PAR_DEFAUT` de `lecture.ts`. */
 const DEFAUTS: Record<string, string> = { vue: "notoriete" };
 
+/** Changer de vue repart des métriques de la nouvelle vue : la Comparaison
+ *  ne prend ses deux métriques que dans la vue (`lib/google/comparaison.ts`),
+ *  et la courbe trace l'une des deux. */
+export const METRIQUES_DE_LA_VUE = { m1: null, m2: null, courbe: null };
+
 export type Params = Record<string, string | string[] | undefined>;
 
 /** Le patch qui ferme le Panneau latéral, quoi qu'il montre : le jour ouvert
