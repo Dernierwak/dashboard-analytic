@@ -217,6 +217,21 @@ def fetch_google_conversions_par_action_latest_date(supabase: Client, user_id: s
     return res.data[0]["date_start"] if res.data else None
 
 
+def fetch_google_asset_groups_latest_date(supabase: Client, user_id: str) -> str | None:
+    """Le point de reprise de `google_ads_asset_group_insights`, déduit d'elle
+    seule : née après les insights, elle n'a pas leur profondeur, et partir de
+    leur date lui laisserait tout l'historique d'avant vide pour toujours."""
+    res = (
+        supabase.table("google_ads_asset_group_insights")
+        .select("date_start")
+        .eq("user_id", user_id)
+        .order("date_start", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["date_start"] if res.data else None
+
+
 def fetch_google_budget_global(supabase: Client, user_id: str) -> float:
     try:
         res = supabase.table("profiles").select("google_budget_global").eq("id", user_id).execute()

@@ -5,7 +5,7 @@ import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
 import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
 import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
-import { tableauDe, type LigneAnnonceGoogle, type Tableau } from "@/lib/google/tableau";
+import { tableauDe, type LigneAnnonceGoogle, type LigneGroupeElementsGoogle, type Tableau } from "@/lib/google/tableau";
 import type { Repartition } from "@/lib/google/valeur";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
@@ -104,6 +104,67 @@ function versLigneAnnonce(r: LigneBaseAnnonce): LigneAnnonceGoogle {
     annonceId: r.ad_id || null,
     annonceNom: r.ad_name ?? "",
   };
+}
+
+// Les Groupes d'éléments PMax (section 3quinquies du `000`, ticket 05) : le
+// seul détail d'une campagne Performance Max, que Google ne range pas dans
+// `ad_group_ad`.
+const COLONNES_GROUPES_ELEMENTS = "date_start, campaign_id, asset_group_id, asset_group_name, impressions, clicks, cost_micros, conversions, conversions_value";
+
+type LigneBaseGroupeElements = {
+  date_start: string;
+  campaign_id: string | null;
+  asset_group_id: string | null;
+  asset_group_name: string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  cost_micros: number | string | null;
+  conversions: number | string | null;
+  conversions_value: number | string | null;
+};
+
+function versLigneGroupeElements(r: LigneBaseGroupeElements): LigneGroupeElementsGoogle {
+  const micros = nombreOuNull(r.cost_micros);
+  return {
+    date: String(r.date_start).slice(0, 10),
+    campagneId: r.campaign_id || null,
+    groupeId: r.asset_group_id || null,
+    groupeNom: r.asset_group_name ?? "",
+    // Toutes nullables en base : NULL reste `null`, le Tableau refuse de le
+    // compter pour zéro (`lib/google/tableau.ts`).
+    cout: micros === null ? null : micros / MICROS,
+    impressions: nombreOuNull(r.impressions),
+    clics: nombreOuNull(r.clicks),
+    conversions: nombreOuNull(r.conversions),
+    valeurConversion: nombreOuNull(r.conversions_value),
+  };
+}
+
+/** Les Groupes d'éléments de la période et de celle d'avant, paginés. En cas
+ *  d'échec — section 3quinquies pas encore jouée, par exemple — `null` : chaque
+ *  campagne PMax dit que ses groupes n'ont pas pu être lus, la page ne lève pas. */
+async function lireGroupesElements(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<LigneGroupeElementsGoogle[] | null> {
+  try {
+    const lignes = await lireToutesLesPages<LigneBaseGroupeElements>((de, a) =>
+      supabase
+        .from("google_ads_asset_group_insights")
+        .select(COLONNES_GROUPES_ELEMENTS)
+        .eq("user_id", uid)
+        .gte("date_start", debut)
+        .lte("date_start", fin)
+        .order("date_start", { ascending: true })
+        .order("id", { ascending: true })
+        .range(de, a)
+    );
+    return lignes.map(versLigneGroupeElements);
+  } catch {
+    return null;
+  }
 }
 
 function iso(d: Date): string {
@@ -251,7 +312,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition] = await Promise.all([
+  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition, groupesElements] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -281,13 +342,14 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
     lireJournal(supabase, uid, p.debut, p.fin),
     lireDebutJournal(supabase, uid),
     lireRepartition(supabase, uid, p.avantDebut, p.fin),
+    lireGroupesElements(supabase, uid, p.avantDebut, p.fin),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const lignes = brutes.map(versLigne);
   return {
     ...contenuPage(lignes, c, ctx, repartition),
-    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx, repartition),
+    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx, repartition, groupesElements),
     lecture: phraseLecture(ligneProgres),
     muet,
     journal,

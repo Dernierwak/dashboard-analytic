@@ -11,7 +11,8 @@ import { csvDuTableau, nomDuFichier, type LigneTableau, type Tableau } from "@/l
 // Spec Google, § « Tableau détaillé » ; user stories 48 à 57. Le module Meta de
 // même nom (`components/meta/tableau.tsx`) avec les chiffres de Google : une
 // ligne Total en tête, un repère de type sur chaque campagne, et un dépliage
-// que le type décide. L'arbre, ses chiffres et les raisons des « — » viennent
+// que le type décide — une campagne Performance Max se déplie en Groupes
+// d'éléments, et rien en dessous (ticket 05). L'arbre, ses chiffres et les raisons des « — » viennent
 // de `lib/google/tableau.ts` (testé) ; ce composant ne fait que déplier et
 // télécharger.
 //
@@ -29,7 +30,10 @@ export function TableauDetaille({ tableau }: { tableau: Tableau }) {
       else s.add(cle);
       return s;
     });
-  const parents = tableau.lignes.flatMap((c) => (c.enfants.length > 0 ? [c.cle, ...c.enfants.map((g) => g.cle)] : []));
+  // Seules les lignes qui ont des enfants : un Groupe d'éléments n'en a pas.
+  const parents = tableau.lignes.flatMap((c) =>
+    c.enfants.length > 0 ? [c.cle, ...c.enfants.filter((g) => g.enfants.length > 0).map((g) => g.cle)] : []
+  );
   const toutOuvert = parents.length > 0 && parents.every((c) => ouverts.has(c));
 
   const exporter = () => {
@@ -57,7 +61,8 @@ export function TableauDetaille({ tableau }: { tableau: Tableau }) {
         <div className="min-w-0">
           <h2 id="titre-tableau" className="text-[22px] font-semibold tracking-tight text-ink">Tableau détaillé</h2>
           <p className="mt-1 text-[14px] text-muted">
-            Campagne › groupe d&apos;annonces › annonce, sur {bornes(tableau.debut, tableau.fin)}. Les colonnes suivent la vue {VUES[tableau.vue].titre}.
+            Campagne › groupe d&apos;annonces › annonce, ou campagne › groupe d&apos;éléments pour Performance Max, sur{" "}
+            {bornes(tableau.debut, tableau.fin)}. Les colonnes suivent la vue {VUES[tableau.vue].titre}.
           </p>
         </div>
         {tableau.lignes.length > 0 && (
@@ -92,7 +97,7 @@ export function TableauDetaille({ tableau }: { tableau: Tableau }) {
           <table className="w-full min-w-[640px]">
             <thead>
               <tr className="text-right text-[12px] text-muted">
-                <th scope="col" className="py-3.5 pl-5 text-left font-medium">Campagne › groupe d&apos;annonces › annonce</th>
+                <th scope="col" className="py-3.5 pl-5 text-left font-medium">Campagne › groupe › annonce</th>
                 {tableau.metriques.map((m) => (
                   <th key={m} scope="col" className="whitespace-nowrap px-4 py-3.5 font-medium" title={METRIQUES[m].aide}>
                     {METRIQUES[m].nom}
@@ -113,7 +118,8 @@ export function TableauDetaille({ tableau }: { tableau: Tableau }) {
       <p className="mt-2 text-[12.5px] text-muted">
         {/* Le mot « moyenne » ne s'écrit pas à l'écran (spec, § « Les vues et leurs métriques »). */}
         « — » : rien à calculer, ce n&apos;est pas un zéro — son survol dit pourquoi. Chaque ligne calcule ses taux sur ses propres totaux, jamais d&apos;après
-        ses groupes. Google ne détaille que les annonces qui ont eu des impressions.
+        ses groupes. Google ne détaille que les annonces qui ont eu des impressions, et ne rend aucune annonce pour Performance Max : ses groupes
+        d&apos;éléments sont le dernier niveau.
       </p>
     </section>
   );
@@ -141,6 +147,7 @@ function Ligne({
           {l.nom || "Sans nom"}
         </span>
         {l.niveau === "campagne" && l.type && <ReperType type={l.type} vraiType />}
+        {l.niveau === "groupe_elements" && <span className="shrink-0 text-[12px] text-faint">Groupe d&apos;éléments</span>}
       </span>
       {l.sansDetail && (
         <span className="truncate text-[12px] text-faint" title={l.sansDetail}>

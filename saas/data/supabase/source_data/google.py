@@ -146,6 +146,40 @@ def upsert_google_conversions_par_action(supabase: Client, user_id: str, rows: l
         ).execute()
 
 
+def upsert_google_groupes_elements(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_asset_group_insights (`groupes_elements.lignes_de`).
+    Conflict sur (user_id, date_start, asset_group_id) : 1 ligne par Groupe
+    d'éléments × jour. Les mesures passent telles quelles, `None` compris :
+    une métrique que Google n'a pas rendue s'écrit NULL, jamais 0 (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("asset_group_id", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":           user_id,
+            "date_start":        key[0],
+            "campaign_id":       str(r.get("campaign_id", "")),
+            "asset_group_id":    key[1],
+            "asset_group_name":  r.get("asset_group_name", ""),
+            "impressions":       r.get("impressions"),
+            "clicks":            r.get("clicks"),
+            "cost_micros":       r.get("cost_micros"),
+            "conversions":       r.get("conversions"),
+            "conversions_value": r.get("conversions_value"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_asset_group_insights").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,asset_group_id",
+        ).execute()
+
+
 def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:
     """status_map : {campaign_id: (campaign_name, effective_status, start, end)}
 

@@ -62,7 +62,7 @@ test("Search : Campagne › Groupe d'annonces › Annonce", () => {
   assert.equal(c.sansDetail, null);
 });
 
-test("PMax : la campagne seule, et la raison écrite", () => {
+test("PMax sans groupes d'éléments lus : la campagne seule, et la raison écrite (ticket 05 : harnais 05)", () => {
   const t = tableauDe(
     [campagne({ campagneId: "222", campagneNom: "PMax", typeCampagne: "PERFORMANCE_MAX" })],
     // Une ligne d'annonce PMax n'existe pas chez Google ; si une arrivait, elle
@@ -242,18 +242,18 @@ test("CSV : Total, puis chaque ligne, avec le Type de campagne et « — » comp
     CTX
   );
   const lignes = csvDuTableau(t).trimEnd().split("\r\n").map((l) => l.split(";"));
-  assert.deepEqual(lignes[0].slice(0, 7), ["Niveau", "Type de campagne", "Campagne", "Groupe d'annonces", "Annonce", "ID Google", "Clics"]);
+  assert.deepEqual(lignes[0].slice(0, 8), ["Niveau", "Type de campagne", "Campagne", "Groupe d'annonces", "Groupe d'éléments", "Annonce", "ID Google", "Clics"]);
   assert.equal(lignes[1][0], "Total");
   assert.equal(lignes[1][1], "Tous les types");
   const search = lignes.find((l) => l[0] === "Campagne" && l[2] === "Search marque")!;
   assert.equal(search[1], "Search");
-  assert.equal(search[8], "—"); // CPC sans clic
+  assert.equal(search[9], "—"); // CPC sans clic
   const shopping = lignes.find((l) => l[2] === "Shopping")!;
   assert.equal(shopping[1], "SHOPPING"); // le vrai type de Google, pas « Autres types »
   const ann = lignes.find((l) => l[0] === "Annonce")!;
   assert.equal(ann[1], "Search"); // le type de la campagne voyage jusqu'à l'annonce
-  assert.equal(ann[4], "Annonce 1");
-  assert.equal(ann[5], "a1");
+  assert.equal(ann[5], "Annonce 1");
+  assert.equal(ann[6], "a1");
 });
 
 test("CSV : un nom qui commence par « = » reste du texte", () => {

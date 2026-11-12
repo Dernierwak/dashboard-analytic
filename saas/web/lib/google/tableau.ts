@@ -8,11 +8,12 @@
 // Ce qui change chez Google :
 //   · une ligne Total en tête, et un repère de type sur chaque campagne ;
 //   · c'est le TYPE de la campagne qui décide jusqu'où elle se déplie ;
-//   · deux sources : la campagne et le Total se lisent dans
+//   · trois sources : la campagne et le Total se lisent dans
 //     `google_ads_insights` (toutes les campagnes, PMax compris — les mêmes
 //     chiffres que les cartes au-dessus) ; groupes et annonces dans
 //     `google_ads_ad_insights`, que Google ne remplit que pour les annonces qui
-//     ont eu des impressions et jamais pour PMax.
+//     ont eu des impressions et jamais pour PMax ; les Groupes d'éléments PMax
+//     dans `google_ads_asset_group_insights` (ticket 05), sans rien en dessous.
 //
 // Sans directive, comme `lecture.ts` : le serveur construit l'arbre, le client
 // le déplie et en tire le CSV (`CLAUDE.md` §8). L'import de `./lecture` est
@@ -61,7 +62,22 @@ export type LigneAnnonceGoogle = LigneGoogle & {
   annonceNom: string;
 };
 
-export type NiveauTableau = "total" | "campagne" | "groupe" | "annonce";
+/** Une ligne de `google_ads_asset_group_insights` : un Groupe d'éléments PMax,
+ *  un jour. Les compteurs sont nullables en base (ticket 05) : `null` = Google
+ *  ne l'a pas rendu, ce qui n'est jamais compté pour zéro. */
+export type LigneGroupeElementsGoogle = {
+  date: string;
+  campagneId: string | null;
+  groupeId: string | null;
+  groupeNom: string;
+  cout: number | null;
+  impressions: number | null;
+  clics: number | null;
+  conversions: number | null;
+  valeurConversion: number | null;
+};
+
+export type NiveauTableau = "total" | "campagne" | "groupe" | "groupe_elements" | "annonce";
 
 export type LigneTableau = {
   /** Unique dans tout l'arbre : la clé de dépliage. */
@@ -104,12 +120,30 @@ export type Tableau = {
 
 /** Décision 09 de la carte : Search, Display, Vidéo, Demand Gen et Autres
  *  types descendent jusqu'où `ad_group_ad` a des lignes. PMax n'a ni groupe
- *  d'annonces ni annonce (Google n'en rend aucune, issue 01) : ses Groupes
- *  d'éléments sont le ticket 05. */
-const SANS_DETAIL_PMAX = "Performance Max n'a ni groupe d'annonces ni annonce : Google l'organise en groupes d'éléments, qui ne sont pas encore lus.";
+ *  d'annonces ni annonce (Google n'en rend aucune, issue 01) : il se déplie en
+ *  Groupes d'éléments, et pas plus bas. Sans groupe à montrer, la campagne
+ *  dit pourquoi. */
+const PMAX_NON_LUS = "Les groupes d'éléments de cette campagne Performance Max n'ont pas pu être lus.";
+const PMAX_AUCUN = "Pulse n'a lu aucun groupe d'éléments de cette campagne Performance Max sur la période.";
+const PMAX_INCOMPLET = "Google n'a pas rendu tous les chiffres des groupes d'éléments de cette campagne : Pulse ne les montre pas plutôt que de compter un manque pour zéro.";
 
-function sansDetailDe(type: TypeCampagne | null): string | null {
-  return type?.libelle === "PMax" ? SANS_DETAIL_PMAX : null;
+const estPmax = (type: TypeCampagne | null) => type?.libelle === "PMax";
+
+/** Une ligne de Groupe d'éléments dont tous les compteurs ont été rendus,
+ *  dans la forme des autres lignes. `null` si l'un manque. */
+function ligneComplete(l: LigneGroupeElementsGoogle): LigneGoogle | null {
+  if (l.cout === null || l.impressions === null || l.clics === null || l.conversions === null) return null;
+  return {
+    date: l.date,
+    campagneId: l.campagneId,
+    campagneNom: "",
+    typeCampagne: null,
+    cout: l.cout,
+    impressions: l.impressions,
+    clics: l.clics,
+    conversions: l.conversions,
+    valeurConversion: l.valeurConversion,
+  };
 }
 
 // ── Les raisons d'un « — » ───────────────────────────────────────────────────
@@ -146,6 +180,7 @@ type Noeud = {
   courant: LigneGoogle[];
   avant: LigneGoogle[];
   enfants: Map<string, Noeud>;
+  parent?: Noeud;
 };
 
 function noeudSous(parent: Map<string, Noeud>, cle: string, id: string | null, nom: string, date: string): Noeud {
@@ -171,14 +206,16 @@ export function tableauDe(
   lignesAnnonces: LigneAnnonceGoogle[],
   c: Commandes,
   ctx: Contexte,
-  repartition?: Repartition
+  repartition?: Repartition,
+  /** `null` = la table n'a pas pu être lue (section 3quinquies pas jouée…). */
+  groupesElements: LigneGroupeElementsGoogle[] | null = null
 ): Tableau {
   const vue = vueDe(c.vue);
   const metriques = VUES[vue].metriques;
   const p = periodeDe(c, ctx);
   // Le même tri que `contenuPage` : le jour en cours n'entre dans rien.
-  const dans = (l: LigneGoogle, de: string, a: string) => l.date >= de && l.date <= a && l.date < ctx.aujourdhui;
-  const quand = (l: LigneGoogle): "courant" | "avant" | null =>
+  const dans = (l: { date: string }, de: string, a: string) => l.date >= de && l.date <= a && l.date < ctx.aujourdhui;
+  const quand = (l: { date: string }): "courant" | "avant" | null =>
     dans(l, p.debut, p.fin) ? "courant" : dans(l, p.avantDebut, p.avantFin) ? "avant" : null;
   const choisie = (l: LigneGoogle) => !c.campagne || cleCampagne(l) === c.campagne;
 
@@ -203,11 +240,33 @@ export function tableauDe(
     const camp = racine.get(l.campagneId);
     // Une campagne absente du niveau campagne n'a pas de ligne où se déplier ;
     // le Total, lu au niveau campagne, ne dépend pas de ces lignes-ci.
-    if (!camp || sansDetailDe(infos.get(camp.cle)?.type ?? null)) continue;
+    if (!camp || estPmax(infos.get(camp.cle)?.type ?? null)) continue;
     const groupe = noeudSous(camp.enfants, `${camp.cle}›${l.groupeId}`, l.groupeId, l.groupeNom, l.date);
     const ann = noeudSous(groupe.enfants, `${groupe.cle}›${l.annonceId}`, l.annonceId, l.annonceNom, l.date);
     groupe[periode].push(l);
     ann[periode].push(l);
+  }
+
+  // Les Groupes d'éléments, rattachés à leur campagne par l'ID (spec, §
+  // « L'identité par ID »). Une campagne dont un groupe a un compteur manquant
+  // ne montre aucun groupe : une somme qui en compterait le manque pour zéro
+  // serait un chiffre fabriqué (`CLAUDE.md` §7).
+  const incompletes = new Set<string>();
+  const groupesElementsDe = new Map<string, Noeud>();
+  for (const l of groupesElements ?? []) {
+    const periode = quand(l);
+    if (!periode || !l.campagneId || !l.groupeId || (c.campagne && l.campagneId !== c.campagne)) continue;
+    const camp = racine.get(l.campagneId);
+    if (!camp) continue;
+    const complete = ligneComplete(l);
+    if (!complete) {
+      incompletes.add(camp.cle);
+      continue;
+    }
+    const g = noeudSous(camp.enfants, `${camp.cle}›ge›${l.groupeId}`, l.groupeId, l.groupeNom, l.date);
+    g.parent = camp;
+    groupesElementsDe.set(g.cle, g);
+    g[periode].push(complete);
   }
 
   const principale = metriques[0];
@@ -221,6 +280,11 @@ export function tableauDe(
     // Groupes et annonces n'ont pas de valeur lue : rien à décider, leur
     // « — » a sa propre raison.
     if (niveau === "groupe" || niveau === "annonce") return [{ affichee: true, avertissement: null }, { affichee: true, avertissement: null }];
+    // Un Groupe d'éléments porte sa valeur, mais la répartition par action
+    // n'est lue que par campagne : il prend la règle de SA campagne. Ses
+    // conversions sont une part de celles de la campagne, donc des mêmes
+    // actions — si toutes sont « sans valeur », les siennes aussi.
+    if (niveau === "groupe_elements") return verdictsDe(n.parent!, "campagne");
     const campagne = niveau === "total" ? null : n.id;
     return [
       verdictDe(n.courant, repartition, repartie(campagne, p.debut, p.fin)),
@@ -232,6 +296,7 @@ export function tableauDe(
     const [verdict, verdictAvant] = verdictsDe(n, niveau);
     const t = appliquer(totaux(n.courant), verdict);
     const valeurs = metriques.map((m) => valeurDe(m, t));
+    // Un Groupe d'éléments a sa valeur récoltée ; groupe d'annonces et annonce non.
     const detailParAnnonce = niveau === "groupe" || niveau === "annonce";
     const lus = metriques.map((m) =>
       detailParAnnonce && METRIQUES_VALEUR.includes(m) && t !== null
@@ -249,9 +314,14 @@ export function tableauDe(
       raisons: metriques.map((m, i) => (valeurs[i] === null ? lus[i].raison ?? raisonDe(m, t, valeurs[i]) : null)),
       avertissements: lus.map((x, i) => (valeurs[i] === null ? null : x.avertissement)),
       ecart: ecart(valeurs[0], valeurDe(principale, appliquer(totaux(n.avant), verdictAvant))),
-      sansDetail: niveau === "campagne" ? sansDetailDe(type) : null,
+      sansDetail: niveau === "campagne" ? sansDetailDe(n, type, enfants) : null,
       enfants,
     };
+  };
+  const sansDetailDe = (camp: Noeud, type: TypeCampagne | null, enfants: LigneTableau[]): string | null => {
+    if (!estPmax(type) || enfants.length > 0) return null;
+    if (incompletes.has(camp.cle)) return PMAX_INCOMPLET;
+    return groupesElements === null ? PMAX_NON_LUS : PMAX_AUCUN;
   };
   // Classé par le chiffre principal (un coût croissant), « — » en bas.
   const classer = (a: LigneTableau, b: LigneTableau) => {
@@ -265,9 +335,15 @@ export function tableauDe(
   const lignes = actifs(racine)
     .map((camp) => {
       const type = infos.get(camp.cle)?.type ?? null;
-      const groupes = actifs(camp.enfants)
-        .map((g) => versLigne(g, "groupe", type, actifs(g.enfants).map((a) => versLigne(a, "annonce", type, [])).sort(classer)))
-        .sort(classer);
+      const groupes = incompletes.has(camp.cle)
+        ? []
+        : actifs(camp.enfants)
+            .map((g) =>
+              groupesElementsDe.has(g.cle)
+                ? versLigne(g, "groupe_elements", type, [])
+                : versLigne(g, "groupe", type, actifs(g.enfants).map((a) => versLigne(a, "annonce", type, [])).sort(classer))
+            )
+            .sort(classer);
       return versLigne(camp, "campagne", type, groupes);
     })
     .sort(classer);
@@ -301,8 +377,12 @@ const NOM_NIVEAU: Record<NiveauTableau, string> = {
   total: "Total",
   campagne: "Campagne",
   groupe: "Groupe d'annonces",
+  groupe_elements: "Groupe d'éléments",
   annonce: "Annonce",
 };
+/** La colonne de nom de chaque niveau : un Groupe d'éléments a la sienne, pour
+ *  qu'un tableur ne le range jamais parmi les groupes d'annonces. */
+const COLONNE_NOM: Record<Exclude<NiveauTableau, "total">, number> = { campagne: 0, groupe: 1, groupe_elements: 2, annonce: 3 };
 type Format = (typeof METRIQUES)[CleMetrique]["format"];
 // « decimal » : les conversions fractionnaires de Google (data-driven), deux
 // décimales comme à l'écran.
@@ -345,6 +425,7 @@ export function csvDuTableau(t: Tableau): string {
     "Type de campagne",
     "Campagne",
     "Groupe d'annonces",
+    "Groupe d'éléments",
     "Annonce",
     "ID Google",
     ...t.metriques.map((m) => `${METRIQUES[m].nom}${UNITE[METRIQUES[m].format]}`),
@@ -353,9 +434,7 @@ export function csvDuTableau(t: Tableau): string {
   const ligneCsv = (l: LigneTableau, noms: string[], type: string) => [
     NOM_NIVEAU[l.niveau],
     type,
-    texte(noms[0] ?? ""),
-    texte(noms[1] ?? ""),
-    texte(noms[2] ?? ""),
+    ...[0, 1, 2, 3].map((i) => texte(noms[i] ?? "")),
     l.id ?? TIRET,
     ...t.metriques.map((m, i) => nombreTableur(l.valeurs[i], DECIMALES[METRIQUES[m].format])),
     nombreTableur(l.ecart, 1),
@@ -363,7 +442,8 @@ export function csvDuTableau(t: Tableau): string {
   const lignes: string[][] = [];
   if (t.total) lignes.push(ligneCsv(t.total, [], typeExporte(t.total.type) ?? TOUS_LES_TYPES));
   const parcourir = (l: LigneTableau, chemin: string[]) => {
-    const noms = [...chemin, l.nom];
+    const noms = [...chemin];
+    if (l.niveau !== "total") noms[COLONNE_NOM[l.niveau]] = l.nom;
     lignes.push(ligneCsv(l, noms, typeExporte(l.type) ?? TIRET));
     for (const e of l.enfants) parcourir(e, noms);
   };
