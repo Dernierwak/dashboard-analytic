@@ -19,9 +19,9 @@ visuel montrer » pour une même annonce, et elles divergent :
 vraiment dans `vignette_url`, puis faire passer la vignette par la même règle
 que le Panneau (une seule fonction, testée).
 
-- [ ] La vignette de la Comparaison et le visuel du Panneau suivent une seule
+- [x] La vignette de la Comparaison et le visuel du Panneau suivent une seule
       règle (testé)
-- [ ] Aucune URL de Meta n'est affichée dans la Comparaison
+- [x] Aucune URL de Meta n'est affichée dans la Comparaison
 
 ## État au 2026-11-12 — contrôle contre `main` (983d71e)
 
