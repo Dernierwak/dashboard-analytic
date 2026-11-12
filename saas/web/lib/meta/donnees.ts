@@ -6,6 +6,7 @@ import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-trav
 import {
   annonceDe,
   annonceOuverteDe,
+  premierVisuel,
   type AnnonceOuverte,
   type ContenuAnnonce,
   type LigneAsset,
@@ -110,7 +111,7 @@ async function lireAnnonce(
   if (crea.error || assets.error) return { ouverte, contenu: "illisible", lueLe: null };
   if (!crea.data) return { ouverte, contenu: "absente", lueLe: null };
   const ligne = crea.data as LigneCrea & { recolte_le: string | null };
-  const origine = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const origine = origineStorage();
   return {
     ouverte,
     contenu: annonceDe(ligne, (assets.data ?? []) as LigneAsset[], origine),
@@ -187,6 +188,10 @@ async function annoncesConnues(
   return connues;
 }
 
+/** L'adresse du projet Supabase, contre laquelle `depuisStorage` juge un
+ *  visuel ; vide, aucun visuel ne passe. */
+const origineStorage = (): string => process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+
 /**
  * Le dernier visuel et le dernier texte de chaque annonce de la sélection.
  * Par paquets, comme les vignettes ; une annonce que la récolte des créas n'a
@@ -197,6 +202,7 @@ async function lireApercus(
   uid: string,
   ids: string[]
 ): Promise<Record<string, Apercu> | null> {
+  const origine = origineStorage();
   const out: Record<string, Apercu> = {};
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await supabase
@@ -206,7 +212,7 @@ async function lireApercus(
       .in("ad_id", ids.slice(i, i + 200));
     if (error) return null;
     for (const r of (data ?? []) as { ad_id: string; titre: string | null; texte: string | null; vignette_url: string | null; image_url: string | null }[]) {
-      out[r.ad_id] = { titre: r.titre?.trim() || null, texte: r.texte?.trim() || null, image: r.vignette_url ?? r.image_url };
+      out[r.ad_id] = { titre: r.titre?.trim() || null, texte: r.texte?.trim() || null, image: premierVisuel([r.vignette_url, r.image_url], origine) };
     }
   }
   return out;
@@ -223,6 +229,7 @@ async function lireVignettes(
   ids: string[]
 ): Promise<Record<string, string>> {
   if (ids.length === 0) return {};
+  const origine = origineStorage();
   const out: Record<string, string> = {};
   // Par paquets : un `in.(…)` de centaines d'IDs dépasserait la longueur
   // d'URL que PostgREST accepte.
@@ -234,7 +241,7 @@ async function lireVignettes(
       .in("ad_id", ids.slice(i, i + 200));
     if (error) return {};
     for (const r of (data ?? []) as { ad_id: string; vignette_url: string | null; image_url: string | null }[]) {
-      const url = r.vignette_url ?? r.image_url;
+      const url = premierVisuel([r.vignette_url, r.image_url], origine);
       if (url) out[r.ad_id] = url;
     }
   }
