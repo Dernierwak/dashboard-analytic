@@ -1,7 +1,7 @@
 # 19: La vignette de la Comparaison accepte une URL de Meta
 
 Type: task
-Status: needs-triage
+Status: resolved
 Blocked by: 05
 
 **Trouvé en revue du ticket 12 (2026-10-04).** Deux règles disent « quel
@@ -26,3 +26,24 @@ que le Panneau (une seule fonction, testée).
 ## État au 2026-11-12 — contrôle contre `main` (983d71e)
 
 Toujours valable, faible. Deux règles pour le même visuel : `lib/meta/donnees.ts:209,236` (`vignette_url ?? image_url`, sans filtre) contre `lib/meta/annonce.ts:152-157` (`depuisStorage`). Le risque concret est éteint côté récolte (`creatives.py:164-170` n'écrit que des URL déjà copiées chez nous), mais la première case — une seule règle, testée — reste à faire.
+
+## Réponse — 2026-11-12
+
+Construit sur la branche `meta-ads/19bis-une-regle-pour-la-vignette` (834cf26),
+à fusionner dans main. Une seule règle : `premierVisuel(candidats, origine)`
+dans `saas/web/lib/meta/annonce.ts` rend le premier candidat que
+`depuisStorage` accepte (Storage public de Pulse seulement), sinon `null`. Le
+panneau (`visuelDe`), les Aperçus (`lireApercus`) et la vignette de la
+Comparaison (`lireVignettes`) passent tous par elle. Un candidat refusé ne
+masque plus le suivant, et une `vignette_url` vide ne masque plus une image.
+
+Vérifié :
+- harnais `.scratch/meta-ads/harnais/19bis-une-regle-pour-la-vignette/`,
+  11/11, relancé par le coordinateur ;
+- `tsc --noEmit` vert et `npm run build` à 18 routes ;
+- en base (lecture seule) : toutes les URL de `meta_ads_creatives` qui ne sont
+  pas vides sont dans le Storage public (166 `vignette_url`, 682 `image_url`),
+  donc aucune vignette affichée aujourd'hui ne disparaît.
+
+Pas vu à l'écran. C'est un changement de lecture seule, visible au déploiement
+Vercel de main après la fusion, sans passage du worker.
