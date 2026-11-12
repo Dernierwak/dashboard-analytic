@@ -572,13 +572,13 @@ function serieDe(m: CleMetrique, jours: Map<string, LigneGoogle[]>, debut: strin
   return Array.from({ length: n }, (_, i) => valeurDe(m, appliquer(totaux(jours.get(decaler(debut, i)) ?? []), verdict)));
 }
 
-function appliquer(t: Totaux | null, verdict: Verdict): Totaux | null {
+export function appliquer(t: Totaux | null, verdict: Verdict): Totaux | null {
   return t && !verdict.affichee ? { ...t, valeur: null } : t;
 }
 
 /** La règle « sans valeur » sur une sélection : ses lignes, et la répartition
  *  par action des mêmes jours et de la même campagne. */
-function verdictDe(lignes: LigneGoogle[], rep: Repartition | undefined, garder: (r: ConversionsParAction) => boolean): Verdict {
+export function verdictDe(lignes: LigneGoogle[], rep: Repartition | undefined, garder: (r: ConversionsParAction) => boolean): Verdict {
   return verdictValeur(
     {
       conversions: lignes.reduce((s, l) => s + l.conversions, 0),
@@ -594,7 +594,7 @@ const SANS_COUT = "aucun coût sur la période";
 
 /** Ce que la carte dit d'un chiffre de valeur ou de ROAS. Une sélection sans
  *  ligne n'a pas de raison à donner : « — » y dit déjà « rien de mesuré ». */
-function lectureValeur(m: CleMetrique, t: Totaux | null, verdict: Verdict): { raison: string | null; avertissement: string | null } {
+export function lectureValeur(m: CleMetrique, t: Totaux | null, verdict: Verdict): { raison: string | null; avertissement: string | null } {
   const rien = { raison: null, avertissement: null };
   if ((m !== "valeur_conversion" && m !== "roas") || t === null) return rien;
   if (!verdict.affichee) return { raison: verdict.raison, avertissement: null };

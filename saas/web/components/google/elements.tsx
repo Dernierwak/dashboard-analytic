@@ -1,5 +1,5 @@
 import type { NomIcone } from "@/components/meta/elements";
-import { formaterEcart, tonEcart, type CleMetrique, type Vue } from "@/lib/google/lecture";
+import { formaterEcart, tonEcart, type CleMetrique, type TypeCampagne, type Vue } from "@/lib/google/lecture";
 
 // Les petits éléments que les modules Google partagent. Aucune directive : ils
 // se rendent côté serveur comme côté client. Les icônes viennent de
@@ -16,6 +16,22 @@ export const ID_SELECTEUR_VUE = "selecteur-vue";
 /** Ce que veut dire un écart « — » : écrit au survol, pour qu'on ne le prenne
  *  pas pour une panne. */
 export const SANS_ECART = "Pas d'écart : la période d'avant n'a rien de mesuré, ou vaut zéro.";
+
+/** Le repère de type d'une campagne (Bandeau, Tableau). Sous « Autres types »,
+ *  le vrai type de Google reste lisible au survol ; `vraiType` l'écrit en
+ *  clair, là où la spec veut qu'on le montre (le Tableau et l'export). Une
+ *  campagne sans type lu n'a pas de repère : rien n'est deviné. */
+export function ReperType({ type, vraiType = false }: { type: TypeCampagne; vraiType?: boolean }) {
+  const autres = type.libelle === "Autres types";
+  return (
+    <span
+      title={autres ? `Type Google : ${type.brut}` : undefined}
+      className="shrink-0 whitespace-nowrap rounded-md bg-[#efeee9] px-1.5 py-px text-[11px] font-medium text-muted"
+    >
+      {autres && vraiType ? `${type.libelle} · ${type.brut}` : type.libelle}
+    </span>
+  );
+}
 
 /** L'écart contre la période d'avant. Le signe est écrit en toutes lettres :
  *  la couleur ne porte jamais seule le sens. */
