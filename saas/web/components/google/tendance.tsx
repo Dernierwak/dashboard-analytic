@@ -149,9 +149,16 @@ function Carte({
             {m.nom}
             <span className="cursor-help text-faint" title={m.aide} aria-label={m.aide}>ⓘ</span>
           </h3>
-          <p className={`mt-2 font-semibold leading-none tracking-tight text-ink tabular-nums ${grande ? "text-[44px]" : "text-[28px]"}`}>
+          <p className={`mt-2 flex items-start gap-1.5 font-semibold leading-none tracking-tight text-ink tabular-nums ${grande ? "text-[44px]" : "text-[28px]"}`}>
             {formaterValeur(m.cle, m.valeur)}
+            {/* Ce que vaut le nombre (ticket 03 : une partie n'est qu'un
+                comptage) — à côté du chiffre, pas dans l'aide du nom. */}
+            {m.avertissement && (
+              <span className="cursor-help text-[14px] font-normal text-neg" title={m.avertissement} aria-label={m.avertissement}>ⓘ</span>
+            )}
           </p>
+          {/* Un « — » qui a une cause la dit en toutes lettres. */}
+          {m.raison && <p className="mt-2 text-[12.5px] text-muted">{m.raison}</p>}
           {m.precision && <p className="mt-2 text-[12.5px] text-muted">{m.precision}</p>}
           <p className="mt-2 text-[12px] text-faint">contre {formaterValeur(m.cle, m.avant)} la période d&apos;avant</p>
         </div>

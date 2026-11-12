@@ -45,7 +45,8 @@ test("trois vues : Notoriété, Trafic, Conversion, avec les métriques de la sp
   assert.deepEqual(ORDRE_VUES, ["notoriete", "trafic", "conversion"]);
   assert.deepEqual(VUES.notoriete.metriques, ["impressions", "cpm"]);
   assert.deepEqual(VUES.trafic.metriques, ["clics", "ctr", "cpc"]);
-  assert.deepEqual(VUES.conversion.metriques, ["conversions", "cout_conversion", "taux_conversion"]);
+  // Valeur de conversion et ROAS : ajoutés au ticket 03 (harnais 03).
+  assert.deepEqual(VUES.conversion.metriques, ["conversions", "cout_conversion", "taux_conversion", "valeur_conversion", "roas"]);
 });
 
 test("le mot « moyenne » n'apparaît dans aucun texte des métriques ni des vues", () => {
