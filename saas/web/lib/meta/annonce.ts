@@ -117,6 +117,23 @@ export function depuisStorage(url: string | null | undefined, origine: string): 
   return s.startsWith(`${origine.replace(/\/+$/, "")}/storage/v1/object/public/`) ? s : null;
 }
 
+/**
+ * Le premier des candidats que `depuisStorage` accepte, dans l'ordre donné, ou
+ * `null` : l'écran garde alors son état « aucun visuel ». La seule règle du
+ * visuel d'une annonce — le panneau, les Aperçus et la vignette de la
+ * Comparaison passent tous par ici (ticket 19 de la carte meta-ads, qui avait
+ * trouvé deux règles pour le même visuel). Un candidat refusé ne masque pas le
+ * suivant : une vignette restée chez Meta n'efface pas une image copiée chez
+ * nous.
+ */
+export function premierVisuel(candidats: (string | null | undefined)[], origine: string): string | null {
+  for (const c of candidats) {
+    const url = depuisStorage(c, origine);
+    if (url) return url;
+  }
+  return null;
+}
+
 /** Les boutons de Meta sont des constantes (`SHOP_NOW`) ; le fil les écrit
  *  dans la langue du lecteur. Libellés d'Ads Manager en français, NON
  *  VÉRIFIÉS sur un appel réel : le premier passage de la récolte (ticket 05)
@@ -152,9 +169,9 @@ export const BOUTON_SANS_NOM = "Bouton que Pulse ne sait pas encore nommer";
 function visuelDe(r: { image_url: string | null; vignette_url: string | null; video_id: string | null }, origine: string): Visuel | null {
   const video = !!propre(r.video_id);
   // Une vidéo se montre par sa vignette ; une image par elle-même.
-  const brut = video ? r.vignette_url ?? r.image_url : r.image_url ?? r.vignette_url;
-  if (!propre(brut) && !video) return null;
-  return { url: depuisStorage(brut, origine), video };
+  const candidats = video ? [r.vignette_url, r.image_url] : [r.image_url, r.vignette_url];
+  if (!candidats.some(propre) && !video) return null;
+  return { url: premierVisuel(candidats, origine), video };
 }
 
 const sansDoublon = <T,>(xs: (T | null)[]): T[] => [...new Set(xs.filter((x): x is T => x !== null))];
