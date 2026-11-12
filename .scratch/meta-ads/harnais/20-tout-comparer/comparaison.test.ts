@@ -72,6 +72,10 @@ test("Un groupe choisi impose toujours les annonces", () => {
   assert.equal(c.niveau, "annonces");
 });
 
+test("Toutes les métriques se comparent, pas seulement celles de la vue (CTR × impressions en vue Coûts)", () => {
+  assert.deepEqual(comparaisonDe(DOUZE, PERIODE, "couts", { m1: "ctr", m2: "impressions" }).metriques, ["ctr", "impressions"]);
+});
+
 test("Sans `comparer`, trois pré-cochées", () => {
   assert.equal(comparaisonDe(DOUZE, PERIODE, "couts", {}).coches.length, 3);
 });

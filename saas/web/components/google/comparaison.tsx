@@ -130,8 +130,9 @@ function Pastilles({ nom, choix }: { nom: string; choix: { cle: string; texte: s
 
 // Le type, le niveau, puis DEUX métriques dans un menu chacune, comme Meta :
 // la première classe la liste, place les lignes à l'horizontale et trace le
-// premier graphe ; la seconde, la verticale et le second graphe. Les métriques
-// offertes sont celles de la vue (spec : « deux métriques de la vue »).
+// premier graphe ; la seconde, la verticale et le second graphe. Le menu les
+// offre TOUTES, rangées par vue, comme Meta (David, 2026-11-12) ; la vue ne
+// donne que la paire de départ.
 function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
   // Le pré-cochage : `comparer` retiré dès que type ou niveau change.
   const repartir = { comparer: null };
@@ -196,29 +197,34 @@ function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
                 id={id}
                 className="absolute left-0 top-full z-20 mt-2 max-h-[360px] w-[250px] overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-[0_18px_40px_-12px_rgba(14,15,18,0.25)]"
               >
-                {c.offertes.map((m) => {
-                  const actif = actuelle === m;
-                  const autre = m === c.metriques[1 - rang];
-                  return (
-                    <Link
-                      key={m}
-                      href={lienGoogle(params, choixMetrique(c.metriques, rang, m))}
-                      scroll={false}
-                      onClick={() => setOuvert(null)}
-                      aria-current={actif ? "true" : undefined}
-                      className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-[13.5px] ${
-                        actif ? "bg-[#eef2ff] font-medium text-brand" : "text-ink hover:bg-canvas"
-                      }`}
-                    >
-                      {METRIQUES[m].nom}
-                      {actif ? (
-                        <Icone nom="coche" className="h-3.5 w-3.5" />
-                      ) : autre ? (
-                        <span className="text-[11px] text-faint">échange avec la {2 - rang}</span>
-                      ) : null}
-                    </Link>
-                  );
-                })}
+                {c.familles.map((f) => (
+                  <div key={f.titre}>
+                    <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{f.titre}</p>
+                    {f.metriques.map((m) => {
+                      const actif = actuelle === m;
+                      const autre = m === c.metriques[1 - rang];
+                      return (
+                        <Link
+                          key={m}
+                          href={lienGoogle(params, choixMetrique(c.metriques, rang, m))}
+                          scroll={false}
+                          onClick={() => setOuvert(null)}
+                          aria-current={actif ? "true" : undefined}
+                          className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-[13.5px] ${
+                            actif ? "bg-[#eef2ff] font-medium text-brand" : "text-ink hover:bg-canvas"
+                          }`}
+                        >
+                          {METRIQUES[m].nom}
+                          {actif ? (
+                            <Icone nom="coche" className="h-3.5 w-3.5" />
+                          ) : autre ? (
+                            <span className="text-[11px] text-faint">échange avec la {2 - rang}</span>
+                          ) : null}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
