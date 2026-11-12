@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Icone } from "@/components/meta/elements";
 import { ICONE_VUE, ID_SELECTEUR_VUE, PastilleEcart } from "@/components/google/elements";
 import { METRIQUES, VUES, formaterValeur, type CarteVue, type Vue } from "@/lib/google/lecture";
-import { lienGoogle, type Params } from "@/lib/google/liens";
+import { lienGoogle, METRIQUES_DE_LA_VUE, type Params } from "@/lib/google/liens";
 
 // ── MODULE 2 · LE SÉLECTEUR DE VUE ───────────────────────────────────────────
 //
@@ -27,7 +27,7 @@ export function SelecteurVue({ cartes, vue, params }: { cartes: CarteVue[]; vue:
           return (
             <Link
               key={c.vue}
-              href={lienGoogle(params, { vue: c.vue })}
+              href={lienGoogle(params, { vue: c.vue, ...METRIQUES_DE_LA_VUE })}
               scroll={false}
               aria-current={actif ? "page" : undefined}
               className={`group min-w-0 rounded-2xl p-5 transition-all duration-200 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${

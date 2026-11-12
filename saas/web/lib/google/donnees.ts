@@ -4,7 +4,8 @@ import { fetchCanauxMuets, type CanalMuetLive } from "@/lib/canaux-muets";
 import { jourDeTravailDuCompte } from "@/lib/jour-compte";
 import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-travail";
 import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
-import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
+import { comparaisonDe, type CommandesComparaison, type Comparaison } from "@/lib/google/comparaison";
+import { contenuPage, decaler, lireToutesLesPages, periodeDe, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
 import { tableauDe, type LigneAnnonceGoogle, type LigneGroupeElementsGoogle, type Tableau } from "@/lib/google/tableau";
 import type { Repartition } from "@/lib/google/valeur";
 
@@ -26,6 +27,7 @@ export type DonneesGoogle = ContenuPage & {
    *  la période s'est arrêtée au dernier jour lu, et la page le dit. */
   muet: CanalMuetLive | null;
   tableau: Tableau;
+  comparaison: Comparaison;
   /** Le journal des changements de la période ; `null` = il n'a pas pu être
    *  lu : la page le dit, au lieu de montrer une période sans point. */
   journal: ChangementGoogle[] | null;
@@ -296,7 +298,7 @@ async function lireRepartition(
   }
 }
 
-export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
+export async function getDonneesGoogle(c: CommandesComparaison): Promise<DonneesGoogle> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
@@ -347,9 +349,11 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const lignes = brutes.map(versLigne);
+  const annonces = brutesAnnonces.map(versLigneAnnonce);
   return {
     ...contenuPage(lignes, c, ctx, repartition),
-    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx, repartition, groupesElements),
+    tableau: tableauDe(lignes, annonces, c, ctx, repartition, groupesElements),
+    comparaison: comparaisonDe({ campagnes: lignes, annonces, groupesElements, repartition }, c, ctx),
     lecture: phraseLecture(ligneProgres),
     muet,
     journal,

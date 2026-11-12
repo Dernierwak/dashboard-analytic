@@ -130,8 +130,9 @@ const PMAX_INCOMPLET = "Google n'a pas rendu tous les chiffres des groupes d'él
 const estPmax = (type: TypeCampagne | null) => type?.libelle === "PMax";
 
 /** Une ligne de Groupe d'éléments dont tous les compteurs ont été rendus,
- *  dans la forme des autres lignes. `null` si l'un manque. */
-function ligneComplete(l: LigneGroupeElementsGoogle): LigneGoogle | null {
+ *  dans la forme des autres lignes. `null` si l'un manque. La Comparaison
+ *  (`./comparaison`) la lit aussi : la même règle aux deux endroits. */
+export function ligneComplete(l: LigneGroupeElementsGoogle): LigneGoogle | null {
   if (l.cout === null || l.impressions === null || l.clics === null || l.conversions === null) return null;
   return {
     date: l.date,
