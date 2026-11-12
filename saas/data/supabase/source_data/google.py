@@ -220,6 +220,41 @@ def upsert_google_termes_recherche(supabase: Client, user_id: str, rows: list[di
         ).execute()
 
 
+def upsert_google_clusters_termes(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_search_term_clusters (`clusters_termes.lignes_de`).
+    Conflict sur (user_id, campaign_id, cluster_id) : une ligne par niveau
+    (campagne, ou `""` pour le compte) × cluster, réécrite à chaque passage avec
+    sa fenêtre de 90 jours. Un cluster absent du dernier passage garde sa ligne
+    et son ancienne fenêtre : la page ne lit que la fenêtre la plus récente de
+    chaque niveau, rien n'est effacé. Aucune colonne de coût (Google le refuse,
+    carte issue 19). Les mesures passent telles quelles, `None` compris
+    (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    par_cle = {}
+    for r in rows:
+        key = (str(r.get("campaign_id", "")), str(r.get("cluster_id", "")))
+        par_cle[key] = {
+            "user_id":        user_id,
+            "campaign_id":    key[0],
+            "cluster_id":     key[1],
+            "category_label": r.get("category_label", ""),
+            "impressions":    r.get("impressions"),
+            "clicks":         r.get("clicks"),
+            "conversions":    r.get("conversions"),
+            "terms":          r.get("terms") or [],
+            "window_start":   r.get("window_start"),
+            "window_end":     r.get("window_end"),
+        }
+    records = list(par_cle.values())
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_search_term_clusters").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,campaign_id,cluster_id",
+        ).execute()
+
+
 def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:
     """status_map : {campaign_id: (campaign_name, effective_status, start, end)}
 
