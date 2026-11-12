@@ -6,6 +6,7 @@ import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-trav
 import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
 import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
 import { tableauDe, type LigneAnnonceGoogle, type LigneGroupeElementsGoogle, type Tableau } from "@/lib/google/tableau";
+import { groupesDeTermes, type CommandesGroupes, type GroupesDeTermes, type LigneTermeGoogle } from "@/lib/google/termes";
 import type { Repartition } from "@/lib/google/valeur";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
@@ -32,6 +33,8 @@ export type DonneesGoogle = ContenuPage & {
   /** Depuis quand le journal est tenu sans trou (`aideJournal`) ; `null` = on
    *  ne sait pas. */
   debutJournal: string | null;
+  /** Le module Groupes de termes (`lib/google/termes.ts`). */
+  groupes: GroupesDeTermes;
 };
 
 // `ctr` et `avg_cpc_micros` ne sont PAS lus : les taux se recalculent total ÷
@@ -167,6 +170,76 @@ async function lireGroupesElements(
   }
 }
 
+// Les termes de recherche (section 3sexies du `000`, ticket 09). La période
+// seulement : le module ne compare pas à la période d'avant.
+const COLONNES_TERMES = "date_start, campaign_id, ad_group_id, search_term, keyword_text, keyword_match_type, search_term_match_type, impressions, clicks, cost_micros, conversions";
+
+type LigneBaseTerme = {
+  date_start: string;
+  campaign_id: string;
+  ad_group_id: string;
+  search_term: string;
+  keyword_text: string | null;
+  keyword_match_type: string | null;
+  search_term_match_type: string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  cost_micros: number | string | null;
+  conversions: number | string | null;
+};
+
+function versLigneTerme(r: LigneBaseTerme): LigneTermeGoogle {
+  const micros = nombreOuNull(r.cost_micros);
+  return {
+    date: String(r.date_start).slice(0, 10),
+    campagneId: r.campaign_id,
+    groupeId: r.ad_group_id,
+    terme: r.search_term,
+    motCle: r.keyword_text ?? "",
+    motCleType: r.keyword_match_type ?? "",
+    appariement: r.search_term_match_type ?? "",
+    // Nullables en base : NULL reste `null`, jamais 0 (`CLAUDE.md` §7).
+    impressions: nombreOuNull(r.impressions),
+    clics: nombreOuNull(r.clicks),
+    cout: micros === null ? null : micros / MICROS,
+    conversions: nombreOuNull(r.conversions),
+  };
+}
+
+/** Les termes de la période, paginés (≈ 10 000 lignes sur 90 jours chez A,
+ *  carte issue 19), et le plus ancien jour en base — la part masquée ne se
+ *  calcule que sur une période entièrement couverte. En cas d'échec (section
+ *  3sexies pas encore jouée, par exemple) : `null`, le module le dit et la page
+ *  ne lève pas. */
+async function lireTermes(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<{ termes: LigneTermeGoogle[] | null; debutTermes: string | null }> {
+  try {
+    const [lignes, premier] = await Promise.all([
+      lireToutesLesPages<LigneBaseTerme>((de, a) =>
+        supabase
+          .from("google_ads_search_terms")
+          .select(COLONNES_TERMES)
+          .eq("user_id", uid)
+          .gte("date_start", debut)
+          .lte("date_start", fin)
+          .order("date_start", { ascending: true })
+          .order("id", { ascending: true })
+          .range(de, a)
+      ),
+      supabase.from("google_ads_search_terms").select("date_start").eq("user_id", uid).order("date_start", { ascending: true }).limit(1),
+    ]);
+    if (premier.error) throw premier.error;
+    const d = (premier.data?.[0] as { date_start: string } | undefined)?.date_start;
+    return { termes: lignes.map(versLigneTerme), debutTermes: d ? String(d).slice(0, 10) : null };
+  } catch {
+    return { termes: null, debutTermes: null };
+  }
+}
+
 function iso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -296,7 +369,9 @@ async function lireRepartition(
   }
 }
 
-export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
+/** `g` : les commandes du module Groupes de termes (`gm`, `gc`, `gt`) ; la
+ *  campagne du Bandeau, qui préremplit `gc`, vient de `c`. */
+export async function getDonneesGoogle(c: Commandes, g: Omit<CommandesGroupes, "campagne"> = {}): Promise<DonneesGoogle> {
   const supabase = createClient();
   const compte = await getCompteActif();
   const uid = compte.uid;
@@ -312,7 +387,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition, groupesElements] = await Promise.all([
+  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition, groupesElements, termes] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -343,16 +418,22 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
     lireDebutJournal(supabase, uid),
     lireRepartition(supabase, uid, p.avantDebut, p.fin),
     lireGroupesElements(supabase, uid, p.avantDebut, p.fin),
+    lireTermes(supabase, uid, p.debut, p.fin),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const lignes = brutes.map(versLigne);
+  const contenu = contenuPage(lignes, c, ctx, repartition);
   return {
-    ...contenuPage(lignes, c, ctx, repartition),
+    ...contenu,
     tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx, repartition, groupesElements),
     lecture: phraseLecture(ligneProgres),
     muet,
     journal,
     debutJournal,
+    groupes: groupesDeTermes(
+      { ...termes, insights: lignes, campagnes: contenu.campagnes, periode: contenu.periode, aujourdhui: ctx.aujourdhui },
+      { ...g, campagne: c.campagne }
+    ),
   };
 }

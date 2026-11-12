@@ -6,15 +6,18 @@
 // Streamlit) : elle lit l'identité par ID, pagine au-delà de 1 000 lignes,
 // recalcule ses taux total ÷ total et dit à quelle date Pulse a lu Google.
 //
-// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, et le jour
-// ouvert dans le Panneau latéral (`jour`) (`lib/google/liens.ts`). Le jour est
+// L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, le jour
+// ouvert dans le Panneau latéral (`jour`) (`lib/google/liens.ts`), et le mode,
+// la campagne et la taille des Groupes de termes (`gm`, `gc`, `gt`,
+// `lib/google/termes.ts`). Le jour est
 // tenu par le navigateur, qui l'ouvre sans relire la page
 // (`components/google/journal-ouvert.tsx`). Le calcul est dans
 // `lib/google/lecture.ts`, `lib/google/changements.ts` et
 // `lib/google/tableau.ts` (le Tableau détaillé), la lecture de la base dans
-// `lib/google/donnees.ts`. Les modules suivants (Comparaison, annonce lue,
-// Groupes de termes) viennent par tickets.
+// `lib/google/donnees.ts`. Les modules suivants (Comparaison, annonce lue)
+// viennent par tickets.
 import { BandeauGoogle } from "@/components/google/bandeau";
+import { GroupesDeTermes } from "@/components/google/groupes-de-termes";
 import { JournalOuvert } from "@/components/google/journal-ouvert";
 import { SelecteurVue } from "@/components/google/selecteur-vue";
 import { TableauDetaille } from "@/components/google/tableau";
@@ -33,12 +36,15 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
   // Les composants reçoivent les paramètres sans le jour : c'est le
   // navigateur qui le tient (`sansJour`).
   const searchParams = sansJour(brutes);
-  const google = await getDonneesGoogle({
-    vue: un(searchParams.vue),
-    campagne: un(searchParams.campagne),
-    from: un(searchParams.from),
-    to: un(searchParams.to),
-  });
+  const google = await getDonneesGoogle(
+    {
+      vue: un(searchParams.vue),
+      campagne: un(searchParams.campagne),
+      from: un(searchParams.from),
+      to: un(searchParams.to),
+    },
+    { gm: un(searchParams.gm), gc: un(searchParams.gc), gt: un(searchParams.gt) }
+  );
   const choisie = google.campagneChoisie;
   const sujet = choisie ? (choisie.connue ? `« ${choisie.nom} »` : "la campagne demandée") : "toutes tes campagnes";
   // Le journal suit le filtre du Bandeau, par l'ID (`lib/google/changements.ts`).
@@ -84,6 +90,8 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
           params={searchParams}
         />
         <TableauDetaille tableau={google.tableau} />
+        {/* En bas de page, à la place de l'ancienne « Analyse » (carte, issue 21). */}
+        <GroupesDeTermes groupes={google.groupes} params={searchParams} />
       </div>
 
       {journal ? (
