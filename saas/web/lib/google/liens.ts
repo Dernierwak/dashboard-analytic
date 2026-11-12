@@ -18,9 +18,8 @@ export const CHEMIN_GOOGLE = "/google";
 const DEFAUTS: Record<string, string> = { vue: "notoriete" };
 
 /** Changer de vue repart des métriques de la nouvelle vue : la Comparaison
- *  ne prend ses deux métriques que dans la vue (`lib/google/comparaison.ts`),
- *  et la courbe trace l'une des deux. */
-export const METRIQUES_DE_LA_VUE = { m1: null, m2: null, courbe: null };
+ *  ne prend ses deux métriques que dans la vue (`lib/google/comparaison.ts`). */
+export const METRIQUES_DE_LA_VUE = { m1: null, m2: null };
 
 export type Params = Record<string, string | string[] | undefined>;
 

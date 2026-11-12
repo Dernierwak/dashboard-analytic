@@ -189,9 +189,9 @@ export type Portee = {
   element?: ElementOuvert | null;
 };
 
-const PREFIXES: Record<NiveauCompare, string> = { groupes: "groupe:", annonces: "annonce:" };
+const PREFIXES: Record<NiveauCompare, string> = { campagnes: "campagne:", groupes: "groupe:", annonces: "annonce:" };
 
-/** `element` dans l'URL : « groupe:<ID> » ou « annonce:<ID> ». Le niveau y
+/** `element` dans l'URL : « campagne:<ID> », « groupe:<ID> » ou « annonce:<ID> ». Le niveau y
  *  est écrit parce que celui de la Comparaison peut changer panneau ouvert. */
 export function valeurElement(e: ElementOuvert): string {
   return `${PREFIXES[e.niveau]}${e.cle}`;
@@ -204,10 +204,12 @@ export function elementOuvertDe(x: string | undefined): ElementOuvert | null {
   return null;
 }
 
-/** La ligne d'un groupe compte aussi les changements de ses annonces (ticket
- *  08) ; celle d'une annonce, les siens. Par l'ID : une clé « sans-id: » de la
- *  Comparaison n'attrape donc rien. */
+/** La ligne d'une campagne compte tout ce qui est posé sous elle ; celle d'un
+ *  groupe, aussi les changements de ses annonces (ticket 08) ; celle d'une
+ *  annonce, les siens. Par l'ID : une clé « sans-id: » de la Comparaison
+ *  n'attrape donc rien. */
 function deLElement(c: ChangementMeta, e: ElementOuvert): boolean {
+  if (e.niveau === "campagnes") return c.campagneId === e.cle;
   return e.niveau === "groupes" ? c.groupeId === e.cle : c.niveau === "annonce" && c.objetId === e.cle;
 }
 

@@ -14,10 +14,13 @@
 //     PMax (`google_ads_asset_group_insights`) ; PMax n'a pas d'annonces
 //     (Google n'en rend aucune, carte issue 01), donc « Annonces » disparaît
 //     quand il est seul ;
-//   · un nuage de la période à la place du premier graphe, et une seule
-//     courbe qui bascule entre les deux métriques.
-// Ce qui est repris de Meta : quatre places au plus, la couleur qui suit la
-// place, la 5ᵉ case refusée, le pré-cochage, l'échange des métriques.
+//   · un nuage de la période (toutes les lignes, les non cochées en gris) à
+//     la place du Croisement.
+// Ce qui est repris de Meta : la mise en page (le nuage à gauche, la liste à
+// droite, les deux courbes dessous — David, 2026-11-12 : « il faut que ce
+// soit exactement la même chose »), la couleur qui suit la place, autant de
+// cases qu'on veut et « Tout cocher », le pré-cochage, l'échange des
+// métriques.
 //
 // Sans directive, comme `lecture.ts` (`CLAUDE.md` §8) ; les imports relatifs
 // sont résolus par Next, et par le crochet du harnais.
@@ -66,10 +69,8 @@ export type CommandesComparaison = Commandes & {
   niveau?: string;
   m1?: string;
   m2?: string;
-  /** Les places cochées, répétées (`placesVersUrl`). */
+  /** Les places cochées, répétées (`placesVersUrl`), ou `*` = toutes. */
   comparer?: string[];
-  /** La métrique que trace la courbe, l'une des deux choisies. */
-  courbe?: string;
 };
 
 /** Les quatre sources de la page — celles du Tableau détaillé. */
@@ -99,45 +100,55 @@ export type NiveauElement = "campagne" | "groupe" | "groupe_elements" | "annonce
 
 // ── Les places cochées (recopiées de Meta) ───────────────────────────────────
 
-export const MAX_COMPARES = 4;
 /** Pré-cochés quand l'URL ne dit rien : de quoi voir des courbes en arrivant,
- *  en laissant une case libre (même règle que Meta). */
+ *  sans tracer d'emblée toute la liste (même règle que Meta). */
 const COCHES_PAR_DEFAUT = 3;
 
-/** Les quatre teintes de la Comparaison Meta, validées `dataviz` toutes paires
- *  (pire paire ΔE 16,3 ; CVD 9,2) : le nom est toujours écrit à côté. */
-export const PALETTE_COMPARES = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7"];
+/** Les teintes de la Comparaison Meta : les quatre premières validées
+ *  `dataviz` toutes paires (pire paire ΔE 16,3 ; CVD 9,2), les quatre
+ *  suivantes entre voisines seulement. Au-delà de huit cochées elles
+ *  reviennent : le rang dans le point et le nom écrit à côté de la couleur
+ *  distinguent toujours deux lignes. */
+export const PALETTE_COMPARES = ["#2a78d6", "#eb6834", "#1baf7a", "#4a3aa7", "#eda100", "#e87ba4", "#008300", "#e34948"];
 /** Les lignes non cochées du nuage : un fond, pas une identité. */
 export const GRIS_NON_COCHE = "#c3c2bb";
+
+/** La couleur d'une place : elle suit la place, jamais le rang de la liste. */
+export function couleurDePlace(place: number): string {
+  return PALETTE_COMPARES[place % PALETTE_COMPARES.length];
+}
 
 /** Une place libérée, dans l'URL. La couleur suit la PLACE : décocher la
  *  première ne repeint pas les autres. `comparer=-` seul = « rien de coché,
  *  exprès », à distinguer de l'absence du paramètre, qui pré-coche. */
 export const PLACE_VIDE = "-";
+/** `comparer=*` : toute la liste cochée, dans son ordre — un lien court quel
+ *  que soit le nombre de lignes. */
+export const TOUT_COCHER = "*";
 
 export type Places = (string | null)[];
 
 /** Les places lues dans l'URL, ou `null` quand le paramètre est absent. Une
- *  clé répétée ne prend qu'une place ; au-delà de quatre, le reste est ignoré. */
+ *  clé répétée ne prend qu'une place. `*` se résout dans `comparaisonDe`, qui
+ *  connaît la liste. */
 export function placesDe(brut: string[] | undefined): Places | null {
   if (!brut || brut.length === 0) return null;
   const vues = new Set<string>();
-  return brut.slice(0, MAX_COMPARES).map((x) => {
+  return brut.map((x) => {
     if (!x || x === PLACE_VIDE || vues.has(x)) return null;
     vues.add(x);
     return x;
   });
 }
 
-/** Cocher ou décocher. Une cinquième case est REFUSÉE (user story 43) : rien
- *  n'est décoché en silence pour lui faire de la place. */
-export function basculerCoche(places: Places, cle: string): Places | "refus" {
+/** Cocher ou décocher. Aucun plafond (David, 2026-11-12) : une case cochée
+ *  prend la première place libre, sinon une nouvelle à la fin. */
+export function basculerCoche(places: Places, cle: string): Places {
   const i = places.indexOf(cle);
   if (i >= 0) return places.map((x, k) => (k === i ? null : x));
   const libre = places.indexOf(null);
   if (libre >= 0) return places.map((x, k) => (k === libre ? cle : x));
-  if (places.length < MAX_COMPARES) return [...places, cle];
-  return "refus";
+  return [...places, cle];
 }
 
 /** Ce que le lien écrit : les places vides de fin tombent, et « rien de
@@ -188,7 +199,7 @@ export type ElementCompare = {
   raisons: [string | null, string | null];
   /** Son coût sur la période : la taille de son point. `null` = non mesuré. */
   cout: number | null;
-  /** 0 à 3 quand l'élément est coché — sa couleur ; `null` sinon. */
+  /** Sa place quand l'élément est coché — sa couleur ; `null` sinon. */
   place: number | null;
 };
 
@@ -217,8 +228,6 @@ export type Comparaison = {
   /** Les métriques offertes : celles de la vue. */
   offertes: CleMetrique[];
   metriques: [CleMetrique, CleMetrique];
-  /** La métrique que trace la courbe. */
-  courbe: CleMetrique;
   /** Classés par la métrique 1. */
   elements: ElementCompare[];
   /** Les places telles qu'elles s'affichent — c'est d'elles que part un clic. */
@@ -347,7 +356,6 @@ export function comparaisonDe(s: SourcesComparaison, c: CommandesComparaison, ct
   }
 
   const metriques = metriquesDe(vue, c.m1, c.m2);
-  const courbe = metriques.find((m) => m === c.courbe) ?? metriques[0];
 
   // La règle « sans valeur » (`./valeur`) d'une campagne, sur la période. Un
   // Groupe d'éléments prend celle de SA campagne : la répartition par action
@@ -403,10 +411,13 @@ export function comparaisonDe(s: SourcesComparaison, c: CommandesComparaison, ct
   // Une clé qui n'est plus dans la liste (un autre filtre, une autre période)
   // LIBÈRE sa place sans décaler les autres : les couleurs ne bougent pas.
   const presentes = new Set(elements.map((e) => e.cle));
-  const lues = placesDe(c.comparer);
-  const places: Places = lues
-    ? lues.map((x) => (x !== null && presentes.has(x) ? x : null))
-    : elements.slice(0, COCHES_PAR_DEFAUT).map((e) => e.cle);
+  const tout = c.comparer?.[0] === TOUT_COCHER;
+  const lues = tout ? null : placesDe(c.comparer);
+  const places: Places = tout
+    ? elements.map((e) => e.cle)
+    : lues
+      ? lues.map((x) => (x !== null && presentes.has(x) ? x : null))
+      : elements.slice(0, COCHES_PAR_DEFAUT).map((e) => e.cle);
   for (const e of elements) {
     const i = places.indexOf(e.cle);
     e.place = i >= 0 ? i : null;
@@ -426,7 +437,7 @@ export function comparaisonDe(s: SourcesComparaison, c: CommandesComparaison, ct
   places.forEach((cle, i) => {
     if (cle === null) return;
     const b = brouillons.get(cle)!;
-    coches.push({ cle, nom: b.nom, couleur: PALETTE_COMPARES[i], series: [serie(b, metriques[0]), serie(b, metriques[1])] });
+    coches.push({ cle, nom: b.nom, couleur: couleurDePlace(i), series: [serie(b, metriques[0]), serie(b, metriques[1])] });
   });
 
   return {
@@ -438,7 +449,6 @@ export function comparaisonDe(s: SourcesComparaison, c: CommandesComparaison, ct
     pmaxSansAnnonces,
     offertes: VUES[vue].metriques,
     metriques,
-    courbe,
     elements,
     places,
     coches,

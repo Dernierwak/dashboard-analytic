@@ -165,15 +165,17 @@ test("Les métriques se prennent dans la vue ; une métrique d'une autre vue est
   assert.deepEqual(c.metriques, ["clics", "cpc"]);
 });
 
-test("La courbe trace la métrique 1 par défaut, la 2 sur demande, jamais une troisième", () => {
-  assert.equal(comparaisonDe(compte(), {}, CTX).courbe, "impressions");
-  assert.equal(comparaisonDe(compte(), { courbe: "cpm" }, CTX).courbe, "cpm");
-  assert.equal(comparaisonDe(compte(), { courbe: "clics" }, CTX).courbe, "impressions");
+test("Chaque cochée porte une série par métrique : les deux graphes côte à côte", () => {
+  const c = comparaisonDe(compte(), {}, CTX);
+  assert.ok(c.coches.length > 0);
+  for (const s of c.coches) assert.equal(s.series.length, 2);
 });
 
-// ── Les cases : plafond de quatre, pré-cochage ───────────────────────────────
+// ── Les cases : sans plafond, pré-cochage, « Tout cocher » ───────────────────
+// (David, 2026-11-12 : « pas que ce soit maximum 5 ».)
 
 const CINQ = ["A", "B", "C", "D", "E"].map((x, i) => SEARCH({ campagneId: x, campagneNom: x, impressions: 1000 * (5 - i) }));
+const DOUZE = Array.from({ length: 12 }, (_, i) => SEARCH({ campagneId: `K${i}`, campagneNom: `K${i}`, impressions: 1000 * (12 - i) }));
 
 test("Sans `comparer`, les trois premières sont pré-cochées, dans l'ordre de la liste", () => {
   const c = comparaisonDe(compte({ campagnes: CINQ }), {}, CTX);
@@ -186,14 +188,28 @@ test("`comparer=-` : rien de coché, exprès", () => {
   assert.equal(c.coches.length, 0);
 });
 
-test("Quatre cases au plus : la cinquième se refuse, rien n'est décoché pour elle", () => {
+test("Aucun plafond : la cinquième case se coche à la suite", () => {
   const c = comparaisonDe(compte({ campagnes: CINQ }), { comparer: ["A", "B", "C", "D"] }, CTX);
   assert.equal(c.coches.length, 4);
-  assert.equal(basculerCoche(c.places, "E"), "refus");
+  assert.deepEqual(basculerCoche(c.places, "E"), ["A", "B", "C", "D", "E"]);
+  assert.equal(comparaisonDe(compte({ campagnes: CINQ }), { comparer: ["A", "B", "C", "D", "E"] }, CTX).coches.length, 5);
   // Décocher la première libère SA place : les autres gardent leur couleur.
-  const sans = basculerCoche(c.places, "A") as (string | null)[];
+  const sans = basculerCoche(c.places, "A");
   assert.deepEqual(placesVersUrl(sans), ["-", "B", "C", "D"]);
   assert.deepEqual(basculerCoche(sans, "E"), ["E", "B", "C", "D"]);
+});
+
+test("`comparer=*` coche toute la liste, dans son ordre", () => {
+  const c = comparaisonDe(compte({ campagnes: DOUZE }), { comparer: ["*"] }, CTX);
+  assert.equal(c.coches.length, 12);
+  assert.deepEqual(c.places, DOUZE.map((l) => l.campagneId));
+  assert.ok(c.elements.every((e) => e.place !== null));
+});
+
+test("Au-delà de huit cochées, les teintes reviennent dans l'ordre des places", () => {
+  const c = comparaisonDe(compte({ campagnes: DOUZE }), { comparer: ["*"] }, CTX);
+  assert.equal(c.coches[8].couleur, c.coches[0].couleur);
+  assert.equal(new Set(c.coches.slice(0, 8).map((s) => s.couleur)).size, 8);
 });
 
 test("Un `comparer` d'un autre niveau ne désigne rien : sa place se libère", () => {

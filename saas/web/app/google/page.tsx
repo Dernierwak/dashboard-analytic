@@ -7,8 +7,8 @@
 // recalcule ses taux total ÷ total et dit à quelle date Pulse a lu Google.
 //
 // L'état vit dans l'URL : `vue`, `campagne` (par ID), `from`/`to`, les
-// réglages de la Comparaison (`type`, `niveau`, `m1`, `m2`, `comparer`,
-// `courbe`), le jour ouvert dans le Panneau latéral (`jour`)
+// réglages de la Comparaison (`type`, `niveau`, `m1`, `m2`, `comparer`),
+// le jour ouvert dans le Panneau latéral (`jour`)
 // (`lib/google/liens.ts`), et le mode, la campagne et la taille des Groupes
 // de termes (`gm`, `gc`, `gt`, `lib/google/termes.ts`). Le jour est
 // tenu par le navigateur, qui l'ouvre sans relire la page
@@ -52,7 +52,6 @@ export default async function GooglePage({ searchParams: brutes }: { searchParam
       m1: un(searchParams.m1),
       m2: un(searchParams.m2),
       comparer: tous(searchParams.comparer),
-      courbe: un(searchParams.courbe),
     },
     { gm: un(searchParams.gm), gc: un(searchParams.gc), gt: un(searchParams.gt) }
   );
