@@ -159,10 +159,16 @@ test("Choisir pour l'une la métrique de l'autre les échange", () => {
   assert.deepEqual(choixMetrique(["clics", "ctr"], 1, "cpc"), { m1: "clics", m2: "cpc" });
 });
 
-test("Les métriques se prennent dans la vue ; une métrique d'une autre vue est ignorée", () => {
-  const c = comparaisonDe(compte(), { vue: "trafic", m1: "impressions", m2: "cpc" }, CTX);
-  assert.deepEqual(c.offertes, ["clics", "ctr", "cpc"]);
-  assert.deepEqual(c.metriques, ["clics", "cpc"]);
+test("Toutes les métriques s'offrent, rangées par vue ; une métrique d'une autre vue se choisit", () => {
+  const c = comparaisonDe(compte(), { vue: "trafic", m1: "impressions", m2: "ctr" }, CTX);
+  assert.deepEqual(c.familles.map((f) => f.titre), ["Notoriété", "Trafic", "Conversion"]);
+  assert.equal(c.familles.flatMap((f) => f.metriques).length, 10);
+  assert.deepEqual(c.metriques, ["impressions", "ctr"]);
+});
+
+test("Sans `m1`/`m2`, la paire de départ est celle de la vue ; une clé inconnue est ignorée", () => {
+  assert.deepEqual(comparaisonDe(compte(), { vue: "trafic" }, CTX).metriques, ["clics", "ctr"]);
+  assert.deepEqual(comparaisonDe(compte(), { vue: "trafic", m1: "inconnue", m2: "roas" }, CTX).metriques, ["clics", "roas"]);
 });
 
 test("Chaque cochée porte une série par métrique : les deux graphes côte à côte", () => {

@@ -46,6 +46,7 @@ import {
   valeurDe,
   verdictDe,
   vueDe,
+  ORDRE_VUES,
   VUES,
   type Campagne,
   type CleMetrique,
@@ -161,12 +162,22 @@ export function placesVersUrl(places: Places): string[] {
 
 // ── Les métriques ────────────────────────────────────────────────────────────
 
-/** Les deux métriques, toujours distinctes, prises dans la vue (spec : « deux
- *  métriques de la vue ») ; une clé hors de la vue est ignorée. Changer de vue
- *  y revient : ses liens retirent `m1`/`m2`. */
+/** Toutes les métriques, rangées par vue : c'est le menu de chaque axe. N'importe
+ *  laquelle se compare à n'importe quelle autre, comme sur Meta (David,
+ *  2026-11-12 : « c'est aussi intéressant de voir CTR et puis impression, et
+ *  pas justement que dans le bloc où on est »). */
+export const FAMILLES_METRIQUES: { titre: string; metriques: CleMetrique[] }[] = ORDRE_VUES.map((v) => ({
+  titre: VUES[v].titre,
+  metriques: VUES[v].metriques,
+}));
+const TOUTES_METRIQUES = FAMILLES_METRIQUES.flatMap((f) => f.metriques);
+
+/** Les deux métriques, toujours distinctes, prises parmi TOUTES ; la vue ne
+ *  donne que la paire de départ, et changer de vue y revient (ses liens
+ *  retirent `m1`/`m2`). Une clé inconnue est ignorée. */
 export function metriquesDe(vue: Vue, m1?: string, m2?: string): [CleMetrique, CleMetrique] {
   const de = VUES[vue].metriques;
-  const est = (x?: string): x is CleMetrique => !!x && (de as string[]).includes(x);
+  const est = (x?: string): x is CleMetrique => !!x && (TOUTES_METRIQUES as string[]).includes(x);
   const a = est(m1) ? m1 : de[0];
   const b = est(m2) && m2 !== a ? m2 : de.find((m) => m !== a)!;
   return [a, b];
@@ -225,8 +236,8 @@ export type Comparaison = {
   /** Niveau Annonces sur « Tous », avec du PMax sur la période : une phrase
    *  dit pourquoi ses campagnes ne sont pas là (user story 38). */
   pmaxSansAnnonces: boolean;
-  /** Les métriques offertes : celles de la vue. */
-  offertes: CleMetrique[];
+  /** Les métriques offertes, rangées par vue : toutes. */
+  familles: { titre: string; metriques: CleMetrique[] }[];
   metriques: [CleMetrique, CleMetrique];
   /** Classés par la métrique 1. */
   elements: ElementCompare[];
@@ -447,7 +458,7 @@ export function comparaisonDe(s: SourcesComparaison, c: CommandesComparaison, ct
     niveaux,
     niveau,
     pmaxSansAnnonces,
-    offertes: VUES[vue].metriques,
+    familles: FAMILLES_METRIQUES,
     metriques,
     elements,
     places,
