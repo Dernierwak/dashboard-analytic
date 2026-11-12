@@ -13,8 +13,15 @@ from supabase import Client
 def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
     """Upsert google_ads_insights.
     Chaque row attend : campaign_id, campaign_name, date_start (YYYY-MM-DD),
-    impressions, clicks, cost_micros, conversions, ctr, avg_cpc_micros.
+    impressions, clicks, cost_micros, conversions, ctr, avg_cpc_micros, et
+    advertising_channel_type, conversions_value, all_conversions,
+    view_through_conversions (`campaigns.lignes_de`).
     Conflict sur (user_id, date_start, campaign_id) : 1 ligne par campagne × jour.
+
+    Les quatre dernières passent telles quelles, `None` compris : une colonne
+    que Google n'a pas rendue s'écrit NULL, jamais 0 (`CLAUDE.md` §7). Les
+    clés sont posées sur CHAQUE ligne, même vides — PostgREST refuse un lot
+    dont les lignes n'ont pas les mêmes clés (PGRST102).
     """
     if not rows:
         return
@@ -36,6 +43,10 @@ def upsert_google_ads(supabase: Client, user_id: str, rows: list[dict]) -> None:
             "cost_micros":    int(r.get("cost_micros") or 0),
             "ctr":            float(r.get("ctr") or 0),
             "avg_cpc_micros": int(r.get("avg_cpc_micros") or 0),
+            "advertising_channel_type": r.get("advertising_channel_type"),
+            "conversions_value":        r.get("conversions_value"),
+            "all_conversions":          r.get("all_conversions"),
+            "view_through_conversions": r.get("view_through_conversions"),
         })
     supabase.table("google_ads_insights").upsert(
         records, on_conflict="user_id,date_start,campaign_id"
@@ -72,6 +83,176 @@ def upsert_google_ads_ad_insights(supabase: Client, user_id: str, rows: list[dic
     supabase.table("google_ads_ad_insights").upsert(
         records, on_conflict="user_id,date_start,ad_id"
     ).execute()
+
+
+def upsert_google_conversion_actions(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_conversion_actions (`conversion_actions.actions_de`).
+    Conflict sur (user_id, conversion_action_id) : les réglages ACTUELS de
+    chaque action, réécrits à chaque passage. `None` reste NULL : un réglage
+    non lu ne se devine pas.
+    """
+    if not rows:
+        return
+    par_id = {}
+    for r in rows:
+        aid = str(r.get("conversion_action_id", ""))
+        par_id[aid] = {
+            "user_id":                  user_id,
+            "conversion_action_id":     aid,
+            "name":                     r.get("name", ""),
+            "category":                 r.get("category"),
+            "status":                   r.get("status"),
+            "always_use_default_value": r.get("always_use_default_value"),
+            "default_value":            r.get("default_value"),
+            "currency_code":            r.get("currency_code"),
+        }
+    supabase.table("google_ads_conversion_actions").upsert(
+        list(par_id.values()), on_conflict="user_id,conversion_action_id"
+    ).execute()
+
+
+# Une récolte complète (37 mois × campagnes × actions) peut porter des dizaines
+# de milliers de lignes : un seul POST de cette taille risque le délai de
+# PostgREST. 1 000 = la taille de page que PostgREST rend déjà.
+_LOT_ECRITURE = 1000
+
+
+def upsert_google_conversions_par_action(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_conversions_by_action (`conversions_par_action.lignes_de`).
+    Conflict sur (user_id, date_start, campaign_id, conversion_action_id).
+    Conversions et valeur passent telles quelles, `None` compris (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("campaign_id", "")), str(r.get("conversion_action_id", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":              user_id,
+            "date_start":           key[0],
+            "campaign_id":          key[1],
+            "conversion_action_id": key[2],
+            "conversions":          r.get("conversions"),
+            "conversions_value":    r.get("conversions_value"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_conversions_by_action").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,campaign_id,conversion_action_id",
+        ).execute()
+
+
+def upsert_google_groupes_elements(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_asset_group_insights (`groupes_elements.lignes_de`).
+    Conflict sur (user_id, date_start, asset_group_id) : 1 ligne par Groupe
+    d'éléments × jour. Les mesures passent telles quelles, `None` compris :
+    une métrique que Google n'a pas rendue s'écrit NULL, jamais 0 (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("asset_group_id", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":           user_id,
+            "date_start":        key[0],
+            "campaign_id":       str(r.get("campaign_id", "")),
+            "asset_group_id":    key[1],
+            "asset_group_name":  r.get("asset_group_name", ""),
+            "impressions":       r.get("impressions"),
+            "clicks":            r.get("clicks"),
+            "cost_micros":       r.get("cost_micros"),
+            "conversions":       r.get("conversions"),
+            "conversions_value": r.get("conversions_value"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_asset_group_insights").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,asset_group_id",
+        ).execute()
+
+
+def upsert_google_termes_recherche(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_search_terms (`termes_recherche.lignes_de`).
+    Conflict sur (user_id, date_start, ad_group_id, search_term,
+    keyword_criterion_id, search_term_match_type) : un terme apparié par deux
+    mots-clés reste deux lignes. Les mesures passent telles quelles, `None`
+    compris (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("ad_group_id", "")), r.get("search_term", ""),
+               r.get("keyword_criterion_id", ""), r.get("search_term_match_type", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":                user_id,
+            "date_start":             key[0],
+            "campaign_id":            str(r.get("campaign_id", "")),
+            "ad_group_id":            key[1],
+            "ad_group_name":          r.get("ad_group_name", ""),
+            "search_term":            key[2],
+            "keyword_criterion_id":   key[3],
+            "keyword_text":           r.get("keyword_text", ""),
+            "keyword_match_type":     r.get("keyword_match_type", ""),
+            "search_term_match_type": key[4],
+            "impressions":            r.get("impressions"),
+            "clicks":                 r.get("clicks"),
+            "cost_micros":            r.get("cost_micros"),
+            "conversions":            r.get("conversions"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_search_terms").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,ad_group_id,search_term,keyword_criterion_id,search_term_match_type",
+        ).execute()
+
+
+def upsert_google_clusters_termes(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_search_term_clusters (`clusters_termes.lignes_de`).
+    Conflict sur (user_id, campaign_id, cluster_id) : une ligne par niveau
+    (campagne, ou `""` pour le compte) × cluster, réécrite à chaque passage avec
+    sa fenêtre de 90 jours. Un cluster absent du dernier passage garde sa ligne
+    et son ancienne fenêtre : la page ne lit que la fenêtre la plus récente de
+    chaque niveau, rien n'est effacé. Aucune colonne de coût (Google le refuse,
+    carte issue 19). Les mesures passent telles quelles, `None` compris
+    (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    par_cle = {}
+    for r in rows:
+        key = (str(r.get("campaign_id", "")), str(r.get("cluster_id", "")))
+        par_cle[key] = {
+            "user_id":        user_id,
+            "campaign_id":    key[0],
+            "cluster_id":     key[1],
+            "category_label": r.get("category_label", ""),
+            "impressions":    r.get("impressions"),
+            "clicks":         r.get("clicks"),
+            "conversions":    r.get("conversions"),
+            "terms":          r.get("terms") or [],
+            "window_start":   r.get("window_start"),
+            "window_end":     r.get("window_end"),
+        }
+    records = list(par_cle.values())
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_search_term_clusters").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,campaign_id,cluster_id",
+        ).execute()
 
 
 def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:

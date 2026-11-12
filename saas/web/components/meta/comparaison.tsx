@@ -8,19 +8,18 @@ import { valeurElement } from "@/lib/meta/changements";
 import { ouvrirSurPlace } from "@/lib/meta/sur-place";
 import {
   FAMILLES_METRIQUES,
-  MAX_COMPARES,
   METRIQUES,
   NOMS_NIVEAUX,
-  PALETTE_COMPARES,
+  TOUT_COCHER,
   basculerCoche,
   choixMetrique,
+  couleurDePlace,
   dateBulle,
   formaterValeur,
   placesVersUrl,
   pluriel,
   type Comparaison as DonneesComparaison,
   type ElementCompare,
-  type Niveau,
 } from "@/lib/meta/lecture";
 import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 
@@ -32,9 +31,9 @@ import { lienMeta, SANS_PANNEAU, type Params } from "@/lib/meta/liens";
 // puis les deux graphes côte à côte en pleine largeur — le brief dit « un ou
 // deux line plots côte à côte ».
 //
-// Tout ce qui change l'état est un LIEN (niveau, métriques, cases) : l'URL le
-// porte, un lien partagé rouvre la même comparaison. Seul le refus d'une
-// cinquième case est un état local : il n'y a rien à écrire dans l'URL.
+// Tout ce qui change l'état est un LIEN (niveau, métriques, cases, « Tout
+// cocher ») : l'URL le porte, un lien partagé rouvre la même comparaison. On
+// coche autant de lignes qu'on veut (David, 2026-11-12).
 //
 // Grammaire : la liste porte le chiffre (la valeur de la métrique 1, en gras)
 // avant la barre ; les graphes viennent après.
@@ -71,7 +70,6 @@ export function Comparaison({
    *  journal n'a pas pu être lu (la Tendance le dit). */
   marques: Record<string, number[]> | null;
 }) {
-  const [refus, setRefus] = useState<string | null>(null);
   const noms = NOMS_NIVEAUX[c.niveau];
   return (
     <section aria-labelledby="titre-comparaison">
@@ -87,7 +85,7 @@ export function Comparaison({
         </div>
         {c.elements.length === 0 ? (
           <p className="px-5 py-16 text-center text-[14px] text-muted">
-            Aucun{c.niveau === "annonces" ? "e annonce n'a" : " groupe d'annonces n'a"} de chiffres sur cette période.
+            {c.niveau === "annonces" ? "Aucune annonce n'a" : c.niveau === "groupes" ? "Aucun groupe d'annonces n'a" : "Aucune campagne n'a"} de chiffres sur cette période.
           </p>
         ) : (
           <>
@@ -96,7 +94,7 @@ export function Comparaison({
                 <Croisement c={c} />
               </div>
               <div className="min-w-0 p-3">
-                <Liste c={c} params={params} vignettes={vignettes} refus={refus} refuser={setRefus} />
+                <Liste c={c} params={params} vignettes={vignettes} />
               </div>
             </div>
             <div className="p-5">
@@ -125,7 +123,7 @@ function Pastille({ n }: { n: 1 | 2 }) {
 // vue (David, 2026-10-25 : comparer le CTR au coût par résultat) ; la vue ne
 // donne que la paire de départ. Neuf pastilles par rangée ne tenaient plus.
 function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
-  const niveaux: Niveau[] = ["groupes", "annonces"];
+  const niveaux = c.niveaux;
   const [ouvert, setOuvert] = useState<0 | 1 | null>(null);
   useEffect(() => {
     if (ouvert === null) return;
@@ -145,7 +143,7 @@ function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
       {/* Sous un groupe d'annonces choisi, on ne compare que ses annonces :
           le choix du niveau n'aurait plus qu'une ligne à montrer. */}
       {!c.niveauImpose && (
-        <nav className="grid min-w-0 max-w-full grid-cols-2 rounded-full bg-[#efeee9] p-1" aria-label="Niveau comparé">
+        <nav className={`grid min-w-0 max-w-full rounded-full bg-[#efeee9] p-1 ${niveaux.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} aria-label="Niveau comparé">
           {niveaux.map((n) => (
             <Link
               key={n}
@@ -224,34 +222,22 @@ function Reglages({ c, params }: { c: DonneesComparaison; params: Params }) {
 // leur barre et la valeur des deux métriques sous le nom. Sur une colonne, à
 // côté du Croisement, dans une fenêtre qui défile : la page ne s'allonge plus
 // avec le nombre d'annonces (David, 2026-10-25).
-function Liste({
-  c,
-  params,
-  vignettes,
-  refus,
-  refuser,
-}: {
-  c: DonneesComparaison;
-  params: Params;
-  vignettes: Record<string, string>;
-  refus: string | null;
-  refuser: (cle: string | null) => void;
-}) {
+function Liste({ c, params, vignettes }: { c: DonneesComparaison; params: Params; vignettes: Record<string, string> }) {
   const [m1, m2] = c.metriques;
   // La barre se rapporte à la plus grande valeur MESURÉE ; un « — » n'en a pas.
   const max = Math.max(0, ...c.elements.map((e) => e.valeurs[0] ?? 0));
-  const plein = c.places.filter((x) => x !== null).length >= MAX_COMPARES;
+  const nbCoches = c.places.filter((x) => x !== null).length;
+  const motElement = c.niveau === "annonces" ? "annonce" : c.niveau === "groupes" ? "groupe" : "campagne";
 
   const ligne = (e: ElementCompare, rang: number) => {
     const coche = e.place !== null;
-    const couleur = coche ? PALETTE_COMPARES[e.place!] : null;
-    const refusee = refus === e.cle;
+    const couleur = coche ? couleurDePlace(e.place!) : null;
     const largeur = e.valeurs[0] === null || max === 0 ? 0 : (e.valeurs[0] / max) * 100;
     const contenu = (
       <>
         <span
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none ${
-            coche ? "border-transparent text-white" : refusee ? "border-neg text-transparent" : plein ? "border-dashed border-[#cfcec8] text-transparent" : "border-[#cfcec8] text-transparent"
+            coche ? "border-transparent text-white" : "border-[#cfcec8] text-transparent"
           }`}
           style={couleur ? { background: couleur } : undefined}
           aria-hidden
@@ -269,10 +255,12 @@ function Liste({
           </span>
           {/* Le type que compte un résultat, écrit à côté — deux voisins de
               la liste ne comptent pas forcément la même chose. */}
-          <span className="block truncate text-[11.5px] text-faint">
-            {e.sous}
-            {e.typeResultat && <span className="text-muted"> · {e.typeResultat}</span>}
-          </span>
+          {(e.sous || e.typeResultat) && (
+            <span className="block truncate text-[11.5px] text-faint">
+              {e.sous}
+              {e.typeResultat && <span className="text-muted">{e.sous ? " · " : ""}{e.typeResultat}</span>}
+            </span>
+          )}
           <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-[#efeee9]">
             <span
               className="block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
@@ -295,35 +283,18 @@ function Liste({
       </>
     );
     const classes = `flex w-full min-w-0 items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand`;
-    const resultat = basculerCoche(c.places, e.cle);
-    const etiquette = `${coche ? "Décocher" : "Cocher"} ${e.nom || "sans nom"}, ${e.sous}${e.typeResultat ? `, ${e.typeResultat}` : ""}`;
-
-    // La cinquième case se REFUSE, visiblement : elle reste à sa place, son
-    // cadre passe en rouge et une phrase dit quoi faire — aucune autre n'est
-    // décochée pour elle (user story 33).
-    const cocher =
-      resultat === "refus" ? (
-        <button
-          type="button"
-          onClick={() => refuser(e.cle)}
-          aria-label={etiquette}
-          aria-describedby="refus-comparaison"
-          className={`${classes} cursor-not-allowed ${refusee ? "bg-[#fbe9e7]" : "hover:bg-canvas"}`}
-        >
-          {contenu}
-        </button>
-      ) : (
-        <Link
-          href={lienMeta(params, { comparer: placesVersUrl(resultat) })}
-          scroll={false}
-          onClick={() => refuser(null)}
-          aria-label={etiquette}
-          className={`${classes} ${coche ? "bg-[#f6f7ff]" : "hover:bg-canvas"}`}
-        >
-          {contenu}
-        </Link>
-      );
-    if (c.niveau === "groupes") return <div key={e.cle} className="min-w-0">{cocher}</div>;
+    const etiquette = `${coche ? "Décocher" : "Cocher"} ${e.nom || "sans nom"}${e.sous ? `, ${e.sous}` : ""}${e.typeResultat ? `, ${e.typeResultat}` : ""}`;
+    const cocher = (
+      <Link
+        href={lienMeta(params, { comparer: placesVersUrl(basculerCoche(c.places, e.cle)) })}
+        scroll={false}
+        aria-label={etiquette}
+        className={`${classes} ${coche ? "bg-[#f6f7ff]" : "hover:bg-canvas"}`}
+      >
+        {contenu}
+      </Link>
+    );
+    if (c.niveau !== "annonces") return <div key={e.cle} className="min-w-0">{cocher}</div>;
     return (
       <div key={e.cle} className="flex min-w-0 items-start gap-1">
         <div className="min-w-0 flex-1">{cocher}</div>
@@ -347,24 +318,47 @@ function Liste({
 
   return (
     <div>
+      <ToutCocher
+        nbCoches={nbCoches}
+        total={c.elements.length}
+        cocherTout={lienMeta(params, { comparer: [TOUT_COCHER] })}
+        toutDecocher={lienMeta(params, { comparer: placesVersUrl([]) })}
+      />
       <div className="max-h-[480px] overflow-y-auto overscroll-contain">
         <div className="grid gap-y-1">
           {c.elements.map((e, i) => ligne(e, i + 1))}
         </div>
       </div>
-      <p id="refus-comparaison" className="px-3 pt-2 text-[11.5px] text-faint" aria-live="polite">
-        {refus ? (
-          <span className="font-medium text-neg">
-            {MAX_COMPARES} au maximum : décoche un élément pour en comparer un autre.
-          </span>
-        ) : (
-          <>
-            {pluriel(c.elements.length, c.niveau === "annonces" ? "annonce" : "groupe")}
-            {c.niveau === "groupes" && " d'annonces"} · coche jusqu&apos;à {MAX_COMPARES} éléments. Classés sur « {METRIQUES[m1].nom} »
-            {METRIQUES[m1].hausseBonne === false ? ", du moins cher au plus cher" : ", du plus haut au plus bas"} ; « — » en dernier = rien de mesuré.
-          </>
-        )}
+      <p className="px-3 pt-2 text-[11.5px] text-faint">
+        {pluriel(c.elements.length, motElement)}
+        {c.niveau === "groupes" && " d'annonces"} · coche-en autant que tu veux. Classés sur « {METRIQUES[m1].nom} »
+        {METRIQUES[m1].hausseBonne === false ? ", du moins cher au plus cher" : ", du plus haut au plus bas"} ; « — » en dernier = rien de mesuré.
       </p>
+    </div>
+  );
+}
+
+/** « 3 cochés sur 42 », et de quoi tout cocher ou tout décocher d'un clic. */
+function ToutCocher({ nbCoches, total, cocherTout, toutDecocher }: { nbCoches: number; total: number; cocherTout: string; toutDecocher: string }) {
+  const lien =
+    "rounded-full px-2.5 py-1 text-[12px] font-medium text-brand transition-colors hover:bg-[#eef2ff] motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-2">
+      <span className="text-[12px] tabular-nums text-muted">
+        {nbCoches} coché{nbCoches > 1 ? "s" : ""} sur {total}
+      </span>
+      <span className="flex gap-1">
+        {nbCoches < total && (
+          <Link href={cocherTout} scroll={false} className={lien}>
+            Tout cocher
+          </Link>
+        )}
+        {nbCoches > 0 && (
+          <Link href={toutDecocher} scroll={false} className={lien}>
+            Tout décocher
+          </Link>
+        )}
+      </span>
     </div>
   );
 }
@@ -461,7 +455,7 @@ function Croisement({ c }: { c: DonneesComparaison }) {
               <title>
                 {`${e.nom || "Sans nom"} · ${METRIQUES[m1].nom} ${formaterValeur(m1, e.valeurs[0])} · ${METRIQUES[m2].nom} ${formaterValeur(m2, e.valeurs[1])} · dépense ${formaterValeur("depense", e.depense)}`}
               </title>
-              <circle cx={x} cy={y} r={r} fill={PALETTE_COMPARES[e.place!]} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
+              <circle cx={x} cy={y} r={r} fill={couleurDePlace(e.place!)} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
               <text x={x} y={y + 4} textAnchor="middle" fontSize={12.5} fontWeight={600} fill="#fff">
                 {rang(e)}
               </text>

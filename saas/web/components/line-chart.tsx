@@ -194,7 +194,7 @@ export function LineChart({
   // était fourni (page `px-4` + carte `px-3` + colonne des noms de zone
   // `w-[52px]` + `gap-1.5`). Elle a quitté l'hebdo (ticket 10 du chantier
   // hebdo) ; 259 px reste la borne, et une marge sous les 303 px des appelants
-  // restants (`channel-dash`/`comparaison`/`couts-modules`). Cette valeur ne sert QUE le calcul
+  // restants (`comparaison`/`couts-modules`). Cette valeur ne sert QUE le calcul
   // d'effacement des étiquettes ci-dessous, pas le dimensionnement des points
   // juste au-dessus (`taillePoint`) : rien n'a signalé ce dernier comme faux,
   // et 327 y reste une marge, pas une mesure de collision — le changer sans
@@ -591,8 +591,7 @@ export function LineChart({
 // affichée — celle-ci suit toujours la largeur RÉELLE du conteneur, cf. le
 // paragraphe précédent.
 //
-// LE CALCUL, POUR DES VALEURS DE `daily` PLAFONNÉES À 120 (`lib/channels.ts`,
-// `chiffre.tsx` lit la même série que `channel-dash.tsx`) :
+// LE CALCUL, POUR DES VALEURS DE `daily` PLAFONNÉES À 120 (`chiffre.tsx`) :
 //   espacementPx = 180 / (n − 1)
 //   taillePoint  = clamp(espacementPx × 0,75, 2, 4)   — diamètre, en pixels réels
 //   bordurePoint = taillePoint × 0,3                  — même proportion que

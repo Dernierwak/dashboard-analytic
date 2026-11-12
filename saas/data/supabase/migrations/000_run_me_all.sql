@@ -26,6 +26,14 @@
 --   2)     GA4 : ga4_insights (+ campagne UTM) et ga4_events (funnel)
 --   3)     profiles.objectif + fetch_schedule
 --   3bis)  google_ads_ad_insights — le détail par annonce
+--   3quater) google_ads_conversion_actions, google_ads_conversions_by_action —
+--          la règle « sans valeur » de la page Google (google-ads, ticket 03)
+--   3quinquies) google_ads_asset_group_insights — les Groupes d'éléments PMax
+--          × jour, le détail d'une campagne Performance Max (google-ads, ticket 05)
+--   3sexies) google_ads_search_terms — les termes de recherche × jour, sous leur
+--          mot-clé déclencheur : le module Groupes de termes (google-ads, ticket 09)
+--   3septies) google_ads_search_term_clusters — les Clusters de Google sur 90
+--          jours, mode Clusters du même module (google-ads, ticket 10)
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   4bis)  connected_accounts.a_reconnecter_* — le jeton mort, la reconnexion demandée
@@ -48,6 +56,8 @@
 --          connected_accounts.rattrapage_instagram_curseur / _fini_le
 --          (instagram-construction, 08),
 --          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
+--   25)    google_ads_insights — le type de campagne et trois colonnes de
+--          conversion (google-ads, ticket 02)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -679,6 +689,309 @@ CREATE POLICY "gads_ad_insert_own" ON public.google_ads_ad_insights
 CREATE POLICY "gads_ad_update_own" ON public.google_ads_ad_insights
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "gads_ad_delete_own" ON public.google_ads_ad_insights
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3quater) GOOGLE ADS — les actions de conversion, et les conversions par
+--       action × campagne × jour (`.scratch/google-ads/spec.md` § « Les
+--       conversions et leur valeur » ; ticket 03 de la construction Google Ads).
+--
+--       Elles servent une seule règle de la page : la valeur de conversion et
+--       le ROAS s'affichent « — » quand TOUTES les actions qui ont converti sur
+--       la période et la campagne choisies sont « sans valeur » — valeur
+--       imposée (`always_use_default_value`) à 0 ou à 1 (carte, issue 13 :
+--       chez A, 8 actions principales sur 13 à 1 imposé, leur « valeur » est
+--       le nombre de conversions déguisé en francs).
+--
+--       `google_ads_conversion_actions` : les réglages ACTUELS, une ligne par
+--       action, réécrits à chaque passage. Réglages nullables : NULL = non
+--       rendu par Google, jamais deviné.
+--       `google_ads_conversions_by_action` : `metrics.conversions` et
+--       `conversions_value` segmentés par `segments.conversion_action`. Une
+--       requête à part : l'API refuse impressions et coût avec ce segment
+--       (carte, issue 18). `numeric` sans échelle : la somme par action doit
+--       redonner `metrics.conversions` (issue 19), un arrondi par ligne l'en
+--       écarterait.
+--
+--       Ici, AVANT la section 15, parce que la boucle 15.1 pose les politiques
+--       `partage_*` sur les tables qui existent déjà : un invité voit la
+--       même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_conversion_actions (
+    user_id                  uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    conversion_action_id     text NOT NULL,
+    name                     text NOT NULL DEFAULT '',
+    category                 text,
+    status                   text,
+    always_use_default_value boolean,
+    default_value            numeric,
+    currency_code            text,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, conversion_action_id)
+);
+
+DROP TRIGGER IF EXISTS trg_google_ads_conversion_actions_updated_at ON public.google_ads_conversion_actions;
+CREATE TRIGGER trg_google_ads_conversion_actions_updated_at
+    BEFORE UPDATE ON public.google_ads_conversion_actions
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_conversion_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_conv_actions_select_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_insert_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_update_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_delete_own" ON public.google_ads_conversion_actions;
+CREATE POLICY "gads_conv_actions_select_own" ON public.google_ads_conversion_actions
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_insert_own" ON public.google_ads_conversion_actions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_update_own" ON public.google_ads_conversion_actions
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_delete_own" ON public.google_ads_conversion_actions
+    FOR DELETE USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.google_ads_conversions_by_action (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id              uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date_start           date NOT NULL,
+    campaign_id          text NOT NULL,
+    conversion_action_id text NOT NULL,
+    conversions          numeric,
+    conversions_value    numeric,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_conversions_by_action_uq
+        UNIQUE (user_id, date_start, campaign_id, conversion_action_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_conv_by_action_user_date
+    ON public.google_ads_conversions_by_action (user_id, date_start DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_conversions_by_action_updated_at ON public.google_ads_conversions_by_action;
+CREATE TRIGGER trg_google_ads_conversions_by_action_updated_at
+    BEFORE UPDATE ON public.google_ads_conversions_by_action
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_conversions_by_action ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_conv_by_action_select_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_insert_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_update_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_delete_own" ON public.google_ads_conversions_by_action;
+CREATE POLICY "gads_conv_by_action_select_own" ON public.google_ads_conversions_by_action
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_insert_own" ON public.google_ads_conversions_by_action
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_update_own" ON public.google_ads_conversions_by_action
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_delete_own" ON public.google_ads_conversions_by_action
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3quinquies) GOOGLE ADS — les Groupes d'éléments PMax × jour
+--       (`.scratch/google-ads/spec.md` § « Les colonnes et tables nouvelles » ;
+--       ticket 05 de la construction Google Ads).
+--
+--       Google ne rend AUCUNE ligne PMax dans `ad_group_ad`, et ne lève aucune
+--       erreur (carte, issues 01 et 10) : sans cette table, une campagne
+--       Performance Max n'a pas de détail au Tableau. ≈ 600 lignes sur 90 jours
+--       chez le compte A (issue 10).
+--
+--       Le groupe se rattache à sa campagne par `campaign_id` (l'ID Google).
+--       Mesures nullables, sans DEFAULT : NULL = non rendu par Google, jamais
+--       un zéro par défaut. Un jour que Google omet n'a pas de ligne.
+--       `numeric` sans échelle pour conversions et valeur : les conversions
+--       data-driven sont fractionnaires, un arrondi par ligne fausserait la somme.
+--
+--       Ici, AVANT la section 15, pour la boucle 15.1 (politiques `partage_*`) :
+--       un invité voit la même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_asset_group_insights (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date_start        date NOT NULL,
+    campaign_id       text NOT NULL,
+    asset_group_id    text NOT NULL,
+    asset_group_name  text NOT NULL DEFAULT '',
+    impressions       bigint,
+    clicks            bigint,
+    cost_micros       bigint,
+    conversions       numeric,
+    conversions_value numeric,
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_asset_group_insights_uq
+        UNIQUE (user_id, date_start, asset_group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_asset_group_user_date
+    ON public.google_ads_asset_group_insights (user_id, date_start DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_asset_group_insights_updated_at ON public.google_ads_asset_group_insights;
+CREATE TRIGGER trg_google_ads_asset_group_insights_updated_at
+    BEFORE UPDATE ON public.google_ads_asset_group_insights
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_asset_group_insights ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_asset_group_select_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_insert_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_update_own" ON public.google_ads_asset_group_insights;
+DROP POLICY IF EXISTS "gads_asset_group_delete_own" ON public.google_ads_asset_group_insights;
+CREATE POLICY "gads_asset_group_select_own" ON public.google_ads_asset_group_insights
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_insert_own" ON public.google_ads_asset_group_insights
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_update_own" ON public.google_ads_asset_group_insights
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_asset_group_delete_own" ON public.google_ads_asset_group_insights
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3sexies) GOOGLE ADS — les termes de recherche × jour
+--       (`.scratch/google-ads/spec.md` § « Les colonnes et tables nouvelles » ;
+--       ticket 09 de la construction Google Ads).
+--
+--       Ce que les gens ont tapé avant de voir une annonce Search, lu dans
+--       `search_term_view` avec le mot-clé déclencheur (texte, type de
+--       correspondance, critère) et le type d'appariement du terme (carte,
+--       issues 17 et 19). ≈ 10 000 lignes sur 90 jours chez le compte A.
+--
+--       Une ligne par jour × groupe d'annonces × terme × mot-clé × appariement :
+--       un même terme apparié par deux mots-clés fait deux lignes. Les clés
+--       texte sont NOT NULL DEFAULT '' : un terme sans mot-clé déclencheur
+--       s'écrit '' — un NULL dans une contrainte UNIQUE ne serait égal à rien,
+--       et l'upsert doublerait la ligne à chaque passage.
+--       Le terme est recopié tel que Google le rend (minuscules, accents
+--       conservés), sans normalisation.
+--       Mesures nullables, sans DEFAULT : NULL = non rendu par Google, jamais
+--       un zéro par défaut. Un jour que Google omet n'a pas de ligne.
+--       `numeric` sans échelle pour les conversions (fractionnaires).
+--
+--       Ici, AVANT la section 15, pour la boucle 15.1 (politiques `partage_*`) :
+--       un invité voit la même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_search_terms (
+    id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date_start             date NOT NULL,
+    campaign_id            text NOT NULL,
+    ad_group_id            text NOT NULL,
+    ad_group_name          text NOT NULL DEFAULT '',
+    search_term            text NOT NULL,
+    keyword_criterion_id   text NOT NULL DEFAULT '',
+    keyword_text           text NOT NULL DEFAULT '',
+    keyword_match_type     text NOT NULL DEFAULT '',
+    search_term_match_type text NOT NULL DEFAULT '',
+    impressions            bigint,
+    clicks                 bigint,
+    cost_micros            bigint,
+    conversions            numeric,
+    created_at             timestamptz NOT NULL DEFAULT now(),
+    updated_at             timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_search_terms_uq
+        UNIQUE (user_id, date_start, ad_group_id, search_term, keyword_criterion_id, search_term_match_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_search_terms_user_date
+    ON public.google_ads_search_terms (user_id, date_start DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_search_terms_updated_at ON public.google_ads_search_terms;
+CREATE TRIGGER trg_google_ads_search_terms_updated_at
+    BEFORE UPDATE ON public.google_ads_search_terms
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_search_terms ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_search_terms_select_own" ON public.google_ads_search_terms;
+DROP POLICY IF EXISTS "gads_search_terms_insert_own" ON public.google_ads_search_terms;
+DROP POLICY IF EXISTS "gads_search_terms_update_own" ON public.google_ads_search_terms;
+DROP POLICY IF EXISTS "gads_search_terms_delete_own" ON public.google_ads_search_terms;
+CREATE POLICY "gads_search_terms_select_own" ON public.google_ads_search_terms
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_search_terms_insert_own" ON public.google_ads_search_terms
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_terms_update_own" ON public.google_ads_search_terms
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_terms_delete_own" ON public.google_ads_search_terms
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3septies) GOOGLE ADS — les Clusters de Google (fenêtre de 90 jours)
+--       (`.scratch/google-ads/spec.md` § « Les colonnes et tables nouvelles » ;
+--       ticket 10 de la construction Google Ads).
+--
+--       Les groupes que Google forme avec les termes de recherche, lus dans
+--       `campaign_search_term_insight` (une campagne par requête) et
+--       `customer_search_term_insight` (le compte, qui mêle Search et PMax) :
+--       mode « Clusters Google » du module Groupes de termes.
+--
+--       Une ligne par niveau × cluster. `campaign_id = ''` = le niveau compte
+--       (NOT NULL DEFAULT '' : un NULL dans la contrainte UNIQUE ne serait égal
+--       à rien, et l'upsert doublerait la ligne à chaque passage).
+--       PAS DE SÉRIE PAR JOUR : Google l'exige un cluster à la fois (≈ 960
+--       requêtes par jour chez A, carte issue 19). La récolte lit la fenêtre
+--       agrégée des 90 derniers jours pleins et la réécrit à chaque passage ;
+--       `window_start`/`window_end` disent laquelle. Un cluster absent du
+--       dernier passage garde sa ligne et son ancienne fenêtre : la page ne lit
+--       que la fenêtre la plus récente de chaque niveau — rien n'est effacé.
+--       PAS DE COÛT : Google le refuse (PROHIBITED_METRIC_IN_SELECT_OR_WHERE_CLAUSE).
+--       `category_label = ''` = le fourre-tout de Google, gardé.
+--       `terms` : les termes que Google liste pour le cluster, [{term,
+--       impressions, clicks, conversions}] — jamais le tout (termes masqués).
+--       Mesures nullables, sans DEFAULT : NULL = non rendu par Google.
+--
+--       Ici, AVANT la section 15, pour la boucle 15.1 (politiques `partage_*`) :
+--       un invité voit la même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_search_term_clusters (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    campaign_id    text NOT NULL DEFAULT '',
+    cluster_id     text NOT NULL,
+    category_label text NOT NULL DEFAULT '',
+    impressions    bigint,
+    clicks         bigint,
+    conversions    numeric,
+    terms          jsonb NOT NULL DEFAULT '[]'::jsonb,
+    window_start   date NOT NULL,
+    window_end     date NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_search_term_clusters_uq
+        UNIQUE (user_id, campaign_id, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_search_term_clusters_user_window
+    ON public.google_ads_search_term_clusters (user_id, window_end DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_search_term_clusters_updated_at ON public.google_ads_search_term_clusters;
+CREATE TRIGGER trg_google_ads_search_term_clusters_updated_at
+    BEFORE UPDATE ON public.google_ads_search_term_clusters
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_search_term_clusters ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_search_term_clusters_select_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_insert_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_update_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_delete_own" ON public.google_ads_search_term_clusters;
+CREATE POLICY "gads_search_term_clusters_select_own" ON public.google_ads_search_term_clusters
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_insert_own" ON public.google_ads_search_term_clusters
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_update_own" ON public.google_ads_search_term_clusters
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_delete_own" ON public.google_ads_search_term_clusters
     FOR DELETE USING (auth.uid() = user_id);
 
 
@@ -1528,6 +1841,14 @@ DECLARE
         -- régies publicitaires
         'meta_ads_insights', 'google_ads_insights', 'google_ads_ad_insights',
         'meta_campaign_config', 'google_campaign_config',
+        -- la règle « sans valeur » de la page Google (section 3quater)
+        'google_ads_conversion_actions', 'google_ads_conversions_by_action',
+        -- les Groupes d'éléments PMax (section 3quinquies)
+        'google_ads_asset_group_insights',
+        -- les termes de recherche (section 3sexies)
+        'google_ads_search_terms',
+        -- les Clusters de Google (section 3septies)
+        'google_ads_search_term_clusters',
         -- ce que disent les annonces Meta (section 0bis)
         'meta_ads_creatives', 'meta_ads_creative_assets',
         -- organique et analytics
@@ -1766,7 +2087,7 @@ ALTER TABLE public.instagram_organic_posts
 --     seul le worker (clé service) écrit. Hors de la liste 15.1 exprès : elle
 --     pose aussi `partage_insert/update/delete`, qui laisseraient un éditeur
 --     invité écrire des relevés. Les politiques ne s'appellent pas `partage_*`
---     pour ne pas fausser le contrôle A (19 tables) en fin de fichier.
+--     pour ne pas fausser le contrôle A (24 tables) en fin de fichier.
 -- ============================================================================
 
 ALTER TABLE public.instagram_organic_posts
@@ -1891,6 +2212,39 @@ ALTER TABLE public.connected_accounts
 
 
 -- ============================================================================
+-- 25) google_ads_insights — le type de campagne et trois colonnes de conversion
+--     (`.scratch/google-ads/spec.md` § Les colonnes et tables nouvelles ;
+--     ticket 02 de la construction Google Ads).
+--
+--     `advertising_channel_type` : le type de Google recopié BRUT (`SEARCH`,
+--     `PERFORMANCE_MAX`, `SHOPPING`…). La page le nomme en six libellés ;
+--     stocker le libellé perdrait le vrai type que le Tableau et l'export
+--     doivent montrer sous « Autres types ».
+--
+--     `conversions_value`, `all_conversions`, `view_through_conversions` :
+--     demandées dans la même requête que les métriques d'avant (avec
+--     `segments.date`, Google omet les jours où toutes les métriques demandées
+--     valent 0 — carte, issue 10). `numeric` sans échelle : une valeur de
+--     conversion n'a pas de borne connue, et l'arrondir serait déjà un chiffre
+--     retouché.
+--
+--     Toutes NULLABLES, sans DEFAULT : NULL = pas lu (lignes écrites avant ce
+--     ticket, ou champ que Google n'a pas rendu), jamais 0 (`CLAUDE.md` §7).
+--     Les colonnes d'avant restent NOT NULL DEFAULT 0 : d'autres lecteurs en
+--     dépendent. Tant que cette section n'est pas jouée, la récolte Google qui
+--     écrit ces colonnes échoue (PGRST204) et la page Google ne se lit pas :
+--     la jouer AVANT le déploiement et avant le passage du worker.
+--
+--     Ajout seul. RLS déjà posée (table de la liste 15.1).
+-- ============================================================================
+
+ALTER TABLE public.google_ads_insights
+    ADD COLUMN IF NOT EXISTS advertising_channel_type text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS conversions_value        numeric DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS all_conversions          numeric DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS view_through_conversions numeric DEFAULT NULL;
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -1977,6 +2331,25 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'connected_accounts',       'rattrapage_instagram_curseur'), -- §23
     ('c', 'connected_accounts',       'rattrapage_instagram_fini_le'), -- §23
     ('c', 'connected_accounts',       'premier_passage_instagram_le'), -- §23
+    ('c', 'google_ads_insights',      'advertising_channel_type'), -- §25
+    ('c', 'google_ads_insights',      'conversions_value'),    -- §25
+    ('c', 'google_ads_insights',      'all_conversions'),      -- §25
+    ('c', 'google_ads_insights',      'view_through_conversions'), -- §25
+    ('t', 'google_ads_conversion_actions',    NULL),           -- §3quater
+    ('t', 'google_ads_conversions_by_action', NULL),           -- §3quater
+    ('c', 'google_ads_conversion_actions',    'always_use_default_value'), -- §3quater
+    ('c', 'google_ads_conversion_actions',    'default_value'),            -- §3quater
+    ('t', 'google_ads_asset_group_insights',  NULL),           -- §3quinquies
+    ('c', 'google_ads_asset_group_insights',  'asset_group_id'),    -- §3quinquies
+    ('c', 'google_ads_asset_group_insights',  'conversions_value'), -- §3quinquies
+    ('t', 'google_ads_search_terms',          NULL),                     -- §3sexies
+    ('c', 'google_ads_search_terms',          'search_term'),            -- §3sexies
+    ('c', 'google_ads_search_terms',          'keyword_text'),           -- §3sexies
+    ('c', 'google_ads_search_terms',          'search_term_match_type'), -- §3sexies
+    ('t', 'google_ads_search_term_clusters',  NULL),                     -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'category_label'),         -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'terms'),                  -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'window_end'),             -- §3septies
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
@@ -2048,10 +2421,15 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 19 tables de la section 15.
+--   A) Ce que l'invité peut lire — doit lister les 24 tables de la section 15.
 --      (Mesuré le 2026-10-03 sur un PostgreSQL local, après l'arrivée de
 --      meta_ads_creatives et meta_ads_creative_assets : 19 tables distinctes
---      portent une politique `partage_*`.)
+--      portent une politique `partage_*`. Le ticket 03 Google Ads en ajoute
+--      deux — google_ads_conversion_actions, google_ads_conversions_by_action —
+--      d'où 21 ; le ticket 05 ajoute google_ads_asset_group_insights, d'où
+--      22 ; le ticket 09 ajoute google_ads_search_terms, d'où 23 ; le ticket
+--      10 ajoute google_ads_search_term_clusters, d'où 24 — compté sur la
+--      liste, pas mesuré sur une base.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;
