@@ -2,7 +2,7 @@
 
 Les appels vivent un par fichier dans ce dossier (`budgets`, `statuts`,
 `changements`, `insights_campagnes`, `insights_annonces`, `actions_conversion`,
-`conversions_par_action`, `groupes_elements`) ; les écritures dans
+`conversions_par_action`, `groupes_elements`, `termes_recherche`) ; les écritures dans
 `saas/data/supabase/source_data/`.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from saas.data.supabase.source_data.google import (
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     upsert_google_conversion_actions, upsert_google_conversions_par_action,
-    upsert_google_groupes_elements,
+    upsert_google_groupes_elements, upsert_google_termes_recherche,
 )
 from saas.data.supabase.source_data.couverture import avancer_couverture
 from saas.data.supabase.source_data.platform import journal_changements, photo_budget
@@ -26,12 +26,14 @@ from saas.data.fetch_data.sources.google.ads.fetchers import (
     conversions_par_action,
     groupes_elements,
     statuses as statuts,
+    termes_recherche,
 )
 from saas.data.fetch_data.sources.google.auth.oauth import get_access_token_from_refresh
 from saas.data.fetch_data.shared.date_ranges import Fenetre, depart_recolte
 from saas.data.supabase.fetch_state.state import (
     fetch_google_ads_ad_insights_latest_date, fetch_google_ads_latest_date,
     fetch_google_asset_groups_latest_date, fetch_google_conversions_par_action_latest_date,
+    fetch_google_search_terms_latest_date,
 )
 
 # LES DEUX RÉGIES N'OUBLIENT PAS À LA MÊME VITESSE, ET UNE SEULE CONSTANTE POUR
@@ -166,14 +168,24 @@ def recolter(sb, uid, refresh, customer_id, note=_rien, depuis: date | None = No
     if ag_rows:
         upsert_google_groupes_elements(sb, uid, ag_rows)
 
+    # Les termes de recherche Search, sous leur mot-clé déclencheur (module
+    # « Groupes de termes »). Sa propre reprise, même recouvrement : ce sont les
+    # mêmes conversions, datées au clic, qui bougent pendant 30 jours.
+    note("termes de recherche")
+    since_st = depuis or depart_recolte(fetch_google_search_terms_latest_date(sb, uid),
+                                        today, _RECOUVREMENT_JOURS_GOOGLE)
+    st_rows, trous_st = termes_recherche.recuperer(acces, Fenetre(since_st, today))
+    if st_rows:
+        upsert_google_termes_recherche(sb, uid, st_rows)
+
     mot = (f"google: {len(rows)} lignes, {len(ad_rows)} lignes annonces, "
            f"{len(actions)} actions de conversion, {len(ca_rows)} lignes par action, "
-           f"{len(ag_rows)} lignes groupes d'éléments")
+           f"{len(ag_rows)} lignes groupes d'éléments, {len(st_rows)} lignes termes de recherche")
     if err_actions:
         print(f"    google: actions de conversion refusées : {err_actions}")
         mot += f" · actions de conversion REFUSÉES : {err_actions}"
     for quoi, liste in (("campagnes", trous), ("annonces", trous_ad), ("par action", trous_ca),
-                        ("groupes d'éléments", trous_ag)):
+                        ("groupes d'éléments", trous_ag), ("termes de recherche", trous_st)):
         if liste:
             print(f"    google: {len(liste)} tranche(s) {quoi} refusée(s) : "
                   f"{' | '.join(liste)}")

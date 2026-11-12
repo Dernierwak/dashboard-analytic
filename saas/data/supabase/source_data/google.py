@@ -180,6 +180,46 @@ def upsert_google_groupes_elements(supabase: Client, user_id: str, rows: list[di
         ).execute()
 
 
+def upsert_google_termes_recherche(supabase: Client, user_id: str, rows: list[dict]) -> None:
+    """Upsert google_ads_search_terms (`termes_recherche.lignes_de`).
+    Conflict sur (user_id, date_start, ad_group_id, search_term,
+    keyword_criterion_id, search_term_match_type) : un terme apparié par deux
+    mots-clés reste deux lignes. Les mesures passent telles quelles, `None`
+    compris (`CLAUDE.md` §7).
+    """
+    if not rows:
+        return
+    seen = set()
+    records = []
+    for r in rows:
+        key = (r.get("date_start"), str(r.get("ad_group_id", "")), r.get("search_term", ""),
+               r.get("keyword_criterion_id", ""), r.get("search_term_match_type", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({
+            "user_id":                user_id,
+            "date_start":             key[0],
+            "campaign_id":            str(r.get("campaign_id", "")),
+            "ad_group_id":            key[1],
+            "ad_group_name":          r.get("ad_group_name", ""),
+            "search_term":            key[2],
+            "keyword_criterion_id":   key[3],
+            "keyword_text":           r.get("keyword_text", ""),
+            "keyword_match_type":     r.get("keyword_match_type", ""),
+            "search_term_match_type": key[4],
+            "impressions":            r.get("impressions"),
+            "clicks":                 r.get("clicks"),
+            "cost_micros":            r.get("cost_micros"),
+            "conversions":            r.get("conversions"),
+        })
+    for i in range(0, len(records), _LOT_ECRITURE):
+        supabase.table("google_ads_search_terms").upsert(
+            records[i:i + _LOT_ECRITURE],
+            on_conflict="user_id,date_start,ad_group_id,search_term,keyword_criterion_id,search_term_match_type",
+        ).execute()
+
+
 def upsert_google_campaign_statuses(supabase: Client, user_id: str, status_map: dict) -> None:
     """status_map : {campaign_id: (campaign_name, effective_status, start, end)}
 
