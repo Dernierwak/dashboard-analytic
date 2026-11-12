@@ -125,7 +125,7 @@ const COLONNES: { t: Taille; nom: string }[] = [
   { t: "conversions", nom: "Conv." },
   { t: "cout", nom: "Coût CHF" },
 ];
-const RAISON_SANS_COUT = "Google n'a pas rendu ce coût";
+const RAISON_SANS_COUT = "Google ne donne pas ce coût";
 const nomTaille = (t: Taille) => TAILLES.find((x) => x.cle === t)!.nom.toLowerCase();
 
 export function GrapheGroupes({ grappes, taille, mode }: { grappes: Grappe[]; taille: Taille; mode: ModeGroupes }) {
@@ -145,7 +145,7 @@ export function GrapheGroupes({ grappes, taille, mode }: { grappes: Grappe[]; ta
     return m;
   }, [liens, noeuds]);
   const allume = (i: number) => (noeuds[i].centre ? noeuds[i].grappe === active : grappesDe.get(i)?.has(active) ?? false);
-  const unite = mode === "mots-cles" ? "un mot-clé" : "un groupe";
+  const unite = mode === "mots-cles" ? "un mot-clé" : "un cluster de Google";
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -315,7 +315,7 @@ function Classement({
       <table className="w-full table-fixed text-[12px]">
         <thead>
           <tr className="text-left text-muted">
-            <th className="w-[46%] pb-1 font-normal">{mode === "mots-cles" ? "Mot-clé" : "Groupe"}</th>
+            <th className="w-[46%] pb-1 font-normal">{mode === "mots-cles" ? "Mot-clé" : "Cluster"}</th>
             <th className="pb-1 text-right font-normal">Clics</th>
             <th className="pb-1 text-right font-normal">Conv.</th>
             <th className="pb-1 text-right font-normal">Coût CHF</th>

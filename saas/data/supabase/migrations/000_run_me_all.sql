@@ -32,6 +32,8 @@
 --          × jour, le détail d'une campagne Performance Max (google-ads, ticket 05)
 --   3sexies) google_ads_search_terms — les termes de recherche × jour, sous leur
 --          mot-clé déclencheur : le module Groupes de termes (google-ads, ticket 09)
+--   3septies) google_ads_search_term_clusters — les Clusters de Google sur 90
+--          jours, mode Clusters du même module (google-ads, ticket 10)
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   4bis)  connected_accounts.a_reconnecter_* — le jeton mort, la reconnexion demandée
@@ -923,6 +925,77 @@ CREATE POLICY "gads_search_terms_delete_own" ON public.google_ads_search_terms
 
 
 -- ============================================================================
+-- 3septies) GOOGLE ADS — les Clusters de Google (fenêtre de 90 jours)
+--       (`.scratch/google-ads/spec.md` § « Les colonnes et tables nouvelles » ;
+--       ticket 10 de la construction Google Ads).
+--
+--       Les groupes que Google forme avec les termes de recherche, lus dans
+--       `campaign_search_term_insight` (une campagne par requête) et
+--       `customer_search_term_insight` (le compte, qui mêle Search et PMax) :
+--       mode « Clusters Google » du module Groupes de termes.
+--
+--       Une ligne par niveau × cluster. `campaign_id = ''` = le niveau compte
+--       (NOT NULL DEFAULT '' : un NULL dans la contrainte UNIQUE ne serait égal
+--       à rien, et l'upsert doublerait la ligne à chaque passage).
+--       PAS DE SÉRIE PAR JOUR : Google l'exige un cluster à la fois (≈ 960
+--       requêtes par jour chez A, carte issue 19). La récolte lit la fenêtre
+--       agrégée des 90 derniers jours pleins et la réécrit à chaque passage ;
+--       `window_start`/`window_end` disent laquelle. Un cluster absent du
+--       dernier passage garde sa ligne et son ancienne fenêtre : la page ne lit
+--       que la fenêtre la plus récente de chaque niveau — rien n'est effacé.
+--       PAS DE COÛT : Google le refuse (PROHIBITED_METRIC_IN_SELECT_OR_WHERE_CLAUSE).
+--       `category_label = ''` = le fourre-tout de Google, gardé.
+--       `terms` : les termes que Google liste pour le cluster, [{term,
+--       impressions, clicks, conversions}] — jamais le tout (termes masqués).
+--       Mesures nullables, sans DEFAULT : NULL = non rendu par Google.
+--
+--       Ici, AVANT la section 15, pour la boucle 15.1 (politiques `partage_*`) :
+--       un invité voit la même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_search_term_clusters (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    campaign_id    text NOT NULL DEFAULT '',
+    cluster_id     text NOT NULL,
+    category_label text NOT NULL DEFAULT '',
+    impressions    bigint,
+    clicks         bigint,
+    conversions    numeric,
+    terms          jsonb NOT NULL DEFAULT '[]'::jsonb,
+    window_start   date NOT NULL,
+    window_end     date NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_search_term_clusters_uq
+        UNIQUE (user_id, campaign_id, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_search_term_clusters_user_window
+    ON public.google_ads_search_term_clusters (user_id, window_end DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_search_term_clusters_updated_at ON public.google_ads_search_term_clusters;
+CREATE TRIGGER trg_google_ads_search_term_clusters_updated_at
+    BEFORE UPDATE ON public.google_ads_search_term_clusters
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_search_term_clusters ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_search_term_clusters_select_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_insert_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_update_own" ON public.google_ads_search_term_clusters;
+DROP POLICY IF EXISTS "gads_search_term_clusters_delete_own" ON public.google_ads_search_term_clusters;
+CREATE POLICY "gads_search_term_clusters_select_own" ON public.google_ads_search_term_clusters
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_insert_own" ON public.google_ads_search_term_clusters
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_update_own" ON public.google_ads_search_term_clusters
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_search_term_clusters_delete_own" ON public.google_ads_search_term_clusters
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
 -- 3ter) BUDGETS PAR MOIS — voir channel_budgets.sql (source de vérité).
 -- ============================================================================
 
@@ -1774,6 +1847,8 @@ DECLARE
         'google_ads_asset_group_insights',
         -- les termes de recherche (section 3sexies)
         'google_ads_search_terms',
+        -- les Clusters de Google (section 3septies)
+        'google_ads_search_term_clusters',
         -- ce que disent les annonces Meta (section 0bis)
         'meta_ads_creatives', 'meta_ads_creative_assets',
         -- organique et analytics
@@ -2012,7 +2087,7 @@ ALTER TABLE public.instagram_organic_posts
 --     seul le worker (clé service) écrit. Hors de la liste 15.1 exprès : elle
 --     pose aussi `partage_insert/update/delete`, qui laisseraient un éditeur
 --     invité écrire des relevés. Les politiques ne s'appellent pas `partage_*`
---     pour ne pas fausser le contrôle A (23 tables) en fin de fichier.
+--     pour ne pas fausser le contrôle A (24 tables) en fin de fichier.
 -- ============================================================================
 
 ALTER TABLE public.instagram_organic_posts
@@ -2271,6 +2346,10 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_ads_search_terms',          'search_term'),            -- §3sexies
     ('c', 'google_ads_search_terms',          'keyword_text'),           -- §3sexies
     ('c', 'google_ads_search_terms',          'search_term_match_type'), -- §3sexies
+    ('t', 'google_ads_search_term_clusters',  NULL),                     -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'category_label'),         -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'terms'),                  -- §3septies
+    ('c', 'google_ads_search_term_clusters',  'window_end'),             -- §3septies
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
@@ -2342,14 +2421,15 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 23 tables de la section 15.
+--   A) Ce que l'invité peut lire — doit lister les 24 tables de la section 15.
 --      (Mesuré le 2026-10-03 sur un PostgreSQL local, après l'arrivée de
 --      meta_ads_creatives et meta_ads_creative_assets : 19 tables distinctes
 --      portent une politique `partage_*`. Le ticket 03 Google Ads en ajoute
 --      deux — google_ads_conversion_actions, google_ads_conversions_by_action —
 --      d'où 21 ; le ticket 05 ajoute google_ads_asset_group_insights, d'où
---      22 ; le ticket 09 ajoute google_ads_search_terms, d'où 23 — compté
---      sur la liste, pas mesuré sur une base.)
+--      22 ; le ticket 09 ajoute google_ads_search_terms, d'où 23 ; le ticket
+--      10 ajoute google_ads_search_term_clusters, d'où 24 — compté sur la
+--      liste, pas mesuré sur une base.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

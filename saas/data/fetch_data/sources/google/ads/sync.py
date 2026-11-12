@@ -2,7 +2,8 @@
 
 Les appels vivent un par fichier dans ce dossier (`budgets`, `statuts`,
 `changements`, `insights_campagnes`, `insights_annonces`, `actions_conversion`,
-`conversions_par_action`, `groupes_elements`, `termes_recherche`) ; les écritures dans
+`conversions_par_action`, `groupes_elements`, `termes_recherche`,
+`clusters_termes`) ; les écritures dans
 `saas/data/supabase/source_data/`.
 """
 from __future__ import annotations
@@ -12,7 +13,7 @@ from datetime import date, timedelta
 from saas.data.supabase.source_data.google import (
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
     upsert_google_conversion_actions, upsert_google_conversions_par_action,
-    upsert_google_groupes_elements, upsert_google_termes_recherche,
+    upsert_google_clusters_termes, upsert_google_groupes_elements, upsert_google_termes_recherche,
 )
 from saas.data.supabase.source_data.couverture import avancer_couverture
 from saas.data.supabase.source_data.platform import journal_changements, photo_budget
@@ -22,6 +23,7 @@ from saas.data.fetch_data.sources.google.ads.fetchers import (
     budgets,
     campaigns as insights_campagnes,
     changes as changements,
+    clusters_termes,
     conversion_actions as actions_conversion,
     conversions_par_action,
     groupes_elements,
@@ -178,14 +180,24 @@ def recolter(sb, uid, refresh, customer_id, note=_rien, depuis: date | None = No
     if st_rows:
         upsert_google_termes_recherche(sb, uid, st_rows)
 
+    # Les Clusters de Google (mode « Clusters » du même module) : pas de série
+    # par jour sans une requête par cluster (carte, issue 19), donc toujours les
+    # 90 derniers jours pleins, relus en entier — `depuis` n'y change rien.
+    note("clusters de Google")
+    cl_rows, trous_cl = clusters_termes.recuperer(acces, clusters_termes.fenetre_de(today))
+    if cl_rows:
+        upsert_google_clusters_termes(sb, uid, cl_rows)
+
     mot = (f"google: {len(rows)} lignes, {len(ad_rows)} lignes annonces, "
            f"{len(actions)} actions de conversion, {len(ca_rows)} lignes par action, "
-           f"{len(ag_rows)} lignes groupes d'éléments, {len(st_rows)} lignes termes de recherche")
+           f"{len(ag_rows)} lignes groupes d'éléments, {len(st_rows)} lignes termes de recherche, "
+           f"{len(cl_rows)} clusters de Google")
     if err_actions:
         print(f"    google: actions de conversion refusées : {err_actions}")
         mot += f" · actions de conversion REFUSÉES : {err_actions}"
     for quoi, liste in (("campagnes", trous), ("annonces", trous_ad), ("par action", trous_ca),
-                        ("groupes d'éléments", trous_ag), ("termes de recherche", trous_st)):
+                        ("groupes d'éléments", trous_ag), ("termes de recherche", trous_st),
+                        ("clusters", trous_cl)):
         if liste:
             print(f"    google: {len(liste)} tranche(s) {quoi} refusée(s) : "
                   f"{' | '.join(liste)}")

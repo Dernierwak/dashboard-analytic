@@ -255,6 +255,7 @@ sync.insights_annonces.recuperer = lambda acces, f: ([], [])
 sync.actions_conversion.recuperer = lambda acces: ([], None)
 sync.conversions_par_action.recuperer = lambda acces, f: ([], [])
 sync.groupes_elements.recuperer = lambda acces, f: ([], [])
+sync.clusters_termes.recuperer = lambda acces, f: ([], [])  # étape du ticket 10
 for nom in ("fetch_google_ads_latest_date", "fetch_google_ads_ad_insights_latest_date",
             "fetch_google_conversions_par_action_latest_date", "fetch_google_asset_groups_latest_date"):
     setattr(sync, nom, lambda sb, uid: None)

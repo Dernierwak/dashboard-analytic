@@ -4,11 +4,11 @@
 // issue 21 (graphe en grappes validé par David le 2026-11-11). Seam testé :
 // `.scratch/google-ads/harnais/09-les-groupes-de-termes-mots-cles/`.
 //
-// Un MODE range les mêmes termes de recherche en grappes. Ce fichier construit
-// le mode Mots-clés (un rond par mot-clé déclencheur, ses termes autour) ; le
-// mode Clusters Google (ticket 10) produit les mêmes `Grappe` — coût `null`,
-// part masquée par grappe, grappes `special` hachurées — et s'ajoute à
-// `MODES` sans toucher à l'écran.
+// Un MODE range les mêmes termes de recherche en grappes : Mots-clés (un rond
+// par mot-clé déclencheur, ses termes autour, ticket 09) ou Clusters Google
+// (un rond par groupe que Google forme, ticket 10 — coût `null`, part masquée
+// par grappe, fourre-tout et petits clusters hachurés). Harnais du second :
+// `.scratch/google-ads/harnais/10-les-groupes-de-termes-clusters/`.
 //
 // Sans directive ni import hors des modules purs voisins, comme `lecture.ts` :
 // le harnais tourne sous Node seul (`CLAUDE.md` §8 pour la directive).
@@ -45,11 +45,34 @@ export type LigneTermeGoogle = {
   conversions: number | null;
 };
 
+/** Une ligne de `google_ads_search_term_clusters` (section 3septies du `000`) :
+ *  un cluster de Google sur sa fenêtre de 90 jours. Aucun coût — Google le
+ *  refuse (carte, issue 19). */
+export type LigneClusterGoogle = {
+  /** `""` = le niveau compte (Search et PMax mêlés). */
+  campagneId: string;
+  clusterId: string;
+  /** `""` = le fourre-tout de Google. */
+  libelle: string;
+  impressions: number | null;
+  clics: number | null;
+  conversions: number | null;
+  /** Les termes que Google liste — jamais le tout. */
+  termes: { texte: string; impressions: number | null; clics: number | null; conversions: number | null }[];
+  debut: string;
+  fin: string;
+};
+
 // ── Les commandes ────────────────────────────────────────────────────────────
 
-/** Le mode Clusters Google (ticket 10) s'ajoutera ici. */
-export type ModeGroupes = "mots-cles";
-export const MODES: { cle: ModeGroupes; nom: string }[] = [{ cle: "mots-cles", nom: "Mots-clés" }];
+export type ModeGroupes = "mots-cles" | "clusters";
+export const MODES: { cle: ModeGroupes; nom: string }[] = [
+  { cle: "mots-cles", nom: "Mots-clés" },
+  { cle: "clusters", nom: "Clusters Google" },
+];
+/** Les tailles qu'un mode ne peut pas dessiner : Google ne donne pas le coût
+ *  d'un cluster (user story 72, le bouton est barré). */
+export const TAILLES_SANS_OBJET: Record<ModeGroupes, Taille[]> = { "mots-cles": [], clusters: ["cout"] };
 
 export type Taille = "clics" | "impressions" | "conversions" | "cout";
 export const TAILLES: { cle: Taille; nom: string }[] = [
@@ -99,7 +122,7 @@ export type Grappe = {
 
 export type GroupesDeTermes =
   | { etat: "sans-search"; phrase: string }
-  | { etat: "non-lu"; phrase: string }
+  | { etat: "non-lu"; mode: ModeGroupes; phrase: string }
   | {
       etat: "lu";
       mode: ModeGroupes;
@@ -123,12 +146,20 @@ export type GroupesDeTermes =
       raisonMasques: string | null;
       /** Le plus ancien jour de termes en base ; `null` = jamais récoltés. */
       termesDepuis: string | null;
+      /** Mode Clusters : la fenêtre de 90 jours lue pour le niveau affiché ;
+       *  `null` = aucun cluster lu pour lui (ou mode Mots-clés). */
+      fenetre: { debut: string; fin: string } | null;
+      /** Ce qu'il faut savoir pour lire le mode (fenêtre, niveau compte,
+       *  langues), une phrase par point. */
+      phrases: string[];
     };
 
 export type LectureTermes = {
   /** `null` = la table n'a pas pu être lue. */
   termes: LigneTermeGoogle[] | null;
   debutTermes: string | null;
+  /** `null` = la table n'a pas pu être lue. */
+  clusters: LigneClusterGoogle[] | null;
   insights: LigneGoogle[];
   campagnes: Campagne[];
   periode: Periode;
@@ -217,6 +248,112 @@ function grappesMotsCles(lignes: LigneTermeGoogle[], taille: Taille): Omit<Grapp
   }));
 }
 
+// ── Le mode Clusters Google ─────────────────────────────────────────────────
+
+const SANS_CLUSTER = "Sans cluster";
+const RAISON_SANS_CLUSTER = "Les recherches que Google n'a rangées dans aucun cluster. Il n'en liste aucune : tout y est masqué.";
+/** Chez A, 625 des 959 clusters du compte ont 5 clics ou moins sur 90 jours
+ *  (carte, issue 19) : dessinés un par un, ils noieraient le graphe. */
+const SEUIL_PETIT_CLUSTER = 5;
+const raisonPetits = (n: number) =>
+  `${n} ${n > 1 ? "clusters" : "cluster"} de ${SEUIL_PETIT_CLUSTER} clics ou moins, regroupés pour que le graphe reste lisible.`;
+const RAISON_DEPASSE = "Les termes listés dépassent le total du cluster : la part masquée ne se calcule pas.";
+const PHRASE_LANGUE =
+  "Google forme un cluster par sujet et par langue : un même sujet cherché en français, en allemand et en anglais fait trois clusters.";
+const PHRASE_COMPTE =
+  "« Toutes les campagnes » lit les clusters du compte entier, où Google mêle Search et Performance Max : ce total ne se compare pas au mode Mots-clés.";
+
+const chiffresCluster = (x: { clics: number | null; impressions: number | null; conversions: number | null }): Chiffres => ({
+  clics: x.clics,
+  impressions: x.impressions,
+  conversions: x.conversions,
+  cout: null,
+});
+
+/** Total du cluster − termes listés, métrique par métrique ; `null` dès qu'un
+ *  terme dépasse le total (les deux chiffres ne parlent plus de la même chose). */
+function masquesDe(total: Chiffres, listes: Chiffres, nTermes: number): Chiffres | null {
+  const tolerance = TOLERANCE_PAR_LIGNE * Math.max(1, nTermes);
+  const m = zero();
+  for (const { cle } of TAILLES) {
+    const t = total[cle];
+    const l = listes[cle];
+    if (t === null || l === null) {
+      m[cle] = null;
+      continue;
+    }
+    if (t - l < -tolerance) return null;
+    m[cle] = Math.max(0, t - l);
+  }
+  return m;
+}
+
+function grappeDeClusters(id: string, libelleGrappe: string, membres: LigneClusterGoogle[], special: Grappe["special"], taille: Taille): Omit<Grappe, "couleur"> {
+  const chiffres = zero();
+  const termes = new Map<string, Chiffres>();
+  let nTermes = 0;
+  for (const m of membres) {
+    ajouter(chiffres, chiffresCluster(m));
+    for (const t of m.termes) {
+      nTermes++;
+      const deja = termes.get(t.texte);
+      if (deja) ajouter(deja, chiffresCluster(t));
+      else termes.set(t.texte, chiffresCluster(t));
+    }
+  }
+  const listes = zero();
+  for (const c of termes.values()) ajouter(listes, c);
+  listes.cout = null;
+  const masques = masquesDe(chiffres, listes, nTermes);
+  return {
+    id,
+    libelle: libelleGrappe,
+    correspondance: null,
+    chiffres,
+    termes: [...termes]
+      .map(([texte, c]) => ({ texte, chiffres: c, appariement: null }))
+      .sort((a, b) => parTaille(taille)(a, b) || a.texte.localeCompare(b.texte, "fr")),
+    masques,
+    raisonMasques: masques ? null : RAISON_DEPASSE,
+    special,
+  };
+}
+
+/** Un rond par cluster ; les petits (≤ 5 clics) en une grappe, puis le
+ *  fourre-tout — tous deux hachurés, en dernier (user story 78). Un cluster
+ *  aux clics non rendus n'est pas déclaré petit : on ne le sait pas. */
+function grappesClusters(lignes: LigneClusterGoogle[], taille: Taille): Omit<Grappe, "couleur">[] {
+  const fourreTout = lignes.filter((l) => l.libelle === "");
+  const petits = lignes.filter((l) => l.libelle !== "" && l.clics !== null && l.clics <= SEUIL_PETIT_CLUSTER);
+  const vrais = lignes.filter((l) => l.libelle !== "" && !(l.clics !== null && l.clics <= SEUIL_PETIT_CLUSTER));
+  const grappes = vrais.map((l) => grappeDeClusters(l.clusterId, l.libelle, [l], null, taille));
+  if (petits.length)
+    grappes.push(
+      grappeDeClusters("petits", `${petits.length} ${petits.length > 1 ? "petits clusters" : "petit cluster"}`, petits, { raison: raisonPetits(petits.length) }, taille)
+    );
+  if (fourreTout.length) grappes.push(grappeDeClusters("sans-cluster", SANS_CLUSTER, fourreTout, { raison: RAISON_SANS_CLUSTER }, taille));
+  return grappes;
+}
+
+/** Les lignes du niveau affiché, de son dernier passage seulement : un cluster
+ *  absent du dernier passage garde en base sa ligne et son ancienne fenêtre. */
+function dernierPassage(clusters: LigneClusterGoogle[], niveau: string): { lignes: LigneClusterGoogle[]; fenetre: { debut: string; fin: string } | null } {
+  const du = clusters.filter((l) => l.campagneId === niveau);
+  if (du.length === 0) return { lignes: [], fenetre: null };
+  const fin = du.reduce((m, l) => (l.fin > m ? l.fin : m), du[0].fin);
+  const debut = du.filter((l) => l.fin === fin).reduce((m, l) => (l.debut > m ? l.debut : m), "");
+  return { lignes: du.filter((l) => l.fin === fin && l.debut === debut), fenetre: { debut, fin } };
+}
+
+const JOUR_MS = 86_400_000;
+const dateLongue = (iso: string) => `${dateCourte(iso)} ${iso.slice(0, 4)}`;
+
+function phraseFenetre(f: { debut: string; fin: string }, p: Periode): string | null {
+  if (f.debut === p.debut && f.fin === p.fin) return null;
+  const jours = Math.round((Date.parse(`${f.fin}T00:00:00Z`) - Date.parse(`${f.debut}T00:00:00Z`)) / JOUR_MS) + 1;
+  return `Clusters lus sur ${jours} jours, du ${dateLongue(f.debut)} au ${dateLongue(f.fin)}, pas sur la période choisie : Google ne les donne pas jour par jour.`;
+}
+
 /** Rangées par la taille, les spéciales en dernier ; 8 couleurs aux plus
  *  grosses (la palette validée des campagnes), le reste gris. */
 function rangees(grappes: Omit<Grappe, "couleur">[], taille: Taille): Grappe[] {
@@ -274,11 +411,14 @@ export function groupesDeTermes(lu: LectureTermes, c: CommandesGroupes): Groupes
   const search = lu.campagnes.filter((x) => x.type?.brut === TYPE_SEARCH && x.cout !== null);
   if (search.length === 0)
     return { etat: "sans-search", phrase: "Aucune campagne Search sur la période : il n'y a pas de recherches à montrer." };
-  if (lu.termes === null)
-    return { etat: "non-lu", phrase: "Les termes de recherche n'ont pas pu être lus. Les autres chiffres de la page ne sont pas touchés." };
+  const mode: ModeGroupes = MODES.find((m) => m.cle === c.gm)?.cle ?? "mots-cles";
+  if (mode === "mots-cles" && lu.termes === null)
+    return { etat: "non-lu", mode, phrase: "Les termes de recherche n'ont pas pu être lus. Les autres chiffres de la page ne sont pas touchés." };
+  if (mode === "clusters" && !lu.clusters)
+    return { etat: "non-lu", mode, phrase: "Les clusters de Google n'ont pas pu être lus. Les autres chiffres de la page ne sont pas touchés." };
 
-  const mode: ModeGroupes = "mots-cles";
-  const taille = TAILLES.find((t) => t.cle === c.gt)?.cle ?? TAILLE_PAR_DEFAUT;
+  const demandee = TAILLES.find((t) => t.cle === c.gt)?.cle;
+  const taille = demandee && !TAILLES_SANS_OBJET[mode].includes(demandee) ? demandee : TAILLE_PAR_DEFAUT;
   const cles = new Set(search.map((x) => x.cle));
   const bandeauSearch = c.campagne && cles.has(c.campagne) ? c.campagne : null;
 
@@ -292,7 +432,20 @@ export function groupesDeTermes(lu: LectureTermes, c: CommandesGroupes): Groupes
   const dansSelection = (id: string | null) => !campagneInconnue && id !== null && (campagne ? id === campagne : cles.has(id));
   const dansPeriode = (d: string) => d >= periode.debut && d <= periode.fin && d < aujourdhui;
 
-  const lignes = lu.termes.filter((l) => dansPeriode(l.date) && dansSelection(l.campagneId));
+  const commun = {
+    etat: "lu" as const,
+    mode,
+    taille,
+    campagnes: search.map((x) => ({ cle: x.cle, nom: x.nom })),
+    campagne,
+    prerempli,
+    gcToutes: bandeauSearch ? TOUTES : null,
+    campagneInconnue,
+    termesDepuis: lu.debutTermes,
+  };
+  if (mode === "clusters") return { ...commun, ...contenuClusters(campagneInconnue ? [] : lu.clusters ?? [], campagne, periode, taille) };
+
+  const lignes = (lu.termes ?? []).filter((l) => dansPeriode(l.date) && dansSelection(l.campagneId));
   const insights = lu.insights.filter((l) => dansPeriode(l.date) && dansSelection(cleCampagne(l)));
   const totaux = zero();
   for (const l of lignes) ajouter(totaux, chiffresDe(l));
@@ -305,19 +458,43 @@ export function groupesDeTermes(lu: LectureTermes, c: CommandesGroupes): Groupes
   const { masques, part, raison } = partMasquee(totaux, insights, couverte);
 
   return {
-    etat: "lu",
-    mode,
-    taille,
-    campagnes: search.map((x) => ({ cle: x.cle, nom: x.nom })),
-    campagne,
-    prerempli,
-    gcToutes: bandeauSearch ? TOUTES : null,
-    campagneInconnue,
+    ...commun,
     grappes: rangees(grappesMotsCles(lignes, taille), taille),
     totaux,
     masques,
     partMasquee: part,
     raisonMasques: raison,
-    termesDepuis: lu.debutTermes,
+    fenetre: null,
+    phrases: [],
+  };
+}
+
+/** Le contenu du mode Clusters : la campagne choisie, ou le niveau compte pour
+ *  « Toutes les campagnes » (spec, Further Notes 2). La fenêtre est celle de la
+ *  récolte (90 jours pleins), pas la période du Bandeau (Further Notes 1). */
+function contenuClusters(clusters: LigneClusterGoogle[], campagne: string | null, periode: Periode, taille: Taille) {
+  const { lignes, fenetre } = dernierPassage(clusters, campagne ?? "");
+  const grappes = rangees(grappesClusters(lignes, taille), taille);
+  const totaux = zero();
+  const total = zero();
+  let masques: Chiffres | null = zero();
+  for (const g of grappes) {
+    for (const t of g.termes) ajouter(totaux, t.chiffres);
+    ajouter(total, g.chiffres);
+    if (masques) {
+      if (g.masques) ajouter(masques, g.masques);
+      else masques = null;
+    }
+  }
+  totaux.cout = null;
+  const phrases = [fenetre && phraseFenetre(fenetre, periode), campagne === null ? PHRASE_COMPTE : null, PHRASE_LANGUE].filter((p): p is string => !!p);
+  return {
+    grappes,
+    totaux,
+    masques,
+    partMasquee: masques?.clics == null || !total.clics ? null : masques.clics / total.clics,
+    raisonMasques: masques ? null : RAISON_DEPASSE,
+    fenetre,
+    phrases,
   };
 }
