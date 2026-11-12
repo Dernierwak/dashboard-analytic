@@ -2,7 +2,7 @@ import Link from "next/link";
 import { GrapheGroupes } from "@/components/google/groupes-graphe";
 import { lienGoogle, type Params } from "@/lib/google/liens";
 import { nombre, TIRET } from "@/lib/google/lecture";
-import { chiffre, MODES, TAILLES, TAILLE_PAR_DEFAUT, type Chiffres, type GroupesDeTermes, type Taille } from "@/lib/google/termes";
+import { chiffre, MODES, TAILLES, TAILLES_SANS_OBJET, TAILLE_PAR_DEFAUT, type Chiffres, type GroupesDeTermes, type ModeGroupes, type Taille } from "@/lib/google/termes";
 
 // ── MODULE 6 · LES GROUPES DE TERMES ─────────────────────────────────────────
 //
@@ -21,6 +21,13 @@ const lien = (params: Params, patch: Record<string, string | null>) => `${lienGo
 
 const pastille = (actif: boolean) =>
   `rounded-full border px-3 py-1 transition-colors motion-reduce:transition-none ${actif ? "border-ink bg-ink text-white" : "border-line bg-white text-ink hover:bg-[#f6f7ff]"}`;
+
+const SOUS_TITRES: Record<ModeGroupes, string> = {
+  "mots-cles": "Les recherches qui ont affiché tes annonces Search, rangées sous le mot-clé qui les a déclenchées.",
+  clusters: "Les mêmes recherches, rangées dans les groupes que Google forme lui-même. Google n'en donne pas le coût.",
+};
+const SANS_OBJET = "Google ne donne pas le coût d'un cluster : les ronds ne peuvent pas suivre le coût.";
+const SANS_GRAPPE_CLUSTERS = "Aucun cluster de Google lu pour ce choix : ils arrivent au prochain passage de la récolte.";
 
 const NOMS_TOTAUX: Record<Taille, string> = { clics: "clics", impressions: "impressions", conversions: "conversions", cout: "CHF de coût" };
 
@@ -46,12 +53,10 @@ export function GroupesDeTermes({ groupes, params }: { groupes: GroupesDeTermes;
           <h2 id="titre-groupes" className="text-[22px] font-semibold tracking-tight text-ink">
             Ce que les gens ont cherché
           </h2>
-          <p className="mt-1 text-[14px] text-muted">
-            Les recherches qui ont affiché tes annonces Search, rangées sous le mot-clé qui les a déclenchées.
-          </p>
+          <p className="mt-1 text-[14px] text-muted">{SOUS_TITRES[groupes.etat === "sans-search" ? "mots-cles" : groupes.mode]}</p>
         </div>
-        {/* Le sélecteur de mode n'apparaît qu'à partir de deux modes (ticket 10). */}
-        {groupes.etat === "lu" && MODES.length > 1 && (
+        {/* Visible aussi quand un mode n'a pas pu être lu : on peut repasser à l'autre. */}
+        {groupes.etat !== "sans-search" && MODES.length > 1 && (
           <nav aria-label="Ranger les termes par" className="flex gap-1 rounded-full border border-line bg-white p-1 text-[13.5px]">
             {MODES.map((m) => (
               <Link key={m.cle} href={lien(params, { gm: m.cle, gt: null })} scroll={false} className={pastille(groupes.mode === m.cle)}>
@@ -79,12 +84,19 @@ export function GroupesDeTermes({ groupes, params }: { groupes: GroupesDeTermes;
             </nav>
             <nav aria-label="Taille des ronds" className="flex flex-wrap items-center gap-1 text-[12.5px]">
               <span className="mr-1 text-muted">Taille des ronds</span>
-              {TAILLES.map((t) => (
-                // Le défaut ne s'écrit pas : `/google#groupes` se partage.
-                <Link key={t.cle} href={lien(params, { gt: t.cle === TAILLE_PAR_DEFAUT ? null : t.cle })} scroll={false} className={pastille(groupes.taille === t.cle)}>
-                  {t.nom}
-                </Link>
-              ))}
+              {TAILLES.map((t) =>
+                TAILLES_SANS_OBJET[groupes.mode].includes(t.cle) ? (
+                  // Barré, pas caché : le client voit que le chiffre manque chez Google (user story 72).
+                  <span key={t.cle} aria-disabled="true" title={SANS_OBJET} className="cursor-not-allowed rounded-full border border-line px-3 py-1 text-muted line-through">
+                    {t.nom}
+                  </span>
+                ) : (
+                  // Le défaut ne s'écrit pas : `/google#groupes` se partage.
+                  <Link key={t.cle} href={lien(params, { gt: t.cle === TAILLE_PAR_DEFAUT ? null : t.cle })} scroll={false} className={pastille(groupes.taille === t.cle)}>
+                    {t.nom}
+                  </Link>
+                )
+              )}
             </nav>
           </div>
 
@@ -94,9 +106,11 @@ export function GroupesDeTermes({ groupes, params }: { groupes: GroupesDeTermes;
             </p>
           ) : groupes.grappes.length === 0 ? (
             <p className="text-[14px] text-muted">
-              {groupes.termesDepuis
-                ? "Aucun terme de recherche lu sur cette période."
-                : "Les termes de recherche n'ont pas encore été récoltés : ils arrivent au prochain passage de la récolte."}
+              {groupes.mode === "clusters"
+                ? SANS_GRAPPE_CLUSTERS
+                : groupes.termesDepuis
+                  ? "Aucun terme de recherche lu sur cette période."
+                  : "Les termes de recherche n'ont pas encore été récoltés : ils arrivent au prochain passage de la récolte."}
             </p>
           ) : (
             <>
@@ -116,10 +130,16 @@ export function GroupesDeTermes({ groupes, params }: { groupes: GroupesDeTermes;
                 )}
                 {groupes.partMasquee !== null && (
                   <p className="text-[12.5px] text-muted">
-                    <b className="font-semibold text-ink">{nombre(groupes.partMasquee * 100)} %</b> des clics des campagnes viennent de
+                    <b className="font-semibold text-ink">{nombre(groupes.partMasquee * 100)} %</b> des clics{" "}
+                    {groupes.mode === "clusters" ? "des clusters" : "des campagnes"} viennent de
                     recherches que Google ne liste pas (seuil de confidentialité, non publié). La liste n&apos;est jamais le tout.
                   </p>
                 )}
+                {groupes.phrases.map((p) => (
+                  <p key={p} className="text-[12.5px] text-muted">
+                    {p}
+                  </p>
+                ))}
               </div>
               <GrapheGroupes
                 // Remonté au changement de réglage : la disposition se recalcule

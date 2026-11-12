@@ -7,7 +7,7 @@ import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from 
 import { comparaisonDe, type CommandesComparaison, type Comparaison } from "@/lib/google/comparaison";
 import { contenuPage, decaler, lireToutesLesPages, periodeDe, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
 import { tableauDe, type LigneAnnonceGoogle, type LigneGroupeElementsGoogle, type Tableau } from "@/lib/google/tableau";
-import { groupesDeTermes, type CommandesGroupes, type GroupesDeTermes, type LigneTermeGoogle } from "@/lib/google/termes";
+import { groupesDeTermes, type CommandesGroupes, type GroupesDeTermes, type LigneClusterGoogle, type LigneTermeGoogle } from "@/lib/google/termes";
 import type { Repartition } from "@/lib/google/valeur";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
@@ -242,6 +242,66 @@ async function lireTermes(
   }
 }
 
+// Les Clusters de Google (section 3septies du `000`, ticket 10) : une ligne
+// par niveau × cluster, sur la fenêtre de 90 jours de la récolte — pas de
+// filtre de date, la fenêtre se choisit dans `termes.ts` (dernier passage de
+// chaque niveau). ≈ 960 clusters au compte chez A + ≈ 25 par campagne Search
+// (carte, issue 19) : paginé.
+const COLONNES_CLUSTERS = "campaign_id, cluster_id, category_label, impressions, clicks, conversions, terms, window_start, window_end";
+
+type TermeBase = { term?: string; impressions?: number | string | null; clicks?: number | string | null; conversions?: number | string | null };
+type LigneBaseCluster = {
+  campaign_id: string | null;
+  cluster_id: string;
+  category_label: string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  conversions: number | string | null;
+  terms: TermeBase[] | null;
+  window_start: string;
+  window_end: string;
+};
+
+function versLigneCluster(r: LigneBaseCluster): LigneClusterGoogle {
+  return {
+    campagneId: r.campaign_id ?? "",
+    clusterId: r.cluster_id,
+    libelle: r.category_label ?? "",
+    // Nullables en base : NULL reste `null`, jamais 0 (`CLAUDE.md` §7).
+    impressions: nombreOuNull(r.impressions),
+    clics: nombreOuNull(r.clicks),
+    conversions: nombreOuNull(r.conversions),
+    termes: (Array.isArray(r.terms) ? r.terms : [])
+      .filter((t) => typeof t?.term === "string" && t.term !== "")
+      .map((t) => ({
+        texte: t.term as string,
+        impressions: nombreOuNull(t.impressions ?? null),
+        clics: nombreOuNull(t.clicks ?? null),
+        conversions: nombreOuNull(t.conversions ?? null),
+      })),
+    debut: String(r.window_start).slice(0, 10),
+    fin: String(r.window_end).slice(0, 10),
+  };
+}
+
+/** En cas d'échec (section 3septies pas encore jouée, par exemple) : `null`,
+ *  le module le dit et la page ne lève pas. */
+async function lireClusters(supabase: ReturnType<typeof createClient>, uid: string): Promise<LigneClusterGoogle[] | null> {
+  try {
+    const lignes = await lireToutesLesPages<LigneBaseCluster>((de, a) =>
+      supabase
+        .from("google_ads_search_term_clusters")
+        .select(COLONNES_CLUSTERS)
+        .eq("user_id", uid)
+        .order("id", { ascending: true })
+        .range(de, a)
+    );
+    return lignes.map(versLigneCluster);
+  } catch {
+    return null;
+  }
+}
+
 function iso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -389,7 +449,7 @@ export async function getDonneesGoogle(c: CommandesComparaison, g: Omit<Commande
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition, groupesElements, termes] = await Promise.all([
+  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition, groupesElements, termes, clusters] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -421,6 +481,8 @@ export async function getDonneesGoogle(c: CommandesComparaison, g: Omit<Commande
     lireRepartition(supabase, uid, p.avantDebut, p.fin),
     lireGroupesElements(supabase, uid, p.avantDebut, p.fin),
     lireTermes(supabase, uid, p.debut, p.fin),
+    // Lus seulement quand le module les montre : en mode Mots-clés, rien ne s'en sert.
+    g.gm === "clusters" ? lireClusters(supabase, uid) : Promise.resolve(null),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
@@ -436,7 +498,7 @@ export async function getDonneesGoogle(c: CommandesComparaison, g: Omit<Commande
     journal,
     debutJournal,
     groupes: groupesDeTermes(
-      { ...termes, insights: lignes, campagnes: contenu.campagnes, periode: contenu.periode, aujourdhui: ctx.aujourdhui },
+      { ...termes, clusters, insights: lignes, campagnes: contenu.campagnes, periode: contenu.periode, aujourdhui: ctx.aujourdhui },
       { ...g, campagne: c.campagne }
     ),
   };
