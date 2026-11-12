@@ -26,6 +26,8 @@
 --   2)     GA4 : ga4_insights (+ campagne UTM) et ga4_events (funnel)
 --   3)     profiles.objectif + fetch_schedule
 --   3bis)  google_ads_ad_insights — le détail par annonce
+--   3quater) google_ads_conversion_actions, google_ads_conversions_by_action —
+--          la règle « sans valeur » de la page Google (google-ads, ticket 03)
 --   3ter)  channel_budgets — le budget saisi, par mois et par canal
 --   4)     Tous les jetons Google dans connected_accounts (provider='google')
 --   4bis)  connected_accounts.a_reconnecter_* — le jeton mort, la reconnexion demandée
@@ -681,6 +683,105 @@ CREATE POLICY "gads_ad_insert_own" ON public.google_ads_ad_insights
 CREATE POLICY "gads_ad_update_own" ON public.google_ads_ad_insights
     FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "gads_ad_delete_own" ON public.google_ads_ad_insights
+    FOR DELETE USING (auth.uid() = user_id);
+
+
+-- ============================================================================
+-- 3quater) GOOGLE ADS — les actions de conversion, et les conversions par
+--       action × campagne × jour (`.scratch/google-ads/spec.md` § « Les
+--       conversions et leur valeur » ; ticket 03 de la construction Google Ads).
+--
+--       Elles servent une seule règle de la page : la valeur de conversion et
+--       le ROAS s'affichent « — » quand TOUTES les actions qui ont converti sur
+--       la période et la campagne choisies sont « sans valeur » — valeur
+--       imposée (`always_use_default_value`) à 0 ou à 1 (carte, issue 13 :
+--       chez A, 8 actions principales sur 13 à 1 imposé, leur « valeur » est
+--       le nombre de conversions déguisé en francs).
+--
+--       `google_ads_conversion_actions` : les réglages ACTUELS, une ligne par
+--       action, réécrits à chaque passage. Réglages nullables : NULL = non
+--       rendu par Google, jamais deviné.
+--       `google_ads_conversions_by_action` : `metrics.conversions` et
+--       `conversions_value` segmentés par `segments.conversion_action`. Une
+--       requête à part : l'API refuse impressions et coût avec ce segment
+--       (carte, issue 18). `numeric` sans échelle : la somme par action doit
+--       redonner `metrics.conversions` (issue 19), un arrondi par ligne l'en
+--       écarterait.
+--
+--       Ici, AVANT la section 15, parce que la boucle 15.1 pose les politiques
+--       `partage_*` sur les tables qui existent déjà : un invité voit la
+--       même page Google que le propriétaire. Ajout seul.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_ads_conversion_actions (
+    user_id                  uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    conversion_action_id     text NOT NULL,
+    name                     text NOT NULL DEFAULT '',
+    category                 text,
+    status                   text,
+    always_use_default_value boolean,
+    default_value            numeric,
+    currency_code            text,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, conversion_action_id)
+);
+
+DROP TRIGGER IF EXISTS trg_google_ads_conversion_actions_updated_at ON public.google_ads_conversion_actions;
+CREATE TRIGGER trg_google_ads_conversion_actions_updated_at
+    BEFORE UPDATE ON public.google_ads_conversion_actions
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_conversion_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_conv_actions_select_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_insert_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_update_own" ON public.google_ads_conversion_actions;
+DROP POLICY IF EXISTS "gads_conv_actions_delete_own" ON public.google_ads_conversion_actions;
+CREATE POLICY "gads_conv_actions_select_own" ON public.google_ads_conversion_actions
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_insert_own" ON public.google_ads_conversion_actions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_update_own" ON public.google_ads_conversion_actions
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_actions_delete_own" ON public.google_ads_conversion_actions
+    FOR DELETE USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.google_ads_conversions_by_action (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id              uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    date_start           date NOT NULL,
+    campaign_id          text NOT NULL,
+    conversion_action_id text NOT NULL,
+    conversions          numeric,
+    conversions_value    numeric,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT google_ads_conversions_by_action_uq
+        UNIQUE (user_id, date_start, campaign_id, conversion_action_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gads_conv_by_action_user_date
+    ON public.google_ads_conversions_by_action (user_id, date_start DESC);
+
+DROP TRIGGER IF EXISTS trg_google_ads_conversions_by_action_updated_at ON public.google_ads_conversions_by_action;
+CREATE TRIGGER trg_google_ads_conversions_by_action_updated_at
+    BEFORE UPDATE ON public.google_ads_conversions_by_action
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.google_ads_conversions_by_action ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "gads_conv_by_action_select_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_insert_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_update_own" ON public.google_ads_conversions_by_action;
+DROP POLICY IF EXISTS "gads_conv_by_action_delete_own" ON public.google_ads_conversions_by_action;
+CREATE POLICY "gads_conv_by_action_select_own" ON public.google_ads_conversions_by_action
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_insert_own" ON public.google_ads_conversions_by_action
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_update_own" ON public.google_ads_conversions_by_action
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "gads_conv_by_action_delete_own" ON public.google_ads_conversions_by_action
     FOR DELETE USING (auth.uid() = user_id);
 
 
@@ -1530,6 +1631,8 @@ DECLARE
         -- régies publicitaires
         'meta_ads_insights', 'google_ads_insights', 'google_ads_ad_insights',
         'meta_campaign_config', 'google_campaign_config',
+        -- la règle « sans valeur » de la page Google (section 3quater)
+        'google_ads_conversion_actions', 'google_ads_conversions_by_action',
         -- ce que disent les annonces Meta (section 0bis)
         'meta_ads_creatives', 'meta_ads_creative_assets',
         -- organique et analytics
@@ -1768,7 +1871,7 @@ ALTER TABLE public.instagram_organic_posts
 --     seul le worker (clé service) écrit. Hors de la liste 15.1 exprès : elle
 --     pose aussi `partage_insert/update/delete`, qui laisseraient un éditeur
 --     invité écrire des relevés. Les politiques ne s'appellent pas `partage_*`
---     pour ne pas fausser le contrôle A (19 tables) en fin de fichier.
+--     pour ne pas fausser le contrôle A (21 tables) en fin de fichier.
 -- ============================================================================
 
 ALTER TABLE public.instagram_organic_posts
@@ -2016,6 +2119,10 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_ads_insights',      'conversions_value'),    -- §25
     ('c', 'google_ads_insights',      'all_conversions'),      -- §25
     ('c', 'google_ads_insights',      'view_through_conversions'), -- §25
+    ('t', 'google_ads_conversion_actions',    NULL),           -- §3quater
+    ('t', 'google_ads_conversions_by_action', NULL),           -- §3quater
+    ('c', 'google_ads_conversion_actions',    'always_use_default_value'), -- §3quater
+    ('c', 'google_ads_conversion_actions',    'default_value'),            -- §3quater
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
@@ -2087,10 +2194,12 @@ ORDER BY (etat = '✓'), famille, objet;
 -- Deux contrôles qui ne tiennent pas dans le tableau ci-dessus, à lancer à part
 -- le jour où le partage d'équipe pose question :
 --
---   A) Ce que l'invité peut lire — doit lister les 19 tables de la section 15.
+--   A) Ce que l'invité peut lire — doit lister les 21 tables de la section 15.
 --      (Mesuré le 2026-10-03 sur un PostgreSQL local, après l'arrivée de
 --      meta_ads_creatives et meta_ads_creative_assets : 19 tables distinctes
---      portent une politique `partage_*`.)
+--      portent une politique `partage_*`. Le ticket 03 Google Ads en ajoute
+--      deux — google_ads_conversion_actions, google_ads_conversions_by_action —
+--      d'où 21, compté sur la liste, pas mesuré sur une base.)
 --      SELECT tablename, policyname FROM pg_policies
 --      WHERE schemaname = 'public' AND policyname LIKE 'partage_%'
 --      ORDER BY tablename, policyname;

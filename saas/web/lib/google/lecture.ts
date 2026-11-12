@@ -11,7 +11,8 @@
 // période, la pagination, les dates et l'écriture des nombres sont recopiées
 // telles quelles ; les métriques et les vues sont celles de Google.
 //
-// AUCUNE DIRECTIVE ET AUCUN IMPORT, et les deux sont voulus. Sans directive,
+// AUCUNE DIRECTIVE, et aucun import hors des modules purs voisins (`./valeur`,
+// la règle « sans valeur » du ticket 03), et c'est voulu. Sans directive,
 // les valeurs exportées se lisent des deux côtés (`CLAUDE.md` §8 : une
 // constante d'un module `"use client"` arrive en proxy côté serveur). Sans
 // import, Node charge le fichier tel quel et le harnais tourne sans Next, sans
@@ -28,6 +29,8 @@
 //   · une campagne est son ID Google, sous le nom porté par sa ligne la plus
 //     récente : une campagne renommée reste une seule ligne.
 
+import { verdictValeur, type ConversionsParAction, type Repartition, type Verdict } from "./valeur";
+
 export type LigneGoogle = {
   date: string; // YYYY-MM-DD
   campagneId: string | null;
@@ -42,6 +45,9 @@ export type LigneGoogle = {
   clics: number;
   /** `metrics.conversions`, la colonne « Conversions » de Google Ads. */
   conversions: number;
+  /** `metrics.conversions_value` ; `null` (ou absent) = pas lu — lignes
+   *  écrites avant sa récolte. Jamais un zéro par défaut. */
+  valeurConversion?: number | null;
 };
 
 // ── La lecture paginée ───────────────────────────────────────────────────────
@@ -296,11 +302,30 @@ export function campagnesDe(lignes: LigneGoogle[], courante: { debut: string; fi
 
 /** Ce qui s'additionne, tous types de campagnes confondus, comme la Vue
  *  d'ensemble de Google Ads. Les taux se dérivent de ces sommes. */
-export type Totaux = { cout: number; impressions: number; clics: number; conversions: number };
+export type Totaux = {
+  cout: number;
+  impressions: number;
+  clics: number;
+  conversions: number;
+  /** La valeur de conversion de Google, sommée. `null` dès qu'une ligne ne la
+   *  porte pas (une somme partielle serait un chiffre fabriqué), ou quand la
+   *  règle « sans valeur » la retire (`./valeur`). */
+  valeur: number | null;
+};
 
-export type CleMetrique = "impressions" | "cpm" | "clics" | "ctr" | "cpc" | "conversions" | "cout_conversion" | "taux_conversion";
+export type CleMetrique =
+  | "impressions"
+  | "cpm"
+  | "clics"
+  | "ctr"
+  | "cpc"
+  | "conversions"
+  | "cout_conversion"
+  | "taux_conversion"
+  | "valeur_conversion"
+  | "roas";
 
-type Format = "entier" | "decimal" | "argent" | "pourcent";
+type Format = "entier" | "decimal" | "argent" | "pourcent" | "ratio";
 
 type DefMetrique = {
   nom: string;
@@ -380,14 +405,29 @@ export const METRIQUES: Record<CleMetrique, DefMetrique> = {
     calcul: (t) => mul(diviser(t.conversions, t.clics), 100),
     precision: "conversions ÷ clics",
   },
+  valeur_conversion: {
+    nom: "Valeur de conversion",
+    aide: "La colonne « Valeur conv. » de Google Ads, telle que Google la déclare. Pulse ne la recompose pas : il l'efface derrière « — » quand toutes les actions qui ont converti n'ont qu'une valeur imposée à 0 ou à 1.",
+    hausseBonne: true,
+    format: "argent",
+    calcul: (t) => t.valeur,
+  },
+  roas: {
+    nom: "ROAS",
+    aide: "Valeur de conversion ÷ coût, sur toute la période — la colonne « Valeur conv./coût » de Google Ads.",
+    hausseBonne: true,
+    format: "ratio",
+    calcul: (t) => (t.valeur === null ? null : diviser(t.valeur, t.cout)),
+    precision: "valeur ÷ coût",
+  },
 };
 
 /** Les vues et leurs métriques — spec, § « Les vues et leurs métriques ». La
- *  première est le chiffre principal. Valeur de conversion et ROAS : ticket 03. */
+ *  première est le chiffre principal. */
 export const VUES: Record<Vue, { titre: string; question: string; metriques: CleMetrique[] }> = {
   notoriete: { titre: "Notoriété", question: "Combien de fois on t'a vu, et à quel prix", metriques: ["impressions", "cpm"] },
   trafic: { titre: "Trafic", question: "Combien de clics tes annonces ont reçus", metriques: ["clics", "ctr", "cpc"] },
-  conversion: { titre: "Conversion", question: "Ce que tes campagnes rapportent en actions", metriques: ["conversions", "cout_conversion", "taux_conversion"] },
+  conversion: { titre: "Conversion", question: "Ce que tes campagnes rapportent en actions", metriques: ["conversions", "cout_conversion", "taux_conversion", "valeur_conversion", "roas"] },
 };
 
 export const ORDRE_VUES: Vue[] = ["notoriete", "trafic", "conversion"];
@@ -400,12 +440,14 @@ export function vueDe(x: string | undefined): Vue {
  *  n'a pas « zéro impression », elle n'a rien de mesuré. */
 export function totaux(lignes: LigneGoogle[]): Totaux | null {
   if (lignes.length === 0) return null;
-  const t: Totaux = { cout: 0, impressions: 0, clics: 0, conversions: 0 };
+  const t: Totaux = { cout: 0, impressions: 0, clics: 0, conversions: 0, valeur: 0 };
   for (const l of lignes) {
     t.cout += l.cout;
     t.impressions += l.impressions;
     t.clics += l.clics;
     t.conversions += l.conversions;
+    const v = l.valeurConversion ?? null;
+    t.valeur = t.valeur === null || v === null ? null : t.valeur + v;
   }
   return t;
 }
@@ -453,6 +495,9 @@ export function formaterValeur(m: CleMetrique, v: number | null): string {
       return `${nombre(v, 2)}${ESPACE_FINE}${DEVISE}`;
     case "pourcent":
       return `${nombre(v, 2)}${ESPACE_FINE}%`;
+    case "ratio":
+      // Comme Google écrit « Valeur conv./coût » : un rapport, pas un pourcentage.
+      return nombre(v, 2);
   }
 }
 
@@ -490,6 +535,11 @@ export type MetriqueTendance = {
   serie: (number | null)[];
   /** La période d'avant, alignée jour pour jour sur la période. */
   serieAvant: (number | null)[];
+  /** Pourquoi le chiffre est « — » quand ce n'est pas une simple absence de
+   *  ligne (valeur sans valeur déclarée, pas encore lue, coût nul). */
+  raison: string | null;
+  /** La « ⓘ » à côté du chiffre : ce que vaut le nombre affiché. */
+  avertissement: string | null;
 };
 
 export type ContenuPage = {
@@ -517,11 +567,46 @@ function parJour(lignes: LigneGoogle[]): Map<string, LigneGoogle[]> {
   return m;
 }
 
-function serieDe(m: CleMetrique, jours: Map<string, LigneGoogle[]>, debut: string, n: number): (number | null)[] {
-  return Array.from({ length: n }, (_, i) => valeurDe(m, totaux(jours.get(decaler(debut, i)) ?? [])));
+/** Les totaux d'un jour, valeur retirée si la règle de la période la retire. */
+function serieDe(m: CleMetrique, jours: Map<string, LigneGoogle[]>, debut: string, n: number, verdict: Verdict): (number | null)[] {
+  return Array.from({ length: n }, (_, i) => valeurDe(m, appliquer(totaux(jours.get(decaler(debut, i)) ?? []), verdict)));
 }
 
-export function contenuPage(lignesBrutes: LigneGoogle[], c: Commandes, ctx: Contexte): ContenuPage {
+export function appliquer(t: Totaux | null, verdict: Verdict): Totaux | null {
+  return t && !verdict.affichee ? { ...t, valeur: null } : t;
+}
+
+/** La règle « sans valeur » sur une sélection : ses lignes, et la répartition
+ *  par action des mêmes jours et de la même campagne. */
+export function verdictDe(lignes: LigneGoogle[], rep: Repartition | undefined, garder: (r: ConversionsParAction) => boolean): Verdict {
+  return verdictValeur(
+    {
+      conversions: lignes.reduce((s, l) => s + l.conversions, 0),
+      lignesConverties: lignes.filter((l) => l.conversions !== 0).length,
+      parAction: (rep?.parAction ?? []).filter(garder),
+    },
+    rep?.actions ?? []
+  );
+}
+
+const VALEUR_NON_LUE = "valeur de conversion pas encore récoltée sur toute la période";
+const SANS_COUT = "aucun coût sur la période";
+
+/** Ce que la carte dit d'un chiffre de valeur ou de ROAS. Une sélection sans
+ *  ligne n'a pas de raison à donner : « — » y dit déjà « rien de mesuré ». */
+export function lectureValeur(m: CleMetrique, t: Totaux | null, verdict: Verdict): { raison: string | null; avertissement: string | null } {
+  const rien = { raison: null, avertissement: null };
+  if ((m !== "valeur_conversion" && m !== "roas") || t === null) return rien;
+  if (!verdict.affichee) return { raison: verdict.raison, avertissement: null };
+  if (t.valeur === null) return { raison: VALEUR_NON_LUE, avertissement: null };
+  if (m === "roas" && t.cout === 0) return { raison: SANS_COUT, avertissement: null };
+  return { raison: null, avertissement: verdict.avertissement };
+}
+
+/** `repartition` : les actions de conversion et la répartition par action,
+ *  pour la règle « sans valeur » (`./valeur`). Absente, aucune conversion ne
+ *  peut être rattachée à une action : la valeur reste « — ». */
+export function contenuPage(lignesBrutes: LigneGoogle[], c: Commandes, ctx: Contexte, repartition?: Repartition): ContenuPage {
   const vue = vueDe(c.vue);
   const periode = periodeDe(c, ctx);
   const dans = (l: LigneGoogle, de: string, a: string) => l.date >= de && l.date <= a && l.date < ctx.aujourdhui;
@@ -537,8 +622,15 @@ export function contenuPage(lignesBrutes: LigneGoogle[], c: Commandes, ctx: Cont
   const filtrees = c.campagne ? lues.filter((l) => cleCampagne(l) === c.campagne) : lues;
   const courant = filtrees.filter((l) => dans(l, periode.debut, periode.fin));
   const avant = filtrees.filter((l) => dans(l, periode.avantDebut, periode.avantFin));
-  const tCourant = totaux(courant);
-  const tAvant = totaux(avant);
+  // La règle se recalcule sur la sélection lue — période et campagne — pour
+  // qu'une campagne à vraie valeur ne soit pas effacée par le reste du compte
+  // (spec, user story 24). Chaque période a la sienne.
+  const dansSelection = (de: string, a: string) => (r: ConversionsParAction) =>
+    r.date >= de && r.date <= a && r.date < ctx.aujourdhui && (!c.campagne || r.campagneId === c.campagne);
+  const verdictCourant = verdictDe(courant, repartition, dansSelection(periode.debut, periode.fin));
+  const verdictAvant = verdictDe(avant, repartition, dansSelection(periode.avantDebut, periode.avantFin));
+  const tCourant = appliquer(totaux(courant), verdictCourant);
+  const tAvant = appliquer(totaux(avant), verdictAvant);
 
   const cartes = ORDRE_VUES.map((v): CarteVue => {
     const m = VUES[v].metriques[0];
@@ -560,8 +652,9 @@ export function contenuPage(lignesBrutes: LigneGoogle[], c: Commandes, ctx: Cont
       valeur,
       avant: precedente,
       ecart: ecart(valeur, precedente),
-      serie: serieDe(m, joursCourant, periode.debut, periode.jours),
-      serieAvant: serieDe(m, joursAvant, periode.avantDebut, periode.jours),
+      serie: serieDe(m, joursCourant, periode.debut, periode.jours, verdictCourant),
+      serieAvant: serieDe(m, joursAvant, periode.avantDebut, periode.jours, verdictAvant),
+      ...lectureValeur(m, tCourant, verdictCourant),
     };
   });
 

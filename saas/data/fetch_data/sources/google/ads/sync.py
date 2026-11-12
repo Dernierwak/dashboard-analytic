@@ -10,6 +10,7 @@ from datetime import date, timedelta
 
 from saas.data.supabase.source_data.google import (
     upsert_google_ads, upsert_google_ads_ad_insights, upsert_google_campaign_statuses,
+    upsert_google_conversion_actions, upsert_google_conversions_par_action,
 )
 from saas.data.supabase.source_data.couverture import avancer_couverture
 from saas.data.supabase.source_data.platform import journal_changements, photo_budget
@@ -19,12 +20,15 @@ from saas.data.fetch_data.sources.google.ads.fetchers import (
     budgets,
     campaigns as insights_campagnes,
     changes as changements,
+    conversion_actions as actions_conversion,
+    conversions_par_action,
     statuses as statuts,
 )
 from saas.data.fetch_data.sources.google.auth.oauth import get_access_token_from_refresh
 from saas.data.fetch_data.shared.date_ranges import Fenetre, depart_recolte
 from saas.data.supabase.fetch_state.state import (
     fetch_google_ads_ad_insights_latest_date, fetch_google_ads_latest_date,
+    fetch_google_conversions_par_action_latest_date,
 )
 
 # LES DEUX RÉGIES N'OUBLIENT PAS À LA MÊME VITESSE, ET UNE SEULE CONSTANTE POUR
@@ -132,8 +136,28 @@ def recolter(sb, uid, refresh, customer_id, note=_rien, depuis: date | None = No
     if ad_rows:
         upsert_google_ads_ad_insights(sb, uid, ad_rows)
 
-    mot = f"google: {len(rows)} lignes, {len(ad_rows)} lignes annonces"
-    for quoi, liste in (("campagnes", trous), ("annonces", trous_ad)):
+    # La règle « sans valeur » de la page (spec, § « Les conversions et leur
+    # valeur ») : les réglages des actions, relus en entier (ce sont des
+    # réglages actuels), puis quelles actions ont converti, par campagne et par
+    # jour. Même recouvrement que les insights — ce sont les mêmes conversions,
+    # datées au clic, qui bougent pendant 30 jours.
+    note("actions de conversion")
+    actions, err_actions = actions_conversion.recuperer(acces)
+    if actions:
+        upsert_google_conversion_actions(sb, uid, actions)
+    note("conversions par action")
+    since_ca = depuis or depart_recolte(fetch_google_conversions_par_action_latest_date(sb, uid),
+                                        today, _RECOUVREMENT_JOURS_GOOGLE)
+    ca_rows, trous_ca = conversions_par_action.recuperer(acces, Fenetre(since_ca, today))
+    if ca_rows:
+        upsert_google_conversions_par_action(sb, uid, ca_rows)
+
+    mot = (f"google: {len(rows)} lignes, {len(ad_rows)} lignes annonces, "
+           f"{len(actions)} actions de conversion, {len(ca_rows)} lignes par action")
+    if err_actions:
+        print(f"    google: actions de conversion refusées : {err_actions}")
+        mot += f" · actions de conversion REFUSÉES : {err_actions}"
+    for quoi, liste in (("campagnes", trous), ("annonces", trous_ad), ("par action", trous_ca)):
         if liste:
             print(f"    google: {len(liste)} tranche(s) {quoi} refusée(s) : "
                   f"{' | '.join(liste)}")

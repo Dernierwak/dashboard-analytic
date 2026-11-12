@@ -135,7 +135,7 @@ test("la ligne Total additionne toutes les campagnes, tous types, et recalcule s
 
 test("les colonnes suivent la vue active", () => {
   assert.deepEqual(tableauDe([campagne()], [], {}, CTX).metriques, ["impressions", "cpm"]);
-  assert.deepEqual(tableauDe([campagne()], [], { vue: "conversion" }, CTX).metriques, ["conversions", "cout_conversion", "taux_conversion"]);
+  assert.deepEqual(tableauDe([campagne()], [], { vue: "conversion" }, CTX).metriques, ["conversions", "cout_conversion", "taux_conversion", "valeur_conversion", "roas"]);
 });
 
 test("diviseur nul : « — » (null) avec sa raison, jamais 0", () => {

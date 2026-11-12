@@ -27,15 +27,18 @@
 //   · le CSV écrit ce que l'écran écrit, « — » compris, avec le type de
 //     campagne (le vrai type Google sous « Autres types »).
 import {
+  appliquer,
   campagnesDe,
   cleCampagne,
   DEVISE,
   ecart,
+  lectureValeur,
   METRIQUES,
   periodeDe,
   TIRET,
   totaux,
   valeurDe,
+  verdictDe,
   vueDe,
   VUES,
   type CleMetrique,
@@ -46,6 +49,7 @@ import {
   type TypeCampagne,
   type Vue,
 } from "./lecture";
+import type { ConversionsParAction, Repartition, Verdict } from "./valeur";
 
 /** Une ligne de `google_ads_ad_insights` : une annonce, un jour. Les champs de
  *  campagne sont ceux de `LigneGoogle` ; `typeCampagne` n'y est pas récolté
@@ -74,6 +78,9 @@ export type LigneTableau = {
   valeurs: (number | null)[];
   /** Pourquoi la valeur de même rang s'écrit « — » ; `null` quand elle existe. */
   raisons: (string | null)[];
+  /** La « ⓘ » de la valeur de même rang : ce que vaut le nombre (ticket 03 —
+   *  une partie de la valeur n'est qu'un comptage) ; `null` sinon. */
+  avertissements: (string | null)[];
   /** L'écart du chiffre principal contre la période d'avant. */
   ecart: number | null;
   /** Pourquoi une campagne ne se déplie pas, quand c'est son type qui le veut. */
@@ -118,6 +125,10 @@ const RAISON_DIVISEUR: Partial<Record<CleMetrique, string>> = {
 };
 const RAISON_GENERALE = "Ce ratio n'a pas de diviseur sur la période : il ne se calcule pas.";
 const RIEN_MESURE = "Rien de mesuré sur la période.";
+/** `google_ads_ad_insights` ne récolte pas la valeur de conversion : Google la
+ *  donne par campagne, pas par annonce dans cette récolte. */
+const RAISON_VALEUR_ANNONCE = "La valeur de conversion n'est lue qu'au niveau campagne : Pulse ne la récolte pas par groupe d'annonces ni par annonce.";
+const METRIQUES_VALEUR: CleMetrique[] = ["valeur_conversion", "roas"];
 
 function raisonDe(m: CleMetrique, t: Totaux | null, v: number | null): string | null {
   if (v !== null) return null;
@@ -152,7 +163,16 @@ function noeudSous(parent: Map<string, Noeud>, cle: string, id: string | null, n
   return n;
 }
 
-export function tableauDe(lignesCampagnes: LigneGoogle[], lignesAnnonces: LigneAnnonceGoogle[], c: Commandes, ctx: Contexte): Tableau {
+/** `repartition` : la règle « sans valeur » (`./valeur`), recalculée sur
+ *  chaque campagne et sur le Total — une campagne à vraie valeur n'est pas
+ *  effacée par le reste du compte (spec, user story 24). */
+export function tableauDe(
+  lignesCampagnes: LigneGoogle[],
+  lignesAnnonces: LigneAnnonceGoogle[],
+  c: Commandes,
+  ctx: Contexte,
+  repartition?: Repartition
+): Tableau {
   const vue = vueDe(c.vue);
   const metriques = VUES[vue].metriques;
   const p = periodeDe(c, ctx);
@@ -193,9 +213,31 @@ export function tableauDe(lignesCampagnes: LigneGoogle[], lignesAnnonces: LigneA
   const principale = metriques[0];
   const sens = METRIQUES[principale].hausseBonne === false ? 1 : -1;
 
+  // La répartition par action des mêmes jours, et de la campagne du nœud (le
+  // Total : de la campagne choisie, ou de toutes).
+  const repartie = (campagne: string | null, de: string, a: string) => (r: ConversionsParAction) =>
+    r.date >= de && r.date <= a && r.date < ctx.aujourdhui && (campagne === null ? !c.campagne || r.campagneId === c.campagne : r.campagneId === campagne);
+  const verdictsDe = (n: Noeud, niveau: NiveauTableau): [Verdict, Verdict] => {
+    // Groupes et annonces n'ont pas de valeur lue : rien à décider, leur
+    // « — » a sa propre raison.
+    if (niveau === "groupe" || niveau === "annonce") return [{ affichee: true, avertissement: null }, { affichee: true, avertissement: null }];
+    const campagne = niveau === "total" ? null : n.id;
+    return [
+      verdictDe(n.courant, repartition, repartie(campagne, p.debut, p.fin)),
+      verdictDe(n.avant, repartition, repartie(campagne, p.avantDebut, p.avantFin)),
+    ];
+  };
+
   const versLigne = (n: Noeud, niveau: NiveauTableau, type: TypeCampagne | null, enfants: LigneTableau[]): LigneTableau => {
-    const t = totaux(n.courant);
+    const [verdict, verdictAvant] = verdictsDe(n, niveau);
+    const t = appliquer(totaux(n.courant), verdict);
     const valeurs = metriques.map((m) => valeurDe(m, t));
+    const detailParAnnonce = niveau === "groupe" || niveau === "annonce";
+    const lus = metriques.map((m) =>
+      detailParAnnonce && METRIQUES_VALEUR.includes(m) && t !== null
+        ? { raison: RAISON_VALEUR_ANNONCE, avertissement: null }
+        : lectureValeur(m, t, verdict)
+    );
     return {
       cle: n.cle,
       niveau,
@@ -204,8 +246,9 @@ export function tableauDe(lignesCampagnes: LigneGoogle[], lignesAnnonces: LigneA
       couleur: niveau === "campagne" ? infos.get(n.cle)?.couleur ?? null : null,
       type,
       valeurs,
-      raisons: metriques.map((m, i) => raisonDe(m, t, valeurs[i])),
-      ecart: ecart(valeurs[0], valeurDe(principale, totaux(n.avant))),
+      raisons: metriques.map((m, i) => (valeurs[i] === null ? lus[i].raison ?? raisonDe(m, t, valeurs[i]) : null)),
+      avertissements: lus.map((x, i) => (valeurs[i] === null ? null : x.avertissement)),
+      ecart: ecart(valeurs[0], valeurDe(principale, appliquer(totaux(n.avant), verdictAvant))),
       sansDetail: niveau === "campagne" ? sansDetailDe(type) : null,
       enfants,
     };
@@ -263,8 +306,9 @@ const NOM_NIVEAU: Record<NiveauTableau, string> = {
 type Format = (typeof METRIQUES)[CleMetrique]["format"];
 // « decimal » : les conversions fractionnaires de Google (data-driven), deux
 // décimales comme à l'écran.
-const DECIMALES: Record<Format, number> = { entier: 0, decimal: 2, argent: 2, pourcent: 2 };
-const UNITE: Record<Format, string> = { entier: "", decimal: "", argent: ` (${DEVISE})`, pourcent: " (%)" };
+// « ratio » : le ROAS, valeur ÷ coût, sans unité comme chez Google.
+const DECIMALES: Record<Format, number> = { entier: 0, decimal: 2, argent: 2, pourcent: 2, ratio: 2 };
+const UNITE: Record<Format, string> = { entier: "", decimal: "", argent: ` (${DEVISE})`, pourcent: " (%)", ratio: "" };
 
 /** Le libellé de l'écran, ou le vrai type Google sous « Autres types »
  *  (spec, § « Le Type de campagne »). */

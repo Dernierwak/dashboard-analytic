@@ -6,6 +6,7 @@ import { dernierJourDeTravail, enFrancais, horodatage } from "@/lib/jour-de-trav
 import { changementDe, type ChangementGoogle, type LigneChangementGoogle } from "@/lib/google/changements";
 import { contenuPage, decaler, lireToutesLesPages, periodeDe, type Commandes, type ContenuPage, type LigneGoogle } from "@/lib/google/lecture";
 import { tableauDe, type LigneAnnonceGoogle, type Tableau } from "@/lib/google/tableau";
+import type { Repartition } from "@/lib/google/valeur";
 
 // ── CE QUE LA PAGE GOOGLE LIT DANS SUPABASE ──────────────────────────────────
 //
@@ -36,8 +37,9 @@ export type DonneesGoogle = ContenuPage & {
 // `ctr` et `avg_cpc_micros` ne sont PAS lus : les taux se recalculent total ÷
 // total (`lecture.ts`), un taux récolté par ligne ne s'additionne pas.
 // `advertising_channel_type` exige la section 25 du `000` jouée : sans elle,
-// PostgREST refuse la lecture et la page lève (`lireToutesLesPages`).
-const COLONNES = "date_start, campaign_id, campaign_name, advertising_channel_type, impressions, clicks, cost_micros, conversions";
+// PostgREST refuse la lecture et la page lève (`lireToutesLesPages`) — de même
+// pour `conversions_value`, de la même section.
+const COLONNES = "date_start, campaign_id, campaign_name, advertising_channel_type, impressions, clicks, cost_micros, conversions, conversions_value";
 
 type LigneBase = {
   date_start: string;
@@ -48,7 +50,15 @@ type LigneBase = {
   clicks: number | null;
   cost_micros: number | string | null;
   conversions: number | string | null;
+  conversions_value: number | string | null;
 };
+
+/** Un nombre lu tel quel : NULL reste `null`, jamais 0 (`CLAUDE.md` §7). */
+function nombreOuNull(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 /** Google rend le coût en millionièmes de la devise du compte. Converti ICI,
  *  une seule fois (spec, § « Les vues et leurs métriques »). */
@@ -67,6 +77,8 @@ function versLigne(r: LigneBase): LigneGoogle {
     impressions: Number(r.impressions) || 0,
     clics: Number(r.clicks) || 0,
     conversions: Number(r.conversions) || 0,
+    // Nullable (section 25) : NULL = pas lu, la somme de la période devient « — ».
+    valeurConversion: nombreOuNull(r.conversions_value),
   };
 }
 
@@ -74,7 +86,7 @@ function versLigne(r: LigneBase): LigneGoogle {
 // écrit que les annonces qui ont eu des impressions, et rien pour PMax.
 const COLONNES_ANNONCES = "date_start, campaign_id, campaign_name, ad_group_id, ad_group_name, ad_id, ad_name, impressions, clicks, cost_micros, conversions";
 
-type LigneBaseAnnonce = Omit<LigneBase, "advertising_channel_type"> & {
+type LigneBaseAnnonce = Omit<LigneBase, "advertising_channel_type" | "conversions_value"> & {
   ad_group_id: string | null;
   ad_group_name: string | null;
   ad_id: string | null;
@@ -84,7 +96,9 @@ type LigneBaseAnnonce = Omit<LigneBase, "advertising_channel_type"> & {
 function versLigneAnnonce(r: LigneBaseAnnonce): LigneAnnonceGoogle {
   return {
     // Le type n'est pas sur cette table : le Tableau le lit sur la campagne.
-    ...versLigne({ ...r, advertising_channel_type: null }),
+    // La valeur de conversion non plus (`google_ads_ad_insights` ne la récolte
+    // pas) : `null`, donc « — » avec sa raison, jamais 0.
+    ...versLigne({ ...r, advertising_channel_type: null, conversions_value: null }),
     groupeId: r.ad_group_id || null,
     groupeNom: r.ad_group_name ?? "",
     annonceId: r.ad_id || null,
@@ -165,6 +179,62 @@ async function lireDebutJournal(supabase: ReturnType<typeof createClient>, uid: 
   return debut ? String(debut).slice(0, 10) : null;
 }
 
+/**
+ * Les actions de conversion et la répartition par action de la période et de
+ * celle d'avant (`000_run_me_all.sql`, section 3quater), pour la règle « sans
+ * valeur » (`lib/google/valeur.ts`). En cas d'échec — section pas encore jouée,
+ * par exemple — `undefined` : la valeur s'affiche « — » avec la raison « pas
+ * encore lu », plutôt qu'une page qui lève ou un comptage pris pour un montant.
+ */
+async function lireRepartition(
+  supabase: ReturnType<typeof createClient>,
+  uid: string,
+  debut: string,
+  fin: string
+): Promise<Repartition | undefined> {
+  try {
+    const [actions, parAction] = await Promise.all([
+      lireToutesLesPages<{ conversion_action_id: string; name: string | null; always_use_default_value: boolean | null; default_value: number | string | null }>(
+        (de, a) =>
+          supabase
+            .from("google_ads_conversion_actions")
+            .select("conversion_action_id, name, always_use_default_value, default_value")
+            .eq("user_id", uid)
+            .order("conversion_action_id", { ascending: true })
+            .range(de, a)
+      ),
+      lireToutesLesPages<{ date_start: string; campaign_id: string; conversion_action_id: string; conversions: number | string | null }>(
+        (de, a) =>
+          supabase
+            .from("google_ads_conversions_by_action")
+            .select("date_start, campaign_id, conversion_action_id, conversions")
+            .eq("user_id", uid)
+            .gte("date_start", debut)
+            .lte("date_start", fin)
+            .order("date_start", { ascending: true })
+            .order("id", { ascending: true })
+            .range(de, a)
+      ),
+    ]);
+    return {
+      actions: actions.map((r) => ({
+        id: r.conversion_action_id,
+        nom: r.name ?? "",
+        toujoursDefaut: r.always_use_default_value,
+        valeurDefaut: nombreOuNull(r.default_value),
+      })),
+      parAction: parAction.map((r) => ({
+        date: String(r.date_start).slice(0, 10),
+        campagneId: r.campaign_id,
+        actionId: r.conversion_action_id,
+        conversions: nombreOuNull(r.conversions),
+      })),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   const supabase = createClient();
   const compte = await getCompteActif();
@@ -181,7 +251,7 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
   // La période d'abord, pour ne lire que ses lignes et celles d'avant.
   const p = periodeDe(c, ctx);
 
-  const [brutes, brutesAnnonces, progres, journal, debutJournal] = await Promise.all([
+  const [brutes, brutesAnnonces, progres, journal, debutJournal, repartition] = await Promise.all([
     lireToutesLesPages<LigneBase>((de, a) =>
       supabase
         .from("google_ads_insights")
@@ -210,13 +280,14 @@ export async function getDonneesGoogle(c: Commandes): Promise<DonneesGoogle> {
     supabase.from("fetch_progress").select("etat, run_id").eq("user_id", uid).eq("canal", "google").limit(1),
     lireJournal(supabase, uid, p.debut, p.fin),
     lireDebutJournal(supabase, uid),
+    lireRepartition(supabase, uid, p.avantDebut, p.fin),
   ]);
 
   const ligneProgres = progres.error ? null : (progres.data?.[0] as { etat: string; run_id: string } | undefined) ?? null;
   const lignes = brutes.map(versLigne);
   return {
-    ...contenuPage(lignes, c, ctx),
-    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx),
+    ...contenuPage(lignes, c, ctx, repartition),
+    tableau: tableauDe(lignes, brutesAnnonces.map(versLigneAnnonce), c, ctx, repartition),
     lecture: phraseLecture(ligneProgres),
     muet,
     journal,

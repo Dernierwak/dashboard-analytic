@@ -177,11 +177,14 @@ function Ligne({
       </td>
       {t.metriques.map((m, i) => {
         const raison = l.raisons[i];
+        const avertissement = l.avertissements[i];
         return (
-          <td key={m} className="whitespace-nowrap px-4 py-3 text-right" title={raison ?? undefined}>
+          <td key={m} className="whitespace-nowrap px-4 py-3 text-right" title={raison ?? avertissement ?? undefined}>
             <span className={`tabular-nums ${i === 0 ? "text-[15px] font-semibold text-ink" : "text-[14px] text-ink/75"}`}>
               {formaterValeur(m, l.valeurs[i])}
             </span>
+            {/* Ticket 03 : une partie de la valeur n'est qu'un comptage. */}
+            {avertissement && <span className="ml-1 cursor-help text-[12px] text-neg" aria-label={avertissement}>ⓘ</span>}
             {raison && <span className="sr-only">{raison}</span>}
           </td>
         );
