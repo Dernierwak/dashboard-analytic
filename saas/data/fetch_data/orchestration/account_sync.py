@@ -21,7 +21,7 @@ from saas.data.fetch_data.orchestration import execution_plan as plans
 from saas.data.fetch_data.orchestration.concurrent_runner import executer
 from saas.data.supabase.fetch_state.state import CANAUX, Suivi
 from saas.data.fetch_data.shared.http_client import sans_jeton
-from saas.data.fetch_data.shared.token_status import INCONNU, TokenStatus
+from saas.data.fetch_data.shared.token_status import INCONNU, VALIDE, TokenStatus
 from saas.data.fetch_data.sources.google.ads import sync as recolte_google
 from saas.data.fetch_data.sources.google.auth import token as jeton_google
 from saas.data.fetch_data.sources.google.analytics import sync as recolte_ga4
@@ -31,6 +31,7 @@ from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.sources.meta.instagram import releve_compte
 from saas.data.fetch_data.sources.meta.instagram import sync as recolte_instagram
 from saas.data.supabase.source_data.account import (
+    noter_echeance,
     ColonneRelectureAbsente, dater_premiere_relecture_instagram, marquer_a_reconnecter,
 )
 from saas.config.secrets import secret
@@ -99,6 +100,33 @@ def verifier_jetons(lignes: list[dict]) -> dict[str, TokenStatus]:
         except Exception as e:
             etats[a["id"]] = TokenStatus(INCONNU, f"vérification en erreur ({type(e).__name__})")
     return etats
+
+
+def noter_echeances(sb, uid: str, lignes: list[dict], etats: dict) -> list[str]:
+    """L'échéance de chaque jeton VALIDE → `connected_accounts.jeton_expire_le`.
+
+    C'est ce qui permet de prévenir le client AVANT la panne : `verifier` lit
+    l'échéance à chaque passage, et jusqu'ici elle n'allait nulle part
+    (`.scratch/recolte/tickets/05-…`). Rend les lignes de journal des écritures
+    ratées — jamais bloquant, la récolte se passe de cette date.
+
+    SEUL UN JETON VALIDE ÉCRIT. Mort : la section 4bis le dit déjà, et sa date
+    d'échéance n'apprend plus rien. Inconnu : on n'a rien lu, on n'efface pas
+    ce qu'un passage précédent savait.
+    """
+    journal: list[str] = []
+    for a in lignes:
+        etat = etats.get(a.get("id"))
+        if etat is None or etat.etat != VALIDE:
+            continue
+        try:
+            ecrit = noter_echeance(sb, uid, a, etat.expire_le)
+        except Exception as e:
+            journal.append(f"échéance du jeton NON écrite ({type(e).__name__})")
+            continue
+        if ecrit is False:
+            journal.append("échéance du jeton NON écrite — 0 ligne touchée")
+    return journal
 
 
 def _marquer(sb, uid: str, le_plan: plans.ExecutionPlan) -> list[tuple[int, str]]:
@@ -203,8 +231,12 @@ def leger(sb, uid: str) -> list[str]:
               if a.get("meta_token") and a.get("instagram_business_id")]
     if not lignes:
         return []
-    le_plan = plans.planifier(lignes, verifier_jetons(lignes))
+    etats = verifier_jetons(lignes)
+    le_plan = plans.planifier(lignes, etats)
     journal = [mot for canal, mot in le_plan.journal if canal == "meta"]
+    # Le passage léger tourne CHAQUE jour : c'est lui qui tient l'échéance à
+    # jour entre deux Jours de travail.
+    journal += noter_echeances(sb, uid, lignes, etats)
     journal += [mot for _, mot in _marquer(sb, uid, le_plan)]
     for tache in (t for f in le_plan.fils for t in f if t.canal == "instagram"):
         c = tache.connexion
@@ -257,9 +289,11 @@ def passer(sb, uid: str, depuis: date | None = None) -> list[str]:
     """
     logs: list[str] = []
     lignes = connexions(sb, uid)
-    le_plan = plans.planifier(lignes, verifier_jetons(lignes))
+    etats = verifier_jetons(lignes)
+    le_plan = plans.planifier(lignes, etats)
     suivi = Suivi(uid)
     journal: list[tuple[int, str]] = [(_RANG[c], mot) for c, mot in le_plan.journal]
+    journal += [(_RANG["meta"], mot) for mot in noter_echeances(sb, uid, lignes, etats)]
     journal += _marquer(sb, uid, le_plan)
 
     # `planifie` pose tous les canaux prévus à « attente » avec un run_id neuf.

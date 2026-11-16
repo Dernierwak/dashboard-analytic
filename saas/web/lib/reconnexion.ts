@@ -30,5 +30,18 @@ export async function leverReconnexion(
   } catch {
     // voir ci-dessus
   }
+  // L'ÉCHÉANCE DÉCRIVAIT L'ANCIEN JETON : elle part avec lui, sinon le préavis
+  // « expire dans 3 jours » resterait affiché après la reconnexion, jusqu'au
+  // prochain passage du worker qui écrit la nouvelle date. À PART, et son
+  // échec est ignoré : la colonne arrive avec la section 27 du `000`.
+  try {
+    await supabase
+      .from("connected_accounts")
+      .update({ jeton_expire_le: null })
+      .eq("user_id", uid)
+      .eq("provider", provider);
+  } catch {
+    // colonne absente ou base injoignable : la reconnexion, elle, est faite
+  }
 }
 

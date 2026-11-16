@@ -25,6 +25,11 @@ export type EtatCanal = {
   /** Le jeton est mort : la récolte de ce canal est arrêtée jusqu'à la
    *  reconnexion. Posé par le worker (`saas/data/fetch_data/{meta,google}/auth/`). */
   aReconnecter: AReconnecter | null;
+  /** Quand l'autorisation de ce canal arrive à échéance, si la plateforme le
+   *  dit (`jeton_expire_le`). `null` = non communiquée, ou jamais lue. */
+  expireLe: string | null;
+  /** Ce qu'on écrit à la place d'une date quand la plateforme n'en donne pas. */
+  sansEcheance: string | null;
 };
 
 export type AReconnecter = {
@@ -44,6 +49,9 @@ export type Connexions = {
    *  Google Ads + Analytics. */
   reconnecterMeta: AReconnecter | null;
   reconnecterGoogle: AReconnecter | null;
+  /** L'échéance de l'autorisation Meta (elle sert aussi Instagram), `null` si
+   *  elle n'est pas connue ou si le jeton est déjà mort. */
+  echeanceMeta: string | null;
   /** Le compte publicitaire Meta que le client a désigné, `null` s'il n'en a
    *  désigné aucun — la récolte lit alors le premier que Meta rend. */
   comptePubMeta: ComptePubMeta | null;
@@ -53,6 +61,47 @@ export type Connexions = {
 };
 
 export type ComptePubMeta = { id: string; nom: string | null };
+
+type LigneEcheance = {
+  id: number;
+  provider: string | null;
+  jeton_expire_le: string | null;
+  a_reconnecter_depuis: string | null;
+};
+
+// L'ÉCHÉANCE, LUE À PART ELLE AUSSI (section 27 du `000`) : une base où la
+// section n'est pas jouée ne doit pas emporter la lecture des jetons.
+async function lireEcheances(uid: string): Promise<LigneEcheance[]> {
+  try {
+    const r = await createClient()
+      .from("connected_accounts")
+      .select("id, provider, jeton_expire_le, a_reconnecter_depuis")
+      .eq("user_id", uid);
+    return r.error ? [] : ((r.data as unknown as LigneEcheance[]) ?? []);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Les échéances connues, par plateforme — pour le rapport hebdo, qui n'a pas à
+ * lire un seul jeton pour dire qu'une connexion arrive à son terme.
+ *
+ * Une connexion déjà marquée « à reconnecter » n'en a plus : le jeton est mort,
+ * ce n'est plus un préavis, et la page le dit autrement. La ligne Google est
+ * celle dont `provider` vaut `google` ; toute autre est Meta (les lignes
+ * d'avant l'unification des jetons n'ont pas de `provider`).
+ */
+export async function getEcheances(uid: string): Promise<{ meta: string | null; google: string | null }> {
+  const out: { meta: string | null; google: string | null } = { meta: null, google: null };
+  for (const l of await lireEcheances(uid)) {
+    if (!l.jeton_expire_le || l.a_reconnecter_depuis) continue;
+    const cle = l.provider === "google" ? "google" : "meta";
+    // Deux connexions sur une plateforme : la plus proche est celle qui presse.
+    if (!out[cle] || l.jeton_expire_le < out[cle]!) out[cle] = l.jeton_expire_le;
+  }
+  return out;
+}
 
 type LigneComptePub = {
   id: number;
@@ -149,6 +198,13 @@ export async function getConnexions(uid: string): Promise<Connexions> {
     ? reconnexions.get(google.id) ?? null
     : null;
 
+  const echeances = await lireEcheances(uid);
+  const expireMeta = (meta && echeances.find((e) => e.id === meta.id)?.jeton_expire_le) || null;
+  const expireGoogle = (google && echeances.find((e) => e.id === google.id)?.jeton_expire_le) || null;
+  // Google ne date pas la fin d'un refresh token : il tient jusqu'à ce qu'il
+  // soit révoqué ou reste six mois sans servir (`google/auth/token.py`).
+  const SANS_ECHEANCE_GOOGLE = "Google ne donne pas de date d'échéance";
+
   const comptesPub = meta?.meta_token ? await lireComptesPubMeta(uid) : null;
   const comptePubMeta = (meta && comptesPub?.get(meta.id)) || null;
 
@@ -167,6 +223,8 @@ export async function getConnexions(uid: string): Promise<Connexions> {
         : meta?.account_name ?? null,
       manque: meta?.meta_token ? null : "Autoriser Pulse sur ton compte Facebook.",
       aReconnecter: reconnecterMeta,
+      expireLe: expireMeta,
+      sansEcheance: null,
     },
     {
       cle: "instagram",
@@ -180,6 +238,8 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           : "Choisir la Page Facebook liée à ton compte Instagram."
         : "Connecte Meta d'abord — Instagram passe par la même autorisation.",
       aReconnecter: meta?.instagram_business_id ? reconnecterMeta : null,
+      expireLe: meta?.instagram_business_id ? expireMeta : null,
+      sansEcheance: null,
     },
     {
       cle: "google_ads",
@@ -193,6 +253,8 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           : "Choisir le compte Google Ads à suivre."
         : "Autoriser Pulse sur ton compte Google.",
       aReconnecter: google?.google_customer_id ? reconnecterGoogle : null,
+      expireLe: google?.google_customer_id ? expireGoogle : null,
+      sansEcheance: SANS_ECHEANCE_GOOGLE,
     },
     {
       cle: "ga4",
@@ -207,6 +269,8 @@ export async function getConnexions(uid: string): Promise<Connexions> {
           : "Choisir la propriété Analytics de ton site."
         : "Connecte Google d'abord — Analytics passe par la même autorisation.",
       aReconnecter: google?.ga4_property_id ? reconnecterGoogle : null,
+      expireLe: google?.ga4_property_id ? expireGoogle : null,
+      sansEcheance: SANS_ECHEANCE_GOOGLE,
     },
   ];
 
@@ -219,6 +283,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
     reconnecterMeta,
     reconnecterGoogle,
     comptePubMeta,
+    echeanceMeta: reconnecterMeta ? null : expireMeta,
     comptePubMetaAChoisir: Boolean(meta?.meta_token) && comptesPub !== null && !comptePubMeta,
   };
 }

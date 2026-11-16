@@ -9,6 +9,9 @@
 // fichier ; un payload publié avant un bloc ne rend rien à sa place.
 
 import { getWeeklyData } from "@/lib/report";
+import { getCompteActif } from "@/lib/account";
+import { getEcheances } from "@/lib/connexions";
+import { EcheanceConnexion } from "@/components/hebdo/echeance-connexion";
 import { SetupWizard } from "@/components/setup-wizard";
 import { TitreSemaine, CompteNeuf } from "@/components/hebdo/titre-semaine";
 import { BandeauTotaux } from "@/components/hebdo/bandeau-totaux";
@@ -19,7 +22,15 @@ import { CeQuiAEteFait } from "@/components/hebdo/ce-qui-a-ete-fait";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const data = await getWeeklyData();
+  // L'ÉCHÉANCE DES CONNEXIONS SE LIT À CÔTÉ DU RAPPORT, PAS DEDANS : le payload
+  // est publié une fois par semaine, la date d'un jeton change à la seconde où
+  // le client se reconnecte. Pour le propriétaire seulement — un invité ne lit
+  // pas `connected_accounts`. Les deux lectures ne s'attendent pas.
+  const compte = await getCompteActif();
+  const [data, echeances] = await Promise.all([
+    getWeeklyData(),
+    compte.uid === compte.moi ? getEcheances(compte.moi) : null,
+  ]);
   const report = data.report;
 
   // L'HEURE DU RENDU, LUE UNE FOIS : le prochain passage et la carte du compte
@@ -41,6 +52,10 @@ export default async function Page() {
         jourDeTravail={data.jourDeTravail}
         maintenantIso={maintenant.toISOString()}
       />
+
+      {/* Avant le rapport, et même sans rapport : c'est la seule ligne de cette
+          page qui demande un geste, et elle a une date limite. */}
+      {echeances && <EcheanceConnexion echeances={echeances} maintenant={maintenant} />}
 
       {report ? (
         <>

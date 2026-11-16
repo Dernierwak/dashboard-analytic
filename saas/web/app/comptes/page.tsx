@@ -9,7 +9,8 @@
 import Link from "next/link";
 import { getCompteActif } from "@/lib/account";
 import { getConnexions, type AReconnecter, type EtatCanal } from "@/lib/connexions";
-import { dateFr, dateNue } from "@/lib/jour-de-travail";
+import { dateFr, dateNue, horodatage } from "@/lib/jour-de-travail";
+import { dansCombien, echeanceDe, type Echeance } from "@/lib/echeance";
 import { createClient } from "@/lib/supabase/server";
 import { JETON_META, lireJetonTransit } from "@/lib/oauth";
 import {
@@ -156,7 +157,55 @@ function Reconnexion({
   );
 }
 
-function LigneCanal({ c }: { c: EtatCanal }) {
+/** Le jeton vit encore, mais plus pour longtemps : le préavis. Plus doux que
+ *  `Reconnexion` — rien n'est cassé, la récolte tourne — mais avec le même
+ *  geste, parce que se reconnecter maintenant évite la panne
+ *  (`.scratch/recolte/tickets/05-…`). */
+function Preavis({ nom, sert, e, href }: { nom: string; sert: string; e: Echeance; href: string }) {
+  const jour = horodatage(e.expireLe);
+  return (
+    <div className="mb-5 rounded-xl border border-warn/25 bg-warn/[0.04] px-4 py-3">
+      <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1">
+        {nom} — {e.passee ? "autorisation arrivée à échéance" : "autorisation bientôt à échéance"}
+      </div>
+      <p className="text-[12.5px] text-ink leading-relaxed">
+        <span className="font-semibold">
+          {e.passee
+            ? `L'autorisation que tu as donnée à Pulse sur ${nom} est arrivée à échéance${jour ? ` le ${dateFr(jour)}` : ""}.`
+            : `L'autorisation que tu as donnée à Pulse sur ${nom} prend fin${jour ? ` le ${dateFr(jour)}` : ""}, ${dansCombien(e)}.`}
+        </span>{" "}
+        {e.passee
+          ? `La prochaine récolte ne pourra plus lire ${sert}.`
+          : `Passé cette date, Pulse ne pourra plus lire ${sert}.`}{" "}
+        Reconnecte-toi maintenant : ça prend 20 secondes, et rien ne s&apos;interrompt.
+      </p>
+      <a
+        href={href}
+        className="inline-block mt-2.5 text-[12.5px] font-semibold rounded-full px-4 py-2 text-brand border border-brand/30 hover:bg-brand/[0.06] transition-colors"
+      >
+        Reconnecter {nom}
+      </a>
+    </div>
+  );
+}
+
+/** Ce que la ligne d'une source dit de son échéance : la date quand la
+ *  plateforme la donne, la raison quand elle ne la donne pas, rien sinon. */
+function echeanceEcrite(c: EtatCanal, maintenant: Date): { texte: string; presse: boolean } | null {
+  if (!c.connecte || c.aReconnecter) return null;
+  const e = echeanceDe(c.expireLe, maintenant);
+  if (e) {
+    const jour = horodatage(e.expireLe);
+    if (!jour) return null;
+    return e.passee
+      ? { texte: `Autorisation arrivée à échéance le ${dateFr(jour)}`, presse: true }
+      : { texte: `Autorisation valable jusqu'au ${dateFr(jour)} ${jour.getUTCFullYear()}${e.bientot ? ` — ${dansCombien(e)}` : ""}`, presse: e.bientot };
+  }
+  return c.sansEcheance ? { texte: c.sansEcheance, presse: false } : null;
+}
+
+function LigneCanal({ c, maintenant }: { c: EtatCanal; maintenant: Date }) {
+  const echeance = echeanceEcrite(c, maintenant);
   return (
     <div className="flex items-start gap-3 px-4 py-3.5 border-b border-line last:border-b-0">
       <span className="mt-1.5">
@@ -183,6 +232,11 @@ function LigneCanal({ c }: { c: EtatCanal }) {
               ? c.apporte
               : (c.manque ?? c.apporte)}
         </p>
+        {echeance && (
+          <p className={`text-[11.5px] leading-relaxed mt-1 ${echeance.presse ? "text-warn font-semibold" : "text-faint"}`}>
+            {echeance.texte}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -310,6 +364,7 @@ export default async function ComptesPage({
   // Un canal à reconnecter compte parmi les restants : il ne récolte plus.
   const restants = cx.canaux.filter((c) => !c.connecte || c.aReconnecter).length;
   const maintenant = new Date();
+  const echeanceMeta = echeanceDe(cx.echeanceMeta, maintenant);
 
   return (
     // Pas de `max-w-*` : voir la note dans `app/page.tsx`.
@@ -365,6 +420,17 @@ export default async function ComptesPage({
           r={cx.reconnecterGoogle}
           href="/api/oauth/google/start"
           perdu={changementsGooglePerdus(cx.reconnecterGoogle, maintenant)}
+        />
+      )}
+
+      {/* ── Puis une connexion qui VA mourir : il reste le temps d'agir ───── */}
+
+      {echeanceMeta?.bientot && (
+        <Preavis
+          nom="Meta"
+          sert="tes campagnes Meta ni tes publications Instagram"
+          e={echeanceMeta}
+          href="/api/oauth/meta/start"
         />
       )}
 
@@ -461,7 +527,7 @@ export default async function ComptesPage({
 
       <div className="bg-white border border-line rounded-xl shadow-card overflow-hidden mb-5">
         {cx.canaux.map((c) => (
-          <LigneCanal key={c.cle} c={c} />
+          <LigneCanal key={c.cle} c={c} maintenant={maintenant} />
         ))}
       </div>
 

@@ -140,6 +140,31 @@ def marquer_a_reconnecter(supabase: Client, user_id: str, connexion: dict, raiso
     return bool(r.data)
 
 
+# ── L'échéance du jeton — écrite à chaque passage où il est valide ────────────
+
+def noter_echeance(supabase: Client, user_id: str, connexion: dict, expire_le) -> bool | None:
+    """Écrit `jeton_expire_le` sur UNE ligne ; True si écrite, None si la
+    colonne n'existe pas encore (section 27 du `000` pas jouée).
+
+    `expire_le` None s'écrit NULL : « la plateforme ne l'a pas dit » efface une
+    date qui décrivait un jeton d'avant, elle ne la laisse pas traîner.
+
+    SEULS `42703` ET `PGRST204` DISENT « COLONNE ABSENTE ». Postgres rend le
+    premier, le cache de schéma de PostgREST le second sur un update. Tout
+    autre échec remonte : l'appelant en fait une ligne de journal, il ne le
+    prend pas pour une migration en retard.
+    """
+    valeur = expire_le.isoformat() if expire_le is not None else None
+    try:
+        r = (supabase.table("connected_accounts").update({"jeton_expire_le": valeur})
+             .eq("id", connexion["id"]).eq("user_id", user_id).execute())
+    except Exception as e:
+        if str(getattr(e, "code", "") or "") in ("42703", "PGRST204"):
+            return None
+        raise
+    return bool(r.data)
+
+
 # ── Instagram — la date du dernier passage complet (trimestriel) ──────────────
 #
 # Spec § La récolte — Ce qui s'ajoute, « La relecture » : tous les 3 mois, tous

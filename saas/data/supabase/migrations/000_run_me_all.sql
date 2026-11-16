@@ -61,6 +61,8 @@
 --   26)    meta_campaign_config.objective — l'objectif déclaré de la campagne ;
 --          connected_accounts.meta_ad_account_id / _name — le compte
 --          publicitaire Meta CHOISI (meta-ads, tickets 21 et 22)
+--   27)    connected_accounts.jeton_expire_le — l'échéance du jeton, pour
+--          prévenir AVANT la panne (recolte, ticket 05)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -2283,6 +2285,34 @@ ALTER TABLE public.connected_accounts
     ADD COLUMN IF NOT EXISTS meta_ad_account_name text DEFAULT NULL;
 
 -- ============================================================================
+-- 27) L'ÉCHÉANCE D'UN JETON — prévenir avant la panne, pas après
+--     (`.scratch/recolte/tickets/05-l-echeance-se-dit-avant-la-panne.md`).
+--
+--     La section 4bis dit qu'un jeton est MORT. Celle-ci porte la date à
+--     laquelle il mourra, que la récolte lit déjà à chaque passage
+--     (`sources/meta/auth/token.py`, `/debug_token` : la plus proche de
+--     `expires_at` et `data_access_expires_at`) et qu'elle jetait.
+--
+--     `jeton_expire_le` — NULL = échéance non communiquée par la plateforme,
+--     ou jamais lue. JAMAIS une date supposée (`CLAUDE.md` §7) : Google ne
+--     donne aucune échéance à un refresh token, la colonne reste donc NULL sur
+--     sa ligne, et la page le dit au lieu d'afficher une date.
+--
+--     Écrite par le worker à chaque passage où le jeton est valide ; remise à
+--     NULL par la reconnexion (`saas/web/app/comptes/actions.ts`), puisque la
+--     date décrit l'ancien jeton. Lue par la page Connexions et par le rapport
+--     hebdo, pour le propriétaire seulement : `connected_accounts` n'est
+--     partagée avec aucun invité (§12, 15.2).
+--
+--     Tant que cette section n'est pas jouée, rien ne casse : la récolte
+--     n'écrit pas l'échéance, les deux pages n'en parlent pas.
+--     Ajout seul. RLS déjà posée.
+-- ============================================================================
+
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS jeton_expire_le timestamptz DEFAULT NULL;
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -2376,6 +2406,7 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'meta_campaign_config',     'objective'),            -- §26
     ('c', 'connected_accounts',       'meta_ad_account_id'),   -- §26
     ('c', 'connected_accounts',       'meta_ad_account_name'), -- §26
+    ('c', 'connected_accounts',       'jeton_expire_le'),      -- §27
     ('t', 'google_ads_conversion_actions',    NULL),           -- §3quater
     ('t', 'google_ads_conversions_by_action', NULL),           -- §3quater
     ('c', 'google_ads_conversion_actions',    'always_use_default_value'), -- §3quater
