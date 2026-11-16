@@ -15,6 +15,7 @@ import { JETON_META, lireJetonTransit } from "@/lib/oauth";
 import {
   accessTokenGoogle,
   comptesGoogleAds,
+  comptesPubMeta,
   pagesFacebook,
   proprietesGa4,
   type Resultat,
@@ -23,7 +24,12 @@ import { ChoixCompte } from "@/components/choix-compte";
 import { DeconnecterBouton } from "@/components/deconnecter-bouton";
 import { SuiviRecolte } from "@/components/suivi-recolte";
 import { JourRecolte } from "@/components/jour-recolte";
-import { connecterMeta, choisirCompteGoogle, choisirProprieteGa4 } from "./actions";
+import {
+  connecterMeta,
+  choisirComptePubMeta,
+  choisirCompteGoogle,
+  choisirProprieteGa4,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -245,6 +251,29 @@ export default async function ComptesPage({
   const jetonMeta = lireJetonTransit(JETON_META);
   const choixPages: Resultat | null = jetonMeta ? await pagesFacebook(jetonMeta) : null;
 
+  // LE COMPTE PUBLICITAIRE META, quand le jeton en voit plusieurs et que rien
+  // n'est choisi : la récolte lirait le premier de la liste. Pas pendant qu'une
+  // Page attend d'être choisie (le jeton en base est peut-être l'ancien), ni
+  // sur un jeton mort (la liste échouerait). Un seul compte : rien à demander,
+  // la récolte lit déjà celui-là.
+  let choixPubMeta: Resultat | null = null;
+  if (cx.comptePubMetaAChoisir && !jetonMeta && !cx.reconnecterMeta && cx.idMeta !== null) {
+    try {
+      const r = await createClient()
+        .from("connected_accounts")
+        .select("meta_token")
+        .eq("id", cx.idMeta)
+        .eq("user_id", compte.moi)
+        .limit(1);
+      const jeton = r.data?.[0]?.meta_token as string | null | undefined;
+      if (jeton) choixPubMeta = await comptesPubMeta(jeton);
+    } catch {
+      // Même règle que pour Google plus bas : une étape qui échoue perd son
+      // encadré, pas la page.
+      choixPubMeta = { ok: false, erreur: "Impossible de lister tes comptes publicitaires Meta." };
+    }
+  }
+
   let choixAds: Resultat | null = null;
   let choixGa4: Resultat | null = null;
   const besoinAds = cx.canaux[2].connecte === false;
@@ -362,6 +391,28 @@ export default async function ComptesPage({
             ou tu n&apos;es administrateur de cette Page que via un Business Manager sans
             accès direct.
           </p>
+        </div>
+      )}
+
+      {choixPubMeta?.ok && choixPubMeta.choix.length > 1 && (
+        <ChoixCompte
+          titre="Quel compte publicitaire Meta ?"
+          aide={
+            "Ton accès Facebook en voit plusieurs. Tant que tu n'en choisis pas, Pulse lit " +
+            "le premier que Meta lui rend — pas forcément celui de tes campagnes."
+          }
+          choix={choixPubMeta.choix}
+          action={choisirComptePubMeta}
+          libelleBouton="Suivre ce compte"
+        />
+      )}
+
+      {choixPubMeta && !choixPubMeta.ok && (
+        <div className="mb-5 rounded-xl border border-warn/25 bg-warn/[0.05] px-4 py-3">
+          <div className="text-[10px] uppercase tracking-widest text-warn font-bold mb-1">
+            Compte publicitaire Meta
+          </div>
+          <p className="text-[12.5px] text-ink leading-relaxed">{choixPubMeta.erreur}</p>
         </div>
       )}
 

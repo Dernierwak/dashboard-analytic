@@ -23,7 +23,8 @@ from saas.data.fetch_data.sources.meta.graph_client import AccesMeta
 from saas.data.fetch_data.shared.date_ranges import Fenetre, depart_recolte
 from saas.data.fetch_data.shared.http_client import sans_jeton
 from saas.data.supabase.fetch_state.state import (
-    fetch_images_creas_stockees, fetch_meta_ads_latest_date, fetch_meta_hierarchie,
+    fetch_compte_pub_meta_choisi, fetch_images_creas_stockees,
+    fetch_meta_ads_latest_date, fetch_meta_hierarchie, meta_objectif_present,
 )
 
 # ── LA FENÊTRE DES CHANGEMENTS ────────────────────────────────────────────────
@@ -200,12 +201,42 @@ def _creas(sb, uid, acces: AccesMeta) -> None:
         print(f"    créas meta KO : {sans_jeton(str(e))}")
 
 
-def recolter(sb, uid, jeton: str, note=_rien, since_forcee: date | None = None) -> str:
+def _compte_a_lire(sb, jeton: str, connexion_id) -> tuple[str | None, str | None]:
+    """Le compte publicitaire de ce passage et son fuseau.
+
+    CELUI QUE LE CLIENT A DÉSIGNÉ, s'il en a désigné un (page Connexions,
+    `.scratch/meta-ads/tickets/22-…`). Sinon le premier que `/me/adaccounts`
+    rend — le comportement d'avant ce ticket, gardé pour que les comptes déjà
+    branchés continuent d'être récoltés sans rien avoir à faire. Ce repli se
+    DIT dès que le jeton voit plusieurs comptes : c'est le seul cas où « le
+    premier » est un choix que personne n'a fait.
+
+    Le journal de run est PUBLIC (le dépôt l'est) : il donne des nombres,
+    jamais l'identifiant d'un compte publicitaire.
+    """
+    acces = AccesMeta(jeton=jeton)
+    voulu = fetch_compte_pub_meta_choisi(sb, connexion_id) if connexion_id is not None else None
+    if voulu:
+        compte, fuseau, err = comptes.compte_choisi(acces, voulu)
+        if err:
+            # Le canal finit en ÉCHEC, il ne se rabat pas sur un autre compte
+            # (`compte_choisi`). La page le montrera muet, avec ce motif.
+            raise RuntimeError("le compte publicitaire choisi sur la page Connexions "
+                               f"n'a pas pu être lu : {sans_jeton(err)}")
+        return compte, fuseau
+    liste, _ = comptes.recuperer(acces)
+    if len(liste) > 1:
+        print(f"    meta: compte publicitaire NON choisi — le jeton en voit au moins "
+              f"{len(liste)}, le premier est lu → page Connexions")
+    return comptes.compte_et_fuseau(liste)
+
+
+def recolter(sb, uid, jeton: str, note=_rien, since_forcee: date | None = None,
+             connexion_id=None) -> str:
     # `note` marque une étape FRANCHIE, pas un pourcentage : la séquence est
     # écrite ici, mais le nombre d'appels de chacune ne l'est pas.
     note("comptes")
-    liste, _ = comptes.recuperer(AccesMeta(jeton=jeton))
-    compte, fuseau = comptes.compte_et_fuseau(liste)
+    compte, fuseau = _compte_a_lire(sb, jeton, connexion_id)
     if not compte:
         return "meta: aucun compte pub"
     acces = AccesMeta(jeton=jeton, compte=compte, fuseau=fuseau)
@@ -301,6 +332,15 @@ def recolter(sb, uid, jeton: str, note=_rien, since_forcee: date | None = None) 
     # sur une run verte qui venait d'imprimer le nombre de campagnes vues.
     # `upsert_campaign_statuses` rend la main sur une carte vide : rien à
     # garder ici.
+    # L'OBJECTIF DÉCLARÉ VOYAGE AVEC LE STATUT, s'il a une colonne où aller.
+    # Sur une base où la section 26 du `000` n'est pas jouée, on écrit les
+    # statuts SANS lui plutôt que de les perdre tous (`meta_objectif_present`).
+    if lignes_config and not meta_objectif_present(sb):
+        print("    meta: colonne meta_campaign_config.objective absente — objectifs "
+              "non écrits. Jouer la section 26 de "
+              "saas/data/supabase/migrations/000_run_me_all.sql.")
+        lignes_config = [{k: v for k, v in ligne.items() if k != "objective"}
+                         for ligne in lignes_config]
     sautees = upsert_campaign_statuses(sb, uid, lignes_config)
     if sautees:
         print(f"    meta: {sautees} campagne(s) homonyme(s) sans statut ni ID — "

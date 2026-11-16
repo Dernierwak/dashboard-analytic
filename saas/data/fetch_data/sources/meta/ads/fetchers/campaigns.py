@@ -30,7 +30,12 @@ def recuperer(acces: AccesMeta, fenetre: Fenetre | None = None,
     `fenetre` n'a pas de sens ici : une campagne déclarée n'est pas datée.
     """
     params = {"access_token": acces.jeton,
-              "fields": "id,name,effective_status,start_time,stop_time",
+              # `objective` : ce que l'annonceur a déclaré viser en créant la
+              # campagne (`OUTCOME_TRAFFIC`, `OUTCOME_SALES`…). Même requête, un
+              # champ de plus : zéro appel supplémentaire. `budgets.py` le
+              # demandait déjà sans l'écrire (`BACKLOG.md`, « Trier les campagnes
+              # par leur objectif déclaré »).
+              "fields": "id,name,effective_status,objective,start_time,stop_time",
               "limit": _CAMPAGNES_PAR_PAGE}
     campagnes, err = pages(f"{GRAPH}/{acces.compte}/campaigns", params, timeout=30,
                            pages_max=_CAMPAGNES_PAGES_MAX, limite=limite)
@@ -67,6 +72,11 @@ def lignes_config_meta(user_id: str, campagnes: list[dict]) -> tuple[list[dict],
             "campaign_id": str(campaign_id),
             "campaign_name": c.get("name") or "",
             "effective_status": c.get("effective_status") or None,
+            # Recopié BRUT, comme le type de campagne Google : le libellé se
+            # choisit à l'écran, et un objectif que Meta ajoutera demain ne doit
+            # pas se perdre dans une traduction faite ici. Absent → NULL, jamais
+            # un objectif supposé.
+            "objective": c.get("objective") or None,
             "start_date": _jour(c.get("start_time")),
             # stop_time absent = campagne sans date de fin programmée.
             "end_date": _jour(c.get("stop_time")),

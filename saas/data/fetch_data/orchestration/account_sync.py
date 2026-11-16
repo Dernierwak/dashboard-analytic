@@ -124,8 +124,11 @@ def _appel(tache: plans.IngestionTask, uid: str, depuis: date | None):
     if tache.canal == "meta":
         def meta(sb, note):
             try:
+                # `id` : la ligne de connexion, pour lire le compte
+                # publicitaire que le client y a désigné (`_compte_a_lire`).
                 return recolte_meta.recolter(sb, uid, c["meta_token"], note=note,
-                                             since_forcee=depuis)
+                                             since_forcee=depuis,
+                                             connexion_id=c.get("id"))
             except recolte_meta.SchemaEnRetard:
                 # Un schéma en retard fait finir la run en ROUGE : la note se
                 # prend ici, l'exception continue jusqu'au fil qui la journalise.

@@ -58,6 +58,9 @@
 --          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
 --   25)    google_ads_insights — le type de campagne et trois colonnes de
 --          conversion (google-ads, ticket 02)
+--   26)    meta_campaign_config.objective — l'objectif déclaré de la campagne ;
+--          connected_accounts.meta_ad_account_id / _name — le compte
+--          publicitaire Meta CHOISI (meta-ads, tickets 21 et 22)
 --   21)    (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
@@ -2245,6 +2248,41 @@ ALTER TABLE public.google_ads_insights
     ADD COLUMN IF NOT EXISTS view_through_conversions numeric DEFAULT NULL;
 
 -- ============================================================================
+-- 26) Meta — l'objectif déclaré de la campagne, et le compte publicitaire CHOISI
+--     (`.scratch/meta-ads/tickets/21-…` et `22-…`).
+--
+--     `meta_campaign_config.objective` : l'objectif que l'annonceur a déclaré en
+--     créant la campagne, recopié BRUT (`OUTCOME_TRAFFIC`, `OUTCOME_SALES`…),
+--     comme `advertising_channel_type` côté Google (§25). `/campaigns` le
+--     rendait déjà et on le jetait (`BACKLOG.md`, « Trier les campagnes par
+--     leur objectif déclaré »). NULL = pas lu (ligne écrite avant ce ticket)
+--     ou non rendu par Meta, jamais un objectif supposé (`CLAUDE.md` §7).
+--     La colonne est ÉCRITE, elle n'est lue par aucun écran : la carte
+--     meta-ads a décidé qu'on ne filtre pas sur l'objectif, et cette section
+--     ne revient pas dessus.
+--
+--     `connected_accounts.meta_ad_account_id` (`act_…`) et
+--     `meta_ad_account_name` : le compte publicitaire que le client a désigné
+--     sur la page Connexions. Tant qu'ils sont NULL, la récolte lit le PREMIER
+--     compte que `/me/adaccounts` rend — le comportement d'avant, et le
+--     journal le dit. Ce ne sont pas des secrets, mais ils vivent sur la table
+--     des jetons : elle n'est partagée avec aucun invité (§12, 15.2).
+--
+--     Tant que cette section n'est pas jouée, rien ne casse : la récolte écrit
+--     les statuts sans l'objectif (`sync.py`, `objectif_present`) et lit le
+--     premier compte ; la page Connexions ne propose pas le choix.
+--
+--     Ajout seul. RLS déjà posée sur les deux tables.
+-- ============================================================================
+
+ALTER TABLE public.meta_campaign_config
+    ADD COLUMN IF NOT EXISTS objective text DEFAULT NULL;
+
+ALTER TABLE public.connected_accounts
+    ADD COLUMN IF NOT EXISTS meta_ad_account_id   text DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS meta_ad_account_name text DEFAULT NULL;
+
+-- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
 -- la dernière instruction, et le SQL editor de Supabase n'affiche que le
@@ -2335,6 +2373,9 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_ads_insights',      'conversions_value'),    -- §25
     ('c', 'google_ads_insights',      'all_conversions'),      -- §25
     ('c', 'google_ads_insights',      'view_through_conversions'), -- §25
+    ('c', 'meta_campaign_config',     'objective'),            -- §26
+    ('c', 'connected_accounts',       'meta_ad_account_id'),   -- §26
+    ('c', 'connected_accounts',       'meta_ad_account_name'), -- §26
     ('t', 'google_ads_conversion_actions',    NULL),           -- §3quater
     ('t', 'google_ads_conversions_by_action', NULL),           -- §3quater
     ('c', 'google_ads_conversion_actions',    'always_use_default_value'), -- §3quater

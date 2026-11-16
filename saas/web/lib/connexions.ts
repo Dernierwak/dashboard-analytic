@@ -44,7 +44,43 @@ export type Connexions = {
    *  Google Ads + Analytics. */
   reconnecterMeta: AReconnecter | null;
   reconnecterGoogle: AReconnecter | null;
+  /** Le compte publicitaire Meta que le client a désigné, `null` s'il n'en a
+   *  désigné aucun — la récolte lit alors le premier que Meta rend. */
+  comptePubMeta: ComptePubMeta | null;
+  /** Meta est branché, la base sait porter le choix, et rien n'est choisi :
+   *  la page Connexions peut proposer l'étape. */
+  comptePubMetaAChoisir: boolean;
 };
+
+export type ComptePubMeta = { id: string; nom: string | null };
+
+type LigneComptePub = {
+  id: number;
+  meta_ad_account_id: string | null;
+  meta_ad_account_name: string | null;
+};
+
+// LUES À PART, COMME LES RECONNEXIONS, ET POUR LA MÊME RAISON. Ces deux
+// colonnes arrivent avec la section 26 de `000_run_me_all.sql`. Demandées dans
+// le `select` des jetons, une base où elle n'est pas jouée ferait échouer toute
+// la lecture. `null` = on ne sait pas (colonne absente ou lecture ratée) : la
+// page ne propose alors pas un choix qu'elle ne pourrait pas enregistrer.
+async function lireComptesPubMeta(uid: string): Promise<Map<number, ComptePubMeta | null> | null> {
+  try {
+    const r = await createClient()
+      .from("connected_accounts")
+      .select("id, meta_ad_account_id, meta_ad_account_name")
+      .eq("user_id", uid);
+    if (r.error) return null;
+    const out = new Map<number, ComptePubMeta | null>();
+    for (const l of (r.data as unknown as LigneComptePub[]) ?? []) {
+      out.set(l.id, l.meta_ad_account_id ? { id: l.meta_ad_account_id, nom: l.meta_ad_account_name } : null);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
 
 type LigneReconnexion = {
   id: number;
@@ -113,13 +149,22 @@ export async function getConnexions(uid: string): Promise<Connexions> {
     ? reconnexions.get(google.id) ?? null
     : null;
 
+  const comptesPub = meta?.meta_token ? await lireComptesPubMeta(uid) : null;
+  const comptePubMeta = (meta && comptesPub?.get(meta.id)) || null;
+
   const canaux: EtatCanal[] = [
     {
       cle: "meta",
       nom: "Meta",
       apporte: "Tes campagnes Facebook et Instagram : dépense, clics, portée.",
       connecte: Boolean(meta?.meta_token),
-      detail: meta?.account_name ?? null,
+      // Le compte publicitaire se dit dès qu'il est choisi : c'est lui qui
+      // répond à « quelles campagnes Pulse lit-il ? », pas la Page.
+      detail: comptePubMeta
+        ? [meta?.account_name, `compte publicitaire ${comptePubMeta.nom ?? comptePubMeta.id}`]
+            .filter(Boolean)
+            .join(" · ")
+        : meta?.account_name ?? null,
       manque: meta?.meta_token ? null : "Autoriser Pulse sur ton compte Facebook.",
       aReconnecter: reconnecterMeta,
     },
@@ -173,5 +218,7 @@ export async function getConnexions(uid: string): Promise<Connexions> {
     pret: canaux.every((c) => c.connecte && !c.aReconnecter),
     reconnecterMeta,
     reconnecterGoogle,
+    comptePubMeta,
+    comptePubMetaAChoisir: Boolean(meta?.meta_token) && comptesPub !== null && !comptePubMeta,
   };
 }

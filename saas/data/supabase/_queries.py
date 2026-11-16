@@ -53,6 +53,51 @@ def fetch_meta_ads(supabase: Client, user_id: str, months: int | None = None) ->
     return _all_pages(q)
 
 
+def _colonne_absente(err: Exception) -> bool:
+    """PostgREST refuse la requête ENTIÈRE avec le code Postgres `42703`
+    (« undefined_column ») quand une colonne demandée n'existe pas. SEUL ce code
+    dit « migration pas encore jouée » : tout autre échec remonte, sinon une
+    coupure réseau se lirait comme une colonne manquante (même règle que
+    `colonnes_meta_presentes`, `sources/meta/ads/sync.py`)."""
+    return getattr(err, "code", None) == "42703"
+
+
+def fetch_compte_pub_meta_choisi(supabase: Client, connexion_id) -> str | None:
+    """Le compte publicitaire Meta (`act_…`) que le client a désigné sur la
+    page Connexions, ou None s'il n'a rien choisi.
+
+    LUE À PART, PAS DANS LE `select` DES CONNEXIONS. `account_sync.connexions`
+    rend `[]` sur n'importe quelle erreur : y demander une colonne que la
+    section 26 du `000` n'a pas encore créée ferait disparaître TOUTES les
+    connexions du compte, donc toute sa récolte, sans un mot. Ici une colonne
+    absente veut dire « rien de choisi », rien de plus.
+    """
+    try:
+        r = (supabase.table("connected_accounts")
+             .select("meta_ad_account_id").eq("id", connexion_id).limit(1).execute())
+    except Exception as e:
+        if _colonne_absente(e):
+            return None
+        raise
+    return ((r.data or [{}])[0].get("meta_ad_account_id") or None)
+
+
+def meta_objectif_present(supabase: Client) -> bool:
+    """`meta_campaign_config.objective` existe-t-elle ? (section 26 du `000`)
+
+    Sans elle, PostgREST refuse l'upsert ENTIER des statuts (PGRST204) : une
+    colonne de plus ne doit pas coûter les statuts et les dates déclarées de
+    toutes les campagnes. L'appelant retire alors la clé et le dit.
+    """
+    try:
+        supabase.table("meta_campaign_config").select("objective").limit(1).execute()
+        return True
+    except Exception as e:
+        if _colonne_absente(e):
+            return False
+        raise
+
+
 def fetch_meta_hierarchie(supabase: Client, user_id: str) -> list[dict]:
     """Les IDs campagne › ensemble › annonce vus dans meta_ads_insights, tout
     l'historique — de quoi rattacher un changement à sa campagne.

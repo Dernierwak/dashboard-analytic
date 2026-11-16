@@ -254,6 +254,10 @@ Rien ici n'est abandonné : c'est ce qu'on reprend quand la base est propre.
   quelle campagne. Écarté maintenant pour ne pas compliquer (la bascule reste libre,
   toutes les campagnes dans les trois modules), mais la donnée est à un `ADD COLUMN`
   de distance.
+  **2026-11-15 — la donnée s'écrit** (`meta_campaign_config.objective`, section 26
+  du `000`, `.scratch/meta-ads/tickets/21-…`). Aucun écran ne la lit encore : le
+  tri reste à décider. David veut une section d'analyse qui fasse ressortir les
+  meilleures campagnes par type : les règles de classement restent à décider.
 - **Le dashboard organique / Instagram.** La moitié « DASHBOARD 2 » du brief, mise
   de côté entière. Trois trous déjà mesurés, pour ne pas refaire le travail :
   **(1)** `followers_history` existe, mais **la portée de la page n'est récoltée

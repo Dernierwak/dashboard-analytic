@@ -37,9 +37,11 @@ from saas.data.supabase._queries import (
     fetch_google_asset_groups_latest_date,
     fetch_google_conversions_par_action_latest_date,
     fetch_google_search_terms_latest_date,
+    fetch_compte_pub_meta_choisi,
     fetch_images_creas_stockees,
     fetch_meta_ads_latest_date,
     fetch_meta_hierarchie,
+    meta_objectif_present,
 )
 
 # Les canaux, dans l'ordre où l'écran doit les lire. C'est aussi l'ordre dans

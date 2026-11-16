@@ -68,6 +68,65 @@ export async function pagesFacebook(token: string): Promise<Resultat> {
   return { ok: true, choix };
 }
 
+// ── Meta : les comptes publicitaires ────────────────────────────────────────
+
+// 100 par page, dix pages : mille comptes publicitaires. Un coupe-circuit contre
+// un curseur qui tourne à vide, pas une limite de produit — au-delà, la liste
+// se dit incomplète au lieu de s'arrêter en silence.
+const COMPTES_PUB_PAR_PAGE = 100;
+const COMPTES_PUB_PAGES_MAX = 10;
+
+/**
+ * Les comptes publicitaires que ce jeton peut lire (`/me/adaccounts`).
+ *
+ * La récolte lisait le PREMIER de cette liste sans le demander à personne
+ * (`saas/data/fetch_data/sources/meta/ads/sync.py`, `_compte_a_lire`). Dès qu'une
+ * agence est passée par là, le jeton en voit plusieurs : c'est au client de
+ * dire lequel porte ses campagnes.
+ */
+export async function comptesPubMeta(token: string): Promise<Resultat> {
+  type Compte = { id?: string; name?: string; account_id?: string; currency?: string };
+  const comptes: Compte[] = [];
+  let url: string | null =
+    `https://graph.facebook.com/${META_API}/me/adaccounts` +
+    `?fields=id,name,account_id,currency&limit=${COMPTES_PUB_PAR_PAGE}&access_token=${token}`;
+  try {
+    for (let page = 0; url && page < COMPTES_PUB_PAGES_MAX; page++) {
+      const r: Response = await fetch(url, { cache: "no-store" });
+      const d = await r.json();
+      if (d?.error) {
+        const m = typeof d.error.message === "string" ? d.error.message : "erreur Meta";
+        return { ok: false, erreur: `Impossible de lister tes comptes publicitaires Meta (${m}).` };
+      }
+      const lot: Compte[] = Array.isArray(d?.data) ? d.data : [];
+      if (lot.length === 0) break;
+      comptes.push(...lot);
+      // Le curseur `next` est une URL complète, jeton compris.
+      url = typeof d?.paging?.next === "string" ? d.paging.next : null;
+    }
+  } catch {
+    // Le message d'une erreur réseau peut porter l'URL, donc le jeton : on ne
+    // le recopie pas (`CLAUDE.md` §7).
+    return { ok: false, erreur: "Facebook est injoignable pour le moment : impossible de lister tes comptes publicitaires." };
+  }
+  if (url && comptes.length >= COMPTES_PUB_PAR_PAGE * COMPTES_PUB_PAGES_MAX) {
+    return { ok: false, erreur: `Plus de ${comptes.length} comptes publicitaires : la liste est incomplète, on ne te fait pas choisir dedans.` };
+  }
+
+  const vus = new Set<string>();
+  const choix: Choix[] = [];
+  for (const c of comptes) {
+    if (!c?.id || vus.has(c.id)) continue;
+    vus.add(c.id);
+    choix.push({
+      id: c.id,
+      nom: c.name || c.id,
+      sousTitre: [c.account_id ?? c.id, c.currency].filter(Boolean).join(" · "),
+    });
+  }
+  return { ok: true, choix };
+}
+
 /** L'identifiant du compte Instagram Business rattaché à une Page. */
 export async function instagramDeLaPage(
   token: string,
