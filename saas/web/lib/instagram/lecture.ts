@@ -740,7 +740,7 @@ export type PlaceDuPost =
   | { etat: "journee_en_cours" }
   /** Une journée dont `jamaisRelues` stories ont disparu sans relevé : elle
    *  ne sera jamais complète, donc jamais comparée. */
-  | { etat: "journee_incomplete"; jamaisRelues: number }
+  | { etat: "journee_incomplete"; jamaisRelues: number; avantRecolte: boolean }
   /** `ecartes` : combien un filtre en a retiré, la raison de la mention sous
    *  6 (spec) ; absent quand aucun filtre n'a rien retiré. */
   | { etat: "foule_mince"; n: number; format: Format; ecartes?: number; journee?: true };
@@ -770,7 +770,7 @@ export function placeDuPost(p: Post, m: CleMetrique, foules: Record<Format, Foul
  *  les formats (ticket stories 03, point 3). */
 function placeDeJournee(p: Post, j: JourneeStories, m: CleMetrique, f: Foule): PlaceDuPost {
   if (j.etat === "en_cours") return { etat: "journee_en_cours" };
-  if (j.etat === "incomplete") return { etat: "journee_incomplete", jamaisRelues: j.jamaisRelues };
+  if (j.etat === "incomplete") return { etat: "journee_incomplete", jamaisRelues: j.jamaisRelues, avantRecolte: j.avantRecolte };
   const phrase = phraseSansMetrique("story", m);
   if (phrase) return { etat: "sans_metrique", phrase };
   const v = valeurDe(p, m);

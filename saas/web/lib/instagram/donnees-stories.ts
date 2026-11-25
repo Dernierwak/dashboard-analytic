@@ -31,7 +31,7 @@ export const BUCKET_STORIES = "instagram-stories";
 export const DUREE_URL_SECONDES = 3600;
 
 const COLONNES =
-  "story_id, publiee_a, media_type, permalink, image_path, releve_a, age_heures, reach, views, shares, total_interactions, follows, profile_visits, link_clicks, nav_tap_forward, nav_tap_back, nav_tap_exit, nav_swipe_forward";
+  "story_id, publiee_a, media_type, permalink, image_path, vue_le, releve_a, age_heures, reach, views, shares, total_interactions, follows, profile_visits, link_clicks, nav_tap_forward, nav_tap_back, nav_tap_exit, nav_swipe_forward";
 
 async function lireLignes(supabase: Client, uid: string): Promise<LigneStory[]> {
   try {

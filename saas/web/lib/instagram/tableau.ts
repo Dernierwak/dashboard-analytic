@@ -31,7 +31,7 @@ import {
   type Post,
 } from "./lecture";
 import { AUCUN_ECART, ecartesParTonFiltre, mentionSousSix, placeLue, retenus, texteEcart, type Ecartes } from "./regles";
-import { TEXTE_EN_COURS } from "./stories";
+import { TEXTE_AVANT_RECOLTE, TEXTE_EN_COURS } from "./stories";
 // Les nombres s'écrivent comme sur la page Meta (espace fine, « − »).
 import { nombre } from "../meta/lecture";
 
@@ -229,6 +229,7 @@ export function raisonPlace(p: PlaceDuPost): string {
     case "journee_en_cours":
       return "Une story de cette journée peut encore être relue, ou la journée n'est pas finie : hors comparaison.";
     case "journee_incomplete":
+      if (p.avantRecolte) return `${TEXTE_AVANT_RECOLTE} : les stories de cette journée disparues avant son premier passage manquent, elle n'est pas comparée.`;
       return `${p.jamaisRelues > 1 ? `${p.jamaisRelues} stories ont disparu` : "Une story a disparu"} sans que Pulse ait pu la relire : la journée ne sera jamais complète, elle n'est pas comparée.`;
   }
 }

@@ -38,6 +38,7 @@ export type LigneStory = {
   media_type?: string | null;
   permalink?: string | null;
   image_path?: string | null;
+  vue_le?: string | null;
   releve_a?: string | null;
   age_heures?: unknown;
   reach?: unknown;
@@ -175,6 +176,9 @@ export type JourneeStories = {
    *  La journée l'écrit, ses sommes restent partielles. */
   sansChiffres: number;
   jamaisRelues: number;
+  /** Journée publiée avant le premier passage du job : ses stories déjà
+   *  disparues n'ont jamais été vues, la journée ne sera jamais complète. */
+  avantRecolte: boolean;
   /** `reach_story` du compte ce jour-là — comptes touchés par des stories ce
    *  jour-là, celles de la veille encore en ligne comprises. `null` = pas
    *  relevée. */
@@ -201,7 +205,8 @@ export function sortiesPour100De(stories: Story[]): number | null {
   return (paires.reduce((a, s) => a + (s.comptes.quitter as number), 0) / vues) * 100;
 }
 
-function etatJourneeDe(jour: string, stories: Story[], maintenant: string): EtatJournee {
+function etatJourneeDe(jour: string, stories: Story[], maintenant: string, avantRecolte: boolean): EtatJournee {
+  if (avantRecolte) return "incomplete";
   // Le jour en cours n'est jamais complet : d'autres stories peuvent encore
   // paraître, et toute comparaison l'exclut (`CLAUDE.md` §7).
   if (jour >= maintenant.slice(0, 10)) return "en_cours";
@@ -210,7 +215,18 @@ function etatJourneeDe(jour: string, stories: Story[], maintenant: string): Etat
   return "complete";
 }
 
-export function journeeDe(jour: string, stories: Story[], porteeDuJour: number | null, maintenant: string): JourneeStories {
+export function journeeDe(
+  jour: string,
+  stories: Story[],
+  porteeDuJour: number | null,
+  maintenant: string,
+  debutRecolte: string | null = null
+): JourneeStories {
+  // Une story publiée le jour J vit jusqu'à J+1 à la même heure : le job ne
+  // les a toutes vues que s'il passait déjà le jour J. Les journées d'avant
+  // son premier passage n'ont que les stories encore en ligne ce jour-là
+  // (constaté au premier passage réel, 2026-11-25 : une seule story du 24).
+  const avantRecolte = debutRecolte !== null && jour < debutRecolte;
   const triees = [...stories].sort((a, b) => a.publieeA.localeCompare(b.publieeA) || a.id.localeCompare(b.id));
   const sommes = {} as Comptes;
   const mesurees = {} as Record<keyof Comptes, number>;
@@ -223,9 +239,10 @@ export function journeeDe(jour: string, stories: Story[], porteeDuJour: number |
   return {
     jour,
     stories: triees,
-    etat: etatJourneeDe(jour, triees, maintenant),
+    etat: etatJourneeDe(jour, triees, maintenant, avantRecolte),
     sansChiffres: jamaisRelues + triees.filter((s) => s.etat === "sans_chiffres").length,
     jamaisRelues,
+    avantRecolte,
     porteeDuJour,
     sommes,
     mesurees,
@@ -296,13 +313,15 @@ export function journeesDe(
   images: Record<string, string> = {}
 ): Post[] {
   const parJour: Record<string, Story[]> = {};
+  const vues = lignes.map((l) => Date.parse(l.vue_le ?? "")).filter(Number.isFinite);
+  const debutRecolte = vues.length ? jourDe(new Date(Math.min(...vues)).toISOString()) : null;
   for (const l of lignes) {
     const s = storyDe(l, maintenant, images);
     if (s) (parJour[jourDe(s.publieeA)] ??= []).push(s);
   }
   return Object.entries(parJour)
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([jour, stories]) => journeeEnPost(journeeDe(jour, stories, porteeParJour[jour] ?? null, maintenant)));
+    .map(([jour, stories]) => journeeEnPost(journeeDe(jour, stories, porteeParJour[jour] ?? null, maintenant, debutRecolte)));
 }
 
 /** Les vignettes à signer : la première de chaque journée (le Tableau, la
@@ -367,10 +386,12 @@ export function texteReleve(s: Story): string | null {
 }
 
 export const TEXTE_EN_COURS = "en cours";
+export const TEXTE_AVANT_RECOLTE = "Pulse ne récoltait pas encore les stories ce jour-là";
 
 /** L'état d'une journée hors comparaison, en mots. */
 export function texteEtatJournee(j: JourneeStories): string | null {
   if (j.etat === "en_cours") return "en cours — une story peut encore être relue, ou la journée n'est pas finie : hors comparaison";
+  if (j.etat === "incomplete" && j.avantRecolte) return `incomplète — ${TEXTE_AVANT_RECOLTE} : hors comparaison`;
   if (j.etat === "incomplete") {
     return `incomplète — ${nombreDeStories(j.jamaisRelues)} jamais relue${j.jamaisRelues > 1 ? "s" : ""} : hors comparaison`;
   }

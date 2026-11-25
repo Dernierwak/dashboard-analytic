@@ -137,8 +137,23 @@ test("une story disparue sans relevé rend la journée incomplète, hors compara
   assert.equal(p.journee!.sansChiffres, 1);
   assert.equal(p.journee!.sommes.vues, 10, "la somme reste partielle, jamais complétée");
   const foules = foulesDe([p], "vues", ctx);
-  assert.deepEqual(placeDuPost(p, "vues", foules, ctx), { etat: "journee_incomplete", jamaisRelues: 1 });
+  assert.deepEqual(placeDuPost(p, "vues", foules, ctx), { etat: "journee_incomplete", jamaisRelues: 1, avantRecolte: false });
   assert.equal(foules.story.sur, 0, "hors de la foule");
+});
+
+test("une journée d'avant le premier passage du job est incomplète, même relue", () => {
+  // Le cas réel du 2026-11-25 : premier passage à 15:25, une seule story du 24
+  // encore en ligne — les autres stories du 24 n'ont jamais été vues.
+  const vue = { vue_le: "2026-11-25T15:25:00Z" };
+  const [j25, j24] = journeesDe(
+    [story("a", "2026-11-24T15:48:00Z", { views: 10, ...vue }), story("b", "2026-11-25T01:00:00Z", { views: 5, ...vue })],
+    {},
+    "2026-11-27T12:00:00.000Z"
+  );
+  assert.equal(j24.journee!.etat, "incomplete");
+  assert.equal(j24.journee!.avantRecolte, true);
+  assert.equal(j25.journee!.etat, "complete", "le jour du premier passage : toutes ses stories étaient encore en ligne");
+  assert.match(raisonPlace(placeDuPost(j24, "vues", foulesDe([j24], "vues", ctx), ctx)) ?? "", /ne récoltait pas encore/);
 });
 
 test("un relevé pris avant 20 h de vie n'est pas un relevé final", () => {
