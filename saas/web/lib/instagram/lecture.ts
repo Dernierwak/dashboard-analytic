@@ -20,12 +20,20 @@
 //   · la foule d'un post : son format, 12 mois glissants, 48 h d'âge au moins,
 //     une valeur ; rien sous 6 ;
 //   · aucun total de portée ni de taux.
+//
+// LA STORY (`.scratch/instagram-stories/spec.md`) est un cinquième format,
+// lu par JOURNÉE : une journée de stories devient un `Post` de format
+// `story` (`stories.ts`, `journeeEnPost`) et passe par la même foule, la même
+// place, les mêmes moustaches que les posts — aucun calcul parallèle. Seul
+// import de ce fichier, et de type seulement (effacé à l'exécution) : Node le
+// charge toujours tel quel.
+import type { JourneeStories } from "./stories";
 
 // ── Le format ────────────────────────────────────────────────────────────────
 
 /** L'ordre est celui des rangées du module, fixe, jamais trié par valeur
  *  (spec, « Tes posts face à ton année »). */
-export const FORMATS = ["reel", "carrousel", "image", "video_fil"] as const;
+export const FORMATS = ["reel", "carrousel", "image", "video_fil", "story"] as const;
 export type Format = (typeof FORMATS)[number];
 
 export const NOM_FORMAT: Record<Format, string> = {
@@ -33,6 +41,7 @@ export const NOM_FORMAT: Record<Format, string> = {
   carrousel: "Carrousel",
   image: "Image",
   video_fil: "Vidéo du fil",
+  story: "Story",
 };
 
 /** Le pluriel, pour « 5 Reels, il en faut 6 ». */
@@ -41,6 +50,30 @@ export const NOM_FORMAT_PLURIEL: Record<Format, string> = {
   carrousel: "Carrousels",
   image: "Images",
   video_fil: "Vidéos du fil",
+  // La rangée Story compte des JOURNÉES, pas des stories (spec des stories,
+  // « partout où la page parle d'un post, la rangée Story parle d'une journée »).
+  story: "journées de stories",
+};
+
+/** Le singulier qui se compte : « 1 Reel, il en faut 6 », « 1 journée de
+ *  stories, il en faut 6 ». */
+export const NOM_UN: Record<Format, string> = { ...NOM_FORMAT, story: "journée de stories" };
+
+/** Ce que la rangée compte et ce que vaut sa médiane : « 12 posts · post
+ *  type », « 12 journées · journée type ». */
+export const MOT_UNITES: Record<Format, string> = {
+  reel: "posts",
+  carrousel: "posts",
+  image: "posts",
+  video_fil: "posts",
+  story: "journées",
+};
+export const MOT_TYPE: Record<Format, string> = {
+  reel: "post type",
+  carrousel: "post type",
+  image: "post type",
+  video_fil: "post type",
+  story: "journée type",
 };
 
 /** `null` = format inconnu, hors des quatre foules. Meta dit `VIDEO` pour un
@@ -116,6 +149,8 @@ export type Post = {
   boosteVuLe: string | null;
   /** Les abonnés mesurés le jour de publication ; `null` = pas de mesure. */
   abonnesAuJour: number | null;
+  /** Présent pour une journée de stories seulement (`format === "story"`). */
+  journee?: JourneeStories;
 };
 
 /** `null`/`undefined`/texte illisible → `null` ; un nombre, même 0, reste
@@ -184,14 +219,18 @@ export function postDe(l: LigneBase, abonnesParJour: Record<string, number>): Po
 
 // ── Les métriques ────────────────────────────────────────────────────────────
 
-export type Objectif = "portee" | "engagement" | "abonnes";
+export type Objectif = "portee" | "engagement" | "abonnes" | "trafic";
 
 /** Les métriques du Sélecteur de vue, objectif par objectif, la métrique par
  *  défaut d'abord (spec, tableau « Objectif · Métriques »). */
 export const METRIQUES_DE: Record<Objectif, readonly CleMetrique[]> = {
-  portee: ["portee", "vues", "portee_abonnes"],
-  engagement: ["taux", "jaime", "commentaires", "partages", "enregistrements", "reactions_fortes"],
+  portee: ["portee", "vues", "portee_abonnes", "sorties_100"],
+  engagement: ["taux", "jaime", "commentaires", "partages", "enregistrements", "reactions_fortes", "interactions"],
   abonnes: ["abonnes_1000", "abonnes", "visites_profil"],
+  // Une métrique (ticket stories 04) : `profile_activity` existe aussi pour
+  // les posts du fil, qui ne la récoltent pas — la montrer pour les stories
+  // seules mêlerait deux couvertures.
+  trafic: ["clics_lien"],
 };
 
 export type CleMetrique =
@@ -206,7 +245,10 @@ export type CleMetrique =
   | "reactions_fortes"
   | "abonnes_1000"
   | "abonnes"
-  | "visites_profil";
+  | "visites_profil"
+  | "sorties_100"
+  | "interactions"
+  | "clics_lien";
 
 export type DefMetrique = {
   nom: string;
@@ -217,6 +259,9 @@ export type DefMetrique = {
   decimales: number;
   unite: "" | "%";
   aide: string;
+  /** Instagram ne la donne que pour une story : les autres formats reçoivent
+   *  une phrase (`phraseSansMetrique`), jamais une moustache à zéro. */
+  storySeule?: true;
 };
 
 export const METRIQUES: Record<CleMetrique, DefMetrique> = {
@@ -260,7 +305,79 @@ export const METRIQUES: Record<CleMetrique, DefMetrique> = {
   },
   abonnes: { nom: "Abonnés gagnés", objectif: "abonnes", comptable: true, decimales: 0, unite: "", aide: "Instagram ne le donne pas pour un Reel." },
   visites_profil: { nom: "Visites de profil", objectif: "abonnes", comptable: true, decimales: 0, unite: "", aide: "Instagram ne le donne pas pour un Reel." },
+  sorties_100: {
+    nom: "Sorties pour 100 vues",
+    objectif: "portee",
+    comptable: false,
+    decimales: 1,
+    unite: "",
+    aide: "Sorties de tes stories (« quitter ») pour 100 vues, sur les mêmes stories. Stories seulement.",
+    storySeule: true,
+  },
+  interactions: {
+    nom: "Interactions",
+    objectif: "engagement",
+    comptable: true,
+    decimales: 0,
+    unite: "",
+    aide: "Interactions de tes stories, additionnées sur la journée. Stories seulement.",
+    storySeule: true,
+  },
+  clics_lien: {
+    nom: "Clics sur le lien",
+    objectif: "trafic",
+    comptable: true,
+    decimales: 0,
+    unite: "",
+    aide: "Clics sur le lien de tes stories, additionnés sur la journée. Instagram ne le donne que pour une story.",
+    storySeule: true,
+  },
 };
+
+// ── Les phrases d'un format sans la métrique ─────────────────────────────────
+
+const SANS_JAIME_STORY = "Instagram ne donne ni j'aime, ni commentaires, ni enregistrements pour une story.";
+
+/** Ce que chaque format ne donne pas, en phrase plutôt qu'en moustache faite
+ *  de vides lus comme des zéros (user story 14 de la page ; spec des
+ *  stories, tableau « Objectifs et métriques »). */
+const ABSENT: Partial<Record<Format, Partial<Record<CleMetrique, string>>>> = {
+  // Le Reel n'a ni `follows` ni visites de profil (erreur 100, essai réel du
+  // 2026-11-06 ; `.scratch/instagram/issues/02`).
+  reel: {
+    abonnes_1000: "Instagram ne donne pas les abonnés gagnés pour les Reels.",
+    abonnes: "Instagram ne donne pas les abonnés gagnés pour les Reels.",
+    visites_profil: "Instagram ne donne pas les visites de profil pour les Reels.",
+  },
+  story: {
+    taux: SANS_JAIME_STORY,
+    jaime: SANS_JAIME_STORY,
+    commentaires: SANS_JAIME_STORY,
+    enregistrements: SANS_JAIME_STORY,
+    reactions_fortes: SANS_JAIME_STORY,
+    // La portée d'une journée est celle du jour d'AFFICHAGE (`reach_story`),
+    // les sommes celles du jour de PUBLICATION : aucun ratio entre les deux
+    // bases (ticket stories 03, spec « Jamais »).
+    abonnes_1000: "Pas de « pour 1 000 » pour une story : la portée du jour et les sommes n'ont pas la même base. Choisis « Abonnés gagnés ».",
+    portee_abonnes: "Pas de « portée ÷ abonnés » pour une story : sa portée se lit seule — portée du jour, vues, sorties pour 100 vues.",
+  },
+};
+
+/** Pour les formats hors story, la phrase d'une métrique `storySeule`. */
+const STORY_SEULE: Partial<Record<CleMetrique, string>> = {
+  clics_lien: "Instagram ne donne de clics sur le lien que pour les stories.",
+  sorties_100: "Instagram ne donne la navigation (sorties) que pour les stories.",
+  // Instagram rend `total_interactions` pour un post, mais Pulse ne le
+  // récolte pas pour eux : la phrase dit ce qui manque, et chez qui.
+  interactions: "Pulse ne relève les interactions que pour les stories.",
+};
+
+/** La phrase d'un format qui n'a pas la métrique ; `null` = il l'a. */
+export function phraseSansMetrique(format: Format | null, m: CleMetrique): string | null {
+  if (format === null) return null;
+  if (format !== "story" && METRIQUES[m].storySeule) return STORY_SEULE[m] ?? null;
+  return ABSENT[format]?.[m] ?? null;
+}
 
 export const OBJECTIF_PAR_DEFAUT: Objectif = "engagement";
 /** À l'ouverture : Engagement, donc le taux — il se compare d'un post à
@@ -283,6 +400,11 @@ function surPortee(termes: (number | null)[], portee: number | null, facteur: nu
 
 export function valeurDe(p: Post, m: CleMetrique): number | null {
   const b = p.brutes;
+  const j = p.journee;
+  // Une phrase plutôt qu'un chiffre : la valeur n'existe pas, elle ne se
+  // calcule pas non plus (« pour 1 000 » d'une story aurait sinon une valeur
+  // construite sur deux bases différentes).
+  if (p.format === "story" && ABSENT.story?.[m]) return null;
   switch (m) {
     case "portee":
       return b.reach;
@@ -312,6 +434,12 @@ export function valeurDe(p: Post, m: CleMetrique): number | null {
       return b.follows;
     case "visites_profil":
       return b.profileVisits;
+    case "sorties_100":
+      return j ? j.sortiesPour100 : null;
+    case "interactions":
+      return j ? j.sommes.interactions : null;
+    case "clics_lien":
+      return j ? j.sommes.clicsLien : null;
   }
 }
 
@@ -374,6 +502,9 @@ export type Maturite = "jeune" | "age_egal" | "mur";
 /** Sans relevé daté, le post a été lu avant que le relevé existe — il a donc
  *  plus de 7 jours (spec, « âge »). */
 export function maturiteDe(p: Post): Maturite {
+  // Une journée de stories n'a pas d'âge égal : complète, elle se compare ;
+  // en cours ou incomplète, elle est hors comparaison, comme un post jeune.
+  if (p.journee) return p.journee.etat === "complete" ? "mur" : "jeune";
   const age = ageDe(p);
   if (age === null) return "mur";
   if (age < AGE_MINIMUM_HEURES) return "jeune";
@@ -391,6 +522,7 @@ export const PEUT_ENCORE_CHANGER = "peut encore changer";
 /** « J+n » = au moins n × 24 h (vocabulaire de la spec) ; sous 48 h, « moins
  *  de 48 h » — le nuage le dessine en plus en point vide. */
 export function ageLu(p: Post): AgeLu {
+  if (p.journee) return p.journee.etat === "en_cours" ? { texte: "en cours", peutChanger: true } : null;
   const maturite = maturiteDe(p);
   if (maturite === "mur") return null;
   if (maturite === "jeune") return { texte: "moins de 48 h", peutChanger: true };
@@ -580,7 +712,9 @@ export function estHorsNorme(v: number, l: Limites): boolean {
 export type RaisonEcart = { cause: "booste" } | { cause: "hors_norme"; metrique: CleMetrique };
 
 export type PlaceDuPost =
-  | { etat: "place"; place: Place; horsNorme: boolean }
+  /** `journee` : posé pour une journée de stories seulement, pour que
+   *  l'infobulle parle de journées. */
+  | { etat: "place"; place: Place; horsNorme: boolean; journee?: true }
   /** Retiré par une Règle de lecture : il reste à l'écran, grisé, avec sa
    *  raison — rien ne disparaît sans trace (user story 28). */
   | { etat: "ecarte"; raison: RaisonEcart }
@@ -598,16 +732,29 @@ export type PlaceDuPost =
    *  lecture ratée) : on ne sait pas, ce n'est pas une foule vide. */
   | { etat: "age_egal"; jours: number }
   | { etat: "format_inconnu" }
-  | { etat: "sans_valeur" }
+  | { etat: "sans_valeur"; journee?: true }
+  /** Le format n'a pas la métrique : sa phrase (`phraseSansMetrique`). */
+  | { etat: "sans_metrique"; phrase: string }
+  /** Une journée de stories dont une story peut encore être relue, ou la
+   *  journée du jour : « en cours », hors comparaison (§7). */
+  | { etat: "journee_en_cours" }
+  /** Une journée dont `jamaisRelues` stories ont disparu sans relevé : elle
+   *  ne sera jamais complète, donc jamais comparée. */
+  | { etat: "journee_incomplete"; jamaisRelues: number }
   /** `ecartes` : combien un filtre en a retiré, la raison de la mention sous
    *  6 (spec) ; absent quand aucun filtre n'a rien retiré. */
-  | { etat: "foule_mince"; n: number; format: Format; ecartes?: number };
+  | { etat: "foule_mince"; n: number; format: Format; ecartes?: number; journee?: true };
 
 /** La place d'un post sur la métrique choisie, face à la foule de son format.
  *  `foules` vient de `foulesDe` sur la même métrique et le même contexte. */
 export function placeDuPost(p: Post, m: CleMetrique, foules: Record<Format, Foule>, ctx: Contexte): PlaceDuPost {
   if (!dansLesMois(p, ctx)) return { etat: "plus_d_un_an" };
   if (p.format === null) return { etat: "format_inconnu" };
+  if (p.journee) return placeDeJournee(p, p.journee, m, foules[p.format]);
+  // Le Reel garde son « – » d'avant (sans valeur) : sa phrase est dite par la
+  // rangée. Seules les métriques des stories prennent ici leur phrase.
+  const phrase = METRIQUES[m].storySeule ? phraseSansMetrique(p.format, m) : null;
+  if (phrase) return { etat: "sans_metrique", phrase };
   const maturite = maturiteDe(p);
   if (maturite === "jeune") return { etat: "jeune" };
   const v = valeurDe(p, m);
@@ -616,6 +763,20 @@ export function placeDuPost(p: Post, m: CleMetrique, foules: Record<Format, Foul
   if (maturite === "age_egal") return placeAgeEgal(p, v, m, f, ctx);
   if (!f.quartiles || !f.limites) return { etat: "foule_mince", n: f.n, format: p.format };
   return { etat: "place", place: bandeDe(v, f.quartiles), horsNorme: estHorsNorme(v, f.limites) };
+}
+
+/** Une journée de stories : pas d'âge égal, une journée complète se place sur
+ *  la référence des journées des 12 derniers mois, avec le même minimum que
+ *  les formats (ticket stories 03, point 3). */
+function placeDeJournee(p: Post, j: JourneeStories, m: CleMetrique, f: Foule): PlaceDuPost {
+  if (j.etat === "en_cours") return { etat: "journee_en_cours" };
+  if (j.etat === "incomplete") return { etat: "journee_incomplete", jamaisRelues: j.jamaisRelues };
+  const phrase = phraseSansMetrique("story", m);
+  if (phrase) return { etat: "sans_metrique", phrase };
+  const v = valeurDe(p, m);
+  if (v === null) return { etat: "sans_valeur", journee: true };
+  if (!f.quartiles || !f.limites) return { etat: "foule_mince", n: f.n, format: f.format, journee: true };
+  return { etat: "place", place: bandeDe(v, f.quartiles), horsNorme: estHorsNorme(v, f.limites), journee: true };
 }
 
 /** Le premier relevé tombé dans [n × 24 ; (n+1) × 24) h — `releves` est trié

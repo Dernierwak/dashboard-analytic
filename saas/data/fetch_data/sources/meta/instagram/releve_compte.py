@@ -103,6 +103,13 @@ def ligne_du_jour(uid: str, jour: date, reponses: dict[str, tuple]) -> dict | No
         "reach_ad": ("reach_ventile", lambda r: valeur_ventilee(r, "AD")),
         "total_interactions": ("interactions", valeur_totale),
         "interactions_ad": ("interactions_ventile", lambda r: valeur_ventilee(r, "AD")),
+        # La part `STORY`, des mêmes réponses (spec des stories § La récolte,
+        # « Relevé quotidien ») : la portée des stories VUES ce jour-là, pas
+        # celle des stories publiées ce jour-là (`docs/mesures-impossibles.md`).
+        # L'essai du 2026-11-25 l'a lue de 2 088 à 6 211 sur 7 jours passés
+        # (`.scratch/instagram-stories/issues/02`, point 5). Absente → NULL.
+        "reach_story": ("reach_ventile", lambda r: valeur_ventilee(r, "STORY")),
+        "interactions_story": ("interactions_ventile", lambda r: valeur_ventilee(r, "STORY")),
         # FOLLOWER = gagnés, NON_FOLLOWER = perdus (essai réel, `issues/17` point 3).
         "gagnes": ("follows", lambda r: valeur_ventilee(r, "FOLLOWER")),
         "perdus": ("follows", lambda r: valeur_ventilee(r, "NON_FOLLOWER")),

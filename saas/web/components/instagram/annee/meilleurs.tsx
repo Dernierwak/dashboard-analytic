@@ -6,6 +6,7 @@ import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import type { Meilleur } from "@/lib/instagram/meilleurs";
 import { MiniMoustache } from "./mini-moustache";
 import { AgePost } from "@/components/instagram/age";
+import { libelleJournee, texteSansChiffres, ZERO_CLIC } from "@/lib/instagram/stories";
 
 // ── LA LISTE DES 5 MEILLEURS POSTS DE LA PÉRIODE ────────────────────────────
 //
@@ -24,7 +25,8 @@ export function ListeMeilleurs({ liste, metrique, params }: { liste: Meilleur[];
           Tes {liste.length > 1 ? `${liste.length} meilleurs posts` : "meilleurs posts"} de la période
         </h3>
         <p className="mt-0.5 text-[12px] text-muted">
-          Sur {nom.toLowerCase()} — sans les posts de moins de 48 h ni ceux qui n&apos;ont pas ce chiffre.
+          Sur {nom.toLowerCase()} — sans les posts de moins de 48 h, les journées de stories en cours, ni ce qui n&apos;a pas ce
+          chiffre.
         </p>
         {liste.length === 0 ? (
           <p className="mt-4 text-[13px] text-muted">Aucun post de la période n&apos;a encore ce chiffre.</p>
@@ -45,10 +47,14 @@ function Carte({ m, metrique, params }: { m: Meilleur; metrique: CleMetrique; pa
   const couleur = p.format ? COULEUR_FORMAT[p.format].trait : "#8b8e98";
   const place = libellePlace(m.place);
   const lien = lienInstagram(params, { post: p.id });
+  // Une journée de stories entre dans la liste comme un post, libellée
+  // « Stories du 24 nov. · 5 stories » (spec des stories).
+  const j = p.journee;
+  const quoi = j ? "la journée" : "le post";
   return (
     <li className="rounded-xl border border-line p-3">
       <div className="flex min-w-0 gap-3">
-        <Link href={lien} scroll={false} className="relative shrink-0" aria-label={`Lire le post n° ${m.rang}`}>
+        <Link href={lien} scroll={false} className="relative shrink-0" aria-label={`Lire ${quoi} n° ${m.rang}`}>
           {p.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={p.image} alt="" loading="lazy" className="h-16 w-16 rounded-lg border border-line object-cover" />
@@ -81,9 +87,17 @@ function Carte({ m, metrique, params }: { m: Meilleur; metrique: CleMetrique; pa
               </span>
             )}
           </div>
-          <p className="mt-1 line-clamp-2 text-[12.5px] text-ink/80" title={p.legende}>
-            {p.legende || "(sans légende)"}
-          </p>
+          {j ? (
+            <p className="mt-1 text-[12.5px] text-ink/80">
+              {libelleJournee(j)}
+              {texteSansChiffres(j) && <span className="text-faint"> · {texteSansChiffres(j)}</span>}
+              {metrique === "clics_lien" && m.valeur === 0 && <span className="block text-[11.5px] text-faint">{ZERO_CLIC}</span>}
+            </p>
+          ) : (
+            <p className="mt-1 line-clamp-2 text-[12.5px] text-ink/80" title={p.legende}>
+              {p.legende || "(sans légende)"}
+            </p>
+          )}
         </div>
       </div>
       {m.moustache && p.format && (
@@ -92,7 +106,7 @@ function Carte({ m, metrique, params }: { m: Meilleur; metrique: CleMetrique; pa
         </div>
       )}
       <Link href={lien} scroll={false} className="mt-1.5 inline-block text-[12.5px] font-medium text-ink underline-offset-2 hover:underline">
-        Lire le post →
+        Lire {quoi} →
       </Link>
     </li>
   );

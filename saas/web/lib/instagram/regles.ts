@@ -28,8 +28,8 @@ import {
   fouleDe,
   FORMATS,
   MINIMUM_FOULE,
-  NOM_FORMAT,
   NOM_FORMAT_PLURIEL,
+  NOM_UN,
   placeDuPost,
   valeurAuMemeAge,
   valeurDe,
@@ -155,6 +155,9 @@ export const SUR_LA_METRIQUE: Record<CleMetrique, string> = {
   abonnes_1000: "les abonnés pour 1 000",
   abonnes: "les abonnés gagnés",
   visites_profil: "les visites de profil",
+  sorties_100: "les sorties pour 100 vues",
+  interactions: "les interactions",
+  clics_lien: "les clics sur le lien",
 };
 
 export function texteEcart(r: RaisonEcart): string {
@@ -174,7 +177,7 @@ export function ligneRegles(r: Regles, total: number, m: CleMetrique): string | 
 /** « 5 Reels, il en faut 6 — 1 est écarté par ton filtre » (spec, « La
  *  mention sous 6 posts »). */
 export function mentionSousSix(n: number, f: Format, ecartes: number): string {
-  return `${n} ${n > 1 ? NOM_FORMAT_PLURIEL[f] : NOM_FORMAT[f]}, il en faut ${MINIMUM_FOULE}${ecartesParTonFiltre(ecartes)}`;
+  return `${n} ${n > 1 ? NOM_FORMAT_PLURIEL[f] : NOM_UN[f]}, il en faut ${MINIMUM_FOULE}${ecartesParTonFiltre(ecartes)}`;
 }
 
 /** « — 1 est écarté par ton filtre », ou rien quand aucun ne l'est. */

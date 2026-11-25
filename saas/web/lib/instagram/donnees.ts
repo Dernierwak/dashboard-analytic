@@ -23,6 +23,7 @@ import { jourDuRapport } from "@/lib/instagram/panneau";
 import { type LigneProgres } from "@/lib/instagram/etat";
 import { type LigneJourCompte, type Tendance } from "@/lib/instagram/tendance";
 import { lirePeriodesDuCompte, tendanceDuCompte } from "@/lib/instagram/donnees-tendance";
+import { lireJourneesStories } from "@/lib/instagram/donnees-stories";
 
 // ── CE QUE LA PAGE INSTAGRAM LIT DANS SUPABASE ───────────────────────────────
 //
@@ -38,6 +39,10 @@ import { lirePeriodesDuCompte, tendanceDuCompte } from "@/lib/instagram/donnees-
 export type DonneesInstagram = {
   /** Tout l'historique en base, du plus récent au plus ancien. */
   posts: Post[];
+  /** Les journées de stories, en `Post` de format `story` (`stories.ts`) ;
+   *  `[]` tant que la section 27 n'est pas jouée ou sans story. Tenues à
+   *  part des posts : l'état de la page et la Tendance ne les lisent pas. */
+  journees: Post[];
   ctx: Contexte;
   /** La période du Bandeau — elle choisit les points, jamais la référence. */
   periode: Periode;
@@ -61,7 +66,9 @@ function iso(d: Date): string {
 }
 
 /** `from`/`to` : la période choisie au Bandeau (`AAAA-MM-JJ`). */
-export async function getDonneesInstagram(choix: { from?: string; to?: string } = {}): Promise<DonneesInstagram> {
+/** `post` : le `?post=` de l'URL — une journée de stories ouverte fait signer
+ *  toutes ses vignettes. */
+export async function getDonneesInstagram(choix: { from?: string; to?: string; post?: string } = {}): Promise<DonneesInstagram> {
   const supabase = createClient();
   const { uid } = await getCompteActif();
   const maintenant = new Date();
@@ -79,7 +86,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
   // TOUT EN PARALLÈLE, UNE LECTURE PAR TABLE (revue de code) : la Tendance
   // ne relit plus `instagram_compte_jours` ni `followers_history` après les
   // posts — elle reçoit ces lignes-ci (`tendanceDuCompte`).
-  const [lignes, historique, jours, progres, periodes] = await Promise.all([
+  const [lignes, historique, jours, progres, periodes, journees] = await Promise.all([
     // `*` plutôt qu'une liste : une base où la section 23 n'est pas encore
     // jouée n'a ni `shares` ni `releve_a`, et une colonne nommée absente
     // ferait échouer toute la lecture. Absente, elle se lit « rien rendu ».
@@ -129,6 +136,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
     }),
     lireProgres(supabase, uid),
     lirePeriodesDuCompte(supabase, uid),
+    lireJourneesStories(supabase, uid, maintenant.toISOString(), choix.post ?? null),
   ]);
 
   const abonnes = abonnesParJourDe(historique, jours ?? []);
@@ -142,6 +150,7 @@ export async function getDonneesInstagram(choix: { from?: string; to?: string } 
   }
   return {
     posts,
+    journees,
     ctx,
     periode,
     raccourcis: raccourcisDe(periode, ctxPeriode),

@@ -6,6 +6,7 @@ import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { Icone } from "@/components/meta/elements";
 import { AgePost } from "@/components/instagram/age";
 import { METRIQUES, NOM_FORMAT } from "@/lib/instagram/lecture";
+import { libelleJournee, nombreDeStories, texteSansChiffres, ZERO_CLIC } from "@/lib/instagram/stories";
 import {
   aUnePlace,
   csvDuTableau,
@@ -82,7 +83,8 @@ export function TableauPosts({ tableau, params }: { tableau: Tableau; params: Pa
           </h2>
           <p className="mt-1 text-[14px] text-muted">
             Tout l&apos;historique en base ({tableau.lignes.length}), sans filtre de période. La place se lit sur{" "}
-            {METRIQUES[tableau.metrique].nom.toLowerCase()}, parmi les posts du même format des 12 derniers mois.
+            {METRIQUES[tableau.metrique].nom.toLowerCase()}, parmi les posts du même format des 12 derniers mois
+            {tableau.lignes.some((l) => l.post.journee) && " — une journée de stories, parmi tes journées de stories"}.
           </p>
         </div>
         {tableau.lignes.length > 0 && (
@@ -139,6 +141,9 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
   // Un écarté par une Règle de lecture reste, grisé ; sa Place dit pourquoi
   // (spec, user story 28).
   const ecarte = l.place.etat === "ecarte";
+  // Une ligne par journée de stories (spec des stories) : son libellé à la
+  // place de la légende, son nombre de stories à côté du format.
+  const j = p.journee;
   return (
     <tr className={`border-t border-line ${ecarte ? "bg-canvas/60 opacity-60" : ""}`}>
       <td className="whitespace-nowrap py-2.5 pl-5 pr-3 tabular-nums text-ink">
@@ -149,7 +154,7 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
         <Link
           href={lienInstagram(params, { post: p.id })}
           scroll={false}
-          title={`Lire le post — ${p.legende || "sans légende"}`}
+          title={j ? `Lire la journée — ${libelleJournee(j)}` : `Lire le post — ${p.legende || "sans légende"}`}
           className="flex min-w-0 items-center gap-2.5 hover:underline"
         >
           {p.image ? (
@@ -158,11 +163,15 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
           ) : (
             <span className="h-9 w-9 shrink-0 rounded-md border border-line bg-black/[0.04]" aria-hidden />
           )}
-          <span className="min-w-0 truncate">{p.legende || "(sans légende)"}</span>
+          <span className="min-w-0 truncate">
+            {j ? libelleJournee(j) : p.legende || "(sans légende)"}
+            {j && texteSansChiffres(j) && <span className="text-faint"> · {texteSansChiffres(j)}</span>}
+          </span>
         </Link>
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-muted">
         {p.format ? NOM_FORMAT[p.format] : "Format inconnu"}
+        {j && <span className="text-faint"> · {nombreDeStories(j.stories.length)}</span>}
         {p.boosteVuLe && (
           <span className="ml-1.5 rounded-full border border-line px-1.5 py-0.5 text-[11px] text-muted" title="Instagram a listé au moins une annonce sur ce post">
             Boosté
@@ -177,7 +186,11 @@ function Ligne({ l, t, params }: { l: LigneTableau; t: Tableau; params: Params }
         )}
       </td>
       {t.colonnes.map((m) => (
-        <td key={m} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${m === t.metrique ? "font-semibold text-ink" : "text-ink/75"}`}>
+        <td
+          key={m}
+          title={j && m === "clics_lien" && l.valeurs[m] === 0 ? ZERO_CLIC : undefined}
+          className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${m === t.metrique ? "font-semibold text-ink" : "text-ink/75"}`}
+        >
           {formaterValeur(m, l.valeurs[m])}
         </td>
       ))}

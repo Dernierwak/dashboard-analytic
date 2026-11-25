@@ -3,7 +3,8 @@ import { dateCourte, formaterValeur, libellePlace, raisonPlace } from "@/lib/ins
 import { lienInstagram, type Params } from "@/lib/instagram/liens";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
 import { NEUTRE } from "@/lib/palette";
-import { ageLu, NOM_FORMAT, texteAge, type CleMetrique } from "@/lib/instagram/lecture";
+import { ageLu, MOT_TYPE, NOM_FORMAT, texteAge, type CleMetrique } from "@/lib/instagram/lecture";
+import { libelleJournee, texteSansChiffres, ZERO_CLIC } from "@/lib/instagram/stories";
 import type { PeriodeLue, RangeeLue } from "@/lib/instagram/annee";
 import { HAUTEUR, ordonnee, Y_BAS, Y_HAUT } from "./dessin";
 
@@ -46,6 +47,8 @@ export function Nuage({
   const x = (iso: string) => GAUCHE + ((Date.parse(iso) - t0) / (t1 - t0)) * (L - GAUCHE - DROITE);
   const boite = rangee.moustaches[0];
   const sansValeur = rangee.surLaPeriode - rangee.nuage.length;
+  // La rangée Story : un point = une journée complète (spec des stories).
+  const story = rangee.format === "story";
 
   return (
     <svg viewBox={`0 0 ${L} ${HAUTEUR}`} width="100%" className="block" role="img" aria-label={`Les ${NOM_FORMAT[rangee.format]} de la période`}>
@@ -70,7 +73,7 @@ export function Nuage({
           </rect>
           <line x1={GAUCHE - 4} x2={L - DROITE} y1={y(boite.quartiles.mediane)} y2={y(boite.quartiles.mediane)} stroke={c.trait} strokeOpacity={0.7} strokeDasharray="5 4" />
           <text x={L - DROITE} y={y(boite.quartiles.mediane) - 5} fontSize={10.5} fill={c.trait} textAnchor="end">
-            post type de l&apos;année
+            {MOT_TYPE[rangee.format]} de l&apos;année
           </text>
         </>
       )}
@@ -83,12 +86,12 @@ export function Nuage({
 
       {rangee.surLaPeriode === 0 ? (
         <text x={(GAUCHE + L) / 2} y={(Y_HAUT + Y_BAS) / 2} fontSize={12.5} fill="#5a5d66" textAnchor="middle">
-          aucun post sur la période
+          {story ? "aucune journée de stories complète sur la période" : "aucun post sur la période"}
         </text>
       ) : (
         sansValeur > 0 && (
           <text x={L - DROITE} y={HAUTEUR - 2} fontSize={10.5} fill="#8b8e98" textAnchor="end">
-            {sansValeur} post{sansValeur > 1 ? "s" : ""} de la période sans ce chiffre
+            {`${sansValeur} ${story ? "journée" : "post"}${sansValeur > 1 ? "s" : ""} de la période sans ce chiffre`}
           </text>
         )
       )}
@@ -100,15 +103,18 @@ export function Nuage({
         const booste = p.post.boosteVuLe !== null;
         // Un écarté reste au nuage, gris : rien ne disparaît sans trace (spec).
         const teinte = p.place.etat === "ecarte" ? NEUTRE.trait : c.trait;
+        const j = p.post.journee;
         const bulle = [
           rang ? `n° ${rang}` : null,
-          dateCourte(p.post.date),
+          j ? libelleJournee(j) : dateCourte(p.post.date),
           texteAge(ageLu(p.post)),
           formaterValeur(metrique, p.valeur),
+          j && metrique === "clics_lien" && p.valeur === 0 ? ZERO_CLIC : null,
+          j ? texteSansChiffres(j) : null,
           booste ? "Boosté" : null,
           place,
           raisonPlace(p.place),
-          "Lire le post",
+          j ? "Lire la journée" : "Lire le post",
         ]
           .filter(Boolean)
           .join(" · ");

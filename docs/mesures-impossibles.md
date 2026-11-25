@@ -95,6 +95,29 @@ ouvertures arrivent après le premier jour. Un taux d'ouverture affiché au clie
 serait un chiffre fabriqué doublé d'un reproche — décidé à
 [`docs/adr/0007`](adr/0007-l-ouverture-d-un-email-se-mesure-pour-david-jamais-pour-le-client.md).
 
+## Ce qu'une story Instagram ne dit pas
+
+Spec `.scratch/instagram-stories/spec.md` § Ce qu'on ne mesure pas ; essai réel
+du 2026-11-25 (`.scratch/instagram-stories/issues/02`).
+
+- **Les réponses à une story.** Instagram rend `replies` = 0 pour une story
+  créée en Europe — l'essai l'a lu sur toutes les stories du compte. Un 0 qui
+  ne veut rien dire : la métrique n'est pas demandée (`METRIQUES`,
+  `fetchers/stories.py`) et `instagram_stories` n'a pas de colonne `replies`.
+- **La portée des stories publiées un jour donné.** La part `STORY` de la
+  portée du compte (`reach_story`, lue par `ligne_du_jour` dans
+  `releve_compte.py`) compte les comptes qui ont **vu** une story ce jour-là —
+  une story publiée la veille au soir y entre aussi. Et une somme des portées
+  de chaque story compterait deux fois un compte qui en a vu deux : elle ne
+  s'affiche jamais.
+- **Les stories publiées avant la mise en route, et la dernière heure.** L'API
+  ne rend que les stories en ligne (`recuperer`, `fetchers/stories.py`) : une
+  story disparue avant le premier passage du job horaire n'existe pas pour
+  Pulse. Et le relevé final est pris entre 20 h et 24 h de vie (`AGE_DU_RELEVE`,
+  `instagram/stories.py`), à l'heure du cron : ce qui arrive entre ce relevé
+  et la disparition n'est jamais compté — « relevé à N h de vie », jamais
+  « chiffres définitifs ».
+
 ---
 
 ## Ce qui n'est PAS impossible, mais pas décidé

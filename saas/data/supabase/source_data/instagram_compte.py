@@ -21,10 +21,36 @@ def _table_absente(e: Exception) -> bool:
     return "pgrst205" in msg or "could not find the table" in msg
 
 
+# Section 27 (stories) : tant qu'elle n'est pas jouée, ces colonnes manquent et
+# PostgREST refuse l'upsert ENTIER (PGRST204) — la portée et les abonnés du
+# jour seraient perdus pour deux colonnes neuves.
+_COLONNES_STORIES = ("reach_story", "interactions_story")
+
+
+def _colonne_stories_absente(e: Exception) -> bool:
+    msg = str(e).lower()
+    return (("pgrst204" in msg or "could not find the" in msg)
+            and any(c in msg for c in _COLONNES_STORIES))
+
+
+def _sans_stories(ligne):
+    if isinstance(ligne, list):
+        return [_sans_stories(l) for l in ligne]
+    return {k: v for k, v in ligne.items() if k not in _COLONNES_STORIES}
+
+
 def _ecrire(sb, table: str, ligne, **options) -> bool:
     """Upsert → True si écrit, False si la table manque (le message le dit)."""
     try:
-        sb.table(table).upsert(ligne, **options).execute()
+        try:
+            sb.table(table).upsert(ligne, **options).execute()
+        except Exception as e:
+            if not _colonne_stories_absente(e):
+                raise
+            print(f"    compte Instagram : colonnes {', '.join(_COLONNES_STORIES)} absentes — "
+                  "lance la section 27 de saas/data/supabase/migrations/000_run_me_all.sql ; "
+                  "le reste du jour est écrit sans elles.")
+            sb.table(table).upsert(_sans_stories(ligne), **options).execute()
     except Exception as e:
         if not _table_absente(e):
             raise

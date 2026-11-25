@@ -58,7 +58,10 @@
 --          connected_accounts.premier_passage_instagram_le (instagram-construction, 06)
 --   25)    google_ads_insights — le type de campagne et trois colonnes de
 --          conversion (google-ads, ticket 02)
---   21)    (volontairement absent — voir la section, il faut ta décision)
+--   27)    Instagram — instagram_stories, instagram_compte_jours.reach_story /
+--          interactions_story, bucket privé instagram-stories
+--          (instagram-stories, ticket 01)
+--   21)   (volontairement absent — voir la section, il faut ta décision)
 --   14sexies) reco_news — DROP, retirée le 7 septembre 2026 (plus de recos
 --          sur le compte entier — voir la section elle-même).
 --
@@ -2244,6 +2247,121 @@ ALTER TABLE public.google_ads_insights
     ADD COLUMN IF NOT EXISTS all_conversions          numeric DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS view_through_conversions numeric DEFAULT NULL;
 
+
+-- ============================================================================
+-- 27) Instagram — les stories (`.scratch/instagram-stories/spec.md` § La
+--     base ; ticket 01 de `.scratch/instagram-stories/tickets/`). La section
+--     26 vit sur la branche `meta/objectif-et-compte`.
+--
+--     Une story disparaît à 24 h : le job horaire
+--     (`.github/workflows/instagram-stories.yml`) la garde à son arrivée,
+--     copie sa vignette, et relève ses chiffres à chaque passage dès 20 h de
+--     vie. Le relevé ÉCRASE le précédent — une story n'a qu'un relevé final,
+--     pris entre 20 h et 24 h, daté par `releve_a` et `age_heures`.
+--
+--     · instagram_stories — clé (user_id, story_id) : deux connexions peuvent
+--       porter le même compte Instagram (constaté le 2026-11-25), chaque
+--       `user_id` a ses lignes, comme pour les posts. `story_id` en text : un
+--       identifiant de Meta est une chaîne, rien n'oblige à le lire en
+--       nombre. Chiffres en bigint, tous NULLABLES : NULL = non rendu (story
+--       sous 5 spectateurs, jamais relue, métrique refusée), jamais 0. Pas de
+--       colonne `replies` : 0 pour une story créée en Europe (essai réel du
+--       2026-11-25, `.scratch/instagram-stories/issues/02`).
+--     · instagram_compte_jours.reach_story / interactions_story — la part
+--       `STORY` de la portée et des interactions du compte, que le relevé
+--       quotidien lit déjà ventilées par `media_product_type` (comme
+--       `reach_ad`). NULL = part absente de la ventilation ce jour-là.
+--     · Bucket PRIVÉ `instagram-stories`, chemin `{user_id}/{story_id}.jpg` :
+--       la page lit par URL signée. Privé, contrairement à `post-images` et
+--       `ad-creatives` : une story est faite pour disparaître, la garder
+--       lisible par quiconque connaît l'URL irait contre ce que le client a
+--       publié.
+--
+--     Ajout seul, aucun DROP ni DELETE. RLS : lecture par `a_acces(user_id)`
+--     sur la table, et sur `storage.objects` du bucket par le premier
+--     segment du chemin ; AUCUNE politique d'écriture, seul le worker (clé
+--     service) écrit. Hors de la liste 15.1 pour la même raison que la
+--     section 23 (elle poserait `partage_insert/update/delete`), et les
+--     politiques ne s'appellent pas `partage_*` (contrôle A inchangé).
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.instagram_stories (
+    user_id            uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    story_id           text        NOT NULL,
+    publiee_a          timestamptz NOT NULL,
+    media_type         text,
+    permalink          text,
+    -- NULL = aucune vignette : ni `media_url` ni `thumbnail_url` rendus, ou
+    -- téléchargement raté pendant toute la vie de la story.
+    image_path         text,
+    vue_le             timestamptz NOT NULL DEFAULT now(),
+    -- NULL = jamais relue à 20 h de vie ou plus.
+    releve_a           timestamptz,
+    age_heures         numeric,
+    reach              bigint,
+    views              bigint,
+    shares             bigint,
+    total_interactions bigint,
+    follows            bigint,
+    profile_visits     bigint,
+    link_clicks        bigint,
+    nav_tap_forward    bigint,
+    nav_tap_back       bigint,
+    nav_tap_exit       bigint,
+    nav_swipe_forward  bigint,
+    PRIMARY KEY (user_id, story_id)
+);
+
+-- La page lit les stories d'un compte par jour de publication.
+CREATE INDEX IF NOT EXISTS idx_instagram_stories_user_publiee
+    ON public.instagram_stories (user_id, publiee_a);
+
+ALTER TABLE public.instagram_compte_jours
+    ADD COLUMN IF NOT EXISTS reach_story        bigint DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS interactions_story bigint DEFAULT NULL;
+
+ALTER TABLE public.instagram_stories ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'public' AND tablename = 'instagram_stories'
+                     AND policyname = 'ig_stories_select_acces') THEN
+        CREATE POLICY "ig_stories_select_acces" ON public.instagram_stories
+            FOR SELECT TO authenticated
+            USING (public.a_acces(user_id));
+    END IF;
+END $$;
+
+-- DO NOTHING et pas DO UPDATE : rejouer ce fichier ne change jamais un bucket
+-- réglé à la main depuis.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('instagram-stories', 'instagram-stories', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Le premier segment du chemin est le `user_id` du propriétaire. Le CASE
+-- garde le transtypage : un chemin dont le premier segment n'est pas un uuid
+-- ferait lever `::uuid` — et faire échouer la lecture du bucket entier — au
+-- lieu de refuser la ligne.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+                   WHERE schemaname = 'storage' AND tablename = 'objects'
+                     AND policyname = 'ig_stories_images_select_acces') THEN
+        CREATE POLICY "ig_stories_images_select_acces" ON storage.objects
+            FOR SELECT TO authenticated
+            USING (
+                bucket_id = 'instagram-stories'
+                AND CASE
+                        WHEN (storage.foldername(name))[1]
+                             ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                        THEN public.a_acces(((storage.foldername(name))[1])::uuid)
+                        ELSE false
+                    END
+            );
+    END IF;
+END $$;
+
 -- ============================================================================
 -- CONTRÔLE — juste avant la toute fin du fichier. Un `NOTIFY pgrst, 'reload
 -- schema'` la suit (voir la note en toute fin de fichier) : ce n'est donc PLUS
@@ -2350,6 +2468,12 @@ WITH attendu(kind, obj, col) AS (VALUES
     ('c', 'google_ads_search_term_clusters',  'category_label'),         -- §3septies
     ('c', 'google_ads_search_term_clusters',  'terms'),                  -- §3septies
     ('c', 'google_ads_search_term_clusters',  'window_end'),             -- §3septies
+    ('t', 'instagram_stories',                NULL),                     -- §27
+    ('c', 'instagram_stories',                'link_clicks'),            -- §27
+    ('c', 'instagram_stories',                'nav_tap_forward'),        -- §27
+    ('c', 'instagram_compte_jours',           'reach_story'),            -- §27
+    ('c', 'instagram_compte_jours',           'interactions_story'),     -- §27
+    ('b', 'instagram-stories',                NULL),                     -- §27, privé
     -- ── Fonctions ──────────────────────────────────────────────────────────
     ('f', 'public.set_updated_at()',       NULL),
     ('f', 'public.a_acces(uuid)',          NULL),   -- §12
@@ -2359,9 +2483,18 @@ catalogue AS (
     SELECT
         CASE a.kind WHEN 't' THEN 'table'
                     WHEN 'c' THEN 'colonne'
+                    WHEN 'b' THEN 'bucket'
                     ELSE          'fonction' END        AS famille,
         a.obj || coalesce('.' || a.col, '')             AS objet,
         CASE
+            -- Un bucket n'est pas une table : testé AVANT `to_regclass`. Il
+            -- doit exister ET rester privé (section 27).
+            WHEN a.kind = 'b' THEN
+                CASE WHEN NOT EXISTS (SELECT 1 FROM storage.buckets b WHERE b.id = a.obj)
+                     THEN '✗ BUCKET ABSENT'
+                     WHEN EXISTS (SELECT 1 FROM storage.buckets b WHERE b.id = a.obj AND b.public)
+                     THEN '✗ BUCKET PUBLIC — il doit être privé'
+                     ELSE '✓' END
             WHEN a.kind = 'f' THEN
                 CASE WHEN to_regprocedure(a.obj) IS NOT NULL
                      THEN '✓' ELSE '✗ FONCTION ABSENTE' END

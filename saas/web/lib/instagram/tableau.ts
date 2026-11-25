@@ -23,6 +23,7 @@ import {
   NOM_FORMAT,
   NOM_FORMAT_PLURIEL,
   NOM_PLACE,
+  MOT_UNITES,
   valeurDe,
   type CleMetrique,
   type Contexte,
@@ -30,6 +31,7 @@ import {
   type Post,
 } from "./lecture";
 import { AUCUN_ECART, ecartesParTonFiltre, mentionSousSix, placeLue, retenus, texteEcart, type Ecartes } from "./regles";
+import { TEXTE_EN_COURS } from "./stories";
 // Les nombres s'écrivent comme sur la page Meta (espace fine, « − »).
 import { nombre } from "../meta/lecture";
 
@@ -87,7 +89,10 @@ export function visionnageDe(p: Post): number | null {
  *  si l'appelant les a déjà calculées. */
 export function tableauDe(posts: Post[], m: CleMetrique, ctx: Contexte, ecartes: Ecartes = AUCUN_ECART, foulesLues?: ReturnType<typeof foulesDe>): Tableau {
   const foules = foulesLues ?? foulesDe(retenus(posts, ecartes), m, ctx);
-  const colonnes = COLONNES_FIXES.includes(m) ? [...COLONNES_FIXES] : [...COLONNES_FIXES, m];
+  // Les clics sur le lien n'existent que pour une story : leur colonne ne
+  // paraît que si le compte a des journées de stories (ticket stories 05).
+  const fixes: CleMetrique[] = posts.some((p) => p.journee) ? [...COLONNES_FIXES, "clics_lien"] : [...COLONNES_FIXES];
+  const colonnes = fixes.includes(m) ? fixes : [...fixes, m];
   const lignes = posts.map((p) => ({
     post: p,
     place: placeLue(p, m, foules, ctx, ecartes),
@@ -175,21 +180,28 @@ export function libellePlace(p: PlaceDuPost): string | null {
     case "age_egal":
       return `J+${p.jours}`;
     case "foule_mince":
-      return `${p.n} / ${MINIMUM_FOULE} posts`;
+      return `${p.n} / ${MINIMUM_FOULE} ${MOT_UNITES[p.format]}`;
     case "format_inconnu":
       return "format inconnu";
     case "sans_valeur":
+    case "sans_metrique":
       return null;
+    case "journee_en_cours":
+      return TEXTE_EN_COURS;
+    case "journee_incomplete":
+      return "incomplète";
   }
 }
 
 /** Pourquoi une place manque ou ce qu'elle veut dire — l'infobulle. */
 export function raisonPlace(p: PlaceDuPost): string {
   switch (p.etat) {
-    case "place":
+    case "place": {
+      const parmi = p.journee ? "parmi tes journées de stories complètes des 12 derniers mois" : "parmi les posts de ce format des 12 derniers mois";
       return p.horsNorme
-        ? "Au-delà de 1,5 × l'écart entre le bas et le haut de tes habitudes, parmi les posts de ce format des 12 derniers mois."
-        : "Parmi les posts de ce format des 12 derniers mois.";
+        ? `Au-delà de 1,5 × l'écart entre le bas et le haut de tes habitudes, ${parmi}.`
+        : `${parmi.charAt(0).toUpperCase()}${parmi.slice(1)}.`;
+    }
     case "ecarte":
       return p.raison.cause === "booste"
         ? "Retiré de la lecture par ta règle « sans les boostés » : Instagram a listé une annonce sur ce post."
@@ -207,11 +219,17 @@ export function raisonPlace(p: PlaceDuPost): string {
     case "foule_mince":
       return p.ecartes
         ? `${mentionSousSix(p.n, p.format, p.ecartes)}.`
-        : `${p.n} ${NOM_FORMAT_PLURIEL[p.format]} ont ce chiffre sur les 12 derniers mois, il en faut ${MINIMUM_FOULE}.`;
+        : `${p.n} ${NOM_FORMAT_PLURIEL[p.format]} ${p.n > 1 ? "ont" : "a"} ce chiffre sur les 12 derniers mois, il en faut ${MINIMUM_FOULE}.`;
     case "format_inconnu":
       return "Meta n'a pas dit si cette vidéo est un Reel ou une vidéo du fil : elle n'entre dans aucune foule.";
     case "sans_valeur":
-      return "Instagram n'a pas rendu ce chiffre pour ce post.";
+      return p.journee ? "Pulse n'a pas ce chiffre pour cette journée de stories." : "Instagram n'a pas rendu ce chiffre pour ce post.";
+    case "sans_metrique":
+      return p.phrase;
+    case "journee_en_cours":
+      return "Une story de cette journée peut encore être relue, ou la journée n'est pas finie : hors comparaison.";
+    case "journee_incomplete":
+      return `${p.jamaisRelues > 1 ? `${p.jamaisRelues} stories ont disparu` : "Une story a disparu"} sans que Pulse ait pu la relire : la journée ne sera jamais complète, elle n'est pas comparée.`;
   }
 }
 
@@ -251,9 +269,13 @@ function enTete(m: CleMetrique): string {
 
 /** Les lignes dans l'ordre donné (celui de l'écran), toutes par défaut. */
 export function csvDuTableau(t: Tableau, lignes: LigneTableau[] = t.lignes): string {
+  // Une ligne par journée de stories, comme le Tableau (ticket stories 05) ;
+  // la colonne du nombre de stories ne paraît qu'avec des journées.
+  const avecStories = t.lignes.some((l) => l.post.journee);
   const entete = [
     "Date",
     "Format",
+    ...(avecStories ? ["Stories"] : []),
     "Boosté",
     "Légende",
     "Lien",
@@ -265,6 +287,7 @@ export function csvDuTableau(t: Tableau, lignes: LigneTableau[] = t.lignes): str
   const rangs = lignes.map((l) => [
     jourIso(l.post.date),
     l.post.format ? NOM_FORMAT[l.post.format] : "format inconnu",
+    ...(avecStories ? [l.post.journee ? String(l.post.journee.stories.length) : ""] : []),
     l.post.boosteVuLe ? "oui" : "",
     texte(l.post.legende),
     l.post.permalink ?? "",
