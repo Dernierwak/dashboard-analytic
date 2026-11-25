@@ -30,6 +30,8 @@ import {
   limitesDe,
   maturiteDe,
   METRIQUES,
+  MOT_UNITES,
+  phraseSansMetrique,
   dansLesMois,
   debutDesMois,
   foulesDe,
@@ -61,7 +63,9 @@ export type PeriodeLue = { debut: string; fin: string };
 export type Reference = { complete: true } | { complete: false; debut: string; fin: string; n: number };
 
 function referenceDe(posts: Post[], ctx: Contexte): Reference | null {
-  const lisibles = posts.filter((p) => Number.isFinite(Date.parse(p.date)));
+  // La ligne parle de POSTS : une journée de stories n'y est pas comptée, sa
+  // rangée écrit elle-même son nombre de journées.
+  const lisibles = posts.filter((p) => !p.journee && Number.isFinite(Date.parse(p.date)));
   if (lisibles.length === 0) return null;
   const debutAnnee = Date.parse(debutDesMois(ctx.maintenant, 12));
   if (lisibles.some((p) => Date.parse(p.date) < debutAnnee)) return { complete: true };
@@ -184,15 +188,6 @@ export type RangeeLue = {
 export type RangeeSansMetrique = { etat: "sans_metrique"; format: Format; phrase: string };
 export type Rangee = RangeeLue | RangeeSansMetrique;
 
-/** Le Reel n'a ni `follows` ni visites de profil (erreur 100, essai réel du
- *  2026-11-06 ; `.scratch/instagram/issues/02`) : sa rangée le dit, au lieu
- *  d'une moustache faite de vides qu'on lirait comme des zéros (user story 14). */
-const ABSENT_DU_REEL: Partial<Record<CleMetrique, string>> = {
-  abonnes_1000: "Instagram ne donne pas les abonnés gagnés pour les Reels.",
-  abonnes: "Instagram ne donne pas les abonnés gagnés pour les Reels.",
-  visites_profil: "Instagram ne donne pas les visites de profil pour les Reels.",
-};
-
 /** L'axe s'arrête au plus haut bout de moustache et aux points de la période
  *  restés dans les limites de l'année : un hors norme est compté, il n'écrase
  *  pas les autres en étirant l'axe (spec, deuxième tour de la maquette). */
@@ -209,7 +204,10 @@ function axeMaxDe(moustaches: Moustache[], valeursPeriode: number[], haute: numb
 type Lus = { tous: Post[]; gardes: Post[]; ecartes: Ecartes; foules: ReturnType<typeof foulesDe> };
 
 function rangeeDe(lus: Lus, format: Format, m: CleMetrique, periode: PeriodeLue, ctx: Contexte): Rangee {
-  const phrase = format === "reel" ? ABSENT_DU_REEL[m] : undefined;
+  // Le Reel sans `follows`, la story sans j'aime, les posts sans clics sur le
+  // lien : une phrase, jamais une moustache faite de vides lus comme des
+  // zéros (user story 14 ; `phraseSansMetrique`, `lecture.ts`).
+  const phrase = phraseSansMetrique(format, m);
   if (phrase) return { etat: "sans_metrique", format, phrase };
 
   const { tous, gardes, ecartes, foules } = lus;
@@ -221,8 +219,11 @@ function rangeeDe(lus: Lus, format: Format, m: CleMetrique, periode: PeriodeLue,
   ] as [Moustache, Moustache, Moustache];
   const postType = annee.quartiles?.mediane ?? null;
 
+  // Un point Story = une journée COMPLÈTE (spec des stories) : en cours ou
+  // incomplète, elle n'a pas de chiffre comparable à poser.
   const dePeriode = tous
     .filter((p) => p.format === format && p.jour >= periode.debut && p.jour <= periode.fin)
+    .filter((p) => !p.journee || p.journee.etat === "complete")
     .sort((a, b) => a.date.localeCompare(b.date));
   const avecValeur = dePeriode.flatMap((p) => {
     const v = valeurDe(p, m);
@@ -281,7 +282,12 @@ export function moduleAnneeDe(
   // Un post de moins de 48 h compte pour ouvrir la rangée : il paraît au
   // nuage, en point vide, même s'il n'entre pas encore dans la foule. Un
   // format dont un filtre a tout écarté garde sa rangée : elle le dit.
-  const presents = FORMATS.filter((f) => posts.some((p) => p.format === f && dansLesMois(p, ctx)));
+  // La rangée Story paraît dès qu'une journée est complète (spec des
+  // stories, « Comment on verra que ça marche ») : une journée en cours n'a
+  // rien à poser.
+  const presents = FORMATS.filter((f) =>
+    posts.some((p) => p.format === f && dansLesMois(p, ctx) && (!p.journee || p.journee.etat === "complete"))
+  );
   return {
     metrique: m,
     periode,
@@ -294,8 +300,10 @@ export function moduleAnneeDe(
 
 type Source = keyof Brutes | "abonnesAuJour";
 
-/** Ce dont chaque métrique a besoin (spec, tableau des calculs). */
-const SOURCES: Record<CleMetrique, Source[]> = {
+/** Ce dont chaque métrique a besoin (spec, tableau des calculs). Les
+ *  métriques des stories n'ont pas de source dans un post : elles se jugent
+ *  aux journées (`raisonIndisponible`). */
+const SOURCES: Record<Exclude<CleMetrique, "sorties_100" | "interactions" | "clics_lien">, Source[]> = {
   portee: ["reach"],
   vues: ["views"],
   portee_abonnes: ["reach", "abonnesAuJour"],
@@ -331,6 +339,11 @@ function lu(p: Post, s: Source): boolean {
  *  l'a. Une base sans aucun post ne grise rien : c'est l'état « compte neuf ». */
 export function raisonIndisponible(posts: Post[], m: CleMetrique): string | null {
   if (posts.length === 0 || posts.some((p) => valeurDe(p, m) !== null)) return null;
+  if (m === "sorties_100" || m === "interactions" || m === "clics_lien") {
+    return posts.some((p) => p.journee)
+      ? `Aucune journée de stories n'a encore ${METRIQUES[m].nom.toLowerCase()}.`
+      : "Pas encore en base : les stories.";
+  }
   const manquent = SOURCES[m].filter((s) => !posts.some((p) => lu(p, s)));
   if (manquent.length === 0) return `Aucun post n'a encore ${METRIQUES[m].nom.toLowerCase()}.`;
   return `Pas encore en base : ${manquent.map((s) => NOM_SOURCE[s]).join(", ")}.`;
@@ -357,8 +370,8 @@ export function texteReference(r: Reference): string {
 
 /** « 3 mois +9 % · 15 posts » ; `null` = pas de pastille (sous 6, ou rien à
  *  comparer). L'écart est toujours écrit et signé, jamais « ≈ » (spec). */
-export function textePastille(p: Pastille, m: CleMetrique): string | null {
-  const posts = `${p.n} posts`;
+export function textePastille(p: Pastille, m: CleMetrique, format: Format = "reel"): string | null {
+  const posts = `${p.n} ${MOT_UNITES[format]}`;
   if (p.etat === "pourcent") return `${p.mois} mois ${formaterEcart(p.ecart)} · ${posts}`;
   if (p.etat !== "valeur") return null;
   const d = METRIQUES[m];

@@ -1,0 +1,45 @@
+name: Stories Instagram (chaque heure)
+
+# Une story disparaît à 24 h, et l'API ne la rend plus ensuite : chaque heure,
+# les stories en ligne sont listées, les nouvelles gardées avec leur vignette,
+# celles de 20 h de vie ou plus relevées (`.scratch/instagram-stories/spec.md`
+# § La récolte). Minute 17 : loin de l'heure pile, où GitHub retarde le plus
+# les crons planifiés (ticket `.scratch/instagram-stories/issues/06`).
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:        # lancement à la main depuis l'onglet Actions
+
+# Un passage à la fois : deux passages qui se croisent écriraient les mêmes
+# lignes. `cancel-in-progress: false` : on ne coupe jamais un passage en cours,
+# il peut être en train de relever une story à sa dernière heure.
+concurrency:
+  group: instagram-stories
+  cancel-in-progress: false
+
+jobs:
+  stories:
+    runs-on: ubuntu-latest
+    # Un passage dure de l'ordre de la minute par compte (non mesuré). 30 min
+    # bornent un serveur muet sans laisser deux heures s'empiler.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Récolte des stories
+        # Mêmes secrets que `weekly-fetch.yml` (Supabase, Meta). Le jeton de
+        # chaque compte est lu dans `connected_accounts`, jamais ici.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          META_APP_ID: ${{ secrets.META_APP_ID }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+        run: python3.12 saas/data/fetch_data/cockpit/instagram_stories.py

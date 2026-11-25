@@ -92,7 +92,9 @@ export function PanneauPost({
       <h3 className="mt-5 text-[13px] font-semibold text-ink">Sa place sur chaque métrique</h3>
       <table className="mt-2 w-full text-[13px]">
         <tbody>
-          {lecture.places.map((x) => {
+          {/* Les métriques des stories (clics sur le lien…) n'existent pas
+              pour un post : leur ligne serait un « – » sans information. */}
+          {lecture.places.filter((x) => x.place.etat !== "sans_metrique").map((x) => {
             const place = libellePlace(x.place);
             return (
               <tr key={x.metrique} className={`border-t border-line ${x.metrique === metrique ? "font-semibold" : ""}`}>

@@ -1,6 +1,6 @@
 import { formaterValeur } from "@/lib/instagram/tableau";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
-import { COEF_HORS_NORME, MINIMUM_FOULE, NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture";
+import { COEF_HORS_NORME, MINIMUM_FOULE, MOT_TYPE, MOT_UNITES, NOM_FORMAT, type CleMetrique } from "@/lib/instagram/lecture";
 import type { Moustache, RangeeLue } from "@/lib/instagram/annee";
 import { HAUTEUR, ordonnee, Y_BAS, Y_HAUT } from "./dessin";
 
@@ -30,6 +30,8 @@ export function Moustaches({ rangee, metrique }: { rangee: RangeeLue; metrique: 
   const c = COULEUR_FORMAT[rangee.format];
   const colonne = (L - 20) / 3;
   const v = (x: number) => formaterValeur(metrique, x);
+  // La rangée Story compte des journées (spec des stories).
+  const unites = MOT_UNITES[rangee.format];
 
   return (
     <svg viewBox={`0 0 ${L} ${HAUTEUR}`} width="100%" className="block" role="img" aria-label={`Les ${NOM_FORMAT[rangee.format]} : l'année et les derniers mois`}>
@@ -45,15 +47,15 @@ export function Moustaches({ rangee, metrique }: { rangee: RangeeLue; metrique: 
               {nom}
             </text>
             <text x={cx} y={HAUTEUR - 8} fontSize={10} fill="#8b8e98" textAnchor="middle">
-              {b.n} posts · {statut}
+              {b.n} {unites} · {statut}
             </text>
             {b.etat === "mince" ? (
               <text x={cx} y={(Y_HAUT + Y_BAS) / 2} fontSize={11} fill="#8b8e98" textAnchor="middle">
-                <title>{`Il faut ${MINIMUM_FOULE} posts pour dessiner une moustache.`}</title>
-                {b.n} / {MINIMUM_FOULE} posts
+                <title>{`Il faut ${MINIMUM_FOULE} ${unites} pour dessiner une moustache.`}</title>
+                {b.n} / {MINIMUM_FOULE} {unites}
               </text>
             ) : (
-              <Boite b={b} cx={cx} y={y} couleur={c.trait} aplat={c.aplat} v={v} />
+              <Boite b={b} cx={cx} y={y} couleur={c.trait} aplat={c.aplat} v={v} mots={{ type: MOT_TYPE[rangee.format], unites }} />
             )}
           </g>
         );
@@ -69,8 +71,10 @@ function Boite({
   couleur,
   aplat,
   v,
+  mots,
 }: {
   b: Extract<Moustache, { etat: "boite" }>;
+  mots: { type: string; unites: string };
   cx: number;
   y: (x: number) => number;
   couleur: string;
@@ -83,7 +87,7 @@ function Boite({
   const pleine = b.mois === 12;
   return (
     <g opacity={encre}>
-      <title>{`${STATUT[b.mois].nom} : bas ${v(q.q1)} · post type ${v(q.mediane)} · haut ${v(q.q3)} · ${b.n} posts. ${AIDE_HORS_NORME}`}</title>
+      <title>{`${STATUT[b.mois].nom} : bas ${v(q.q1)} · ${mots.type} ${v(q.mediane)} · haut ${v(q.q3)} · ${b.n} ${mots.unites}. ${AIDE_HORS_NORME}`}</title>
       <line x1={cx} x2={cx} y1={y(b.haute)} y2={y(b.basse)} stroke={couleur} />
       <line x1={cx - 6} x2={cx + 6} y1={y(b.haute)} y2={y(b.haute)} stroke={couleur} />
       <line x1={cx - 6} x2={cx + 6} y1={y(b.basse)} y2={y(b.basse)} stroke={couleur} />

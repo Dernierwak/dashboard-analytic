@@ -35,6 +35,7 @@ import { SelecteurObjectif } from "@/components/instagram/selecteur";
 import { TesPostsFaceATonAnnee } from "@/components/instagram/annee/module";
 import { ListeMeilleurs } from "@/components/instagram/annee/meilleurs";
 import { PanneauPost, PanneauPostIntrouvable } from "@/components/instagram/panneau-post";
+import { PanneauJournee } from "@/components/instagram/panneau-journee";
 import { TableauPosts } from "@/components/instagram/tableau";
 import { TendanceTaPage } from "@/components/instagram/tendance";
 import { BadgeFige, EncartCompteNeuf, EncartJetonMort } from "@/components/instagram/etats";
@@ -44,9 +45,10 @@ export const dynamic = "force-dynamic";
 const un = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default async function InstagramPage({ searchParams }: { searchParams: Params }) {
-  const { posts, ctx, periode, raccourcis, hier, progres, compteMajA, tendance } = await getDonneesInstagram({
+  const { posts, journees, ctx, periode, raccourcis, hier, progres, compteMajA, tendance } = await getDonneesInstagram({
     from: un(searchParams.from),
     to: un(searchParams.to),
+    post: un(searchParams.post),
   });
   const etat = etatDeLaPage({ posts, progres, compteMajA });
   // Les Règles de lecture (`?sansBoostes=1`, `?sansHorsNorme=1`) : les
@@ -79,29 +81,35 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
   // `metrique` : la métrique choisie au Sélecteur ; le module et la Place du
   // Tableau la suivent (spec, « une place à la fois »).
   const metrique = metriqueDe(un(searchParams.metrique));
+  // LES STORIES, UN FORMAT DE PLUS (`.scratch/instagram-stories/spec.md`) :
+  // chaque journée de stories est un `Post` de format `story`, qui passe par
+  // la même foule, la même place, la même liste et le même Tableau. L'état de
+  // la page et la Tendance gardent les posts seuls (`posts`). Sans table
+  // `instagram_stories`, `journees` est vide : la page est celle d'avant.
+  const tous = journees.length ? [...posts, ...journees] : posts;
   const indisponibles = Object.fromEntries(
     (Object.keys(METRIQUES) as CleMetrique[]).flatMap((m) => {
-      const raison = raisonIndisponible(posts, m);
+      const raison = raisonIndisponible(tous, m);
       return raison ? [[m, raison]] : [];
     })
   ) as Partial<Record<CleMetrique, string>>;
   const lue = { debut: periode.debut, fin: periode.fin };
-  const ecartes = ecartesDe(posts, metrique, regles, ctx);
+  const ecartes = ecartesDe(tous, metrique, regles, ctx);
   // LES FOULES, UNE FOIS PAR LECTURE (revue de code) : le module, la liste et
   // le Tableau lisent la même — celle des retenus sur la métrique affichée.
   // Chacun la recalculait sur tout l'historique.
-  const gardes = retenus(posts, ecartes);
+  const gardes = retenus(tous, ecartes);
   const foules = foulesDe(gardes, metrique, ctx);
-  const annee = moduleAnneeDe(posts, metrique, lue, ctx, ecartes, foules);
+  const annee = moduleAnneeDe(tous, metrique, lue, ctx, ecartes, foules);
   const meilleurs = meilleursDe(gardes, metrique, lue, ctx, foules);
-  const tableau = tableauDe(posts, metrique, ctx, ecartes, foules);
+  const tableau = tableauDe(tous, metrique, ctx, ecartes, foules);
   const lu = ligneRegles(regles, ecartes.total, metrique);
 
   // Le post ouvert (`?post=`, l'ID Graph). Le rapport hebdo n'est relu que
   // pour lui, et seulement s'il a un permalink — c'est par lui qu'on le
   // retrouve dans un payload (le rapport ne porte pas de `post_id`).
   const idOuvert = un(searchParams.post);
-  const ouvert = idOuvert ? posts.find((p) => p.id === idOuvert) ?? null : null;
+  const ouvert = idOuvert ? tous.find((p) => p.id === idOuvert) ?? null : null;
   const fermeture = lienInstagram(searchParams, { post: null });
   const jourRapport = ouvert?.permalink ? await jourDuPremierRapportQuiListe(ouvert.permalink) : null;
   const fige = etat.etat === "jeton_mort";
@@ -156,9 +164,11 @@ export default async function InstagramPage({ searchParams }: { searchParams: Pa
       </div>
 
       {idOuvert &&
-        (ouvert ? (
+        (ouvert?.journee ? (
+          <PanneauJournee lecture={lecturePostDe(ouvert, tous, metrique, ctx, regles)} metrique={metrique} fermeture={fermeture} />
+        ) : ouvert ? (
           <PanneauPost
-            lecture={lecturePostDe(ouvert, posts, metrique, ctx, regles)}
+            lecture={lecturePostDe(ouvert, tous, metrique, ctx, regles)}
             metrique={metrique}
             phraseHebdo={phraseEcartHebdo(ouvert.releveA, jourRapport)}
             fermeture={fermeture}

@@ -16,6 +16,9 @@ const OBJECTIFS: { cle: Objectif; nom: string; question: string }[] = [
   { cle: "portee", nom: "Portée", question: "Combien de comptes mes posts touchent-ils ?" },
   { cle: "engagement", nom: "Engagement", question: "Ceux qui les voient réagissent-ils ?" },
   { cle: "abonnes", nom: "Abonnés", question: "Mes posts me font-ils gagner du monde ?" },
+  // Visible pour tous les formats : il dit où le clic se mesure (ticket
+  // stories 04) — les autres rangées y reçoivent leur phrase.
+  { cle: "trafic", nom: "Trafic", question: "Mes stories amènent-elles des clics sur leur lien ?" },
 ];
 
 export function SelecteurObjectif({
@@ -36,7 +39,7 @@ export function SelecteurObjectif({
       <p id="titre-objectif" className="mb-3 text-[13px] text-muted">
         Choisis ce que tu veux lire : l&apos;objectif, puis sa métrique. Le module et la place de chaque post la suivent.
       </p>
-      <nav className="grid gap-3 sm:grid-cols-3" aria-label="Objectifs">
+      <nav className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Objectifs">
         {OBJECTIFS.map((o) => {
           const actif = o.cle === objectif;
           return (

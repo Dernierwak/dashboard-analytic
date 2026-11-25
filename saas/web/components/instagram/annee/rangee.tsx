@@ -1,6 +1,6 @@
 import { formaterValeur } from "@/lib/instagram/tableau";
 import { COULEUR_FORMAT } from "@/lib/instagram/couleurs";
-import { METRIQUES, NOM_FORMAT, NOM_FORMAT_PLURIEL, type CleMetrique } from "@/lib/instagram/lecture";
+import { METRIQUES, MOT_TYPE, MOT_UNITES, NOM_FORMAT, NOM_FORMAT_PLURIEL, type CleMetrique } from "@/lib/instagram/lecture";
 import { textePastille, type PeriodeLue, type Rangee } from "@/lib/instagram/annee";
 import type { Params } from "@/lib/instagram/liens";
 import { mentionSousSix } from "@/lib/instagram/regles";
@@ -44,16 +44,19 @@ export function RangeeFormat({
   }
 
   const pluriel = NOM_FORMAT_PLURIEL[rangee.format].toLowerCase();
-  const pastilles = rangee.pastilles.map((p) => textePastille(p, metrique)).filter((t): t is string => t !== null);
+  const pastilles = rangee.pastilles.map((p) => textePastille(p, metrique, rangee.format)).filter((t): t is string => t !== null);
+  // La rangée Story parle de journées : « journée type de l'année · 12 journées ».
+  const unites = MOT_UNITES[rangee.format];
+  const type = MOT_TYPE[rangee.format];
 
   return (
     <div className="border-t border-line pt-4 first:border-0 first:pt-0">
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
         {titre}
         <span className="text-muted">
-          post type de l&apos;année{" "}
+          {type} de l&apos;année{" "}
           <b className="tabular-nums text-ink">{rangee.postType === null ? "–" : formaterValeur(metrique, rangee.postType)}</b>{" "}
-          <span className="text-faint">· {rangee.n} posts</span>
+          <span className="text-faint">· {rangee.n} {unites}</span>
         </span>
         {rangee.total && rangee.total.total !== null && (
           <span className="text-muted">
@@ -87,7 +90,7 @@ export function RangeeFormat({
         rangee.postType === null &&
         rangee.n > 0 && (
           <p className="text-[12px] text-faint">
-            {rangee.n} {pluriel} ont {METRIQUES[metrique].nom.toLowerCase()} sur les 12 derniers mois, il en faut 6 pour un post type.
+            {rangee.n} {pluriel} {rangee.n > 1 ? "ont" : "a"} {METRIQUES[metrique].nom.toLowerCase()} sur les 12 derniers mois, il en faut 6 pour un {type}.
           </p>
         )
       )}

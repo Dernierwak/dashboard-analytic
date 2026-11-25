@@ -14,4 +14,7 @@ export const COULEUR_FORMAT: Record<Format, Teinte> = {
   carrousel: par("bleu"),
   image: par("ambre"),
   video_fil: par("turquoise"),
+  // La story : le rose de l'anneau des stories d'Instagram, loin du violet du
+  // Reel et des trois autres teintes sur la roue.
+  story: par("rose"),
 };
